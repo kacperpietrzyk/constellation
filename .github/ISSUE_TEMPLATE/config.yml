@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Product questions and ideas
+    url: https://github.com/kacperpietrzyk/constellation/discussions
+    about: Discuss an idea or ask a question before turning it into scoped work.
+  - name: Security vulnerability
+    url: https://github.com/kacperpietrzyk/constellation/security/advisories/new
+    about: Report security issues privately. Do not open a public issue.

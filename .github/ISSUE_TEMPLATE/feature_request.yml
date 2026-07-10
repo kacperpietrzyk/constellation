@@ -1,0 +1,56 @@
+name: Feature proposal
+description: Propose an outcome or product capability for discussion.
+title: "proposal: "
+labels:
+  - status:triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Start with the problem and desired outcome. A solution is useful, but it should not hide the user need.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Who experiences the problem, and in what situation?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What should become possible or meaningfully easier?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Possible approach
+      description: Optional. Describe behavior and trade-offs rather than prescribing a framework.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Primary surface
+      options:
+        - Desktop experience
+        - Data model and API
+        - Agent or MCP integration
+        - Meeting import
+        - Calendar integration
+        - Contributor experience
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and discussions.
+          required: true
+        - label: I described the user problem separately from the implementation.
+          required: true

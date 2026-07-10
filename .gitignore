@@ -1,0 +1,63 @@
+# Local agent and product workbench (never publish)
+/AGENTS.md
+/.workbench/
+/.ui-craft/
+/.workflows/
+/docs/plans/
+/docs/specs/
+/plans/
+/specs/
+/dlaczego-notion-zawodzi-i-czego-potrzebuje.md
+*.local.md
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+
+# JavaScript / TypeScript / desktop tooling
+node_modules/
+.pnpm-store/
+.turbo/
+.vite/
+dist/
+out/
+build/
+release/
+coverage/
+*.tsbuildinfo
+
+# Rust
+target/
+
+# Swift / Xcode
+.build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.swiftpm/
+
+# Local databases and runtime state
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
+logs/
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# Operating systems
+.DS_Store
+Thumbs.db
+Desktop.ini

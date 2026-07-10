@@ -1,0 +1,74 @@
+name: Bug report
+description: Report reproducible behavior that does not match the product's intent.
+title: "bug: "
+labels:
+  - status:triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve Constellation. Do not include private meeting content, calendar data, credentials, or personal information.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Use a release version or commit SHA when possible.
+      placeholder: pre-alpha / commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Windows
+        - Both
+        - Not platform-specific
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and why is it a problem?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Additional evidence
+      description: Add sanitized logs, screenshots, or a minimal sample if useful.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and discussions.
+          required: true
+        - label: I removed secrets and private or personal data.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
