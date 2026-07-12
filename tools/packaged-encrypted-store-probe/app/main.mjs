@@ -15,10 +15,8 @@ const MAX_SCAN_FILES = 20_000;
 const MAX_SCAN_FILE_BYTES = 128 * 1024 * 1024;
 const MAX_SCAN_TOTAL_BYTES = 512 * 1024 * 1024;
 const TERMINATION_FAILSAFE_MS = 30_000;
-const SHUTDOWN_COMMAND = Buffer.from(
-  "constellation.packaged-store-probe.shutdown/v1\n",
-  "utf8",
-);
+const SHUTDOWN_AUTHORIZATION_TYPE =
+  "constellation.packaged-store-probe.shutdown/v1";
 const EXIT_AUTHORIZATION_TYPE = "constellation.packaged-store-probe.exit/v1";
 const SHUTDOWN_ACK_TYPE =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
@@ -239,16 +237,21 @@ function awaitParentExitAuthorization() {
   process.once("disconnect", abort);
 }
 
-function awaitParentShutdownCommand() {
-  const chunks = [];
-  let length = 0;
-  let completed = false;
+function awaitParentShutdownAuthorization() {
+  if (
+    typeof process.send !== "function" ||
+    typeof process.disconnect !== "function" ||
+    !process.connected ||
+    !process.channel
+  ) {
+    process.kill(process.pid, "SIGKILL");
+    return;
+  }
 
+  let completed = false;
   const clear = () => {
-    process.stdin.removeListener("data", onData);
-    process.stdin.removeListener("end", onEnd);
-    process.stdin.removeListener("error", onError);
-    for (const chunk of chunks) chunk.fill(0);
+    process.removeListener("message", onMessage);
+    process.removeListener("disconnect", abort);
   };
   const abort = () => {
     if (completed) return;
@@ -256,25 +259,21 @@ function awaitParentShutdownCommand() {
     clear();
     process.kill(process.pid, "SIGKILL");
   };
-  const onData = (chunk) => {
-    const input = Buffer.from(chunk);
-    chunks.push(input);
-    length += input.length;
-    if (length > SHUTDOWN_COMMAND.length) abort();
-  };
-  const onEnd = () => {
+  const onMessage = (message) => {
     if (completed) return;
-    completed = true;
-    const input = Buffer.concat(chunks, length);
-    const valid =
-      input.length === SHUTDOWN_COMMAND.length &&
-      crypto.timingSafeEqual(input, SHUTDOWN_COMMAND);
-    input.fill(0);
-    clear();
-    if (!valid) {
-      process.kill(process.pid, "SIGKILL");
+    if (
+      !message ||
+      typeof message !== "object" ||
+      Array.isArray(message) ||
+      Object.keys(message).length !== 2 ||
+      message.type !== SHUTDOWN_AUTHORIZATION_TYPE ||
+      message.processId !== process.pid
+    ) {
+      abort();
       return;
     }
+    completed = true;
+    clear();
     // An Electron-managed main-loop shutdown is required on Windows so
     // Chromium can commit the DPAPI-wrapped async-provider key in profile
     // Local State. The declared probe outcome remains in the fixed protocol;
@@ -284,12 +283,9 @@ function awaitParentShutdownCommand() {
     awaitParentExitAuthorization();
     writeShutdownAcknowledgement();
   };
-  const onError = () => abort();
 
-  process.stdin.on("data", onData);
-  process.stdin.once("end", onEnd);
-  process.stdin.once("error", onError);
-  process.stdin.resume();
+  process.once("message", onMessage);
+  process.once("disconnect", abort);
 }
 
 function finish(result, exitCode) {
@@ -305,9 +301,9 @@ function finish(result, exitCode) {
   // Every store path closes and scans its state before returning here. The
   // synchronous readiness record lets the parent authorize an Electron-managed
   // main-loop exit, supervise its deadline, and verify that all inherited
-  // pipes close. The child remains live until that exact command arrives.
+  // pipes close. The child remains live through both exact IPC authorizations.
   writeFixedResult(result, exitCode);
-  awaitParentShutdownCommand();
+  awaitParentShutdownAuthorization();
 }
 
 function getArgument(name) {

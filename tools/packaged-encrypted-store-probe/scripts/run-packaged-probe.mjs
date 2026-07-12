@@ -43,7 +43,8 @@ const primaryWrapper = "primary.wrap.json";
 const primaryDatabase = "primary.db";
 const primaryWrapperPath = path.join(stateRoot, primaryWrapper);
 const primaryDatabasePath = path.join(stateRoot, primaryDatabase);
-const shutdownCommand = "constellation.packaged-store-probe.shutdown/v1\n";
+const shutdownAuthorizationType =
+  "constellation.packaged-store-probe.shutdown/v1";
 const exitAuthorizationType = "constellation.packaged-store-probe.exit/v1";
 const shutdownAckType =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
@@ -250,7 +251,7 @@ async function launch({
       child = spawn(executable, argumentsForProbe, {
         detached: process.platform !== "win32",
         env: environment,
-        stdio: ["pipe", "pipe", "pipe", "ipc"],
+        stdio: ["ignore", "pipe", "pipe", "ipc"],
         windowsHide: true,
       });
     } catch {
@@ -269,12 +270,13 @@ async function launch({
     let forcedTerminationRecheckTimer;
     let electronShutdownTimer;
     let helperCleanupTimer;
-    let stdinErrorRecheckTimer;
     let postExitTimer;
     let timedOut = false;
     let parentSupervisionStarted = false;
-    let shutdownCommandQueued = false;
+    let shutdownAuthorizationQueued = false;
+    let shutdownAuthorizationSendStatus = "not-started";
     let exitAuthorizationQueued = false;
+    let exitAuthorizationSendStatus = "not-started";
     let shutdownAcknowledged = false;
     let shutdownAckCount = 0;
     let shutdownTerminalConfirmed = false;
@@ -305,7 +307,6 @@ async function launch({
       }
       if (electronShutdownTimer) clearTimeout(electronShutdownTimer);
       if (helperCleanupTimer) clearTimeout(helperCleanupTimer);
-      if (stdinErrorRecheckTimer) clearTimeout(stdinErrorRecheckTimer);
       if (postExitTimer) clearTimeout(postExitTimer);
       callback();
     };
@@ -340,11 +341,29 @@ async function launch({
             );
           } else {
             const result = parseFixedResult(stdoutBuffer);
+            if (
+              !shutdownAcknowledged &&
+              shutdownAuthorizationSendStatus !== "succeeded"
+            ) {
+              protocolError ||=
+                shutdownAuthorizationSendStatus === "failed"
+                  ? "SHUTDOWN_AUTHORIZATION_REJECTED"
+                  : "SHUTDOWN_AUTHORIZATION_UNCONFIRMED";
+            }
+            if (
+              !shutdownTerminalConfirmed &&
+              exitAuthorizationSendStatus !== "succeeded"
+            ) {
+              protocolError ||=
+                exitAuthorizationSendStatus === "failed"
+                  ? "EXIT_AUTHORIZATION_REJECTED"
+                  : "EXIT_AUTHORIZATION_UNCONFIRMED";
+            }
             ensure(!protocolError, protocolError);
             ensure(protocolResultCount === 1, "PROTOCOL_RESULT_COUNT_INVALID");
             ensure(
               parentSupervisionStarted &&
-                shutdownCommandQueued &&
+                shutdownAuthorizationQueued &&
                 exitAuthorizationQueued,
               "PARENT_SHUTDOWN_PROTOCOL_MISSING",
             );
@@ -409,12 +428,12 @@ async function launch({
             resolve({
               declaredExitCode: result.declaredExitCode,
               lifecycle: electronExitObserved
-                ? "electron-quit-after-parent-command"
-                : "forced-after-parent-command",
+                ? "electron-quit-after-parent-authorization"
+                : "forced-after-parent-authorization",
               actualCode: code,
               actualSignal: signal,
               parentSupervisionStarted,
-              shutdownCommandQueued,
+              shutdownAuthorizationQueued,
               exitAuthorizationQueued,
               shutdownAcknowledged,
               shutdownTerminalConfirmed,
@@ -504,11 +523,28 @@ async function launch({
       }
       shutdownRequestedWhileAlive = true;
       parentSupervisionStarted = true;
+      if (
+        typeof child.send !== "function" ||
+        !child.connected ||
+        !child.channel
+      ) {
+        startHardCleanup("SHUTDOWN_AUTHORIZATION_UNAVAILABLE");
+        return;
+      }
       try {
-        child.stdin.end(shutdownCommand);
-        shutdownCommandQueued = true;
+        shutdownAuthorizationSendStatus = "pending";
+        child.send(
+          {
+            type: shutdownAuthorizationType,
+            processId: child.pid,
+          },
+          (error) => {
+            shutdownAuthorizationSendStatus = error ? "failed" : "succeeded";
+          },
+        );
+        shutdownAuthorizationQueued = true;
       } catch {
-        startHardCleanup("SHUTDOWN_COMMAND_REJECTED");
+        startHardCleanup("SHUTDOWN_AUTHORIZATION_REJECTED");
         return;
       }
       if (timer) {
@@ -567,7 +603,7 @@ async function launch({
           value.method !== "app.quit" ||
           value.requestedExitCode !== 0 ||
           !parentSupervisionStarted ||
-          !shutdownCommandQueued ||
+          !shutdownAuthorizationQueued ||
           childHasExited()
         ) {
           protocolError ||= "SHUTDOWN_ACK_INVALID";
@@ -584,6 +620,7 @@ async function launch({
             return;
           }
           try {
+            exitAuthorizationSendStatus = "pending";
             child.send(
               {
                 type: exitAuthorizationType,
@@ -593,7 +630,9 @@ async function launch({
               // callback error can race the child's deliberate disconnect and
               // must not override stronger terminal evidence; a missing
               // delivery is bounded by the existing shutdown deadline.
-              () => {},
+              (error) => {
+                exitAuthorizationSendStatus = error ? "failed" : "succeeded";
+              },
             );
             exitAuthorizationQueued = true;
           } catch {
@@ -628,7 +667,7 @@ async function launch({
           value.internalExitCode < 0 ||
           value.internalExitCode > 255 ||
           !parentSupervisionStarted ||
-          !shutdownCommandQueued ||
+          !shutdownAuthorizationQueued ||
           !exitAuthorizationQueued ||
           !shutdownAcknowledged
         ) {
@@ -697,14 +736,6 @@ async function launch({
 
     child.stdout.on("data", (chunk) => collect(stdout, chunk, true));
     child.stderr.on("data", (chunk) => collect(stderr, chunk, false));
-    child.stdin.on("error", () => {
-      if (settled || forcedTerminationRequested) return;
-      stdinErrorRecheckTimer = setTimeout(() => {
-        if (!settled && !childHasExited() && !forcedTerminationRequested) {
-          startHardCleanup("SHUTDOWN_COMMAND_REJECTED");
-        }
-      }, 50);
-    });
     child.on("error", () =>
       finish(() => reject(new Error("PACKAGED_LAUNCH_FAILED"))),
     );
@@ -795,19 +826,19 @@ function assertProvider(result) {
 function recordProcess(execution, mode) {
   const { childPid, result } = execution;
   ensure(
-    execution.lifecycle === "electron-quit-after-parent-command" ||
-      execution.lifecycle === "forced-after-parent-command",
+    execution.lifecycle === "electron-quit-after-parent-authorization" ||
+      execution.lifecycle === "forced-after-parent-authorization",
     "CHILD_LIFECYCLE_INVALID",
   );
   ensure(
     execution.parentSupervisionStarted === true &&
-      execution.shutdownCommandQueued === true &&
+      execution.shutdownAuthorizationQueued === true &&
       execution.exitAuthorizationQueued === true &&
       execution.shutdownAcknowledged === true &&
       execution.shutdownRequestedWhileAlive === true,
     "CHILD_TERMINATION_EVIDENCE_INVALID",
   );
-  if (execution.lifecycle === "electron-quit-after-parent-command") {
+  if (execution.lifecycle === "electron-quit-after-parent-authorization") {
     const expectedCode = process.platform === "win32" ? 1 : 0;
     ensure(
       execution.electronExitObserved === true &&
@@ -1053,7 +1084,7 @@ try {
   recordProcess(writer, "provision");
   ensure(
     process.platform !== "win32" ||
-      writer.lifecycle === "electron-quit-after-parent-command",
+      writer.lifecycle === "electron-quit-after-parent-authorization",
     "WINDOWS_WRITER_SHUTDOWN_INVALID",
   );
   assertExactResultKeys(writer.result, [
