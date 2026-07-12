@@ -61,6 +61,9 @@ const ignoredTopLevelEntries = ["scripts", "build", "out"].map(
   (entry) => new RegExp(`^[\\\\/]${entry}(?:[\\\\/]|$)`),
 );
 ignoredTopLevelEntries.push(/^[\\/]README\.md$/, /^[\\/]package-lock\.json$/);
+ignoredTopLevelEntries.push(
+  /^[\\/]node_modules[\\/]better-sqlite3[\\/]build[\\/]Release[\\/]test_extension\.node$/,
+);
 
 fs.rmSync(outputRoot, { recursive: true, force: true });
 const packagePaths = await packager({
