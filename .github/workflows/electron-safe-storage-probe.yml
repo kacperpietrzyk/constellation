@@ -58,43 +58,6 @@ jobs:
       - name: Verify packaged safeStorage relaunch and failures
         run: npm --prefix tools/electron-safe-storage-probe run probe:packaged
 
-      - name: Diagnose a rejected Windows package launch
-        if: failure() && runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $packageRoot = Join-Path $PWD 'tools/electron-safe-storage-probe/out/Constellation Key Custody Probe-win32-x64'
-          $executable = Join-Path $packageRoot 'Constellation Key Custody Probe.exe'
-          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-            throw 'WINDOWS_PACKAGE_MISSING'
-          }
-
-          $file = Get-Item -LiteralPath $executable
-          $signature = (Get-AuthenticodeSignature -LiteralPath $executable).Status
-          $zone = [bool](Get-Item -LiteralPath $executable -Stream Zone.Identifier -ErrorAction SilentlyContinue)
-          Write-Output "WINDOWS_PACKAGE_STATE:signature=$signature;zone=$zone;bytes=$($file.Length)"
-
-          $start = [System.Diagnostics.ProcessStartInfo]::new()
-          $start.FileName = $executable
-          $start.UseShellExecute = $false
-          $start.RedirectStandardOutput = $true
-          $start.RedirectStandardError = $true
-          $start.ArgumentList.Add('--version')
-          $process = [System.Diagnostics.Process]::new()
-          $process.StartInfo = $start
-          try {
-            [void]$process.Start()
-          } catch {
-            $nativeCode = $_.Exception.InnerException.NativeErrorCode
-            throw "WINDOWS_PACKAGE_START_FAILED:$nativeCode"
-          }
-          if (-not $process.WaitForExit(10000)) {
-            $process.Kill($true)
-            throw 'WINDOWS_PACKAGE_START_TIMEOUT'
-          }
-          $stdout = $process.StandardOutput.ReadToEnd().Trim()
-          $stderr = $process.StandardError.ReadToEnd().Trim()
-          Write-Output "WINDOWS_PACKAGE_EXIT:code=$($process.ExitCode);stdout=$stdout;stderr=$stderr"
-
       - name: Restore the macOS Keychain configuration
         if: always() && runner.os == 'macOS'
         run: npm --prefix tools/electron-safe-storage-probe run keychain:restore
