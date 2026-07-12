@@ -20,6 +20,7 @@ const SHUTDOWN_AUTHORIZATION_TYPE =
 const EXIT_AUTHORIZATION_TYPE = "constellation.packaged-store-probe.exit/v1";
 const SHUTDOWN_ACK_TYPE =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
+const EXIT_ACK_TYPE = "constellation.packaged-store-probe.exit-accepted/v1";
 const SHUTDOWN_COMPLETE_TYPE =
   "constellation.packaged-store-probe.shutdown-complete/v1";
 const EXIT_CODES = Object.freeze({
@@ -131,6 +132,28 @@ function writeShutdownAcknowledgement() {
   }
 }
 
+function writeExitAcknowledgement() {
+  const output = Buffer.from(
+    `${JSON.stringify({
+      type: EXIT_ACK_TYPE,
+      processId: process.pid,
+      method: "app.quit",
+      requestedExitCode: 0,
+    })}\n`,
+    "utf8",
+  );
+  try {
+    let offset = 0;
+    while (offset < output.length) {
+      const written = fs.writeSync(1, output, offset, output.length - offset);
+      if (written <= 0) throw new Error("EXIT_ACK_WRITE_FAILED");
+      offset += written;
+    }
+  } finally {
+    output.fill(0);
+  }
+}
+
 function writeShutdownCompletion(method, internalExitCode) {
   const output = Buffer.from(
     `${JSON.stringify({
@@ -222,8 +245,9 @@ function awaitParentExitAuthorization() {
 
     completed = true;
     clear();
-    process.disconnect();
     exitAuthorizationAccepted = true;
+    writeExitAcknowledgement();
+    process.disconnect();
     if (config?.mode === "shutdown-fault") {
       faultExitRequested = true;
       process.exit(1);

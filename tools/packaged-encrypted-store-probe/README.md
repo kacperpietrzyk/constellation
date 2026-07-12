@@ -46,12 +46,12 @@ The probe fails unless all of these checks pass:
   post-close scanning, and failure cleanup, then waits for an exact parent
   shutdown authorization over its inherited IPC channel; the child acknowledges
   that phase while it remains live, waits for a distinct exact exit
-  authorization over the same channel, then requests `app.quit()`. A synchronous
-  terminal record requires the exact Electron `before-quit` → `will-quit` →
-  `quit(0)` lifecycle. The harness preserves the declared outcome separately
-  from the observed process result, lets the Electron main-loop shutdown commit
-  provider state, force-terminates a stalled process tree, and requires both
-  inherited output pipes to close;
+  authorization over the same channel, acknowledges its verified receipt, then
+  requests `app.quit()`. A synchronous terminal record requires the exact
+  Electron `before-quit` → `will-quit` → `quit(0)` lifecycle. The harness
+  preserves the declared outcome separately from the observed process result,
+  lets the Electron main-loop shutdown commit provider state, force-terminates
+  a stalled process tree, and requires both inherited output pipes to close;
 - a dedicated falsification launch emits readiness and the pre-exit
   acknowledgement, then exits internally with code `1`; the harness must reject
   it before the ordinary eleven-process result can pass;

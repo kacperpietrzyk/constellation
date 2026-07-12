@@ -48,12 +48,14 @@ const shutdownAuthorizationType =
 const exitAuthorizationType = "constellation.packaged-store-probe.exit/v1";
 const shutdownAckType =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
+const exitAckType = "constellation.packaged-store-probe.exit-accepted/v1";
 const shutdownCompleteType =
   "constellation.packaged-store-probe.shutdown-complete/v1";
 const processIds = new Set();
 let electronManagedProcessExits = 0;
 let forcedProcessExits = 0;
 let acknowledgedShutdowns = 0;
+let acknowledgedExitAuthorizations = 0;
 let terminallyConfirmedShutdowns = 0;
 let windowsPostQuitProviderFaultRejected = false;
 let windowsProviderStateDigest;
@@ -277,6 +279,8 @@ async function launch({
     let shutdownAuthorizationSendStatus = "not-started";
     let exitAuthorizationQueued = false;
     let exitAuthorizationSendStatus = "not-started";
+    let exitAuthorizationAcknowledged = false;
+    let exitAuthorizationAckCount = 0;
     let shutdownAcknowledged = false;
     let shutdownAckCount = 0;
     let shutdownTerminalConfirmed = false;
@@ -352,6 +356,7 @@ async function launch({
             }
             if (
               !shutdownTerminalConfirmed &&
+              !exitAuthorizationAcknowledged &&
               exitAuthorizationSendStatus !== "succeeded"
             ) {
               protocolError ||=
@@ -369,6 +374,14 @@ async function launch({
             );
             ensure(shutdownAcknowledged, "CHILD_SHUTDOWN_ACK_MISSING");
             ensure(shutdownAckCount === 1, "CHILD_SHUTDOWN_ACK_COUNT_INVALID");
+            ensure(
+              exitAuthorizationAcknowledged,
+              "CHILD_EXIT_AUTHORIZATION_ACK_MISSING",
+            );
+            ensure(
+              exitAuthorizationAckCount === 1,
+              "CHILD_EXIT_AUTHORIZATION_ACK_COUNT_INVALID",
+            );
             ensure(
               shutdownRequestedWhileAlive,
               "PARENT_SHUTDOWN_LIVENESS_MISSING",
@@ -435,6 +448,7 @@ async function launch({
               parentSupervisionStarted,
               shutdownAuthorizationQueued,
               exitAuthorizationQueued,
+              exitAuthorizationAcknowledged,
               shutdownAcknowledged,
               shutdownTerminalConfirmed,
               shutdownInternalExitCode,
@@ -561,10 +575,14 @@ async function launch({
       const claimsShutdownComplete = text.includes(
         "constellation.packaged-store-probe.shutdown-complete",
       );
+      const claimsExitAccepted = text.includes(
+        "constellation.packaged-store-probe.exit-accepted",
+      );
       const claimsProtocol =
         text.includes('"readyForShutdown"') ||
         text.includes('"declaredExitCode"') ||
         claimsShutdownAccepted ||
+        claimsExitAccepted ||
         claimsShutdownComplete;
       let value;
       try {
@@ -583,6 +601,11 @@ async function launch({
       }
       if (claimsShutdownComplete && value?.type !== shutdownCompleteType) {
         protocolError ||= "SHUTDOWN_COMPLETION_INVALID";
+        startHardCleanup(protocolError);
+        return;
+      }
+      if (claimsExitAccepted && value?.type !== exitAckType) {
+        protocolError ||= "EXIT_ACK_INVALID";
         startHardCleanup(protocolError);
         return;
       }
@@ -626,10 +649,10 @@ async function launch({
                 type: exitAuthorizationType,
                 processId: child.pid,
               },
-              // Delivery is proved by the terminal child record. An IPC
-              // callback error can race the child's deliberate disconnect and
-              // must not override stronger terminal evidence; a missing
-              // delivery is bounded by the existing shutdown deadline.
+              // Delivery is proved by the child's exit-acceptance or terminal
+              // record. An IPC callback error can race the deliberate
+              // disconnect and must not override stronger child evidence; a
+              // missing delivery is bounded by the shutdown deadline.
               (error) => {
                 exitAuthorizationSendStatus = error ? "failed" : "succeeded";
               },
@@ -639,6 +662,34 @@ async function launch({
             protocolError ||= "EXIT_AUTHORIZATION_REJECTED";
             startHardCleanup(protocolError);
           }
+        }
+        return;
+      }
+      if (value?.type === exitAckType) {
+        exitAuthorizationAckCount += 1;
+        const keys = Object.keys(value).sort();
+        const expectedKeys = [
+          "method",
+          "processId",
+          "requestedExitCode",
+          "type",
+        ].sort();
+        if (
+          exitAuthorizationAckCount !== 1 ||
+          keys.length !== expectedKeys.length ||
+          !keys.every((key, index) => key === expectedKeys[index]) ||
+          value.processId !== child.pid ||
+          value.method !== "app.quit" ||
+          value.requestedExitCode !== 0 ||
+          !parentSupervisionStarted ||
+          !shutdownAuthorizationQueued ||
+          !exitAuthorizationQueued ||
+          !shutdownAcknowledged
+        ) {
+          protocolError ||= "EXIT_ACK_INVALID";
+          startHardCleanup(protocolError);
+        } else {
+          exitAuthorizationAcknowledged = true;
         }
         return;
       }
@@ -669,6 +720,7 @@ async function launch({
           !parentSupervisionStarted ||
           !shutdownAuthorizationQueued ||
           !exitAuthorizationQueued ||
+          !exitAuthorizationAcknowledged ||
           !shutdownAcknowledged
         ) {
           protocolError ||= "SHUTDOWN_COMPLETION_INVALID";
@@ -834,6 +886,7 @@ function recordProcess(execution, mode) {
     execution.parentSupervisionStarted === true &&
       execution.shutdownAuthorizationQueued === true &&
       execution.exitAuthorizationQueued === true &&
+      execution.exitAuthorizationAcknowledged === true &&
       execution.shutdownAcknowledged === true &&
       execution.shutdownRequestedWhileAlive === true,
     "CHILD_TERMINATION_EVIDENCE_INVALID",
@@ -863,6 +916,7 @@ function recordProcess(execution, mode) {
     forcedProcessExits += 1;
   }
   acknowledgedShutdowns += 1;
+  acknowledgedExitAuthorizations += 1;
   ensure(
     execution.actualCode !== null || execution.actualSignal !== null,
     "CHILD_ACTUAL_TERMINATION_INVALID",
@@ -1316,6 +1370,10 @@ try {
     "SHUTDOWN_ACK_COUNT_INVALID",
   );
   ensure(
+    acknowledgedExitAuthorizations === processIds.size,
+    "EXIT_AUTHORIZATION_ACK_COUNT_INVALID",
+  );
+  ensure(
     terminallyConfirmedShutdowns === electronManagedProcessExits,
     "SHUTDOWN_COMPLETION_COUNT_INVALID",
   );
@@ -1352,6 +1410,7 @@ try {
       packagedRelaunch: true,
       parentManagedShutdown: true,
       acknowledgedShutdowns,
+      acknowledgedExitAuthorizations,
       terminallyConfirmedShutdowns,
       electronManagedProcessExits,
       forcedProcessExits,
