@@ -39,13 +39,20 @@ The probe fails unless all of these checks pass:
 - unbounded application stdout/stderr and console methods are disabled, the
   harness accepts exact fixed result shapes only, and the earlier dedicated
   safeStorage probe remains the independent exact-key output-channel oracle;
+- each process emits one synchronous readiness record only after store close,
+  post-close scanning, and failure cleanup; the harness then terminates the
+  still-live packaged process tree, preserves the declared outcome separately
+  from the platform-specific termination signal, and requires both inherited
+  output pipes to close;
 - macOS uses an ad-hoc-signed package and disposable hosted-runner Keychain;
   Windows uses an unsigned mechanism package with statically linked pinned
   OpenSSL; every generated file and exact probe-only Keychain item is removed
   without artifact upload.
 
-The child processes have a 45-second watchdog so an interactive provider prompt
-or native hang becomes a bounded failure.
+The child processes have a 45-second readiness watchdog so an interactive
+provider prompt or native hang becomes a bounded failure. Parent-managed tree
+termination must be accepted by the operating system and close both inherited
+output pipes within five seconds, or the probe fails closed.
 
 ## Pinned inputs
 

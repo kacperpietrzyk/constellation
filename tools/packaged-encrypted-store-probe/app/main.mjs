@@ -14,6 +14,7 @@ const MAX_WRAPPER_BYTES = 64 * 1024;
 const MAX_SCAN_FILES = 20_000;
 const MAX_SCAN_FILE_BYTES = 128 * 1024 * 1024;
 const MAX_SCAN_TOTAL_BYTES = 512 * 1024 * 1024;
+const TERMINATION_FAILSAFE_MS = 30_000;
 const EXIT_CODES = Object.freeze({
   CONFIG_INVALID: 80,
   PACKAGED_IDENTITY_INVALID: 81,
@@ -34,6 +35,7 @@ const EXIT_CODES = Object.freeze({
 
 let config;
 let nativeAddonPackaged = false;
+let finishStarted = false;
 
 class ProbeFailure extends Error {
   constructor(code) {
@@ -72,21 +74,42 @@ function fixedResult(status, code, extra = {}) {
   };
 }
 
-function writeFixedResult(result) {
-  const output = Buffer.from(`${JSON.stringify(result)}\n`, "utf8");
+function writeFixedResult(result, declaredExitCode) {
+  const output = Buffer.from(
+    `${JSON.stringify({
+      ...result,
+      declaredExitCode,
+      readyForTermination: true,
+    })}\n`,
+    "utf8",
+  );
   try {
-    fs.writeSync(1, output);
+    let offset = 0;
+    while (offset < output.length) {
+      const written = fs.writeSync(1, output, offset, output.length - offset);
+      if (written <= 0) throw new Error("FIXED_RESULT_WRITE_FAILED");
+      offset += written;
+    }
   } finally {
     output.fill(0);
   }
 }
 
 function finish(result, exitCode) {
-  writeFixedResult(result);
-  // Every store path closes and scans its state before returning here, and the
-  // fixed result is written synchronously. Exit the synthetic main process
-  // deterministically; the parent harness owns bounded helper-tree cleanup.
-  process.exit(exitCode);
+  if (finishStarted) return;
+  if (!Number.isInteger(exitCode) || exitCode < 0 || exitCode > 255) {
+    throw new Error("EXIT_CODE_INVALID");
+  }
+  finishStarted = true;
+  process.exitCode = exitCode;
+  setTimeout(
+    () => process.kill(process.pid, "SIGKILL"),
+    TERMINATION_FAILSAFE_MS,
+  );
+  // Every store path closes and scans its state before returning here. The
+  // synchronous readiness record lets the parent terminate the still-live
+  // packaged process tree and verify that all inherited pipes close.
+  writeFixedResult(result, exitCode);
 }
 
 function getArgument(name) {
@@ -1002,8 +1025,7 @@ try {
 } catch (error) {
   const failure =
     error instanceof ProbeFailure ? error : new ProbeFailure("CONFIG_INVALID");
-  writeFixedResult(fixedResult("fail", failure.code));
-  process.exit(failure.exitCode);
+  finish(fixedResult("fail", failure.code), failure.exitCode);
 }
 
 if (config) {

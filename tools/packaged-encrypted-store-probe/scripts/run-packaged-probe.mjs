@@ -53,12 +53,14 @@ const forbiddenOutput = [
 const fixedResultKeys = [
   "architecture",
   "code",
+  "declaredExitCode",
   "electron",
   "nativeAddonPackaged",
   "packaged",
   "phase",
   "platform",
   "processId",
+  "readyForTermination",
   "status",
 ];
 
@@ -92,27 +94,45 @@ function inspectOutput(contents) {
   captured.push(contents);
 }
 
+function hasTerminationFields(value) {
+  return (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    (Object.hasOwn(value, "readyForTermination") ||
+      Object.hasOwn(value, "declaredExitCode"))
+  );
+}
+
+function isReadyResultEnvelope(value) {
+  return (
+    hasTerminationFields(value) &&
+    value.readyForTermination === true &&
+    (value.status === "pass" || value.status === "fail") &&
+    typeof value.code === "string" &&
+    Number.isInteger(value.declaredExitCode) &&
+    value.declaredExitCode >= 0 &&
+    value.declaredExitCode <= 255 &&
+    ((value.status === "pass" && value.declaredExitCode === 0) ||
+      (value.status === "fail" && value.declaredExitCode !== 0))
+  );
+}
+
 function parseFixedResult(stdout) {
-  const lines = stdout
-    .toString("utf8")
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .reverse();
+  const candidates = [];
+  const lines = stdout.toString("utf8").split(/\r?\n/).filter(Boolean);
   for (const line of lines) {
     try {
       const value = JSON.parse(line);
-      if (
-        value &&
-        typeof value.status === "string" &&
-        typeof value.code === "string"
-      ) {
-        return value;
-      }
+      if (hasTerminationFields(value)) candidates.push(value);
     } catch {
-      // Chromium may emit unrelated diagnostics; only fixed JSON is evidence.
+      // Invalid non-protocol diagnostics are ignored here and rejected by the
+      // incremental scanner if they claim termination fields.
     }
   }
-  throw new Error("FIXED_RESULT_MISSING");
+  ensure(candidates.length === 1, "FIXED_RESULT_COUNT_INVALID");
+  ensure(isReadyResultEnvelope(candidates[0]), "FIXED_RESULT_INVALID");
+  return candidates[0];
 }
 
 function terminateTree(child) {
@@ -173,10 +193,20 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     let stderrLength = 0;
     let settled = false;
     let timer;
-    let terminationTimer;
+    let hardCleanupTimer;
+    let cleanupRetryTimer;
     let helperCleanupTimer;
     let postExitTimer;
     let timedOut = false;
+    let parentTerminationRequested = false;
+    let parentTerminationAccepted = false;
+    let terminationRequestedWhileAlive = false;
+    let readyResult;
+    let protocolError;
+    let protocolResultCount = 0;
+    let protocolLineStart = 0;
+    let protocolScanOffset = 0;
+    let hardCleanupStarted = false;
     let mainProcessExited = false;
     let mainExitCode;
     let mainExitSignal;
@@ -185,7 +215,8 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
-      if (terminationTimer) clearTimeout(terminationTimer);
+      if (hardCleanupTimer) clearTimeout(hardCleanupTimer);
+      if (cleanupRetryTimer) clearTimeout(cleanupRetryTimer);
       if (helperCleanupTimer) clearTimeout(helperCleanupTimer);
       if (postExitTimer) clearTimeout(postExitTimer);
       callback();
@@ -198,13 +229,8 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       if (stdoutLength > 64 * 1024 || stderrLength > 64 * 1024) {
         terminateTree(child);
       }
+      if (isStdout) scanProtocolLines();
     };
-
-    child.stdout.on("data", (chunk) => collect(stdout, chunk, true));
-    child.stderr.on("data", (chunk) => collect(stderr, chunk, false));
-    child.on("error", () =>
-      finish(() => reject(new Error("PACKAGED_LAUNCH_FAILED"))),
-    );
     const complete = (code, signal) =>
       finish(() => {
         try {
@@ -225,30 +251,166 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
               ),
             );
           } else {
+            const result = parseFixedResult(stdoutBuffer);
+            ensure(!protocolError, protocolError);
+            ensure(protocolResultCount === 1, "PROTOCOL_RESULT_COUNT_INVALID");
+            ensure(
+              parentTerminationRequested && parentTerminationAccepted,
+              "PARENT_TERMINATION_PROTOCOL_MISSING",
+            );
+            ensure(
+              terminationRequestedWhileAlive,
+              "PARENT_TERMINATION_LIVENESS_MISSING",
+            );
+            ensure(
+              readyResult &&
+                JSON.stringify(result) === JSON.stringify(readyResult),
+              "PROTOCOL_RESULT_CHANGED",
+            );
+            ensure(
+              code !== null || signal !== null,
+              "ACTUAL_TERMINATION_STATUS_MISSING",
+            );
             resolve({
-              code,
-              signal,
+              declaredExitCode: result.declaredExitCode,
+              lifecycle: "parent-terminated-after-result",
+              actualCode: code,
+              actualSignal: signal,
+              parentTerminationRequested,
+              parentTerminationAccepted,
+              terminationRequestedWhileAlive,
               childPid: child.pid,
-              result: parseFixedResult(stdoutBuffer),
+              result,
             });
           }
         } catch (error) {
           reject(error);
         }
       });
-    const rejectUnverifiedHelperCleanup = () => {
+    const failUnverifiedHelperCleanup = () => {
       finish(() =>
         reject(
           new Error(
             timedOut
               ? `PACKAGED_TERMINATION_TIMEOUT:${mode}:${wrapperName}:${databaseName}`
-              : `PACKAGED_HELPER_CLEANUP_UNVERIFIED:${mode}:${wrapperName}:${databaseName}`,
+              : `${protocolError || "PACKAGED_HELPER_CLEANUP_UNVERIFIED"}:${mode}:${wrapperName}:${databaseName}`,
           ),
         ),
       );
       child.stdout.destroy();
       child.stderr.destroy();
     };
+    const startHardCleanup = (reason) => {
+      protocolError ||= reason;
+      if (settled || hardCleanupStarted) return;
+      hardCleanupStarted = true;
+      if (helperCleanupTimer) {
+        clearTimeout(helperCleanupTimer);
+        helperCleanupTimer = undefined;
+      }
+      const retry = () => {
+        if (settled) return;
+        const treeTerminationAccepted = terminateTree(child);
+        if (!treeTerminationAccepted) {
+          try {
+            child.kill("SIGKILL");
+          } catch {
+            // Keep retrying until close or the hard cleanup deadline.
+          }
+        }
+        cleanupRetryTimer = setTimeout(retry, 500);
+      };
+      retry();
+      // Keep retrying past the child's 30-second self-kill failsafe before an
+      // unverified cleanup is allowed to fail the launch.
+      hardCleanupTimer = setTimeout(failUnverifiedHelperCleanup, 35_000);
+    };
+    const requestParentTermination = () => {
+      if (settled || parentTerminationRequested) return;
+      if (
+        mainProcessExited ||
+        child.exitCode !== null ||
+        child.signalCode !== null
+      ) {
+        protocolError ||= "CHILD_NOT_LIVE_AT_READINESS";
+        return;
+      }
+      terminationRequestedWhileAlive = true;
+      parentTerminationRequested = true;
+      parentTerminationAccepted = terminateTree(child);
+      if (!parentTerminationAccepted) {
+        startHardCleanup("PARENT_TERMINATION_REJECTED");
+        return;
+      }
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      helperCleanupTimer = setTimeout(
+        () => startHardCleanup("HELPER_CLOSE_TIMEOUT"),
+        5_000,
+      );
+    };
+    const inspectProtocolLine = (line) => {
+      const text = line.toString("utf8");
+      const claimsProtocol =
+        text.includes('"readyForTermination"') ||
+        text.includes('"declaredExitCode"');
+      let value;
+      try {
+        value = JSON.parse(text);
+      } catch {
+        if (claimsProtocol) {
+          protocolError ||= "PROTOCOL_RESULT_JSON_INVALID";
+          requestParentTermination();
+        }
+        return;
+      }
+      if (!hasTerminationFields(value)) return;
+      protocolResultCount += 1;
+      if (protocolResultCount !== 1) {
+        protocolError ||= "PROTOCOL_RESULT_DUPLICATED";
+      }
+      if (
+        !isReadyResultEnvelope(value) ||
+        value.processId !== child.pid ||
+        value.phase !== mode ||
+        value.platform !== process.platform ||
+        value.architecture !== "x64" ||
+        value.electron !== "43.1.0" ||
+        value.packaged !== true
+      ) {
+        protocolError ||= "PROTOCOL_RESULT_ENVELOPE_INVALID";
+      } else if (protocolResultCount === 1) {
+        readyResult = value;
+      }
+      requestParentTermination();
+    };
+    const scanProtocolLines = () => {
+      const contents = Buffer.concat(stdout, stdoutLength);
+      try {
+        let newline = contents.indexOf(0x0a, protocolScanOffset);
+        while (newline !== -1) {
+          let lineEnd = newline;
+          if (lineEnd > protocolLineStart && contents[lineEnd - 1] === 0x0d) {
+            lineEnd -= 1;
+          }
+          inspectProtocolLine(contents.subarray(protocolLineStart, lineEnd));
+          protocolLineStart = newline + 1;
+          protocolScanOffset = newline + 1;
+          newline = contents.indexOf(0x0a, protocolScanOffset);
+        }
+        protocolScanOffset = contents.length;
+      } finally {
+        contents.fill(0);
+      }
+    };
+
+    child.stdout.on("data", (chunk) => collect(stdout, chunk, true));
+    child.stderr.on("data", (chunk) => collect(stderr, chunk, false));
+    child.on("error", () =>
+      finish(() => reject(new Error("PACKAGED_LAUNCH_FAILED"))),
+    );
 
     child.on("exit", (code, signal) => {
       mainProcessExited = true;
@@ -258,6 +420,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
         clearTimeout(timer);
         timer = undefined;
       }
+      if (parentTerminationRequested) return;
       // Electron helpers may inherit the main process pipes after the main
       // executable has exited. Give pending bytes a bounded drain window,
       // then finalize from the main process exit rather than misclassifying a
@@ -265,13 +428,16 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       postExitTimer = setTimeout(() => {
         const cleanupVerified = terminateTree(child);
         if (!cleanupVerified) {
-          rejectUnverifiedHelperCleanup();
+          startHardCleanup("POST_EXIT_TERMINATION_REJECTED");
           return;
         }
         // A successful signal request is not cleanup evidence. Wait for the
         // child close event, which confirms that both inherited output pipes
         // have closed, and fail closed if that signal never arrives.
-        helperCleanupTimer = setTimeout(rejectUnverifiedHelperCleanup, 5_000);
+        helperCleanupTimer = setTimeout(
+          () => startHardCleanup("HELPER_CLOSE_TIMEOUT"),
+          5_000,
+        );
       }, 1_000);
     });
     child.on("close", (code, signal) => {
@@ -283,18 +449,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
 
     timer = setTimeout(() => {
       timedOut = true;
-      terminateTree(child);
-      terminationTimer = setTimeout(
-        () =>
-          finish(() =>
-            reject(
-              new Error(
-                `PACKAGED_TERMINATION_TIMEOUT:${mode}:${wrapperName}:${databaseName}`,
-              ),
-            ),
-          ),
-        10_000,
-      );
+      startHardCleanup("PACKAGED_LAUNCH_TIMEOUT");
     }, 45_000);
   });
 }
@@ -329,6 +484,25 @@ function assertProvider(result) {
 
 function recordProcess(execution, mode) {
   const { childPid, result } = execution;
+  ensure(
+    execution.lifecycle === "parent-terminated-after-result",
+    "CHILD_LIFECYCLE_INVALID",
+  );
+  ensure(
+    execution.parentTerminationRequested === true &&
+      execution.parentTerminationAccepted === true &&
+      execution.terminationRequestedWhileAlive === true,
+    "CHILD_TERMINATION_EVIDENCE_INVALID",
+  );
+  ensure(
+    execution.actualCode !== null || execution.actualSignal !== null,
+    "CHILD_ACTUAL_TERMINATION_INVALID",
+  );
+  ensure(result.readyForTermination === true, "CHILD_READINESS_INVALID");
+  ensure(
+    result.declaredExitCode === execution.declaredExitCode,
+    "CHILD_EXIT_CODE_INVALID",
+  );
   assertFixedIdentity(result, childPid, mode);
   ensure(!processIds.has(result.processId), "PROCESS_REUSED");
   processIds.add(result.processId);
@@ -336,8 +510,7 @@ function recordProcess(execution, mode) {
 
 async function expectFailure(options, acceptedCodes, expectedState) {
   const execution = await launch(options);
-  ensure(execution.code !== 0, "NEGATIVE_PROBE_SUCCEEDED");
-  ensure(execution.signal === null, "NEGATIVE_PROBE_SIGNALED");
+  ensure(execution.declaredExitCode !== 0, "NEGATIVE_PROBE_SUCCEEDED");
   ensure(execution.result.status === "fail", "NEGATIVE_RESULT_INVALID");
   recordProcess(execution, options.mode);
   assertExactResultKeys(execution.result);
@@ -480,7 +653,7 @@ try {
     wrapperName: primaryWrapper,
     databaseName: primaryDatabase,
   });
-  ensure(writer.code === 0 && writer.signal === null, "WRITER_FAILED");
+  ensure(writer.declaredExitCode === 0, "WRITER_FAILED");
   ensure(writer.result.status === "pass", "WRITER_RESULT_INVALID");
   ensure(writer.result.code === "STORE_PROVISIONED", "WRITER_CODE_INVALID");
   recordProcess(writer, "provision");
@@ -518,7 +691,7 @@ try {
     wrapperName: primaryWrapper,
     databaseName: primaryDatabase,
   });
-  ensure(reader.code === 0 && reader.signal === null, "READER_FAILED");
+  ensure(reader.declaredExitCode === 0, "READER_FAILED");
   ensure(reader.result.status === "pass", "READER_RESULT_INVALID");
   ensure(reader.result.code === "STORE_VERIFIED", "READER_CODE_INVALID");
   recordProcess(reader, "verify");
@@ -598,10 +771,7 @@ try {
     wrapperName: "secondary.wrap.json",
     databaseName: "secondary.db",
   });
-  ensure(
-    secondaryWriter.code === 0 && secondaryWriter.signal === null,
-    "SECONDARY_WRITER_FAILED",
-  );
+  ensure(secondaryWriter.declaredExitCode === 0, "SECONDARY_WRITER_FAILED");
   ensure(
     secondaryWriter.result.status === "pass" &&
       secondaryWriter.result.code === "STORE_PROVISIONED",
@@ -644,10 +814,7 @@ try {
     wrapperName: "unused.wrap.json",
     databaseName: "plaintext.db",
   });
-  ensure(
-    plaintext.code === 0 && plaintext.signal === null,
-    "PLAINTEXT_SETUP_FAILED",
-  );
+  ensure(plaintext.declaredExitCode === 0, "PLAINTEXT_SETUP_FAILED");
   ensure(
     plaintext.result.status === "pass" &&
       plaintext.result.code === "PLAINTEXT_FIXTURE_CREATED",
@@ -724,6 +891,7 @@ try {
       targetArchitecture: "x64",
       electron: "43.1.0",
       packagedRelaunch: true,
+      parentManagedTermination: true,
       distinctProcesses: processIds.size,
       internallyGeneratedDek: true,
       asyncSafeStorage: true,
