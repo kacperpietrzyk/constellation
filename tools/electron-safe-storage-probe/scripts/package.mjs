@@ -53,13 +53,14 @@ const packagePaths = await packager({
   appVersion: "0.0.1",
   buildVersion: "0.0.1",
   appCopyright: "Copyright Constellation contributors",
+  // Preserve Electron's existing asInvoker manifest. A redundant Packager
+  // rewrite produced an invalid Windows activation-context resource in CI.
   win32metadata: {
     CompanyName: "Constellation contributors",
     FileDescription: appName,
     ProductName: appName,
     InternalName: "ConstellationKeyCustodyProbe",
     OriginalFilename: `${appName}.exe`,
-    "requested-execution-level": "asInvoker",
   },
   quiet: true,
 });
