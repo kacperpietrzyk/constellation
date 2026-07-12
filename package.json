@@ -22,7 +22,7 @@
     "format:check": "prettier --check .",
     "lint": "npm run lint:code && npm run lint:md",
     "lint:code": "eslint . --max-warnings=0",
-    "lint:md": "markdownlint-cli2 \"*.md\" \".github/**/*.md\" \"docs/**/*.md\" \"packages/**/*.md\" \"#AGENTS.md\" \"#dlaczego-notion-zawodzi-i-czego-potrzebuje.md\" \"#docs/plans/**\" \"#docs/specs/**\"",
+    "lint:md": "markdownlint-cli2 \"*.md\" \".github/**/*.md\" \"docs/**/*.md\" \"packages/**/*.md\" \"tools/**/*.md\" \"#**/node_modules/**\" \"#AGENTS.md\" \"#dlaczego-notion-zawodzi-i-czego-potrzebuje.md\" \"#docs/plans/**\" \"#docs/specs/**\"",
     "test": "npm run clean && npm run build && node scripts/run-tests.mjs",
     "typecheck": "tsc -b --pretty false"
   },
