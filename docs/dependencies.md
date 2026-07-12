@@ -42,6 +42,25 @@ installs only the pinned Electron runtime, verifies the OpenSSL release digest,
 and uploads only the licensed SQLCipher source artifact for one day. Compiled
 binaries, keys, and generated databases are not published.
 
+## Packaged safeStorage probe
+
+`tools/electron-safe-storage-probe` has a separate lockfile and dependency
+graph. It packages only a synthetic fixture and is not application runtime code.
+
+| Dependency                  | Purpose                                      | License      |
+| --------------------------- | -------------------------------------------- | ------------ |
+| Electron 43.1.0             | Exercise packaged Keychain/DPAPI safeStorage | MIT          |
+| `@electron/packager` 20.0.2 | Produce native x64 application folders       | BSD-2-Clause |
+
+The probe installs without lifecycle scripts, downloads the exact platform
+Electron archive only through a committed SHA-256 allow-list, runs separate
+packaged processes plus fail-closed wrapper cases, uploads no artifacts, and
+removes its package, synthetic runtime state, and exact probe-only Keychain item.
+The hosted macOS job isolates that item in a disposable user Keychain and
+restores the prior Keychain configuration. Its ad-hoc macOS and unsigned Windows
+packages prove mechanism compatibility only, not production signing or update
+continuity.
+
 The product currently has no runtime native module, telemetry SDK, network
 client, model-provider client, or post-install build step. Native SQLCipher and
 Electron remain outside this reference-kernel dependency graph until their
