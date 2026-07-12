@@ -19,10 +19,7 @@ const SHUTDOWN_COMMAND = Buffer.from(
   "constellation.packaged-store-probe.shutdown/v1\n",
   "utf8",
 );
-const EXIT_COMMAND = Buffer.from(
-  "constellation.packaged-store-probe.exit/v1\n",
-  "utf8",
-);
+const EXIT_AUTHORIZATION_TYPE = "constellation.packaged-store-probe.exit/v1";
 const SHUTDOWN_ACK_TYPE =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
 const SHUTDOWN_COMPLETE_TYPE =
@@ -157,17 +154,67 @@ process.on("exit", (internalExitCode) => {
   if (electronExitRequested) writeShutdownCompletion(internalExitCode);
 });
 
+function awaitParentExitAuthorization() {
+  if (
+    typeof process.send !== "function" ||
+    typeof process.disconnect !== "function" ||
+    !process.connected ||
+    !process.channel
+  ) {
+    process.kill(process.pid, "SIGKILL");
+    return;
+  }
+
+  let completed = false;
+  const clear = () => {
+    process.removeListener("message", onMessage);
+    process.removeListener("disconnect", abort);
+  };
+  const abort = () => {
+    if (completed) return;
+    completed = true;
+    clear();
+    process.kill(process.pid, "SIGKILL");
+  };
+  const onMessage = (message) => {
+    if (completed) return;
+    if (
+      !message ||
+      typeof message !== "object" ||
+      Array.isArray(message) ||
+      Object.keys(message).length !== 2 ||
+      message.type !== EXIT_AUTHORIZATION_TYPE ||
+      message.processId !== process.pid
+    ) {
+      abort();
+      return;
+    }
+
+    completed = true;
+    clear();
+    process.disconnect();
+    electronExitRequested = true;
+    if (config?.mode === "shutdown-fault") {
+      process.exit(1);
+      return;
+    }
+    app.exit(0);
+  };
+
+  process.once("message", onMessage);
+  process.once("disconnect", abort);
+}
+
 function awaitParentShutdownCommand() {
-  let pending = Buffer.alloc(0);
-  let phase = "await-shutdown";
+  const chunks = [];
+  let length = 0;
   let completed = false;
 
   const clear = () => {
     process.stdin.removeListener("data", onData);
     process.stdin.removeListener("end", onEnd);
     process.stdin.removeListener("error", onError);
-    pending.fill(0);
-    pending = Buffer.alloc(0);
+    for (const chunk of chunks) chunk.fill(0);
   };
   const abort = () => {
     if (completed) return;
@@ -177,55 +224,18 @@ function awaitParentShutdownCommand() {
   };
   const onData = (chunk) => {
     const input = Buffer.from(chunk);
-    const next = Buffer.concat([pending, input]);
-    pending.fill(0);
-    input.fill(0);
-    pending = next;
-    if (pending.length > SHUTDOWN_COMMAND.length + EXIT_COMMAND.length) {
-      abort();
-      return;
-    }
-
-    let newline = pending.indexOf(0x0a);
-    while (!completed && newline !== -1) {
-      const line = Buffer.from(pending.subarray(0, newline + 1));
-      const remainder = Buffer.from(pending.subarray(newline + 1));
-      pending.fill(0);
-      pending = remainder;
-      try {
-        if (phase === "await-shutdown") {
-          if (
-            line.length !== SHUTDOWN_COMMAND.length ||
-            !crypto.timingSafeEqual(line, SHUTDOWN_COMMAND)
-          ) {
-            abort();
-            return;
-          }
-          phase = "await-exit";
-          writeShutdownAcknowledgement();
-        } else if (phase === "await-exit") {
-          if (
-            line.length !== EXIT_COMMAND.length ||
-            !crypto.timingSafeEqual(line, EXIT_COMMAND)
-          ) {
-            abort();
-            return;
-          }
-          phase = "ready-to-exit";
-        } else {
-          abort();
-          return;
-        }
-      } finally {
-        line.fill(0);
-      }
-      newline = pending.indexOf(0x0a);
-    }
+    chunks.push(input);
+    length += input.length;
+    if (length > SHUTDOWN_COMMAND.length) abort();
   };
   const onEnd = () => {
     if (completed) return;
     completed = true;
-    const valid = phase === "ready-to-exit" && pending.length === 0;
+    const input = Buffer.concat(chunks, length);
+    const valid =
+      input.length === SHUTDOWN_COMMAND.length &&
+      crypto.timingSafeEqual(input, SHUTDOWN_COMMAND);
+    input.fill(0);
     clear();
     if (!valid) {
       process.kill(process.pid, "SIGKILL");
@@ -237,12 +247,8 @@ function awaitParentShutdownCommand() {
     // the requested Electron exit code is always an explicit zero and the
     // parent records the platform-observed status separately. The parent owns
     // the deadline and force-kill fallback.
-    electronExitRequested = true;
-    if (config?.mode === "shutdown-fault") {
-      process.exit(1);
-      return;
-    }
-    app.exit(0);
+    awaitParentExitAuthorization();
+    writeShutdownAcknowledgement();
   };
   const onError = () => abort();
 

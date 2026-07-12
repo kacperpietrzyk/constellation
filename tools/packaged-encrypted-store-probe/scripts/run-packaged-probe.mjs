@@ -44,7 +44,7 @@ const primaryDatabase = "primary.db";
 const primaryWrapperPath = path.join(stateRoot, primaryWrapper);
 const primaryDatabasePath = path.join(stateRoot, primaryDatabase);
 const shutdownCommand = "constellation.packaged-store-probe.shutdown/v1\n";
-const exitCommand = "constellation.packaged-store-probe.exit/v1\n";
+const exitAuthorizationType = "constellation.packaged-store-probe.exit/v1";
 const shutdownAckType =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
 const shutdownCompleteType =
@@ -242,7 +242,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       child = spawn(executable, argumentsForProbe, {
         detached: process.platform !== "win32",
         env: environment,
-        stdio: ["pipe", "pipe", "pipe"],
+        stdio: ["pipe", "pipe", "pipe", "ipc"],
         windowsHide: true,
       });
     } catch {
@@ -266,7 +266,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     let timedOut = false;
     let parentSupervisionStarted = false;
     let shutdownCommandQueued = false;
-    let exitCommandQueued = false;
+    let exitAuthorizationQueued = false;
     let shutdownAcknowledged = false;
     let shutdownAckCount = 0;
     let shutdownTerminalConfirmed = false;
@@ -337,7 +337,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
             ensure(
               parentSupervisionStarted &&
                 shutdownCommandQueued &&
-                exitCommandQueued,
+                exitAuthorizationQueued,
               "PARENT_SHUTDOWN_PROTOCOL_MISSING",
             );
             ensure(shutdownAcknowledged, "CHILD_SHUTDOWN_ACK_MISSING");
@@ -402,7 +402,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
               actualSignal: signal,
               parentSupervisionStarted,
               shutdownCommandQueued,
-              exitCommandQueued,
+              exitAuthorizationQueued,
               shutdownAcknowledged,
               shutdownTerminalConfirmed,
               shutdownInternalExitCode,
@@ -492,7 +492,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       shutdownRequestedWhileAlive = true;
       parentSupervisionStarted = true;
       try {
-        child.stdin.write(shutdownCommand);
+        child.stdin.end(shutdownCommand);
         shutdownCommandQueued = true;
       } catch {
         startHardCleanup("SHUTDOWN_COMMAND_REJECTED");
@@ -561,11 +561,30 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
           startHardCleanup(protocolError);
         } else {
           shutdownAcknowledged = true;
+          if (
+            typeof child.send !== "function" ||
+            !child.connected ||
+            !child.channel
+          ) {
+            protocolError ||= "EXIT_AUTHORIZATION_UNAVAILABLE";
+            startHardCleanup(protocolError);
+            return;
+          }
           try {
-            child.stdin.end(exitCommand);
-            exitCommandQueued = true;
+            child.send(
+              {
+                type: exitAuthorizationType,
+                processId: child.pid,
+              },
+              // Delivery is proved by the terminal child record. An IPC
+              // callback error can race the child's deliberate disconnect and
+              // must not override stronger terminal evidence; a missing
+              // delivery is bounded by the existing shutdown deadline.
+              () => {},
+            );
+            exitAuthorizationQueued = true;
           } catch {
-            protocolError ||= "EXIT_COMMAND_REJECTED";
+            protocolError ||= "EXIT_AUTHORIZATION_REJECTED";
             startHardCleanup(protocolError);
           }
         }
@@ -593,7 +612,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
           value.internalExitCode > 255 ||
           !parentSupervisionStarted ||
           !shutdownCommandQueued ||
-          !exitCommandQueued ||
+          !exitAuthorizationQueued ||
           !shutdownAcknowledged
         ) {
           protocolError ||= "SHUTDOWN_COMPLETION_INVALID";
@@ -755,7 +774,7 @@ function recordProcess(execution, mode) {
   ensure(
     execution.parentSupervisionStarted === true &&
       execution.shutdownCommandQueued === true &&
-      execution.exitCommandQueued === true &&
+      execution.exitAuthorizationQueued === true &&
       execution.shutdownAcknowledged === true &&
       execution.shutdownRequestedWhileAlive === true,
     "CHILD_TERMINATION_EVIDENCE_INVALID",
