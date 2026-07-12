@@ -116,18 +116,27 @@ function parseFixedResult(stdout) {
 }
 
 function terminateTree(child) {
-  if (!child.pid) return;
+  if (!child.pid) return false;
   if (process.platform === "win32") {
-    spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
-      windowsHide: true,
-      stdio: "ignore",
-      timeout: 5_000,
-    });
-  } else {
+    const result = spawnSync(
+      "taskkill",
+      ["/PID", String(child.pid), "/T", "/F"],
+      {
+        windowsHide: true,
+        stdio: "ignore",
+        timeout: 5_000,
+      },
+    );
+    return result.status === 0;
+  }
+  try {
+    process.kill(-child.pid, "SIGKILL");
+    return true;
+  } catch {
     try {
-      process.kill(-child.pid, "SIGKILL");
+      return child.kill("SIGKILL");
     } catch {
-      child.kill("SIGKILL");
+      return false;
     }
   }
 }
@@ -165,14 +174,19 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     let settled = false;
     let timer;
     let terminationTimer;
+    let helperCleanupTimer;
     let postExitTimer;
     let timedOut = false;
+    let mainProcessExited = false;
+    let mainExitCode;
+    let mainExitSignal;
 
     const finish = (callback) => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
       if (terminationTimer) clearTimeout(terminationTimer);
+      if (helperCleanupTimer) clearTimeout(helperCleanupTimer);
       if (postExitTimer) clearTimeout(postExitTimer);
       callback();
     };
@@ -191,10 +205,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     child.on("error", () =>
       finish(() => reject(new Error("PACKAGED_LAUNCH_FAILED"))),
     );
-    child.on("exit", () => {
-      postExitTimer = setTimeout(() => terminateTree(child), 250);
-    });
-    child.on("close", (code, signal) =>
+    const complete = (code, signal) =>
       finish(() => {
         try {
           const stdoutBuffer = Buffer.concat(stdout, stdoutLength);
@@ -224,8 +235,51 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
         } catch (error) {
           reject(error);
         }
-      }),
-    );
+      });
+    const rejectUnverifiedHelperCleanup = () => {
+      finish(() =>
+        reject(
+          new Error(
+            timedOut
+              ? `PACKAGED_TERMINATION_TIMEOUT:${mode}:${wrapperName}:${databaseName}`
+              : `PACKAGED_HELPER_CLEANUP_UNVERIFIED:${mode}:${wrapperName}:${databaseName}`,
+          ),
+        ),
+      );
+      child.stdout.destroy();
+      child.stderr.destroy();
+    };
+
+    child.on("exit", (code, signal) => {
+      mainProcessExited = true;
+      mainExitCode = code;
+      mainExitSignal = signal;
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      // Electron helpers may inherit the main process pipes after the main
+      // executable has exited. Give pending bytes a bounded drain window,
+      // then finalize from the main process exit rather than misclassifying a
+      // valid fixed result as a launch timeout.
+      postExitTimer = setTimeout(() => {
+        const cleanupVerified = terminateTree(child);
+        if (!cleanupVerified) {
+          rejectUnverifiedHelperCleanup();
+          return;
+        }
+        // A successful signal request is not cleanup evidence. Wait for the
+        // child close event, which confirms that both inherited output pipes
+        // have closed, and fail closed if that signal never arrives.
+        helperCleanupTimer = setTimeout(rejectUnverifiedHelperCleanup, 5_000);
+      }, 1_000);
+    });
+    child.on("close", (code, signal) => {
+      complete(
+        mainProcessExited ? mainExitCode : code,
+        mainProcessExited ? mainExitSignal : signal,
+      );
+    });
 
     timer = setTimeout(() => {
       timedOut = true;
