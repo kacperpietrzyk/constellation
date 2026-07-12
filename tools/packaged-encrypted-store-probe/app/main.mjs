@@ -83,7 +83,10 @@ function writeFixedResult(result) {
 
 function finish(result, exitCode) {
   writeFixedResult(result);
-  app.exit(exitCode);
+  // Every store path closes and scans its state before returning here, and the
+  // fixed result is written synchronously. Exit the synthetic main process
+  // deterministically; the parent harness owns bounded helper-tree cleanup.
+  process.exit(exitCode);
 }
 
 function getArgument(name) {
