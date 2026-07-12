@@ -28,6 +28,9 @@ The probe fails unless all of these checks pass:
   applies the recovered DEK to the existing database, clears the Buffer, and
   verifies the exact marker digest, FTS result, cipher/database/foreign-key
   integrity, provider, compile options, and disabled extension loading;
+- on Windows, normal Electron shutdown persists a canonical DPAPI-prefixed
+  async-provider key in the disposable profile `Local State`, and its digest
+  remains stable through the reader and negative-process matrix;
 - missing, modified, and wrong-context wrappers, a valid same-context wrapper
   with the wrong key, a plaintext SQLite database, a corrupted encrypted
   database, and provisioning over existing state all fail closed without
@@ -40,19 +43,23 @@ The probe fails unless all of these checks pass:
   harness accepts exact fixed result shapes only, and the earlier dedicated
   safeStorage probe remains the independent exact-key output-channel oracle;
 - each process emits one synchronous readiness record only after store close,
-  post-close scanning, and failure cleanup; the harness then terminates the
-  still-live packaged process tree, preserves the declared outcome separately
-  from the platform-specific termination signal, and requires both inherited
-  output pipes to close;
+  post-close scanning, and failure cleanup, then waits for an exact parent
+  shutdown command; the harness preserves the declared outcome separately from
+  the actual process result, allows Electron to commit provider state through a
+  normal shutdown, force-terminates a stalled process tree, and requires both
+  inherited output pipes to close;
 - macOS uses an ad-hoc-signed package and disposable hosted-runner Keychain;
   Windows uses an unsigned mechanism package with statically linked pinned
   OpenSSL; every generated file and exact probe-only Keychain item is removed
   without artifact upload.
 
 The child processes have a 45-second readiness watchdog so an interactive
-provider prompt or native hang becomes a bounded failure. Parent-managed tree
-termination must be accepted by the operating system and close both inherited
-output pipes within five seconds, or the probe fails closed.
+provider prompt or native hang becomes a bounded failure. After readiness, the
+parent sends the only accepted shutdown command and allows five seconds for a
+normal Electron shutdown. A stalled child is force-terminated; either path must
+close both inherited output pipes within five seconds, or the probe fails
+closed. Windows additionally requires all eleven launches to exit normally so
+provider-state persistence cannot pass through the force-kill fallback.
 
 ## Pinned inputs
 

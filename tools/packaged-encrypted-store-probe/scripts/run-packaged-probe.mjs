@@ -43,7 +43,11 @@ const primaryWrapper = "primary.wrap.json";
 const primaryDatabase = "primary.db";
 const primaryWrapperPath = path.join(stateRoot, primaryWrapper);
 const primaryDatabasePath = path.join(stateRoot, primaryDatabase);
+const shutdownCommand = "constellation.packaged-store-probe.shutdown/v1\n";
 const processIds = new Set();
+let gracefulProcessExits = 0;
+let forcedProcessExits = 0;
+let windowsProviderStateDigest;
 const captured = [];
 const forbiddenOutput = [
   Buffer.from('"keyMaterial"'),
@@ -60,7 +64,7 @@ const fixedResultKeys = [
   "phase",
   "platform",
   "processId",
-  "readyForTermination",
+  "readyForShutdown",
   "status",
 ];
 
@@ -74,6 +78,58 @@ function digestFile(filename) {
 
 function sameDigest(left, right) {
   return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function readWindowsProviderStateDigest() {
+  if (process.platform !== "win32") return undefined;
+  const localStatePath = path.join(profile, "Local State");
+  ensure(fs.existsSync(localStatePath), "WINDOWS_PROVIDER_STATE_INVALID");
+  const metadata = fs.lstatSync(localStatePath);
+  ensure(
+    metadata.isFile() &&
+      !metadata.isSymbolicLink() &&
+      metadata.size > 0 &&
+      metadata.size <= 1024 * 1024,
+    "WINDOWS_PROVIDER_STATE_INVALID",
+  );
+
+  const contents = fs.readFileSync(localStatePath);
+  let decoded;
+  try {
+    let localState;
+    try {
+      localState = JSON.parse(contents.toString("utf8"));
+    } catch {
+      throw new Error("WINDOWS_PROVIDER_STATE_INVALID");
+    }
+    const encryptedKey = localState?.os_crypt?.encrypted_key;
+    ensure(
+      typeof encryptedKey === "string" && encryptedKey.length > 0,
+      "WINDOWS_PROVIDER_KEY_MISSING",
+    );
+    decoded = Buffer.from(encryptedKey, "base64");
+    ensure(
+      decoded.toString("base64") === encryptedKey &&
+        decoded.length > 5 &&
+        decoded.subarray(0, 5).toString("ascii") === "DPAPI",
+      "WINDOWS_PROVIDER_KEY_INVALID",
+    );
+    return crypto.createHash("sha256").update(decoded).digest();
+  } finally {
+    decoded?.fill(0);
+    contents.fill(0);
+  }
+}
+
+function assertWindowsProviderStateUnchanged(expected) {
+  if (process.platform !== "win32") return;
+  ensure(Buffer.isBuffer(expected), "WINDOWS_PROVIDER_STATE_MISSING");
+  const actual = readWindowsProviderStateDigest();
+  try {
+    ensure(sameDigest(actual, expected), "WINDOWS_PROVIDER_STATE_CHANGED");
+  } finally {
+    actual.fill(0);
+  }
 }
 
 function assertExactResultKeys(result, extraKeys = []) {
@@ -94,20 +150,20 @@ function inspectOutput(contents) {
   captured.push(contents);
 }
 
-function hasTerminationFields(value) {
+function hasShutdownFields(value) {
   return (
     value &&
     typeof value === "object" &&
     !Array.isArray(value) &&
-    (Object.hasOwn(value, "readyForTermination") ||
+    (Object.hasOwn(value, "readyForShutdown") ||
       Object.hasOwn(value, "declaredExitCode"))
   );
 }
 
-function isReadyResultEnvelope(value) {
+function isReadyShutdownEnvelope(value) {
   return (
-    hasTerminationFields(value) &&
-    value.readyForTermination === true &&
+    hasShutdownFields(value) &&
+    value.readyForShutdown === true &&
     (value.status === "pass" || value.status === "fail") &&
     typeof value.code === "string" &&
     Number.isInteger(value.declaredExitCode) &&
@@ -124,14 +180,14 @@ function parseFixedResult(stdout) {
   for (const line of lines) {
     try {
       const value = JSON.parse(line);
-      if (hasTerminationFields(value)) candidates.push(value);
+      if (hasShutdownFields(value)) candidates.push(value);
     } catch {
       // Invalid non-protocol diagnostics are ignored here and rejected by the
-      // incremental scanner if they claim termination fields.
+      // incremental scanner if they claim shutdown fields.
     }
   }
   ensure(candidates.length === 1, "FIXED_RESULT_COUNT_INVALID");
-  ensure(isReadyResultEnvelope(candidates[0]), "FIXED_RESULT_INVALID");
+  ensure(isReadyShutdownEnvelope(candidates[0]), "FIXED_RESULT_INVALID");
   return candidates[0];
 }
 
@@ -179,7 +235,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       child = spawn(executable, argumentsForProbe, {
         detached: process.platform !== "win32",
         env: environment,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
       });
     } catch {
@@ -195,12 +251,18 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     let timer;
     let hardCleanupTimer;
     let cleanupRetryTimer;
+    let forcedTerminationRecheckTimer;
+    let gracefulShutdownTimer;
     let helperCleanupTimer;
+    let stdinErrorRecheckTimer;
     let postExitTimer;
     let timedOut = false;
-    let parentTerminationRequested = false;
-    let parentTerminationAccepted = false;
-    let terminationRequestedWhileAlive = false;
+    let parentSupervisionStarted = false;
+    let shutdownCommandQueued = false;
+    let forcedTerminationRequested = false;
+    let forcedTerminationAccepted = false;
+    let shutdownRequestedWhileAlive = false;
+    let gracefulExitObserved = false;
     let readyResult;
     let protocolError;
     let protocolResultCount = 0;
@@ -217,7 +279,12 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       if (timer) clearTimeout(timer);
       if (hardCleanupTimer) clearTimeout(hardCleanupTimer);
       if (cleanupRetryTimer) clearTimeout(cleanupRetryTimer);
+      if (forcedTerminationRecheckTimer) {
+        clearTimeout(forcedTerminationRecheckTimer);
+      }
+      if (gracefulShutdownTimer) clearTimeout(gracefulShutdownTimer);
       if (helperCleanupTimer) clearTimeout(helperCleanupTimer);
+      if (stdinErrorRecheckTimer) clearTimeout(stdinErrorRecheckTimer);
       if (postExitTimer) clearTimeout(postExitTimer);
       callback();
     };
@@ -255,12 +322,12 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
             ensure(!protocolError, protocolError);
             ensure(protocolResultCount === 1, "PROTOCOL_RESULT_COUNT_INVALID");
             ensure(
-              parentTerminationRequested && parentTerminationAccepted,
-              "PARENT_TERMINATION_PROTOCOL_MISSING",
+              parentSupervisionStarted && shutdownCommandQueued,
+              "PARENT_SHUTDOWN_PROTOCOL_MISSING",
             );
             ensure(
-              terminationRequestedWhileAlive,
-              "PARENT_TERMINATION_LIVENESS_MISSING",
+              shutdownRequestedWhileAlive,
+              "PARENT_SHUTDOWN_LIVENESS_MISSING",
             );
             ensure(
               readyResult &&
@@ -271,14 +338,35 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
               code !== null || signal !== null,
               "ACTUAL_TERMINATION_STATUS_MISSING",
             );
+            ensure(
+              gracefulExitObserved ||
+                (forcedTerminationRequested && forcedTerminationAccepted),
+              "TERMINATION_OUTCOME_UNVERIFIED",
+            );
+            if (gracefulExitObserved) {
+              ensure(
+                code === 0 && signal === null,
+                "GRACEFUL_SHUTDOWN_STATUS_INVALID",
+              );
+            } else {
+              ensure(
+                process.platform !== "win32",
+                "WINDOWS_GRACEFUL_SHUTDOWN_REQUIRED",
+              );
+            }
             resolve({
               declaredExitCode: result.declaredExitCode,
-              lifecycle: "parent-terminated-after-result",
+              lifecycle: gracefulExitObserved
+                ? "graceful-after-parent-command"
+                : "forced-after-parent-command",
               actualCode: code,
               actualSignal: signal,
-              parentTerminationRequested,
-              parentTerminationAccepted,
-              terminationRequestedWhileAlive,
+              parentSupervisionStarted,
+              shutdownCommandQueued,
+              forcedTerminationRequested,
+              forcedTerminationAccepted,
+              shutdownRequestedWhileAlive,
+              gracefulExitObserved,
               childPid: child.pid,
               result,
             });
@@ -325,8 +413,31 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       // unverified cleanup is allowed to fail the launch.
       hardCleanupTimer = setTimeout(failUnverifiedHelperCleanup, 35_000);
     };
-    const requestParentTermination = () => {
-      if (settled || parentTerminationRequested) return;
+    const childHasExited = () =>
+      mainProcessExited || child.exitCode !== null || child.signalCode !== null;
+    const requestForcedTermination = () => {
+      if (settled || forcedTerminationRequested || childHasExited()) return;
+      forcedTerminationRequested = true;
+      forcedTerminationAccepted = terminateTree(child);
+      if (!forcedTerminationAccepted) {
+        // The grace timer can race a natural process exit whose event has not
+        // reached Node yet. A rejected force request is not a failure until a
+        // short recheck proves the child is still live.
+        forcedTerminationRequested = false;
+        forcedTerminationRecheckTimer = setTimeout(() => {
+          if (!settled && !childHasExited()) {
+            startHardCleanup("PARENT_TERMINATION_REJECTED");
+          }
+        }, 50);
+        return;
+      }
+      helperCleanupTimer = setTimeout(
+        () => startHardCleanup("HELPER_CLOSE_TIMEOUT"),
+        5_000,
+      );
+    };
+    const requestParentShutdown = () => {
+      if (settled || parentSupervisionStarted) return;
       if (
         mainProcessExited ||
         child.exitCode !== null ||
@@ -335,26 +446,25 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
         protocolError ||= "CHILD_NOT_LIVE_AT_READINESS";
         return;
       }
-      terminationRequestedWhileAlive = true;
-      parentTerminationRequested = true;
-      parentTerminationAccepted = terminateTree(child);
-      if (!parentTerminationAccepted) {
-        startHardCleanup("PARENT_TERMINATION_REJECTED");
+      shutdownRequestedWhileAlive = true;
+      parentSupervisionStarted = true;
+      try {
+        child.stdin.end(shutdownCommand);
+        shutdownCommandQueued = true;
+      } catch {
+        startHardCleanup("SHUTDOWN_COMMAND_REJECTED");
         return;
       }
       if (timer) {
         clearTimeout(timer);
         timer = undefined;
       }
-      helperCleanupTimer = setTimeout(
-        () => startHardCleanup("HELPER_CLOSE_TIMEOUT"),
-        5_000,
-      );
+      gracefulShutdownTimer = setTimeout(requestForcedTermination, 5_000);
     };
     const inspectProtocolLine = (line) => {
       const text = line.toString("utf8");
       const claimsProtocol =
-        text.includes('"readyForTermination"') ||
+        text.includes('"readyForShutdown"') ||
         text.includes('"declaredExitCode"');
       let value;
       try {
@@ -362,17 +472,17 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       } catch {
         if (claimsProtocol) {
           protocolError ||= "PROTOCOL_RESULT_JSON_INVALID";
-          requestParentTermination();
+          startHardCleanup(protocolError);
         }
         return;
       }
-      if (!hasTerminationFields(value)) return;
+      if (!hasShutdownFields(value)) return;
       protocolResultCount += 1;
       if (protocolResultCount !== 1) {
         protocolError ||= "PROTOCOL_RESULT_DUPLICATED";
       }
       if (
-        !isReadyResultEnvelope(value) ||
+        !isReadyShutdownEnvelope(value) ||
         value.processId !== child.pid ||
         value.phase !== mode ||
         value.platform !== process.platform ||
@@ -384,7 +494,8 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       } else if (protocolResultCount === 1) {
         readyResult = value;
       }
-      requestParentTermination();
+      if (protocolError) startHardCleanup(protocolError);
+      else requestParentShutdown();
     };
     const scanProtocolLines = () => {
       const contents = Buffer.concat(stdout, stdoutLength);
@@ -408,6 +519,14 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
 
     child.stdout.on("data", (chunk) => collect(stdout, chunk, true));
     child.stderr.on("data", (chunk) => collect(stderr, chunk, false));
+    child.stdin.on("error", () => {
+      if (settled || forcedTerminationRequested) return;
+      stdinErrorRecheckTimer = setTimeout(() => {
+        if (!settled && !childHasExited() && !forcedTerminationRequested) {
+          startHardCleanup("SHUTDOWN_COMMAND_REJECTED");
+        }
+      }, 50);
+    });
     child.on("error", () =>
       finish(() => reject(new Error("PACKAGED_LAUNCH_FAILED"))),
     );
@@ -420,7 +539,20 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
         clearTimeout(timer);
         timer = undefined;
       }
-      if (parentTerminationRequested) return;
+      if (gracefulShutdownTimer) {
+        clearTimeout(gracefulShutdownTimer);
+        gracefulShutdownTimer = undefined;
+      }
+      if (parentSupervisionStarted) {
+        if (!forcedTerminationRequested) gracefulExitObserved = true;
+        if (!helperCleanupTimer) {
+          helperCleanupTimer = setTimeout(
+            () => startHardCleanup("HELPER_CLOSE_TIMEOUT"),
+            5_000,
+          );
+        }
+        return;
+      }
       // Electron helpers may inherit the main process pipes after the main
       // executable has exited. Give pending bytes a bounded drain window,
       // then finalize from the main process exit rather than misclassifying a
@@ -485,20 +617,39 @@ function assertProvider(result) {
 function recordProcess(execution, mode) {
   const { childPid, result } = execution;
   ensure(
-    execution.lifecycle === "parent-terminated-after-result",
+    execution.lifecycle === "graceful-after-parent-command" ||
+      execution.lifecycle === "forced-after-parent-command",
     "CHILD_LIFECYCLE_INVALID",
   );
   ensure(
-    execution.parentTerminationRequested === true &&
-      execution.parentTerminationAccepted === true &&
-      execution.terminationRequestedWhileAlive === true,
+    execution.parentSupervisionStarted === true &&
+      execution.shutdownCommandQueued === true &&
+      execution.shutdownRequestedWhileAlive === true,
     "CHILD_TERMINATION_EVIDENCE_INVALID",
   );
+  if (execution.lifecycle === "graceful-after-parent-command") {
+    ensure(
+      execution.gracefulExitObserved === true &&
+        execution.forcedTerminationRequested === false &&
+        execution.actualCode === 0 &&
+        execution.actualSignal === null,
+      "CHILD_GRACEFUL_EXIT_INVALID",
+    );
+    gracefulProcessExits += 1;
+  } else {
+    ensure(
+      execution.gracefulExitObserved === false &&
+        execution.forcedTerminationRequested === true &&
+        execution.forcedTerminationAccepted === true,
+      "CHILD_FORCED_EXIT_INVALID",
+    );
+    forcedProcessExits += 1;
+  }
   ensure(
     execution.actualCode !== null || execution.actualSignal !== null,
     "CHILD_ACTUAL_TERMINATION_INVALID",
   );
-  ensure(result.readyForTermination === true, "CHILD_READINESS_INVALID");
+  ensure(result.readyForShutdown === true, "CHILD_READINESS_INVALID");
   ensure(
     result.declaredExitCode === execution.declaredExitCode,
     "CHILD_EXIT_CODE_INVALID",
@@ -653,10 +804,15 @@ try {
     wrapperName: primaryWrapper,
     databaseName: primaryDatabase,
   });
-  ensure(writer.declaredExitCode === 0, "WRITER_FAILED");
+  ensure(writer.declaredExitCode === 0, `WRITER_FAILED:${writer.result.code}`);
   ensure(writer.result.status === "pass", "WRITER_RESULT_INVALID");
   ensure(writer.result.code === "STORE_PROVISIONED", "WRITER_CODE_INVALID");
   recordProcess(writer, "provision");
+  ensure(
+    process.platform !== "win32" ||
+      writer.lifecycle === "graceful-after-parent-command",
+    "WINDOWS_WRITER_SHUTDOWN_INVALID",
+  );
   assertExactResultKeys(writer.result, [
     "asyncEncryptionAvailable",
     "cipherVersion",
@@ -676,6 +832,7 @@ try {
   );
   ensure(writer.result.encryptedWal === true, "ENCRYPTED_WAL_INVALID");
   assertProbeKeychainItemPresent();
+  windowsProviderStateDigest = readWindowsProviderStateDigest();
 
   ensure(fs.existsSync(primaryWrapperPath), "PRIMARY_WRAPPER_MISSING");
   ensure(fs.existsSync(primaryDatabasePath), "PRIMARY_DATABASE_MISSING");
@@ -691,7 +848,7 @@ try {
     wrapperName: primaryWrapper,
     databaseName: primaryDatabase,
   });
-  ensure(reader.declaredExitCode === 0, "READER_FAILED");
+  ensure(reader.declaredExitCode === 0, `READER_FAILED:${reader.result.code}`);
   ensure(reader.result.status === "pass", "READER_RESULT_INVALID");
   ensure(reader.result.code === "STORE_VERIFIED", "READER_CODE_INVALID");
   recordProcess(reader, "verify");
@@ -713,6 +870,7 @@ try {
     "RECOVERED_MARKER_MISMATCH",
   );
   ensure(reader.result.integrityVerified === true, "INTEGRITY_INVALID");
+  assertWindowsProviderStateUnchanged(windowsProviderStateDigest);
   assertPrimaryUnchanged(primaryState);
 
   await expectFailure(
@@ -872,6 +1030,17 @@ try {
   );
 
   ensure(processIds.size === 11, "PROCESS_COUNT_INVALID");
+  ensure(
+    gracefulProcessExits + forcedProcessExits === processIds.size,
+    "PROCESS_LIFECYCLE_COUNT_INVALID",
+  );
+  if (process.platform === "win32") {
+    ensure(
+      gracefulProcessExits === processIds.size && forcedProcessExits === 0,
+      "WINDOWS_GRACEFUL_SHUTDOWN_MATRIX_INVALID",
+    );
+  }
+  assertWindowsProviderStateUnchanged(windowsProviderStateDigest);
   for (const [artifact, expected] of artifactDigests) {
     const actual = digestFile(artifact);
     try {
@@ -891,7 +1060,9 @@ try {
       targetArchitecture: "x64",
       electron: "43.1.0",
       packagedRelaunch: true,
-      parentManagedTermination: true,
+      parentManagedShutdown: true,
+      gracefulProcessExits,
+      forcedProcessExits,
       distinctProcesses: processIds.size,
       internallyGeneratedDek: true,
       asyncSafeStorage: true,
@@ -920,6 +1091,7 @@ try {
     })}\n`,
   );
 } finally {
+  windowsProviderStateDigest?.fill(0);
   for (const digest of artifactDigests.values()) digest.fill(0);
   for (const output of captured) output.fill(0);
   try {

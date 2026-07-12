@@ -15,6 +15,10 @@ const MAX_SCAN_FILES = 20_000;
 const MAX_SCAN_FILE_BYTES = 128 * 1024 * 1024;
 const MAX_SCAN_TOTAL_BYTES = 512 * 1024 * 1024;
 const TERMINATION_FAILSAFE_MS = 30_000;
+const SHUTDOWN_COMMAND = Buffer.from(
+  "constellation.packaged-store-probe.shutdown/v1\n",
+  "utf8",
+);
 const EXIT_CODES = Object.freeze({
   CONFIG_INVALID: 80,
   PACKAGED_IDENTITY_INVALID: 81,
@@ -79,7 +83,7 @@ function writeFixedResult(result, declaredExitCode) {
     `${JSON.stringify({
       ...result,
       declaredExitCode,
-      readyForTermination: true,
+      readyForShutdown: true,
     })}\n`,
     "utf8",
   );
@@ -95,21 +99,71 @@ function writeFixedResult(result, declaredExitCode) {
   }
 }
 
+function awaitParentShutdownCommand() {
+  const chunks = [];
+  let length = 0;
+  let completed = false;
+
+  const clear = () => {
+    process.stdin.removeListener("data", onData);
+    process.stdin.removeListener("end", onEnd);
+    process.stdin.removeListener("error", onError);
+    for (const chunk of chunks) chunk.fill(0);
+  };
+  const abort = () => {
+    if (completed) return;
+    completed = true;
+    clear();
+    process.kill(process.pid, "SIGKILL");
+  };
+  const onData = (chunk) => {
+    const input = Buffer.from(chunk);
+    chunks.push(input);
+    length += input.length;
+    if (length > SHUTDOWN_COMMAND.length) abort();
+  };
+  const onEnd = () => {
+    if (completed) return;
+    completed = true;
+    const input = Buffer.concat(chunks, length);
+    const valid =
+      input.length === SHUTDOWN_COMMAND.length &&
+      crypto.timingSafeEqual(input, SHUTDOWN_COMMAND);
+    input.fill(0);
+    clear();
+    if (!valid) {
+      process.kill(process.pid, "SIGKILL");
+      return;
+    }
+    // A normal Electron shutdown is required on Windows so Chromium can
+    // commit the DPAPI-wrapped async-provider key in the profile Local State.
+    // The parent owns the deadline and force-kill fallback.
+    app.quit();
+  };
+  const onError = () => abort();
+
+  process.stdin.on("data", onData);
+  process.stdin.once("end", onEnd);
+  process.stdin.once("error", onError);
+  process.stdin.resume();
+}
+
 function finish(result, exitCode) {
   if (finishStarted) return;
   if (!Number.isInteger(exitCode) || exitCode < 0 || exitCode > 255) {
     throw new Error("EXIT_CODE_INVALID");
   }
   finishStarted = true;
-  process.exitCode = exitCode;
   setTimeout(
     () => process.kill(process.pid, "SIGKILL"),
     TERMINATION_FAILSAFE_MS,
   );
   // Every store path closes and scans its state before returning here. The
-  // synchronous readiness record lets the parent terminate the still-live
-  // packaged process tree and verify that all inherited pipes close.
+  // synchronous readiness record lets the parent authorize a normal Electron
+  // shutdown, supervise its deadline, and verify that all inherited pipes
+  // close. The child remains live until that exact command arrives.
   writeFixedResult(result, exitCode);
+  awaitParentShutdownCommand();
 }
 
 function getArgument(name) {
