@@ -38,6 +38,16 @@ const primaryWrapper = "primary.wrap.json";
 const primaryPath = path.join(stateRoot, primaryWrapper);
 const workspace = "workspace-alpha";
 const payloadFormat = "constellation.safe-storage-payload/v1";
+const writerFailureCodes = new Set([
+  "CONFIG_INVALID",
+  "ENCRYPTION_FAILED",
+  "ENCRYPTION_UNAVAILABLE",
+  "KEY_INPUT_INVALID",
+  "PACKAGED_IDENTITY_INVALID",
+  "PLAINTEXT_EXPOSED",
+  "PROBE_FAILED",
+  "WRAPPER_EXISTS",
+]);
 const secretBytes = crypto.randomBytes(32);
 const secretText = secretBytes.toString("base64url");
 const exactPayload = JSON.stringify({
@@ -133,12 +143,18 @@ async function launch({ mode, workspaceId, wrapperName, input }) {
   ];
 
   return await new Promise((resolve, reject) => {
-    const child = spawn(executable, argumentsForProbe, {
-      detached: process.platform !== "win32",
-      env: environment,
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    });
+    let child;
+    try {
+      child = spawn(executable, argumentsForProbe, {
+        detached: process.platform !== "win32",
+        env: environment,
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
+      });
+    } catch {
+      reject(new Error("PACKAGED_LAUNCH_FAILED"));
+      return;
+    }
     const stdout = [];
     const stderr = [];
     let stdoutLength = 0;
@@ -350,7 +366,12 @@ try {
     wrapperName: primaryWrapper,
     input: secretBytes,
   });
-  ensure(writer.code === 0 && writer.signal === null, "WRITER_FAILED");
+  if (writer.code !== 0 || writer.signal !== null) {
+    const writerCode = writerFailureCodes.has(writer.result.code)
+      ? writer.result.code
+      : "UNEXPECTED";
+    throw new Error(`WRITER_FAILED:${writerCode}`);
+  }
   ensure(writer.result.status === "pass", "WRITER_RESULT_INVALID");
   ensure(writer.result.code === "WRAPPER_PUBLISHED", "WRITER_CODE_INVALID");
   assertFixedIdentity(writer.result);
