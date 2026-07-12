@@ -569,9 +569,6 @@ async function launch({
       }
       electronShutdownTimer = setTimeout(requestForcedTermination, 5_000);
     };
-    const maybeRequestParentShutdown = () => {
-      if (readyResult && channelReady) requestParentShutdown();
-    };
     const acceptChannelReady = (value) => {
       channelReadyCount += 1;
       if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -595,7 +592,7 @@ async function launch({
         return;
       }
       channelReady = true;
-      maybeRequestParentShutdown();
+      requestParentShutdown();
     };
     const inspectProtocolLine = (line) => {
       const text = line.toString("utf8");
@@ -799,7 +796,6 @@ async function launch({
         readyResult = value;
       }
       if (protocolError) startHardCleanup(protocolError);
-      else maybeRequestParentShutdown();
     };
     const scanProtocolLines = () => {
       const contents = Buffer.concat(stdout, stdoutLength);

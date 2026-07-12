@@ -45,8 +45,9 @@ The probe fails unless all of these checks pass:
 - each process emits one synchronous readiness record only after store close,
   post-close scanning, and failure cleanup. Before publishing that record, it
   arms the inherited IPC listener and emits one exact IPC channel-readiness
-  message. The parent requires both readiness proofs before one exact shutdown
-  authorization that binds the process, method, and requested exit code; the
+  message. The parent answers that proven channel directly with one exact
+  shutdown authorization that binds the process, method, and requested exit
+  code; completion still requires the independent fixed readiness result. The
   child acknowledges the shutdown and accepted exit request as ordered
   synchronous records before calling `app.quit()`. A synchronous terminal
   record requires the exact Electron `before-quit` → `will-quit` → `quit(0)`
