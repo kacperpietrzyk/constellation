@@ -2,15 +2,16 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0b7285.svg)](LICENSE)
 [![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-c2410c.svg)](#project-status)
+[![CI](https://github.com/kacperpietrzyk/constellation/actions/workflows/ci.yml/badge.svg)](https://github.com/kacperpietrzyk/constellation/actions/workflows/ci.yml)
 
 Constellation is an open-source, cross-platform work system built around a
 typed graph of projects, tasks, notes, meetings, people, organizations, and
 time.
 
-It is designed for two equal operators: a person using a calm desktop
-interface and external agents using documented, deterministic APIs. Both must
-see and change the same underlying model without hidden fields or a reduced
-automation surface.
+It is designed for two equal operators: a person using a calm desktop interface
+and external agents using the documented MCP surface. Both use the same
+application commands and queries, see the same authorized fields, and leave the
+same audit trail.
 
 ## Why Constellation
 
@@ -34,15 +35,15 @@ already solve well:
   intelligence; Constellation imports the result.
 - System calendars remain the calendar source of truth; Constellation reads a
   normalized projection through platform adapters.
-- AI models and chat interfaces stay outside the product; agents operate
-  through the API and, where useful, MCP.
+- AI models and chat interfaces stay outside the product; MCP is the only agent
+  interface. Application or integration APIs are not an alternate agent path.
 - The project will not maintain independent native feature stacks for every
   operating system.
 
 ## Design principles
 
 1. One graph, multiple surfaces.
-2. Interface and API capabilities stay in parity.
+2. Desktop and MCP capabilities share one application contract.
 3. Every external import is idempotent and observable.
 4. Every mutation has an actor, history, and a recovery path.
 5. Native code exists only at a narrow operating-system boundary.
@@ -51,9 +52,30 @@ already solve well:
 ## Project status
 
 Constellation is in **pre-alpha foundation work**. There is no installable
-release yet, and no API should be considered stable. The repository is public
-early so architecture, implementation, and community practices can develop in
-the open.
+release yet, and no contract should be considered stable. The repository now
+contains the first storage-neutral reference kernel: strict runtime contracts,
+workspace/Space bootstrap, text capture, capture history, audit receipts,
+idempotency, expected-version conflicts, and atomic failure-injection tests.
+Encrypted persistence, Electron integration, MCP transport, and product UI are
+not implemented yet.
+
+The current kernel boundary and implemented subset are documented in
+[Application kernel](docs/architecture/application-kernel.md).
+
+## Development
+
+Use the Node.js version in [`.nvmrc`](.nvmrc), then install the pinned dependency
+graph and run the repository gate:
+
+```sh
+npm ci --ignore-scripts
+npm run check
+```
+
+`npm run check` verifies formatting, lint, TypeScript project references, public
+Markdown, and the contract/conformance tests. The same command runs in CI on
+Linux, macOS, and Windows. CI additionally runs `npm run audit:dependencies`
+against the complete locked runtime and development dependency graph.
 
 Questions and early product discussion belong in
 [GitHub Discussions](https://github.com/kacperpietrzyk/constellation/discussions).

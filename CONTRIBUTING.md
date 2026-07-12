@@ -18,20 +18,29 @@ Small documentation fixes do not need advance discussion.
 
 ## Current development status
 
-The project is pre-alpha and does not yet have a runnable application scaffold.
-Environment setup, test commands, and platform prerequisites will be documented
-here as soon as they exist. A contribution should not introduce a second build
-system or framework merely to get ahead of that decision.
+The project is pre-alpha and does not yet have a runnable desktop application.
+It does have a storage-neutral TypeScript reference kernel and conformance suite.
+Use the Node.js version in `.nvmrc`, then run:
+
+```sh
+npm ci --ignore-scripts
+npm run check
+```
+
+The gate must pass on Linux, macOS, and Windows. A contribution should not
+introduce a second build system or framework merely to get ahead of a capability
+that is not present yet.
 
 ## Product and architecture guardrails
 
 Contributions should preserve these boundaries:
 
 - Jamie owns recording and transcription; Constellation imports meetings.
-- Calendar access is adapter-based and read-only until a separate product
-  decision changes that scope.
-- Agents use public application commands and queries; the product does not
-  embed a chat UI or local model runtime.
+- Calendar access stays behind a platform-neutral adapter. Reads are supported;
+  every concrete write or previewed batch of Constellation-owned work blocks
+  requires explicit consent.
+- Agents use MCP over the same application commands and queries as the desktop;
+  the product does not embed a chat UI, model runtime, or alternate agent API.
 - Business rules belong behind one command/query contract shared by the UI,
   integrations, and agents.
 - Platform-specific code must stay behind a narrow, capability-driven adapter.

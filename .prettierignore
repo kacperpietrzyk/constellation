@@ -1,0 +1,16 @@
+.git/
+.ui-craft/
+.workbench/
+.workflows/
+AGENTS.md
+CODE_OF_CONDUCT.md
+LICENSE
+.markdownlint-cli2.jsonc
+dlaczego-notion-zawodzi-i-czego-potrzebuje.md
+docs/plans/
+docs/specs/
+node_modules/
+**/dist/
+coverage/
+plans/
+specs/

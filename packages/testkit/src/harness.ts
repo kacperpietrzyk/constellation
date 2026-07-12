@@ -1,0 +1,28 @@
+import { ApplicationKernel } from "@constellation/application";
+
+import {
+  Base64JsonCursorCodec,
+  DeterministicIdGenerator,
+  Sha256SemanticHasher,
+  TickingClock,
+} from "./deterministic.js";
+import { InMemoryReferenceStore } from "./reference-store.js";
+import { InMemoryAuthorizationPolicy } from "./authorization.js";
+
+export const createReferenceHarness = () => {
+  const clock = new TickingClock();
+  const ids = new DeterministicIdGenerator();
+  const store = new InMemoryReferenceStore();
+  const authorization = new InMemoryAuthorizationPolicy();
+  const kernel = new ApplicationKernel({
+    authorization,
+    clock,
+    cursorCodec: new Base64JsonCursorCodec(),
+    hasher: new Sha256SemanticHasher(),
+    ids,
+    store,
+  });
+  return { authorization, clock, ids, kernel, store };
+};
+
+export type ReferenceHarness = ReturnType<typeof createReferenceHarness>;
