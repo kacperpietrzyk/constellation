@@ -17,7 +17,6 @@ const MAX_SCAN_TOTAL_BYTES = 512 * 1024 * 1024;
 const TERMINATION_FAILSAFE_MS = 30_000;
 const SHUTDOWN_AUTHORIZATION_TYPE =
   "constellation.packaged-store-probe.shutdown/v1";
-const EXIT_AUTHORIZATION_TYPE = "constellation.packaged-store-probe.exit/v1";
 const SHUTDOWN_ACK_TYPE =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
 const SHUTDOWN_READY_TYPE =
@@ -133,7 +132,7 @@ function writeShutdownTransportReady() {
   }
 }
 
-function sendShutdownAcknowledgement() {
+function sendShutdownAcknowledgement(onDelivered) {
   process.send(
     {
       type: SHUTDOWN_ACK_TYPE,
@@ -147,6 +146,7 @@ function sendShutdownAcknowledgement() {
         return;
       }
       writeShutdownTransportReady();
+      onDelivered();
     },
   );
 }
@@ -238,7 +238,6 @@ function awaitParentShutdownProtocol() {
   }
 
   let completed = false;
-  let phase = "shutdown";
   const clear = () => {
     process.removeListener("message", onMessage);
     process.removeListener("disconnect", abort);
@@ -251,48 +250,42 @@ function awaitParentShutdownProtocol() {
   };
   const onMessage = (message) => {
     if (completed) return;
-    const expectedType =
-      phase === "shutdown"
-        ? SHUTDOWN_AUTHORIZATION_TYPE
-        : EXIT_AUTHORIZATION_TYPE;
     if (
       !message ||
       typeof message !== "object" ||
       Array.isArray(message) ||
-      Object.keys(message).length !== 2 ||
-      message.type !== expectedType ||
-      message.processId !== process.pid
+      Object.keys(message).length !== 4 ||
+      message.type !== SHUTDOWN_AUTHORIZATION_TYPE ||
+      message.processId !== process.pid ||
+      message.method !== "app.quit" ||
+      message.requestedExitCode !== 0
     ) {
       abort();
       return;
     }
-    if (phase === "shutdown") {
-      phase = "exit";
-      sendShutdownAcknowledgement();
-      return;
-    }
-
     completed = true;
     clear();
     exitAuthorizationAccepted = true;
-    writeExitAcknowledgement();
-    process.disconnect();
-    // An Electron-managed main-loop shutdown is required on Windows so
-    // Chromium can commit the DPAPI-wrapped async-provider key in profile
-    // Local State. The declared probe outcome remains in the fixed protocol;
-    // the terminal Electron quit event must report zero and the parent records
-    // the platform-observed status separately. The parent owns the deadline
-    // and force-kill fallback.
-    if (config?.mode === "shutdown-fault") {
-      faultExitRequested = true;
-      process.exit(1);
-      return;
-    }
-    postQuitFaultRequested = config?.mode === "shutdown-post-quit-fault";
-    app.quit();
+    sendShutdownAcknowledgement(() => {
+      writeExitAcknowledgement();
+      process.disconnect();
+      // An Electron-managed main-loop shutdown is required on Windows so
+      // Chromium can commit the DPAPI-wrapped async-provider key in profile
+      // Local State. The declared probe outcome remains in the fixed protocol;
+      // the terminal Electron quit event must report zero and the parent
+      // records the platform-observed status separately. The parent owns the
+      // deadline and force-kill fallback.
+      if (config?.mode === "shutdown-fault") {
+        faultExitRequested = true;
+        process.exit(1);
+        return;
+      }
+      postQuitFaultRequested = config?.mode === "shutdown-post-quit-fault";
+      app.quit();
+    });
   };
 
-  process.on("message", onMessage);
+  process.once("message", onMessage);
   process.once("disconnect", abort);
 }
 
@@ -309,7 +302,7 @@ function finish(result, exitCode) {
   // Every store path closes and scans its state before returning here. The
   // synchronous readiness record lets the parent authorize an Electron-managed
   // main-loop exit, supervise its deadline, and verify that all inherited
-  // pipes close. The child remains live through both exact IPC authorizations.
+  // pipes close. The child remains live through the exact IPC authorization.
   writeFixedResult(result, exitCode);
   awaitParentShutdownProtocol();
 }

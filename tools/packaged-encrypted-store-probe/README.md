@@ -46,12 +46,12 @@ The probe fails unless all of these checks pass:
   post-close scanning, and failure cleanup, then waits for an exact parent
   shutdown authorization over its inherited IPC channel; the child acknowledges
   that phase over IPC and emits a separate synchronous ready record only after
-  the ACK send callback succeeds. The parent waits for both records before a
-  distinct exact exit authorization, whose verified receipt the child also
-  acknowledges before requesting `app.quit()`. A synchronous terminal record
-  requires the exact Electron `before-quit` → `will-quit` → `quit(0)` lifecycle.
-  The harness preserves the declared outcome separately from the observed
-  process result, lets the Electron main-loop shutdown commit provider state,
+  the ACK send callback succeeds. That single exact authorization binds the
+  method and requested exit code; the child then acknowledges its accepted exit
+  request before calling `app.quit()`. A synchronous terminal record requires
+  the exact Electron `before-quit` → `will-quit` → `quit(0)` lifecycle. The
+  harness preserves the declared outcome separately from the observed process
+  result, lets the Electron main-loop shutdown commit provider state,
   force-terminates a stalled process tree, and requires both inherited output
   pipes to close;
 - a dedicated falsification launch emits readiness and the pre-exit
@@ -68,7 +68,7 @@ The probe fails unless all of these checks pass:
 
 The child processes have a 45-second readiness watchdog so an interactive
 provider prompt or native hang becomes a bounded failure. After readiness, the
-parent allows five seconds for the acknowledged, two-phase Electron-managed
+parent allows five seconds for the acknowledged Electron-managed
 shutdown. A stalled child is force-terminated; either path must close both
 inherited output pipes within five seconds, or the probe fails closed. Each
 Electron-managed exit must include the complete ordered lifecycle and Electron
