@@ -344,9 +344,20 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
               "TERMINATION_OUTCOME_UNVERIFIED",
             );
             if (gracefulExitObserved) {
+              const codeLabel = Number.isInteger(code)
+                ? String(code)
+                : code === null
+                  ? "null"
+                  : typeof code;
+              const signalLabel =
+                typeof signal === "string"
+                  ? signal
+                  : signal === null
+                    ? "null"
+                    : typeof signal;
               ensure(
                 code === 0 && signal === null,
-                "GRACEFUL_SHUTDOWN_STATUS_INVALID",
+                `GRACEFUL_SHUTDOWN_STATUS_INVALID:${codeLabel}:${signalLabel}`,
               );
             } else {
               ensure(
