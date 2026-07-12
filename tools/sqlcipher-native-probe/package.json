@@ -1,0 +1,23 @@
+{
+  "name": "@constellation/sqlcipher-native-probe",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Contributor-facing native compatibility probe for SQLCipher under Electron.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "npm@11.12.1",
+  "engines": {
+    "node": ">=24.15.0 <25",
+    "npm": ">=11.12.1 <12"
+  },
+  "scripts": {
+    "probe": "node scripts/run-probe.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.11.1"
+  },
+  "devDependencies": {
+    "electron": "43.1.0",
+    "node-gyp": "13.0.1"
+  }
+}
