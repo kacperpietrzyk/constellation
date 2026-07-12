@@ -17,6 +17,8 @@ const MAX_SCAN_TOTAL_BYTES = 512 * 1024 * 1024;
 const TERMINATION_FAILSAFE_MS = 30_000;
 const SHUTDOWN_AUTHORIZATION_TYPE =
   "constellation.packaged-store-probe.shutdown/v1";
+const CHANNEL_READY_TYPE =
+  "constellation.packaged-store-probe.channel-ready/v1";
 const SHUTDOWN_ACK_TYPE =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
 const SHUTDOWN_REJECTED_TYPE =
@@ -304,6 +306,25 @@ function awaitParentShutdownProtocol() {
 
   process.once("message", onMessage);
   process.once("disconnect", abort);
+  try {
+    process.send(
+      {
+        type: CHANNEL_READY_TYPE,
+        processId: process.pid,
+      },
+      (error) => {
+        if (error && !completed) {
+          completed = true;
+          clear();
+          rejectShutdown("channel-unavailable");
+        }
+      },
+    );
+  } catch {
+    completed = true;
+    clear();
+    rejectShutdown("channel-unavailable");
+  }
 }
 
 function finish(result, exitCode) {

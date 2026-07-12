@@ -45,6 +45,7 @@ const primaryWrapperPath = path.join(stateRoot, primaryWrapper);
 const primaryDatabasePath = path.join(stateRoot, primaryDatabase);
 const shutdownAuthorizationType =
   "constellation.packaged-store-probe.shutdown/v1";
+const channelReadyType = "constellation.packaged-store-probe.channel-ready/v1";
 const shutdownAckType =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
 const shutdownRejectedType =
@@ -290,6 +291,8 @@ async function launch({
     let forcedTerminationAccepted = false;
     let shutdownRequestedWhileAlive = false;
     let electronExitObserved = false;
+    let channelReady = false;
+    let channelReadyCount = 0;
     let readyResult;
     let protocolError;
     let protocolResultCount = 0;
@@ -356,6 +359,11 @@ async function launch({
             }
             ensure(!protocolError, protocolError);
             ensure(protocolResultCount === 1, "PROTOCOL_RESULT_COUNT_INVALID");
+            ensure(channelReady, "CHILD_CHANNEL_READY_MISSING");
+            ensure(
+              channelReadyCount === 1,
+              "CHILD_CHANNEL_READY_COUNT_INVALID",
+            );
             ensure(
               parentSupervisionStarted &&
                 shutdownAuthorizationQueued &&
@@ -446,6 +454,7 @@ async function launch({
               forcedTerminationAccepted,
               shutdownRequestedWhileAlive,
               electronExitObserved,
+              channelReady,
               childPid: child.pid,
               result,
             });
@@ -559,6 +568,34 @@ async function launch({
         timer = undefined;
       }
       electronShutdownTimer = setTimeout(requestForcedTermination, 5_000);
+    };
+    const maybeRequestParentShutdown = () => {
+      if (readyResult && channelReady) requestParentShutdown();
+    };
+    const acceptChannelReady = (value) => {
+      channelReadyCount += 1;
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        protocolError ||= "CHANNEL_READY_INVALID";
+        startHardCleanup(protocolError);
+        return;
+      }
+      const keys = Object.keys(value).sort();
+      const expectedKeys = ["processId", "type"].sort();
+      if (
+        channelReadyCount !== 1 ||
+        keys.length !== expectedKeys.length ||
+        !keys.every((key, index) => key === expectedKeys[index]) ||
+        value.processId !== child.pid ||
+        value.type !== channelReadyType ||
+        parentSupervisionStarted ||
+        childHasExited()
+      ) {
+        protocolError ||= "CHANNEL_READY_INVALID";
+        startHardCleanup(protocolError);
+        return;
+      }
+      channelReady = true;
+      maybeRequestParentShutdown();
     };
     const inspectProtocolLine = (line) => {
       const text = line.toString("utf8");
@@ -762,7 +799,7 @@ async function launch({
         readyResult = value;
       }
       if (protocolError) startHardCleanup(protocolError);
-      else requestParentShutdown();
+      else maybeRequestParentShutdown();
     };
     const scanProtocolLines = () => {
       const contents = Buffer.concat(stdout, stdoutLength);
@@ -784,6 +821,7 @@ async function launch({
       }
     };
 
+    child.on("message", acceptChannelReady);
     child.stdout.on("data", (chunk) => collect(stdout, chunk, true));
     child.stderr.on("data", (chunk) => collect(stderr, chunk, false));
     child.on("error", () =>
@@ -881,7 +919,8 @@ function recordProcess(execution, mode) {
     "CHILD_LIFECYCLE_INVALID",
   );
   ensure(
-    execution.parentSupervisionStarted === true &&
+    execution.channelReady === true &&
+      execution.parentSupervisionStarted === true &&
       execution.shutdownAuthorizationQueued === true &&
       execution.exitAuthorizationGranted === true &&
       execution.exitAuthorizationAcknowledged === true &&

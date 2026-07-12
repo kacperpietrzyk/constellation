@@ -43,16 +43,17 @@ The probe fails unless all of these checks pass:
   harness accepts exact fixed result shapes only, and the earlier dedicated
   safeStorage probe remains the independent exact-key output-channel oracle;
 - each process emits one synchronous readiness record only after store close,
-  post-close scanning, and failure cleanup, then waits for an exact parent
-  shutdown authorization over its inherited IPC channel. That single exact
-  authorization binds the process, method, and requested exit code; the child
-  acknowledges the shutdown and accepted exit request as ordered synchronous
-  records before calling `app.quit()`. A synchronous terminal record requires
-  the exact Electron `before-quit` → `will-quit` → `quit(0)` lifecycle. The
-  harness preserves the declared outcome separately from the observed process
-  result, lets the Electron main-loop shutdown commit provider state,
-  force-terminates a stalled process tree, and requires both inherited output
-  pipes to close;
+  post-close scanning, and failure cleanup. Before publishing that record, it
+  arms the inherited IPC listener and emits one exact IPC channel-readiness
+  message. The parent requires both readiness proofs before one exact shutdown
+  authorization that binds the process, method, and requested exit code; the
+  child acknowledges the shutdown and accepted exit request as ordered
+  synchronous records before calling `app.quit()`. A synchronous terminal
+  record requires the exact Electron `before-quit` → `will-quit` → `quit(0)`
+  lifecycle. The harness preserves the declared outcome separately from the
+  observed process result, lets the Electron main-loop shutdown commit provider
+  state, force-terminates a stalled process tree, and requires both inherited
+  output pipes to close;
 - a dedicated falsification launch emits readiness and the pre-exit
   acknowledgement, then exits internally with code `1`; the harness must reject
   it before the ordinary eleven-process result can pass;
