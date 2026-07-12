@@ -15,10 +15,10 @@ const MAX_SCAN_FILES = 20_000;
 const MAX_SCAN_FILE_BYTES = 128 * 1024 * 1024;
 const MAX_SCAN_TOTAL_BYTES = 512 * 1024 * 1024;
 const TERMINATION_FAILSAFE_MS = 30_000;
+const MAX_SHUTDOWN_CONTROL_BYTES = 4 * 1024;
+const SHUTDOWN_CONTROL_POLL_MS = 10;
 const SHUTDOWN_AUTHORIZATION_TYPE =
   "constellation.packaged-store-probe.shutdown/v1";
-const CHANNEL_READY_TYPE =
-  "constellation.packaged-store-probe.channel-ready/v1";
 const SHUTDOWN_ACK_TYPE =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
 const SHUTDOWN_REJECTED_TYPE =
@@ -239,34 +239,16 @@ process.on("exit", (internalExitCode) => {
   }
 });
 
-function awaitParentShutdownProtocol() {
-  if (
-    typeof process.send !== "function" ||
-    typeof process.disconnect !== "function" ||
-    !process.connected ||
-    !process.channel
-  ) {
-    rejectShutdown("channel-unavailable");
-    return;
-  }
-
+function armParentShutdownProtocol() {
   let completed = false;
   const clear = () => {
-    process.removeListener("message", onMessage);
-    process.removeListener("disconnect", abort);
+    clearInterval(pollTimer);
   };
-  const abort = () => {
-    if (completed) return;
-    completed = true;
-    clear();
-    rejectShutdown("disconnect");
-  };
-  const onMessage = (message) => {
-    if (completed) return;
+  const accept = (message) => {
     let rejection;
     if (!message || typeof message !== "object" || Array.isArray(message)) {
       rejection = "shape";
-    } else if (Object.keys(message).length !== 4) {
+    } else if (Object.keys(message).length !== 5) {
       rejection = "shape";
     } else if (message.type !== SHUTDOWN_AUTHORIZATION_TYPE) {
       rejection = "type";
@@ -276,19 +258,28 @@ function awaitParentShutdownProtocol() {
       rejection = "method";
     } else if (message.requestedExitCode !== 0) {
       rejection = "code";
+    } else if (
+      typeof message.controlToken !== "string" ||
+      !/^[a-f0-9]{64}$/.test(message.controlToken)
+    ) {
+      rejection = "token";
+    } else {
+      const actual = Buffer.from(message.controlToken, "hex");
+      const expected = Buffer.from(config.shutdownControlToken, "hex");
+      try {
+        if (!crypto.timingSafeEqual(actual, expected)) rejection = "token";
+      } finally {
+        actual.fill(0);
+        expected.fill(0);
+      }
     }
     if (rejection) {
-      completed = true;
-      clear();
       rejectShutdown(rejection);
       return;
     }
-    completed = true;
-    clear();
     exitAuthorizationAccepted = true;
     writeShutdownAcknowledgement();
     writeExitAcknowledgement();
-    process.disconnect();
     // An Electron-managed main-loop shutdown is required on Windows so
     // Chromium can commit the DPAPI-wrapped async-provider key in profile
     // Local State. The declared probe outcome remains in the fixed protocol;
@@ -303,28 +294,56 @@ function awaitParentShutdownProtocol() {
     postQuitFaultRequested = config?.mode === "shutdown-post-quit-fault";
     app.quit();
   };
+  const pollTimer = setInterval(() => {
+    if (completed) return;
+    let contents;
+    try {
+      const metadata = fs.lstatSync(config.shutdownControlPath);
+      if (
+        !metadata.isFile() ||
+        metadata.isSymbolicLink() ||
+        metadata.size <= 0 ||
+        metadata.size > MAX_SHUTDOWN_CONTROL_BYTES
+      ) {
+        completed = true;
+        clear();
+        rejectShutdown("shape");
+        return;
+      }
+      contents = fs.readFileSync(config.shutdownControlPath);
+      if (
+        contents.length <= 0 ||
+        contents.length > MAX_SHUTDOWN_CONTROL_BYTES
+      ) {
+        completed = true;
+        clear();
+        contents.fill(0);
+        rejectShutdown("shape");
+        return;
+      }
+      fs.unlinkSync(config.shutdownControlPath);
+    } catch (error) {
+      if (error?.code === "ENOENT") return;
+      completed = true;
+      clear();
+      contents?.fill(0);
+      rejectShutdown("control-unavailable");
+      return;
+    }
 
-  process.once("message", onMessage);
-  process.once("disconnect", abort);
-  try {
-    process.send(
-      {
-        type: CHANNEL_READY_TYPE,
-        processId: process.pid,
-      },
-      (error) => {
-        if (error && !completed) {
-          completed = true;
-          clear();
-          rejectShutdown("channel-unavailable");
-        }
-      },
-    );
-  } catch {
     completed = true;
     clear();
-    rejectShutdown("channel-unavailable");
-  }
+    let message;
+    try {
+      message = JSON.parse(contents.toString("utf8"));
+    } catch {
+      rejectShutdown("shape");
+      return;
+    } finally {
+      contents.fill(0);
+    }
+    accept(message);
+  }, SHUTDOWN_CONTROL_POLL_MS);
 }
 
 function finish(result, exitCode) {
@@ -340,9 +359,10 @@ function finish(result, exitCode) {
   // Every store path closes and scans its state before returning here. The
   // synchronous readiness record lets the parent authorize an Electron-managed
   // main-loop exit, supervise its deadline, and verify that all inherited
-  // pipes close. Arm the IPC listener before publishing readiness so a fast
-  // parent cannot answer the synchronous write before the child is listening.
-  awaitParentShutdownProtocol();
+  // pipes close. Arm the control-file poll before publishing readiness so a
+  // fast parent cannot publish its atomic authorization before the child is
+  // waiting for it.
+  armParentShutdownProtocol();
   writeFixedResult(result, exitCode);
 }
 
@@ -362,6 +382,7 @@ function parseConfig() {
     "--probe-workspace=",
     "--probe-wrapper=",
     "--probe-database=",
+    "--probe-shutdown-control=",
   ];
   const probeArguments = process.argv.filter((argument) =>
     argument.startsWith("--probe-"),
@@ -381,6 +402,7 @@ function parseConfig() {
   const workspaceId = getArgument("workspace");
   const wrapperName = getArgument("wrapper");
   const databaseName = getArgument("database");
+  const shutdownControlToken = getArgument("shutdown-control");
 
   if (
     !new Set([
@@ -405,6 +427,9 @@ function parseConfig() {
   if (!/^[a-z0-9][a-z0-9-]{0,47}\.db$/.test(databaseName)) {
     fail("CONFIG_INVALID");
   }
+  if (!/^[a-f0-9]{64}$/.test(shutdownControlToken)) {
+    fail("CONFIG_INVALID");
+  }
 
   const resolvedRoot = path.resolve(stateRoot);
   const expectedUserData = path.join(resolvedRoot, "profile");
@@ -417,6 +442,11 @@ function parseConfig() {
     workspaceId,
     wrapperPath: path.join(resolvedRoot, wrapperName),
     databasePath: path.join(resolvedRoot, databaseName),
+    shutdownControlToken,
+    shutdownControlPath: path.join(
+      resolvedRoot,
+      `.shutdown-${shutdownControlToken}.json`,
+    ),
   };
 }
 
@@ -687,6 +717,11 @@ async function unwrapKey(scope, canaries) {
   ) {
     fail("WRAPPER_DECRYPT_FAILED");
   }
+  addEncodedCanaries(
+    scope,
+    canaries,
+    scope.keep(Buffer.from(decrypted.result, "utf8")),
+  );
 
   const expectedDigest = scope.keep(Buffer.from(wrapper.payloadDigest, "hex"));
   const actualDigest = scope.keep(
@@ -701,6 +736,16 @@ async function unwrapKey(scope, canaries) {
     payload = JSON.parse(decrypted.result);
   } catch {
     fail("WRAPPER_INVALID");
+  }
+  let key;
+  if (typeof payload?.keyMaterial === "string") {
+    key = scope.keep(Buffer.from(payload.keyMaterial, "base64url"));
+    if (
+      key.length === 32 &&
+      key.toString("base64url") === payload.keyMaterial
+    ) {
+      addEncodedCanaries(scope, canaries, key);
+    }
   }
   if (
     !hasExactKeys(payload, [
@@ -721,16 +766,13 @@ async function unwrapKey(scope, canaries) {
     fail("WRAPPER_CONTEXT_MISMATCH");
   }
 
-  const key = scope.keep(Buffer.from(payload.keyMaterial, "base64url"));
-  if (key.length !== 32 || key.toString("base64url") !== payload.keyMaterial) {
+  if (
+    !key ||
+    key.length !== 32 ||
+    key.toString("base64url") !== payload.keyMaterial
+  ) {
     fail("WRAPPER_INVALID");
   }
-  addEncodedCanaries(scope, canaries, key);
-  addEncodedCanaries(
-    scope,
-    canaries,
-    scope.keep(Buffer.from(decrypted.result, "utf8")),
-  );
   return { key, markerDigest: payload.markerDigest };
 }
 

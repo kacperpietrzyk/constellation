@@ -45,7 +45,6 @@ const primaryWrapperPath = path.join(stateRoot, primaryWrapper);
 const primaryDatabasePath = path.join(stateRoot, primaryDatabase);
 const shutdownAuthorizationType =
   "constellation.packaged-store-probe.shutdown/v1";
-const channelReadyType = "constellation.packaged-store-probe.channel-ready/v1";
 const shutdownAckType =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
 const shutdownRejectedType =
@@ -240,6 +239,12 @@ async function launch({
   const environment = { ...process.env };
   delete environment.ELECTRON_RUN_AS_NODE;
   const probeProfile = path.join(probeStateRoot, "profile");
+  const shutdownControlToken = crypto.randomBytes(32).toString("hex");
+  const shutdownControlPath = path.join(
+    probeStateRoot,
+    `.shutdown-${shutdownControlToken}.json`,
+  );
+  const shutdownControlTemporaryPath = `${shutdownControlPath}.tmp`;
   const argumentsForProbe = [
     `--user-data-dir=${probeProfile}`,
     `--probe-mode=${mode}`,
@@ -247,6 +252,7 @@ async function launch({
     `--probe-workspace=${workspaceId}`,
     `--probe-wrapper=${wrapperName}`,
     `--probe-database=${databaseName}`,
+    `--probe-shutdown-control=${shutdownControlToken}`,
   ];
 
   return await new Promise((resolve, reject) => {
@@ -255,7 +261,7 @@ async function launch({
       child = spawn(executable, argumentsForProbe, {
         detached: process.platform !== "win32",
         env: environment,
-        stdio: ["ignore", "pipe", "pipe", "ipc"],
+        stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       });
     } catch {
@@ -278,7 +284,7 @@ async function launch({
     let timedOut = false;
     let parentSupervisionStarted = false;
     let shutdownAuthorizationQueued = false;
-    let shutdownAuthorizationSendStatus = "not-started";
+    let shutdownAuthorizationPublishStatus = "not-started";
     let exitAuthorizationGranted = false;
     let exitAuthorizationAcknowledged = false;
     let exitAuthorizationAckCount = 0;
@@ -291,8 +297,6 @@ async function launch({
     let forcedTerminationAccepted = false;
     let shutdownRequestedWhileAlive = false;
     let electronExitObserved = false;
-    let channelReady = false;
-    let channelReadyCount = 0;
     let readyResult;
     let protocolError;
     let protocolResultCount = 0;
@@ -303,6 +307,18 @@ async function launch({
     let mainExitCode;
     let mainExitSignal;
 
+    const removeShutdownControlArtifacts = () => {
+      try {
+        fs.rmSync(shutdownControlTemporaryPath, { force: true });
+        fs.rmSync(shutdownControlPath, { force: true });
+        return (
+          !fs.existsSync(shutdownControlTemporaryPath) &&
+          !fs.existsSync(shutdownControlPath)
+        );
+      } catch {
+        return false;
+      }
+    };
     const finish = (callback) => {
       if (settled) return;
       settled = true;
@@ -315,6 +331,9 @@ async function launch({
       if (electronShutdownTimer) clearTimeout(electronShutdownTimer);
       if (helperCleanupTimer) clearTimeout(helperCleanupTimer);
       if (postExitTimer) clearTimeout(postExitTimer);
+      if (!removeShutdownControlArtifacts()) {
+        protocolError ||= "SHUTDOWN_CONTROL_CLEANUP_UNVERIFIED";
+      }
       callback();
     };
     const collect = (target, chunk, isStdout) => {
@@ -350,20 +369,15 @@ async function launch({
             const result = parseFixedResult(stdoutBuffer);
             if (
               !shutdownAcknowledged &&
-              shutdownAuthorizationSendStatus !== "succeeded"
+              shutdownAuthorizationPublishStatus !== "succeeded"
             ) {
               protocolError ||=
-                shutdownAuthorizationSendStatus === "failed"
+                shutdownAuthorizationPublishStatus === "failed"
                   ? "SHUTDOWN_AUTHORIZATION_REJECTED"
                   : "SHUTDOWN_AUTHORIZATION_UNCONFIRMED";
             }
             ensure(!protocolError, protocolError);
             ensure(protocolResultCount === 1, "PROTOCOL_RESULT_COUNT_INVALID");
-            ensure(channelReady, "CHILD_CHANNEL_READY_MISSING");
-            ensure(
-              channelReadyCount === 1,
-              "CHILD_CHANNEL_READY_COUNT_INVALID",
-            );
             ensure(
               parentSupervisionStarted &&
                 shutdownAuthorizationQueued &&
@@ -454,7 +468,6 @@ async function launch({
               forcedTerminationAccepted,
               shutdownRequestedWhileAlive,
               electronExitObserved,
-              channelReady,
               childPid: child.pid,
               result,
             });
@@ -536,63 +549,48 @@ async function launch({
       }
       shutdownRequestedWhileAlive = true;
       parentSupervisionStarted = true;
-      if (
-        typeof child.send !== "function" ||
-        !child.connected ||
-        !child.channel
-      ) {
-        startHardCleanup("SHUTDOWN_AUTHORIZATION_UNAVAILABLE");
-        return;
-      }
+      let descriptor;
+      const authorization = Buffer.from(
+        `${JSON.stringify({
+          type: shutdownAuthorizationType,
+          processId: child.pid,
+          method: "app.quit",
+          requestedExitCode: 0,
+          controlToken: shutdownControlToken,
+        })}\n`,
+        "utf8",
+      );
       try {
-        shutdownAuthorizationSendStatus = "pending";
-        child.send(
-          {
-            type: shutdownAuthorizationType,
-            processId: child.pid,
-            method: "app.quit",
-            requestedExitCode: 0,
-          },
-          (error) => {
-            shutdownAuthorizationSendStatus = error ? "failed" : "succeeded";
-          },
-        );
+        shutdownAuthorizationPublishStatus = "pending";
+        descriptor = fs.openSync(shutdownControlTemporaryPath, "wx", 0o600);
+        fs.writeFileSync(descriptor, authorization);
+        fs.fsyncSync(descriptor);
+        fs.closeSync(descriptor);
+        descriptor = undefined;
+        fs.renameSync(shutdownControlTemporaryPath, shutdownControlPath);
+        shutdownAuthorizationPublishStatus = "succeeded";
         shutdownAuthorizationQueued = true;
         exitAuthorizationGranted = true;
       } catch {
+        shutdownAuthorizationPublishStatus = "failed";
+        if (descriptor !== undefined) {
+          try {
+            fs.closeSync(descriptor);
+          } catch {
+            // The original publication failure remains authoritative.
+          }
+        }
+        removeShutdownControlArtifacts();
         startHardCleanup("SHUTDOWN_AUTHORIZATION_REJECTED");
         return;
+      } finally {
+        authorization.fill(0);
       }
       if (timer) {
         clearTimeout(timer);
         timer = undefined;
       }
       electronShutdownTimer = setTimeout(requestForcedTermination, 5_000);
-    };
-    const acceptChannelReady = (value) => {
-      channelReadyCount += 1;
-      if (!value || typeof value !== "object" || Array.isArray(value)) {
-        protocolError ||= "CHANNEL_READY_INVALID";
-        startHardCleanup(protocolError);
-        return;
-      }
-      const keys = Object.keys(value).sort();
-      const expectedKeys = ["processId", "type"].sort();
-      if (
-        channelReadyCount !== 1 ||
-        keys.length !== expectedKeys.length ||
-        !keys.every((key, index) => key === expectedKeys[index]) ||
-        value.processId !== child.pid ||
-        value.type !== channelReadyType ||
-        parentSupervisionStarted ||
-        childHasExited()
-      ) {
-        protocolError ||= "CHANNEL_READY_INVALID";
-        startHardCleanup(protocolError);
-        return;
-      }
-      channelReady = true;
-      requestParentShutdown();
     };
     const inspectProtocolLine = (line) => {
       const text = line.toString("utf8");
@@ -649,12 +647,12 @@ async function launch({
         const keys = Object.keys(value).sort();
         const expectedKeys = ["processId", "reason", "type"].sort();
         const allowedReasons = new Set([
-          "channel-unavailable",
           "code",
-          "disconnect",
+          "control-unavailable",
           "method",
           "pid",
           "shape",
+          "token",
           "type",
         ]);
         if (
@@ -796,6 +794,7 @@ async function launch({
         readyResult = value;
       }
       if (protocolError) startHardCleanup(protocolError);
+      else requestParentShutdown();
     };
     const scanProtocolLines = () => {
       const contents = Buffer.concat(stdout, stdoutLength);
@@ -817,7 +816,6 @@ async function launch({
       }
     };
 
-    child.on("message", acceptChannelReady);
     child.stdout.on("data", (chunk) => collect(stdout, chunk, true));
     child.stderr.on("data", (chunk) => collect(stderr, chunk, false));
     child.on("error", () =>
@@ -915,8 +913,7 @@ function recordProcess(execution, mode) {
     "CHILD_LIFECYCLE_INVALID",
   );
   ensure(
-    execution.channelReady === true &&
-      execution.parentSupervisionStarted === true &&
+    execution.parentSupervisionStarted === true &&
       execution.shutdownAuthorizationQueued === true &&
       execution.exitAuthorizationGranted === true &&
       execution.exitAuthorizationAcknowledged === true &&
@@ -989,11 +986,8 @@ async function expectPreExitAcknowledgementRejected(expectedState) {
   } catch (error) {
     rejection = error;
   }
-  ensure(
-    rejection instanceof Error &&
-      rejection.message === "SHUTDOWN_TERMINAL_ACK_INVALID",
-    "PRE_EXIT_ACK_FAULT_NOT_REJECTED",
-  );
+  ensure(rejection instanceof Error, "PRE_EXIT_ACK_FAULT_NOT_REJECTED");
+  if (rejection.message !== "SHUTDOWN_TERMINAL_ACK_INVALID") throw rejection;
   assertPrimaryUnchanged(expectedState);
 }
 
@@ -1016,15 +1010,16 @@ async function expectPostQuitProviderStateFaultRejected() {
   } finally {
     await removeDirectory(faultStateRoot);
   }
-  ensure(
-    rejection instanceof Error &&
-      new Set([
-        "WINDOWS_PROVIDER_STATE_INVALID",
-        "WINDOWS_PROVIDER_KEY_MISSING",
-        "WINDOWS_PROVIDER_KEY_INVALID",
-      ]).has(rejection.message),
-    "POST_QUIT_PROVIDER_FAULT_NOT_REJECTED",
-  );
+  ensure(rejection instanceof Error, "POST_QUIT_PROVIDER_FAULT_NOT_REJECTED");
+  if (
+    !new Set([
+      "WINDOWS_PROVIDER_STATE_INVALID",
+      "WINDOWS_PROVIDER_KEY_MISSING",
+      "WINDOWS_PROVIDER_KEY_INVALID",
+    ]).has(rejection.message)
+  ) {
+    throw rejection;
+  }
   windowsPostQuitProviderFaultRejected = true;
 }
 
@@ -1047,7 +1042,13 @@ function assertPrimaryUnchanged(expected) {
 
 function snapshotPrimaryState() {
   const snapshot = new Map();
-  for (const filename of [primaryWrapperPath, primaryDatabasePath]) {
+  for (const filename of [
+    primaryWrapperPath,
+    primaryDatabasePath,
+    `${primaryDatabasePath}-wal`,
+    `${primaryDatabasePath}-shm`,
+    `${primaryDatabasePath}-journal`,
+  ]) {
     snapshot.set(
       filename,
       fs.existsSync(filename) ? digestFile(filename) : null,
@@ -1283,6 +1284,16 @@ try {
     ["WRAPPER_CONTEXT_MISMATCH"],
     primaryState,
   );
+  await expectFailure(
+    {
+      mode: "verify",
+      workspaceId: "workspace-beta",
+      wrapperName: "forged-context.wrap.json",
+      databaseName: primaryDatabase,
+    },
+    ["WRAPPER_CONTEXT_MISMATCH"],
+    primaryState,
+  );
 
   const secondaryWriter = await launch({
     mode: "provision",
@@ -1393,7 +1404,7 @@ try {
   await expectPreExitAcknowledgementRejected(primaryState);
   assertWindowsProviderStateUnchanged(windowsProviderStateDigest);
 
-  ensure(processIds.size === 11, "PROCESS_COUNT_INVALID");
+  ensure(processIds.size === 12, "PROCESS_COUNT_INVALID");
   ensure(
     electronManagedProcessExits + forcedProcessExits === processIds.size,
     "PROCESS_LIFECYCLE_COUNT_INVALID",

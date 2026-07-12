@@ -31,10 +31,11 @@ The probe fails unless all of these checks pass:
 - on Windows, normal Electron shutdown persists a canonical DPAPI-prefixed
   async-provider key in the disposable profile `Local State`, and its digest
   remains stable through the reader and negative-process matrix;
-- missing, modified, and wrong-context wrappers, a valid same-context wrapper
-  with the wrong key, a plaintext SQLite database, a corrupted encrypted
-  database, and provisioning over existing state all fail closed without
-  modifying the known-good wrapper or database;
+- missing, modified, and wrong-context wrappers (at both the public wrapper and
+  decrypted payload boundaries), a valid same-context wrapper with the wrong
+  key, a plaintext SQLite database, a corrupted encrypted database, and
+  provisioning over existing state all fail closed without modifying the
+  known-good wrapper, database, or WAL/SHM/journal sidecar set;
 - the database header and live WAL are encrypted; before and after database
   close, including failure cleanup, the packaged process scans the package,
   unpacked add-on, wrapper, database, WAL, profile, temp, and crash state for the
@@ -44,11 +45,11 @@ The probe fails unless all of these checks pass:
   safeStorage probe remains the independent exact-key output-channel oracle;
 - each process emits one synchronous readiness record only after store close,
   post-close scanning, and failure cleanup. Before publishing that record, it
-  arms the inherited IPC listener and emits one exact IPC channel-readiness
-  message. The parent answers that proven channel directly with one exact
-  shutdown authorization that binds the process, method, and requested exit
-  code; completion still requires the independent fixed readiness result. The
-  child acknowledges the shutdown and accepted exit request as ordered
+  starts a bounded poll for one per-launch control file. Only after parsing the
+  exact fixed readiness result does the parent atomically publish an
+  authorization bound to a random control token, the live process, the
+  `app.quit()` method, and exit code zero. The child consumes and deletes that
+  file, then acknowledges the shutdown and accepted exit request as ordered
   synchronous records before calling `app.quit()`. A synchronous terminal
   record requires the exact Electron `before-quit` → `will-quit` → `quit(0)`
   lifecycle. The harness preserves the declared outcome separately from the
@@ -57,7 +58,7 @@ The probe fails unless all of these checks pass:
   output pipes to close;
 - a dedicated falsification launch emits readiness and the pre-exit
   acknowledgement, then exits internally with code `1`; the harness must reject
-  it before the ordinary eleven-process result can pass;
+  it before the ordinary twelve-process result can pass;
 - a Windows-only post-`quit(0)` falsification launch initializes the async
   provider, emits the complete managed lifecycle, then exits before Chromium's
   profile-state commit; the harness must reject the missing canonical DPAPI
