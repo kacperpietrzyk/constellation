@@ -1,0 +1,37 @@
+{
+  "name": "constellation",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A typed, local-first work system for people and external MCP agents.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "npm@11.12.1",
+  "engines": {
+    "node": ">=24.15.0 <27",
+    "npm": ">=11.12.1 <12"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "audit:dependencies": "npm audit --audit-level=high",
+    "build": "tsc -b",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
+    "clean": "node scripts/clean.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "npm run lint:code && npm run lint:md",
+    "lint:code": "eslint . --max-warnings=0",
+    "lint:md": "markdownlint-cli2 \"*.md\" \".github/**/*.md\" \"docs/**/*.md\" \"packages/**/*.md\" \"#AGENTS.md\" \"#dlaczego-notion-zawodzi-i-czego-potrzebuje.md\" \"#docs/plans/**\" \"#docs/specs/**\"",
+    "test": "npm run clean && npm run build && node scripts/run-tests.mjs",
+    "typecheck": "tsc -b --pretty false"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "eslint": "10.7.0",
+    "markdownlint-cli2": "0.23.0",
+    "prettier": "3.9.5",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.63.0"
+  }
+}
