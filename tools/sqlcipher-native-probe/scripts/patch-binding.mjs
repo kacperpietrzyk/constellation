@@ -48,6 +48,42 @@ replaceExact(
 
 replaceExact(
   "src/objects/database.cpp",
+  "\tint status = sqlite3_db_config(db_handle, SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION, 1, NULL);\n",
+  "\tint status = sqlite3_db_config(db_handle, SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION, 0, NULL);\n",
+);
+
+replaceExact(
+  "src/objects/database.cpp",
+  `NODE_METHOD(Database::JS_loadExtension) {
+\tDatabase* db = Unwrap<Database>(info.This());
+\tv8::Local<v8::String> entryPoint;
+\tREQUIRE_ARGUMENT_STRING(first, v8::Local<v8::String> filename);
+\tif (info.Length() > 1) { REQUIRE_ARGUMENT_STRING(second, entryPoint); }
+\tREQUIRE_DATABASE_OPEN(db);
+\tREQUIRE_DATABASE_NOT_BUSY(db);
+\tREQUIRE_DATABASE_NO_ITERATORS(db);
+\tUseIsolate;
+\tchar* error;
+\tint status = sqlite3_load_extension(
+\t\tdb->db_handle,
+\t\t*v8::String::Utf8Value(isolate, filename),
+\t\tentryPoint.IsEmpty() ? NULL : *v8::String::Utf8Value(isolate, entryPoint),
+\t\t&error
+\t);
+\tif (status != SQLITE_OK) {
+\t\tThrowSqliteError(db->addon, error, status);
+\t}
+\tsqlite3_free(error);
+}
+`,
+  `NODE_METHOD(Database::JS_loadExtension) {
+\treturn ThrowTypeError("Loadable extensions are disabled");
+}
+`,
+);
+
+replaceExact(
+  "src/objects/database.cpp",
   "NODE_GETTER(Database::JS_open) {\n",
   `namespace {
 int ApplyRawKey(sqlite3* database, const char* database_name, const char* key_bytes) {

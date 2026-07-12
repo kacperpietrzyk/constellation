@@ -44,6 +44,18 @@ try {
   database.key(mainKey);
   mainKey.fill(0);
 
+  assert.throws(() => database.loadExtension("constellation-probe-disabled"), {
+    name: "TypeError",
+    message: "Loadable extensions are disabled",
+  });
+  assert.throws(
+    () =>
+      database
+        .prepare("SELECT load_extension(?)")
+        .get("constellation-probe-disabled"),
+    /no such function: load_extension/i,
+  );
+
   const cipherVersion = database.pragma("cipher_version", { simple: true });
   const provider = database.pragma("cipher_provider", { simple: true });
   const providerVersion = database.pragma("cipher_provider_version", {

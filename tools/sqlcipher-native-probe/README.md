@@ -16,8 +16,9 @@ The probe fails unless all of these checks pass:
 
 - the process is native x64 and uses Electron 43.1.0;
 - SQLCipher reports version 4.16.0 Community and a platform crypto provider;
-- compile options include codec support, FTS5, and disabled loadable
-  extensions;
+- compile options include codec support, FTS5, and omitted loadable-extension
+  support, while the connection flag stays disabled and the inherited
+  JavaScript method fails closed without invoking a native loader symbol;
 - encrypted WAL mode and an FTS5 query work together, and the live WAL does not
   expose the synthetic plaintext marker;
 - cipher, ordinary database, and foreign-key integrity checks pass;
