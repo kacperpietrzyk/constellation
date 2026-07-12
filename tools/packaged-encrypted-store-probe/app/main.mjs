@@ -17,6 +17,8 @@ const MAX_SCAN_TOTAL_BYTES = 512 * 1024 * 1024;
 const TERMINATION_FAILSAFE_MS = 30_000;
 const MAX_SHUTDOWN_CONTROL_BYTES = 4 * 1024;
 const SHUTDOWN_CONTROL_POLL_MS = 10;
+const SHUTDOWN_CONTROL_TIMEOUT_MS = 4_000;
+const SHUTDOWN_CONTROL_WAIT_STATE = new Int32Array(new SharedArrayBuffer(4));
 const SHUTDOWN_AUTHORIZATION_TYPE =
   "constellation.packaged-store-probe.shutdown/v1";
 const SHUTDOWN_ACK_TYPE =
@@ -239,11 +241,7 @@ process.on("exit", (internalExitCode) => {
   }
 });
 
-function armParentShutdownProtocol() {
-  let completed = false;
-  const clear = () => {
-    clearInterval(pollTimer);
-  };
+function waitForParentShutdownProtocol() {
   const accept = (message) => {
     let rejection;
     if (!message || typeof message !== "object" || Array.isArray(message)) {
@@ -294,8 +292,8 @@ function armParentShutdownProtocol() {
     postQuitFaultRequested = config?.mode === "shutdown-post-quit-fault";
     app.quit();
   };
-  const pollTimer = setInterval(() => {
-    if (completed) return;
+  const deadline = Date.now() + SHUTDOWN_CONTROL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
     let contents;
     try {
       const metadata = fs.lstatSync(config.shutdownControlPath);
@@ -305,8 +303,6 @@ function armParentShutdownProtocol() {
         metadata.size <= 0 ||
         metadata.size > MAX_SHUTDOWN_CONTROL_BYTES
       ) {
-        completed = true;
-        clear();
         rejectShutdown("shape");
         return;
       }
@@ -315,24 +311,26 @@ function armParentShutdownProtocol() {
         contents.length <= 0 ||
         contents.length > MAX_SHUTDOWN_CONTROL_BYTES
       ) {
-        completed = true;
-        clear();
         contents.fill(0);
         rejectShutdown("shape");
         return;
       }
       fs.unlinkSync(config.shutdownControlPath);
     } catch (error) {
-      if (error?.code === "ENOENT") return;
-      completed = true;
-      clear();
+      if (error?.code === "ENOENT") {
+        Atomics.wait(
+          SHUTDOWN_CONTROL_WAIT_STATE,
+          0,
+          0,
+          SHUTDOWN_CONTROL_POLL_MS,
+        );
+        continue;
+      }
       contents?.fill(0);
       rejectShutdown("control-unavailable");
       return;
     }
 
-    completed = true;
-    clear();
     let message;
     try {
       message = JSON.parse(contents.toString("utf8"));
@@ -343,7 +341,9 @@ function armParentShutdownProtocol() {
       contents.fill(0);
     }
     accept(message);
-  }, SHUTDOWN_CONTROL_POLL_MS);
+    return;
+  }
+  rejectShutdown("control-timeout");
 }
 
 function finish(result, exitCode) {
@@ -359,11 +359,12 @@ function finish(result, exitCode) {
   // Every store path closes and scans its state before returning here. The
   // synchronous readiness record lets the parent authorize an Electron-managed
   // main-loop exit, supervise its deadline, and verify that all inherited
-  // pipes close. Arm the control-file poll before publishing readiness so a
-  // fast parent cannot publish its atomic authorization before the child is
-  // waiting for it.
-  armParentShutdownProtocol();
+  // pipes close. The synchronous fixed record lets the separate parent process
+  // publish its atomic authorization; this process then blocks on bounded
+  // synchronous file polling so late Electron main-loop IPC/timer delivery is
+  // not part of the shutdown oracle.
   writeFixedResult(result, exitCode);
+  waitForParentShutdownProtocol();
 }
 
 function getArgument(name) {

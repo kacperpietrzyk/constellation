@@ -44,13 +44,14 @@ The probe fails unless all of these checks pass:
   harness accepts exact fixed result shapes only, and the earlier dedicated
   safeStorage probe remains the independent exact-key output-channel oracle;
 - each process emits one synchronous readiness record only after store close,
-  post-close scanning, and failure cleanup. Before publishing that record, it
-  starts a bounded poll for one per-launch control file. Only after parsing the
-  exact fixed readiness result does the parent atomically publish an
-  authorization bound to a random control token, the live process, the
-  `app.quit()` method, and exit code zero. The child consumes and deletes that
-  file, then acknowledges the shutdown and accepted exit request as ordered
-  synchronous records before calling `app.quit()`. A synchronous terminal
+  post-close scanning, and failure cleanup. It then performs bounded synchronous
+  polling for one per-launch control file, avoiding dependence on late Electron
+  main-loop IPC or timer delivery. Only after parsing the exact fixed readiness
+  result does the parent atomically publish an authorization bound to a random
+  control token, the live process, the `app.quit()` method, and exit code zero.
+  The child consumes and deletes that file, then acknowledges the shutdown and
+  accepted exit request as ordered synchronous records before calling
+  `app.quit()`. A synchronous terminal
   record requires the exact Electron `before-quit` → `will-quit` → `quit(0)`
   lifecycle. The harness preserves the declared outcome separately from the
   observed process result, lets the Electron main-loop shutdown commit provider

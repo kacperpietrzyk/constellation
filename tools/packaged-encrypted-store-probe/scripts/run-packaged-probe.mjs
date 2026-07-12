@@ -648,6 +648,7 @@ async function launch({
         const expectedKeys = ["processId", "reason", "type"].sort();
         const allowedReasons = new Set([
           "code",
+          "control-timeout",
           "control-unavailable",
           "method",
           "pid",
