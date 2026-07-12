@@ -2,15 +2,23 @@ import type {
   MembershipId,
   PrincipalId,
   SpaceId,
+  TaskStatusId,
   WorkspaceId,
 } from "@constellation/contracts";
 
-import type { Space, Workspace, WorkspaceMembership } from "./model.js";
+import type {
+  Space,
+  TaskStatusDefinition,
+  Workspace,
+  WorkspaceMembership,
+} from "./model.js";
+import { createDefaultTaskStatus } from "./task.js";
 
 export interface CreateLocalWorkspaceInput {
   readonly workspaceId: WorkspaceId;
   readonly rootSpaceId: SpaceId;
   readonly membershipId: MembershipId;
+  readonly defaultTaskStatusId: TaskStatusId;
   readonly ownerPrincipalId: PrincipalId;
   readonly name: string;
   readonly timezone: string;
@@ -21,6 +29,7 @@ export interface CreatedLocalWorkspace {
   readonly workspace: Workspace;
   readonly rootSpace: Space;
   readonly ownerMembership: WorkspaceMembership;
+  readonly defaultTaskStatus: TaskStatusDefinition;
 }
 
 export const createLocalWorkspace = (
@@ -31,6 +40,7 @@ export const createLocalWorkspace = (
     name: input.name,
     timezone: input.timezone,
     rootSpaceId: input.rootSpaceId,
+    defaultTaskStatusId: input.defaultTaskStatusId,
     version: 1,
     createdAt: input.occurredAt,
     updatedAt: input.occurredAt,
@@ -50,6 +60,11 @@ export const createLocalWorkspace = (
     version: 1,
     createdAt: input.occurredAt,
   },
+  defaultTaskStatus: createDefaultTaskStatus({
+    id: input.defaultTaskStatusId,
+    workspaceId: input.workspaceId,
+    occurredAt: input.occurredAt,
+  }),
 });
 
 export const renameWorkspace = (

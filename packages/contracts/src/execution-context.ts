@@ -31,7 +31,9 @@ export const CapabilitySchema = z.enum([
   "workspace.rename",
   "workspace.bootstrapContext",
   "capture.submitText",
+  "capture.routeAsTask",
   "capture.history",
+  "task.list",
   "audit.receipt",
 ]);
 export type Capability = z.infer<typeof CapabilitySchema>;

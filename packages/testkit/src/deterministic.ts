@@ -7,7 +7,7 @@ import type {
   PaginationCursorCodec,
   SemanticHasher,
 } from "@constellation/application";
-import { CaptureIdSchema } from "@constellation/contracts";
+import { CaptureIdSchema, TaskIdSchema } from "@constellation/contracts";
 
 const canonicalJson = (value: unknown): string => {
   if (value === null || typeof value !== "object") {
@@ -58,8 +58,9 @@ export class Base64JsonCursorCodec implements PaginationCursorCodec {
   public encode(cursor: PaginationCursor): string {
     return Buffer.from(
       JSON.stringify({
-        capturedAt: cursor.capturedAt,
-        captureId: cursor.captureId,
+        kind: cursor.kind,
+        orderedAt: cursor.orderedAt,
+        recordId: cursor.recordId,
       }),
       "utf8",
     ).toString("base64url");
@@ -79,16 +80,33 @@ export class Base64JsonCursorCodec implements PaginationCursorCodec {
       }
       const candidate = parsed as Record<string, unknown>;
       if (
-        Object.keys(candidate).sort().join(",") !== "captureId,capturedAt" ||
-        typeof candidate.capturedAt !== "string" ||
-        Number.isNaN(Date.parse(candidate.capturedAt))
+        Object.keys(candidate).sort().join(",") !== "kind,orderedAt,recordId" ||
+        typeof candidate.orderedAt !== "string" ||
+        Number.isNaN(Date.parse(candidate.orderedAt))
       ) {
         return undefined;
       }
-      const captureId = CaptureIdSchema.safeParse(candidate.captureId);
-      return captureId.success
-        ? { capturedAt: candidate.capturedAt, captureId: captureId.data }
-        : undefined;
+      if (candidate.kind === "capture") {
+        const captureId = CaptureIdSchema.safeParse(candidate.recordId);
+        return captureId.success
+          ? {
+              kind: "capture",
+              orderedAt: candidate.orderedAt,
+              recordId: captureId.data,
+            }
+          : undefined;
+      }
+      if (candidate.kind === "task") {
+        const taskId = TaskIdSchema.safeParse(candidate.recordId);
+        return taskId.success
+          ? {
+              kind: "task",
+              orderedAt: candidate.orderedAt,
+              recordId: taskId.data,
+            }
+          : undefined;
+      }
+      return undefined;
     } catch {
       return undefined;
     }

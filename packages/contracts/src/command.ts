@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   CausationIdSchema,
+  CaptureIdSchema,
   CheckpointIdSchema,
   CommandIdSchema,
   CorrelationIdSchema,
@@ -90,10 +91,24 @@ export type CaptureSubmitTextCommand = z.infer<
   typeof CaptureSubmitTextCommandSchema
 >;
 
+export const CaptureRouteAsTaskCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("capture.routeAsTask"),
+  payload: z
+    .object({
+      captureId: CaptureIdSchema,
+      title: z.string().trim().min(1).max(500),
+    })
+    .strict(),
+}).strict();
+export type CaptureRouteAsTaskCommand = z.infer<
+  typeof CaptureRouteAsTaskCommandSchema
+>;
+
 export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   WorkspaceCreateLocalCommandSchema,
   WorkspaceRenameCommandSchema,
   CaptureSubmitTextCommandSchema,
+  CaptureRouteAsTaskCommandSchema,
 ]);
 export type CommandEnvelope = z.infer<typeof CommandEnvelopeSchema>;
 export type CommandName = CommandEnvelope["commandName"];

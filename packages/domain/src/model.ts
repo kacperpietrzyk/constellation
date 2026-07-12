@@ -10,6 +10,8 @@ import type {
   PrincipalId,
   RequestOrigin,
   SpaceId,
+  TaskId,
+  TaskStatusId,
   WorkspaceId,
 } from "@constellation/contracts";
 
@@ -18,6 +20,7 @@ export interface Workspace {
   readonly name: string;
   readonly timezone: string;
   readonly rootSpaceId: SpaceId;
+  readonly defaultTaskStatusId: TaskStatusId;
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -42,7 +45,7 @@ export interface WorkspaceMembership {
   readonly createdAt: string;
 }
 
-export interface Capture {
+interface CaptureBase {
   readonly id: CaptureId;
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
@@ -50,9 +53,45 @@ export interface Capture {
   readonly deviceId: string;
   readonly source: "global_quick_capture" | "in_app_quick_capture";
   readonly capturedAt: string;
-  readonly processingState: "pending_processing";
   readonly submittedBy: PrincipalId;
   readonly version: number;
+}
+
+export type PendingCapture = CaptureBase & {
+  readonly processingState: "pending_processing";
+};
+
+export type RoutedTaskCapture = CaptureBase & {
+  readonly processingState: "routed_as_task";
+  readonly derivedTaskId: TaskId;
+  readonly routedAt: string;
+  readonly routedBy: PrincipalId;
+};
+
+export type Capture = PendingCapture | RoutedTaskCapture;
+
+export interface TaskStatusDefinition {
+  readonly id: TaskStatusId;
+  readonly workspaceId: WorkspaceId;
+  readonly label: string;
+  readonly operationalSemantics: "actionable";
+  readonly position: number;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface Task {
+  readonly id: TaskId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly title: string;
+  readonly statusId: TaskStatusId;
+  readonly sourceCaptureId?: CaptureId;
+  readonly createdBy: PrincipalId;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 export type DomainEvent =
@@ -83,6 +122,17 @@ export type DomainEvent =
       readonly aggregateVersion: number;
       readonly occurredAt: string;
       readonly source: Capture["source"];
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "capture.routed_as_task";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: CaptureId;
+      readonly aggregateVersion: number;
+      readonly taskId: TaskId;
+      readonly taskStatusId: TaskStatusId;
+      readonly occurredAt: string;
     };
 
 export interface AuditReceipt {
@@ -108,6 +158,8 @@ export interface OutboxEntry {
   readonly spaceId: SpaceId;
   readonly eventId: EventId;
   readonly topic:
-    "workspace.projection.requested" | "capture.processing.requested";
+    | "workspace.projection.requested"
+    | "capture.processing.requested"
+    | "work.projection.requested";
   readonly createdAt: string;
 }
