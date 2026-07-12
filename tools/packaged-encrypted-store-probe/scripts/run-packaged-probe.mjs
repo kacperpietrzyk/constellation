@@ -54,6 +54,7 @@ let electronManagedProcessExits = 0;
 let forcedProcessExits = 0;
 let acknowledgedShutdowns = 0;
 let terminallyConfirmedShutdowns = 0;
+let windowsPostQuitProviderFaultRejected = false;
 let windowsProviderStateDigest;
 const captured = [];
 const forbiddenOutput = [
@@ -87,9 +88,9 @@ function sameDigest(left, right) {
   return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
-function readWindowsProviderStateDigest() {
+function readWindowsProviderStateDigest(profileRoot = profile) {
   if (process.platform !== "win32") return undefined;
-  const localStatePath = path.join(profile, "Local State");
+  const localStatePath = path.join(profileRoot, "Local State");
   ensure(fs.existsSync(localStatePath), "WINDOWS_PROVIDER_STATE_INVALID");
   const metadata = fs.lstatSync(localStatePath);
   ensure(
@@ -224,13 +225,20 @@ function terminateTree(child) {
   }
 }
 
-async function launch({ mode, workspaceId, wrapperName, databaseName }) {
+async function launch({
+  mode,
+  workspaceId,
+  wrapperName,
+  databaseName,
+  probeStateRoot = stateRoot,
+}) {
   const environment = { ...process.env };
   delete environment.ELECTRON_RUN_AS_NODE;
+  const probeProfile = path.join(probeStateRoot, "profile");
   const argumentsForProbe = [
-    `--user-data-dir=${profile}`,
+    `--user-data-dir=${probeProfile}`,
     `--probe-mode=${mode}`,
-    `--probe-state-root=${stateRoot}`,
+    `--probe-state-root=${probeStateRoot}`,
     `--probe-workspace=${workspaceId}`,
     `--probe-wrapper=${wrapperName}`,
     `--probe-database=${databaseName}`,
@@ -383,6 +391,11 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
                 code === expectedCode && signal === null,
                 `ELECTRON_SHUTDOWN_STATUS_INVALID:${codeLabel}:${signalLabel}`,
               );
+              if (process.platform === "win32") {
+                const providerStateDigest =
+                  readWindowsProviderStateDigest(probeProfile);
+                providerStateDigest.fill(0);
+              }
             } else {
               ensure(
                 shutdownTerminalCount === 0,
@@ -396,7 +409,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
             resolve({
               declaredExitCode: result.declaredExitCode,
               lifecycle: electronExitObserved
-                ? "electron-exit-after-parent-command"
+                ? "electron-quit-after-parent-command"
                 : "forced-after-parent-command",
               actualCode: code,
               actualSignal: signal,
@@ -551,7 +564,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
           keys.length !== expectedKeys.length ||
           !keys.every((key, index) => key === expectedKeys[index]) ||
           value.processId !== child.pid ||
-          value.method !== "app.exit" ||
+          value.method !== "app.quit" ||
           value.requestedExitCode !== 0 ||
           !parentSupervisionStarted ||
           !shutdownCommandQueued ||
@@ -594,18 +607,22 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
         shutdownTerminalCount += 1;
         const keys = Object.keys(value).sort();
         const expectedKeys = [
+          "beforeQuitCount",
           "internalExitCode",
+          "lifecycle",
           "method",
           "processId",
+          "quitCount",
           "requestedExitCode",
           "type",
+          "willQuitCount",
         ].sort();
+        const managedLifecycle = ["before-quit", "will-quit", "quit"];
         if (
           shutdownTerminalCount !== 1 ||
           keys.length !== expectedKeys.length ||
           !keys.every((key, index) => key === expectedKeys[index]) ||
           value.processId !== child.pid ||
-          value.method !== "app.exit" ||
           value.requestedExitCode !== 0 ||
           !Number.isInteger(value.internalExitCode) ||
           value.internalExitCode < 0 ||
@@ -618,7 +635,18 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
           protocolError ||= "SHUTDOWN_COMPLETION_INVALID";
         } else {
           shutdownInternalExitCode = value.internalExitCode;
-          if (value.internalExitCode === 0) {
+          if (
+            value.method === "app.quit" &&
+            value.internalExitCode === 0 &&
+            value.beforeQuitCount === 1 &&
+            value.willQuitCount === 1 &&
+            value.quitCount === 1 &&
+            Array.isArray(value.lifecycle) &&
+            value.lifecycle.length === managedLifecycle.length &&
+            value.lifecycle.every(
+              (event, index) => event === managedLifecycle[index],
+            )
+          ) {
             shutdownTerminalConfirmed = true;
           } else {
             protocolError ||= "SHUTDOWN_TERMINAL_ACK_INVALID";
@@ -767,7 +795,7 @@ function assertProvider(result) {
 function recordProcess(execution, mode) {
   const { childPid, result } = execution;
   ensure(
-    execution.lifecycle === "electron-exit-after-parent-command" ||
+    execution.lifecycle === "electron-quit-after-parent-command" ||
       execution.lifecycle === "forced-after-parent-command",
     "CHILD_LIFECYCLE_INVALID",
   );
@@ -779,7 +807,7 @@ function recordProcess(execution, mode) {
       execution.shutdownRequestedWhileAlive === true,
     "CHILD_TERMINATION_EVIDENCE_INVALID",
   );
-  if (execution.lifecycle === "electron-exit-after-parent-command") {
+  if (execution.lifecycle === "electron-quit-after-parent-command") {
     const expectedCode = process.platform === "win32" ? 1 : 0;
     ensure(
       execution.electronExitObserved === true &&
@@ -849,6 +877,37 @@ async function expectPreExitAcknowledgementRejected(expectedState) {
     "PRE_EXIT_ACK_FAULT_NOT_REJECTED",
   );
   assertPrimaryUnchanged(expectedState);
+}
+
+async function expectPostQuitProviderStateFaultRejected() {
+  if (process.platform !== "win32") return;
+  const faultStateRoot = fs.mkdtempSync(
+    path.join(temporaryRoot, "constellation-post-quit-fault-"),
+  );
+  let rejection;
+  try {
+    await launch({
+      mode: "shutdown-post-quit-fault",
+      workspaceId: workspace,
+      wrapperName: "unused-post-quit-fault.wrap.json",
+      databaseName: "unused-post-quit-fault.db",
+      probeStateRoot: faultStateRoot,
+    });
+  } catch (error) {
+    rejection = error;
+  } finally {
+    await removeDirectory(faultStateRoot);
+  }
+  ensure(
+    rejection instanceof Error &&
+      new Set([
+        "WINDOWS_PROVIDER_STATE_INVALID",
+        "WINDOWS_PROVIDER_KEY_MISSING",
+        "WINDOWS_PROVIDER_KEY_INVALID",
+      ]).has(rejection.message),
+    "POST_QUIT_PROVIDER_FAULT_NOT_REJECTED",
+  );
+  windowsPostQuitProviderFaultRejected = true;
 }
 
 function assertPrimaryUnchanged(expected) {
@@ -951,11 +1010,11 @@ function assertProbeKeychainItemPresent() {
   ensure(find.status === 0, "KEYCHAIN_ITEM_MISSING");
 }
 
-async function removeStateRoot() {
+async function removeDirectory(directory) {
   let lastError;
   for (let attempt = 0; attempt < 6; attempt += 1) {
     try {
-      fs.rmSync(stateRoot, { recursive: true, force: true });
+      fs.rmSync(directory, { recursive: true, force: true });
       return;
     } catch (error) {
       lastError = error;
@@ -963,6 +1022,10 @@ async function removeStateRoot() {
     }
   }
   throw lastError || new Error("STATE_CLEANUP_FAILED");
+}
+
+async function removeStateRoot() {
+  await removeDirectory(stateRoot);
 }
 
 const artifactPaths = [executable, appArchive, nativeAddon];
@@ -976,6 +1039,7 @@ try {
     artifactDigests.set(artifact, digestFile(artifact));
   }
   removeProbeKeychainItem();
+  await expectPostQuitProviderStateFaultRejected();
 
   const writer = await launch({
     mode: "provision",
@@ -989,7 +1053,7 @@ try {
   recordProcess(writer, "provision");
   ensure(
     process.platform !== "win32" ||
-      writer.lifecycle === "electron-exit-after-parent-command",
+      writer.lifecycle === "electron-quit-after-parent-command",
     "WINDOWS_WRITER_SHUTDOWN_INVALID",
   );
   assertExactResultKeys(writer.result, [
@@ -1230,6 +1294,10 @@ try {
         forcedProcessExits === 0,
       "WINDOWS_ELECTRON_EXIT_MATRIX_INVALID",
     );
+    ensure(
+      windowsPostQuitProviderFaultRejected,
+      "POST_QUIT_PROVIDER_FAULT_NOT_REJECTED",
+    );
   }
   assertWindowsProviderStateUnchanged(windowsProviderStateDigest);
   for (const [artifact, expected] of artifactDigests) {
@@ -1258,6 +1326,10 @@ try {
       forcedProcessExits,
       observedElectronExitCode: process.platform === "win32" ? 1 : 0,
       preExitAcknowledgementFaultRejected: true,
+      windowsPostQuitProviderFaultRejected:
+        process.platform === "win32"
+          ? windowsPostQuitProviderFaultRejected
+          : "not-applicable",
       distinctProcesses: processIds.size,
       internallyGeneratedDek: true,
       asyncSafeStorage: true,

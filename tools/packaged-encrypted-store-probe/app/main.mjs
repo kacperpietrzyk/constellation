@@ -45,7 +45,13 @@ const EXIT_CODES = Object.freeze({
 let config;
 let nativeAddonPackaged = false;
 let finishStarted = false;
-let electronExitRequested = false;
+let exitAuthorizationAccepted = false;
+let faultExitRequested = false;
+let postQuitFaultRequested = false;
+const shutdownLifecycle = [];
+let beforeQuitCount = 0;
+let willQuitCount = 0;
+let quitCount = 0;
 
 class ProbeFailure extends Error {
   constructor(code) {
@@ -110,7 +116,7 @@ function writeShutdownAcknowledgement() {
     `${JSON.stringify({
       type: SHUTDOWN_ACK_TYPE,
       processId: process.pid,
-      method: "app.exit",
+      method: "app.quit",
       requestedExitCode: 0,
     })}\n`,
     "utf8",
@@ -127,14 +133,18 @@ function writeShutdownAcknowledgement() {
   }
 }
 
-function writeShutdownCompletion(internalExitCode) {
+function writeShutdownCompletion(method, internalExitCode) {
   const output = Buffer.from(
     `${JSON.stringify({
       type: SHUTDOWN_COMPLETE_TYPE,
       processId: process.pid,
-      method: "app.exit",
+      method,
       requestedExitCode: 0,
       internalExitCode,
+      lifecycle: shutdownLifecycle,
+      beforeQuitCount,
+      willQuitCount,
+      quitCount,
     })}\n`,
     "utf8",
   );
@@ -150,8 +160,30 @@ function writeShutdownCompletion(internalExitCode) {
   }
 }
 
+app.on("before-quit", () => {
+  if (!exitAuthorizationAccepted) return;
+  beforeQuitCount += 1;
+  shutdownLifecycle.push("before-quit");
+});
+
+app.on("will-quit", () => {
+  if (!exitAuthorizationAccepted) return;
+  willQuitCount += 1;
+  shutdownLifecycle.push("will-quit");
+});
+
+app.on("quit", (_event, internalExitCode) => {
+  if (!exitAuthorizationAccepted) return;
+  quitCount += 1;
+  shutdownLifecycle.push("quit");
+  writeShutdownCompletion("app.quit", internalExitCode);
+  if (postQuitFaultRequested) process.exit(1);
+});
+
 process.on("exit", (internalExitCode) => {
-  if (electronExitRequested) writeShutdownCompletion(internalExitCode);
+  if (faultExitRequested) {
+    writeShutdownCompletion("process.exit", internalExitCode);
+  }
 });
 
 function awaitParentExitAuthorization() {
@@ -193,12 +225,14 @@ function awaitParentExitAuthorization() {
     completed = true;
     clear();
     process.disconnect();
-    electronExitRequested = true;
+    exitAuthorizationAccepted = true;
     if (config?.mode === "shutdown-fault") {
+      faultExitRequested = true;
       process.exit(1);
       return;
     }
-    app.exit(0);
+    postQuitFaultRequested = config?.mode === "shutdown-post-quit-fault";
+    app.quit();
   };
 
   process.once("message", onMessage);
@@ -244,9 +278,9 @@ function awaitParentShutdownCommand() {
     // An Electron-managed main-loop shutdown is required on Windows so
     // Chromium can commit the DPAPI-wrapped async-provider key in profile
     // Local State. The declared probe outcome remains in the fixed protocol;
-    // the requested Electron exit code is always an explicit zero and the
-    // parent records the platform-observed status separately. The parent owns
-    // the deadline and force-kill fallback.
+    // the terminal Electron quit event must report zero and the parent records
+    // the platform-observed status separately. The parent owns the deadline
+    // and force-kill fallback.
     awaitParentExitAuthorization();
     writeShutdownAcknowledgement();
   };
@@ -313,7 +347,13 @@ function parseConfig() {
   const databaseName = getArgument("database");
 
   if (
-    !new Set(["provision", "verify", "plaintext", "shutdown-fault"]).has(mode)
+    !new Set([
+      "provision",
+      "verify",
+      "plaintext",
+      "shutdown-fault",
+      "shutdown-post-quit-fault",
+    ]).has(mode)
   ) {
     fail("CONFIG_INVALID");
   }
@@ -553,6 +593,24 @@ async function requireAsyncEncryption() {
     fail("ENCRYPTION_UNAVAILABLE");
   }
   if (available !== true) fail("ENCRYPTION_UNAVAILABLE");
+}
+
+async function initializeAsyncProviderForShutdownFault() {
+  await requireAsyncEncryption();
+  let encrypted;
+  try {
+    encrypted = await safeStorage.encryptStringAsync(
+      "constellation-provider-state-fault-fixture",
+    );
+    if (!Buffer.isBuffer(encrypted) || encrypted.length === 0) {
+      fail("ENCRYPTION_UNAVAILABLE");
+    }
+  } catch (error) {
+    if (error instanceof ProbeFailure) throw error;
+    fail("ENCRYPTION_UNAVAILABLE");
+  } finally {
+    encrypted?.fill?.(0);
+  }
 }
 
 async function encryptPayload(payload, canaries, scope) {
@@ -1201,6 +1259,9 @@ if (config) {
       let result;
       if (config.mode === "shutdown-fault") {
         result = fixedResult("pass", "SHUTDOWN_FAULT_ARMED");
+      } else if (config.mode === "shutdown-post-quit-fault") {
+        await initializeAsyncProviderForShutdownFault();
+        result = fixedResult("pass", "POST_QUIT_FAULT_ARMED");
       } else if (config.mode === "plaintext") {
         const Database = await loadDatabaseConstructor();
         result = createPlaintextFixture(Database);

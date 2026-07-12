@@ -46,14 +46,18 @@ The probe fails unless all of these checks pass:
   post-close scanning, and failure cleanup, then waits for an exact parent
   shutdown command; the child acknowledges that command while it remains live,
   waits for a second exact exit authorization over its inherited IPC channel,
-  then requests `app.exit(0)`. A synchronous process-exit hook reports the
-  internal zero code as terminal evidence. The harness preserves the declared
-  outcome separately from the observed process result, lets the Electron
-  main-loop shutdown commit provider state, force-terminates a stalled process
-  tree, and requires both inherited output pipes to close;
+  then requests `app.quit()`. A synchronous terminal record requires the exact
+  Electron `before-quit` → `will-quit` → `quit(0)` lifecycle. The harness
+  preserves the declared outcome separately from the observed process result,
+  lets the Electron main-loop shutdown commit provider state, force-terminates
+  a stalled process tree, and requires both inherited output pipes to close;
 - a dedicated falsification launch emits readiness and the pre-exit
   acknowledgement, then exits internally with code `1`; the harness must reject
   it before the ordinary eleven-process result can pass;
+- a Windows-only post-`quit(0)` falsification launch initializes the async
+  provider, emits the complete managed lifecycle, then exits before Chromium's
+  profile-state commit; the harness must reject the missing canonical DPAPI
+  state even though its outer status matches the observed Windows status;
 - macOS uses an ad-hoc-signed package and disposable hosted-runner Keychain;
   Windows uses an unsigned mechanism package with statically linked pinned
   OpenSSL; every generated file and exact probe-only Keychain item is removed
@@ -64,13 +68,14 @@ provider prompt or native hang becomes a bounded failure. After readiness, the
 parent allows five seconds for the acknowledged, two-phase Electron-managed
 shutdown. A stalled child is force-terminated; either path must close both
 inherited output pipes within five seconds, or the probe fails closed. Each
-Electron-managed exit must include terminal in-process evidence of internal
-code `0`. The pinned executable is then required to report the observed
-platform status (`0` on macOS and `1` on Windows) without a signal. Windows
+Electron-managed exit must include the complete ordered lifecycle and Electron
+`quit` event code `0`. The pinned executable is then required to report the
+observed platform status (`0` on macOS and `1` on Windows) without a signal. Windows
 additionally requires all eleven ordinary launches to use this terminally
-confirmed path so provider-state persistence cannot pass through the force-kill
-fallback; the fixed declared outcome remains authoritative for each probe
-operation.
+confirmed path and validates canonical DPAPI provider state after every process
+close, so provider-state persistence cannot pass through either the force-kill
+fallback or a post-lifecycle crash; the fixed declared outcome remains
+authoritative for each probe operation.
 
 ## Pinned inputs
 
