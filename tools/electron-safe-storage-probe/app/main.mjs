@@ -97,18 +97,72 @@ function hasExactKeys(value, expectedKeys) {
 }
 
 async function readSyntheticKey() {
-  const chunks = [];
-  let length = 0;
-  for await (const chunk of process.stdin) {
-    const buffer = Buffer.from(chunk);
-    length += buffer.length;
-    if (length > 32) fail("KEY_INPUT_INVALID", 81);
-    chunks.push(buffer);
+  if (
+    typeof process.send !== "function" ||
+    typeof process.disconnect !== "function" ||
+    !process.connected ||
+    !process.channel
+  ) {
+    fail("KEY_INPUT_INVALID", 81);
   }
-  if (length !== 32) fail("KEY_INPUT_INVALID", 81);
-  const key = Buffer.concat(chunks, length);
-  for (const chunk of chunks) chunk.fill(0);
-  return key;
+
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      process.removeListener("disconnect", failInput);
+      process.removeListener("message", receiveKey);
+    };
+    const failInput = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new ProbeFailure("KEY_INPUT_INVALID", 81));
+    };
+    const receiveKey = (message) => {
+      if (
+        !hasExactKeys(message, ["key", "type"]) ||
+        message.type !== "constellation.synthetic-key/v1" ||
+        !Array.isArray(message.key) ||
+        message.key.length !== 32 ||
+        !message.key.every(
+          (byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255,
+        )
+      ) {
+        message?.key?.fill?.(0);
+        failInput();
+        return;
+      }
+
+      settled = true;
+      cleanup();
+      const key = Buffer.from(message.key);
+      message.key.fill(0);
+      setImmediate(() => {
+        if (process.connected) process.disconnect();
+      });
+      resolve(key);
+    };
+
+    process.once("disconnect", failInput);
+    process.once("message", receiveKey);
+    try {
+      process.send(
+        {
+          type: "constellation.synthetic-key-ready/v1",
+          mode: config.mode,
+          processId: process.pid,
+          bootstrapEnvironmentCleared:
+            process.env.NODE_CHANNEL_FD === undefined &&
+            process.env.NODE_CHANNEL_SERIALIZATION_MODE === undefined,
+        },
+        (error) => {
+          if (error) failInput();
+        },
+      );
+    } catch {
+      failInput();
+    }
+  });
 }
 
 function publishAtomically(target, contents) {
@@ -146,8 +200,7 @@ function publishAtomically(target, contents) {
   }
 }
 
-async function writeWrapper() {
-  const keyBytes = await readSyntheticKey();
+async function writeWrapper(keyBytes) {
   const keyMaterial = keyBytes.toString("base64url");
   keyBytes.fill(0);
 
@@ -191,6 +244,7 @@ async function writeWrapper() {
 
   return fixedResult("pass", "WRAPPER_PUBLISHED", {
     asyncEncryptionAvailable: true,
+    keyTransport: "inherited-ipc",
     wrapperPublished: true,
   });
 }
@@ -339,12 +393,20 @@ if (config) {
         fail("PACKAGED_IDENTITY_INVALID", 90);
       }
 
-      const asyncAvailable = await safeStorage.isAsyncEncryptionAvailable();
-      if (asyncAvailable !== true) fail("ENCRYPTION_UNAVAILABLE", 91);
+      let keyBytes;
+      try {
+        if (config.mode === "write") keyBytes = await readSyntheticKey();
+        const asyncAvailable = await safeStorage.isAsyncEncryptionAvailable();
+        if (asyncAvailable !== true) fail("ENCRYPTION_UNAVAILABLE", 91);
 
-      const result =
-        config.mode === "write" ? await writeWrapper() : await verifyWrapper();
-      finish(result, 0);
+        const result =
+          config.mode === "write"
+            ? await writeWrapper(keyBytes)
+            : await verifyWrapper();
+        finish(result, 0);
+      } finally {
+        keyBytes?.fill(0);
+      }
     } catch (error) {
       const code = error instanceof ProbeFailure ? error.code : "PROBE_FAILED";
       const exitCode = error instanceof ProbeFailure ? error.exitCode : 99;

@@ -29,6 +29,11 @@ The probe fails unless all of these checks pass:
   directories do not contain the exact synthetic bytes or their encoded payload;
 - macOS uses an ad-hoc-signed package whose signature verifies, and Windows runs
   the unsigned package under the hosted runner user;
+- the synthetic key reaches the child through Node's dedicated inherited IPC
+  channel, never through argv, environment, stdin, a regular file, an
+  application-created named network endpoint, or logs;
+- a write launch without that channel fails before safeStorage access and does
+  not create a wrapper;
 - the hosted macOS job uses a fresh disposable user Keychain, then restores the
   runner's prior default and search list before deleting that Keychain;
 - every package, profile, wrapper, and test value is removed without upload; the

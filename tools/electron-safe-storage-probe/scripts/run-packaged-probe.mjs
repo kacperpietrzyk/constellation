@@ -64,13 +64,21 @@ const replacementPayload = JSON.stringify({
   keyVersion: 1,
   keyMaterial: replacementSecretText,
 });
+const secretByteArrayCanary = Buffer.from(
+  `[${Array.from(secretBytes).join(",")}]`,
+);
+const replacementByteArrayCanary = Buffer.from(
+  `[${Array.from(replacementSecretBytes).join(",")}]`,
+);
 const canaries = [
   secretBytes,
   Buffer.from(secretText),
   Buffer.from(exactPayload),
+  secretByteArrayCanary,
   replacementSecretBytes,
   Buffer.from(replacementSecretText),
   Buffer.from(replacementPayload),
+  replacementByteArrayCanary,
 ];
 const processIds = new Set();
 const captured = [];
@@ -134,6 +142,13 @@ function terminateTree(child) {
 async function launch({ mode, workspaceId, wrapperName, input }) {
   const environment = { ...process.env };
   delete environment.ELECTRON_RUN_AS_NODE;
+  const keyChannel = input !== undefined;
+  if (keyChannel) {
+    ensure(
+      Buffer.isBuffer(input) && input.length === 32,
+      "KEY_CHANNEL_INPUT_INVALID",
+    );
+  }
   const argumentsForProbe = [
     `--user-data-dir=${profile}`,
     `--probe-mode=${mode}`,
@@ -148,7 +163,7 @@ async function launch({ mode, workspaceId, wrapperName, input }) {
       child = spawn(executable, argumentsForProbe, {
         detached: process.platform !== "win32",
         env: environment,
-        stdio: ["pipe", "pipe", "pipe"],
+        stdio: ["ignore", "pipe", "pipe", keyChannel ? "ipc" : "ignore"],
         windowsHide: true,
       });
     } catch {
@@ -159,6 +174,7 @@ async function launch({ mode, workspaceId, wrapperName, input }) {
     const stderr = [];
     let stdoutLength = 0;
     let stderrLength = 0;
+    let keySent = false;
     let settled = false;
     let timer;
     let terminationTimer;
@@ -185,9 +201,48 @@ async function launch({ mode, workspaceId, wrapperName, input }) {
 
     child.stdout.on("data", (chunk) => collect(stdout, chunk, true));
     child.stderr.on("data", (chunk) => collect(stderr, chunk, false));
-    child.stdin.on("error", () => {
-      // An early fixed failure may close stdin before the parent finishes it.
-    });
+    if (keyChannel) {
+      child.on("message", (message) => {
+        if (
+          keySent ||
+          !message ||
+          typeof message !== "object" ||
+          Array.isArray(message) ||
+          Object.keys(message).length !== 4 ||
+          message.type !== "constellation.synthetic-key-ready/v1" ||
+          message.mode !== mode ||
+          message.processId !== child.pid ||
+          message.bootstrapEnvironmentCleared !== true
+        ) {
+          terminateTree(child);
+          finish(() => reject(new Error("KEY_CHANNEL_PROTOCOL_INVALID")));
+          return;
+        }
+
+        keySent = true;
+        const key = Array.from(input);
+        try {
+          child.send(
+            {
+              type: "constellation.synthetic-key/v1",
+              key,
+            },
+            (error) => {
+              key.fill(0);
+              if (!error) return;
+              terminateTree(child);
+              finish(() => reject(new Error("KEY_CHANNEL_SEND_FAILED")));
+            },
+          );
+        } catch {
+          key.fill(0);
+          if (!settled) {
+            terminateTree(child);
+            finish(() => reject(new Error("KEY_CHANNEL_SEND_FAILED")));
+          }
+        }
+      });
+    }
     child.on("error", () =>
       finish(() => reject(new Error("PACKAGED_LAUNCH_FAILED"))),
     );
@@ -240,8 +295,10 @@ async function launch({ mode, workspaceId, wrapperName, input }) {
       );
     }, 45_000);
 
-    if (input) child.stdin.end(input);
-    else child.stdin.end();
+    if (keyChannel && (typeof child.send !== "function" || !child.connected)) {
+      terminateTree(child);
+      finish(() => reject(new Error("KEY_CHANNEL_UNAVAILABLE")));
+    }
   });
 }
 
@@ -379,6 +436,10 @@ try {
     writer.result.asyncEncryptionAvailable === true,
     "WRITER_PROVIDER_INVALID",
   );
+  ensure(
+    writer.result.keyTransport === "inherited-ipc",
+    "WRITER_TRANSPORT_INVALID",
+  );
   processIds.add(writer.result.processId);
   assertProbeKeychainItemPresent();
 
@@ -401,6 +462,20 @@ try {
   );
   expectedPayloadDigest.fill(0);
   publishedPayloadDigest.fill(0);
+
+  await expectFailure(
+    {
+      mode: "write",
+      workspaceId: workspace,
+      wrapperName: "no-channel.wrap.json",
+    },
+    ["KEY_INPUT_INVALID"],
+    originalHash,
+  );
+  ensure(
+    !fs.existsSync(path.join(stateRoot, "no-channel.wrap.json")),
+    "MISSING_KEY_CHANNEL_CREATED_WRAPPER",
+  );
 
   await expectFailure(
     {
@@ -516,7 +591,7 @@ try {
     !fs.existsSync(path.join(stateRoot, "missing.wrap.json")),
     "MISSING_WRAPPER_CREATED",
   );
-  ensure(processIds.size === 10, "PROCESS_COUNT_INVALID");
+  ensure(processIds.size === 11, "PROCESS_COUNT_INVALID");
 
   original.fill(0);
   originalHash.fill(0);
@@ -541,7 +616,9 @@ try {
       invalidWrappersRejected: 5,
       crossWorkspaceSwapRejected: true,
       contextForgeryRejected: true,
+      missingKeyChannelRejected: true,
       plaintextScan: true,
+      keyTransport: "inherited-ipc",
       provider:
         process.platform === "darwin"
           ? "Electron documented macOS Keychain provider"
@@ -554,7 +631,9 @@ try {
   );
 } finally {
   secretBytes.fill(0);
+  secretByteArrayCanary.fill(0);
   replacementSecretBytes.fill(0);
+  replacementByteArrayCanary.fill(0);
   try {
     removeProbeKeychainItem();
   } finally {
