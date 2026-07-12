@@ -135,10 +135,12 @@ function awaitParentShutdownCommand() {
       process.kill(process.pid, "SIGKILL");
       return;
     }
-    // A normal Electron shutdown is required on Windows so Chromium can
-    // commit the DPAPI-wrapped async-provider key in the profile Local State.
-    // The parent owns the deadline and force-kill fallback.
-    app.quit();
+    // An Electron-managed main-loop shutdown is required on Windows so
+    // Chromium can commit the DPAPI-wrapped async-provider key in profile
+    // Local State. The declared probe outcome remains in the fixed protocol;
+    // the process-level shutdown status is always an explicit zero. The parent
+    // owns the deadline and force-kill fallback.
+    app.exit(0);
   };
   const onError = () => abort();
 
@@ -159,9 +161,9 @@ function finish(result, exitCode) {
     TERMINATION_FAILSAFE_MS,
   );
   // Every store path closes and scans its state before returning here. The
-  // synchronous readiness record lets the parent authorize a normal Electron
-  // shutdown, supervise its deadline, and verify that all inherited pipes
-  // close. The child remains live until that exact command arrives.
+  // synchronous readiness record lets the parent authorize an Electron-managed
+  // main-loop exit, supervise its deadline, and verify that all inherited
+  // pipes close. The child remains live until that exact command arrives.
   writeFixedResult(result, exitCode);
   awaitParentShutdownCommand();
 }

@@ -45,7 +45,7 @@ const primaryWrapperPath = path.join(stateRoot, primaryWrapper);
 const primaryDatabasePath = path.join(stateRoot, primaryDatabase);
 const shutdownCommand = "constellation.packaged-store-probe.shutdown/v1\n";
 const processIds = new Set();
-let gracefulProcessExits = 0;
+let electronManagedProcessExits = 0;
 let forcedProcessExits = 0;
 let windowsProviderStateDigest;
 const captured = [];
@@ -252,7 +252,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     let hardCleanupTimer;
     let cleanupRetryTimer;
     let forcedTerminationRecheckTimer;
-    let gracefulShutdownTimer;
+    let electronShutdownTimer;
     let helperCleanupTimer;
     let stdinErrorRecheckTimer;
     let postExitTimer;
@@ -262,7 +262,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     let forcedTerminationRequested = false;
     let forcedTerminationAccepted = false;
     let shutdownRequestedWhileAlive = false;
-    let gracefulExitObserved = false;
+    let electronExitObserved = false;
     let readyResult;
     let protocolError;
     let protocolResultCount = 0;
@@ -282,7 +282,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       if (forcedTerminationRecheckTimer) {
         clearTimeout(forcedTerminationRecheckTimer);
       }
-      if (gracefulShutdownTimer) clearTimeout(gracefulShutdownTimer);
+      if (electronShutdownTimer) clearTimeout(electronShutdownTimer);
       if (helperCleanupTimer) clearTimeout(helperCleanupTimer);
       if (stdinErrorRecheckTimer) clearTimeout(stdinErrorRecheckTimer);
       if (postExitTimer) clearTimeout(postExitTimer);
@@ -339,11 +339,11 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
               "ACTUAL_TERMINATION_STATUS_MISSING",
             );
             ensure(
-              gracefulExitObserved ||
+              electronExitObserved ||
                 (forcedTerminationRequested && forcedTerminationAccepted),
               "TERMINATION_OUTCOME_UNVERIFIED",
             );
-            if (gracefulExitObserved) {
+            if (electronExitObserved) {
               const codeLabel = Number.isInteger(code)
                 ? String(code)
                 : code === null
@@ -357,18 +357,18 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
                     : typeof signal;
               ensure(
                 code === 0 && signal === null,
-                `GRACEFUL_SHUTDOWN_STATUS_INVALID:${codeLabel}:${signalLabel}`,
+                `ELECTRON_SHUTDOWN_STATUS_INVALID:${codeLabel}:${signalLabel}`,
               );
             } else {
               ensure(
                 process.platform !== "win32",
-                "WINDOWS_GRACEFUL_SHUTDOWN_REQUIRED",
+                "WINDOWS_ELECTRON_EXIT_REQUIRED",
               );
             }
             resolve({
               declaredExitCode: result.declaredExitCode,
-              lifecycle: gracefulExitObserved
-                ? "graceful-after-parent-command"
+              lifecycle: electronExitObserved
+                ? "electron-exit-after-parent-command"
                 : "forced-after-parent-command",
               actualCode: code,
               actualSignal: signal,
@@ -377,7 +377,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
               forcedTerminationRequested,
               forcedTerminationAccepted,
               shutdownRequestedWhileAlive,
-              gracefulExitObserved,
+              electronExitObserved,
               childPid: child.pid,
               result,
             });
@@ -470,7 +470,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
         clearTimeout(timer);
         timer = undefined;
       }
-      gracefulShutdownTimer = setTimeout(requestForcedTermination, 5_000);
+      electronShutdownTimer = setTimeout(requestForcedTermination, 5_000);
     };
     const inspectProtocolLine = (line) => {
       const text = line.toString("utf8");
@@ -550,12 +550,12 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
         clearTimeout(timer);
         timer = undefined;
       }
-      if (gracefulShutdownTimer) {
-        clearTimeout(gracefulShutdownTimer);
-        gracefulShutdownTimer = undefined;
+      if (electronShutdownTimer) {
+        clearTimeout(electronShutdownTimer);
+        electronShutdownTimer = undefined;
       }
       if (parentSupervisionStarted) {
-        if (!forcedTerminationRequested) gracefulExitObserved = true;
+        if (!forcedTerminationRequested) electronExitObserved = true;
         if (!helperCleanupTimer) {
           helperCleanupTimer = setTimeout(
             () => startHardCleanup("HELPER_CLOSE_TIMEOUT"),
@@ -628,7 +628,7 @@ function assertProvider(result) {
 function recordProcess(execution, mode) {
   const { childPid, result } = execution;
   ensure(
-    execution.lifecycle === "graceful-after-parent-command" ||
+    execution.lifecycle === "electron-exit-after-parent-command" ||
       execution.lifecycle === "forced-after-parent-command",
     "CHILD_LIFECYCLE_INVALID",
   );
@@ -638,18 +638,18 @@ function recordProcess(execution, mode) {
       execution.shutdownRequestedWhileAlive === true,
     "CHILD_TERMINATION_EVIDENCE_INVALID",
   );
-  if (execution.lifecycle === "graceful-after-parent-command") {
+  if (execution.lifecycle === "electron-exit-after-parent-command") {
     ensure(
-      execution.gracefulExitObserved === true &&
+      execution.electronExitObserved === true &&
         execution.forcedTerminationRequested === false &&
         execution.actualCode === 0 &&
         execution.actualSignal === null,
-      "CHILD_GRACEFUL_EXIT_INVALID",
+      "CHILD_ELECTRON_EXIT_INVALID",
     );
-    gracefulProcessExits += 1;
+    electronManagedProcessExits += 1;
   } else {
     ensure(
-      execution.gracefulExitObserved === false &&
+      execution.electronExitObserved === false &&
         execution.forcedTerminationRequested === true &&
         execution.forcedTerminationAccepted === true,
       "CHILD_FORCED_EXIT_INVALID",
@@ -821,7 +821,7 @@ try {
   recordProcess(writer, "provision");
   ensure(
     process.platform !== "win32" ||
-      writer.lifecycle === "graceful-after-parent-command",
+      writer.lifecycle === "electron-exit-after-parent-command",
     "WINDOWS_WRITER_SHUTDOWN_INVALID",
   );
   assertExactResultKeys(writer.result, [
@@ -1042,13 +1042,14 @@ try {
 
   ensure(processIds.size === 11, "PROCESS_COUNT_INVALID");
   ensure(
-    gracefulProcessExits + forcedProcessExits === processIds.size,
+    electronManagedProcessExits + forcedProcessExits === processIds.size,
     "PROCESS_LIFECYCLE_COUNT_INVALID",
   );
   if (process.platform === "win32") {
     ensure(
-      gracefulProcessExits === processIds.size && forcedProcessExits === 0,
-      "WINDOWS_GRACEFUL_SHUTDOWN_MATRIX_INVALID",
+      electronManagedProcessExits === processIds.size &&
+        forcedProcessExits === 0,
+      "WINDOWS_ELECTRON_EXIT_MATRIX_INVALID",
     );
   }
   assertWindowsProviderStateUnchanged(windowsProviderStateDigest);
@@ -1072,7 +1073,7 @@ try {
       electron: "43.1.0",
       packagedRelaunch: true,
       parentManagedShutdown: true,
-      gracefulProcessExits,
+      electronManagedProcessExits,
       forcedProcessExits,
       distinctProcesses: processIds.size,
       internallyGeneratedDek: true,
