@@ -20,6 +20,8 @@ const SHUTDOWN_AUTHORIZATION_TYPE =
 const EXIT_AUTHORIZATION_TYPE = "constellation.packaged-store-probe.exit/v1";
 const SHUTDOWN_ACK_TYPE =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
+const SHUTDOWN_READY_TYPE =
+  "constellation.packaged-store-probe.shutdown-ready/v1";
 const EXIT_ACK_TYPE = "constellation.packaged-store-probe.exit-accepted/v1";
 const SHUTDOWN_COMPLETE_TYPE =
   "constellation.packaged-store-probe.shutdown-complete/v1";
@@ -110,6 +112,27 @@ function writeFixedResult(result, declaredExitCode) {
   }
 }
 
+function writeShutdownTransportReady() {
+  const output = Buffer.from(
+    `${JSON.stringify({
+      type: SHUTDOWN_READY_TYPE,
+      processId: process.pid,
+      nextPhase: "exit",
+    })}\n`,
+    "utf8",
+  );
+  try {
+    let offset = 0;
+    while (offset < output.length) {
+      const written = fs.writeSync(1, output, offset, output.length - offset);
+      if (written <= 0) throw new Error("SHUTDOWN_READY_WRITE_FAILED");
+      offset += written;
+    }
+  } finally {
+    output.fill(0);
+  }
+}
+
 function sendShutdownAcknowledgement() {
   process.send(
     {
@@ -119,7 +142,11 @@ function sendShutdownAcknowledgement() {
       requestedExitCode: 0,
     },
     (error) => {
-      if (error) process.kill(process.pid, "SIGKILL");
+      if (error) {
+        process.kill(process.pid, "SIGKILL");
+        return;
+      }
+      writeShutdownTransportReady();
     },
   );
 }
