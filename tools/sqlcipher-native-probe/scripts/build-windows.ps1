@@ -48,7 +48,7 @@ function Invoke-DeveloperCommand([string] $Command) {
   }
 }
 
-$Configure = "cd /d `"$SourceRoot`" && perl Configure VC-WIN64A no-shared no-module no-tests no-docs no-apps --prefix=`"$SourceRoot\install`" --openssldir=`"$SourceRoot\ssl`" --libdir=lib && nmake"
+$Configure = "cd /d `"$SourceRoot`" && perl Configure VC-WIN64A no-shared no-module no-tests no-docs no-apps no-asm --prefix=`"$SourceRoot\install`" --openssldir=`"$SourceRoot\ssl`" --libdir=lib && nmake"
 Invoke-DeveloperCommand $Configure
 
 $LibCrypto = Join-Path $SourceRoot "libcrypto.lib"

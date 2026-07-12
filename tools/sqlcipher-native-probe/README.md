@@ -50,8 +50,11 @@ treated as a supported public API.
 The generated SQLCipher amalgamation artifact includes the upstream license
 from the pinned source tree. The Windows job builds OpenSSL from the official
 release tarball only after checking its published SHA-256 digest; no OpenSSL
-binary is uploaded or retained. Dependency lockfiles preserve the npm package
-sources and integrity digests used by the probe.
+binary is uploaded or retained. It uses OpenSSL's supported `no-asm` build so
+the proof does not acquire a separate assembler toolchain; optimized Windows
+crypto performance remains outside this compatibility claim. Dependency
+lockfiles preserve the npm package sources and integrity digests used by the
+probe.
 
 ## Running
 
