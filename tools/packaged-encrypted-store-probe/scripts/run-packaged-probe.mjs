@@ -567,6 +567,68 @@ async function launch({
       }
       electronShutdownTimer = setTimeout(requestForcedTermination, 5_000);
     };
+    const acceptShutdownAcknowledgement = (value) => {
+      shutdownAckCount += 1;
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        protocolError ||= "SHUTDOWN_ACK_INVALID";
+        startHardCleanup(protocolError);
+        return;
+      }
+      const keys = Object.keys(value).sort();
+      const expectedKeys = [
+        "method",
+        "processId",
+        "requestedExitCode",
+        "type",
+      ].sort();
+      if (
+        shutdownAckCount !== 1 ||
+        keys.length !== expectedKeys.length ||
+        !keys.every((key, index) => key === expectedKeys[index]) ||
+        value.processId !== child.pid ||
+        value.type !== shutdownAckType ||
+        value.method !== "app.quit" ||
+        value.requestedExitCode !== 0 ||
+        !parentSupervisionStarted ||
+        !shutdownAuthorizationQueued ||
+        childHasExited()
+      ) {
+        protocolError ||= "SHUTDOWN_ACK_INVALID";
+        startHardCleanup(protocolError);
+        return;
+      }
+
+      shutdownAcknowledged = true;
+      if (
+        typeof child.send !== "function" ||
+        !child.connected ||
+        !child.channel
+      ) {
+        protocolError ||= "EXIT_AUTHORIZATION_UNAVAILABLE";
+        startHardCleanup(protocolError);
+        return;
+      }
+      try {
+        exitAuthorizationSendStatus = "pending";
+        child.send(
+          {
+            type: exitAuthorizationType,
+            processId: child.pid,
+          },
+          // Delivery is proved by the child's exit-acceptance or terminal
+          // record. An IPC callback error can race the deliberate disconnect
+          // and must not override stronger child evidence; a missing delivery
+          // is bounded by the shutdown deadline.
+          (error) => {
+            exitAuthorizationSendStatus = error ? "failed" : "succeeded";
+          },
+        );
+        exitAuthorizationQueued = true;
+      } catch {
+        protocolError ||= "EXIT_AUTHORIZATION_REJECTED";
+        startHardCleanup(protocolError);
+      }
+    };
     const inspectProtocolLine = (line) => {
       const text = line.toString("utf8");
       const claimsShutdownAccepted = text.includes(
@@ -594,8 +656,8 @@ async function launch({
         }
         return;
       }
-      if (claimsShutdownAccepted && value?.type !== shutdownAckType) {
-        protocolError ||= "SHUTDOWN_ACK_INVALID";
+      if (claimsShutdownAccepted) {
+        protocolError ||= "SHUTDOWN_ACK_CHANNEL_INVALID";
         startHardCleanup(protocolError);
         return;
       }
@@ -607,62 +669,6 @@ async function launch({
       if (claimsExitAccepted && value?.type !== exitAckType) {
         protocolError ||= "EXIT_ACK_INVALID";
         startHardCleanup(protocolError);
-        return;
-      }
-      if (value?.type === shutdownAckType) {
-        shutdownAckCount += 1;
-        const keys = Object.keys(value).sort();
-        const expectedKeys = [
-          "method",
-          "processId",
-          "requestedExitCode",
-          "type",
-        ].sort();
-        if (
-          shutdownAckCount !== 1 ||
-          keys.length !== expectedKeys.length ||
-          !keys.every((key, index) => key === expectedKeys[index]) ||
-          value.processId !== child.pid ||
-          value.method !== "app.quit" ||
-          value.requestedExitCode !== 0 ||
-          !parentSupervisionStarted ||
-          !shutdownAuthorizationQueued ||
-          childHasExited()
-        ) {
-          protocolError ||= "SHUTDOWN_ACK_INVALID";
-          startHardCleanup(protocolError);
-        } else {
-          shutdownAcknowledged = true;
-          if (
-            typeof child.send !== "function" ||
-            !child.connected ||
-            !child.channel
-          ) {
-            protocolError ||= "EXIT_AUTHORIZATION_UNAVAILABLE";
-            startHardCleanup(protocolError);
-            return;
-          }
-          try {
-            exitAuthorizationSendStatus = "pending";
-            child.send(
-              {
-                type: exitAuthorizationType,
-                processId: child.pid,
-              },
-              // Delivery is proved by the child's exit-acceptance or terminal
-              // record. An IPC callback error can race the deliberate
-              // disconnect and must not override stronger child evidence; a
-              // missing delivery is bounded by the shutdown deadline.
-              (error) => {
-                exitAuthorizationSendStatus = error ? "failed" : "succeeded";
-              },
-            );
-            exitAuthorizationQueued = true;
-          } catch {
-            protocolError ||= "EXIT_AUTHORIZATION_REJECTED";
-            startHardCleanup(protocolError);
-          }
-        }
         return;
       }
       if (value?.type === exitAckType) {
@@ -786,6 +792,7 @@ async function launch({
       }
     };
 
+    child.on("message", acceptShutdownAcknowledgement);
     child.stdout.on("data", (chunk) => collect(stdout, chunk, true));
     child.stderr.on("data", (chunk) => collect(stderr, chunk, false));
     child.on("error", () =>

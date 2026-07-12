@@ -110,26 +110,18 @@ function writeFixedResult(result, declaredExitCode) {
   }
 }
 
-function writeShutdownAcknowledgement() {
-  const output = Buffer.from(
-    `${JSON.stringify({
+function sendShutdownAcknowledgement() {
+  process.send(
+    {
       type: SHUTDOWN_ACK_TYPE,
       processId: process.pid,
       method: "app.quit",
       requestedExitCode: 0,
-    })}\n`,
-    "utf8",
+    },
+    (error) => {
+      if (error) process.kill(process.pid, "SIGKILL");
+    },
   );
-  try {
-    let offset = 0;
-    while (offset < output.length) {
-      const written = fs.writeSync(1, output, offset, output.length - offset);
-      if (written <= 0) throw new Error("SHUTDOWN_ACK_WRITE_FAILED");
-      offset += written;
-    }
-  } finally {
-    output.fill(0);
-  }
 }
 
 function writeExitAcknowledgement() {
@@ -249,7 +241,7 @@ function awaitParentShutdownProtocol() {
     }
     if (phase === "shutdown") {
       phase = "exit";
-      writeShutdownAcknowledgement();
+      sendShutdownAcknowledgement();
       return;
     }
 
