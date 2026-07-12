@@ -1,0 +1,96 @@
+# Packaged encrypted-store integration probe
+
+This contributor tool answers one bounded question: can the same packaged
+Electron 43.1.0 x64 artifact compose asynchronous OS-backed `safeStorage` with
+the pinned SQLCipher 4.16.0 native binding, then recover the exact encrypted
+workspace state in a distinct process on native macOS and Windows?
+
+The fixture is clean-room compatibility evidence. It is not application runtime
+code or an accepted persistence adapter.
+
+## Evidence produced
+
+The probe fails unless all of these checks pass:
+
+- the direct executable is a packaged Electron 43.1.0 x64 application with a
+  fixed product name, identifier, early persistent profile, ASAR archive, and
+  exactly one native add-on at the expected `app.asar.unpacked` resource path;
+- the pre-sign packaged add-on digest equals the just-built SQLCipher add-on,
+  the finished package passes its platform identity check, and the executable,
+  ASAR, and finished add-on digests remain unchanged across every process;
+- one privileged packaged writer generates a fresh random 32-byte synthetic DEK
+  internally, protects a strict workspace-bound payload through asynchronous
+  safeStorage, and atomically publishes only its ciphertext and metadata;
+- that writer applies the raw DEK Buffer to SQLCipher before any schema access,
+  clears the explicit Buffer, creates an encrypted WAL database, and writes a
+  fresh synthetic marker plus FTS projection;
+- a distinct process from the same package decrypts and validates the wrapper,
+  applies the recovered DEK to the existing database, clears the Buffer, and
+  verifies the exact marker digest, FTS result, cipher/database/foreign-key
+  integrity, provider, compile options, and disabled extension loading;
+- missing, modified, and wrong-context wrappers, a valid same-context wrapper
+  with the wrong key, a plaintext SQLite database, a corrupted encrypted
+  database, and provisioning over existing state all fail closed without
+  modifying the known-good wrapper or database;
+- the database header and live WAL are encrypted; before and after database
+  close, including failure cleanup, the packaged process scans the package,
+  unpacked add-on, wrapper, database, WAL, profile, temp, and crash state for the
+  actual raw and encoded DEK, key-payload, and marker canaries;
+- unbounded application stdout/stderr and console methods are disabled, the
+  harness accepts exact fixed result shapes only, and the earlier dedicated
+  safeStorage probe remains the independent exact-key output-channel oracle;
+- macOS uses an ad-hoc-signed package and disposable hosted-runner Keychain;
+  Windows uses an unsigned mechanism package with statically linked pinned
+  OpenSSL; every generated file and exact probe-only Keychain item is removed
+  without artifact upload.
+
+The child processes have a 45-second watchdog so an interactive provider prompt
+or native hang becomes a bounded failure.
+
+## Pinned inputs
+
+| Input                | Pin                                                                        | Purpose                                       | License      |
+| -------------------- | -------------------------------------------------------------------------- | --------------------------------------------- | ------------ |
+| SQLCipher Community  | 4.16.0 / `e2a6040f2ae5cfff2b3e08eb3320007d93cdf3fc`                        | Generate the encrypted SQLite source          | BSD-3-Clause |
+| OpenSSL              | 3.5.7 / `a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8` | Static Windows SQLCipher crypto provider      | Apache-2.0   |
+| `better-sqlite3`     | 12.11.1                                                                    | Exercise the raw-key native binding           | MIT          |
+| Electron             | 43.1.0                                                                     | Packaged Keychain/DPAPI and native ABI host   | MIT          |
+| `@electron/packager` | 20.0.2                                                                     | Produce native x64 application folders        | BSD-2-Clause |
+| `node-gyp`           | 13.0.1                                                                     | Compile the disposable Electron native add-on | MIT          |
+
+The workflow installs npm dependencies without lifecycle scripts, generates the
+pinned SQLCipher amalgamation in a short-lived Ubuntu job, verifies platform
+Electron archives and the Windows OpenSSL archive against committed SHA-256
+digests, has read-only repository permissions, references no project secrets,
+uploads only the licensed generated SQLCipher source for one day, and publishes
+no compiled binary or runtime state.
+
+## Execution boundary
+
+The supported evidence path is
+`.github/workflows/packaged-encrypted-store-probe.yml` on the native hosted
+`macos-15-intel` and `windows-2022` runners. The macOS isolation scripts refuse
+to alter Keychain configuration outside GitHub-hosted Actions. A direct local
+run is intended only for a matching x64 host and can create the exact synthetic
+safeStorage item in the current default Keychain; the runner removes it in
+`finally`, and `npm run cleanup` is the interruption-recovery path.
+
+The native build reuses the reviewed, target-root-aware patch and build scripts
+from `tools/sqlcipher-native-probe`; its own lockfile and compiled module remain
+isolated from the product dependency graph.
+
+## Scope limits
+
+This proves same-artifact mechanism integration only. The macOS package is
+ad-hoc signed and the Windows package is unsigned. It does not prove Developer
+ID/notarized or Authenticode-signed N-to-N+1 continuity, installer/reboot or
+OS-account migration, wrapper/database crash-atomic provisioning, real disk-full
+or power-loss recovery, migration recovery, rotation, temporary provider
+unavailability, Windows workspace ACLs, optimized Windows crypto performance,
+portable recovery, reliable JavaScript heap zeroization, renderer isolation, or
+same-user malware resistance.
+
+See Electron's versioned
+[`safeStorage` documentation](https://github.com/electron/electron/blob/v43.1.0/docs/api/safe-storage.md)
+and SQLCipher's
+[`sqlite3_key` guidance](https://www.zetetic.net/sqlcipher/sqlcipher-api/#sqlite3_key).

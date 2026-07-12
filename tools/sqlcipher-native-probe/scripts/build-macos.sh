@@ -6,14 +6,27 @@ if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "x86_64" ]]; then
   exit 2
 fi
 
-AMALGAMATION_DIR="${1:?usage: build-macos.sh AMALGAMATION_DIR}"
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ $# -gt 2 ]]; then
+  echo "usage: build-macos.sh AMALGAMATION_DIR [TARGET_PROBE_ROOT]" >&2
+  exit 2
+fi
+
+AMALGAMATION_DIR="${1:?usage: build-macos.sh AMALGAMATION_DIR [TARGET_PROBE_ROOT]}"
+SCRIPT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$SCRIPT_ROOT"
+if [[ $# -ge 2 ]]; then
+  ROOT="$(cd "$2" && pwd)"
+fi
 ELECTRON_VERSION="43.1.0"
 
 test -f "$AMALGAMATION_DIR/sqlite3.c"
 test -f "$AMALGAMATION_DIR/sqlite3.h"
 
-node "$ROOT/scripts/patch-binding.mjs"
+if [[ $# -ge 2 ]]; then
+  node "$SCRIPT_ROOT/scripts/patch-binding.mjs" "$ROOT"
+else
+  node "$SCRIPT_ROOT/scripts/patch-binding.mjs"
+fi
 
 (
   cd "$ROOT/node_modules/better-sqlite3"

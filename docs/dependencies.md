@@ -61,6 +61,30 @@ restores the prior Keychain configuration. Its ad-hoc macOS and unsigned Windows
 packages prove mechanism compatibility only, not production signing or update
 continuity.
 
+## Packaged encrypted-store integration probe
+
+`tools/packaged-encrypted-store-probe` has a third separate lockfile and
+dependency graph. It composes the two primitive probes inside one synthetic
+packaged main process; it is not application runtime code or an accepted
+persistence adapter.
+
+| Dependency                  | Purpose                                      | License      |
+| --------------------------- | -------------------------------------------- | ------------ |
+| SQLCipher Community 4.16.0  | Generate the pinned encrypted SQLite source  | BSD-3-Clause |
+| OpenSSL 3.5.7               | Static Windows crypto provider               | Apache-2.0   |
+| `better-sqlite3` 12.11.1    | Exercise the packaged raw-key native binding | MIT          |
+| Electron 43.1.0             | Compose packaged safeStorage and native ABI  | MIT          |
+| `@electron/packager` 20.0.2 | Produce native x64 application folders       | BSD-2-Clause |
+| `node-gyp` 13.0.1           | Compile the disposable native binding        | MIT          |
+
+The tool reuses the reviewed target-root-aware SQLCipher patch/build scripts,
+installs without lifecycle scripts, verifies source archives by committed
+digest, unpacks the native add-on before packaging/signing, uploads no compiled
+binary or runtime state, and removes its package, synthetic wrapper/database,
+profile, and exact probe-only Keychain item. Its ad-hoc macOS and unsigned
+Windows packages prove same-artifact mechanism integration only, not production
+signing or update continuity.
+
 The product currently has no runtime native module, telemetry SDK, network
 client, model-provider client, or post-install build step. Native SQLCipher and
 Electron remain outside this reference-kernel dependency graph until their

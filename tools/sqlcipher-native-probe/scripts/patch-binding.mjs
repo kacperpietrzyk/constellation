@@ -2,10 +2,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const probeRoot = path.resolve(
+const defaultProbeRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
+if (process.argv.length > 3) {
+  throw new Error("usage: patch-binding.mjs [TARGET_PROBE_ROOT]");
+}
+const probeRoot = process.argv[2]
+  ? path.resolve(process.argv[2])
+  : defaultProbeRoot;
 const moduleRoot = path.join(probeRoot, "node_modules", "better-sqlite3");
 
 function replaceExact(relativePath, before, after) {
