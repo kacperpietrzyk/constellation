@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import originalFs from "original-fs";
 import { app, safeStorage } from "electron";
 
 const APP_ID = "io.constellation.packaged-store-probe";
@@ -169,9 +170,9 @@ function pathsMatch(left, right) {
   }
 }
 
-function pathKind(target) {
+function pathKind(target, fileSystem = fs) {
   try {
-    return fs.lstatSync(target);
+    return fileSystem.lstatSync(target);
   } catch (error) {
     if (error?.code === "ENOENT") return undefined;
     throw error;
@@ -906,7 +907,10 @@ function verifyPackagedIdentity() {
     fail("PACKAGED_IDENTITY_INVALID");
   }
 
-  const archiveMetadata = pathKind(expectedArchive);
+  // Electron's patched fs treats app.asar as a virtual directory. Inspect the
+  // archive through original-fs so this check proves the physical package
+  // layout instead of asserting against Electron's synthetic ASAR metadata.
+  const archiveMetadata = pathKind(expectedArchive, originalFs);
   const unpackedMetadata = pathKind(expectedUnpackedRoot);
   const addonMetadata = pathKind(expectedAddon);
   if (
