@@ -19,8 +19,6 @@ const SHUTDOWN_AUTHORIZATION_TYPE =
   "constellation.packaged-store-probe.shutdown/v1";
 const SHUTDOWN_ACK_TYPE =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
-const SHUTDOWN_READY_TYPE =
-  "constellation.packaged-store-probe.shutdown-ready/v1";
 const EXIT_ACK_TYPE = "constellation.packaged-store-probe.exit-accepted/v1";
 const SHUTDOWN_COMPLETE_TYPE =
   "constellation.packaged-store-probe.shutdown-complete/v1";
@@ -111,12 +109,13 @@ function writeFixedResult(result, declaredExitCode) {
   }
 }
 
-function writeShutdownTransportReady() {
+function writeShutdownAcknowledgement() {
   const output = Buffer.from(
     `${JSON.stringify({
-      type: SHUTDOWN_READY_TYPE,
+      type: SHUTDOWN_ACK_TYPE,
       processId: process.pid,
-      nextPhase: "exit",
+      method: "app.quit",
+      requestedExitCode: 0,
     })}\n`,
     "utf8",
   );
@@ -124,31 +123,12 @@ function writeShutdownTransportReady() {
     let offset = 0;
     while (offset < output.length) {
       const written = fs.writeSync(1, output, offset, output.length - offset);
-      if (written <= 0) throw new Error("SHUTDOWN_READY_WRITE_FAILED");
+      if (written <= 0) throw new Error("SHUTDOWN_ACK_WRITE_FAILED");
       offset += written;
     }
   } finally {
     output.fill(0);
   }
-}
-
-function sendShutdownAcknowledgement(onDelivered) {
-  process.send(
-    {
-      type: SHUTDOWN_ACK_TYPE,
-      processId: process.pid,
-      method: "app.quit",
-      requestedExitCode: 0,
-    },
-    (error) => {
-      if (error) {
-        process.kill(process.pid, "SIGKILL");
-        return;
-      }
-      writeShutdownTransportReady();
-      onDelivered();
-    },
-  );
 }
 
 function writeExitAcknowledgement() {
@@ -266,23 +246,22 @@ function awaitParentShutdownProtocol() {
     completed = true;
     clear();
     exitAuthorizationAccepted = true;
-    sendShutdownAcknowledgement(() => {
-      writeExitAcknowledgement();
-      process.disconnect();
-      // An Electron-managed main-loop shutdown is required on Windows so
-      // Chromium can commit the DPAPI-wrapped async-provider key in profile
-      // Local State. The declared probe outcome remains in the fixed protocol;
-      // the terminal Electron quit event must report zero and the parent
-      // records the platform-observed status separately. The parent owns the
-      // deadline and force-kill fallback.
-      if (config?.mode === "shutdown-fault") {
-        faultExitRequested = true;
-        process.exit(1);
-        return;
-      }
-      postQuitFaultRequested = config?.mode === "shutdown-post-quit-fault";
-      app.quit();
-    });
+    writeShutdownAcknowledgement();
+    writeExitAcknowledgement();
+    process.disconnect();
+    // An Electron-managed main-loop shutdown is required on Windows so
+    // Chromium can commit the DPAPI-wrapped async-provider key in profile
+    // Local State. The declared probe outcome remains in the fixed protocol;
+    // the terminal Electron quit event must report zero and the parent records
+    // the platform-observed status separately. The parent owns the deadline
+    // and force-kill fallback.
+    if (config?.mode === "shutdown-fault") {
+      faultExitRequested = true;
+      process.exit(1);
+      return;
+    }
+    postQuitFaultRequested = config?.mode === "shutdown-post-quit-fault";
+    app.quit();
   };
 
   process.once("message", onMessage);

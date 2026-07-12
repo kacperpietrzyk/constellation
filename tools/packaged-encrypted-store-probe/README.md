@@ -44,11 +44,10 @@ The probe fails unless all of these checks pass:
   safeStorage probe remains the independent exact-key output-channel oracle;
 - each process emits one synchronous readiness record only after store close,
   post-close scanning, and failure cleanup, then waits for an exact parent
-  shutdown authorization over its inherited IPC channel; the child acknowledges
-  that phase over IPC and emits a separate synchronous ready record only after
-  the ACK send callback succeeds. That single exact authorization binds the
-  method and requested exit code; the child then acknowledges its accepted exit
-  request before calling `app.quit()`. A synchronous terminal record requires
+  shutdown authorization over its inherited IPC channel. That single exact
+  authorization binds the process, method, and requested exit code; the child
+  acknowledges the shutdown and accepted exit request as ordered synchronous
+  records before calling `app.quit()`. A synchronous terminal record requires
   the exact Electron `before-quit` → `will-quit` → `quit(0)` lifecycle. The
   harness preserves the declared outcome separately from the observed process
   result, lets the Electron main-loop shutdown commit provider state,

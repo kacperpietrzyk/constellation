@@ -47,8 +47,6 @@ const shutdownAuthorizationType =
   "constellation.packaged-store-probe.shutdown/v1";
 const shutdownAckType =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
-const shutdownReadyType =
-  "constellation.packaged-store-probe.shutdown-ready/v1";
 const exitAckType = "constellation.packaged-store-probe.exit-accepted/v1";
 const shutdownCompleteType =
   "constellation.packaged-store-probe.shutdown-complete/v1";
@@ -283,8 +281,6 @@ async function launch({
     let exitAuthorizationAckCount = 0;
     let shutdownAcknowledged = false;
     let shutdownAckCount = 0;
-    let shutdownTransportReady = false;
-    let shutdownReadyCount = 0;
     let shutdownTerminalConfirmed = false;
     let shutdownTerminalCount = 0;
     let shutdownInternalExitCode;
@@ -366,11 +362,6 @@ async function launch({
             );
             ensure(shutdownAcknowledged, "CHILD_SHUTDOWN_ACK_MISSING");
             ensure(shutdownAckCount === 1, "CHILD_SHUTDOWN_ACK_COUNT_INVALID");
-            ensure(shutdownTransportReady, "CHILD_SHUTDOWN_READY_MISSING");
-            ensure(
-              shutdownReadyCount === 1,
-              "CHILD_SHUTDOWN_READY_COUNT_INVALID",
-            );
             ensure(
               exitAuthorizationAcknowledged,
               "CHILD_EXIT_AUTHORIZATION_ACK_MISSING",
@@ -447,7 +438,6 @@ async function launch({
               exitAuthorizationGranted,
               exitAuthorizationAcknowledged,
               shutdownAcknowledged,
-              shutdownTransportReady,
               shutdownTerminalConfirmed,
               shutdownInternalExitCode,
               forcedTerminationRequested,
@@ -568,45 +558,10 @@ async function launch({
       }
       electronShutdownTimer = setTimeout(requestForcedTermination, 5_000);
     };
-    const acceptShutdownAcknowledgement = (value) => {
-      shutdownAckCount += 1;
-      if (!value || typeof value !== "object" || Array.isArray(value)) {
-        protocolError ||= "SHUTDOWN_ACK_INVALID";
-        startHardCleanup(protocolError);
-        return;
-      }
-      const keys = Object.keys(value).sort();
-      const expectedKeys = [
-        "method",
-        "processId",
-        "requestedExitCode",
-        "type",
-      ].sort();
-      if (
-        shutdownAckCount !== 1 ||
-        keys.length !== expectedKeys.length ||
-        !keys.every((key, index) => key === expectedKeys[index]) ||
-        value.processId !== child.pid ||
-        value.type !== shutdownAckType ||
-        value.method !== "app.quit" ||
-        value.requestedExitCode !== 0 ||
-        !parentSupervisionStarted ||
-        !shutdownAuthorizationQueued
-      ) {
-        protocolError ||= "SHUTDOWN_ACK_INVALID";
-        startHardCleanup(protocolError);
-        return;
-      }
-
-      shutdownAcknowledged = true;
-    };
     const inspectProtocolLine = (line) => {
       const text = line.toString("utf8");
       const claimsShutdownAccepted = text.includes(
         "constellation.packaged-store-probe.shutdown-accepted",
-      );
-      const claimsShutdownReady = text.includes(
-        "constellation.packaged-store-probe.shutdown-ready",
       );
       const claimsShutdownComplete = text.includes(
         "constellation.packaged-store-probe.shutdown-complete",
@@ -618,7 +573,6 @@ async function launch({
         text.includes('"readyForShutdown"') ||
         text.includes('"declaredExitCode"') ||
         claimsShutdownAccepted ||
-        claimsShutdownReady ||
         claimsExitAccepted ||
         claimsShutdownComplete;
       let value;
@@ -631,13 +585,8 @@ async function launch({
         }
         return;
       }
-      if (claimsShutdownAccepted) {
-        protocolError ||= "SHUTDOWN_ACK_CHANNEL_INVALID";
-        startHardCleanup(protocolError);
-        return;
-      }
-      if (claimsShutdownReady && value?.type !== shutdownReadyType) {
-        protocolError ||= "SHUTDOWN_READY_INVALID";
+      if (claimsShutdownAccepted && value?.type !== shutdownAckType) {
+        protocolError ||= "SHUTDOWN_ACK_INVALID";
         startHardCleanup(protocolError);
         return;
       }
@@ -651,24 +600,30 @@ async function launch({
         startHardCleanup(protocolError);
         return;
       }
-      if (value?.type === shutdownReadyType) {
-        shutdownReadyCount += 1;
+      if (value?.type === shutdownAckType) {
+        shutdownAckCount += 1;
         const keys = Object.keys(value).sort();
-        const expectedKeys = ["nextPhase", "processId", "type"].sort();
+        const expectedKeys = [
+          "method",
+          "processId",
+          "requestedExitCode",
+          "type",
+        ].sort();
         if (
-          shutdownReadyCount !== 1 ||
+          shutdownAckCount !== 1 ||
           keys.length !== expectedKeys.length ||
           !keys.every((key, index) => key === expectedKeys[index]) ||
           value.processId !== child.pid ||
-          value.nextPhase !== "exit" ||
+          value.method !== "app.quit" ||
+          value.requestedExitCode !== 0 ||
           !parentSupervisionStarted ||
           !shutdownAuthorizationQueued ||
           !exitAuthorizationGranted
         ) {
-          protocolError ||= "SHUTDOWN_READY_INVALID";
+          protocolError ||= "SHUTDOWN_ACK_INVALID";
           startHardCleanup(protocolError);
         } else {
-          shutdownTransportReady = true;
+          shutdownAcknowledged = true;
         }
         return;
       }
@@ -690,8 +645,8 @@ async function launch({
           value.requestedExitCode !== 0 ||
           !parentSupervisionStarted ||
           !shutdownAuthorizationQueued ||
-          !shutdownTransportReady ||
-          !exitAuthorizationGranted
+          !exitAuthorizationGranted ||
+          !shutdownAcknowledged
         ) {
           protocolError ||= "EXIT_ACK_INVALID";
           startHardCleanup(protocolError);
@@ -726,10 +681,9 @@ async function launch({
           value.internalExitCode > 255 ||
           !parentSupervisionStarted ||
           !shutdownAuthorizationQueued ||
-          !shutdownTransportReady ||
           !exitAuthorizationGranted ||
           !exitAuthorizationAcknowledged ||
-          shutdownReadyCount !== 1
+          !shutdownAcknowledged
         ) {
           protocolError ||= "SHUTDOWN_COMPLETION_INVALID";
         } else {
@@ -794,7 +748,6 @@ async function launch({
       }
     };
 
-    child.on("message", acceptShutdownAcknowledgement);
     child.stdout.on("data", (chunk) => collect(stdout, chunk, true));
     child.stderr.on("data", (chunk) => collect(stderr, chunk, false));
     child.on("error", () =>
@@ -897,7 +850,6 @@ function recordProcess(execution, mode) {
       execution.exitAuthorizationGranted === true &&
       execution.exitAuthorizationAcknowledged === true &&
       execution.shutdownAcknowledged === true &&
-      execution.shutdownTransportReady === true &&
       execution.shutdownRequestedWhileAlive === true,
     "CHILD_TERMINATION_EVIDENCE_INVALID",
   );
