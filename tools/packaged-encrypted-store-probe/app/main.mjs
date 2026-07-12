@@ -19,6 +19,14 @@ const SHUTDOWN_COMMAND = Buffer.from(
   "constellation.packaged-store-probe.shutdown/v1\n",
   "utf8",
 );
+const EXIT_COMMAND = Buffer.from(
+  "constellation.packaged-store-probe.exit/v1\n",
+  "utf8",
+);
+const SHUTDOWN_ACK_TYPE =
+  "constellation.packaged-store-probe.shutdown-accepted/v1";
+const SHUTDOWN_COMPLETE_TYPE =
+  "constellation.packaged-store-probe.shutdown-complete/v1";
 const EXIT_CODES = Object.freeze({
   CONFIG_INVALID: 80,
   PACKAGED_IDENTITY_INVALID: 81,
@@ -40,6 +48,7 @@ const EXIT_CODES = Object.freeze({
 let config;
 let nativeAddonPackaged = false;
 let finishStarted = false;
+let electronExitRequested = false;
 
 class ProbeFailure extends Error {
   constructor(code) {
@@ -99,16 +108,66 @@ function writeFixedResult(result, declaredExitCode) {
   }
 }
 
+function writeShutdownAcknowledgement() {
+  const output = Buffer.from(
+    `${JSON.stringify({
+      type: SHUTDOWN_ACK_TYPE,
+      processId: process.pid,
+      method: "app.exit",
+      requestedExitCode: 0,
+    })}\n`,
+    "utf8",
+  );
+  try {
+    let offset = 0;
+    while (offset < output.length) {
+      const written = fs.writeSync(1, output, offset, output.length - offset);
+      if (written <= 0) throw new Error("SHUTDOWN_ACK_WRITE_FAILED");
+      offset += written;
+    }
+  } finally {
+    output.fill(0);
+  }
+}
+
+function writeShutdownCompletion(internalExitCode) {
+  const output = Buffer.from(
+    `${JSON.stringify({
+      type: SHUTDOWN_COMPLETE_TYPE,
+      processId: process.pid,
+      method: "app.exit",
+      requestedExitCode: 0,
+      internalExitCode,
+    })}\n`,
+    "utf8",
+  );
+  try {
+    let offset = 0;
+    while (offset < output.length) {
+      const written = fs.writeSync(1, output, offset, output.length - offset);
+      if (written <= 0) throw new Error("SHUTDOWN_COMPLETE_WRITE_FAILED");
+      offset += written;
+    }
+  } finally {
+    output.fill(0);
+  }
+}
+
+process.on("exit", (internalExitCode) => {
+  if (electronExitRequested) writeShutdownCompletion(internalExitCode);
+});
+
 function awaitParentShutdownCommand() {
-  const chunks = [];
-  let length = 0;
+  let pending = Buffer.alloc(0);
+  let phase = "await-shutdown";
   let completed = false;
 
   const clear = () => {
     process.stdin.removeListener("data", onData);
     process.stdin.removeListener("end", onEnd);
     process.stdin.removeListener("error", onError);
-    for (const chunk of chunks) chunk.fill(0);
+    pending.fill(0);
+    pending = Buffer.alloc(0);
   };
   const abort = () => {
     if (completed) return;
@@ -118,18 +177,55 @@ function awaitParentShutdownCommand() {
   };
   const onData = (chunk) => {
     const input = Buffer.from(chunk);
-    chunks.push(input);
-    length += input.length;
-    if (length > SHUTDOWN_COMMAND.length) abort();
+    const next = Buffer.concat([pending, input]);
+    pending.fill(0);
+    input.fill(0);
+    pending = next;
+    if (pending.length > SHUTDOWN_COMMAND.length + EXIT_COMMAND.length) {
+      abort();
+      return;
+    }
+
+    let newline = pending.indexOf(0x0a);
+    while (!completed && newline !== -1) {
+      const line = Buffer.from(pending.subarray(0, newline + 1));
+      const remainder = Buffer.from(pending.subarray(newline + 1));
+      pending.fill(0);
+      pending = remainder;
+      try {
+        if (phase === "await-shutdown") {
+          if (
+            line.length !== SHUTDOWN_COMMAND.length ||
+            !crypto.timingSafeEqual(line, SHUTDOWN_COMMAND)
+          ) {
+            abort();
+            return;
+          }
+          phase = "await-exit";
+          writeShutdownAcknowledgement();
+        } else if (phase === "await-exit") {
+          if (
+            line.length !== EXIT_COMMAND.length ||
+            !crypto.timingSafeEqual(line, EXIT_COMMAND)
+          ) {
+            abort();
+            return;
+          }
+          phase = "ready-to-exit";
+        } else {
+          abort();
+          return;
+        }
+      } finally {
+        line.fill(0);
+      }
+      newline = pending.indexOf(0x0a);
+    }
   };
   const onEnd = () => {
     if (completed) return;
     completed = true;
-    const input = Buffer.concat(chunks, length);
-    const valid =
-      input.length === SHUTDOWN_COMMAND.length &&
-      crypto.timingSafeEqual(input, SHUTDOWN_COMMAND);
-    input.fill(0);
+    const valid = phase === "ready-to-exit" && pending.length === 0;
     clear();
     if (!valid) {
       process.kill(process.pid, "SIGKILL");
@@ -138,8 +234,14 @@ function awaitParentShutdownCommand() {
     // An Electron-managed main-loop shutdown is required on Windows so
     // Chromium can commit the DPAPI-wrapped async-provider key in profile
     // Local State. The declared probe outcome remains in the fixed protocol;
-    // the process-level shutdown status is always an explicit zero. The parent
-    // owns the deadline and force-kill fallback.
+    // the requested Electron exit code is always an explicit zero and the
+    // parent records the platform-observed status separately. The parent owns
+    // the deadline and force-kill fallback.
+    electronExitRequested = true;
+    if (config?.mode === "shutdown-fault") {
+      process.exit(1);
+      return;
+    }
     app.exit(0);
   };
   const onError = () => abort();
@@ -204,7 +306,9 @@ function parseConfig() {
   const wrapperName = getArgument("wrapper");
   const databaseName = getArgument("database");
 
-  if (!new Set(["provision", "verify", "plaintext"]).has(mode)) {
+  if (
+    !new Set(["provision", "verify", "plaintext", "shutdown-fault"]).has(mode)
+  ) {
     fail("CONFIG_INVALID");
   }
   if (!path.isAbsolute(stateRoot) || stateRoot.includes("\0")) {
@@ -1088,11 +1192,14 @@ if (config) {
   app.whenReady().then(async () => {
     try {
       verifyPackagedIdentity();
-      const Database = await loadDatabaseConstructor();
       let result;
-      if (config.mode === "plaintext") {
+      if (config.mode === "shutdown-fault") {
+        result = fixedResult("pass", "SHUTDOWN_FAULT_ARMED");
+      } else if (config.mode === "plaintext") {
+        const Database = await loadDatabaseConstructor();
         result = createPlaintextFixture(Database);
       } else {
+        const Database = await loadDatabaseConstructor();
         await requireAsyncEncryption();
         result =
           config.mode === "provision"

@@ -44,10 +44,16 @@ The probe fails unless all of these checks pass:
   safeStorage probe remains the independent exact-key output-channel oracle;
 - each process emits one synchronous readiness record only after store close,
   post-close scanning, and failure cleanup, then waits for an exact parent
-  shutdown command; the harness preserves the declared outcome separately from
-  the actual process result, lets an explicit zero-status Electron main-loop
-  shutdown commit provider state, force-terminates a stalled process tree, and
-  requires both inherited output pipes to close;
+  shutdown command; the child acknowledges that command while it remains live,
+  waits for a second exact exit command, then requests `app.exit(0)`. A
+  synchronous process-exit hook reports the internal zero code as terminal
+  evidence. The harness preserves the declared outcome separately from the
+  observed process result, lets the Electron main-loop shutdown commit provider
+  state, force-terminates a stalled process tree, and requires both inherited
+  output pipes to close;
+- a dedicated falsification launch emits readiness and the pre-exit
+  acknowledgement, then exits internally with code `1`; the harness must reject
+  it before the ordinary eleven-process result can pass;
 - macOS uses an ad-hoc-signed package and disposable hosted-runner Keychain;
   Windows uses an unsigned mechanism package with statically linked pinned
   OpenSSL; every generated file and exact probe-only Keychain item is removed
@@ -55,12 +61,16 @@ The probe fails unless all of these checks pass:
 
 The child processes have a 45-second readiness watchdog so an interactive
 provider prompt or native hang becomes a bounded failure. After readiness, the
-parent sends the only accepted shutdown command and allows five seconds for an
-Electron-managed zero-status shutdown. A stalled child is force-terminated;
-either path must close both inherited output pipes within five seconds, or the
-probe fails closed. Windows additionally requires all eleven launches to use
-the Electron-managed path so provider-state persistence cannot pass through the
-force-kill fallback.
+The parent allows five seconds for the two-command, acknowledged
+Electron-managed shutdown. A stalled child is force-terminated; either path must
+close both inherited output pipes within five seconds, or the probe fails
+closed. Each Electron-managed exit must include terminal in-process evidence of
+internal code `0`. The pinned executable is then required to report the observed
+platform status (`0` on macOS and `1` on Windows) without a signal. Windows
+additionally requires all eleven ordinary launches to use this terminally
+confirmed path so provider-state persistence cannot pass through the force-kill
+fallback; the fixed declared outcome remains authoritative for each probe
+operation.
 
 ## Pinned inputs
 

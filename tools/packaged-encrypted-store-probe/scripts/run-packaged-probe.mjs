@@ -44,9 +44,16 @@ const primaryDatabase = "primary.db";
 const primaryWrapperPath = path.join(stateRoot, primaryWrapper);
 const primaryDatabasePath = path.join(stateRoot, primaryDatabase);
 const shutdownCommand = "constellation.packaged-store-probe.shutdown/v1\n";
+const exitCommand = "constellation.packaged-store-probe.exit/v1\n";
+const shutdownAckType =
+  "constellation.packaged-store-probe.shutdown-accepted/v1";
+const shutdownCompleteType =
+  "constellation.packaged-store-probe.shutdown-complete/v1";
 const processIds = new Set();
 let electronManagedProcessExits = 0;
 let forcedProcessExits = 0;
+let acknowledgedShutdowns = 0;
+let terminallyConfirmedShutdowns = 0;
 let windowsProviderStateDigest;
 const captured = [];
 const forbiddenOutput = [
@@ -259,6 +266,12 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     let timedOut = false;
     let parentSupervisionStarted = false;
     let shutdownCommandQueued = false;
+    let exitCommandQueued = false;
+    let shutdownAcknowledged = false;
+    let shutdownAckCount = 0;
+    let shutdownTerminalConfirmed = false;
+    let shutdownTerminalCount = 0;
+    let shutdownInternalExitCode;
     let forcedTerminationRequested = false;
     let forcedTerminationAccepted = false;
     let shutdownRequestedWhileAlive = false;
@@ -322,9 +335,13 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
             ensure(!protocolError, protocolError);
             ensure(protocolResultCount === 1, "PROTOCOL_RESULT_COUNT_INVALID");
             ensure(
-              parentSupervisionStarted && shutdownCommandQueued,
+              parentSupervisionStarted &&
+                shutdownCommandQueued &&
+                exitCommandQueued,
               "PARENT_SHUTDOWN_PROTOCOL_MISSING",
             );
+            ensure(shutdownAcknowledged, "CHILD_SHUTDOWN_ACK_MISSING");
+            ensure(shutdownAckCount === 1, "CHILD_SHUTDOWN_ACK_COUNT_INVALID");
             ensure(
               shutdownRequestedWhileAlive,
               "PARENT_SHUTDOWN_LIVENESS_MISSING",
@@ -344,6 +361,13 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
               "TERMINATION_OUTCOME_UNVERIFIED",
             );
             if (electronExitObserved) {
+              const expectedCode = process.platform === "win32" ? 1 : 0;
+              ensure(
+                shutdownTerminalConfirmed &&
+                  shutdownTerminalCount === 1 &&
+                  shutdownInternalExitCode === 0,
+                "CHILD_SHUTDOWN_COMPLETION_MISSING",
+              );
               const codeLabel = Number.isInteger(code)
                 ? String(code)
                 : code === null
@@ -356,10 +380,14 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
                     ? "null"
                     : typeof signal;
               ensure(
-                code === 0 && signal === null,
+                code === expectedCode && signal === null,
                 `ELECTRON_SHUTDOWN_STATUS_INVALID:${codeLabel}:${signalLabel}`,
               );
             } else {
+              ensure(
+                shutdownTerminalCount === 0,
+                "FORCED_SHUTDOWN_COMPLETION_INVALID",
+              );
               ensure(
                 process.platform !== "win32",
                 "WINDOWS_ELECTRON_EXIT_REQUIRED",
@@ -374,6 +402,10 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
               actualSignal: signal,
               parentSupervisionStarted,
               shutdownCommandQueued,
+              exitCommandQueued,
+              shutdownAcknowledged,
+              shutdownTerminalConfirmed,
+              shutdownInternalExitCode,
               forcedTerminationRequested,
               forcedTerminationAccepted,
               shutdownRequestedWhileAlive,
@@ -460,7 +492,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       shutdownRequestedWhileAlive = true;
       parentSupervisionStarted = true;
       try {
-        child.stdin.end(shutdownCommand);
+        child.stdin.write(shutdownCommand);
         shutdownCommandQueued = true;
       } catch {
         startHardCleanup("SHUTDOWN_COMMAND_REJECTED");
@@ -474,9 +506,17 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     };
     const inspectProtocolLine = (line) => {
       const text = line.toString("utf8");
+      const claimsShutdownAccepted = text.includes(
+        "constellation.packaged-store-probe.shutdown-accepted",
+      );
+      const claimsShutdownComplete = text.includes(
+        "constellation.packaged-store-probe.shutdown-complete",
+      );
       const claimsProtocol =
         text.includes('"readyForShutdown"') ||
-        text.includes('"declaredExitCode"');
+        text.includes('"declaredExitCode"') ||
+        claimsShutdownAccepted ||
+        claimsShutdownComplete;
       let value;
       try {
         value = JSON.parse(text);
@@ -484,6 +524,86 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
         if (claimsProtocol) {
           protocolError ||= "PROTOCOL_RESULT_JSON_INVALID";
           startHardCleanup(protocolError);
+        }
+        return;
+      }
+      if (claimsShutdownAccepted && value?.type !== shutdownAckType) {
+        protocolError ||= "SHUTDOWN_ACK_INVALID";
+        startHardCleanup(protocolError);
+        return;
+      }
+      if (claimsShutdownComplete && value?.type !== shutdownCompleteType) {
+        protocolError ||= "SHUTDOWN_COMPLETION_INVALID";
+        startHardCleanup(protocolError);
+        return;
+      }
+      if (value?.type === shutdownAckType) {
+        shutdownAckCount += 1;
+        const keys = Object.keys(value).sort();
+        const expectedKeys = [
+          "method",
+          "processId",
+          "requestedExitCode",
+          "type",
+        ].sort();
+        if (
+          shutdownAckCount !== 1 ||
+          keys.length !== expectedKeys.length ||
+          !keys.every((key, index) => key === expectedKeys[index]) ||
+          value.processId !== child.pid ||
+          value.method !== "app.exit" ||
+          value.requestedExitCode !== 0 ||
+          !parentSupervisionStarted ||
+          !shutdownCommandQueued ||
+          childHasExited()
+        ) {
+          protocolError ||= "SHUTDOWN_ACK_INVALID";
+          startHardCleanup(protocolError);
+        } else {
+          shutdownAcknowledged = true;
+          try {
+            child.stdin.end(exitCommand);
+            exitCommandQueued = true;
+          } catch {
+            protocolError ||= "EXIT_COMMAND_REJECTED";
+            startHardCleanup(protocolError);
+          }
+        }
+        return;
+      }
+      if (value?.type === shutdownCompleteType) {
+        shutdownTerminalCount += 1;
+        const keys = Object.keys(value).sort();
+        const expectedKeys = [
+          "internalExitCode",
+          "method",
+          "processId",
+          "requestedExitCode",
+          "type",
+        ].sort();
+        if (
+          shutdownTerminalCount !== 1 ||
+          keys.length !== expectedKeys.length ||
+          !keys.every((key, index) => key === expectedKeys[index]) ||
+          value.processId !== child.pid ||
+          value.method !== "app.exit" ||
+          value.requestedExitCode !== 0 ||
+          !Number.isInteger(value.internalExitCode) ||
+          value.internalExitCode < 0 ||
+          value.internalExitCode > 255 ||
+          !parentSupervisionStarted ||
+          !shutdownCommandQueued ||
+          !exitCommandQueued ||
+          !shutdownAcknowledged
+        ) {
+          protocolError ||= "SHUTDOWN_COMPLETION_INVALID";
+        } else {
+          shutdownInternalExitCode = value.internalExitCode;
+          if (value.internalExitCode === 0) {
+            shutdownTerminalConfirmed = true;
+          } else {
+            protocolError ||= "SHUTDOWN_TERMINAL_ACK_INVALID";
+          }
         }
         return;
       }
@@ -635,27 +755,36 @@ function recordProcess(execution, mode) {
   ensure(
     execution.parentSupervisionStarted === true &&
       execution.shutdownCommandQueued === true &&
+      execution.exitCommandQueued === true &&
+      execution.shutdownAcknowledged === true &&
       execution.shutdownRequestedWhileAlive === true,
     "CHILD_TERMINATION_EVIDENCE_INVALID",
   );
   if (execution.lifecycle === "electron-exit-after-parent-command") {
+    const expectedCode = process.platform === "win32" ? 1 : 0;
     ensure(
       execution.electronExitObserved === true &&
+        execution.shutdownTerminalConfirmed === true &&
+        execution.shutdownInternalExitCode === 0 &&
         execution.forcedTerminationRequested === false &&
-        execution.actualCode === 0 &&
+        execution.actualCode === expectedCode &&
         execution.actualSignal === null,
       "CHILD_ELECTRON_EXIT_INVALID",
     );
     electronManagedProcessExits += 1;
+    terminallyConfirmedShutdowns += 1;
   } else {
     ensure(
       execution.electronExitObserved === false &&
+        execution.shutdownTerminalConfirmed === false &&
+        execution.shutdownInternalExitCode === undefined &&
         execution.forcedTerminationRequested === true &&
         execution.forcedTerminationAccepted === true,
       "CHILD_FORCED_EXIT_INVALID",
     );
     forcedProcessExits += 1;
   }
+  acknowledgedShutdowns += 1;
   ensure(
     execution.actualCode !== null || execution.actualSignal !== null,
     "CHILD_ACTUAL_TERMINATION_INVALID",
@@ -679,6 +808,26 @@ async function expectFailure(options, acceptedCodes, expectedState) {
   ensure(
     acceptedCodes.includes(execution.result.code),
     "NEGATIVE_CODE_INVALID",
+  );
+  assertPrimaryUnchanged(expectedState);
+}
+
+async function expectPreExitAcknowledgementRejected(expectedState) {
+  let rejection;
+  try {
+    await launch({
+      mode: "shutdown-fault",
+      workspaceId: workspace,
+      wrapperName: "unused-fault.wrap.json",
+      databaseName: "unused-fault.db",
+    });
+  } catch (error) {
+    rejection = error;
+  }
+  ensure(
+    rejection instanceof Error &&
+      rejection.message === "SHUTDOWN_TERMINAL_ACK_INVALID",
+    "PRE_EXIT_ACK_FAULT_NOT_REJECTED",
   );
   assertPrimaryUnchanged(expectedState);
 }
@@ -1040,10 +1189,21 @@ try {
     primaryState,
   );
 
+  await expectPreExitAcknowledgementRejected(primaryState);
+  assertWindowsProviderStateUnchanged(windowsProviderStateDigest);
+
   ensure(processIds.size === 11, "PROCESS_COUNT_INVALID");
   ensure(
     electronManagedProcessExits + forcedProcessExits === processIds.size,
     "PROCESS_LIFECYCLE_COUNT_INVALID",
+  );
+  ensure(
+    acknowledgedShutdowns === processIds.size,
+    "SHUTDOWN_ACK_COUNT_INVALID",
+  );
+  ensure(
+    terminallyConfirmedShutdowns === electronManagedProcessExits,
+    "SHUTDOWN_COMPLETION_COUNT_INVALID",
   );
   if (process.platform === "win32") {
     ensure(
@@ -1073,8 +1233,12 @@ try {
       electron: "43.1.0",
       packagedRelaunch: true,
       parentManagedShutdown: true,
+      acknowledgedShutdowns,
+      terminallyConfirmedShutdowns,
       electronManagedProcessExits,
       forcedProcessExits,
+      observedElectronExitCode: process.platform === "win32" ? 1 : 0,
+      preExitAcknowledgementFaultRejected: true,
       distinctProcesses: processIds.size,
       internallyGeneratedDek: true,
       asyncSafeStorage: true,
