@@ -83,7 +83,11 @@ function writeFixedResult(result) {
 
 function finish(result, exitCode) {
   writeFixedResult(result);
-  app.exit(exitCode);
+  // Let Electron close its helper processes before preserving the probe's
+  // explicit exit code. An immediate app.exit leaves inherited stdio handles
+  // open on hosted runners and can make a completed probe look timed out.
+  app.once("will-quit", () => app.exit(exitCode));
+  app.quit();
 }
 
 function getArgument(name) {
