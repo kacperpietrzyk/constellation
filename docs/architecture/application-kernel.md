@@ -26,16 +26,30 @@ Commands:
 - `workspace.createLocal`
 - `workspace.rename`
 - `capture.submitText`
+- `capture.routeAsTask`
 
 Queries:
 
 - `workspace.bootstrapContext`
 - `capture.history`
+- `task.list`
 - `audit.receipt`
 
 This subset proves the command/query mechanics before encrypted persistence or a
-desktop transport is introduced. It is deliberately small and does not claim a
-runnable capture UI, routing, synchronization, or MCP server.
+desktop transport is introduced. A local workspace starts with one versioned
+default Task status whose display label is data and whose broad operational
+semantics are `actionable`. An explicit routing command preserves the original
+Capture, advances its processing state, and creates one canonical standalone
+Task that points back to its source.
+
+Capture provenance is optional on the core Task model. A routed Task records
+its source Capture, while future direct `task.create` commands will not invent
+one.
+
+The implementation deliberately does not parse task syntax or start automatic
+processing. A future deterministic rule adapter and the desktop UI must invoke
+the same `capture.routeAsTask` command. It does not yet claim a runnable capture
+UI, Attention handling, project relations, undo, synchronization, or MCP server.
 
 ## Boundary rules
 
@@ -51,10 +65,14 @@ runnable capture UI, routing, synchronization, or MCP server.
   version churn; different input under the same key conflicts.
 - Existing-record mutations require expected versions. Stale writes return an
   explicit conflict and never apply last-write-wins.
+- Capture routing requires the exact current Capture version. Repeating a
+  committed route with the same idempotency input returns its original result;
+  a distinct attempt cannot create a second Task.
 - Record changes, domain events, audit receipts, idempotency outcomes, and outbox
   entries share one unit of work. Success is returned only after that unit commits.
 - Audit, events, outbox records, validation issues, and diagnostics omit capture
-  bodies. The authorized capture projection retains the original text.
+  bodies. Authorized Capture History retains the original text and routing
+  provenance, while the Task projection exposes only the canonical Task fields.
 - Query freshness comes from the read provider, never from the caller's requested
   consistency. The current local reference reports an authoritative local view;
   a projection reports its checkpoint and missing capabilities, and rejects an
@@ -71,8 +89,8 @@ contracts -> Zod
 
 - `contracts` owns schemas, branded IDs, result taxonomy, and safe validation
   issues.
-- `domain` owns framework-independent workspace, Space, membership, capture,
-  event, audit, and outbox records.
+- `domain` owns framework-independent workspace, Space, membership, Capture,
+  Task, Task status, event, audit, and outbox records.
 - `application` owns authorization orchestration, command/query handlers, and
   storage ports.
 - `testkit` owns deterministic clocks/IDs, hashing/cursor fixtures, the in-memory
@@ -92,8 +110,14 @@ bootstrap, durable capture semantics, ten identical replays, conflicting-key
 rejection, credential rotation and grant revocation, stale-version rejection,
 permission-safe history/audit queries, actual freshness reporting, opaque cursor
 pagination, content-safe diagnostics, and rollback after injected failure at
-each capture unit-of-work boundary.
+each capture unit-of-work boundary. Capture-to-Task coverage additionally proves
+original preservation, standalone Task projection, strict expected versions,
+double-route conflict, grant revocation and credential rotation, Workspace/Space
+denial without target disclosure, typed opaque pagination, actual freshness,
+and rollback after every Capture update, Task, event, audit, idempotency, and
+outbox boundary.
 
 The production encrypted store, process-kill durability, Electron preload
-surface, MCP mapping, undo/checkpoints, configuration, and cross-workspace leak
-matrix remain later capability gates.
+surface, MCP mapping, deterministic syntax parser, Attention processing,
+projects/relations, undo/checkpoints, editable configuration, and the exhaustive
+cross-workspace leak matrix remain later capability gates.

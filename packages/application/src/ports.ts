@@ -9,6 +9,8 @@ import type {
   OutboxEntryId,
   PrincipalId,
   SpaceId,
+  TaskId,
+  TaskStatusId,
   WorkspaceId,
 } from "@constellation/contracts";
 import type {
@@ -17,12 +19,20 @@ import type {
   DomainEvent,
   OutboxEntry,
   Space,
+  Task,
+  TaskStatusDefinition,
   Workspace,
   WorkspaceMembership,
 } from "@constellation/domain";
 
 export type GeneratedIdKind =
-  "capture" | "membership" | "event" | "auditReceipt" | "outboxEntry";
+  | "capture"
+  | "task"
+  | "taskStatus"
+  | "membership"
+  | "event"
+  | "auditReceipt"
+  | "outboxEntry";
 
 export interface Clock {
   now(): string;
@@ -36,10 +46,19 @@ export interface SemanticHasher {
   fingerprint(value: unknown): string;
 }
 
-export interface PaginationCursor {
-  readonly capturedAt: string;
-  readonly captureId: CaptureId;
+export interface CapturePaginationCursor {
+  readonly kind: "capture";
+  readonly orderedAt: string;
+  readonly recordId: CaptureId;
 }
+
+export interface TaskPaginationCursor {
+  readonly kind: "task";
+  readonly orderedAt: string;
+  readonly recordId: TaskId;
+}
+
+export type PaginationCursor = CapturePaginationCursor | TaskPaginationCursor;
 
 export interface PaginationCursorCodec {
   encode(cursor: PaginationCursor): string;
@@ -72,7 +91,14 @@ export interface IdempotencyRecord {
 export interface CapturePageRequest {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
-  readonly after?: PaginationCursor;
+  readonly after?: CapturePaginationCursor;
+  readonly limit: number;
+}
+
+export interface TaskPageRequest {
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly after?: TaskPaginationCursor;
   readonly limit: number;
 }
 
@@ -81,12 +107,16 @@ export interface ApplicationReadView {
   getWorkspace(id: WorkspaceId): Workspace | undefined;
   getSpace(id: SpaceId): Space | undefined;
   listSpaces(workspaceId: WorkspaceId): readonly Space[];
+  getTaskStatus(id: TaskStatusId): TaskStatusDefinition | undefined;
+  listTaskStatuses(workspaceId: WorkspaceId): readonly TaskStatusDefinition[];
   getMembership(
     workspaceId: WorkspaceId,
     principalId: PrincipalId,
   ): WorkspaceMembership | undefined;
   getCapture(id: CaptureId): Capture | undefined;
   listCaptures(request: CapturePageRequest): readonly Capture[] | undefined;
+  getTask(id: TaskId): Task | undefined;
+  listTasks(request: TaskPageRequest): readonly Task[] | undefined;
   getAuditReceipt(id: AuditReceiptId): AuditReceipt | undefined;
   getIdempotency(scope: string): IdempotencyRecord | undefined;
 }
@@ -96,7 +126,10 @@ export interface ApplicationTransaction extends ApplicationReadView {
   updateWorkspace(workspace: Workspace, expectedVersion: number): boolean;
   insertSpace(space: Space): void;
   insertMembership(membership: WorkspaceMembership): void;
+  insertTaskStatus(status: TaskStatusDefinition): void;
   insertCapture(capture: Capture): void;
+  updateCapture(capture: Capture, expectedVersion: number): boolean;
+  insertTask(task: Task): void;
   insertEvent(event: DomainEvent): void;
   insertAuditReceipt(receipt: AuditReceipt): void;
   insertIdempotency(record: IdempotencyRecord): void;
@@ -131,6 +164,8 @@ export interface ReferenceStateSnapshot {
   readonly spaces: readonly Space[];
   readonly memberships: readonly WorkspaceMembership[];
   readonly captures: readonly Capture[];
+  readonly taskStatuses: readonly TaskStatusDefinition[];
+  readonly tasks: readonly Task[];
   readonly events: readonly DomainEvent[];
   readonly auditReceipts: readonly AuditReceipt[];
   readonly idempotencyRecords: readonly IdempotencyRecord[];
@@ -138,4 +173,10 @@ export interface ReferenceStateSnapshot {
 }
 
 export type InternalIds =
-  CaptureId | MembershipId | EventId | AuditReceiptId | OutboxEntryId;
+  | CaptureId
+  | TaskId
+  | TaskStatusId
+  | MembershipId
+  | EventId
+  | AuditReceiptId
+  | OutboxEntryId;

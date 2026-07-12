@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   CommandOutcomeSchema,
+  QueryResultSchema,
   validateCommandEnvelope,
   validateExecutionContext,
   validateQueryEnvelope,
@@ -27,7 +28,12 @@ const context = {
   policyVersion: 1,
   workspaceId: ids.workspace,
   spaceScope: [ids.space],
-  capabilityScope: ["capture.submitText", "capture.history"],
+  capabilityScope: [
+    "capture.submitText",
+    "capture.routeAsTask",
+    "capture.history",
+    "task.list",
+  ],
   origin: "desktop",
 };
 
@@ -47,10 +53,25 @@ const captureCommand = {
   correlationId: ids.correlation,
 };
 
+const routeCommand = {
+  contractVersion: 1,
+  commandName: "capture.routeAsTask",
+  commandId: ids.command,
+  workspaceId: ids.workspace,
+  payload: {
+    captureId: ids.query,
+    title: "Synthetic routed task",
+  },
+  idempotencyKey: "route-1",
+  expectedVersions: { [ids.query]: 1 },
+  correlationId: ids.correlation,
+};
+
 describe("application contracts", () => {
   it("accepts strict execution, command, and query envelopes", () => {
     assert.equal(validateExecutionContext(context).ok, true);
     assert.equal(validateCommandEnvelope(captureCommand).ok, true);
+    assert.equal(validateCommandEnvelope(routeCommand).ok, true);
     assert.equal(
       validateQueryEnvelope({
         contractVersion: 1,
@@ -62,6 +83,43 @@ describe("application contracts", () => {
       }).ok,
       true,
     );
+    assert.equal(
+      validateQueryEnvelope({
+        contractVersion: 1,
+        queryName: "task.list",
+        queryId: ids.query,
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.space, limit: 50 },
+      }).ok,
+      true,
+    );
+  });
+
+  it("rejects unknown route and task-list fields at strict boundaries", () => {
+    const route = validateCommandEnvelope({
+      ...routeCommand,
+      payload: { ...routeCommand.payload, actorId: ids.principal },
+    });
+    const taskList = validateQueryEnvelope({
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: ids.query,
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space, hiddenFilter: "private" },
+    });
+
+    assert.equal(route.ok, false);
+    assert.equal(taskList.ok, false);
+    if (!route.ok && !taskList.ok) {
+      assert.deepEqual(route.issues, [
+        { code: "unrecognized_keys", path: "payload" },
+      ]);
+      assert.deepEqual(taskList.issues, [
+        { code: "unrecognized_keys", path: "parameters" },
+      ]);
+    }
   });
 
   it("rejects unknown fields at the envelope and payload boundaries", () => {
@@ -145,5 +203,39 @@ describe("application contracts", () => {
       },
     });
     assert.equal(result.success, false);
+  });
+
+  it("allows a direct Task projection without fabricated Capture provenance", () => {
+    const result = QueryResultSchema.safeParse({
+      outcome: "success",
+      contractVersion: 1,
+      queryId: ids.query,
+      kernelTime: "2026-07-12T12:00:00.000Z",
+      freshness: {
+        mode: "local_authoritative",
+        checkpoint: null,
+        missingCapabilities: [],
+      },
+      projection: {
+        kind: "task.list",
+        items: [
+          {
+            id: ids.query,
+            spaceId: ids.space,
+            title: "Direct synthetic Task",
+            status: {
+              id: ids.command,
+              label: "To do",
+              operationalSemantics: "actionable",
+            },
+            createdAt: "2026-07-12T12:00:00.000Z",
+            updatedAt: "2026-07-12T12:00:00.000Z",
+            version: 1,
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+    assert.equal(result.success, true);
   });
 });

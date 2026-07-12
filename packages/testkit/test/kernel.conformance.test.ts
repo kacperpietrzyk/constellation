@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import type { ApplicationCommandResponse } from "@constellation/application";
 import {
   ExecutionContextSchema,
+  type CaptureId,
   type CommandOutcome,
   type ExecutionContext,
 } from "@constellation/contracts";
@@ -44,7 +45,9 @@ const context = (principalId: string = ids.principal): ExecutionContext =>
       "workspace.rename",
       "workspace.bootstrapContext",
       "capture.submitText",
+      "capture.routeAsTask",
       "capture.history",
+      "task.list",
       "audit.receipt",
     ],
     origin: "desktop",
@@ -82,6 +85,18 @@ const captureCommand = (idempotencyKey: string, originalText: string) => ({
   },
 });
 
+const routeCommand = (
+  captureId: string,
+  idempotencyKey: string,
+  title: string,
+  expectedVersion = 1,
+) => ({
+  ...commandMetadata(idempotencyKey),
+  commandName: "capture.routeAsTask",
+  expectedVersions: { [captureId]: expectedVersion },
+  payload: { captureId, title },
+});
+
 const unwrapOutcome = (
   response: ApplicationCommandResponse,
 ): CommandOutcome => {
@@ -102,10 +117,43 @@ const bootstrappedHarness = (): ReferenceHarness => {
   return harness;
 };
 
+const submitCaptureAndGetId = (
+  harness: ReferenceHarness,
+  idempotencyKey: string,
+  originalText: string,
+): CaptureId => {
+  const outcome = unwrapOutcome(
+    harness.kernel.execute(
+      context(),
+      captureCommand(idempotencyKey, originalText),
+    ),
+  );
+  assert.equal(outcome.outcome, "success");
+  if (
+    outcome.outcome !== "success" ||
+    outcome.projection.kind !== "capture.stored"
+  ) {
+    throw new Error("Expected a stored capture projection.");
+  }
+  return outcome.projection.captureId;
+};
+
 const captureCounts = (harness: ReferenceHarness) => {
   const snapshot = harness.store.snapshot();
   return {
     captures: snapshot.captures.length,
+    events: snapshot.events.length,
+    audits: snapshot.auditReceipts.length,
+    idempotency: snapshot.idempotencyRecords.length,
+    outbox: snapshot.outboxEntries.length,
+  };
+};
+
+const routeCounts = (harness: ReferenceHarness) => {
+  const snapshot = harness.store.snapshot();
+  return {
+    captures: snapshot.captures.length,
+    tasks: snapshot.tasks.length,
     events: snapshot.events.length,
     audits: snapshot.auditReceipts.length,
     idempotency: snapshot.idempotencyRecords.length,
@@ -127,6 +175,10 @@ describe("reference kernel conformance", () => {
     assert.equal(snapshot.workspaces.length, 1);
     assert.equal(snapshot.spaces.length, 1);
     assert.equal(snapshot.memberships.length, 1);
+    assert.equal(snapshot.taskStatuses.length, 1);
+    assert.equal(snapshot.taskStatuses[0]?.label, "To do");
+    assert.equal(snapshot.taskStatuses[0]?.operationalSemantics, "actionable");
+    assert.equal(snapshot.tasks.length, 0);
     assert.equal(snapshot.events.length, 1);
     assert.equal(snapshot.auditReceipts.length, 1);
     assert.equal(snapshot.idempotencyRecords.length, 1);
@@ -148,6 +200,13 @@ describe("reference kernel conformance", () => {
           response.result.projection.kind,
           "workspace.bootstrapContext",
         );
+        if (response.result.projection.kind === "workspace.bootstrapContext") {
+          assert.equal(response.result.projection.taskStatuses.length, 1);
+          assert.equal(
+            response.result.projection.workspace.defaultTaskStatusId,
+            snapshot.taskStatuses[0]?.id,
+          );
+        }
       }
     }
   });
@@ -216,6 +275,244 @@ describe("reference kernel conformance", () => {
         false,
       );
     }
+  });
+
+  it("routes a capture to one canonical standalone Task without losing provenance", () => {
+    const harness = bootstrappedHarness();
+    const empty = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      empty.kind !== "query_result" ||
+      empty.result.outcome !== "success" ||
+      empty.result.projection.kind !== "task.list"
+    ) {
+      throw new Error("Expected an empty Task list.");
+    }
+    assert.deepEqual(empty.result.projection.items, []);
+
+    const originalText = "PRIVATE_CAPTURE_BODY_MUST_STAY_IN_SOURCE";
+    const captureId = submitCaptureAndGetId(
+      harness,
+      "route-source",
+      originalText,
+    );
+    const outcome = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        routeCommand(
+          captureId,
+          "route-happy",
+          "Prepare the synthetic project brief",
+        ),
+      ),
+    );
+    assert.equal(outcome.outcome, "success");
+    assert.equal(outcome.diagnosticCode, "capture.routed_as_task");
+    if (
+      outcome.outcome !== "success" ||
+      outcome.projection.kind !== "capture.routed_as_task"
+    ) {
+      throw new Error("Expected a routed Task projection.");
+    }
+
+    const snapshot = harness.store.snapshot();
+    const capture = snapshot.captures.find((item) => item.id === captureId);
+    const task = snapshot.tasks.find(
+      (item) => item.id === outcome.projection.taskId,
+    );
+    assert.equal(capture?.originalText, originalText);
+    assert.equal(capture?.processingState, "routed_as_task");
+    assert.equal(capture?.version, 2);
+    if (capture?.processingState === "routed_as_task") {
+      assert.equal(capture.derivedTaskId, task?.id);
+      assert.equal(capture.routedBy, ids.principal);
+    }
+    assert.equal(task?.sourceCaptureId, captureId);
+    assert.equal(task?.title, "Prepare the synthetic project brief");
+    assert.equal(task?.statusId, snapshot.taskStatuses[0]?.id);
+    assert.equal(task?.version, 1);
+    assert.equal(snapshot.events.at(-1)?.type, "capture.routed_as_task");
+    assert.equal(
+      snapshot.outboxEntries.at(-1)?.topic,
+      "work.projection.requested",
+    );
+    assert.deepEqual(snapshot.auditReceipts.at(-1)?.recordVersions, {
+      [captureId]: 2,
+      [task?.id ?? "missing"]: 1,
+    });
+    assert.equal(JSON.stringify(snapshot.events).includes(originalText), false);
+    assert.equal(
+      JSON.stringify(snapshot.auditReceipts).includes(originalText),
+      false,
+    );
+    assert.equal(
+      JSON.stringify(snapshot.outboxEntries).includes(originalText),
+      false,
+    );
+
+    const history = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "capture.history",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      history.kind !== "query_result" ||
+      history.result.outcome !== "success" ||
+      history.result.projection.kind !== "capture.history"
+    ) {
+      throw new Error("Expected Capture History after routing.");
+    }
+    const historyItem = history.result.projection.items[0];
+    assert.equal(historyItem?.originalText, originalText);
+    assert.equal(historyItem?.processingState, "routed_as_task");
+    if (historyItem?.processingState === "routed_as_task") {
+      assert.equal(historyItem.derivedTaskId, task?.id);
+      assert.equal(historyItem.routedBy, ids.principal);
+    }
+
+    const tasks = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      tasks.kind !== "query_result" ||
+      tasks.result.outcome !== "success" ||
+      tasks.result.projection.kind !== "task.list"
+    ) {
+      throw new Error("Expected the routed Task list.");
+    }
+    assert.equal(tasks.result.projection.items.length, 1);
+    assert.deepEqual(tasks.result.projection.items[0]?.status, {
+      id: snapshot.taskStatuses[0]?.id,
+      label: "To do",
+      operationalSemantics: "actionable",
+    });
+    assert.equal(tasks.result.projection.items[0]?.sourceCaptureId, captureId);
+  });
+
+  it("replays routing without duplicate Task churn and reauthorizes every replay", () => {
+    const harness = bootstrappedHarness();
+    const captureId = submitCaptureAndGetId(
+      harness,
+      "route-replay-source",
+      "Replay-safe route source",
+    );
+    const command = routeCommand(captureId, "route-replay", "Replay-safe Task");
+    const original = unwrapOutcome(harness.kernel.execute(context(), command));
+    assert.equal(original.outcome, "success");
+    const before = routeCounts(harness);
+
+    const changedInput = unwrapOutcome(
+      harness.kernel.execute(context(), {
+        ...command,
+        commandId: requestId(),
+        correlationId: requestId(),
+        payload: { ...command.payload, title: "Changed replay title" },
+      }),
+    );
+    assert.equal(changedInput.outcome, "conflict");
+    assert.equal(changedInput.diagnosticCode, "idempotency.key_reused");
+    assert.deepEqual(routeCounts(harness), before);
+
+    for (let replay = 0; replay < 10; replay += 1) {
+      const repeated = unwrapOutcome(
+        harness.kernel.execute(context(), {
+          ...command,
+          commandId: requestId(),
+          correlationId: requestId(),
+        }),
+      );
+      assert.deepEqual(repeated, original);
+    }
+    assert.deepEqual(routeCounts(harness), before);
+
+    harness.authorization.revoke(context().grantId);
+    const revoked = unwrapOutcome(
+      harness.kernel.execute(context(), {
+        ...command,
+        commandId: requestId(),
+        correlationId: requestId(),
+      }),
+    );
+    assert.equal(revoked.outcome, "rejected");
+    assert.equal(revoked.diagnosticCode, "authorization.denied");
+
+    const rotatedContext = ExecutionContextSchema.parse({
+      ...context(),
+      credentialId: "00000000-0000-4000-8000-000000000014",
+      grantId: "00000000-0000-4000-8000-000000000015",
+    });
+    harness.authorization.register(rotatedContext);
+    const rotated = unwrapOutcome(
+      harness.kernel.execute(rotatedContext, {
+        ...command,
+        commandId: requestId(),
+        correlationId: requestId(),
+      }),
+    );
+    assert.deepEqual(rotated, original);
+    assert.deepEqual(routeCounts(harness), before);
+  });
+
+  it("requires an exact Capture version and rejects a second route explicitly", () => {
+    const harness = bootstrappedHarness();
+    const captureId = submitCaptureAndGetId(
+      harness,
+      "route-conflict-source",
+      "Conflict source",
+    );
+    const missingPrecondition = unwrapOutcome(
+      harness.kernel.execute(context(), {
+        ...routeCommand(captureId, "route-no-version", "No version"),
+        expectedVersions: {},
+      }),
+    );
+    assert.equal(missingPrecondition.outcome, "rejected");
+    assert.equal(
+      missingPrecondition.diagnosticCode,
+      "command.precondition_failed",
+    );
+
+    const first = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        routeCommand(captureId, "route-first", "First route"),
+      ),
+    );
+    assert.equal(first.outcome, "success");
+    const before = routeCounts(harness);
+
+    const stale = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        routeCommand(captureId, "route-stale", "Stale route", 1),
+      ),
+    );
+    assert.equal(stale.outcome, "conflict");
+    assert.equal(stale.diagnosticCode, "record.version_conflict");
+
+    const alreadyRouted = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        routeCommand(captureId, "route-twice", "Second route", 2),
+      ),
+    );
+    assert.equal(alreadyRouted.outcome, "conflict");
+    assert.equal(alreadyRouted.diagnosticCode, "capture.already_routed");
+    assert.deepEqual(routeCounts(harness), before);
   });
 
   it("returns the original durable outcome for identical replay without churn", () => {
@@ -459,6 +756,286 @@ describe("reference kernel conformance", () => {
       if (deniedAudit.result.outcome === "rejected") {
         assert.equal(deniedAudit.result.diagnosticCode, "query.not_available");
       }
+    }
+  });
+
+  it("returns indistinguishable denials for missing or inaccessible routing targets", () => {
+    const harness = bootstrappedHarness();
+    const captureId = submitCaptureAndGetId(
+      harness,
+      "private-route-source",
+      "Private routing source",
+    );
+    const foreignWorkspace = "00000000-0000-4000-8000-000000000091";
+    const foreignSpace = "00000000-0000-4000-8000-000000000092";
+    const foreignContext = ExecutionContextSchema.parse({
+      ...context(),
+      credentialId: "00000000-0000-4000-8000-000000000093",
+      grantId: "00000000-0000-4000-8000-000000000094",
+      workspaceId: foreignWorkspace,
+      spaceScope: [foreignSpace],
+    });
+    harness.authorization.register(foreignContext);
+    const foreignWorkspaceOutcome = unwrapOutcome(
+      harness.kernel.execute(foreignContext, {
+        ...workspaceCommand(),
+        commandId: requestId(),
+        correlationId: requestId(),
+        workspaceId: foreignWorkspace,
+        idempotencyKey: "foreign-workspace-bootstrap",
+        payload: {
+          workspaceId: foreignWorkspace,
+          rootSpaceId: foreignSpace,
+          ownerPrincipalId: ids.principal,
+          name: "Foreign synthetic workspace",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    );
+    assert.equal(foreignWorkspaceOutcome.outcome, "success");
+    const before = routeCounts(harness);
+    const missingCaptureId = "00000000-0000-4000-8000-000000000099";
+
+    const noMembership = unwrapOutcome(
+      harness.kernel.execute(
+        context(ids.otherPrincipal),
+        routeCommand(captureId, "route-no-membership", "Denied Task"),
+      ),
+    );
+    const missing = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        routeCommand(missingCaptureId, "route-missing", "Missing source Task"),
+      ),
+    );
+
+    const otherSpace = "00000000-0000-4000-8000-000000000098";
+    const restrictedContext = ExecutionContextSchema.parse({
+      ...context(),
+      credentialId: "00000000-0000-4000-8000-000000000096",
+      grantId: "00000000-0000-4000-8000-000000000097",
+      spaceScope: [otherSpace],
+    });
+    harness.authorization.register(restrictedContext);
+    const noSpaceAccess = unwrapOutcome(
+      harness.kernel.execute(
+        restrictedContext,
+        routeCommand(captureId, "route-no-space", "Denied by Space"),
+      ),
+    );
+    const crossWorkspace = unwrapOutcome(
+      harness.kernel.execute(foreignContext, {
+        ...routeCommand(
+          captureId,
+          "route-cross-workspace",
+          "Cross-workspace Task",
+        ),
+        workspaceId: foreignWorkspace,
+      }),
+    );
+
+    for (const outcome of [
+      noMembership,
+      missing,
+      noSpaceAccess,
+      crossWorkspace,
+    ]) {
+      assert.equal(outcome.outcome, "rejected");
+      assert.equal(outcome.diagnosticCode, "authorization.denied");
+    }
+    assert.deepEqual(routeCounts(harness), before);
+
+    const deniedList = harness.kernel.query(restrictedContext, {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (deniedList.kind !== "query_result") {
+      throw new Error("Expected a typed Task-list denial.");
+    }
+    assert.equal(deniedList.result.outcome, "rejected");
+    if (deniedList.result.outcome === "rejected") {
+      assert.equal(deniedList.result.diagnosticCode, "authorization.denied");
+    }
+  });
+
+  it("rolls back every capture-to-Task persistence boundary", () => {
+    const boundaries: readonly FailureBoundary[] = [
+      "capture-update",
+      "task",
+      "event",
+      "audit",
+      "idempotency",
+      "outbox",
+    ];
+    for (const boundary of boundaries) {
+      const harness = bootstrappedHarness();
+      const captureId = submitCaptureAndGetId(
+        harness,
+        `route-failure-source-${boundary}`,
+        `Synthetic route failure ${boundary}`,
+      );
+      const before = harness.store.snapshot();
+      harness.store.failures.failAfter(boundary);
+      const outcome = unwrapOutcome(
+        harness.kernel.execute(
+          context(),
+          routeCommand(
+            captureId,
+            `route-failure-${boundary}`,
+            `Synthetic Task ${boundary}`,
+          ),
+        ),
+      );
+      assert.equal(outcome.outcome, "retryable");
+      assert.equal(outcome.diagnosticCode, "storage.unit_of_work_failed");
+      assert.deepEqual(harness.store.snapshot(), before);
+    }
+  });
+
+  it("paginates Task projections with typed opaque cursors and reports freshness", () => {
+    const harness = bootstrappedHarness();
+    for (const [index, title] of ["First", "Second", "Third"].entries()) {
+      const captureId = submitCaptureAndGetId(
+        harness,
+        `task-page-source-${index}`,
+        `${title} page source`,
+      );
+      const outcome = unwrapOutcome(
+        harness.kernel.execute(
+          context(),
+          routeCommand(captureId, `task-page-${index}`, `${title} Task`),
+        ),
+      );
+      assert.equal(outcome.outcome, "success");
+    }
+
+    const firstPage = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace, limit: 2 },
+    });
+    if (
+      firstPage.kind !== "query_result" ||
+      firstPage.result.outcome !== "success" ||
+      firstPage.result.projection.kind !== "task.list"
+    ) {
+      throw new Error("Expected the first Task page.");
+    }
+    assert.equal(firstPage.result.projection.items.length, 2);
+    assert.notEqual(firstPage.result.projection.nextCursor, null);
+
+    const secondPage = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: {
+        spaceId: ids.rootSpace,
+        limit: 2,
+        cursor: firstPage.result.projection.nextCursor ?? "",
+      },
+    });
+    if (
+      secondPage.kind !== "query_result" ||
+      secondPage.result.outcome !== "success" ||
+      secondPage.result.projection.kind !== "task.list"
+    ) {
+      throw new Error("Expected the second Task page.");
+    }
+    assert.equal(secondPage.result.projection.items.length, 1);
+    assert.equal(secondPage.result.projection.nextCursor, null);
+    const firstIds = new Set(
+      firstPage.result.projection.items.map((item) => item.id),
+    );
+    const secondItem = secondPage.result.projection.items[0];
+    if (secondItem === undefined) {
+      throw new Error("Expected one Task on the second page.");
+    }
+    assert.equal(firstIds.has(secondItem.id), false);
+
+    const capturePage = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "capture.history",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace, limit: 1 },
+    });
+    if (
+      capturePage.kind !== "query_result" ||
+      capturePage.result.outcome !== "success" ||
+      capturePage.result.projection.kind !== "capture.history"
+    ) {
+      throw new Error("Expected a Capture cursor.");
+    }
+    const wrongCursor = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: {
+        spaceId: ids.rootSpace,
+        cursor: capturePage.result.projection.nextCursor ?? "",
+      },
+    });
+    if (wrongCursor.kind !== "query_result") {
+      throw new Error("Expected a typed cursor rejection.");
+    }
+    assert.equal(wrongCursor.result.outcome, "rejected");
+    if (wrongCursor.result.outcome === "rejected") {
+      assert.equal(wrongCursor.result.diagnosticCode, "query.cursor_invalid");
+    }
+
+    harness.store.setFreshness({
+      mode: "local_projection",
+      checkpoint: "task-projection-checkpoint-3",
+      missingCapabilities: ["remote-task-updates"],
+    });
+    const projection = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_projection",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      projection.kind !== "query_result" ||
+      projection.result.outcome !== "success"
+    ) {
+      throw new Error("Expected a fresh-enough Task projection.");
+    }
+    assert.deepEqual(projection.result.freshness, {
+      mode: "local_projection",
+      checkpoint: "task-projection-checkpoint-3",
+      missingCapabilities: ["remote-task-updates"],
+    });
+    const authoritative = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (authoritative.kind !== "query_result") {
+      throw new Error("Expected a typed consistency rejection.");
+    }
+    assert.equal(authoritative.result.outcome, "rejected");
+    if (authoritative.result.outcome === "rejected") {
+      assert.equal(
+        authoritative.result.diagnosticCode,
+        "query.consistency_unavailable",
+      );
     }
   });
 

@@ -7,12 +7,15 @@ import {
   type IdempotencyRecord,
   type ReferenceStateSnapshot,
   type StoreFreshness,
+  type TaskPageRequest,
 } from "@constellation/application";
 import type {
   AuditReceiptId,
   CaptureId,
   PrincipalId,
   SpaceId,
+  TaskId,
+  TaskStatusId,
   WorkspaceId,
 } from "@constellation/contracts";
 import type {
@@ -21,6 +24,8 @@ import type {
   DomainEvent,
   OutboxEntry,
   Space,
+  Task,
+  TaskStatusDefinition,
   Workspace,
   WorkspaceMembership,
 } from "@constellation/domain";
@@ -30,7 +35,10 @@ export type FailureBoundary =
   | "workspace-update"
   | "space"
   | "membership"
+  | "task-status"
   | "capture"
+  | "capture-update"
+  | "task"
   | "event"
   | "audit"
   | "idempotency"
@@ -60,7 +68,9 @@ interface MutableState {
   readonly workspaces: Map<WorkspaceId, Workspace>;
   readonly spaces: Map<SpaceId, Space>;
   readonly memberships: Map<string, WorkspaceMembership>;
+  readonly taskStatuses: Map<TaskStatusId, TaskStatusDefinition>;
   readonly captures: Map<CaptureId, Capture>;
+  readonly tasks: Map<TaskId, Task>;
   readonly events: Map<string, DomainEvent>;
   readonly auditReceipts: Map<AuditReceiptId, AuditReceipt>;
   readonly idempotencyRecords: Map<string, IdempotencyRecord>;
@@ -71,7 +81,9 @@ const emptyState = (): MutableState => ({
   workspaces: new Map(),
   spaces: new Map(),
   memberships: new Map(),
+  taskStatuses: new Map(),
   captures: new Map(),
+  tasks: new Map(),
   events: new Map(),
   auditReceipts: new Map(),
   idempotencyRecords: new Map(),
@@ -82,7 +94,9 @@ const cloneState = (state: MutableState): MutableState => ({
   workspaces: new Map(state.workspaces),
   spaces: new Map(state.spaces),
   memberships: new Map(state.memberships),
+  taskStatuses: new Map(state.taskStatuses),
   captures: new Map(state.captures),
+  tasks: new Map(state.tasks),
   events: new Map(state.events),
   auditReceipts: new Map(state.auditReceipts),
   idempotencyRecords: new Map(state.idempotencyRecords),
@@ -96,6 +110,11 @@ const membershipKey = (
 
 const compareCaptureDescending = (left: Capture, right: Capture): number => {
   const time = right.capturedAt.localeCompare(left.capturedAt);
+  return time === 0 ? right.id.localeCompare(left.id) : time;
+};
+
+const compareTaskDescending = (left: Task, right: Task): number => {
+  const time = right.createdAt.localeCompare(left.createdAt);
   return time === 0 ? right.id.localeCompare(left.id) : time;
 };
 
@@ -121,6 +140,21 @@ class ReadView implements ApplicationReadView {
     return [...this.state.spaces.values()]
       .filter((space) => space.workspaceId === workspaceId)
       .sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  public getTaskStatus(id: TaskStatusId): TaskStatusDefinition | undefined {
+    return this.state.taskStatuses.get(id);
+  }
+
+  public listTaskStatuses(
+    workspaceId: WorkspaceId,
+  ): readonly TaskStatusDefinition[] {
+    return [...this.state.taskStatuses.values()]
+      .filter((status) => status.workspaceId === workspaceId)
+      .sort(
+        (left, right) =>
+          left.position - right.position || left.id.localeCompare(right.id),
+      );
   }
 
   public getMembership(
@@ -149,12 +183,37 @@ class ReadView implements ApplicationReadView {
     }
     const cursorIndex = captures.findIndex(
       (capture) =>
-        capture.id === request.after?.captureId &&
-        capture.capturedAt === request.after.capturedAt,
+        capture.id === request.after?.recordId &&
+        capture.capturedAt === request.after.orderedAt,
     );
     return cursorIndex < 0
       ? undefined
       : captures.slice(cursorIndex + 1, cursorIndex + 1 + request.limit);
+  }
+
+  public getTask(id: TaskId): Task | undefined {
+    return this.state.tasks.get(id);
+  }
+
+  public listTasks(request: TaskPageRequest): readonly Task[] | undefined {
+    const tasks = [...this.state.tasks.values()]
+      .filter(
+        (task) =>
+          task.workspaceId === request.workspaceId &&
+          task.spaceId === request.spaceId,
+      )
+      .sort(compareTaskDescending);
+    if (request.after === undefined) {
+      return tasks.slice(0, request.limit);
+    }
+    const cursorIndex = tasks.findIndex(
+      (task) =>
+        task.id === request.after?.recordId &&
+        task.createdAt === request.after.orderedAt,
+    );
+    return cursorIndex < 0
+      ? undefined
+      : tasks.slice(cursorIndex + 1, cursorIndex + 1 + request.limit);
   }
 
   public getAuditReceipt(id: AuditReceiptId): AuditReceipt | undefined {
@@ -213,12 +272,38 @@ class Transaction extends ReadView implements ApplicationTransaction {
     this.failures.reached("membership");
   }
 
+  public insertTaskStatus(status: TaskStatusDefinition): void {
+    if (this.state.taskStatuses.has(status.id)) {
+      throw new Error(`Duplicate task status ID: ${status.id}`);
+    }
+    this.state.taskStatuses.set(status.id, status);
+    this.failures.reached("task-status");
+  }
+
   public insertCapture(capture: Capture): void {
     if (this.state.captures.has(capture.id)) {
       throw new Error(`Duplicate capture ID: ${capture.id}`);
     }
     this.state.captures.set(capture.id, capture);
     this.failures.reached("capture");
+  }
+
+  public updateCapture(capture: Capture, expectedVersion: number): boolean {
+    const current = this.state.captures.get(capture.id);
+    if (current?.version !== expectedVersion) {
+      return false;
+    }
+    this.state.captures.set(capture.id, capture);
+    this.failures.reached("capture-update");
+    return true;
+  }
+
+  public insertTask(task: Task): void {
+    if (this.state.tasks.has(task.id)) {
+      throw new Error(`Duplicate task ID: ${task.id}`);
+    }
+    this.state.tasks.set(task.id, task);
+    this.failures.reached("task");
   }
 
   public insertEvent(event: DomainEvent): void {
@@ -286,7 +371,9 @@ export class InMemoryReferenceStore implements ApplicationStore {
       workspaces: [...this.state.workspaces.values()],
       spaces: [...this.state.spaces.values()],
       memberships: [...this.state.memberships.values()],
+      taskStatuses: [...this.state.taskStatuses.values()],
       captures: [...this.state.captures.values()],
+      tasks: [...this.state.tasks.values()],
       events: [...this.state.events.values()],
       auditReceipts: [...this.state.auditReceipts.values()],
       idempotencyRecords: [...this.state.idempotencyRecords.values()],

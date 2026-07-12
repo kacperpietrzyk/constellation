@@ -6,6 +6,8 @@ import {
   MembershipIdSchema,
   OutboxEntryIdSchema,
   QueryResultSchema,
+  TaskIdSchema,
+  TaskStatusIdSchema,
   type CommandEnvelope,
   type CommandOutcome,
   type ContractIssue,
@@ -20,6 +22,7 @@ import {
 import {
   createLocalWorkspace,
   renameWorkspace,
+  routeCaptureAsTask,
   submitCapture,
   type AuditReceipt,
   type DomainEvent,
@@ -33,8 +36,9 @@ import {
   type ApplicationReadView,
   type ApplicationTransaction,
   type CurrentAuthorizationPolicy,
-  type PaginationCursor,
+  type CapturePaginationCursor,
   type StoreFreshness,
+  type TaskPaginationCursor,
 } from "./ports.js";
 
 export interface ContractBoundaryRejection {
@@ -160,6 +164,24 @@ const isCurrentlyAuthorized = (
           spaceId: command.payload.spaceId,
         }) &&
         canUseSpace(context, command.workspaceId, command.payload.spaceId)
+      );
+    }
+    case "capture.routeAsTask": {
+      const capture = view.getCapture(command.payload.captureId);
+      const membership = view.getMembership(
+        command.workspaceId,
+        context.principalId,
+      );
+      return (
+        capture?.workspaceId === command.workspaceId &&
+        membership !== undefined &&
+        authorization.authorize({
+          context,
+          capability: command.commandName,
+          workspaceId: command.workspaceId,
+          spaceId: capture.spaceId,
+        }) &&
+        canUseSpace(context, command.workspaceId, capture.spaceId)
       );
     }
   }
@@ -305,6 +327,15 @@ export class ApplicationKernel {
           fingerprint,
           occurredAt,
         );
+      case "capture.routeAsTask":
+        return this.routeCaptureToTask(
+          transaction,
+          context,
+          command,
+          scope,
+          fingerprint,
+          occurredAt,
+        );
     }
   }
 
@@ -337,6 +368,9 @@ export class ApplicationKernel {
     const membershipId = MembershipIdSchema.parse(
       this.dependencies.ids.next("membership"),
     );
+    const defaultTaskStatusId = TaskStatusIdSchema.parse(
+      this.dependencies.ids.next("taskStatus"),
+    );
     const eventId = EventIdSchema.parse(this.dependencies.ids.next("event"));
     const auditReceiptId = AuditReceiptIdSchema.parse(
       this.dependencies.ids.next("auditReceipt"),
@@ -348,6 +382,7 @@ export class ApplicationKernel {
       workspaceId: command.payload.workspaceId,
       rootSpaceId: command.payload.rootSpaceId,
       membershipId,
+      defaultTaskStatusId,
       ownerPrincipalId: command.payload.ownerPrincipalId,
       name: command.payload.name,
       timezone: command.payload.timezone,
@@ -367,13 +402,25 @@ export class ApplicationKernel {
       context,
       command,
       created.rootSpace.id,
-      [created.workspace.id, created.rootSpace.id, created.ownerMembership.id],
+      [
+        created.workspace.id,
+        created.rootSpace.id,
+        created.ownerMembership.id,
+        created.defaultTaskStatus.id,
+      ],
       {
         [created.workspace.id]: created.workspace.version,
         [created.rootSpace.id]: created.rootSpace.version,
         [created.ownerMembership.id]: created.ownerMembership.version,
+        [created.defaultTaskStatus.id]: created.defaultTaskStatus.version,
       },
-      ["name", "timezone", "rootSpaceId", "ownerPrincipalId"],
+      [
+        "name",
+        "timezone",
+        "rootSpaceId",
+        "ownerPrincipalId",
+        "defaultTaskStatusId",
+      ],
       occurredAt,
     );
     const outbox: OutboxEntry = {
@@ -403,12 +450,18 @@ export class ApplicationKernel {
           recordKind: "membership",
           version: 1,
         },
+        {
+          recordId: created.defaultTaskStatus.id,
+          recordKind: "taskStatus",
+          version: 1,
+        },
       ],
       auditReceiptId,
       projection: {
         kind: "workspace.created",
         workspaceId: created.workspace.id,
         rootSpaceId: created.rootSpace.id,
+        defaultTaskStatusId: created.defaultTaskStatus.id,
         version: created.workspace.version,
       },
     });
@@ -416,6 +469,7 @@ export class ApplicationKernel {
     transaction.insertWorkspace(created.workspace);
     transaction.insertSpace(created.rootSpace);
     transaction.insertMembership(created.ownerMembership);
+    transaction.insertTaskStatus(created.defaultTaskStatus);
     transaction.insertEvent(event);
     transaction.insertAuditReceipt(audit);
     transaction.insertIdempotency({ scope, fingerprint, outcome });
@@ -650,6 +704,165 @@ export class ApplicationKernel {
     return outcome;
   }
 
+  private routeCaptureToTask(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<CommandEnvelope, { commandName: "capture.routeAsTask" }>,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+  ): CommandOutcome {
+    const workspace = transaction.getWorkspace(command.workspaceId);
+    const capture = transaction.getCapture(command.payload.captureId);
+    const membership = transaction.getMembership(
+      command.workspaceId,
+      context.principalId,
+    );
+    if (
+      workspace === undefined ||
+      capture?.workspaceId !== workspace.id ||
+      membership === undefined ||
+      !canUseSpace(context, command.workspaceId, capture.spaceId)
+    ) {
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "authorization.denied",
+      });
+    }
+
+    const expectedVersion = command.expectedVersions[capture.id];
+    const expectedRecordIds = Object.keys(command.expectedVersions);
+    if (
+      expectedVersion === undefined ||
+      expectedRecordIds.length !== 1 ||
+      expectedRecordIds[0] !== capture.id
+    ) {
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    }
+    if (expectedVersion !== capture.version) {
+      return this.outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "record.version_conflict",
+        currentVersions: currentVersionMap(capture.id, capture.version),
+      });
+    }
+    if (capture.processingState !== "pending_processing") {
+      return this.outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "capture.already_routed",
+        currentVersions: currentVersionMap(capture.id, capture.version),
+      });
+    }
+
+    const taskStatus = transaction.getTaskStatus(workspace.defaultTaskStatusId);
+    if (taskStatus?.workspaceId !== workspace.id) {
+      throw new RetryableUnitOfWorkError(
+        "The workspace default task status is unavailable.",
+      );
+    }
+
+    const taskId = TaskIdSchema.parse(this.dependencies.ids.next("task"));
+    const eventId = EventIdSchema.parse(this.dependencies.ids.next("event"));
+    const auditReceiptId = AuditReceiptIdSchema.parse(
+      this.dependencies.ids.next("auditReceipt"),
+    );
+    const outboxEntryId = OutboxEntryIdSchema.parse(
+      this.dependencies.ids.next("outboxEntry"),
+    );
+    const routed = routeCaptureAsTask({
+      capture,
+      taskId,
+      taskStatusId: taskStatus.id,
+      title: command.payload.title,
+      routedBy: context.principalId,
+      occurredAt,
+    });
+    const event: DomainEvent = {
+      id: eventId,
+      type: "capture.routed_as_task",
+      workspaceId: capture.workspaceId,
+      spaceId: capture.spaceId,
+      aggregateId: capture.id,
+      aggregateVersion: routed.capture.version,
+      taskId: routed.task.id,
+      taskStatusId: routed.task.statusId,
+      occurredAt,
+    };
+    const audit = this.auditReceipt(
+      auditReceiptId,
+      context,
+      command,
+      capture.spaceId,
+      [routed.capture.id, routed.task.id],
+      {
+        [routed.capture.id]: routed.capture.version,
+        [routed.task.id]: routed.task.version,
+      },
+      [
+        "processingState",
+        "derivedTaskId",
+        "task.title",
+        "task.statusId",
+        "task.sourceCaptureId",
+      ],
+      occurredAt,
+    );
+    const outcome = this.outcome(command, occurredAt, {
+      outcome: "success",
+      diagnosticCode: "capture.routed_as_task",
+      affected: [
+        {
+          recordId: routed.capture.id,
+          recordKind: "capture",
+          version: routed.capture.version,
+        },
+        {
+          recordId: routed.task.id,
+          recordKind: "task",
+          version: routed.task.version,
+        },
+      ],
+      auditReceiptId,
+      projection: {
+        kind: "capture.routed_as_task",
+        captureId: routed.capture.id,
+        captureVersion: routed.capture.version,
+        taskId: routed.task.id,
+        taskStatusId: routed.task.statusId,
+        taskVersion: routed.task.version,
+      },
+    });
+    const outbox: OutboxEntry = {
+      id: outboxEntryId,
+      workspaceId: capture.workspaceId,
+      spaceId: capture.spaceId,
+      eventId,
+      topic: "work.projection.requested",
+      createdAt: occurredAt,
+    };
+
+    if (!transaction.updateCapture(routed.capture, expectedVersion)) {
+      const current = transaction.getCapture(capture.id);
+      return this.outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "record.version_conflict",
+        currentVersions:
+          current === undefined
+            ? {}
+            : currentVersionMap(current.id, current.version),
+      });
+    }
+    transaction.insertTask(routed.task);
+    transaction.insertEvent(event);
+    transaction.insertAuditReceipt(audit);
+    transaction.insertIdempotency({ scope, fingerprint, outcome });
+    transaction.insertOutbox(outbox);
+    return outcome;
+  }
+
   private queryValidated(
     context: ExecutionContext,
     query: QueryEnvelope,
@@ -677,6 +890,8 @@ export class ApplicationKernel {
             kernelTime,
             freshness,
           );
+        case "task.list":
+          return this.taskList(view, context, query, kernelTime, freshness);
         case "audit.receipt":
           return this.auditReceiptQuery(
             view,
@@ -729,6 +944,7 @@ export class ApplicationKernel {
           spaceId: space.id,
         }),
     );
+    const taskStatuses = view.listTaskStatuses(workspace.id);
     return QueryResultSchema.parse({
       outcome: "success",
       contractVersion: 1,
@@ -745,12 +961,20 @@ export class ApplicationKernel {
           id: workspace.id,
           name: workspace.name,
           timezone: workspace.timezone,
+          defaultTaskStatusId: workspace.defaultTaskStatusId,
           version: workspace.version,
         },
         spaces: spaces.map((space) => ({
           id: space.id,
           name: space.name,
           version: space.version,
+        })),
+        taskStatuses: taskStatuses.map((status) => ({
+          id: status.id,
+          label: status.label,
+          operationalSemantics: status.operationalSemantics,
+          position: status.position,
+          version: status.version,
         })),
       },
     });
@@ -789,12 +1013,15 @@ export class ApplicationKernel {
       );
     }
 
-    let after: PaginationCursor | undefined;
+    let after: CapturePaginationCursor | undefined;
     if (query.parameters.cursor !== undefined) {
-      after = this.dependencies.cursorCodec.decode(query.parameters.cursor);
-      if (after === undefined) {
+      const decoded = this.dependencies.cursorCodec.decode(
+        query.parameters.cursor,
+      );
+      if (decoded?.kind !== "capture") {
         return this.queryRejected(query, kernelTime, "query.cursor_invalid");
       }
+      after = decoded;
     }
     const limit = query.parameters.limit ?? 50;
     const items = view.listCaptures({
@@ -811,8 +1038,9 @@ export class ApplicationKernel {
     const nextCursor =
       items.length > limit && last !== undefined
         ? this.dependencies.cursorCodec.encode({
-            capturedAt: last.capturedAt,
-            captureId: last.id,
+            kind: "capture",
+            orderedAt: last.capturedAt,
+            recordId: last.id,
           })
         : null;
 
@@ -828,15 +1056,136 @@ export class ApplicationKernel {
       },
       projection: {
         kind: "capture.history",
-        items: visibleItems.map((capture) => ({
-          id: capture.id,
-          spaceId: capture.spaceId,
-          originalText: capture.originalText,
-          source: capture.source,
-          capturedAt: capture.capturedAt,
-          processingState: capture.processingState,
-          version: capture.version,
-        })),
+        items: visibleItems.map((capture) =>
+          capture.processingState === "routed_as_task"
+            ? {
+                id: capture.id,
+                spaceId: capture.spaceId,
+                originalText: capture.originalText,
+                source: capture.source,
+                capturedAt: capture.capturedAt,
+                processingState: capture.processingState,
+                derivedTaskId: capture.derivedTaskId,
+                routedAt: capture.routedAt,
+                routedBy: capture.routedBy,
+                version: capture.version,
+              }
+            : {
+                id: capture.id,
+                spaceId: capture.spaceId,
+                originalText: capture.originalText,
+                source: capture.source,
+                capturedAt: capture.capturedAt,
+                processingState: capture.processingState,
+                version: capture.version,
+              },
+        ),
+        nextCursor,
+      },
+    });
+  }
+
+  private taskList(
+    view: ApplicationReadView,
+    context: ExecutionContext,
+    query: Extract<QueryEnvelope, { queryName: "task.list" }>,
+    kernelTime: string,
+    freshness: StoreFreshness,
+  ): QueryResult {
+    const membership = view.getMembership(
+      query.workspaceId,
+      context.principalId,
+    );
+    const space = view.getSpace(query.parameters.spaceId);
+    if (
+      membership === undefined ||
+      space?.workspaceId !== query.workspaceId ||
+      !this.dependencies.authorization.authorize({
+        context,
+        capability: query.queryName,
+        workspaceId: query.workspaceId,
+        spaceId: query.parameters.spaceId,
+      }) ||
+      !canUseSpace(context, query.workspaceId, query.parameters.spaceId)
+    ) {
+      return this.queryRejected(query, kernelTime, "authorization.denied");
+    }
+    if (this.consistencyUnavailable(query, freshness)) {
+      return this.queryRejected(
+        query,
+        kernelTime,
+        "query.consistency_unavailable",
+      );
+    }
+
+    let after: TaskPaginationCursor | undefined;
+    if (query.parameters.cursor !== undefined) {
+      const decoded = this.dependencies.cursorCodec.decode(
+        query.parameters.cursor,
+      );
+      if (decoded?.kind !== "task") {
+        return this.queryRejected(query, kernelTime, "query.cursor_invalid");
+      }
+      after = decoded;
+    }
+    const limit = query.parameters.limit ?? 50;
+    const items = view.listTasks({
+      workspaceId: query.workspaceId,
+      spaceId: query.parameters.spaceId,
+      ...(after === undefined ? {} : { after }),
+      limit: limit + 1,
+    });
+    if (items === undefined) {
+      return this.queryRejected(query, kernelTime, "query.cursor_invalid");
+    }
+    const visibleItems = items.slice(0, limit);
+    const projections = visibleItems.map((task) => {
+      const status = view.getTaskStatus(task.statusId);
+      return status?.workspaceId === query.workspaceId
+        ? {
+            id: task.id,
+            spaceId: task.spaceId,
+            title: task.title,
+            status: {
+              id: status.id,
+              label: status.label,
+              operationalSemantics: status.operationalSemantics,
+            },
+            ...(task.sourceCaptureId === undefined
+              ? {}
+              : { sourceCaptureId: task.sourceCaptureId }),
+            createdAt: task.createdAt,
+            updatedAt: task.updatedAt,
+            version: task.version,
+          }
+        : undefined;
+    });
+    if (projections.some((projection) => projection === undefined)) {
+      return this.queryRejected(query, kernelTime, "query.not_available");
+    }
+    const last = visibleItems.at(-1);
+    const nextCursor =
+      items.length > limit && last !== undefined
+        ? this.dependencies.cursorCodec.encode({
+            kind: "task",
+            orderedAt: last.createdAt,
+            recordId: last.id,
+          })
+        : null;
+
+    return QueryResultSchema.parse({
+      outcome: "success",
+      contractVersion: 1,
+      queryId: query.queryId,
+      kernelTime,
+      freshness: {
+        mode: freshness.mode,
+        checkpoint: freshness.checkpoint,
+        missingCapabilities: freshness.missingCapabilities,
+      },
+      projection: {
+        kind: "task.list",
+        items: projections,
         nextCursor,
       },
     });

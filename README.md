@@ -55,9 +55,11 @@ Constellation is in **pre-alpha foundation work**. There is no installable
 release yet, and no contract should be considered stable. The repository now
 contains the first storage-neutral reference kernel: strict runtime contracts,
 workspace/Space bootstrap, text capture, capture history, audit receipts,
-idempotency, expected-version conflicts, and atomic failure-injection tests.
-Encrypted persistence, Electron integration, MCP transport, and product UI are
-not implemented yet.
+capture-to-Task routing, a minimal versioned Task status, Task listing,
+idempotency, expected-version conflicts, and atomic failure-injection tests. The
+reference adapter preserves the original Capture while creating one canonical
+standalone Task. Encrypted persistence, automatic routing rules, Electron
+integration, MCP transport, and product UI are not implemented yet.
 
 The current kernel boundary and implemented subset are documented in
 [Application kernel](docs/architecture/application-kernel.md).

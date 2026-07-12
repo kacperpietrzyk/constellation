@@ -9,6 +9,8 @@ import {
   PrincipalIdSchema,
   QueryIdSchema,
   SpaceIdSchema,
+  TaskIdSchema,
+  TaskStatusIdSchema,
   WorkspaceIdSchema,
 } from "./ids.js";
 import { ContractVersionSchema } from "./command.js";
@@ -48,9 +50,21 @@ export const AuditReceiptQuerySchema = QueryMetadataSchema.extend({
     .strict(),
 }).strict();
 
+export const TaskListQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("task.list"),
+  parameters: z
+    .object({
+      spaceId: SpaceIdSchema,
+      limit: z.int().min(1).max(200).optional(),
+      cursor: z.string().trim().min(1).max(500).optional(),
+    })
+    .strict(),
+}).strict();
+
 export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   WorkspaceBootstrapContextQuerySchema,
   CaptureHistoryQuerySchema,
+  TaskListQuerySchema,
   AuditReceiptQuerySchema,
 ]);
 export type QueryEnvelope = z.infer<typeof QueryEnvelopeSchema>;
@@ -64,6 +78,27 @@ const FreshnessSchema = z
   })
   .strict();
 
+const CaptureHistoryItemBaseSchema = z.object({
+  id: CaptureIdSchema,
+  spaceId: SpaceIdSchema,
+  originalText: z.string(),
+  source: z.enum(["global_quick_capture", "in_app_quick_capture"]),
+  capturedAt: z.iso.datetime({ offset: true }),
+  version: z.int().positive(),
+});
+
+const CaptureHistoryItemSchema = z.discriminatedUnion("processingState", [
+  CaptureHistoryItemBaseSchema.extend({
+    processingState: z.literal("pending_processing"),
+  }).strict(),
+  CaptureHistoryItemBaseSchema.extend({
+    processingState: z.literal("routed_as_task"),
+    derivedTaskId: TaskIdSchema,
+    routedAt: z.iso.datetime({ offset: true }),
+    routedBy: PrincipalIdSchema,
+  }).strict(),
+]);
+
 export const QueryProjectionSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -73,6 +108,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           id: WorkspaceIdSchema,
           name: z.string(),
           timezone: z.string(),
+          defaultTaskStatusId: TaskStatusIdSchema,
           version: z.int().positive(),
         })
         .strict(),
@@ -85,20 +121,45 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           })
           .strict(),
       ),
+      taskStatuses: z.array(
+        z
+          .object({
+            id: TaskStatusIdSchema,
+            label: z.string(),
+            operationalSemantics: z.literal("actionable"),
+            position: z.int().nonnegative(),
+            version: z.int().positive(),
+          })
+          .strict(),
+      ),
     })
     .strict(),
   z
     .object({
       kind: z.literal("capture.history"),
+      items: z.array(CaptureHistoryItemSchema),
+      nextCursor: z.string().nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("task.list"),
       items: z.array(
         z
           .object({
-            id: CaptureIdSchema,
+            id: TaskIdSchema,
             spaceId: SpaceIdSchema,
-            originalText: z.string(),
-            source: z.enum(["global_quick_capture", "in_app_quick_capture"]),
-            capturedAt: z.iso.datetime({ offset: true }),
-            processingState: z.literal("pending_processing"),
+            title: z.string(),
+            status: z
+              .object({
+                id: TaskStatusIdSchema,
+                label: z.string(),
+                operationalSemantics: z.literal("actionable"),
+              })
+              .strict(),
+            sourceCaptureId: CaptureIdSchema.optional(),
+            createdAt: z.iso.datetime({ offset: true }),
+            updatedAt: z.iso.datetime({ offset: true }),
             version: z.int().positive(),
           })
           .strict(),

@@ -6,6 +6,8 @@ import {
   CommandIdSchema,
   CorrelationIdSchema,
   SpaceIdSchema,
+  TaskIdSchema,
+  TaskStatusIdSchema,
   WorkspaceIdSchema,
 } from "./ids.js";
 import { ContractVersionSchema } from "./command.js";
@@ -14,11 +16,13 @@ export const DiagnosticCodeSchema = z.enum([
   "workspace.created",
   "workspace.renamed",
   "capture.stored",
+  "capture.routed_as_task",
   "authorization.denied",
   "command.precondition_failed",
   "idempotency.key_reused",
   "record.already_exists",
   "record.version_conflict",
+  "capture.already_routed",
   "storage.unit_of_work_failed",
   "operation.partial",
   "external.unknown_reconcile",
@@ -30,6 +34,8 @@ export const RecordKindSchema = z.enum([
   "space",
   "membership",
   "capture",
+  "task",
+  "taskStatus",
 ]);
 export type RecordKind = z.infer<typeof RecordKindSchema>;
 
@@ -47,6 +53,7 @@ export const WorkspaceCreatedProjectionSchema = z
     kind: z.literal("workspace.created"),
     workspaceId: WorkspaceIdSchema,
     rootSpaceId: SpaceIdSchema,
+    defaultTaskStatusId: TaskStatusIdSchema,
     version: z.int().positive(),
   })
   .strict();
@@ -69,10 +76,22 @@ export const CaptureStoredProjectionSchema = z
   })
   .strict();
 
+export const CaptureRoutedAsTaskProjectionSchema = z
+  .object({
+    kind: z.literal("capture.routed_as_task"),
+    captureId: CaptureIdSchema,
+    captureVersion: z.int().positive(),
+    taskId: TaskIdSchema,
+    taskStatusId: TaskStatusIdSchema,
+    taskVersion: z.int().positive(),
+  })
+  .strict();
+
 export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   WorkspaceCreatedProjectionSchema,
   WorkspaceRenamedProjectionSchema,
   CaptureStoredProjectionSchema,
+  CaptureRoutedAsTaskProjectionSchema,
 ]);
 export type CommandProjection = z.infer<typeof CommandProjectionSchema>;
 
@@ -113,10 +132,18 @@ const CaptureStoredSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend(
   },
 ).strict();
 
+const CaptureRoutedAsTaskSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("capture.routed_as_task"),
+    projection: CaptureRoutedAsTaskProjectionSchema,
+  }).strict();
+
 export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   WorkspaceCreatedSuccessOutcomeSchema,
   WorkspaceRenamedSuccessOutcomeSchema,
   CaptureStoredSuccessOutcomeSchema,
+  CaptureRoutedAsTaskSuccessOutcomeSchema,
 ]);
 
 export const PartialOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
@@ -132,6 +159,7 @@ export const ConflictOutcomeSchema = OutcomeMetadataSchema.extend({
     "idempotency.key_reused",
     "record.already_exists",
     "record.version_conflict",
+    "capture.already_routed",
   ]),
   currentVersions: z.record(z.uuid(), z.int().positive()),
 }).strict();
