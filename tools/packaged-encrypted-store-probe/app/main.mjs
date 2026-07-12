@@ -207,7 +207,7 @@ process.on("exit", (internalExitCode) => {
   }
 });
 
-function awaitParentExitAuthorization() {
+function awaitParentShutdownProtocol() {
   if (
     typeof process.send !== "function" ||
     typeof process.disconnect !== "function" ||
@@ -219,6 +219,7 @@ function awaitParentExitAuthorization() {
   }
 
   let completed = false;
+  let phase = "shutdown";
   const clear = () => {
     process.removeListener("message", onMessage);
     process.removeListener("disconnect", abort);
@@ -231,15 +232,24 @@ function awaitParentExitAuthorization() {
   };
   const onMessage = (message) => {
     if (completed) return;
+    const expectedType =
+      phase === "shutdown"
+        ? SHUTDOWN_AUTHORIZATION_TYPE
+        : EXIT_AUTHORIZATION_TYPE;
     if (
       !message ||
       typeof message !== "object" ||
       Array.isArray(message) ||
       Object.keys(message).length !== 2 ||
-      message.type !== EXIT_AUTHORIZATION_TYPE ||
+      message.type !== expectedType ||
       message.processId !== process.pid
     ) {
       abort();
+      return;
+    }
+    if (phase === "shutdown") {
+      phase = "exit";
+      writeShutdownAcknowledgement();
       return;
     }
 
@@ -248,6 +258,12 @@ function awaitParentExitAuthorization() {
     exitAuthorizationAccepted = true;
     writeExitAcknowledgement();
     process.disconnect();
+    // An Electron-managed main-loop shutdown is required on Windows so
+    // Chromium can commit the DPAPI-wrapped async-provider key in profile
+    // Local State. The declared probe outcome remains in the fixed protocol;
+    // the terminal Electron quit event must report zero and the parent records
+    // the platform-observed status separately. The parent owns the deadline
+    // and force-kill fallback.
     if (config?.mode === "shutdown-fault") {
       faultExitRequested = true;
       process.exit(1);
@@ -257,58 +273,7 @@ function awaitParentExitAuthorization() {
     app.quit();
   };
 
-  process.once("message", onMessage);
-  process.once("disconnect", abort);
-}
-
-function awaitParentShutdownAuthorization() {
-  if (
-    typeof process.send !== "function" ||
-    typeof process.disconnect !== "function" ||
-    !process.connected ||
-    !process.channel
-  ) {
-    process.kill(process.pid, "SIGKILL");
-    return;
-  }
-
-  let completed = false;
-  const clear = () => {
-    process.removeListener("message", onMessage);
-    process.removeListener("disconnect", abort);
-  };
-  const abort = () => {
-    if (completed) return;
-    completed = true;
-    clear();
-    process.kill(process.pid, "SIGKILL");
-  };
-  const onMessage = (message) => {
-    if (completed) return;
-    if (
-      !message ||
-      typeof message !== "object" ||
-      Array.isArray(message) ||
-      Object.keys(message).length !== 2 ||
-      message.type !== SHUTDOWN_AUTHORIZATION_TYPE ||
-      message.processId !== process.pid
-    ) {
-      abort();
-      return;
-    }
-    completed = true;
-    clear();
-    // An Electron-managed main-loop shutdown is required on Windows so
-    // Chromium can commit the DPAPI-wrapped async-provider key in profile
-    // Local State. The declared probe outcome remains in the fixed protocol;
-    // the terminal Electron quit event must report zero and the parent records
-    // the platform-observed status separately. The parent owns the deadline
-    // and force-kill fallback.
-    awaitParentExitAuthorization();
-    writeShutdownAcknowledgement();
-  };
-
-  process.once("message", onMessage);
+  process.on("message", onMessage);
   process.once("disconnect", abort);
 }
 
@@ -327,7 +292,7 @@ function finish(result, exitCode) {
   // main-loop exit, supervise its deadline, and verify that all inherited
   // pipes close. The child remains live through both exact IPC authorizations.
   writeFixedResult(result, exitCode);
-  awaitParentShutdownAuthorization();
+  awaitParentShutdownProtocol();
 }
 
 function getArgument(name) {
