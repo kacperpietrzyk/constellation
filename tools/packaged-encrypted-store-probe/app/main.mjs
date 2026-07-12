@@ -19,6 +19,8 @@ const SHUTDOWN_AUTHORIZATION_TYPE =
   "constellation.packaged-store-probe.shutdown/v1";
 const SHUTDOWN_ACK_TYPE =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
+const SHUTDOWN_REJECTED_TYPE =
+  "constellation.packaged-store-probe.shutdown-rejected/v1";
 const EXIT_ACK_TYPE = "constellation.packaged-store-probe.exit-accepted/v1";
 const SHUTDOWN_COMPLETE_TYPE =
   "constellation.packaged-store-probe.shutdown-complete/v1";
@@ -131,6 +133,35 @@ function writeShutdownAcknowledgement() {
   }
 }
 
+function writeShutdownRejection(reason) {
+  const output = Buffer.from(
+    `${JSON.stringify({
+      type: SHUTDOWN_REJECTED_TYPE,
+      processId: process.pid,
+      reason,
+    })}\n`,
+    "utf8",
+  );
+  try {
+    let offset = 0;
+    while (offset < output.length) {
+      const written = fs.writeSync(1, output, offset, output.length - offset);
+      if (written <= 0) throw new Error("SHUTDOWN_REJECTION_WRITE_FAILED");
+      offset += written;
+    }
+  } finally {
+    output.fill(0);
+  }
+}
+
+function rejectShutdown(reason) {
+  try {
+    writeShutdownRejection(reason);
+  } finally {
+    process.kill(process.pid, "SIGKILL");
+  }
+}
+
 function writeExitAcknowledgement() {
   const output = Buffer.from(
     `${JSON.stringify({
@@ -213,7 +244,7 @@ function awaitParentShutdownProtocol() {
     !process.connected ||
     !process.channel
   ) {
-    process.kill(process.pid, "SIGKILL");
+    rejectShutdown("channel-unavailable");
     return;
   }
 
@@ -226,21 +257,28 @@ function awaitParentShutdownProtocol() {
     if (completed) return;
     completed = true;
     clear();
-    process.kill(process.pid, "SIGKILL");
+    rejectShutdown("disconnect");
   };
   const onMessage = (message) => {
     if (completed) return;
-    if (
-      !message ||
-      typeof message !== "object" ||
-      Array.isArray(message) ||
-      Object.keys(message).length !== 4 ||
-      message.type !== SHUTDOWN_AUTHORIZATION_TYPE ||
-      message.processId !== process.pid ||
-      message.method !== "app.quit" ||
-      message.requestedExitCode !== 0
-    ) {
-      abort();
+    let rejection;
+    if (!message || typeof message !== "object" || Array.isArray(message)) {
+      rejection = "shape";
+    } else if (Object.keys(message).length !== 4) {
+      rejection = "shape";
+    } else if (message.type !== SHUTDOWN_AUTHORIZATION_TYPE) {
+      rejection = "type";
+    } else if (message.processId !== process.pid) {
+      rejection = "pid";
+    } else if (message.method !== "app.quit") {
+      rejection = "method";
+    } else if (message.requestedExitCode !== 0) {
+      rejection = "code";
+    }
+    if (rejection) {
+      completed = true;
+      clear();
+      rejectShutdown(rejection);
       return;
     }
     completed = true;

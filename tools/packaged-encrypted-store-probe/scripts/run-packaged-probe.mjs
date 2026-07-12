@@ -47,6 +47,8 @@ const shutdownAuthorizationType =
   "constellation.packaged-store-probe.shutdown/v1";
 const shutdownAckType =
   "constellation.packaged-store-probe.shutdown-accepted/v1";
+const shutdownRejectedType =
+  "constellation.packaged-store-probe.shutdown-rejected/v1";
 const exitAckType = "constellation.packaged-store-probe.exit-accepted/v1";
 const shutdownCompleteType =
   "constellation.packaged-store-probe.shutdown-complete/v1";
@@ -563,6 +565,9 @@ async function launch({
       const claimsShutdownAccepted = text.includes(
         "constellation.packaged-store-probe.shutdown-accepted",
       );
+      const claimsShutdownRejected = text.includes(
+        "constellation.packaged-store-probe.shutdown-rejected",
+      );
       const claimsShutdownComplete = text.includes(
         "constellation.packaged-store-probe.shutdown-complete",
       );
@@ -573,6 +578,7 @@ async function launch({
         text.includes('"readyForShutdown"') ||
         text.includes('"declaredExitCode"') ||
         claimsShutdownAccepted ||
+        claimsShutdownRejected ||
         claimsExitAccepted ||
         claimsShutdownComplete;
       let value;
@@ -590,6 +596,11 @@ async function launch({
         startHardCleanup(protocolError);
         return;
       }
+      if (claimsShutdownRejected && value?.type !== shutdownRejectedType) {
+        protocolError ||= "SHUTDOWN_REJECTION_INVALID";
+        startHardCleanup(protocolError);
+        return;
+      }
       if (claimsShutdownComplete && value?.type !== shutdownCompleteType) {
         protocolError ||= "SHUTDOWN_COMPLETION_INVALID";
         startHardCleanup(protocolError);
@@ -597,6 +608,31 @@ async function launch({
       }
       if (claimsExitAccepted && value?.type !== exitAckType) {
         protocolError ||= "EXIT_ACK_INVALID";
+        startHardCleanup(protocolError);
+        return;
+      }
+      if (value?.type === shutdownRejectedType) {
+        const keys = Object.keys(value).sort();
+        const expectedKeys = ["processId", "reason", "type"].sort();
+        const allowedReasons = new Set([
+          "channel-unavailable",
+          "code",
+          "disconnect",
+          "method",
+          "pid",
+          "shape",
+          "type",
+        ]);
+        if (
+          keys.length !== expectedKeys.length ||
+          !keys.every((key, index) => key === expectedKeys[index]) ||
+          value.processId !== child.pid ||
+          !allowedReasons.has(value.reason)
+        ) {
+          protocolError ||= "SHUTDOWN_REJECTION_INVALID";
+        } else {
+          protocolError ||= `CHILD_SHUTDOWN_REJECTED:${value.reason}`;
+        }
         startHardCleanup(protocolError);
         return;
       }
