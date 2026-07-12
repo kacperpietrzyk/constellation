@@ -281,9 +281,10 @@ function finish(result, exitCode) {
   // Every store path closes and scans its state before returning here. The
   // synchronous readiness record lets the parent authorize an Electron-managed
   // main-loop exit, supervise its deadline, and verify that all inherited
-  // pipes close. The child remains live through the exact IPC authorization.
-  writeFixedResult(result, exitCode);
+  // pipes close. Arm the IPC listener before publishing readiness so a fast
+  // parent cannot answer the synchronous write before the child is listening.
   awaitParentShutdownProtocol();
+  writeFixedResult(result, exitCode);
 }
 
 function getArgument(name) {
