@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 const OWNED_TEMPORARY_DIRECTORY_PREFIXES = Object.freeze([
   "constellation-packaged-store-probe-",
   "constellation-packaged-store-recovery-",
+  "constellation-packaged-store-generation-",
 ]);
 
 export async function removeWithRetry(target) {
