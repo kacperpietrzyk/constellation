@@ -5,6 +5,8 @@ import {
   CaptureIdSchema,
   CommandIdSchema,
   CorrelationIdSchema,
+  ProjectIdSchema,
+  RelationIdSchema,
   SpaceIdSchema,
   TaskIdSchema,
   TaskStatusIdSchema,
@@ -17,12 +19,26 @@ export const DiagnosticCodeSchema = z.enum([
   "workspace.renamed",
   "capture.stored",
   "capture.routed_as_task",
+  "project.created",
+  "project.outcome_updated",
+  "task.status_changed",
+  "task.completed",
+  "task.reopened",
+  "relation.created",
+  "relation.removed",
+  "undo.previewed",
+  "command.undone",
   "authorization.denied",
   "command.precondition_failed",
   "idempotency.key_reused",
   "record.already_exists",
   "record.version_conflict",
   "capture.already_routed",
+  "task.already_completed",
+  "task.already_open",
+  "relation.already_exists",
+  "undo.not_available",
+  "undo.already_applied",
   "storage.unit_of_work_failed",
   "operation.partial",
   "external.unknown_reconcile",
@@ -36,6 +52,8 @@ export const RecordKindSchema = z.enum([
   "capture",
   "task",
   "taskStatus",
+  "project",
+  "relation",
 ]);
 export type RecordKind = z.infer<typeof RecordKindSchema>;
 
@@ -87,11 +105,56 @@ export const CaptureRoutedAsTaskProjectionSchema = z
   })
   .strict();
 
+export const ProjectProjectionSchema = z
+  .object({
+    kind: z.enum(["project.created", "project.outcome_updated"]),
+    projectId: ProjectIdSchema,
+    title: z.string(),
+    intendedOutcome: z.string(),
+    lifecycle: z.literal("active"),
+    version: z.int().positive(),
+  })
+  .strict();
+
+export const TaskMutationProjectionSchema = z
+  .object({
+    kind: z.enum(["task.status_changed", "task.completed", "task.reopened"]),
+    taskId: TaskIdSchema,
+    statusId: TaskStatusIdSchema,
+    completionState: z.enum(["open", "completed"]),
+    completedAt: z.iso.datetime({ offset: true }).optional(),
+    version: z.int().positive(),
+  })
+  .strict();
+
+export const RelationProjectionSchema = z
+  .object({
+    kind: z.enum(["relation.created", "relation.removed"]),
+    relationId: RelationIdSchema,
+    taskId: TaskIdSchema,
+    projectId: ProjectIdSchema,
+    version: z.int().positive(),
+  })
+  .strict();
+
+export const UndoAppliedProjectionSchema = z
+  .object({
+    kind: z.literal("command.undone"),
+    targetCommandId: CommandIdSchema,
+    compensatedRecordId: z.uuid(),
+    version: z.int().positive(),
+  })
+  .strict();
+
 export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   WorkspaceCreatedProjectionSchema,
   WorkspaceRenamedProjectionSchema,
   CaptureStoredProjectionSchema,
   CaptureRoutedAsTaskProjectionSchema,
+  ProjectProjectionSchema,
+  TaskMutationProjectionSchema,
+  RelationProjectionSchema,
+  UndoAppliedProjectionSchema,
 ]);
 export type CommandProjection = z.infer<typeof CommandProjectionSchema>;
 
@@ -139,12 +202,69 @@ const CaptureRoutedAsTaskSuccessOutcomeSchema =
     projection: CaptureRoutedAsTaskProjectionSchema,
   }).strict();
 
+const ProjectSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
+  outcome: z.literal("success"),
+  diagnosticCode: z.enum(["project.created", "project.outcome_updated"]),
+  projection: ProjectProjectionSchema,
+}).strict();
+
+const TaskMutationSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
+  outcome: z.literal("success"),
+  diagnosticCode: z.enum([
+    "task.status_changed",
+    "task.completed",
+    "task.reopened",
+  ]),
+  projection: TaskMutationProjectionSchema,
+}).strict();
+
+const RelationSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
+  outcome: z.literal("success"),
+  diagnosticCode: z.enum(["relation.created", "relation.removed"]),
+  projection: RelationProjectionSchema,
+}).strict();
+
+const UndoSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
+  outcome: z.literal("success"),
+  diagnosticCode: z.literal("command.undone"),
+  projection: UndoAppliedProjectionSchema,
+}).strict();
+
 export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   WorkspaceCreatedSuccessOutcomeSchema,
   WorkspaceRenamedSuccessOutcomeSchema,
   CaptureStoredSuccessOutcomeSchema,
   CaptureRoutedAsTaskSuccessOutcomeSchema,
+  ProjectSuccessOutcomeSchema,
+  TaskMutationSuccessOutcomeSchema,
+  RelationSuccessOutcomeSchema,
+  UndoSuccessOutcomeSchema,
 ]);
+
+export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
+  outcome: z.literal("preview"),
+  diagnosticCode: z.literal("undo.previewed"),
+  projection: z
+    .object({
+      kind: z.literal("undo.previewed"),
+      targetCommandId: CommandIdSchema,
+      available: z.boolean(),
+      compensationKind: z
+        .enum([
+          "project.restore_outcome",
+          "task.restore_state",
+          "relation.remove",
+          "relation.restore",
+        ])
+        .optional(),
+      affectedRecordIds: z.array(z.uuid()),
+      requiredVersions: z.record(z.uuid(), z.int().positive()),
+      unavailableReason: z
+        .enum(["unsupported", "already_undone", "later_change"])
+        .optional(),
+    })
+    .strict(),
+}).strict();
 
 export const PartialOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
   outcome: z.literal("partial"),
@@ -160,6 +280,11 @@ export const ConflictOutcomeSchema = OutcomeMetadataSchema.extend({
     "record.already_exists",
     "record.version_conflict",
     "capture.already_routed",
+    "task.already_completed",
+    "task.already_open",
+    "relation.already_exists",
+    "undo.not_available",
+    "undo.already_applied",
   ]),
   currentVersions: z.record(z.uuid(), z.int().positive()),
 }).strict();
@@ -186,6 +311,7 @@ export const UnknownReconcileOutcomeSchema = OutcomeMetadataSchema.extend({
 
 export const CommandOutcomeSchema = z.union([
   SuccessOutcomeSchema,
+  UndoPreviewOutcomeSchema,
   PartialOutcomeSchema,
   ConflictOutcomeSchema,
   RetryableOutcomeSchema,

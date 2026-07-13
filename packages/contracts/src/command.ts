@@ -8,7 +8,11 @@ import {
   CorrelationIdSchema,
   DeviceIdSchema,
   PrincipalIdSchema,
+  ProjectIdSchema,
+  RelationIdSchema,
   SpaceIdSchema,
+  TaskIdSchema,
+  TaskStatusIdSchema,
   WorkspaceIdSchema,
 } from "./ids.js";
 
@@ -104,11 +108,84 @@ export type CaptureRouteAsTaskCommand = z.infer<
   typeof CaptureRouteAsTaskCommandSchema
 >;
 
+export const ProjectCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("project.create"),
+  payload: z
+    .object({
+      spaceId: SpaceIdSchema,
+      title: z.string().trim().min(1).max(500),
+      intendedOutcome: z.string().trim().min(1).max(4_000),
+    })
+    .strict(),
+}).strict();
+
+export const ProjectUpdateOutcomeCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("project.updateOutcome"),
+  payload: z
+    .object({
+      projectId: ProjectIdSchema,
+      intendedOutcome: z.string().trim().min(1).max(4_000),
+    })
+    .strict(),
+}).strict();
+
+export const TaskSetStatusCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("task.setStatus"),
+  payload: z
+    .object({ taskId: TaskIdSchema, statusId: TaskStatusIdSchema })
+    .strict(),
+}).strict();
+
+export const TaskCompleteCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("task.complete"),
+  payload: z.object({ taskId: TaskIdSchema }).strict(),
+}).strict();
+
+export const TaskReopenCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("task.reopen"),
+  payload: z.object({ taskId: TaskIdSchema }).strict(),
+}).strict();
+
+export const RecordRelateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("record.relate"),
+  payload: z
+    .object({
+      relationType: z.literal("task_contributes_to_project"),
+      taskId: TaskIdSchema,
+      projectId: ProjectIdSchema,
+    })
+    .strict(),
+}).strict();
+
+export const RecordUnrelateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("record.unrelate"),
+  payload: z.object({ relationId: RelationIdSchema }).strict(),
+}).strict();
+
+export const CommandPreviewUndoSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("command.previewUndo"),
+  payload: z.object({ targetCommandId: CommandIdSchema }).strict(),
+}).strict();
+
+export const CommandUndoSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("command.undo"),
+  payload: z.object({ targetCommandId: CommandIdSchema }).strict(),
+}).strict();
+
 export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   WorkspaceCreateLocalCommandSchema,
   WorkspaceRenameCommandSchema,
   CaptureSubmitTextCommandSchema,
   CaptureRouteAsTaskCommandSchema,
+  ProjectCreateCommandSchema,
+  ProjectUpdateOutcomeCommandSchema,
+  TaskSetStatusCommandSchema,
+  TaskCompleteCommandSchema,
+  TaskReopenCommandSchema,
+  RecordRelateCommandSchema,
+  RecordUnrelateCommandSchema,
+  CommandPreviewUndoSchema,
+  CommandUndoSchema,
 ]);
 export type CommandEnvelope = z.infer<typeof CommandEnvelopeSchema>;
 export type CommandName = CommandEnvelope["commandName"];

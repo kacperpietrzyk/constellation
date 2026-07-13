@@ -35,6 +35,12 @@ export type CaptureId = z.infer<typeof CaptureIdSchema>;
 export const TaskIdSchema = opaqueId<"TaskId">();
 export type TaskId = z.infer<typeof TaskIdSchema>;
 
+export const ProjectIdSchema = opaqueId<"ProjectId">();
+export type ProjectId = z.infer<typeof ProjectIdSchema>;
+
+export const RelationIdSchema = opaqueId<"RelationId">();
+export type RelationId = z.infer<typeof RelationIdSchema>;
+
 export const TaskStatusIdSchema = opaqueId<"TaskStatusId">();
 export type TaskStatusId = z.infer<typeof TaskStatusIdSchema>;
 

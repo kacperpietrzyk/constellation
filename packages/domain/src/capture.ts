@@ -64,6 +64,7 @@ export const routeCaptureAsTask = (
     spaceId: input.capture.spaceId,
     title: input.title,
     statusId: input.taskStatusId,
+    completionState: "open",
     sourceCaptureId: input.capture.id,
     createdBy: input.routedBy,
     version: 1,

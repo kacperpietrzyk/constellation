@@ -8,6 +8,8 @@ import type {
   MembershipId,
   OutboxEntryId,
   PrincipalId,
+  ProjectId,
+  RelationId,
   RequestOrigin,
   SpaceId,
   TaskId,
@@ -87,12 +89,83 @@ export interface Task {
   readonly spaceId: SpaceId;
   readonly title: string;
   readonly statusId: TaskStatusId;
+  readonly completionState: "open" | "completed";
+  readonly completedAt?: string;
   readonly sourceCaptureId?: CaptureId;
   readonly createdBy: PrincipalId;
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
+
+export interface Project {
+  readonly id: ProjectId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly title: string;
+  readonly intendedOutcome: string;
+  readonly lifecycle: "active";
+  readonly createdBy: PrincipalId;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface TaskProjectRelation {
+  readonly id: RelationId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly relationType: "task_contributes_to_project";
+  readonly state: "active" | "removed";
+  readonly removedAt?: string;
+  readonly taskId: TaskId;
+  readonly projectId: ProjectId;
+  readonly createdBy: PrincipalId;
+  readonly version: number;
+  readonly createdAt: string;
+}
+
+export type UndoDescriptor =
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "project.restore_outcome";
+      readonly projectId: ProjectId;
+      readonly priorOutcome: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "task.restore_state";
+      readonly taskId: TaskId;
+      readonly priorStatusId: TaskStatusId;
+      readonly priorCompletionState: "open" | "completed";
+      readonly priorCompletedAt?: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "relation.remove";
+      readonly relationId: RelationId;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "relation.restore";
+      readonly relationId: RelationId;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    };
 
 export type DomainEvent =
   | {
@@ -132,6 +205,45 @@ export type DomainEvent =
       readonly aggregateVersion: number;
       readonly taskId: TaskId;
       readonly taskStatusId: TaskStatusId;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "project.created" | "project.outcome_updated";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: ProjectId;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "task.status_changed" | "task.completed" | "task.reopened";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: TaskId;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "relation.created" | "relation.removed";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: RelationId;
+      readonly aggregateVersion: number;
+      readonly taskId: TaskId;
+      readonly projectId: ProjectId;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "command.undone";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: string;
+      readonly aggregateVersion: number;
+      readonly targetCommandId: CommandId;
       readonly occurredAt: string;
     };
 
