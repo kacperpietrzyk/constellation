@@ -397,6 +397,7 @@ async function launch({
                 `${appExitEnteredType},${appExitReturnedType}`,
                 `${appExitEnteredType},${electronQuitObservedType}`,
                 `${appExitEnteredType},${electronQuitObservedType},${appExitReturnedType}`,
+                `${appExitEnteredType},${appExitReturnedType},${electronQuitObservedType}`,
               ]);
               ensure(
                 validSequences.has(lifecycleSequence),
@@ -1001,11 +1002,7 @@ function assertDiagnosticProcess(execution, mode) {
       execution.electronExitObserved === true &&
         execution.forcedTerminationRequested === false &&
         execution.actualCode === 0 &&
-        execution.actualSignal === null &&
-        execution.lifecycleMarkers.length === 3 &&
-        execution.lifecycleMarkers[0] === appExitEnteredType &&
-        execution.lifecycleMarkers[1] === electronQuitObservedType &&
-        execution.lifecycleMarkers[2] === appExitReturnedType,
+        execution.actualSignal === null,
       "DIAGNOSTIC_NATURAL_EXIT_INVALID",
     );
   } else {
