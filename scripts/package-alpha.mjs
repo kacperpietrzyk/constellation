@@ -1,17 +1,36 @@
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
+import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { listPackage } from "@electron/asar";
 import { packager } from "@electron/packager";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const stage = path.join(root, "build", "local-alpha-stage");
 const output = path.join(root, "release");
+const electronZipDir = path.join(
+  root,
+  "tools",
+  "packaged-encrypted-store-probe",
+  "build",
+  "electron-zips",
+);
 const appName = "Constellation Local Alpha";
 const bundleId = "io.constellation.local-alpha";
 const architecture = process.env.CONSTELLATION_ALPHA_ARCH ?? "x64";
+const electronArchive = {
+  darwin: {
+    filename: "electron-v43.1.0-darwin-x64.zip",
+    sha256: "c84cd358a6c58ee9d6ce26ced694ab3b750109e9f29145ff5a639db64037f1de",
+  },
+  win32: {
+    filename: "electron-v43.1.0-win32-x64.zip",
+    sha256: "a07dc1e3d5e589593d37e3b19d1b373e02bb58270e2eb0d6633eee0198ad09f0",
+  },
+}[process.platform];
 
 if (!new Set(["darwin", "win32"]).has(process.platform)) {
   throw new Error("LOCAL_ALPHA_PACKAGING_PLATFORM_UNSUPPORTED");
@@ -19,16 +38,35 @@ if (!new Set(["darwin", "win32"]).has(process.platform)) {
 if (architecture !== "x64") {
   throw new Error("LOCAL_ALPHA_PACKAGING_ARCHITECTURE_UNSUPPORTED");
 }
+if (electronArchive === undefined) {
+  throw new Error("ELECTRON_PLATFORM_UNSUPPORTED");
+}
+
+const digestFile = async (filename) => {
+  const hash = crypto.createHash("sha256");
+  for await (const chunk of fs.createReadStream(filename)) hash.update(chunk);
+  return hash.digest("hex");
+};
+const electronArchivePath = path.join(electronZipDir, electronArchive.filename);
+if (!fs.existsSync(electronArchivePath)) {
+  throw new Error("ELECTRON_ARCHIVE_MISSING");
+}
+if ((await digestFile(electronArchivePath)) !== electronArchive.sha256) {
+  throw new Error("ELECTRON_ARCHIVE_DIGEST_MISMATCH");
+}
 
 const copy = (source, target, options = {}) => {
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.cpSync(source, target, { recursive: true, dereference: true, ...options });
 };
 
-const copyPackage = (name, additions = []) => {
+const copyPackage = (name, additions = [], packageManifest) => {
   const source = path.join(root, "packages", name);
   const target = path.join(stage, "node_modules", "@constellation", name);
-  copy(path.join(source, "package.json"), path.join(target, "package.json"));
+  copy(
+    path.join(source, packageManifest ?? "package.json"),
+    path.join(target, "package.json"),
+  );
   copy(path.join(source, "dist", "src"), path.join(target, "dist", "src"));
   for (const addition of additions) {
     copy(path.join(source, addition), path.join(target, addition));
@@ -47,7 +85,8 @@ fs.writeFileSync(
       version: "0.0.1",
       private: true,
       type: "module",
-      main: "node_modules/@constellation/desktop-main/dist/src/main.js",
+      main: "node_modules/@constellation/desktop-main/dist/src/production-main.js",
+      dependencies: { "@constellation/desktop-main": "0.0.1" },
     },
     null,
     2,
@@ -57,7 +96,7 @@ fs.writeFileSync(
 for (const name of ["contracts", "domain", "application", "local-store"]) {
   copyPackage(name);
 }
-copyPackage("desktop-main");
+copyPackage("desktop-main", [], "package.production.json");
 copyPackage("desktop-preload", ["build"]);
 copy(
   path.join(root, "packages", "desktop-ui", "dist"),
@@ -68,6 +107,14 @@ for (const name of ["zod", "bindings", "file-uri-to-path", "better-sqlite3"]) {
     path.join(root, "node_modules", name),
     path.join(stage, "node_modules", name),
   );
+}
+for (const name of ["zod", "bindings", "file-uri-to-path", "better-sqlite3"]) {
+  for (const directory of ["test", "tests"]) {
+    fs.rmSync(path.join(stage, "node_modules", name, directory), {
+      recursive: true,
+      force: true,
+    });
+  }
 }
 for (const target of [
   path.join(stage, "node_modules", "better-sqlite3", "src"),
@@ -84,18 +131,102 @@ for (const target of [
 ]) {
   fs.rmSync(target, { recursive: true, force: true });
 }
-fs.rmSync(
-  path.join(
-    stage,
-    "node_modules",
-    "@constellation",
-    "desktop-main",
-    "dist",
-    "src",
-    "preview-service.js",
-  ),
-  { force: true },
+const desktopMainSource = path.join(
+  stage,
+  "node_modules",
+  "@constellation",
+  "desktop-main",
+  "dist",
+  "src",
 );
+const productionDesktopFiles = new Set([
+  "better-sqlite3-factory.js",
+  "durable-kernel-service.js",
+  "index.js",
+  "production-main.js",
+  "runtime-kernel-service.js",
+  "security.js",
+  "workspace-key-custody.js",
+]);
+for (const entry of fs.readdirSync(desktopMainSource)) {
+  if (!productionDesktopFiles.has(entry)) {
+    fs.rmSync(path.join(desktopMainSource, entry), {
+      force: true,
+      recursive: true,
+    });
+  }
+}
+
+const expectedRuntimePackages = new Set([
+  "@constellation/application",
+  "@constellation/contracts",
+  "@constellation/desktop-main",
+  "@constellation/desktop-preload",
+  "@constellation/desktop-ui",
+  "@constellation/domain",
+  "@constellation/local-store",
+  "better-sqlite3",
+  "bindings",
+  "file-uri-to-path",
+  "zod",
+]);
+const stagedRuntimePackages = new Set();
+for (const entry of fs.readdirSync(path.join(stage, "node_modules"), {
+  withFileTypes: true,
+})) {
+  if (entry.name === "@constellation") {
+    for (const scoped of fs.readdirSync(
+      path.join(stage, "node_modules", entry.name),
+      { withFileTypes: true },
+    )) {
+      if (scoped.isDirectory())
+        stagedRuntimePackages.add(`@constellation/${scoped.name}`);
+    }
+  } else if (entry.isDirectory()) stagedRuntimePackages.add(entry.name);
+}
+if (
+  [...expectedRuntimePackages].some(
+    (name) => !stagedRuntimePackages.has(name),
+  ) ||
+  [...stagedRuntimePackages].some((name) => !expectedRuntimePackages.has(name))
+) {
+  throw new Error("PRODUCTION_RUNTIME_PACKAGE_CLOSURE_INVALID");
+}
+const productionRequire = createRequire(path.join(stage, "package.json"));
+for (const name of expectedRuntimePackages) {
+  if (name === "@constellation/desktop-ui") continue;
+  productionRequire.resolve(
+    name === "@constellation/desktop-preload" ? `${name}/client` : name,
+  );
+}
+const productionDesktopManifest = JSON.parse(
+  fs.readFileSync(
+    path.join(
+      stage,
+      "node_modules",
+      "@constellation",
+      "desktop-main",
+      "package.json",
+    ),
+    "utf8",
+  ),
+);
+const expectedDesktopDependencies = [
+  "@constellation/application",
+  "@constellation/contracts",
+  "@constellation/desktop-preload",
+  "@constellation/local-store",
+  "better-sqlite3",
+];
+if (
+  productionDesktopManifest.main !== "dist/src/production-main.js" ||
+  Object.keys(productionDesktopManifest.dependencies).sort().join("\0") !==
+    expectedDesktopDependencies.sort().join("\0") ||
+  "@constellation/testkit" in productionDesktopManifest.dependencies ||
+  "electron" in productionDesktopManifest.dependencies
+) {
+  throw new Error("PRODUCTION_ENTRYPOINT_MANIFEST_INVALID");
+}
 
 const nativeBinding = path.join(
   stage,
@@ -115,6 +246,7 @@ const packagePaths = await packager({
   platform: process.platform,
   arch: architecture,
   electronVersion: "43.1.0",
+  electronZipDir,
   asar: true,
   prune: false,
   appBundleId: bundleId,
@@ -147,6 +279,7 @@ const resources =
     ? path.join(appBundle, "Contents", "Resources")
     : path.join(packageRoot, "resources");
 const unpacked = path.join(resources, "app.asar.unpacked");
+const archive = path.join(resources, "app.asar");
 const unpackedFiles = [];
 if (fs.existsSync(unpacked)) {
   const visit = (directory) => {
@@ -161,11 +294,30 @@ if (fs.existsSync(unpacked)) {
 }
 if (
   !fs.existsSync(executable) ||
-  !fs.existsSync(path.join(resources, "app.asar")) ||
+  !fs.existsSync(archive) ||
   unpackedFiles.length !== 1 ||
   path.basename(unpackedFiles[0]) !== "better_sqlite3.node"
 ) {
   throw new Error("PACKAGED_NATIVE_MODULE_SET_INVALID");
+}
+const archiveFiles = listPackage(archive).map((entry) =>
+  entry.replaceAll("\\", "/").toLowerCase(),
+);
+const archiveDenylist = [
+  "/test/",
+  "/testkit/",
+  "alpha-smoke",
+  "preview-service",
+  "wave2-fixtures",
+  "/src/main.js",
+];
+if (
+  archiveFiles.some((entry) =>
+    archiveDenylist.some((denied) => entry.includes(denied)),
+  ) ||
+  !archiveFiles.some((entry) => entry.endsWith("/production-main.js"))
+) {
+  throw new Error("PRODUCTION_ASAR_CONTENT_INVALID");
 }
 
 let signatureTier = "unsigned-mechanism-only";
@@ -199,8 +351,12 @@ const manifest = {
   platform: process.platform,
   architecture,
   electron: "43.1.0",
+  electronArchiveSha256: electronArchive.sha256,
   executable,
   packagedNativeModules: 1,
+  productionEntrypoint:
+    "@constellation/desktop-main/dist/src/production-main.js",
+  runtimePackages: [...expectedRuntimePackages].sort(),
   nativeBindingSha256: digest,
   signatureTier,
 };

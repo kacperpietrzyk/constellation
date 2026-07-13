@@ -112,6 +112,34 @@ class SyntheticEncryptedFactory implements EncryptedSqliteDatabaseFactory {
   }
 }
 
+class FailingWorkspaceReadFactory implements EncryptedSqliteDatabaseFactory {
+  public closeCount = 0;
+
+  public open(filename: string): EncryptedSqliteDatabase {
+    const database = new SyntheticEncryptedDatabase(new DatabaseSync(filename));
+    return {
+      close: () => {
+        this.closeCount += 1;
+        database.close();
+      },
+      exec: (sql) => database.exec(sql),
+      key: (key) => database.key(key),
+      loadExtension: () => database.loadExtension(),
+      prepare: (sql) => {
+        if (sql.trim() === "SELECT payload_json FROM workspaces WHERE id = ?") {
+          return {
+            ...rowStatement(undefined),
+            get: () => {
+              throw new Error("synthetic workspace read failure");
+            },
+          };
+        }
+        return database.prepare(sql);
+      },
+    };
+  }
+}
+
 class SyntheticSafeStorage implements AsyncSafeStorage {
   public async isAsyncEncryptionAvailable(): Promise<boolean> {
     return true;
@@ -144,6 +172,23 @@ const withStateRoot = async (
 };
 
 describe("durable desktop kernel lifecycle", () => {
+  it("closes a partially opened encrypted store when startup fails", async () => {
+    await withStateRoot(async (stateRoot) => {
+      const databaseFactory = new FailingWorkspaceReadFactory();
+      await assert.rejects(
+        createDurableKernelService({
+          databaseFactory,
+          safeStorage: new SyntheticSafeStorage(),
+          stateRoot,
+          timezone: "Europe/Warsaw",
+          platform: "darwin",
+        }),
+        /synthetic workspace read failure/,
+      );
+      assert.equal(databaseFactory.closeCount, 1);
+    });
+  });
+
   it("restores identity and Capture to Task state across restart", async () => {
     await withStateRoot(async (stateRoot) => {
       const input = {

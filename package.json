@@ -24,7 +24,7 @@
     "lint": "npm run lint:code && npm run lint:md",
     "lint:code": "eslint . --max-warnings=0",
     "lint:md": "markdownlint-cli2 \"*.md\" \".github/**/*.md\" \"docs/**/*.md\" \"packages/**/*.md\" \"tools/**/*.md\" \"#**/node_modules/**\" \"#AGENTS.md\" \"#dlaczego-notion-zawodzi-i-czego-potrzebuje.md\" \"#docs/plans/**\" \"#docs/specs/**\"",
-    "package:alpha": "npm run build && node scripts/package-alpha.mjs",
+    "package:alpha": "npm run build && node tools/packaged-encrypted-store-probe/scripts/fetch-electron.mjs && node scripts/package-alpha.mjs",
     "probe:alpha:packaged": "node scripts/run-packaged-alpha-smoke.mjs",
     "test": "npm run clean && npm run build && node scripts/run-tests.mjs",
     "typecheck": "tsc -b --pretty false"

@@ -135,76 +135,76 @@ export const createDurableKernelService = async (input: {
     throw error;
   }
 
-  const context = ExecutionContextSchema.parse({
-    principalId: bundle.identity.principalId,
-    principalKind: "human",
-    credentialId: bundle.identity.credentialId,
-    grantId: bundle.identity.grantId,
-    policyVersion: 1,
-    workspaceId: bundle.identity.workspaceId,
-    spaceScope: [bundle.identity.rootSpaceId],
-    capabilityScope: LOCAL_ALPHA_CAPABILITIES,
-    origin: "desktop",
-  });
-  const service = createRuntimeKernelService({ context, store: opened.store });
-  const workspace = opened.store.read((view) =>
-    view.getWorkspace(bundle.identity.workspaceId),
-  );
-  if (workspace === undefined) {
-    if (bundle.state === "ready") {
-      opened.close();
-      throw new DurableWorkspaceOpenError("workspace_recovery_required");
-    }
-    const bootstrap = service.execute(
-      CommandEnvelopeSchema.parse({
-        contractVersion: 1,
-        commandName: "workspace.createLocal",
-        commandId: randomUUID(),
-        workspaceId: bundle.identity.workspaceId,
-        idempotencyKey: "local-alpha-workspace-bootstrap-v1",
-        expectedVersions: {},
-        correlationId: randomUUID(),
-        payload: {
-          workspaceId: bundle.identity.workspaceId,
-          rootSpaceId: bundle.identity.rootSpaceId,
-          ownerPrincipalId: bundle.identity.principalId,
-          name: input.workspaceName ?? "Personal workspace",
-          timezone: input.timezone,
-        },
-      }),
+  try {
+    const context = ExecutionContextSchema.parse({
+      principalId: bundle.identity.principalId,
+      principalKind: "human",
+      credentialId: bundle.identity.credentialId,
+      grantId: bundle.identity.grantId,
+      policyVersion: 1,
+      workspaceId: bundle.identity.workspaceId,
+      spaceScope: [bundle.identity.rootSpaceId],
+      capabilityScope: LOCAL_ALPHA_CAPABILITIES,
+      origin: "desktop",
+    });
+    const service = createRuntimeKernelService({
+      context,
+      store: opened.store,
+    });
+    const workspace = opened.store.read((view) =>
+      view.getWorkspace(bundle.identity.workspaceId),
     );
-    if (
-      bootstrap.kind !== "command_outcome" ||
-      bootstrap.outcome.outcome !== "success"
+    if (workspace === undefined) {
+      if (bundle.state === "ready") {
+        throw new DurableWorkspaceOpenError("workspace_recovery_required");
+      }
+      const bootstrap = service.execute(
+        CommandEnvelopeSchema.parse({
+          contractVersion: 1,
+          commandName: "workspace.createLocal",
+          commandId: randomUUID(),
+          workspaceId: bundle.identity.workspaceId,
+          idempotencyKey: "local-alpha-workspace-bootstrap-v1",
+          expectedVersions: {},
+          correlationId: randomUUID(),
+          payload: {
+            workspaceId: bundle.identity.workspaceId,
+            rootSpaceId: bundle.identity.rootSpaceId,
+            ownerPrincipalId: bundle.identity.principalId,
+            name: input.workspaceName ?? "Personal workspace",
+            timezone: input.timezone,
+          },
+        }),
+      );
+      if (
+        bootstrap.kind !== "command_outcome" ||
+        bootstrap.outcome.outcome !== "success"
+      ) {
+        throw new DurableWorkspaceOpenError("workspace_bootstrap_failed");
+      }
+    } else if (
+      workspace.rootSpaceId !== bundle.identity.rootSpaceId ||
+      opened.store.read((view) =>
+        view.getMembership(
+          bundle.identity.workspaceId,
+          bundle.identity.principalId,
+        ),
+      ) === undefined
     ) {
-      opened.close();
-      throw new DurableWorkspaceOpenError("workspace_bootstrap_failed");
+      throw new DurableWorkspaceOpenError("workspace_open_failed");
     }
-  } else if (
-    workspace.rootSpaceId !== bundle.identity.rootSpaceId ||
-    opened.store.read((view) =>
-      view.getMembership(
-        bundle.identity.workspaceId,
-        bundle.identity.principalId,
-      ),
-    ) === undefined
-  ) {
-    opened.close();
-    throw new DurableWorkspaceOpenError("workspace_open_failed");
-  }
-  if (bundle.state === "prepared") {
-    try {
+    if (bundle.state === "prepared") {
       await custody.markReady(bundle.identity.workspaceId);
-    } catch (error) {
-      opened.close();
-      throw error;
     }
-  }
 
-  return {
-    facts: opened.facts,
-    identity: bundle.identity,
-    service,
-    close: opened.close,
-  };
+    return {
+      facts: opened.facts,
+      identity: bundle.identity,
+      service,
+      close: opened.close,
+    };
+  } catch (error) {
+    opened.close();
+    throw error;
+  }
 };

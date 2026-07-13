@@ -1,0 +1,16 @@
+{
+  "name": "@constellation/desktop-main",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Constellation Local Alpha production desktop runtime.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/src/production-main.js",
+  "dependencies": {
+    "@constellation/application": "0.0.0",
+    "@constellation/contracts": "0.0.0",
+    "@constellation/desktop-preload": "0.0.0",
+    "@constellation/local-store": "0.0.0",
+    "better-sqlite3": "12.11.1"
+  }
+}
