@@ -10,6 +10,7 @@ import {
   canonicalJson,
   executeRecoveryCapture,
   getRecoveryCapturePlaintextCanaries,
+  getRecoveryCaptureExpectedRowsAtFailpoint,
 } from "./capture-command.mjs";
 
 export const RECOVERY_FAULT_BOUNDARY_TYPE =
@@ -297,11 +298,19 @@ function removeControlFiles(databasePath) {
 
 export function verifyPlaintextRecoveryWalControl(
   Database,
-  { databasePath, expectedPageSize, cacheSizePages = 8 },
+  {
+    databasePath,
+    expectedPageSize,
+    cacheSizePages = 8,
+    failpoint = "after-capture-row",
+  },
 ) {
   invariant(typeof Database === "function", "RECOVERY_DATABASE_INVALID");
   assertWalPath(databasePath);
   invariant(!pathKind(databasePath), "RECOVERY_PLAINTEXT_CONTROL_EXISTS");
+  invariant(FAULT_FAILPOINTS.includes(failpoint), "RECOVERY_FAILPOINT_INVALID");
+  const controlFailpoint =
+    failpoint === "after-begin-immediate" ? "after-capture-row" : failpoint;
   let database;
   let controlReached = false;
   try {
@@ -317,7 +326,7 @@ export function verifyPlaintextRecoveryWalControl(
     );
     try {
       executeRecoveryCapture(database, {
-        failpoint: "after-capture-row",
+        failpoint: controlFailpoint,
         reachFailpoint: () => {
           const walPath = `${databasePath}-wal`;
           const wal = inspectRecoveryWal({
@@ -409,17 +418,9 @@ export function assertRecoveryFaultBoundaryRecord(record) {
     "RECOVERY_FAULT_BOUNDARY_VALUE_INVALID",
   );
 
-  const expectedRows =
-    record.failpoint === "after-begin-immediate"
-      ? { captures: 0, fts: 0, events: 0, audits: 0, idempotency: 0, outbox: 0 }
-      : {
-          captures: 1,
-          fts: 1,
-          events: 0,
-          audits: 0,
-          idempotency: 0,
-          outbox: 0,
-        };
+  const expectedRows = getRecoveryCaptureExpectedRowsAtFailpoint(
+    record.failpoint,
+  );
   invariant(
     canonicalJson(record.visibleRows) === canonicalJson(expectedRows),
     "RECOVERY_FAULT_BOUNDARY_ROWS_INVALID",
@@ -478,9 +479,9 @@ export function createRecoveryFaultBoundaryRecord({
   );
 
   const plaintextCanaries =
-    failpoint === "after-capture-row"
-      ? getRecoveryCapturePlaintextCanaries()
-      : [];
+    failpoint === "after-begin-immediate"
+      ? []
+      : getRecoveryCapturePlaintextCanaries();
   let wal;
   try {
     wal = inspectRecoveryWal({

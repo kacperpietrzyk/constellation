@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import {
+  RECOVERY_CAPTURE_FAILPOINTS,
   RECOVERY_CAPTURE_SCENARIO,
   getRecoveryCapturePlaintextCanaries,
 } from "../app/recovery/capture-command.mjs";
@@ -112,7 +113,8 @@ const forbiddenOutput = [
   Buffer.from('"ciphertext"'),
   Buffer.from("constellation.packaged-store-key-payload/v1"),
 ];
-const processIds = new Set();
+const observedNumericProcessIds = new Set();
+let verifiedProcessExecutions = 0;
 let verifiedManagedTerminations = 0;
 let verifiedForcedTerminations = 0;
 
@@ -266,9 +268,17 @@ function recordManaged(execution, mode) {
     `CHILD_EXIT_STATUS_INVALID:${mode}`,
   );
   assertFixedIdentity(execution, mode);
-  ensure(!processIds.has(execution.childPid), "PROCESS_REUSED");
-  processIds.add(execution.childPid);
+  recordProcessExecution(execution.childPid);
   verifiedManagedTerminations += 1;
+}
+
+function recordProcessExecution(processId) {
+  ensure(
+    Number.isSafeInteger(processId) && processId > 0,
+    "PROCESS_ID_INVALID",
+  );
+  observedNumericProcessIds.add(processId);
+  verifiedProcessExecutions += 1;
 }
 
 function assertProvider(result) {
@@ -418,9 +428,9 @@ async function forceFault(options) {
     },
     beforeKill: (boundary) => {
       const canaries =
-        options.failpoint === "after-capture-row"
-          ? getRecoveryCapturePlaintextCanaries()
-          : [];
+        options.failpoint === "after-begin-immediate"
+          ? []
+          : getRecoveryCapturePlaintextCanaries();
       let wal;
       try {
         wal = inspectRecoveryWal({
@@ -455,12 +465,11 @@ async function forceFault(options) {
       "FAULT_DIAGNOSTIC_COUNT_INVALID",
     );
     ensure(execution.forcedKillVerified === true, "FORCED_KILL_UNVERIFIED");
-    ensure(!processIds.has(execution.childPid), "PROCESS_REUSED");
-    processIds.add(execution.childPid);
+    recordProcessExecution(execution.childPid);
     verifiedForcedTerminations += 1;
 
     const postKill = normalizedWalMetadata(walPath);
-    if (options.failpoint === "after-capture-row") {
+    if (options.failpoint !== "after-begin-immediate") {
       ensure(
         postKill.bytes === execution.beforeKillEvidence.bytes &&
           sameDigest(postKill.digest, execution.beforeKillEvidence.digest),
@@ -676,6 +685,7 @@ async function runSentinel({ slug, failpoint }) {
 
   return Object.freeze({
     failpoint,
+    visibleRowsAtCrash: boundary.visibleRows,
     rollbackVerified: true,
     plaintextWalControlVerified: boundary.plaintextWalControlVerified,
     walSpillObserved: boundary.walSpillObserved,
@@ -736,10 +746,51 @@ try {
       failpoint: "after-capture-row",
     }),
   );
+  sentinels.push(
+    await runSentinel({
+      slug: "after-event",
+      failpoint: "after-event-row",
+    }),
+  );
+  sentinels.push(
+    await runSentinel({
+      slug: "after-audit",
+      failpoint: "after-audit-row",
+    }),
+  );
+  sentinels.push(
+    await runSentinel({
+      slug: "after-idempotency",
+      failpoint: "after-idempotency-row",
+    }),
+  );
+  sentinels.push(
+    await runSentinel({
+      slug: "after-outbox",
+      failpoint: "after-outbox-row",
+    }),
+  );
 
-  ensure(processIds.size === 15, "PROCESS_COUNT_INVALID");
-  ensure(verifiedManagedTerminations === 13, "MANAGED_PROCESS_COUNT_INVALID");
-  ensure(verifiedForcedTerminations === 2, "FORCED_PROCESS_COUNT_INVALID");
+  ensure(
+    sentinels.length === RECOVERY_CAPTURE_FAILPOINTS.length - 1,
+    "SENTINEL_COUNT_INVALID",
+  );
+  ensure(
+    sentinels.every(
+      (sentinel) =>
+        sentinel.stateDigest === sentinels[0].stateDigest &&
+        sentinel.outcomeDigest === sentinels[0].outcomeDigest,
+    ),
+    "SENTINEL_RESULT_DIVERGED",
+  );
+  ensure(verifiedProcessExecutions === 43, "PROCESS_COUNT_INVALID");
+  ensure(
+    observedNumericProcessIds.size > 0 &&
+      observedNumericProcessIds.size <= verifiedProcessExecutions,
+    "PROCESS_ID_ACCOUNTING_INVALID",
+  );
+  ensure(verifiedManagedTerminations === 37, "MANAGED_PROCESS_COUNT_INVALID");
+  ensure(verifiedForcedTerminations === 6, "FORCED_PROCESS_COUNT_INVALID");
   for (const [artifact, expected] of artifactDigests) {
     const actual = digestFile(artifact);
     try {
@@ -758,7 +809,10 @@ try {
       electron: "43.1.0",
       packagedForcedCrashRecovery: true,
       sentinels,
-      distinctProcesses: processIds.size,
+      processExecutions: verifiedProcessExecutions,
+      uniqueNumericProcessIds: observedNumericProcessIds.size,
+      numericPidReuseObserved:
+        observedNumericProcessIds.size < verifiedProcessExecutions,
       verifiedManagedTerminations,
       verifiedForcedTerminations,
       capturedProcessIdentitiesTerminated: true,
