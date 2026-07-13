@@ -50,8 +50,10 @@ The probe fails unless all of these checks pass:
   unpacked add-on, wrapper, database, WAL, profile, temp, and crash state for the
   actual raw and encoded DEK, key-payload, and marker canaries;
 - unbounded application stdout/stderr and console methods are disabled, the
-  harness accepts exact fixed result shapes only, and the earlier dedicated
-  safeStorage probe remains the independent exact-key output-channel oracle;
+  child can emit only exact bounded result envelopes and non-secret progress
+  stages, and the harness reports only the last allowlisted stage on a timeout;
+  the earlier dedicated safeStorage probe remains the independent exact-key
+  output-channel oracle;
 - the initializer emits one synchronous fixed result and uses `app.exit()` so
   Electron commits provider state before the parent starts phase two. Every
   no-IPC store process asserts that the channel is absent, yields one Electron

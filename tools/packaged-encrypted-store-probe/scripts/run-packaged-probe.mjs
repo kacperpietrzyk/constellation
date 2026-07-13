@@ -47,6 +47,30 @@ const providerBootstrapReadyType =
   "constellation.packaged-store-probe.provider-bootstrap-ready/v1";
 const providerBootstrapContinueType =
   "constellation.packaged-store-probe.provider-bootstrap-continue/v1";
+const progressType = "constellation.packaged-store-probe.progress/v1";
+const progressStages = new Set([
+  "identity-verified",
+  "provider-bootstrap-complete",
+  "provider-roundtrip-complete",
+  "phase-two-ready",
+  "safe-storage-ready",
+  "native-addon-ready",
+  "provision-started",
+  "material-prepared",
+  "wrapper-encrypted",
+  "wrapper-published",
+  "database-reserved",
+  "database-opened",
+  "database-facts-verified",
+  "schema-created",
+  "marker-inserted",
+  "marker-verified",
+  "integrity-verified",
+  "live-store-scanned",
+  "database-closed",
+  "closed-store-scanned",
+  "result-ready",
+]);
 const PRE_EXIT_CLEANUP_DEADLINE_MS = 10_000;
 const PRE_EXIT_CLEANUP_RETRY_MS = 250;
 const MAX_CAPTURED_OUTPUT_BYTES = 64 * 1024;
@@ -138,6 +162,33 @@ function parseFixedResult(stdout) {
   ensure(candidates.length === 1, "FIXED_RESULT_COUNT_INVALID");
   ensure(isFixedResultEnvelope(candidates[0]), "FIXED_RESULT_INVALID");
   return candidates[0];
+}
+
+function parseLastProgress(stderr, mode, processId) {
+  let lastStage = "none";
+  const lines = stderr.toString("utf8").split(/\r?\n/).filter(Boolean);
+  for (const line of lines) {
+    try {
+      const value = JSON.parse(line);
+      const keys = Object.keys(value).sort();
+      if (
+        keys.length === 4 &&
+        keys[0] === "mode" &&
+        keys[1] === "processId" &&
+        keys[2] === "stage" &&
+        keys[3] === "type" &&
+        value.type === progressType &&
+        value.mode === mode &&
+        value.processId === processId &&
+        progressStages.has(value.stage)
+      ) {
+        lastStage = value.stage;
+      }
+    } catch {
+      // Only exact probe-owned progress envelopes are diagnostic evidence.
+    }
+  }
+  return lastStage;
 }
 
 function terminateTree(child) {
@@ -259,7 +310,16 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     const startPreExitCleanup = (error) => {
       if (settled || preExitCleanupStarted) return;
       preExitCleanupStarted = true;
-      preExitCleanupError = error;
+      const stderrBuffer = Buffer.concat(stderr, stderrLength);
+      const lastProgressStage = parseLastProgress(
+        stderrBuffer,
+        mode,
+        child.pid,
+      );
+      stderrBuffer.fill(0);
+      preExitCleanupError = new Error(
+        `${error.message}:LAST_STAGE:${lastProgressStage}`,
+      );
       if (timer) {
         clearTimeout(timer);
         timer = undefined;

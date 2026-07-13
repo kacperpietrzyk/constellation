@@ -18,6 +18,30 @@ const PROVIDER_BOOTSTRAP_READY_TYPE =
   "constellation.packaged-store-probe.provider-bootstrap-ready/v1";
 const PROVIDER_BOOTSTRAP_CONTINUE_TYPE =
   "constellation.packaged-store-probe.provider-bootstrap-continue/v1";
+const PROGRESS_TYPE = "constellation.packaged-store-probe.progress/v1";
+const PROGRESS_STAGES = new Set([
+  "identity-verified",
+  "provider-bootstrap-complete",
+  "provider-roundtrip-complete",
+  "phase-two-ready",
+  "safe-storage-ready",
+  "native-addon-ready",
+  "provision-started",
+  "material-prepared",
+  "wrapper-encrypted",
+  "wrapper-published",
+  "database-reserved",
+  "database-opened",
+  "database-facts-verified",
+  "schema-created",
+  "marker-inserted",
+  "marker-verified",
+  "integrity-verified",
+  "live-store-scanned",
+  "database-closed",
+  "closed-store-scanned",
+  "result-ready",
+]);
 const EXIT_CODES = Object.freeze({
   CONFIG_INVALID: 80,
   PACKAGED_IDENTITY_INVALID: 81,
@@ -91,6 +115,29 @@ function writeFixedResult(result, declaredExitCode) {
     while (offset < output.length) {
       const written = fs.writeSync(1, output, offset, output.length - offset);
       if (written <= 0) throw new Error("FIXED_RESULT_WRITE_FAILED");
+      offset += written;
+    }
+  } finally {
+    output.fill(0);
+  }
+}
+
+function writeFixedProgress(stage) {
+  if (!PROGRESS_STAGES.has(stage)) throw new Error("PROGRESS_STAGE_INVALID");
+  const output = Buffer.from(
+    `${JSON.stringify({
+      type: PROGRESS_TYPE,
+      mode: config?.mode ?? "startup",
+      processId: process.pid,
+      stage,
+    })}\n`,
+    "utf8",
+  );
+  try {
+    let offset = 0;
+    while (offset < output.length) {
+      const written = fs.writeSync(2, output, offset, output.length - offset);
+      if (written <= 0) throw new Error("FIXED_PROGRESS_WRITE_FAILED");
       offset += written;
     }
   } finally {
@@ -850,6 +897,7 @@ function scanKnownSecrets(canaries) {
 async function provisionStore(Database) {
   if (pathKind(config.wrapperPath)) fail("WRAPPER_EXISTS");
   if (pathKind(config.databasePath)) fail("DATABASE_EXISTS");
+  writeFixedProgress("provision-started");
 
   const scope = createSensitiveScope();
   const canaries = [];
@@ -883,8 +931,10 @@ async function provisionStore(Database) {
       canaries,
       scope.keep(Buffer.from(payload, "utf8")),
     );
+    writeFixedProgress("material-prepared");
 
     const encrypted = await encryptPayload(payload, canaries, scope);
+    writeFixedProgress("wrapper-encrypted");
     const payloadDigest = crypto
       .createHash("sha256")
       .update(payload)
@@ -906,18 +956,29 @@ async function provisionStore(Database) {
     }
 
     publishAtomically(config.wrapperPath, wrapperContents);
+    writeFixedProgress("wrapper-published");
     reserveDatabase(config.databasePath);
+    writeFixedProgress("database-reserved");
     database = openKeyedDatabase(Database, key, { fileMustExist: true });
+    writeFixedProgress("database-opened");
     const facts = readEncryptionFacts(database);
+    writeFixedProgress("database-facts-verified");
     configureSchema(database);
+    writeFixedProgress("schema-created");
     insertMarker(database, marker);
+    writeFixedProgress("marker-inserted");
     readAndVerifyMarker(database, markerDigest);
+    writeFixedProgress("marker-verified");
     verifyDatabaseIntegrity(database);
+    writeFixedProgress("integrity-verified");
     assertEncryptedDatabaseAndWal(canaries);
     scanKnownSecrets(canaries);
+    writeFixedProgress("live-store-scanned");
     closeDatabase(database);
     database = undefined;
+    writeFixedProgress("database-closed");
     scanKnownSecrets(canaries);
+    writeFixedProgress("closed-store-scanned");
 
     return fixedResult("pass", "STORE_PROVISIONED", {
       asyncEncryptionAvailable: true,
@@ -1163,17 +1224,25 @@ if (config) {
     let exitCode;
     try {
       verifyPackagedIdentity();
+      writeFixedProgress("identity-verified");
       if (config.mode === "provider-initialize") {
         await awaitProviderBootstrapTurn();
+        writeFixedProgress("provider-bootstrap-complete");
         result = await initializeProvider();
+        writeFixedProgress("provider-roundtrip-complete");
       } else if (config.mode === "plaintext") {
         await awaitPhaseTwoReadinessTurn();
+        writeFixedProgress("phase-two-ready");
         const Database = await loadDatabaseConstructor();
+        writeFixedProgress("native-addon-ready");
         result = createPlaintextFixture(Database);
       } else {
         await awaitPhaseTwoReadinessTurn();
+        writeFixedProgress("phase-two-ready");
         await requireAsyncEncryption();
+        writeFixedProgress("safe-storage-ready");
         const Database = await loadDatabaseConstructor();
+        writeFixedProgress("native-addon-ready");
         result =
           config.mode === "provision"
             ? await provisionStore(Database)
@@ -1188,6 +1257,7 @@ if (config) {
       result = fixedResult("fail", failure.code);
       exitCode = failure.exitCode;
     }
+    writeFixedProgress("result-ready");
     finish(result, exitCode);
   });
 }
