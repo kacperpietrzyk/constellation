@@ -1294,6 +1294,7 @@ async function runRecoveryMode(Database) {
               ),
               expectedPageSize: baseline.walPageSize,
               cacheSizePages: baseline.cacheSizePages,
+              failpoint: config.failpoint,
             },
           );
           writeFixedProgress("recovery-plaintext-control-verified");

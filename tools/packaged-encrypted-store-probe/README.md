@@ -89,20 +89,25 @@ user-facing graceful-shutdown policy.
 ## Forced-crash recovery sentinels
 
 The separate `probe:recovery` runner reuses the already-built package and native
-binding. It currently covers the first two transaction sentinels for one
+binding. It covers all six pre-`COMMIT` transaction sentinels for one
 deterministic `capture.submitText` fixture:
 
 - immediately after `BEGIN IMMEDIATE`, before any command row exists;
-- after the Capture row and its external-content FTS projection are visible
-  inside the still-open transaction, before Event, Audit, Idempotency, or Outbox
-  rows exist.
+- after the Capture row and its external-content FTS projection;
+- after the Event row;
+- after the Audit row;
+- after the Idempotency outcome row;
+- after the Outbox row, while every command row is visible only inside the
+  still-open transaction.
 
 Before each fault, the child truncates the WAL baseline, enables a small
 probe-only page cache with spill, and records the database page size. The Capture
-fixture fills the public 262,144-character limit with a repeated canary. A
-temporary plaintext control executes the same spill and must expose that canary
-in an uncommitted WAL frame; the control database and sidecars are then deleted.
-The SQLCipher WAL must contain aligned frames with matching salts, zero commit
+fixture fills the public 262,144-character limit with a repeated canary. For
+every row-bearing boundary, a temporary plaintext control executes that same
+boundary and must expose the canary in an uncommitted WAL frame; the pre-row
+`BEGIN IMMEDIATE` sentinel uses the Capture-row control as its encryption
+sensitivity reference. The control database and sidecars are then deleted. The
+SQLCipher WAL must contain aligned frames with matching salts, zero commit
 markers, and none of the proven spilled canaries. This relative control avoids
 claiming encryption merely because a canary happened to remain in page cache.
 
@@ -119,8 +124,8 @@ the kill if any observed descendant has escaped the captured process group. The
 parent requires every captured identity to disappear, handles proven numeric
 process-group reuse without treating `EPERM` as absence, never repeatedly
 signals a numeric group, and waits for all inherited pipes to close. Before any
-relaunch, the Capture-row sentinel also requires the same uncommitted WAL bytes
-to remain present.
+relaunch, every row-bearing sentinel also requires the same uncommitted WAL
+bytes to remain present.
 
 A distinct packaged process must then observe the baseline Workspace, Space,
 and membership with zero command rows and unchanged workspace version. Another
@@ -131,9 +136,10 @@ process verifies the committed state, FTS result, and cipher/database/foreign-ke
 integrity.
 
 The fixture semantics also run against Node's ordinary SQLite before the native
-package build. That check proves both rollback boundaries, the plaintext WAL
-control, uncommitted frame observation, and replay without churn; it is not a
-substitute for the packaged SQLCipher crash evidence.
+package build. That check proves the complete pre-`COMMIT` rollback matrix, each
+relative plaintext WAL control, uncommitted frame observation, and replay
+without churn; it is not a substitute for the packaged SQLCipher crash
+evidence.
 
 ## Pinned inputs
 
@@ -172,8 +178,8 @@ isolated from the product dependency graph.
 This proves same-artifact mechanism integration only. The macOS package is
 ad-hoc signed and the Windows package is unsigned. It does not prove Developer
 ID/notarized or Authenticode-signed N-to-N+1 continuity, installer/reboot or
-OS-account migration, wrapper/database crash-atomic provisioning, the remaining
-Event/Audit/Idempotency/Outbox/post-commit fault boundaries, generation-manifest
+OS-account migration, wrapper/database crash-atomic provisioning, the
+post-commit-before-result fault boundary, generation-manifest
 publication, busy/read-only/permission recovery, real disk-full or power-loss
 recovery, migration recovery, rotation, temporary provider unavailability,
 Windows workspace ACLs, optimized Windows crypto performance, unobserved

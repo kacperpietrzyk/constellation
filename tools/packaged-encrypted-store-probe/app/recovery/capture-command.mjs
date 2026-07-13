@@ -5,6 +5,10 @@ export const RECOVERY_CAPTURE_FAILPOINTS = Object.freeze([
   "none",
   "after-begin-immediate",
   "after-capture-row",
+  "after-event-row",
+  "after-audit-row",
+  "after-idempotency-row",
+  "after-outbox-row",
 ]);
 
 const MAX_CAPTURE_TEXT_LENGTH = 262_144;
@@ -71,6 +75,65 @@ function deepFreeze(value) {
   if (!isRecord(value) && !Array.isArray(value)) return value;
   for (const child of Object.values(value)) deepFreeze(child);
   return Object.freeze(value);
+}
+
+const RECOVERY_CAPTURE_FAILPOINT_ROWS = deepFreeze({
+  "after-begin-immediate": {
+    captures: 0,
+    fts: 0,
+    events: 0,
+    audits: 0,
+    idempotency: 0,
+    outbox: 0,
+  },
+  "after-capture-row": {
+    captures: 1,
+    fts: 1,
+    events: 0,
+    audits: 0,
+    idempotency: 0,
+    outbox: 0,
+  },
+  "after-event-row": {
+    captures: 1,
+    fts: 1,
+    events: 1,
+    audits: 0,
+    idempotency: 0,
+    outbox: 0,
+  },
+  "after-audit-row": {
+    captures: 1,
+    fts: 1,
+    events: 1,
+    audits: 1,
+    idempotency: 0,
+    outbox: 0,
+  },
+  "after-idempotency-row": {
+    captures: 1,
+    fts: 1,
+    events: 1,
+    audits: 1,
+    idempotency: 1,
+    outbox: 0,
+  },
+  "after-outbox-row": {
+    captures: 1,
+    fts: 1,
+    events: 1,
+    audits: 1,
+    idempotency: 1,
+    outbox: 1,
+  },
+});
+
+export function getRecoveryCaptureExpectedRowsAtFailpoint(failpoint) {
+  invariant(
+    Object.hasOwn(RECOVERY_CAPTURE_FAILPOINT_ROWS, failpoint),
+    "RECOVERY_FAILPOINT_INVALID",
+  );
+  return RECOVERY_CAPTURE_FAILPOINT_ROWS[failpoint];
 }
 
 export function canonicalJson(value) {
@@ -578,17 +641,7 @@ export function bootstrapRecoveryCaptureSchema(database) {
 
 function invokeFailpoint(database, failpoint, reachFailpoint) {
   const visibleRows = readRecoveryCaptureCounts(database);
-  const expected =
-    failpoint === "after-begin-immediate"
-      ? { captures: 0, fts: 0, events: 0, audits: 0, idempotency: 0, outbox: 0 }
-      : {
-          captures: 1,
-          fts: 1,
-          events: 0,
-          audits: 0,
-          idempotency: 0,
-          outbox: 0,
-        };
+  const expected = getRecoveryCaptureExpectedRowsAtFailpoint(failpoint);
   invariant(
     canonicalJson(visibleRows) === canonicalJson(expected),
     "RECOVERY_FAILPOINT_ROWS_INVALID",
@@ -732,6 +785,9 @@ export function executeRecoveryCapture(database, options = {}) {
         event.occurredAt,
         event.source,
       );
+    if (failpoint === "after-event-row") {
+      invokeFailpoint(database, failpoint, reachFailpoint);
+    }
     database
       .prepare(
         `INSERT INTO recovery_audit_receipts (
@@ -757,6 +813,9 @@ export function executeRecoveryCapture(database, options = {}) {
         audit.occurredAt,
         audit.outcome,
       );
+    if (failpoint === "after-audit-row") {
+      invokeFailpoint(database, failpoint, reachFailpoint);
+    }
     database
       .prepare(
         `INSERT INTO recovery_idempotency_outcomes (
@@ -769,6 +828,9 @@ export function executeRecoveryCapture(database, options = {}) {
         canonicalJson(outcome),
         RECOVERY_CAPTURE_FIXTURE.outcomeDigest,
       );
+    if (failpoint === "after-idempotency-row") {
+      invokeFailpoint(database, failpoint, reachFailpoint);
+    }
     database
       .prepare(
         `INSERT INTO recovery_outbox (
@@ -783,6 +845,9 @@ export function executeRecoveryCapture(database, options = {}) {
         outbox.topic,
         outbox.createdAt,
       );
+    if (failpoint === "after-outbox-row") {
+      invokeFailpoint(database, failpoint, reachFailpoint);
+    }
     database.exec("COMMIT");
 
     const connectionChanges = totalChanges(database) - changesBefore;

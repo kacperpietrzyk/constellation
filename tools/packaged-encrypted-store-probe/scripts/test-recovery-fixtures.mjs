@@ -4,6 +4,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import {
+  RECOVERY_CAPTURE_FAILPOINTS,
   RECOVERY_CAPTURE_FIXTURE,
   RecoveryCaptureFixtureError,
   bootstrapRecoveryCaptureSchema,
@@ -23,6 +24,49 @@ import {
 function ensure(condition, code) {
   if (!condition) throw new Error(code);
 }
+
+const TEST_PRECOMMIT_ROWS = Object.freeze({
+  "after-capture-row": Object.freeze({
+    captures: 1,
+    fts: 1,
+    events: 0,
+    audits: 0,
+    idempotency: 0,
+    outbox: 0,
+  }),
+  "after-event-row": Object.freeze({
+    captures: 1,
+    fts: 1,
+    events: 1,
+    audits: 0,
+    idempotency: 0,
+    outbox: 0,
+  }),
+  "after-audit-row": Object.freeze({
+    captures: 1,
+    fts: 1,
+    events: 1,
+    audits: 1,
+    idempotency: 0,
+    outbox: 0,
+  }),
+  "after-idempotency-row": Object.freeze({
+    captures: 1,
+    fts: 1,
+    events: 1,
+    audits: 1,
+    idempotency: 1,
+    outbox: 0,
+  }),
+  "after-outbox-row": Object.freeze({
+    captures: 1,
+    fts: 1,
+    events: 1,
+    audits: 1,
+    idempotency: 1,
+    outbox: 1,
+  }),
+});
 
 class NodeSqliteAdapter {
   #database;
@@ -203,6 +247,53 @@ try {
   );
   assertCounts(database, 0);
 
+  const spillFailpoints = RECOVERY_CAPTURE_FAILPOINTS.filter(
+    (failpoint) =>
+      failpoint !== "none" && failpoint !== "after-begin-immediate",
+  );
+  for (const failpoint of spillFailpoints) {
+    baseline = prepareRecoveryWalFaultBaseline(database, {
+      walPath,
+      cacheSizePages: 8,
+    });
+    let boundaryReached = false;
+    try {
+      executeRecoveryCapture(database, {
+        failpoint,
+        reachFailpoint: ({ visibleRows }) => {
+          ensure(
+            canonicalJson(visibleRows) ===
+              canonicalJson(TEST_PRECOMMIT_ROWS[failpoint]),
+            `TEST_PRECOMMIT_ROWS_INVALID:${failpoint}`,
+          );
+          const wal = inspectRecoveryWal({
+            walPath,
+            expectedPageSize: baseline.walPageSize,
+          });
+          ensure(
+            wal.walFrames > 0 && wal.walCommitFrames === 0,
+            `TEST_PRECOMMIT_WAL_NOT_SPILLED:${failpoint}`,
+          );
+          boundaryReached = true;
+          throw new RecoveryCaptureFixtureError(
+            "TEST_PRECOMMIT_BOUNDARY_REACHED",
+          );
+        },
+      });
+    } catch (error) {
+      ensure(
+        error instanceof RecoveryCaptureFixtureError &&
+          error.code === "TEST_PRECOMMIT_BOUNDARY_REACHED",
+        `TEST_PRECOMMIT_FAILPOINT_FAILED:${failpoint}`,
+      );
+    }
+    ensure(
+      boundaryReached && !database.inTransaction,
+      `TEST_PRECOMMIT_BOUNDARY_INVALID:${failpoint}`,
+    );
+    assertCounts(database, 0);
+  }
+
   baseline = prepareRecoveryWalFaultBaseline(database, {
     walPath,
     cacheSizePages: 8,
@@ -250,14 +341,19 @@ try {
   ensure(!database.inTransaction, "TEST_CAPTURE_TRANSACTION_NOT_ROLLED_BACK");
   assertCounts(database, 0);
 
-  ensure(
-    verifyPlaintextRecoveryWalControl(NodeSqliteAdapter, {
-      databasePath: path.join(root, "control.db"),
-      expectedPageSize: baseline.walPageSize,
-      cacheSizePages: baseline.cacheSizePages,
-    }) === true,
-    "TEST_PLAINTEXT_CONTROL_FAILED",
-  );
+  for (const [index, failpoint] of RECOVERY_CAPTURE_FAILPOINTS.filter(
+    (value) => value !== "none",
+  ).entries()) {
+    ensure(
+      verifyPlaintextRecoveryWalControl(NodeSqliteAdapter, {
+        databasePath: path.join(root, `control-${index}.db`),
+        expectedPageSize: baseline.walPageSize,
+        cacheSizePages: baseline.cacheSizePages,
+        failpoint,
+      }) === true,
+      `TEST_PLAINTEXT_CONTROL_FAILED:${failpoint}`,
+    );
+  }
 
   const applied = executeRecoveryCapture(database);
   ensure(
@@ -286,6 +382,8 @@ try {
       status: "pass",
       beginImmediateRollback: true,
       captureRowRollback: true,
+      preCommitRollbackFailpoints: spillFailpoints.length + 1,
+      eventAuditIdempotencyOutboxRollback: true,
       missingFtsProjectionBoundaryRejected: true,
       plaintextWalCanaryControl: true,
       uncommittedWalFramesObserved: true,
