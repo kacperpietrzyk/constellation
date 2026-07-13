@@ -78,8 +78,8 @@ complete ordered Electron lifecycle and `quit` event code `0`, then one second
 for a natural process exit. A lingering process tree is force-terminated only
 after that terminal evidence; either outcome must close both inherited output
 pipes within five more seconds or the probe fails closed. Natural exits record
-the observed platform status (`0` on macOS and `1` on Windows) without a signal,
-while forced post-lifecycle cleanup is reported separately. Windows validates
+the observed status `0` without a signal on both targets, while forced
+post-lifecycle cleanup is reported separately. Windows validates
 canonical DPAPI provider state after every one of the twelve ordinary launches
 regardless of exit outcome, and the isolated deletion fault proves that lifecycle
 evidence alone cannot satisfy persistence validation. The fixed declared outcome

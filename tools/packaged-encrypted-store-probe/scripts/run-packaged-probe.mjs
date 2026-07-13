@@ -53,6 +53,7 @@ const exitAckType = "constellation.packaged-store-probe.exit-accepted/v1";
 const shutdownCompleteType =
   "constellation.packaged-store-probe.shutdown-complete/v1";
 const TERMINAL_EXIT_GRACE_MS = 1_000;
+const EXPECTED_NATURAL_EXIT_CODE = 0;
 const processIds = new Set();
 let naturalElectronProcessExits = 0;
 let forcedProcessExits = 0;
@@ -414,7 +415,6 @@ async function launch({
               "TERMINATION_OUTCOME_UNVERIFIED",
             );
             if (electronExitObserved) {
-              const expectedCode = process.platform === "win32" ? 1 : 0;
               ensure(
                 shutdownTerminalConfirmed &&
                   shutdownTerminalCount === 1 &&
@@ -433,7 +433,7 @@ async function launch({
                     ? "null"
                     : typeof signal;
               ensure(
-                code === expectedCode && signal === null,
+                code === EXPECTED_NATURAL_EXIT_CODE && signal === null,
                 `ELECTRON_SHUTDOWN_STATUS_INVALID:${codeLabel}:${signalLabel}`,
               );
             } else {
@@ -935,13 +935,12 @@ function recordProcess(execution, mode) {
     "CHILD_TERMINATION_EVIDENCE_INVALID",
   );
   if (execution.lifecycle === "electron-quit-after-parent-authorization") {
-    const expectedCode = process.platform === "win32" ? 1 : 0;
     ensure(
       execution.electronExitObserved === true &&
         execution.shutdownTerminalConfirmed === true &&
         execution.shutdownInternalExitCode === 0 &&
         execution.forcedTerminationRequested === false &&
-        execution.actualCode === expectedCode &&
+        execution.actualCode === EXPECTED_NATURAL_EXIT_CODE &&
         execution.actualSignal === null,
       "CHILD_ELECTRON_EXIT_INVALID",
     );
@@ -1469,9 +1468,7 @@ try {
       forcedProcessExits,
       observedNaturalElectronExitCode:
         naturalElectronProcessExits > 0
-          ? process.platform === "win32"
-            ? 1
-            : 0
+          ? EXPECTED_NATURAL_EXIT_CODE
           : "not-observed",
       preExitAcknowledgementFaultRejected: true,
       windowsProviderStateFaultRejected:
