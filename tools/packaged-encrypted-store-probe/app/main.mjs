@@ -1111,8 +1111,19 @@ function createRecoveryCaptureCanaries(scope) {
 }
 
 function scanGenerationSecrets(secretCanaries, captureCanaries) {
-  scanKnownSecrets(secretCanaries);
-  scanForCanaries([config.stateRoot], captureCanaries);
+  const stateCanaries = [...secretCanaries, ...captureCanaries];
+  if (stateCanaries.length > 0) {
+    scanForCanaries([config.stateRoot], stateCanaries);
+  }
+  if (secretCanaries.length > 0) {
+    scanForCanaries(
+      [
+        path.join(process.resourcesPath, "app.asar"),
+        path.join(process.resourcesPath, "app.asar.unpacked"),
+      ],
+      secretCanaries,
+    );
+  }
 }
 
 function scanKnownSecrets(canaries) {
@@ -3103,7 +3114,6 @@ async function useGenerationPreparationWorkspace(Database) {
       [...canaries, ...captureCanaries],
       candidateDatabasePath,
     );
-    scanGenerationSecrets(canaries, captureCanaries);
     writeFixedProgress("generation-preparation-state-verified");
     const code =
       config.mode === "generation-preparation-verify-staged"
@@ -3156,10 +3166,7 @@ async function useGenerationPreparationWorkspace(Database) {
     });
   } finally {
     try {
-      if (canaries.length > 0) scanKnownSecrets(canaries);
-      if (captureCanaries.length > 0) {
-        scanForCanaries([config.stateRoot], captureCanaries);
-      }
+      scanGenerationSecrets(canaries, captureCanaries);
     } finally {
       scope.clear();
     }

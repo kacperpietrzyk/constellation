@@ -126,14 +126,16 @@ diagnostics are not evidence; the parent still requires exactly one valid
 record. It independently checks the WAL, proves the process is live, and
 captures creation-bound process identities before force-killing the captured
 POSIX process group with `SIGKILL` on macOS or the captured Windows process tree
-with `taskkill /T /F`. macOS tracks PID, parent PID, process group, UID, and start
-time;
-Windows tracks PID and creation time. The controlled POSIX fixture fails before
-the kill if any observed descendant has escaped the captured process group. The
-root identity is captured before any asynchronous pre-kill observer and checked
-again afterward. An exited, missing, or changed root aborts the kill, and failure
-cleanup may use only the original identity set rather than adopting a fresh
-numeric PID or process group. The
+one exact creation-bound identity at a time with `taskkill /PID ... /F`. macOS
+tracks PID, parent PID, process group, UID, and start time. Windows tracks PID,
+parent PID, and creation time; an edge is accepted only when the child was
+created no earlier than its captured parent, so an older orphan with a stale
+reused parent PID cannot enter the tree. The controlled POSIX fixture fails
+before the kill if any observed descendant has escaped the captured process
+group. The root identity is captured before any asynchronous pre-kill observer
+and checked again afterward. An exited, missing, or changed root aborts the
+kill, and failure cleanup may use only the original identity set rather than
+adopting a fresh numeric PID or process group. The
 parent requires every captured identity to disappear, handles proven numeric
 process-group reuse without treating `EPERM` as absence, never repeatedly
 signals a numeric group, and waits for all inherited pipes to close. Before any
@@ -145,9 +147,9 @@ verified packaged process executions: 43 managed and seven forced.
 
 On Windows, a descendant can remain visible briefly after the initial tree
 kill. During one bounded 15-second verification window, the parent may retry
-`taskkill /T /F` only for identities from the original snapshot that still
-match both PID and creation time, rechecking that pair immediately before each
-retry. A taskkill return code is never success evidence; every captured
+`taskkill /PID ... /F` only for identities from the original snapshot that
+still match both PID and creation time, rechecking that pair immediately before
+each retry. A taskkill return code is never success evidence; every captured
 identity must disappear or the probe fails.
 
 A distinct packaged process must then observe the baseline Workspace, Space,

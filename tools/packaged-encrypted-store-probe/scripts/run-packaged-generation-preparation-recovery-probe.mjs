@@ -998,22 +998,27 @@ function snapshotWorkspace(workspaceRoot, ignoredPaths = new Set()) {
   return JSON.stringify(entries);
 }
 
-function snapshotAuthoritativeGenerationWorkspace(paths) {
+function snapshotAuthoritativeGenerationWorkspace(
+  paths,
+  additionalIgnoredPaths = new Set(),
+) {
   assertRecoverableGenerationSourceSidecars(paths.sourceDatabasePath);
   return snapshotWorkspace(
     paths.workspaceRoot,
     new Set([
       `${paths.sourceDatabasePath}-wal`,
       `${paths.sourceDatabasePath}-shm`,
+      ...additionalIgnoredPaths,
     ]),
   );
 }
 
-function scanStateCanaries(stateRoot) {
+function scanStateCanaries(stateRoot, ignoredPaths = new Set()) {
   const canaries = getRecoveryCapturePlaintextCanaries();
   let files = 0;
   let bytes = 0;
   function visit(target) {
+    if (ignoredPaths.has(target)) return;
     const metadata = fs.lstatSync(target);
     ensure(!metadata.isSymbolicLink(), "STATE_SYMLINK_PRESENT");
     if (metadata.isDirectory()) {
@@ -1345,7 +1350,10 @@ async function forceGenerationRecordFault({
     beforeKill: () => {
       ensure(observedBoundary, "GENERATION_RECORD_BOUNDARY_MISSING");
       assertStableSnapshotsUnchanged(stableSnapshots);
-      scanStateCanaries(stateRoot);
+      scanStateCanaries(
+        stateRoot,
+        new Set([`${paths.sourceDatabasePath}-shm`]),
+      );
       return {
         workspaceSnapshot: snapshotAuthoritativeGenerationWorkspace(paths),
         boundaryFiles: inspectImmutableRecordBoundary(
@@ -1525,6 +1533,10 @@ async function forceGenerationCandidateFault({
   stableSnapshots,
 }) {
   let observedBoundary;
+  const activeSharedMemoryPaths = new Set([
+    `${paths.sourceDatabasePath}-shm`,
+    `${paths.buildingDatabasePath}-shm`,
+  ]);
   const execution = await forceCrashPackagedProcessAtBoundary({
     executable,
     args: argumentsFor(stateRoot, {
@@ -1582,7 +1594,14 @@ async function forceGenerationCandidateFault({
       }
       assertStableSnapshotsUnchanged(stableSnapshots);
       const layout = inspectCandidateBuildBoundary(paths, failpoint);
-      const workspaceSnapshot = snapshotAuthoritativeGenerationWorkspace(paths);
+      // SQLite holds mandatory byte-range locks in active WAL shared-memory
+      // files on Windows. Their contents are coordination state rather than
+      // authoritative workspace state, so validate their bounded shape above
+      // and defer content scanning until the captured child has terminated.
+      const workspaceSnapshot = snapshotAuthoritativeGenerationWorkspace(
+        paths,
+        activeSharedMemoryPaths,
+      );
       let concurrentCandidateBuilderRejected = false;
       if (failpoint === "during-synthetic-migration") {
         const protectedSnapshots = new Map([
@@ -1622,15 +1641,17 @@ async function forceGenerationCandidateFault({
         assertStableSnapshotsUnchanged(protectedSnapshots);
         assertStableSnapshotsUnchanged(stableSnapshots);
         ensure(
-          snapshotAuthoritativeGenerationWorkspace(paths) ===
-            workspaceSnapshot &&
+          snapshotAuthoritativeGenerationWorkspace(
+            paths,
+            activeSharedMemoryPaths,
+          ) === workspaceSnapshot &&
             JSON.stringify(inspectCandidateBuildBoundary(paths, failpoint)) ===
               JSON.stringify(layout),
           "GENERATION_CANDIDATE_BUSY_ATTEMPT_MUTATED_STATE",
         );
         concurrentCandidateBuilderRejected = true;
       }
-      scanStateCanaries(stateRoot);
+      scanStateCanaries(stateRoot, activeSharedMemoryPaths);
       return {
         concurrentCandidateBuilderRejected,
         layout,
@@ -1679,8 +1700,10 @@ async function forceGenerationCandidateFault({
       ensure(
         JSON.stringify(postKillLayout) ===
           JSON.stringify(execution.beforeKillEvidence.layout) &&
-          snapshotAuthoritativeGenerationWorkspace(paths) ===
-            execution.beforeKillEvidence.workspaceSnapshot &&
+          snapshotAuthoritativeGenerationWorkspace(
+            paths,
+            activeSharedMemoryPaths,
+          ) === execution.beforeKillEvidence.workspaceSnapshot &&
           execution.beforeKillEvidence.concurrentCandidateBuilderRejected ===
             (failpoint === "during-synthetic-migration"),
         "GENERATION_CANDIDATE_POST_KILL_STATE_CHANGED",

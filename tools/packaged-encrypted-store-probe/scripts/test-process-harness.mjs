@@ -7,6 +7,7 @@ import {
   guardCapturedRootTermination,
   launchManagedPackagedProcess,
   retryTerminateWindowsProcessIdentities,
+  selectWindowsProcessTree,
   snapshotWindowsProcessTree,
   terminatePackagedProcessTree,
 } from "./packaged-process-harness.mjs";
@@ -467,6 +468,71 @@ if (childArgument) {
     "TEST_CAPTURED_ROOT_TERMINATION_GUARD_INVALID",
   );
 
+  const selectedWindowsTree = selectWindowsProcessTree(
+    [
+      {
+        pid: 4242,
+        parentPid: 7,
+        creationDate: "2026-01-01T00:00:10.0000000Z",
+      },
+      {
+        pid: 4243,
+        parentPid: 4242,
+        creationDate: "2026-01-01T00:00:10.0000000Z",
+      },
+      {
+        pid: 4244,
+        parentPid: 4243,
+        creationDate: "2026-01-01T00:00:11.0000000Z",
+      },
+      {
+        pid: 4000,
+        parentPid: 4242,
+        creationDate: "2026-01-01T00:00:09.0000000Z",
+      },
+      {
+        pid: 4001,
+        parentPid: 4000,
+        creationDate: "2026-01-01T00:00:12.0000000Z",
+      },
+      {
+        pid: 5000,
+        parentPid: 8,
+        creationDate: "2026-01-01T00:00:12.0000000Z",
+      },
+    ],
+    4242,
+  );
+  ensure(
+    selectedWindowsTree.map((identity) => identity.pid).join(",") ===
+      "4242,4243,4244",
+    "TEST_WINDOWS_STALE_PARENT_ACCEPTED",
+  );
+  let invalidWindowsRowsError;
+  try {
+    selectWindowsProcessTree(
+      [
+        {
+          pid: 4242,
+          parentPid: 7,
+          creationDate: "2026-01-01T00:00:10.0000000Z",
+        },
+        {
+          pid: 4242,
+          parentPid: 8,
+          creationDate: "2026-01-01T00:00:11.0000000Z",
+        },
+      ],
+      4242,
+    );
+  } catch (error) {
+    invalidWindowsRowsError = error;
+  }
+  ensure(
+    invalidWindowsRowsError?.message === "WINDOWS_PROCESS_ROWS_INVALID",
+    "TEST_WINDOWS_DUPLICATE_PID_ACCEPTED",
+  );
+
   let duplicateError;
   try {
     await forceCrashPackagedProcessAtBoundary({
@@ -721,6 +787,7 @@ if (childArgument) {
       postKillWatchdog: postKillWatchdogVerified,
       preKillExitGuard: true,
       identityChangeTerminationGuard: true,
+      windowsLineageGuard: true,
       windowsIdentityGuard: windowsIdentityGuardVerified,
       windowsIdentityRetry: windowsIdentityRetryVerified,
     })}\n`,
