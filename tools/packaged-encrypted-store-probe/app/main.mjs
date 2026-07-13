@@ -1250,8 +1250,8 @@ if (config) {
         const Database = await loadDatabaseConstructor();
         result = createPlaintextFixture(Database);
       } else {
-        const Database = await loadDatabaseConstructor();
         await requireAsyncEncryption();
+        const Database = await loadDatabaseConstructor();
         result =
           config.mode === "provision"
             ? await provisionStore(Database)
