@@ -65,6 +65,12 @@ The probe fails unless all of these checks pass:
   acknowledgements, then exits internally with code `1`; the harness must reject
   that nonzero observed process result before the ordinary twelve-process result
   can pass;
+- before the Windows integration run, three isolated shutdown diagnostics bisect
+  the baseline control, an asynchronous safeStorage round trip without a native
+  import, and a raw-key SQLCipher write without a safeStorage call. Each uses a
+  separate disposable profile and state root, validates exact entered, quit, and
+  returned lifecycle marker shapes and ordering, and reports only a fixed
+  content-safe summary;
 - macOS uses an ad-hoc-signed package and disposable hosted-runner Keychain;
   Windows uses an unsigned mechanism package with statically linked pinned
   OpenSSL; every generated file and exact probe-only Keychain item is removed
@@ -72,13 +78,17 @@ The probe fails unless all of these checks pass:
 
 The child processes have a 45-second readiness watchdog so an interactive
 provider prompt or native hang becomes a bounded failure. After readiness, the
-parent allows up to five seconds for the acknowledged `app.exit(0)` request to
-produce a natural process exit. A lingering process tree is force-terminated
+parent allows up to five seconds on macOS or twelve seconds on Windows for the
+acknowledged `app.exit(0)` request to produce a natural process exit. A
+lingering process tree is force-terminated
 only after that authorization; either outcome must close both inherited output
 pipes within five more seconds or the probe fails closed. Natural exits record
 the observed status `0` without a signal on both targets, while forced cleanup
-is reported separately. Every ordinary Windows launch must exit naturally; a
-forced cleanup is accepted only on macOS. On Windows, the evidence is the real
+is reported separately. The Windows-only boundary diagnostic accepts either
+the exact natural `0`/no-signal result or the exact Taskkill `1`/no-signal result
+after the authorized twelve-second boundary. Every ordinary Windows integration
+launch must still exit naturally; a forced cleanup there remains invalid. On
+Windows, the evidence is the real
 async wrap/unwrap through distinct processes and exact marker recovery; provider
 rotation and temporary unavailability remain outside this bounded mechanism
 probe. The fixed declared outcome remains authoritative for each probe

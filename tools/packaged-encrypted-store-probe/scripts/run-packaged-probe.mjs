@@ -53,6 +53,21 @@ const providerBootstrapReadyType =
   "constellation.packaged-store-probe.provider-bootstrap-ready/v1";
 const providerBootstrapContinueType =
   "constellation.packaged-store-probe.provider-bootstrap-continue/v1";
+const shutdownDiagnosticModes = new Set([
+  "shutdown-control",
+  "shutdown-provider",
+  "shutdown-sqlcipher",
+]);
+const appExitEnteredType = "app-exit-entered/v1";
+const electronQuitObservedType = "electron-quit-observed/v1";
+const appExitReturnedType = "app-exit-returned/v1";
+const lifecycleMarkerTypes = new Set([
+  appExitEnteredType,
+  electronQuitObservedType,
+  appExitReturnedType,
+]);
+const shutdownDiagnosticOnly =
+  process.argv.length === 3 && process.argv[2] === "--shutdown-diagnostic";
 // Windows CI can spend several seconds unwinding Chromium and committing the
 // provider profile after app.exit(0). Keep this below the child's independent
 // 30-second failsafe, but do not misclassify a slow managed exit as a hang.
@@ -181,20 +196,26 @@ function terminateTree(child) {
   }
 }
 
-async function launch({ mode, workspaceId, wrapperName, databaseName }) {
+async function launch({
+  mode,
+  workspaceId,
+  wrapperName,
+  databaseName,
+  launchStateRoot = stateRoot,
+}) {
   const environment = { ...process.env };
   delete environment.ELECTRON_RUN_AS_NODE;
-  const probeProfile = path.join(stateRoot, "profile");
+  const probeProfile = path.join(launchStateRoot, "profile");
   const shutdownControlToken = crypto.randomBytes(32).toString("hex");
   const shutdownControlPath = path.join(
-    stateRoot,
+    launchStateRoot,
     `.shutdown-${shutdownControlToken}.json`,
   );
   const shutdownControlTemporaryPath = `${shutdownControlPath}.tmp`;
   const argumentsForProbe = [
     `--user-data-dir=${probeProfile}`,
     `--probe-mode=${mode}`,
-    `--probe-state-root=${stateRoot}`,
+    `--probe-state-root=${launchStateRoot}`,
     `--probe-workspace=${workspaceId}`,
     `--probe-wrapper=${wrapperName}`,
     `--probe-database=${databaseName}`,
@@ -256,6 +277,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     let mainExitSignal;
     let providerBootstrapMessageCount = 0;
     let providerBootstrapCompleted = mode !== "provision";
+    const lifecycleMarkers = [];
 
     const removeShutdownControlArtifacts = () => {
       try {
@@ -368,6 +390,24 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
                 (forcedTerminationRequested && forcedTerminationAccepted),
               "TERMINATION_OUTCOME_UNVERIFIED",
             );
+            if (shutdownDiagnosticModes.has(mode)) {
+              const lifecycleSequence = lifecycleMarkers.join(",");
+              const validSequences = new Set([
+                appExitEnteredType,
+                `${appExitEnteredType},${appExitReturnedType}`,
+                `${appExitEnteredType},${electronQuitObservedType}`,
+                `${appExitEnteredType},${electronQuitObservedType},${appExitReturnedType}`,
+              ]);
+              ensure(
+                validSequences.has(lifecycleSequence),
+                "LIFECYCLE_MARKER_ORDER_INVALID",
+              );
+            } else {
+              ensure(
+                lifecycleMarkers.length === 0,
+                "UNEXPECTED_LIFECYCLE_MARKER",
+              );
+            }
             if (electronExitObserved) {
               const codeLabel = Number.isInteger(code)
                 ? String(code)
@@ -408,6 +448,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
               electronExitObserved,
               providerBootstrapCompleted,
               providerBootstrapMessageCount,
+              lifecycleMarkers: [...lifecycleMarkers],
               childPid: child.pid,
               result,
             });
@@ -546,12 +587,16 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       const claimsExitAccepted = text.includes(
         "constellation.packaged-store-probe.exit-accepted",
       );
+      const claimsLifecycleMarker = [...lifecycleMarkerTypes].some((type) =>
+        text.includes(type),
+      );
       const claimsProtocol =
         text.includes('"readyForShutdown"') ||
         text.includes('"declaredExitCode"') ||
         claimsShutdownAccepted ||
         claimsShutdownRejected ||
-        claimsExitAccepted;
+        claimsExitAccepted ||
+        claimsLifecycleMarker;
       let value;
       try {
         value = JSON.parse(text);
@@ -574,6 +619,11 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       }
       if (claimsExitAccepted && value?.type !== exitAckType) {
         protocolError ||= "EXIT_ACK_INVALID";
+        startHardCleanup(protocolError);
+        return;
+      }
+      if (claimsLifecycleMarker && !lifecycleMarkerTypes.has(value?.type)) {
+        protocolError ||= "LIFECYCLE_MARKER_INVALID";
         startHardCleanup(protocolError);
         return;
       }
@@ -655,6 +705,32 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
           startHardCleanup(protocolError);
         } else {
           exitAuthorizationAcknowledged = true;
+        }
+        return;
+      }
+      if (lifecycleMarkerTypes.has(value?.type)) {
+        const keys = Object.keys(value).sort();
+        const expectedKeys = ["mode", "processId", "type"].sort();
+        const valid =
+          shutdownDiagnosticModes.has(mode) &&
+          keys.length === expectedKeys.length &&
+          keys.every((key, index) => key === expectedKeys[index]) &&
+          value.mode === mode &&
+          value.processId === child.pid &&
+          readyResult !== undefined &&
+          parentSupervisionStarted &&
+          shutdownAuthorizationQueued &&
+          exitAuthorizationGranted &&
+          shutdownAcknowledged &&
+          exitAuthorizationAcknowledged &&
+          !lifecycleMarkers.includes(value.type) &&
+          (lifecycleMarkers.length > 0 || value.type === appExitEnteredType) &&
+          (value.type !== appExitEnteredType || lifecycleMarkers.length === 0);
+        if (!valid) {
+          protocolError ||= "LIFECYCLE_MARKER_INVALID";
+          startHardCleanup(protocolError);
+        } else {
+          lifecycleMarkers.push(value.type);
         }
         return;
       }
@@ -900,6 +976,57 @@ function recordProcess(execution, mode) {
   processIds.add(result.processId);
 }
 
+function assertDiagnosticProcess(execution, mode) {
+  ensure(
+    execution.lifecycle === "electron-exit-after-parent-authorization" ||
+      execution.lifecycle === "forced-after-authorized-electron-exit",
+    "DIAGNOSTIC_LIFECYCLE_INVALID",
+  );
+  ensure(
+    execution.parentSupervisionStarted === true &&
+      execution.shutdownAuthorizationQueued === true &&
+      execution.exitAuthorizationGranted === true &&
+      execution.exitAuthorizationAcknowledged === true &&
+      execution.shutdownAcknowledged === true &&
+      execution.shutdownRequestedWhileAlive === true,
+    "DIAGNOSTIC_AUTHORIZATION_INVALID",
+  );
+  ensure(
+    execution.providerBootstrapCompleted === true &&
+      execution.providerBootstrapMessageCount === 0,
+    "DIAGNOSTIC_BOOTSTRAP_INVALID",
+  );
+  if (execution.lifecycle === "electron-exit-after-parent-authorization") {
+    ensure(
+      execution.electronExitObserved === true &&
+        execution.forcedTerminationRequested === false &&
+        execution.actualCode === 0 &&
+        execution.actualSignal === null &&
+        execution.lifecycleMarkers.length === 3 &&
+        execution.lifecycleMarkers[0] === appExitEnteredType &&
+        execution.lifecycleMarkers[1] === electronQuitObservedType &&
+        execution.lifecycleMarkers[2] === appExitReturnedType,
+      "DIAGNOSTIC_NATURAL_EXIT_INVALID",
+    );
+  } else {
+    ensure(
+      execution.electronExitObserved === false &&
+        execution.forcedTerminationRequested === true &&
+        execution.forcedTerminationAccepted === true &&
+        execution.actualCode === 1 &&
+        execution.actualSignal === null,
+      "DIAGNOSTIC_FORCED_EXIT_INVALID",
+    );
+  }
+  ensure(
+    execution.result.readyForShutdown === true &&
+      execution.result.declaredExitCode === 0 &&
+      execution.result.status === "pass",
+    "DIAGNOSTIC_RESULT_INVALID",
+  );
+  assertFixedIdentity(execution.result, execution.childPid, mode);
+}
+
 async function expectFailure(options, acceptedCodes, expectedState) {
   const execution = await launch(options);
   ensure(execution.declaredExitCode !== 0, "NEGATIVE_PROBE_SUCCEEDED");
@@ -1057,6 +1184,132 @@ async function removeStateRoot() {
 
 const artifactPaths = [executable, appArchive, nativeAddon];
 const artifactDigests = new Map();
+
+async function runShutdownDiagnostic() {
+  ensure(process.platform === "win32", "DIAGNOSTIC_PLATFORM_UNSUPPORTED");
+  ensure(process.arch === "x64", "HOST_ARCH_UNSUPPORTED");
+  const expectedArtifacts = new Map();
+  const diagnosticRoots = new Set();
+  const summaries = [];
+  try {
+    for (const artifact of artifactPaths) {
+      ensure(fs.existsSync(artifact), "PACKAGED_ARTIFACT_MISSING");
+      expectedArtifacts.set(artifact, digestFile(artifact));
+    }
+    const cases = [
+      {
+        mode: "shutdown-control",
+        code: "SHUTDOWN_CONTROL_READY",
+        extraKeys: [],
+      },
+      {
+        mode: "shutdown-provider",
+        code: "SHUTDOWN_PROVIDER_READY",
+        extraKeys: ["providerRoundTrip"],
+      },
+      {
+        mode: "shutdown-sqlcipher",
+        code: "SHUTDOWN_SQLCIPHER_READY",
+        extraKeys: ["cipherVersion", "integrityVerified", "rawKeyBinding"],
+      },
+    ];
+    for (const diagnosticCase of cases) {
+      const diagnosticRoot = fs.mkdtempSync(
+        path.join(temporaryRoot, `constellation-${diagnosticCase.mode}-`),
+      );
+      diagnosticRoots.add(diagnosticRoot);
+      const execution = await launch({
+        mode: diagnosticCase.mode,
+        workspaceId: "workspace-shutdown-diagnostic",
+        wrapperName: "unused-diagnostic.wrap.json",
+        databaseName: "shutdown-diagnostic.db",
+        launchStateRoot: diagnosticRoot,
+      });
+      assertDiagnosticProcess(execution, diagnosticCase.mode);
+      assertExactResultKeys(execution.result, diagnosticCase.extraKeys);
+      ensure(
+        execution.result.code === diagnosticCase.code,
+        "DIAGNOSTIC_CODE_INVALID",
+      );
+      if (diagnosticCase.mode === "shutdown-provider") {
+        ensure(
+          execution.result.providerRoundTrip === true,
+          "DIAGNOSTIC_PROVIDER_INVALID",
+        );
+      }
+      if (diagnosticCase.mode === "shutdown-sqlcipher") {
+        ensure(
+          execution.result.cipherVersion === "4.16.0 community" &&
+            execution.result.integrityVerified === true &&
+            execution.result.rawKeyBinding === true,
+          "DIAGNOSTIC_SQLCIPHER_INVALID",
+        );
+      }
+      summaries.push({
+        mode: diagnosticCase.mode,
+        outcome:
+          execution.lifecycle === "electron-exit-after-parent-authorization"
+            ? "natural-0-null"
+            : "forced-1-null-after-12s",
+        lifecycleMarkers: execution.lifecycleMarkers,
+      });
+      await removeDirectory(diagnosticRoot);
+      diagnosticRoots.delete(diagnosticRoot);
+      ensure(!fs.existsSync(diagnosticRoot), "DIAGNOSTIC_STATE_CLEANUP_FAILED");
+    }
+    for (const [artifact, expected] of expectedArtifacts) {
+      const actual = digestFile(artifact);
+      try {
+        ensure(sameDigest(actual, expected), "PACKAGED_ARTIFACT_CHANGED");
+      } finally {
+        actual.fill(0);
+      }
+    }
+    for (const output of captured) output.fill(0);
+    captured.length = 0;
+    const summary = Buffer.from(
+      `${JSON.stringify({
+        status: "pass",
+        platform: "win32",
+        targetArchitecture: "x64",
+        electron: "43.1.0",
+        authorizedExitGraceMs: AUTHORIZED_EXIT_GRACE_MS,
+        separateStateRoots: true,
+        packageIdentityStable: true,
+        cases: summaries,
+      })}\n`,
+      "utf8",
+    );
+    try {
+      let offset = 0;
+      while (offset < summary.length) {
+        const written = fs.writeSync(
+          1,
+          summary,
+          offset,
+          summary.length - offset,
+        );
+        ensure(written > 0, "DIAGNOSTIC_SUMMARY_WRITE_FAILED");
+        offset += written;
+      }
+    } finally {
+      summary.fill(0);
+    }
+  } finally {
+    for (const digest of expectedArtifacts.values()) digest.fill(0);
+    for (const output of captured) output.fill(0);
+    for (const diagnosticRoot of diagnosticRoots) {
+      await removeDirectory(diagnosticRoot);
+    }
+    await removeStateRoot();
+  }
+}
+
+if (shutdownDiagnosticOnly) {
+  await runShutdownDiagnostic();
+  process.exit(0);
+}
+ensure(process.argv.length === 2, "RUNNER_ARGUMENT_INVALID");
 
 try {
   ensure(/^(darwin|win32)$/.test(process.platform), "PLATFORM_UNSUPPORTED");

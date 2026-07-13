@@ -18,7 +18,8 @@
     "keychain:prepare": "node scripts/prepare-macos-keychain.mjs",
     "keychain:restore": "node scripts/restore-macos-keychain.mjs",
     "package:probe": "node scripts/package.mjs",
-    "probe:packaged": "node scripts/run-packaged-probe.mjs"
+    "probe:packaged": "node scripts/run-packaged-probe.mjs",
+    "probe:shutdown-diagnostic": "node scripts/run-packaged-probe.mjs --shutdown-diagnostic"
   },
   "dependencies": {
     "better-sqlite3": "12.11.1"

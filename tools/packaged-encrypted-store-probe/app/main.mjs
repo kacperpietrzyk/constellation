@@ -30,6 +30,14 @@ const PROVIDER_BOOTSTRAP_READY_TYPE =
   "constellation.packaged-store-probe.provider-bootstrap-ready/v1";
 const PROVIDER_BOOTSTRAP_CONTINUE_TYPE =
   "constellation.packaged-store-probe.provider-bootstrap-continue/v1";
+const SHUTDOWN_DIAGNOSTIC_MODES = new Set([
+  "shutdown-control",
+  "shutdown-provider",
+  "shutdown-sqlcipher",
+]);
+const APP_EXIT_ENTERED_TYPE = "app-exit-entered/v1";
+const ELECTRON_QUIT_OBSERVED_TYPE = "electron-quit-observed/v1";
+const APP_EXIT_RETURNED_TYPE = "app-exit-returned/v1";
 const EXIT_CODES = Object.freeze({
   CONFIG_INVALID: 80,
   PACKAGED_IDENTITY_INVALID: 81,
@@ -264,6 +272,28 @@ function writeExitAcknowledgement() {
   }
 }
 
+function writeLifecycleMarker(type) {
+  if (!SHUTDOWN_DIAGNOSTIC_MODES.has(config?.mode)) return;
+  const output = Buffer.from(
+    `${JSON.stringify({
+      type,
+      mode: config.mode,
+      processId: process.pid,
+    })}\n`,
+    "utf8",
+  );
+  try {
+    let offset = 0;
+    while (offset < output.length) {
+      const written = fs.writeSync(1, output, offset, output.length - offset);
+      if (written <= 0) throw new Error("LIFECYCLE_MARKER_WRITE_FAILED");
+      offset += written;
+    }
+  } finally {
+    output.fill(0);
+  }
+}
+
 function waitForParentShutdownProtocol() {
   const accept = (message) => {
     let rejection;
@@ -383,7 +413,13 @@ function finish(result, exitCode) {
   writeFixedResult(result, exitCode);
   waitForParentShutdownProtocol();
   if (!authorizedExitReady) throw new Error("EXIT_AUTHORIZATION_MISSING");
+  if (!SHUTDOWN_DIAGNOSTIC_MODES.has(config?.mode)) {
+    app.exit(0);
+    return;
+  }
+  writeLifecycleMarker(APP_EXIT_ENTERED_TYPE);
   app.exit(0);
+  writeLifecycleMarker(APP_EXIT_RETURNED_TYPE);
 }
 
 function getArgument(name) {
@@ -425,7 +461,13 @@ function parseConfig() {
   const shutdownControlToken = getArgument("shutdown-control");
 
   if (
-    !new Set(["provision", "verify", "plaintext", "shutdown-fault"]).has(mode)
+    !new Set([
+      "provision",
+      "verify",
+      "plaintext",
+      "shutdown-fault",
+      ...SHUTDOWN_DIAGNOSTIC_MODES,
+    ]).has(mode)
   ) {
     fail("CONFIG_INVALID");
   }
@@ -1199,6 +1241,69 @@ function createPlaintextFixture(Database) {
   }
 }
 
+async function verifyShutdownProvider() {
+  const sentinel = "constellation-shutdown-provider-sentinel-v1";
+  let encrypted;
+  try {
+    await requireAsyncEncryption();
+    encrypted = await safeStorage.encryptStringAsync(sentinel);
+    if (!Buffer.isBuffer(encrypted) || encrypted.length === 0) {
+      fail("ENCRYPTION_UNAVAILABLE");
+    }
+    const decrypted = await safeStorage.decryptStringAsync(encrypted);
+    if (
+      !hasExactKeys(decrypted, ["result", "shouldReEncrypt"]) ||
+      decrypted.result !== sentinel ||
+      typeof decrypted.shouldReEncrypt !== "boolean"
+    ) {
+      fail("ENCRYPTION_UNAVAILABLE");
+    }
+    return fixedResult("pass", "SHUTDOWN_PROVIDER_READY", {
+      providerRoundTrip: true,
+    });
+  } finally {
+    encrypted?.fill?.(0);
+  }
+}
+
+async function verifyShutdownSqlcipher() {
+  if (pathKind(config.databasePath)) fail("DATABASE_EXISTS");
+  const key = crypto.randomBytes(32);
+  let database;
+  try {
+    const Database = await loadDatabaseConstructor();
+    reserveDatabase(config.databasePath);
+    database = openKeyedDatabase(Database, key, { fileMustExist: true });
+    if (!key.every((byte) => byte === 0)) fail("PROBE_FAILED");
+    const cipherVersion = database.pragma("cipher_version", { simple: true });
+    if (cipherVersion !== "4.16.0 community") {
+      fail("ENCRYPTION_UNAVAILABLE");
+    }
+    database.exec(`
+      CREATE TABLE shutdown_diagnostic (
+        id INTEGER PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `);
+    database
+      .prepare("INSERT INTO shutdown_diagnostic (id, value) VALUES (?, ?)")
+      .run(1, "fixed-nonsecret-sentinel");
+    if (database.pragma("integrity_check", { simple: true }) !== "ok") {
+      fail("DATABASE_INTEGRITY_FAILED");
+    }
+    closeDatabase(database);
+    database = undefined;
+    return fixedResult("pass", "SHUTDOWN_SQLCIPHER_READY", {
+      cipherVersion,
+      integrityVerified: true,
+      rawKeyBinding: true,
+    });
+  } finally {
+    key.fill(0);
+    closeQuietly(database);
+  }
+}
+
 function verifyPackagedIdentity() {
   const expectedArchive = path.join(process.resourcesPath, "app.asar");
   const expectedUnpackedRoot = path.join(
@@ -1328,6 +1433,11 @@ try {
 }
 
 if (config) {
+  if (SHUTDOWN_DIAGNOSTIC_MODES.has(config.mode)) {
+    app.on("quit", () => {
+      writeLifecycleMarker(ELECTRON_QUIT_OBSERVED_TYPE);
+    });
+  }
   app.whenReady().then(async () => {
     try {
       verifyPackagedIdentity();
@@ -1335,6 +1445,12 @@ if (config) {
       let result;
       if (config.mode === "shutdown-fault") {
         result = fixedResult("pass", "SHUTDOWN_FAULT_ARMED");
+      } else if (config.mode === "shutdown-control") {
+        result = fixedResult("pass", "SHUTDOWN_CONTROL_READY");
+      } else if (config.mode === "shutdown-provider") {
+        result = await verifyShutdownProvider();
+      } else if (config.mode === "shutdown-sqlcipher") {
+        result = await verifyShutdownSqlcipher();
       } else if (config.mode === "plaintext") {
         const Database = await loadDatabaseConstructor();
         result = createPlaintextFixture(Database);

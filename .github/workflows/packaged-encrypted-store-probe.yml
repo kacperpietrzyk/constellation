@@ -140,6 +140,9 @@ jobs:
       - name: Package the synthetic x64 application
         run: npm --prefix tools/packaged-encrypted-store-probe run package:probe
 
+      - name: Diagnose packaged Electron shutdown boundaries
+        run: npm --prefix tools/packaged-encrypted-store-probe run probe:shutdown-diagnostic
+
       - name: Verify packaged encrypted-store relaunch
         run: npm --prefix tools/packaged-encrypted-store-probe run probe:packaged
 
