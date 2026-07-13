@@ -35,7 +35,8 @@ The probe fails unless all of these checks pass:
   decrypted payload boundaries), a valid same-context wrapper with the wrong
   key, a plaintext SQLite database, a corrupted encrypted database, and
   provisioning over existing state all fail closed without modifying the
-  known-good wrapper, database, or WAL/SHM/journal sidecar set;
+  known-good wrapper, database, or durable WAL state and without leaving a
+  rollback journal; any ephemeral SHM remains a regular non-symlink file;
 - the database header and live WAL are encrypted; before and after database
   close, including failure cleanup, the packaged process scans the package,
   unpacked add-on, wrapper, database, WAL, profile, temp, and crash state for the

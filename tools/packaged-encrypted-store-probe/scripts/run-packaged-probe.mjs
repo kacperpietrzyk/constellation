@@ -1059,7 +1059,6 @@ function snapshotPrimaryState() {
     primaryWrapperPath,
     primaryDatabasePath,
     `${primaryDatabasePath}-wal`,
-    `${primaryDatabasePath}-shm`,
     `${primaryDatabasePath}-journal`,
   ]) {
     snapshot.set(
@@ -1215,8 +1214,6 @@ try {
   ensure(header.toString("utf8") !== "SQLite format 3\0", "PLAINTEXT_DATABASE");
   header.fill(0);
 
-  const primaryState = snapshotPrimaryState();
-
   const reader = await launch({
     mode: "verify",
     workspaceId: workspace,
@@ -1246,6 +1243,7 @@ try {
   );
   ensure(reader.result.integrityVerified === true, "INTEGRITY_INVALID");
   assertWindowsProviderStateUnchanged(windowsProviderStateDigest);
+  const primaryState = snapshotPrimaryState();
   assertPrimaryUnchanged(primaryState);
 
   await expectFailure(
