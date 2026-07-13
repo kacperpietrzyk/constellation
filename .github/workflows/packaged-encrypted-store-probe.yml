@@ -85,6 +85,9 @@ jobs:
       - name: Verify process harness semantics
         run: npm --prefix tools/packaged-encrypted-store-probe run test:process-harness
 
+      - name: Verify POSIX process identity semantics
+        run: npm --prefix tools/packaged-encrypted-store-probe run test:posix-process-tree
+
       - name: Build the Electron native binding
         run: bash tools/sqlcipher-native-probe/scripts/build-macos.sh "$RUNNER_TEMP/sqlcipher-amalgamation" "$PWD/tools/packaged-encrypted-store-probe"
 
@@ -150,6 +153,9 @@ jobs:
 
       - name: Verify process harness semantics
         run: npm --prefix tools/packaged-encrypted-store-probe run test:process-harness
+
+      - name: Verify POSIX process identity semantics
+        run: npm --prefix tools/packaged-encrypted-store-probe run test:posix-process-tree
 
       - name: Build OpenSSL and the Electron native binding
         shell: pwsh

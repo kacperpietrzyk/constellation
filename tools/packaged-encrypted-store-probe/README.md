@@ -75,11 +75,11 @@ The probe fails unless all of these checks pass:
 The child processes have a 45-second watchdog so an interactive provider prompt
 or native hang becomes a bounded failure. Any forced cleanup before an observed
 natural main-process exit is failure-only and can never become passing evidence.
-After the main process exits with the exact declared code, the parent may
-terminate only lingering inherited helpers to close their pipes; it still waits
-for `close`, preserves the already observed main-process status, and fails if
-cleanup cannot be verified within five seconds. On Windows, the evidence is the
-real async wrap/unwrap through distinct processes and exact marker recovery;
+After the main process exits with the exact declared code, the parent never
+retargets its numeric PID or process-group ID. It waits for `close`, preserves
+the already observed main-process status, and fails if inherited helpers do not
+close their pipes within five seconds. On Windows, the evidence is the real
+async wrap/unwrap through distinct processes and exact marker recovery;
 provider rotation and temporary unavailability remain outside this bounded
 mechanism probe. The direct exit paths are probe-only: the fixture is headless,
 has no windows, and completes the relevant provider or store work before
@@ -107,12 +107,20 @@ markers, and none of the proven spilled canaries. This relative control avoids
 claiming encryption merely because a canary happened to remain in page cache.
 
 At the exact boundary, the child writes one strict content-safe record and
-blocks synchronously without closing or rolling back. The parent independently
-checks the WAL, proves the process is still live, and force-kills the complete
-synthetic process tree with `SIGKILL` on macOS or `taskkill /T /F` on Windows.
-It requires the main process and captured tree to disappear and both inherited
-pipes to close. Before any relaunch, the Capture-row sentinel also requires the
-same uncommitted WAL bytes to remain present.
+blocks synchronously without closing or rolling back. Bounded non-object
+Chromium diagnostics are not evidence; the parent still requires exactly one
+valid record. It independently checks the WAL, proves the process is live, and
+captures creation-bound process identities before force-killing the captured
+POSIX process group with `SIGKILL` on macOS or the captured Windows process tree
+with `taskkill /T /F`. macOS tracks PID, parent PID, process group, UID, and start
+time;
+Windows tracks PID and creation time. The controlled POSIX fixture fails before
+the kill if any observed descendant has escaped the captured process group. The
+parent requires every captured identity to disappear, handles proven numeric
+process-group reuse without treating `EPERM` as absence, never repeatedly
+signals a numeric group, and waits for all inherited pipes to close. Before any
+relaunch, the Capture-row sentinel also requires the same uncommitted WAL bytes
+to remain present.
 
 A distinct packaged process must then observe the baseline Workspace, Space,
 and membership with zero command rows and unchanged workspace version. Another
@@ -168,9 +176,10 @@ OS-account migration, wrapper/database crash-atomic provisioning, the remaining
 Event/Audit/Idempotency/Outbox/post-commit fault boundaries, generation-manifest
 publication, busy/read-only/permission recovery, real disk-full or power-loss
 recovery, migration recovery, rotation, temporary provider unavailability,
-Windows workspace ACLs, optimized Windows crypto performance, portable
-recovery, reliable JavaScript heap zeroization, renderer isolation, or same-user
-malware resistance.
+Windows workspace ACLs, optimized Windows crypto performance, unobserved
+pre-boundary daemonization outside the captured POSIX process group, portable
+recovery, reliable JavaScript heap zeroization, renderer isolation, or
+same-user malware resistance.
 
 The initializer alone is not evidence that provider state is durable; the later
 no-IPC writer and reader recovering the exact marker provide that evidence. The

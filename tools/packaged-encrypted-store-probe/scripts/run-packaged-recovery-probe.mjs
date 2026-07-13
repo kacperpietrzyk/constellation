@@ -444,11 +444,16 @@ async function forceFault(options) {
   try {
     inspectOutput(execution.stdout);
     inspectOutput(execution.stderr);
-    const lines = execution.stdout
-      .toString("utf8")
-      .split(/\r?\n/)
-      .filter(Boolean);
-    ensure(lines.length === 1, "FAULT_BOUNDARY_COUNT_INVALID");
+    ensure(
+      execution.stdoutProtocolCandidateCount === 1,
+      "FAULT_BOUNDARY_COUNT_INVALID",
+    );
+    ensure(
+      Number.isInteger(execution.stdoutDiagnosticLineCount) &&
+        execution.stdoutDiagnosticLineCount >= 0 &&
+        execution.stdoutDiagnosticLineCount <= 32,
+      "FAULT_DIAGNOSTIC_COUNT_INVALID",
+    );
     ensure(execution.forcedKillVerified === true, "FORCED_KILL_UNVERIFIED");
     ensure(!processIds.has(execution.childPid), "PROCESS_REUSED");
     processIds.add(execution.childPid);
@@ -756,7 +761,11 @@ try {
       distinctProcesses: processIds.size,
       verifiedManagedTerminations,
       verifiedForcedTerminations,
-      completeProcessTreesKilled: true,
+      capturedProcessIdentitiesTerminated: true,
+      terminationScope:
+        process.platform === "darwin"
+          ? "captured-posix-process-group"
+          : "captured-windows-process-tree",
       inheritedPipesClosed: true,
       rollbackVerified: true,
       idempotentReplayVerified: true,

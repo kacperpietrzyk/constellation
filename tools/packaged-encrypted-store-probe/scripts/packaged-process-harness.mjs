@@ -1,8 +1,16 @@
 import { spawn, spawnSync } from "node:child_process";
 
+import {
+  classifyProcessProbeError,
+  originalPosixProcessGroupAbsent,
+  readPosixProcessSnapshot,
+  selectPosixProcessGroup,
+} from "./posix-process-tree.mjs";
+
 const PRE_EXIT_CLEANUP_DEADLINE_MS = 10_000;
-const PRE_EXIT_CLEANUP_RETRY_MS = 250;
 const POST_KILL_CLOSE_TIMEOUT_MS = 10_000;
+const FAULT_MAX_OUTPUT_LINE_BYTES = 4 * 1024;
+const FAULT_MAX_DIAGNOSTIC_LINES = 32;
 
 function hasExactKeys(value, expectedKeys) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -12,6 +20,51 @@ function hasExactKeys(value, expectedKeys) {
     actual.length === expected.length &&
     actual.every((key, index) => key === expected[index])
   );
+}
+
+function scanFaultStdoutLines(output, { includeFinalPartial = false } = {}) {
+  if (!Buffer.isBuffer(output)) {
+    throw new Error("FAULT_OUTPUT_INVALID");
+  }
+  const protocolCandidates = [];
+  let diagnosticLineCount = 0;
+  let offset = 0;
+  while (offset < output.length) {
+    const newline = output.indexOf(0x0a, offset);
+    if (newline === -1 && !includeFinalPartial) {
+      if (output.length - offset > FAULT_MAX_OUTPUT_LINE_BYTES) {
+        throw new Error("FAULT_OUTPUT_LINE_LIMIT_EXCEEDED");
+      }
+      break;
+    }
+    const lineBoundary = newline === -1 ? output.length : newline;
+    let lineEnd = lineBoundary;
+    if (lineEnd > offset && output[lineEnd - 1] === 0x0d) lineEnd -= 1;
+    const line = output.subarray(offset, lineEnd);
+    offset = newline === -1 ? output.length : newline + 1;
+    if (line.length === 0) continue;
+    if (line.length > FAULT_MAX_OUTPUT_LINE_BYTES) {
+      throw new Error("FAULT_OUTPUT_LINE_LIMIT_EXCEEDED");
+    }
+    let protocolOffset = 0;
+    while (
+      protocolOffset < line.length &&
+      (line[protocolOffset] === 0x20 ||
+        line[protocolOffset] === 0x09 ||
+        line[protocolOffset] === 0x0d)
+    ) {
+      protocolOffset += 1;
+    }
+    if (line[protocolOffset] === 0x7b) {
+      protocolCandidates.push(line.subarray(protocolOffset));
+      continue;
+    }
+    diagnosticLineCount += 1;
+    if (diagnosticLineCount > FAULT_MAX_DIAGNOSTIC_LINES) {
+      throw new Error("FAULT_DIAGNOSTIC_LINE_LIMIT_EXCEEDED");
+    }
+  }
+  return { diagnosticLineCount, protocolCandidates };
 }
 
 function parseLastProgress(stderr, mode, processId, protocol) {
@@ -39,12 +92,11 @@ function parseLastProgress(stderr, mode, processId, protocol) {
 
 export function terminatePackagedProcessTree(
   child,
-  { rootExited = false, windowsRootIdentity } = {},
+  { windowsRootIdentity } = {},
 ) {
   if (!child.pid) return false;
   if (process.platform === "win32") {
     if (
-      rootExited ||
       child.exitCode !== null ||
       child.signalCode !== null ||
       !isWindowsProcessIdentity(windowsRootIdentity) ||
@@ -58,7 +110,6 @@ export function terminatePackagedProcessTree(
     process.kill(-child.pid, "SIGKILL");
     return true;
   } catch {
-    if (rootExited) return false;
     try {
       return child.kill("SIGKILL");
     } catch {
@@ -103,8 +154,6 @@ export async function launchManagedPackagedProcess({
     let settled = false;
     let timer;
     let preExitCleanupDeadlineTimer;
-    let preExitCleanupRetryTimer;
-    let helperCleanupTimer;
     let postExitTimer;
     let preExitCleanupError;
     let preExitCleanupStarted = false;
@@ -124,8 +173,6 @@ export async function launchManagedPackagedProcess({
       if (preExitCleanupDeadlineTimer) {
         clearTimeout(preExitCleanupDeadlineTimer);
       }
-      if (preExitCleanupRetryTimer) clearTimeout(preExitCleanupRetryTimer);
-      if (helperCleanupTimer) clearTimeout(helperCleanupTimer);
       if (postExitTimer) clearTimeout(postExitTimer);
       callback();
     };
@@ -197,42 +244,24 @@ export async function launchManagedPackagedProcess({
         clearTimeout(postExitTimer);
         postExitTimer = undefined;
       }
-      if (helperCleanupTimer) {
-        clearTimeout(helperCleanupTimer);
-        helperCleanupTimer = undefined;
-      }
-      const cleanupDeadline = Date.now() + PRE_EXIT_CLEANUP_DEADLINE_MS;
-      const retryCleanup = () => {
-        if (settled || !preExitCleanupStarted) return;
-        if (Date.now() >= cleanupDeadline) {
-          rejectAtPreExitCleanupDeadline();
-          return;
-        }
-        if (process.platform === "win32") {
-          if (
-            !windowsTerminationAttempted &&
-            !mainProcessExited &&
-            windowsFailureRootIdentity
-          ) {
-            windowsTerminationAttempted = true;
-            terminatePackagedProcessTree(child, {
-              windowsRootIdentity: windowsFailureRootIdentity,
-            });
-          }
-          return;
-        }
-        terminatePackagedProcessTree(child);
-        const remaining = cleanupDeadline - Date.now();
-        preExitCleanupRetryTimer = setTimeout(
-          retryCleanup,
-          Math.max(0, Math.min(PRE_EXIT_CLEANUP_RETRY_MS, remaining)),
-        );
-      };
       preExitCleanupDeadlineTimer = setTimeout(
         rejectAtPreExitCleanupDeadline,
         PRE_EXIT_CLEANUP_DEADLINE_MS,
       );
-      retryCleanup();
+      if (process.platform === "win32") {
+        if (
+          !windowsTerminationAttempted &&
+          !mainProcessExited &&
+          windowsFailureRootIdentity
+        ) {
+          windowsTerminationAttempted = true;
+          terminatePackagedProcessTree(child, {
+            windowsRootIdentity: windowsFailureRootIdentity,
+          });
+        }
+      } else if (!mainProcessExited) {
+        terminatePackagedProcessTree(child);
+      }
     };
     const collect = (target, chunk, isStdout) => {
       const buffer = Buffer.from(chunk);
@@ -330,20 +359,7 @@ export async function launchManagedPackagedProcess({
         clearTimeout(timer);
         timer = undefined;
       }
-      if (process.platform === "win32") {
-        postExitTimer = setTimeout(rejectUnverifiedHelperCleanup, 5_000);
-        return;
-      }
-      postExitTimer = setTimeout(() => {
-        const cleanupVerified = terminatePackagedProcessTree(child, {
-          rootExited: true,
-        });
-        if (!cleanupVerified) {
-          rejectUnverifiedHelperCleanup();
-          return;
-        }
-        helperCleanupTimer = setTimeout(rejectUnverifiedHelperCleanup, 5_000);
-      }, 1_000);
+      postExitTimer = setTimeout(rejectUnverifiedHelperCleanup, 5_000);
     });
     child.on("close", (code, signal) => {
       if (preExitCleanupStarted) {
@@ -376,8 +392,7 @@ function isProcessAlive(pid) {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    if (error?.code === "ESRCH") return false;
-    throw error;
+    return classifyProcessProbeError(error) === "present";
   }
 }
 
@@ -387,8 +402,7 @@ function isProcessGroupAlive(pid) {
     process.kill(-pid, 0);
     return true;
   } catch (error) {
-    if (error?.code === "ESRCH") return false;
-    throw error;
+    return classifyProcessProbeError(error) === "present";
   }
 }
 
@@ -580,11 +594,26 @@ foreach ($row in ($rows | Sort-Object ProcessId)) {
     .map((identity) => identity.pid);
 }
 
-async function waitForForcedTreeAbsence(rootPid, processIdentities) {
+async function waitForForcedTreeAbsence(
+  rootPid,
+  windowsProcessIdentities,
+  posixProcessGroup,
+) {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
     if (process.platform === "win32") {
-      if (matchingWindowsProcessIdentities(processIdentities).length === 0) {
+      if (
+        matchingWindowsProcessIdentities(windowsProcessIdentities).length === 0
+      ) {
+        return;
+      }
+    } else if (posixProcessGroup) {
+      if (
+        originalPosixProcessGroupAbsent(
+          posixProcessGroup,
+          readPosixProcessSnapshot(),
+        )
+      ) {
         return;
       }
     } else if (!isProcessAlive(rootPid) && !isProcessGroupAlive(rootPid)) {
@@ -641,22 +670,23 @@ export async function forceCrashPackagedProcessAtBoundary({
     let boundary;
     let beforeKillEvidence;
     let processIds = [];
-    let processIdentities = [];
+    let windowsProcessIdentities = [];
+    let posixProcessGroup;
     let exitObserved = false;
     let exitCode;
     let exitSignal;
     let primaryError;
     let timeoutTimer;
     let terminationTimer;
-    let failureCleanupRetryTimer;
     let postKillCloseTimer;
-    let failureProcessIdentities = [];
+    let failureWindowsProcessIdentities = [];
+    let failurePosixProcessGroup;
     let windowsFailureTerminationAttempted = false;
+    let acceptedBoundaryLine;
 
     const clearTimers = () => {
       if (timeoutTimer) clearTimeout(timeoutTimer);
       if (terminationTimer) clearTimeout(terminationTimer);
-      if (failureCleanupRetryTimer) clearTimeout(failureCleanupRetryTimer);
       if (postKillCloseTimer) clearTimeout(postKillCloseTimer);
     };
     const clearOutput = () => {
@@ -666,6 +696,10 @@ export async function forceCrashPackagedProcessAtBoundary({
       stderr.length = 0;
       stdoutLength = 0;
       stderrLength = 0;
+      if (acceptedBoundaryLine) {
+        acceptedBoundaryLine.fill(0);
+        acceptedBoundaryLine = undefined;
+      }
     };
     const finishReject = (error) => {
       if (settled) return;
@@ -682,7 +716,7 @@ export async function forceCrashPackagedProcessAtBoundary({
         timeoutTimer = undefined;
       }
       try {
-        failureProcessIdentities =
+        failureWindowsProcessIdentities =
           process.platform === "win32" &&
           child.pid &&
           !exitObserved &&
@@ -690,31 +724,37 @@ export async function forceCrashPackagedProcessAtBoundary({
           child.signalCode === null
             ? snapshotWindowsProcessTree(child.pid)
             : [];
-      } catch {
-        failureProcessIdentities = [];
-      }
-      const cleanupDeadline = Date.now() + 10_000;
-      const retryCleanup = () => {
-        if (settled || !primaryError) return;
-        if (process.platform === "win32") {
-          if (!windowsFailureTerminationAttempted && !exitObserved) {
-            windowsFailureTerminationAttempted = true;
-            const rootIdentity = failureProcessIdentities.find(
-              (identity) => identity.pid === child.pid,
-            );
-            if (rootIdentity) {
-              terminatePackagedProcessTree(child, {
-                windowsRootIdentity: rootIdentity,
-              });
-            }
-          }
-          return;
+        if (
+          process.platform !== "win32" &&
+          child.pid &&
+          !exitObserved &&
+          child.exitCode === null &&
+          child.signalCode === null
+        ) {
+          failurePosixProcessGroup = selectPosixProcessGroup(
+            readPosixProcessSnapshot(),
+            child.pid,
+          );
         }
+      } catch {
+        failureWindowsProcessIdentities = [];
+        failurePosixProcessGroup = undefined;
+      }
+      if (process.platform === "win32") {
+        if (!windowsFailureTerminationAttempted && !exitObserved) {
+          windowsFailureTerminationAttempted = true;
+          const rootIdentity = failureWindowsProcessIdentities.find(
+            (identity) => identity.pid === child.pid,
+          );
+          if (rootIdentity) {
+            terminatePackagedProcessTree(child, {
+              windowsRootIdentity: rootIdentity,
+            });
+          }
+        }
+      } else if (!exitObserved) {
         terminatePackagedProcessTree(child);
-        if (Date.now() >= cleanupDeadline) return;
-        failureCleanupRetryTimer = setTimeout(retryCleanup, 250);
-      };
-      retryCleanup();
+      }
       terminationTimer = setTimeout(() => {
         child.stdout.destroy();
         child.stderr.destroy();
@@ -742,29 +782,22 @@ export async function forceCrashPackagedProcessAtBoundary({
     const acceptBoundary = async () => {
       if (settled || boundaryAccepted || primaryError) return;
       const output = Buffer.concat(stdout, stdoutLength);
-      const newline = output.indexOf(0x0a);
-      if (newline === -1) {
-        output.fill(0);
-        return;
-      }
-      const trailing = output.subarray(newline + 1);
-      if (trailing.some((byte) => byte !== 0x0d && byte !== 0x0a)) {
-        output.fill(0);
-        beginFailureCleanup(new Error("FAULT_BOUNDARY_COUNT_INVALID"));
-        return;
-      }
-      const line = Buffer.from(output.subarray(0, newline));
-      output.fill(0);
       try {
-        boundary = parseBoundary(line, child.pid);
+        const scan = scanFaultStdoutLines(output);
+        if (scan.protocolCandidates.length > 1) {
+          throw new Error("FAULT_BOUNDARY_COUNT_INVALID");
+        }
+        if (scan.protocolCandidates.length === 0) return;
+        boundary = parseBoundary(scan.protocolCandidates[0], child.pid);
+        acceptedBoundaryLine = Buffer.from(scan.protocolCandidates[0]);
       } catch (error) {
-        line.fill(0);
         beginFailureCleanup(
           error instanceof Error ? error : new Error("FAULT_BOUNDARY_INVALID"),
         );
         return;
+      } finally {
+        output.fill(0);
       }
-      line.fill(0);
       if (
         !child.pid ||
         !isProcessAlive(child.pid) ||
@@ -782,18 +815,24 @@ export async function forceCrashPackagedProcessAtBoundary({
       try {
         beforeKillEvidence = await beforeKill(boundary, child.pid);
         if (process.platform === "win32") {
-          processIdentities = snapshotWindowsProcessTree(child.pid);
+          windowsProcessIdentities = snapshotWindowsProcessTree(child.pid);
           processIds = Object.freeze(
-            processIdentities.map((identity) => identity.pid),
+            windowsProcessIdentities.map((identity) => identity.pid),
           );
-          const rootIdentity = processIdentities.find(
+          const rootIdentity = windowsProcessIdentities.find(
             (identity) => identity.pid === child.pid,
           );
           forcedKillRequested = terminatePackagedProcessTree(child, {
             windowsRootIdentity: rootIdentity,
           });
         } else {
-          processIds = Object.freeze([child.pid]);
+          posixProcessGroup = selectPosixProcessGroup(
+            readPosixProcessSnapshot(),
+            child.pid,
+          );
+          processIds = Object.freeze(
+            posixProcessGroup.map((identity) => identity.pid),
+          );
           forcedKillRequested = terminatePackagedProcessTree(child);
         }
         if (!forcedKillRequested) {
@@ -840,7 +879,11 @@ export async function forceCrashPackagedProcessAtBoundary({
       if (primaryError) {
         try {
           if (child.pid) {
-            await waitForForcedTreeAbsence(child.pid, failureProcessIdentities);
+            await waitForForcedTreeAbsence(
+              child.pid,
+              failureWindowsProcessIdentities,
+              failurePosixProcessGroup,
+            );
           }
           finishReject(primaryError);
         } catch {
@@ -857,7 +900,11 @@ export async function forceCrashPackagedProcessAtBoundary({
         return;
       }
       try {
-        await waitForForcedTreeAbsence(child.pid, processIdentities);
+        await waitForForcedTreeAbsence(
+          child.pid,
+          windowsProcessIdentities,
+          posixProcessGroup,
+        );
         forcedKillVerified = true;
         const actualCode = exitObserved ? exitCode : code;
         const actualSignal = exitObserved ? exitSignal : signal;
@@ -868,6 +915,29 @@ export async function forceCrashPackagedProcessAtBoundary({
         } else if (actualSignal !== null) {
           throw new Error("FAULT_PROCESS_EXIT_STATUS_INVALID");
         }
+        const finalOutput = Buffer.concat(stdout, stdoutLength);
+        let stdoutProtocolCandidateCount;
+        let stdoutDiagnosticLineCount;
+        try {
+          const finalScan = scanFaultStdoutLines(finalOutput, {
+            includeFinalPartial: true,
+          });
+          stdoutProtocolCandidateCount = finalScan.protocolCandidates.length;
+          stdoutDiagnosticLineCount = finalScan.diagnosticLineCount;
+          if (stdoutProtocolCandidateCount !== 1) {
+            throw new Error("FAULT_BOUNDARY_COUNT_INVALID");
+          }
+          if (
+            !acceptedBoundaryLine ||
+            !finalScan.protocolCandidates[0].equals(acceptedBoundaryLine)
+          ) {
+            throw new Error("FAULT_BOUNDARY_EVIDENCE_INVALID");
+          }
+        } finally {
+          finalOutput.fill(0);
+        }
+        acceptedBoundaryLine.fill(0);
+        acceptedBoundaryLine = undefined;
         settled = true;
         clearTimers();
         resolve({
@@ -878,6 +948,8 @@ export async function forceCrashPackagedProcessAtBoundary({
           actualCode,
           actualSignal,
           forcedKillVerified,
+          stdoutProtocolCandidateCount,
+          stdoutDiagnosticLineCount,
           stdout: Buffer.concat(stdout, stdoutLength),
           stderr: Buffer.concat(stderr, stderrLength),
         });
