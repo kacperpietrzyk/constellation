@@ -109,11 +109,6 @@ function runChild(mode) {
     }, 25);
     return;
   }
-  if (mode === "fault-exit-after-boundary") {
-    writeObject({ type: "fault-boundary/v1", processId: process.pid });
-    setTimeout(() => process.exit(0), 25);
-    return;
-  }
   if (mode === "fault-duplicate") {
     writeText(
       `${JSON.stringify({ type: "fault-boundary/v1", processId: process.pid })}\n${JSON.stringify({ type: "fault-boundary/v1", processId: process.pid })}\n`,
@@ -385,11 +380,15 @@ if (childArgument) {
   try {
     await forceCrashPackagedProcessAtBoundary({
       executable: process.execPath,
-      args: [filename, "--harness-child=fault-exit-after-boundary"],
+      args: [filename, "--harness-child=fault"],
       errorContext: "fault-exit-during-pre-kill-test",
       timeoutMs: 10_000,
       parseBoundary: parseSimpleFaultBoundary,
-      beforeKill: async () => {
+      beforeKill: async (_boundary, processId) => {
+        ensure(
+          process.kill(processId, "SIGTERM") === true,
+          "TEST_PRE_KILL_EXIT_TRIGGER_FAILED",
+        );
         await new Promise((resolve) => setTimeout(resolve, 150));
         delayedBeforeKillCompleted = true;
         return { boundaryObserved: true };
