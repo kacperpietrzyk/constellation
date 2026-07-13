@@ -28,9 +28,9 @@ The probe fails unless all of these checks pass:
   applies the recovered DEK to the existing database, clears the Buffer, and
   verifies the exact marker digest, FTS result, cipher/database/foreign-key
   integrity, provider, compile options, and disabled extension loading;
-- on Windows, normal Electron shutdown persists a canonical DPAPI-prefixed
-  async-provider key in the disposable profile `Local State`, and its digest
-  remains stable through the reader and negative-process matrix;
+- on Windows, the exact Electron `app.quit()` lifecycle persists a canonical
+  DPAPI-prefixed async-provider key in the disposable profile `Local State`, and
+  its digest remains stable through the reader and negative-process matrix;
 - missing, modified, and wrong-context wrappers (at both the public wrapper and
   decrypted payload boundaries), a valid same-context wrapper with the wrong
   key, a plaintext SQLite database, a corrupted encrypted database, and
@@ -54,9 +54,9 @@ The probe fails unless all of these checks pass:
   `app.quit()`. A synchronous terminal
   record requires the exact Electron `before-quit` → `will-quit` → `quit(0)`
   lifecycle. The harness preserves the declared outcome separately from the
-  observed process result, lets the Electron main-loop shutdown commit provider
-  state, retains an unreferenced child self-kill failsafe, force-terminates a
-  stalled process tree from the parent, and requires both inherited output pipes
+  observed process result, reports natural exits and forced post-lifecycle
+  cleanup separately, validates provider state after either path, retains an
+  unreferenced child self-kill failsafe, and requires both inherited output pipes
   to close;
 - a dedicated falsification launch emits readiness and the pre-exit
   acknowledgement, then exits internally with code `1`; the harness must reject
@@ -73,17 +73,17 @@ The probe fails unless all of these checks pass:
 
 The child processes have a 45-second readiness watchdog so an interactive
 provider prompt or native hang becomes a bounded failure. After readiness, the
-parent allows five seconds for the acknowledged Electron-managed
-shutdown. A stalled child is force-terminated; either path must close both
-inherited output pipes within five seconds, or the probe fails closed. Each
-Electron-managed exit must include the complete ordered lifecycle and Electron
-`quit` event code `0`. The pinned executable is then required to report the
-observed platform status (`0` on macOS and `1` on Windows) without a signal. Windows
-additionally requires all eleven ordinary launches to use this terminally
-confirmed path and validates canonical DPAPI provider state after every process
-close, so provider-state persistence cannot pass through either the force-kill
-fallback or a post-lifecycle crash; the fixed declared outcome remains
-authoritative for each probe operation.
+parent allows up to five seconds for the acknowledged shutdown to produce the
+complete ordered Electron lifecycle and `quit` event code `0`, then one second
+for a natural process exit. A lingering process tree is force-terminated only
+after that terminal evidence; either outcome must close both inherited output
+pipes within five more seconds or the probe fails closed. Natural exits record
+the observed platform status (`0` on macOS and `1` on Windows) without a signal,
+while forced post-lifecycle cleanup is reported separately. Windows validates
+canonical DPAPI provider state after every one of the twelve ordinary launches
+regardless of exit outcome, and the isolated deletion fault proves that lifecycle
+evidence alone cannot satisfy persistence validation. The fixed declared outcome
+remains authoritative for each probe operation.
 
 ## Pinned inputs
 

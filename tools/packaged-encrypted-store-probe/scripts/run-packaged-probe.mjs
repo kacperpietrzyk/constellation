@@ -52,8 +52,9 @@ const shutdownRejectedType =
 const exitAckType = "constellation.packaged-store-probe.exit-accepted/v1";
 const shutdownCompleteType =
   "constellation.packaged-store-probe.shutdown-complete/v1";
+const TERMINAL_EXIT_GRACE_MS = 1_000;
 const processIds = new Set();
-let electronManagedProcessExits = 0;
+let naturalElectronProcessExits = 0;
 let forcedProcessExits = 0;
 let acknowledgedShutdowns = 0;
 let acknowledgedExitAuthorizations = 0;
@@ -435,34 +436,32 @@ async function launch({
                 code === expectedCode && signal === null,
                 `ELECTRON_SHUTDOWN_STATUS_INVALID:${codeLabel}:${signalLabel}`,
               );
-              if (process.platform === "win32") {
-                if (mode === "shutdown-provider-state-fault") {
-                  const beforeInjection =
-                    readWindowsProviderStateDigest(probeProfile);
-                  beforeInjection.fill(0);
-                  fs.rmSync(path.join(probeProfile, "Local State"), {
-                    force: true,
-                  });
-                }
-                const providerStateDigest =
-                  readWindowsProviderStateDigest(probeProfile);
-                providerStateDigest.fill(0);
-              }
             } else {
               ensure(
-                shutdownTerminalCount === 0,
+                shutdownTerminalConfirmed &&
+                  shutdownTerminalCount === 1 &&
+                  shutdownInternalExitCode === 0,
                 "FORCED_SHUTDOWN_COMPLETION_INVALID",
               );
-              ensure(
-                process.platform !== "win32",
-                "WINDOWS_ELECTRON_EXIT_REQUIRED",
-              );
+            }
+            if (process.platform === "win32") {
+              if (mode === "shutdown-provider-state-fault") {
+                const beforeInjection =
+                  readWindowsProviderStateDigest(probeProfile);
+                beforeInjection.fill(0);
+                fs.rmSync(path.join(probeProfile, "Local State"), {
+                  force: true,
+                });
+              }
+              const providerStateDigest =
+                readWindowsProviderStateDigest(probeProfile);
+              providerStateDigest.fill(0);
             }
             resolve({
               declaredExitCode: result.declaredExitCode,
               lifecycle: electronExitObserved
                 ? "electron-quit-after-parent-authorization"
-                : "forced-after-parent-authorization",
+                : "forced-after-terminal-electron-quit",
               actualCode: code,
               actualSignal: signal,
               parentSupervisionStarted,
@@ -778,6 +777,11 @@ async function launch({
             )
           ) {
             shutdownTerminalConfirmed = true;
+            if (electronShutdownTimer) clearTimeout(electronShutdownTimer);
+            electronShutdownTimer = setTimeout(
+              requestForcedTermination,
+              TERMINAL_EXIT_GRACE_MS,
+            );
           } else {
             protocolError ||= "SHUTDOWN_TERMINAL_ACK_INVALID";
           }
@@ -918,7 +922,7 @@ function recordProcess(execution, mode) {
   const { childPid, result } = execution;
   ensure(
     execution.lifecycle === "electron-quit-after-parent-authorization" ||
-      execution.lifecycle === "forced-after-parent-authorization",
+      execution.lifecycle === "forced-after-terminal-electron-quit",
     "CHILD_LIFECYCLE_INVALID",
   );
   ensure(
@@ -941,18 +945,19 @@ function recordProcess(execution, mode) {
         execution.actualSignal === null,
       "CHILD_ELECTRON_EXIT_INVALID",
     );
-    electronManagedProcessExits += 1;
+    naturalElectronProcessExits += 1;
     terminallyConfirmedShutdowns += 1;
   } else {
     ensure(
       execution.electronExitObserved === false &&
-        execution.shutdownTerminalConfirmed === false &&
-        execution.shutdownInternalExitCode === undefined &&
+        execution.shutdownTerminalConfirmed === true &&
+        execution.shutdownInternalExitCode === 0 &&
         execution.forcedTerminationRequested === true &&
         execution.forcedTerminationAccepted === true,
       "CHILD_FORCED_EXIT_INVALID",
     );
     forcedProcessExits += 1;
+    terminallyConfirmedShutdowns += 1;
   }
   acknowledgedShutdowns += 1;
   acknowledgedExitAuthorizations += 1;
@@ -1415,7 +1420,7 @@ try {
 
   ensure(processIds.size === 12, "PROCESS_COUNT_INVALID");
   ensure(
-    electronManagedProcessExits + forcedProcessExits === processIds.size,
+    naturalElectronProcessExits + forcedProcessExits === processIds.size,
     "PROCESS_LIFECYCLE_COUNT_INVALID",
   );
   ensure(
@@ -1427,15 +1432,10 @@ try {
     "EXIT_AUTHORIZATION_ACK_COUNT_INVALID",
   );
   ensure(
-    terminallyConfirmedShutdowns === electronManagedProcessExits,
+    terminallyConfirmedShutdowns === processIds.size,
     "SHUTDOWN_COMPLETION_COUNT_INVALID",
   );
   if (process.platform === "win32") {
-    ensure(
-      electronManagedProcessExits === processIds.size &&
-        forcedProcessExits === 0,
-      "WINDOWS_ELECTRON_EXIT_MATRIX_INVALID",
-    );
     ensure(
       windowsProviderStateFaultRejected,
       "PROVIDER_STATE_FAULT_NOT_REJECTED",
@@ -1465,9 +1465,14 @@ try {
       acknowledgedShutdowns,
       acknowledgedExitAuthorizations,
       terminallyConfirmedShutdowns,
-      electronManagedProcessExits,
+      naturalElectronProcessExits,
       forcedProcessExits,
-      observedElectronExitCode: process.platform === "win32" ? 1 : 0,
+      observedNaturalElectronExitCode:
+        naturalElectronProcessExits > 0
+          ? process.platform === "win32"
+            ? 1
+            : 0
+          : "not-observed",
       preExitAcknowledgementFaultRejected: true,
       windowsProviderStateFaultRejected:
         process.platform === "win32"
