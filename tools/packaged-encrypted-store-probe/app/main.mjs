@@ -26,10 +26,6 @@ const SHUTDOWN_ACK_TYPE =
 const SHUTDOWN_REJECTED_TYPE =
   "constellation.packaged-store-probe.shutdown-rejected/v1";
 const EXIT_ACK_TYPE = "constellation.packaged-store-probe.exit-accepted/v1";
-const PROVIDER_BOOTSTRAP_READY_TYPE =
-  "constellation.packaged-store-probe.provider-bootstrap-ready/v1";
-const PROVIDER_BOOTSTRAP_CONTINUE_TYPE =
-  "constellation.packaged-store-probe.provider-bootstrap-continue/v1";
 const SHUTDOWN_DIAGNOSTIC_MODES = new Set([
   "shutdown-control",
   "shutdown-provider",
@@ -53,7 +49,6 @@ const EXIT_CODES = Object.freeze({
   DATABASE_OPEN_FAILED: 91,
   DATABASE_INTEGRITY_FAILED: 92,
   PLAINTEXT_EXPOSED: 93,
-  PROVIDER_BOOTSTRAP_INVALID: 94,
   PROBE_FAILED: 99,
 });
 
@@ -97,85 +92,6 @@ function fixedResult(status, code, extra = {}) {
     nativeAddonPackaged,
     ...extra,
   };
-}
-
-function awaitProviderBootstrapTurn() {
-  if (
-    typeof process.send !== "function" ||
-    typeof process.disconnect !== "function" ||
-    !process.connected ||
-    !process.channel
-  ) {
-    fail("PROVIDER_BOOTSTRAP_INVALID");
-  }
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const cleanup = () => {
-      process.removeListener("disconnect", rejectBootstrap);
-      process.removeListener("message", receiveBootstrap);
-    };
-    const rejectBootstrap = () => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID"));
-    };
-    const receiveBootstrap = (message) => {
-      if (
-        !hasExactKeys(message, ["mode", "processId", "type"]) ||
-        message.type !== PROVIDER_BOOTSTRAP_CONTINUE_TYPE ||
-        message.mode !== "provision" ||
-        message.processId !== process.pid
-      ) {
-        rejectBootstrap();
-        return;
-      }
-
-      settled = true;
-      cleanup();
-      setImmediate(() => {
-        if (!process.connected && !process.channel) {
-          resolve();
-          return;
-        }
-        const completeDisconnect = () => {
-          if (process.connected || process.channel) {
-            reject(new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID"));
-          } else {
-            resolve();
-          }
-        };
-        process.once("disconnect", completeDisconnect);
-        try {
-          process.disconnect();
-        } catch {
-          process.removeListener("disconnect", completeDisconnect);
-          reject(new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID"));
-        }
-      });
-    };
-
-    process.once("disconnect", rejectBootstrap);
-    process.once("message", receiveBootstrap);
-    try {
-      process.send(
-        {
-          type: PROVIDER_BOOTSTRAP_READY_TYPE,
-          mode: "provision",
-          processId: process.pid,
-          bootstrapEnvironmentCleared:
-            process.env.NODE_CHANNEL_FD === undefined &&
-            process.env.NODE_CHANNEL_SERIALIZATION_MODE === undefined,
-        },
-        (error) => {
-          if (error) rejectBootstrap();
-        },
-      );
-    } catch {
-      rejectBootstrap();
-    }
-  });
 }
 
 function writeFixedResult(result, declaredExitCode) {
@@ -1140,7 +1056,6 @@ async function provisionStore(Database) {
       fts5: true,
       loadableExtensions: false,
       plaintextScan: true,
-      providerBootstrapRoundTrip: true,
       markerDigest,
       encryptedWal: true,
     });
@@ -1441,7 +1356,6 @@ if (config) {
   app.whenReady().then(async () => {
     try {
       verifyPackagedIdentity();
-      if (config.mode === "provision") await awaitProviderBootstrapTurn();
       let result;
       if (config.mode === "shutdown-fault") {
         result = fixedResult("pass", "SHUTDOWN_FAULT_ARMED");

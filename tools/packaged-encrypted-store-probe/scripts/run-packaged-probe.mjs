@@ -49,10 +49,6 @@ const shutdownAckType =
 const shutdownRejectedType =
   "constellation.packaged-store-probe.shutdown-rejected/v1";
 const exitAckType = "constellation.packaged-store-probe.exit-accepted/v1";
-const providerBootstrapReadyType =
-  "constellation.packaged-store-probe.provider-bootstrap-ready/v1";
-const providerBootstrapContinueType =
-  "constellation.packaged-store-probe.provider-bootstrap-continue/v1";
 const shutdownDiagnosticModes = new Set([
   "shutdown-control",
   "shutdown-provider",
@@ -228,12 +224,7 @@ async function launch({
       child = spawn(executable, argumentsForProbe, {
         detached: process.platform !== "win32",
         env: environment,
-        stdio: [
-          "ignore",
-          "pipe",
-          "pipe",
-          mode === "provision" ? "ipc" : "ignore",
-        ],
+        stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       });
     } catch {
@@ -275,8 +266,6 @@ async function launch({
     let mainProcessExited = false;
     let mainExitCode;
     let mainExitSignal;
-    let providerBootstrapMessageCount = 0;
-    let providerBootstrapCompleted = mode !== "provision";
     const lifecycleMarkers = [];
 
     const removeShutdownControlArtifacts = () => {
@@ -349,12 +338,6 @@ async function launch({
                   : "SHUTDOWN_AUTHORIZATION_UNCONFIRMED";
             }
             ensure(!protocolError, protocolError);
-            ensure(
-              providerBootstrapCompleted &&
-                providerBootstrapMessageCount ===
-                  (mode === "provision" ? 1 : 0),
-              "PROVIDER_BOOTSTRAP_PROTOCOL_INVALID",
-            );
             ensure(protocolResultCount === 1, "PROTOCOL_RESULT_COUNT_INVALID");
             ensure(
               parentSupervisionStarted &&
@@ -447,8 +430,6 @@ async function launch({
               forcedTerminationAccepted,
               shutdownRequestedWhileAlive,
               electronExitObserved,
-              providerBootstrapCompleted,
-              providerBootstrapMessageCount,
               lifecycleMarkers: [...lifecycleMarkers],
               childPid: child.pid,
               result,
@@ -776,59 +757,11 @@ async function launch({
       }
     };
 
-    if (mode === "provision") {
-      child.on("message", (message) => {
-        providerBootstrapMessageCount += 1;
-        if (
-          providerBootstrapMessageCount !== 1 ||
-          !message ||
-          typeof message !== "object" ||
-          Array.isArray(message) ||
-          Object.keys(message).length !== 4 ||
-          message.type !== providerBootstrapReadyType ||
-          message.mode !== "provision" ||
-          message.processId !== child.pid ||
-          message.bootstrapEnvironmentCleared !== true
-        ) {
-          protocolError ||= "PROVIDER_BOOTSTRAP_PROTOCOL_INVALID";
-          startHardCleanup(protocolError);
-          return;
-        }
-        try {
-          child.send(
-            {
-              type: providerBootstrapContinueType,
-              mode: "provision",
-              processId: child.pid,
-            },
-            (error) => {
-              if (error) {
-                protocolError ||= "PROVIDER_BOOTSTRAP_SEND_FAILED";
-                startHardCleanup(protocolError);
-              } else {
-                providerBootstrapCompleted = true;
-              }
-            },
-          );
-        } catch {
-          protocolError ||= "PROVIDER_BOOTSTRAP_SEND_FAILED";
-          startHardCleanup(protocolError);
-        }
-      });
-    }
-
     child.stdout.on("data", (chunk) => collect(stdout, chunk, true));
     child.stderr.on("data", (chunk) => collect(stderr, chunk, false));
     child.on("error", () =>
       finish(() => reject(new Error("PACKAGED_LAUNCH_FAILED"))),
     );
-
-    if (
-      mode === "provision" &&
-      (typeof child.send !== "function" || !child.connected)
-    ) {
-      startHardCleanup("PROVIDER_BOOTSTRAP_CHANNEL_UNAVAILABLE");
-    }
 
     child.on("exit", (code, signal) => {
       mainProcessExited = true;
@@ -934,12 +867,6 @@ function recordProcess(execution, mode) {
       execution.shutdownRequestedWhileAlive === true,
     "CHILD_TERMINATION_EVIDENCE_INVALID",
   );
-  ensure(
-    execution.providerBootstrapCompleted === true &&
-      execution.providerBootstrapMessageCount ===
-        (mode === "provision" ? 1 : 0),
-    "PROVIDER_BOOTSTRAP_EVIDENCE_INVALID",
-  );
   if (execution.lifecycle === "electron-exit-after-parent-authorization") {
     ensure(
       execution.electronExitObserved === true &&
@@ -991,11 +918,6 @@ function assertDiagnosticProcess(execution, mode) {
       execution.shutdownAcknowledged === true &&
       execution.shutdownRequestedWhileAlive === true,
     "DIAGNOSTIC_AUTHORIZATION_INVALID",
-  );
-  ensure(
-    execution.providerBootstrapCompleted === true &&
-      execution.providerBootstrapMessageCount === 0,
-    "DIAGNOSTIC_BOOTSTRAP_INVALID",
   );
   if (execution.lifecycle === "electron-exit-after-parent-authorization") {
     ensure(
@@ -1336,15 +1258,10 @@ try {
     "markerDigest",
     "plaintextScan",
     "provider",
-    "providerBootstrapRoundTrip",
     "providerVersion",
     "rawKeyBinding",
   ]);
   assertProvider(writer.result);
-  ensure(
-    writer.result.providerBootstrapRoundTrip === true,
-    "PROVIDER_BOOTSTRAP_RESULT_INVALID",
-  );
   ensure(
     /^[a-f0-9]{64}$/.test(writer.result.markerDigest),
     "MARKER_DIGEST_INVALID",
@@ -1471,15 +1388,10 @@ try {
     "markerDigest",
     "plaintextScan",
     "provider",
-    "providerBootstrapRoundTrip",
     "providerVersion",
     "rawKeyBinding",
   ]);
   assertProvider(secondaryWriter.result);
-  ensure(
-    secondaryWriter.result.providerBootstrapRoundTrip === true,
-    "PROVIDER_BOOTSTRAP_RESULT_INVALID",
-  );
   ensure(
     secondaryWriter.result.markerDigest !== writer.result.markerDigest,
     "SECONDARY_MARKER_REUSED",
@@ -1609,7 +1521,6 @@ try {
           ? EXPECTED_NATURAL_EXIT_CODE
           : "not-observed",
       acknowledgedNonzeroExitRejected: true,
-      providerBootstrapRoundTrip: true,
       distinctProcesses: processIds.size,
       internallyGeneratedDek: true,
       asyncSafeStorage: true,
