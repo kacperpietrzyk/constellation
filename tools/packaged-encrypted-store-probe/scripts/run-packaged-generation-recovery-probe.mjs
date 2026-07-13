@@ -704,7 +704,7 @@ async function runSentinel({ slug, failpoint }) {
   ensure(
     setupExecution.result.status === "pass" &&
       setupExecution.result.code === "GENERATION_PUBLICATION_PREPARED",
-    "GENERATION_SETUP_FAILED",
+    `GENERATION_SETUP_FAILED:${setupExecution.result.code}`,
   );
   recordManaged(setupExecution, "generation-setup");
   const setup = setupExecution.result;

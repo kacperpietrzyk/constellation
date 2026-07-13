@@ -169,10 +169,12 @@ publication pivot. It starts with an encrypted `generation-1` selected by a
 strict workspace manifest, exports that database through SQLCipher's
 [`sqlcipher_export`](https://www.zetetic.net/sqlcipher/sqlcipher-api/#sqlcipher_export)
 into an encrypted `generation-2`, and retains both generations. The candidate
-is closed and reopened for integrity and immutable-identity verification before
-publication. Activation changes only the canonical workspace manifest; the
-runner never selects a generation by directory order, modification time, or the
-largest identifier.
+receives the verified source `user_version` explicitly because
+`sqlcipher_export` intentionally leaves the target value unchanged, then applies
+the synthetic v2 migration. It is closed and reopened for integrity and
+immutable-identity verification before publication. Activation changes only
+the canonical workspace manifest; the runner never selects a generation by
+directory order, modification time, or the largest identifier.
 
 The prepared publication has one create-only, immutable operation record. Its
 canonical contents bind the workspace and operation identifiers, source and

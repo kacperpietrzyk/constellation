@@ -1711,6 +1711,12 @@ async function setupGenerationPublication(Database) {
       paths.candidateDatabasePath,
     );
     configureGenerationDatabase(database);
+    // sqlcipher_export intentionally leaves the target user_version unchanged.
+    // Restore the verified source header before applying the synthetic v2 step.
+    database.pragma("user_version = 1");
+    if (database.pragma("user_version", { simple: true }) !== 1) {
+      fail("DATABASE_INTEGRITY_FAILED");
+    }
     readEncryptionFacts(database);
     readAndVerifyMarker(database, markerDigest);
     verifyRecoveryCaptureState(database, { expectedState: "committed" });
