@@ -48,10 +48,15 @@ import {
   createGenerationPreparationIntent,
   getGenerationPreparationPaths,
   handoffPreparedGeneration,
+  verifyGenerationPreparationRecordPrerequisites,
   verifyGenerationPreparationState,
-  writeGenerationCandidateVerifiedRecord,
-  writeGenerationPreparationIntent,
 } from "./recovery/generation-preparation.mjs";
+import {
+  IMMUTABLE_RECORD_FAILPOINTS,
+  IMMUTABLE_RECORD_PUBLICATION_SCENARIO,
+  createImmutableRecordFaultBoundaryRecord,
+  publishImmutableGenerationRecord,
+} from "./recovery/immutable-record-publication.mjs";
 
 const APP_ID = "io.constellation.packaged-store-probe";
 const APP_NAME = "Constellation Packaged Store Probe";
@@ -112,6 +117,11 @@ const PROGRESS_STAGES = new Set([
   "generation-preparation-state-verified",
   "generation-preparation-completed",
   "generation-preparation-fault-boundary-ready",
+  "generation-record-intent-ready",
+  "generation-record-candidate-verified-ready",
+  "generation-record-operation-ready",
+  "generation-record-source-ready",
+  "generation-record-fault-boundary-ready",
   "result-ready",
   "result-published",
 ]);
@@ -143,6 +153,13 @@ const GENERATION_PREPARATION_MODES = new Set([
   "generation-preparation-verify-staged",
   "generation-preparation-verify-final",
   "generation-preparation-complete",
+]);
+const GENERATION_RECORD_MODES = new Set([
+  "generation-record-source-setup",
+  "generation-record-fault",
+  "generation-record-recover-intent",
+  "generation-record-recover-verified",
+  "generation-record-recover-operation",
 ]);
 const EXIT_CODES = Object.freeze({
   CONFIG_INVALID: 80,
@@ -363,8 +380,12 @@ function parseConfig() {
   const recoveryMode = RECOVERY_MODES.has(mode);
   const generationMode = GENERATION_MODES.has(mode);
   const generationPreparationMode = GENERATION_PREPARATION_MODES.has(mode);
+  const generationRecordMode = GENERATION_RECORD_MODES.has(mode);
   const scenarioMode =
-    recoveryMode || generationMode || generationPreparationMode;
+    recoveryMode ||
+    generationMode ||
+    generationPreparationMode ||
+    generationRecordMode;
   if (!STANDARD_MODES.has(mode) && !scenarioMode) fail("CONFIG_INVALID");
   const allowedPrefixes = scenarioMode
     ? [...basePrefixes, "--probe-scenario=", "--probe-failpoint="]
@@ -413,6 +434,15 @@ function parseConfig() {
       !GENERATION_PREPARATION_FAILPOINTS.includes(failpoint) ||
       (mode === "generation-preparation-fault" && failpoint === "none") ||
       (mode !== "generation-preparation-fault" && failpoint !== "none"))
+  ) {
+    fail("CONFIG_INVALID");
+  }
+  if (
+    generationRecordMode &&
+    (scenario !== IMMUTABLE_RECORD_PUBLICATION_SCENARIO ||
+      !IMMUTABLE_RECORD_FAILPOINTS.includes(failpoint) ||
+      (mode === "generation-record-fault" && failpoint === "none") ||
+      (mode !== "generation-record-fault" && failpoint !== "none"))
   ) {
     fail("CONFIG_INVALID");
   }
@@ -1651,8 +1681,13 @@ function digestFileHex(filename) {
 
 async function setupGenerationPublication(
   Database,
-  { stagedCandidate = false } = {},
+  {
+    stagedCandidate = false,
+    sourceOnly = false,
+    reachRecordFailpoint = undefined,
+  } = {},
 ) {
+  if (sourceOnly && !stagedCandidate) fail("CONFIG_INVALID");
   if (pathKind(config.generationWorkspaceRoot)) fail("DATABASE_EXISTS");
   const scope = createSensitiveScope();
   const canaries = [];
@@ -1677,7 +1712,7 @@ async function setupGenerationPublication(
       fail("DATABASE_MISSING");
     }
     database = openKeyedDatabase(Database, key, { fileMustExist: true });
-    readEncryptionFacts(database);
+    const sourceFacts = readEncryptionFacts(database);
     const marker = readAndVerifyMarker(database, markerDigest);
     addEncodedCanaries(
       scope,
@@ -1718,26 +1753,85 @@ async function setupGenerationPublication(
       recursive: true,
       mode: 0o700,
     });
-    fs.mkdirSync(
-      stagedCandidate
-        ? preparationPaths.stagingCandidateDirectoryPath
-        : paths.candidateGenerationDirectoryPath,
-      { recursive: true, mode: 0o700 },
-    );
+    if (!sourceOnly) {
+      fs.mkdirSync(
+        stagedCandidate
+          ? preparationPaths.stagingCandidateDirectoryPath
+          : paths.candidateGenerationDirectoryPath,
+        { recursive: true, mode: 0o700 },
+      );
+    }
     fs.renameSync(config.wrapperPath, paths.wrapperPath);
     fs.renameSync(config.databasePath, paths.sourceDatabasePath);
 
     let preparationIntent;
     if (stagedCandidate) {
       writeCanonicalGenerationFile(paths.manifestPath, fixture.sourceManifest);
+      if (sourceOnly) {
+        const verifier = createGenerationDatabaseVerifier({
+          Database,
+          baseKey,
+          markerDigest,
+          scope,
+          canaries,
+        });
+        const sourceState = verifyGenerationPreparationRecordPrerequisites({
+          workspaceRoot: config.generationWorkspaceRoot,
+          operationId: GENERATION_PUBLICATION_IDS.operationId,
+          inputFingerprint: fixture.inputFingerprint,
+          nextRecordKind: "intent",
+          verifyGeneration: verifier.verify,
+        });
+        if (
+          sourceState.candidatePresent ||
+          sourceState.intentDigest !== null ||
+          sourceState.verifiedRecordDigest !== null
+        ) {
+          fail("DATABASE_INTEGRITY_FAILED");
+        }
+        assertEncryptedDatabaseFile(
+          [...canaries, ...captureCanaries],
+          paths.sourceDatabasePath,
+        );
+        scanGenerationSecrets(canaries, captureCanaries);
+        writeFixedProgress("generation-record-source-ready");
+        return fixedResult("pass", "GENERATION_RECORD_SOURCE_READY", {
+          asyncEncryptionAvailable: true,
+          cipherVersion: sourceFacts.cipherVersion,
+          provider: sourceFacts.provider,
+          providerVersion: sourceFacts.providerVersion,
+          rawKeyBinding: true,
+          scenario: config.scenario,
+          markerDigest,
+          sourceGenerationId: fixture.sourceIdentity.generationId,
+          sourceGenerationIdentityDigest:
+            fixture.sourceGenerationIdentityDigest,
+          activeGenerationId: fixture.sourceIdentity.generationId,
+          manifestDigest: sourceState.sourceManifestDigest,
+          wrapperDigest: sourceState.wrapperDigest,
+          inputFingerprint: fixture.inputFingerprint,
+          sourceGenerationPresent: true,
+          candidateGenerationPresent: false,
+          candidateStagingPresent: false,
+          applicationKind: "source_ready",
+          diagnosticCode: null,
+          workspaceVersion: sourceCapture.workspaceVersion,
+          rows: sourceCapture.rows,
+          stateDigest: sourceCapture.stateDigest,
+          integrityVerified: sourceCapture.integrityVerified,
+          ftsVerified: sourceCapture.ftsVerified,
+        });
+      }
       preparationIntent = createGenerationPreparationIntent(
         config.workspaceId,
         wrapperDigest,
       );
-      writeGenerationPreparationIntent(
-        preparationPaths.intentPath,
-        preparationIntent,
-      );
+      publishImmutableGenerationRecord({
+        recordKind: "intent",
+        targetPath: preparationPaths.intentPath,
+        value: preparationIntent,
+        reachFailpoint: reachRecordFailpoint,
+      });
       writeFixedProgress("generation-preparation-intent-written");
     }
     const candidateDatabasePath = stagedCandidate
@@ -1835,14 +1929,18 @@ async function setupGenerationPublication(
         candidateDatabaseDigest: digestFileHex(candidateDatabasePath),
         candidateDatabaseSize: candidateMetadata.size,
       });
-      writeGenerationCandidateVerifiedRecord(
-        preparationPaths.verifiedRecordPath,
-        candidateVerifiedRecord,
-      );
-      writeCanonicalGenerationFile(
-        paths.operationRecordPath,
-        fixture.operationRecord,
-      );
+      publishImmutableGenerationRecord({
+        recordKind: "candidate-verified",
+        targetPath: preparationPaths.verifiedRecordPath,
+        value: candidateVerifiedRecord,
+        reachFailpoint: reachRecordFailpoint,
+      });
+      publishImmutableGenerationRecord({
+        recordKind: "operation",
+        targetPath: paths.operationRecordPath,
+        value: fixture.operationRecord,
+        reachFailpoint: reachRecordFailpoint,
+      });
       state = verifyGenerationPreparationState({
         workspaceRoot: config.generationWorkspaceRoot,
         operationId: GENERATION_PUBLICATION_IDS.operationId,
@@ -1940,6 +2038,326 @@ async function setupGenerationPublication(
     );
   } finally {
     closeQuietly(database);
+    try {
+      if (canaries.length > 0) scanKnownSecrets(canaries);
+      if (captureCanaries.length > 0) {
+        scanForCanaries([config.stateRoot], captureCanaries);
+      }
+    } finally {
+      scope.clear();
+    }
+  }
+}
+
+function createStagedCandidateForRecordRecovery({
+  Database,
+  paths,
+  fixture,
+  markerDigest,
+  baseKey,
+  scope,
+}) {
+  if (pathKind(paths.stagingCandidateDirectoryPath)) return false;
+  try {
+    fs.mkdirSync(paths.stagingCandidateDirectoryPath, {
+      recursive: false,
+      mode: 0o700,
+    });
+  } catch {
+    fail("DATABASE_INTEGRITY_FAILED");
+  }
+  reserveDatabase(paths.stagingDatabasePath);
+  let database;
+  try {
+    const sourceKey = scope.keep(Buffer.from(baseKey));
+    const exportKey = scope.keep(Buffer.from(baseKey));
+    database = openKeyedDatabase(
+      Database,
+      sourceKey,
+      { fileMustExist: true },
+      paths.sourceDatabasePath,
+    );
+    try {
+      database
+        .prepare("ATTACH DATABASE ? AS encrypted_export")
+        .run(paths.stagingDatabasePath);
+      try {
+        database.key(exportKey, "encrypted_export");
+      } finally {
+        exportKey.fill(0);
+      }
+      database.prepare("SELECT sqlcipher_export('encrypted_export')").get();
+      database.exec("DETACH DATABASE encrypted_export");
+    } catch {
+      fail("DATABASE_INTEGRITY_FAILED");
+    }
+    closeDatabase(database);
+    database = undefined;
+
+    const candidateKey = scope.keep(Buffer.from(baseKey));
+    database = openKeyedDatabase(
+      Database,
+      candidateKey,
+      { fileMustExist: true },
+      paths.stagingDatabasePath,
+    );
+    configureGenerationDatabase(database);
+    // sqlcipher_export intentionally leaves the target user_version unchanged.
+    database.pragma("user_version = 1");
+    if (database.pragma("user_version", { simple: true }) !== 1) {
+      fail("DATABASE_INTEGRITY_FAILED");
+    }
+    readEncryptionFacts(database);
+    readAndVerifyMarker(database, markerDigest);
+    verifyRecoveryCaptureState(database, { expectedState: "committed" });
+    verifyGenerationDatabaseIdentity(database, {
+      expectedIdentity: fixture.sourceIdentity,
+      expectedIdentityDigest: fixture.sourceGenerationIdentityDigest,
+      expectMigration: false,
+    });
+    applySyntheticGenerationMigration(database, fixture.candidateIdentity);
+    verifyGenerationDatabaseIdentity(database, {
+      expectedIdentity: fixture.candidateIdentity,
+      expectedIdentityDigest: fixture.candidateGenerationIdentityDigest,
+      expectMigration: true,
+    });
+    verifyDatabaseIntegrity(database);
+    checkpointAndCloseGenerationDatabase(database, paths.stagingDatabasePath);
+    database = undefined;
+    return true;
+  } finally {
+    closeQuietly(database);
+  }
+}
+
+function recordReadyProgressStage(recordKind) {
+  return recordKind === "intent"
+    ? "generation-record-intent-ready"
+    : recordKind === "candidate-verified"
+      ? "generation-record-candidate-verified-ready"
+      : "generation-record-operation-ready";
+}
+
+async function advanceGenerationPreparationRecords(
+  Database,
+  { throughRecordKind, reachRecordFailpoint },
+) {
+  if (
+    !["intent", "candidate-verified", "operation"].includes(
+      throughRecordKind,
+    ) ||
+    (reachRecordFailpoint !== undefined &&
+      typeof reachRecordFailpoint !== "function")
+  ) {
+    fail("CONFIG_INVALID");
+  }
+  const scope = createSensitiveScope();
+  const canaries = [];
+  let captureCanaries = [];
+  try {
+    captureCanaries = createRecoveryCaptureCanaries(scope);
+    const paths = getGenerationPreparationPaths(
+      config.generationWorkspaceRoot,
+      GENERATION_PUBLICATION_IDS.operationId,
+    );
+    const unwrapped = await unwrapKey(scope, canaries, paths.wrapperPath);
+    const baseKey = scope.keep(Buffer.from(unwrapped.key));
+    const fixture = createGenerationPublicationFixture(
+      config.workspaceId,
+      digestFileHex(paths.wrapperPath),
+    );
+    const verifier = createGenerationDatabaseVerifier({
+      Database,
+      baseKey,
+      markerDigest: unwrapped.markerDigest,
+      scope,
+      canaries,
+    });
+    const prerequisiteOptions = {
+      workspaceRoot: config.generationWorkspaceRoot,
+      operationId: GENERATION_PUBLICATION_IDS.operationId,
+      inputFingerprint: fixture.inputFingerprint,
+      verifyGeneration: verifier.verify,
+    };
+
+    let partial = verifyGenerationPreparationRecordPrerequisites({
+      ...prerequisiteOptions,
+      nextRecordKind: throughRecordKind,
+    });
+    const intent = createGenerationPreparationIntent(
+      config.workspaceId,
+      digestFileHex(paths.wrapperPath),
+    );
+    let publication = publishImmutableGenerationRecord({
+      recordKind: "intent",
+      targetPath: paths.intentPath,
+      value: intent,
+      reachFailpoint: reachRecordFailpoint,
+    });
+    writeFixedProgress("generation-record-intent-ready");
+    if (throughRecordKind === "intent") {
+      partial = verifyGenerationPreparationRecordPrerequisites({
+        ...prerequisiteOptions,
+        nextRecordKind: "candidate-verified",
+      });
+    }
+    let finalState;
+
+    if (throughRecordKind !== "intent") {
+      partial = verifyGenerationPreparationRecordPrerequisites({
+        ...prerequisiteOptions,
+        nextRecordKind: throughRecordKind,
+      });
+      if (!partial.candidatePresent) {
+        if (throughRecordKind === "operation") {
+          fail("DATABASE_INTEGRITY_FAILED");
+        }
+        createStagedCandidateForRecordRecovery({
+          Database,
+          paths,
+          fixture,
+          markerDigest: unwrapped.markerDigest,
+          baseKey,
+          scope,
+        });
+      }
+      partial = verifyGenerationPreparationRecordPrerequisites({
+        ...prerequisiteOptions,
+        nextRecordKind: throughRecordKind,
+      });
+      if (
+        !partial.candidatePresent ||
+        !partial.intent ||
+        !partial.candidateDatabaseDigest ||
+        !Number.isSafeInteger(partial.candidateDatabaseSize)
+      ) {
+        fail("DATABASE_INTEGRITY_FAILED");
+      }
+      const verifiedRecord = createGenerationCandidateVerifiedRecord({
+        intent: partial.intent,
+        candidateDatabaseDigest: partial.candidateDatabaseDigest,
+        candidateDatabaseSize: partial.candidateDatabaseSize,
+      });
+      publication = publishImmutableGenerationRecord({
+        recordKind: "candidate-verified",
+        targetPath: paths.verifiedRecordPath,
+        value: verifiedRecord,
+        reachFailpoint: reachRecordFailpoint,
+      });
+      writeFixedProgress("generation-record-candidate-verified-ready");
+      partial = verifyGenerationPreparationRecordPrerequisites({
+        ...prerequisiteOptions,
+        nextRecordKind: "operation",
+      });
+    }
+
+    if (throughRecordKind === "operation") {
+      publication = publishImmutableGenerationRecord({
+        recordKind: "operation",
+        targetPath: paths.operationRecordPath,
+        value: fixture.operationRecord,
+        reachFailpoint: reachRecordFailpoint,
+      });
+      writeFixedProgress("generation-record-operation-ready");
+      finalState = verifyGenerationPreparationState({
+        ...prerequisiteOptions,
+        reachFailpoint: undefined,
+      });
+      if (
+        finalState.phase !== "staged" ||
+        finalState.activeGenerationId !== fixture.sourceIdentity.generationId
+      ) {
+        fail("DATABASE_INTEGRITY_FAILED");
+      }
+    }
+
+    const facts = verifier.facts();
+    const capture = verifier.captureVerification();
+    const candidatePresent = finalState
+      ? finalState.candidateStagingPresent
+      : partial.candidatePresent;
+    assertEncryptedDatabaseFile(
+      [...canaries, ...captureCanaries],
+      paths.sourceDatabasePath,
+    );
+    if (candidatePresent) {
+      assertEncryptedDatabaseFile(
+        [...canaries, ...captureCanaries],
+        paths.stagingDatabasePath,
+      );
+    }
+    scanGenerationSecrets(canaries, captureCanaries);
+    const recordPhase =
+      throughRecordKind === "intent"
+        ? "intent_ready"
+        : throughRecordKind === "candidate-verified"
+          ? "candidate_verified"
+          : "staged";
+    const intentDigest = finalState?.intentDigest ?? partial.intentDigest;
+    const verifiedRecordDigest =
+      finalState?.verifiedRecordDigest ?? partial.verifiedRecordDigest;
+    const candidateDatabaseDigest =
+      finalState?.candidateDatabaseDigest ?? partial.candidateDatabaseDigest;
+    const candidateDatabaseSize =
+      finalState?.candidateDatabaseSize ?? partial.candidateDatabaseSize;
+    const recordCode =
+      throughRecordKind === "intent"
+        ? "GENERATION_RECORD_INTENT"
+        : throughRecordKind === "candidate-verified"
+          ? "GENERATION_RECORD_CANDIDATE_VERIFIED"
+          : "GENERATION_RECORD_OPERATION";
+    const publicationCode =
+      publication.kind === "replayed"
+        ? "REPLAYED"
+        : publication.kind === "applied"
+          ? "APPLIED"
+          : "RECOVERED";
+    return fixedResult("pass", `${recordCode}_${publicationCode}`, {
+      asyncEncryptionAvailable: true,
+      cipherVersion: facts.cipherVersion,
+      provider: facts.provider,
+      providerVersion: facts.providerVersion,
+      rawKeyBinding: true,
+      scenario: config.scenario,
+      markerDigest: unwrapped.markerDigest,
+      sourceGenerationId: fixture.sourceIdentity.generationId,
+      sourceGenerationIdentityDigest: fixture.sourceGenerationIdentityDigest,
+      candidateGenerationId: fixture.candidateIdentity.generationId,
+      candidateGenerationIdentityDigest:
+        fixture.candidateGenerationIdentityDigest,
+      activeGenerationId: fixture.sourceIdentity.generationId,
+      manifestDigest:
+        finalState?.sourceManifestDigest ?? partial.sourceManifestDigest,
+      wrapperDigest: finalState?.wrapperDigest ?? partial.wrapperDigest,
+      inputFingerprint: fixture.inputFingerprint,
+      sourceGenerationPresent: true,
+      candidateGenerationPresent: false,
+      candidateStagingPresent: candidatePresent,
+      candidateDatabaseDigest,
+      candidateDatabaseSize,
+      intentDigest,
+      verifiedRecordDigest,
+      operationRecordDigest: finalState?.operationRecordDigest ?? null,
+      recordKind: throughRecordKind,
+      recordPhase,
+      recordPublicationKind: publication.kind,
+      recordDigest: publication.recordDigest,
+      recordSize: publication.recordSize,
+      recordOutcomeDigest: publication.outcomeDigest,
+      recoveredPrefix: publication.recoveredPrefix,
+      recoveredSyncedTemporary: publication.recoveredSyncedTemporary,
+      recoveredPublishedLink: publication.recoveredPublishedLink,
+      applicationKind: publication.kind,
+      diagnosticCode: null,
+      workspaceVersion: capture.workspaceVersion,
+      rows: capture.rows,
+      stateDigest: capture.stateDigest,
+      integrityVerified: capture.integrityVerified,
+      ftsVerified: capture.ftsVerified,
+      encryptedExport: candidatePresent,
+      candidateReadOnlyReopen: candidatePresent,
+    });
+  } finally {
     try {
       if (canaries.length > 0) scanKnownSecrets(canaries);
       if (captureCanaries.length > 0) {
@@ -2331,6 +2749,49 @@ async function runGenerationPreparationMode(Database) {
   return await useGenerationPreparationWorkspace(Database);
 }
 
+async function runGenerationRecordMode(Database) {
+  if (config.mode === "generation-record-source-setup") {
+    return await setupGenerationPublication(Database, {
+      stagedCandidate: true,
+      sourceOnly: true,
+    });
+  }
+  const throughRecordKind =
+    config.mode === "generation-record-recover-intent"
+      ? "intent"
+      : config.mode === "generation-record-recover-verified"
+        ? "candidate-verified"
+        : config.mode === "generation-record-recover-operation"
+          ? "operation"
+          : config.failpoint.startsWith("after-intent-")
+            ? "intent"
+            : config.failpoint.startsWith("after-candidate-verified-")
+              ? "candidate-verified"
+              : "operation";
+  const reachRecordFailpoint =
+    config.mode === "generation-record-fault"
+      ? (state) => {
+          if (state.failpoint !== config.failpoint) return;
+          writeFixedProgress(recordReadyProgressStage(state.recordKind));
+          const boundary = createImmutableRecordFaultBoundaryRecord({
+            processId: process.pid,
+            workspaceId: config.workspaceId,
+            operationId: GENERATION_PUBLICATION_IDS.operationId,
+            state,
+          });
+          writeFixedProgress("generation-record-fault-boundary-ready");
+          emitGenerationFaultBoundaryRecord(boundary);
+          holdForForcedTermination({ timeoutMs: 120_000 });
+        }
+      : undefined;
+  const result = await advanceGenerationPreparationRecords(Database, {
+    throughRecordKind,
+    reachRecordFailpoint,
+  });
+  if (config.mode === "generation-record-fault") fail("PROBE_FAILED");
+  return result;
+}
+
 function verifyPackagedIdentity() {
   const expectedArchive = path.join(process.resourcesPath, "app.asar");
   const expectedUnpackedRoot = path.join(
@@ -2489,6 +2950,8 @@ if (config) {
           result = await provisionStore(Database);
         } else if (config.mode === "verify") {
           result = await verifyStore(Database);
+        } else if (GENERATION_RECORD_MODES.has(config.mode)) {
+          result = await runGenerationRecordMode(Database);
         } else if (GENERATION_PREPARATION_MODES.has(config.mode)) {
           result = await runGenerationPreparationMode(Database);
         } else if (GENERATION_MODES.has(config.mode)) {

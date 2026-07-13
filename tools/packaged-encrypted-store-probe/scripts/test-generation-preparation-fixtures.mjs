@@ -12,6 +12,7 @@ import {
   createGenerationPreparationIntent,
   getGenerationPreparationPaths,
   handoffPreparedGeneration,
+  verifyGenerationPreparationRecordPrerequisites,
   verifyGenerationPreparationState,
   writeGenerationCandidateVerifiedRecord,
   writeGenerationPreparationIntent,
@@ -19,7 +20,9 @@ import {
 import {
   GENERATION_PUBLICATION_IDS,
   GenerationPublicationError,
+  canonicalGenerationBytes,
   createGenerationPublicationFixture,
+  digestGenerationValue,
   writeCanonicalGenerationFile,
 } from "../app/recovery/generation-publication.mjs";
 
@@ -164,6 +167,134 @@ try {
     "after-candidate-read-only-verified",
     "after-candidate-moved-into-generations",
   ]);
+
+  const advancing = createPreparedWorkspace("record-advance");
+  fs.rmSync(advancing.paths.operationRecordPath);
+  fs.rmSync(advancing.paths.verifiedRecordPath);
+  fs.rmSync(advancing.paths.intentPath);
+  fs.rmSync(advancing.paths.stagingCandidateDirectoryPath, {
+    recursive: true,
+  });
+  const advanceOptions = {
+    workspaceRoot: advancing.options.workspaceRoot,
+    operationId: advancing.options.operationId,
+    inputFingerprint: advancing.options.inputFingerprint,
+    verifyGeneration: advancing.options.verifyGeneration,
+  };
+  const sourceReady = verifyGenerationPreparationRecordPrerequisites({
+    ...advanceOptions,
+    nextRecordKind: "intent",
+  });
+  assert.equal(sourceReady.candidatePresent, false);
+  assert.equal(sourceReady.intentDigest, null);
+  writeGenerationPreparationIntent(
+    advancing.paths.intentPath,
+    advancing.intent,
+  );
+  const intentReady = verifyGenerationPreparationRecordPrerequisites({
+    ...advanceOptions,
+    nextRecordKind: "candidate-verified",
+  });
+  assert.equal(intentReady.candidatePresent, false);
+  assert.equal(
+    intentReady.intentDigest,
+    digestGenerationValue(advancing.intent),
+  );
+  fs.mkdirSync(advancing.paths.stagingCandidateDirectoryPath);
+  fs.writeFileSync(advancing.paths.stagingDatabasePath, CANDIDATE_BYTES);
+  const candidateSealed = verifyGenerationPreparationRecordPrerequisites({
+    ...advanceOptions,
+    nextRecordKind: "candidate-verified",
+  });
+  assert.equal(candidateSealed.candidatePresent, true);
+  assert.equal(
+    candidateSealed.candidateDatabaseDigest,
+    digest(CANDIDATE_BYTES),
+  );
+  writeGenerationCandidateVerifiedRecord(
+    advancing.paths.verifiedRecordPath,
+    advancing.verifiedRecord,
+  );
+  const candidateVerified = verifyGenerationPreparationRecordPrerequisites({
+    ...advanceOptions,
+    nextRecordKind: "operation",
+  });
+  assert.equal(
+    candidateVerified.verifiedRecordDigest,
+    digestGenerationValue(advancing.verifiedRecord),
+  );
+  writeCanonicalGenerationFile(
+    advancing.paths.operationRecordPath,
+    advancing.publication.operationRecord,
+  );
+  assert.equal(
+    verifyGenerationPreparationState(advancing.options).phase,
+    "staged",
+  );
+
+  const candidateBeforeIntent = createPreparedWorkspace(
+    "candidate-before-intent",
+  );
+  fs.rmSync(candidateBeforeIntent.paths.operationRecordPath);
+  fs.rmSync(candidateBeforeIntent.paths.verifiedRecordPath);
+  fs.rmSync(candidateBeforeIntent.paths.intentPath);
+  const candidateBeforeIntentSnapshot = snapshotTree(
+    candidateBeforeIntent.workspaceRoot,
+  );
+  expectCode(
+    () =>
+      verifyGenerationPreparationRecordPrerequisites({
+        workspaceRoot: candidateBeforeIntent.options.workspaceRoot,
+        operationId: candidateBeforeIntent.options.operationId,
+        inputFingerprint: candidateBeforeIntent.options.inputFingerprint,
+        verifyGeneration: candidateBeforeIntent.options.verifyGeneration,
+        nextRecordKind: "intent",
+      }),
+    "GENERATION_PREPARATION_CANDIDATE_INVALID",
+  );
+  assert.equal(
+    snapshotTree(candidateBeforeIntent.workspaceRoot),
+    candidateBeforeIntentSnapshot,
+  );
+
+  const partialCallbackMutation = createPreparedWorkspace(
+    "partial-callback-mutation",
+  );
+  fs.rmSync(partialCallbackMutation.paths.operationRecordPath);
+  fs.rmSync(partialCallbackMutation.paths.verifiedRecordPath);
+  fs.rmSync(partialCallbackMutation.paths.intentPath);
+  fs.rmSync(partialCallbackMutation.paths.stagingCandidateDirectoryPath, {
+    recursive: true,
+  });
+  let callbackMutationSnapshot;
+  expectCode(
+    () =>
+      verifyGenerationPreparationRecordPrerequisites({
+        workspaceRoot: partialCallbackMutation.options.workspaceRoot,
+        operationId: partialCallbackMutation.options.operationId,
+        inputFingerprint: partialCallbackMutation.options.inputFingerprint,
+        nextRecordKind: "intent",
+        verifyGeneration: (context) => {
+          const identity =
+            partialCallbackMutation.options.verifyGeneration(context);
+          fs.writeFileSync(
+            partialCallbackMutation.paths.manifestPath,
+            canonicalGenerationBytes(
+              partialCallbackMutation.publication.targetManifest,
+            ),
+          );
+          callbackMutationSnapshot = snapshotTree(
+            partialCallbackMutation.workspaceRoot,
+          );
+          return identity;
+        },
+      }),
+    "GENERATION_SOURCE_MANIFEST_MISMATCH",
+  );
+  assert.equal(
+    snapshotTree(partialCallbackMutation.workspaceRoot),
+    callbackMutationSnapshot,
+  );
 
   const beforeMove = createPreparedWorkspace("before-move");
   const sourceManifestDigest = digestFile(beforeMove.paths.manifestPath);
@@ -419,6 +550,8 @@ try {
       sealedCandidateReused: true,
       replayWithoutChurnVerified: true,
       conflictWithoutMutationVerified: true,
+      recordAdvanceOrderingVerified: true,
+      partialVerifierCallbackMutationRejected: true,
       malformedMissingCorruptSymlinkRejected: true,
       processCrashScopeOnly: true,
     })}\n`,

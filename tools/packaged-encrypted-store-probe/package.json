@@ -25,6 +25,7 @@
     "test:cleanup": "node scripts/test-cleanup.mjs",
     "test:generation-recovery-fixtures": "node scripts/test-generation-recovery-fixtures.mjs",
     "test:generation-preparation-fixtures": "node scripts/test-generation-preparation-fixtures.mjs",
+    "test:immutable-record-publication-fixtures": "node scripts/test-immutable-record-publication-fixtures.mjs",
     "test:posix-process-tree": "node scripts/test-posix-process-tree.mjs",
     "test:process-harness": "node scripts/test-process-harness.mjs",
     "test:recovery-fixtures": "node scripts/test-recovery-fixtures.mjs"
