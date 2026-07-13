@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -51,6 +51,7 @@ export class DurableWorkspaceOpenError extends Error {
   public constructor(
     public readonly code:
       | "database_without_key"
+      | "workspace_recovery_required"
       | "workspace_bootstrap_failed"
       | "workspace_open_failed",
   ) {
@@ -95,6 +96,10 @@ export const createDurableKernelService = async (input: {
     if (error instanceof WorkspaceKeyCustodyError) throw error;
     throw new DurableWorkspaceOpenError("workspace_open_failed");
   }
+  if (!databaseExists && bundle.state === "ready") {
+    bundle.key.fill(0);
+    throw new DurableWorkspaceOpenError("workspace_recovery_required");
+  }
 
   let opened;
   try {
@@ -107,6 +112,11 @@ export const createDurableKernelService = async (input: {
     });
   } catch (error) {
     bundle.key.fill(0);
+    if (!databaseExists && bundle.state === "prepared") {
+      for (const suffix of ["", "-shm", "-wal"]) {
+        rmSync(`${databasePath}${suffix}`, { force: true });
+      }
+    }
     throw error;
   }
 
@@ -126,6 +136,10 @@ export const createDurableKernelService = async (input: {
     view.getWorkspace(bundle.identity.workspaceId),
   );
   if (workspace === undefined) {
+    if (bundle.state === "ready") {
+      opened.close();
+      throw new DurableWorkspaceOpenError("workspace_recovery_required");
+    }
     const bootstrap = service.execute(
       CommandEnvelopeSchema.parse({
         contractVersion: 1,
@@ -162,6 +176,14 @@ export const createDurableKernelService = async (input: {
   ) {
     opened.close();
     throw new DurableWorkspaceOpenError("workspace_open_failed");
+  }
+  if (bundle.state === "prepared") {
+    try {
+      await custody.markReady(bundle.identity.workspaceId);
+    } catch (error) {
+      opened.close();
+      throw error;
+    }
   }
 
   return {

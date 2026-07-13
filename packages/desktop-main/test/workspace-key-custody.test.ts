@@ -38,20 +38,32 @@ const identity = {
 } as const;
 
 class SyntheticSafeStorage implements AsyncSafeStorage {
-  public constructor(private readonly available = true) {}
+  public encryptions = 0;
+
+  public constructor(
+    private readonly available = true,
+    private readonly rotateOnDecrypt = false,
+  ) {}
 
   public async isAsyncEncryptionAvailable(): Promise<boolean> {
     return this.available;
   }
 
   public async encryptStringAsync(value: string): Promise<Buffer> {
+    this.encryptions += 1;
     return Buffer.from(Buffer.from(value, "utf8").map((byte) => byte ^ 0xa5));
   }
 
-  public async decryptStringAsync(value: Buffer): Promise<string> {
-    return Buffer.from(Buffer.from(value).map((byte) => byte ^ 0xa5)).toString(
-      "utf8",
-    );
+  public async decryptStringAsync(value: Buffer): Promise<{
+    readonly result: string;
+    readonly shouldReEncrypt: boolean;
+  }> {
+    return {
+      result: Buffer.from(
+        Buffer.from(value).map((byte) => byte ^ 0xa5),
+      ).toString("utf8"),
+      shouldReEncrypt: this.rotateOnDecrypt,
+    };
   }
 }
 
@@ -71,13 +83,12 @@ const withWrapper = async (
 describe("workspace key custody", () => {
   it("publishes one wrapped key and restores the exact material", async () => {
     await withWrapper(async (filename) => {
-      const custody = new WorkspaceKeyCustody(
-        new SyntheticSafeStorage(),
-        filename,
-      );
+      const safeStorage = new SyntheticSafeStorage(true, true);
+      const custody = new WorkspaceKeyCustody(safeStorage, filename);
       const created = await custody.create(identity);
       assert.equal(created.key.length, 32);
       assert.deepEqual(created.identity, identity);
+      assert.equal(created.state, "prepared");
       const createdCopy = Buffer.from(created.key);
       const wrapper = readFileSync(filename);
       assert.equal(wrapper.includes(created.key), false);
@@ -87,6 +98,11 @@ describe("workspace key custody", () => {
       const restored = await custody.load(workspaceId);
       assert.deepEqual(restored.key, createdCopy);
       assert.deepEqual(restored.identity, identity);
+      assert.equal(restored.state, "prepared");
+      assert.equal(safeStorage.encryptions, 2);
+      await custody.markReady(workspaceId);
+      const ready = await custody.load(workspaceId);
+      assert.equal(ready.state, "ready");
       assert.equal(
         wrapper.includes(Buffer.from(created.key.toString("base64url"))),
         false,
@@ -94,6 +110,7 @@ describe("workspace key custody", () => {
       created.key.fill(0);
       createdCopy.fill(0);
       restored.key.fill(0);
+      ready.key.fill(0);
       wrapper.fill(0);
       await assert.rejects(
         () => custody.create(identity),

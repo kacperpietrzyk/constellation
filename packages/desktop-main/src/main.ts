@@ -43,8 +43,7 @@ interface DesktopRuntime {
 const electronSafeStorage: AsyncSafeStorage = {
   isAsyncEncryptionAvailable: () => safeStorage.isAsyncEncryptionAvailable(),
   encryptStringAsync: (value) => safeStorage.encryptStringAsync(value),
-  decryptStringAsync: async (value) =>
-    (await safeStorage.decryptStringAsync(value)).result,
+  decryptStringAsync: (value) => safeStorage.decryptStringAsync(value),
 };
 
 const createDesktopRuntime = async (): Promise<DesktopRuntime> => {

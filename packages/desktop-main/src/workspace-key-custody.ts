@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import {
+  constants,
   closeSync,
   existsSync,
   fsyncSync,
@@ -8,6 +9,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  renameSync,
   rmSync,
   unlinkSync,
   writeFileSync,
@@ -27,16 +29,21 @@ import {
   type WorkspaceId,
 } from "@constellation/contracts";
 
-const PAYLOAD_FORMAT = "constellation.workspace-key-payload/v2";
-const WRAPPER_FORMAT = "constellation.workspace-key-wrapper/v2";
+const PAYLOAD_FORMAT = "constellation.workspace-key-payload/v3";
+const WRAPPER_FORMAT = "constellation.workspace-key-wrapper/v3";
 const KEY_VERSION = 1;
 const MAX_WRAPPER_BYTES = 64 * 1024;
 
 export interface AsyncSafeStorage {
   isAsyncEncryptionAvailable(): Promise<boolean>;
   encryptStringAsync(value: string): Promise<Buffer>;
-  decryptStringAsync(value: Buffer): Promise<string>;
+  decryptStringAsync(value: Buffer): Promise<{
+    readonly result: string;
+    readonly shouldReEncrypt: boolean;
+  }>;
 }
+
+export type WorkspaceLifecycleState = "prepared" | "ready";
 
 export interface WorkspaceBootstrapIdentity {
   readonly workspaceId: WorkspaceId;
@@ -49,6 +56,7 @@ export interface WorkspaceBootstrapIdentity {
 export interface WorkspaceKeyBundle {
   readonly identity: WorkspaceBootstrapIdentity;
   readonly key: Buffer;
+  readonly state: WorkspaceLifecycleState;
 }
 
 export class WorkspaceKeyCustodyError extends Error {
@@ -107,6 +115,17 @@ const assertRegularFile = (filename: string): void => {
   }
 };
 
+const syncDirectory = (directory: string): void => {
+  if (process.platform === "win32") return;
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(directory, constants.O_RDONLY);
+    fsyncSync(descriptor);
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+};
+
 const publishAtomically = (filename: string, contents: Buffer): void => {
   const directory = path.dirname(filename);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -126,12 +145,43 @@ const publishAtomically = (filename: string, contents: Buffer): void => {
     descriptor = undefined;
     linkSync(temporary, filename);
     unlinkSync(temporary);
+    syncDirectory(directory);
   } catch (error) {
     if (descriptor !== undefined) {
       try {
         closeSync(descriptor);
       } catch {
         // Preserve the publication failure.
+      }
+    }
+    rmSync(temporary, { force: true });
+    if (error instanceof WorkspaceKeyCustodyError) throw error;
+    throw new WorkspaceKeyCustodyError("wrapper_io_failed");
+  }
+};
+
+const replaceAtomically = (filename: string, contents: Buffer): void => {
+  assertRegularFile(filename);
+  const directory = path.dirname(filename);
+  const temporary = path.join(
+    directory,
+    `.${path.basename(filename)}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`,
+  );
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(temporary, "wx", 0o600);
+    writeFileSync(descriptor, contents);
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    renameSync(temporary, filename);
+    syncDirectory(directory);
+  } catch (error) {
+    if (descriptor !== undefined) {
+      try {
+        closeSync(descriptor);
+      } catch {
+        // Preserve the replacement failure.
       }
     }
     rmSync(temporary, { force: true });
@@ -174,6 +224,41 @@ export class WorkspaceKeyCustody {
     }
   }
 
+  private async wrap(
+    identity: WorkspaceBootstrapIdentity,
+    key: Buffer,
+    state: WorkspaceLifecycleState,
+  ): Promise<Buffer> {
+    const payload = JSON.stringify({
+      format: PAYLOAD_FORMAT,
+      workspaceId: identity.workspaceId,
+      rootSpaceId: identity.rootSpaceId,
+      principalId: identity.principalId,
+      credentialId: identity.credentialId,
+      grantId: identity.grantId,
+      workspaceState: state,
+      keyVersion: KEY_VERSION,
+      keyMaterial: key.toString("base64url"),
+    });
+    const ciphertext = await this.safeStorage.encryptStringAsync(payload);
+    const wrapper = {
+      format: WRAPPER_FORMAT,
+      workspaceId: identity.workspaceId,
+      keyVersion: KEY_VERSION,
+      ciphertext: ciphertext.toString("base64"),
+      payloadDigest: sha256(payload),
+    };
+    const contents = Buffer.from(`${JSON.stringify(wrapper)}\n`, "utf8");
+    if (
+      contents.includes(key) ||
+      contents.includes(Buffer.from(key.toString("base64url"), "utf8"))
+    ) {
+      contents.fill(0);
+      throw new WorkspaceKeyCustodyError("wrapper_invalid");
+    }
+    return contents;
+  }
+
   public async create(
     identity: WorkspaceBootstrapIdentity,
   ): Promise<WorkspaceKeyBundle> {
@@ -183,33 +268,9 @@ export class WorkspaceKeyCustody {
     const key = randomBytes(32);
     let wrapperContents: Buffer | undefined;
     try {
-      const payload = JSON.stringify({
-        format: PAYLOAD_FORMAT,
-        workspaceId: identity.workspaceId,
-        rootSpaceId: identity.rootSpaceId,
-        principalId: identity.principalId,
-        credentialId: identity.credentialId,
-        grantId: identity.grantId,
-        keyVersion: KEY_VERSION,
-        keyMaterial: key.toString("base64url"),
-      });
-      const ciphertext = await this.safeStorage.encryptStringAsync(payload);
-      const wrapper = {
-        format: WRAPPER_FORMAT,
-        workspaceId: identity.workspaceId,
-        keyVersion: KEY_VERSION,
-        ciphertext: ciphertext.toString("base64"),
-        payloadDigest: sha256(payload),
-      };
-      wrapperContents = Buffer.from(`${JSON.stringify(wrapper)}\n`, "utf8");
-      if (
-        wrapperContents.includes(key) ||
-        wrapperContents.includes(Buffer.from(key.toString("base64url"), "utf8"))
-      ) {
-        throw new WorkspaceKeyCustodyError("wrapper_invalid");
-      }
+      wrapperContents = await this.wrap(identity, key, "prepared");
       publishAtomically(this.wrapperPath, wrapperContents);
-      return { identity, key };
+      return { identity, key, state: "prepared" };
     } catch (error) {
       key.fill(0);
       if (error instanceof WorkspaceKeyCustodyError) throw error;
@@ -254,7 +315,8 @@ export class WorkspaceKeyCustody {
       ) {
         throw new WorkspaceKeyCustodyError("wrapper_invalid");
       }
-      const payloadText = await this.safeStorage.decryptStringAsync(ciphertext);
+      const decrypted = await this.safeStorage.decryptStringAsync(ciphertext);
+      const payloadText = decrypted.result;
       const actualDigest = Buffer.from(sha256(payloadText), "hex");
       const expectedDigest = Buffer.from(wrapper.payloadDigest, "hex");
       try {
@@ -272,6 +334,7 @@ export class WorkspaceKeyCustody {
         "principalId",
         "credentialId",
         "grantId",
+        "workspaceState",
         "keyVersion",
         "keyMaterial",
       ]);
@@ -279,6 +342,8 @@ export class WorkspaceKeyCustody {
         payload?.format !== PAYLOAD_FORMAT ||
         payload.workspaceId !== workspaceId ||
         payload.keyVersion !== KEY_VERSION ||
+        (payload.workspaceState !== "prepared" &&
+          payload.workspaceState !== "ready") ||
         typeof payload.keyMaterial !== "string"
       ) {
         throw new WorkspaceKeyCustodyError(
@@ -312,8 +377,9 @@ export class WorkspaceKeyCustody {
         key.fill(0);
         throw new WorkspaceKeyCustodyError("wrapper_invalid");
       }
-      return {
+      const bundle: WorkspaceKeyBundle = {
         key,
+        state: payload.workspaceState,
         identity: {
           workspaceId: identityResult.workspaceId.data,
           rootSpaceId: identityResult.rootSpaceId.data,
@@ -322,12 +388,36 @@ export class WorkspaceKeyCustody {
           grantId: identityResult.grantId.data,
         },
       };
+      if (decrypted.shouldReEncrypt) {
+        const rotated = await this.wrap(bundle.identity, key, bundle.state);
+        try {
+          replaceAtomically(this.wrapperPath, rotated);
+        } finally {
+          rotated.fill(0);
+        }
+      }
+      return bundle;
     } catch (error) {
       if (error instanceof WorkspaceKeyCustodyError) throw error;
       throw new WorkspaceKeyCustodyError("wrapper_invalid");
     } finally {
       contents?.fill(0);
       ciphertext?.fill(0);
+    }
+  }
+
+  public async markReady(workspaceId: WorkspaceId): Promise<void> {
+    const bundle = await this.load(workspaceId);
+    try {
+      if (bundle.state === "ready") return;
+      const contents = await this.wrap(bundle.identity, bundle.key, "ready");
+      try {
+        replaceAtomically(this.wrapperPath, contents);
+      } finally {
+        contents.fill(0);
+      }
+    } finally {
+      bundle.key.fill(0);
     }
   }
 }

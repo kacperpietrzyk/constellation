@@ -7,7 +7,12 @@ import { describe, it } from "node:test";
 
 import {
   CommandEnvelopeSchema,
+  CredentialIdSchema,
+  GrantIdSchema,
+  PrincipalIdSchema,
   QueryEnvelopeSchema,
+  SpaceIdSchema,
+  WorkspaceIdSchema,
 } from "@constellation/contracts";
 import type {
   EncryptedSqliteDatabase,
@@ -15,9 +20,15 @@ import type {
   SqliteStatement,
 } from "@constellation/local-store";
 
-import { createDurableKernelService } from "../src/durable-kernel-service.js";
+import {
+  DurableWorkspaceOpenError,
+  createDurableKernelService,
+} from "../src/durable-kernel-service.js";
 import { runAlphaSmoke } from "../src/alpha-smoke.js";
-import type { AsyncSafeStorage } from "../src/workspace-key-custody.js";
+import {
+  WorkspaceKeyCustody,
+  type AsyncSafeStorage,
+} from "../src/workspace-key-custody.js";
 
 const rowStatement = (row: unknown): SqliteStatement => ({
   all: () => (row === undefined ? [] : [row]),
@@ -110,8 +121,14 @@ class SyntheticSafeStorage implements AsyncSafeStorage {
     return Buffer.from(Buffer.from(value, "utf8").map((byte) => byte ^ 0xa5));
   }
 
-  public async decryptStringAsync(value: Buffer): Promise<string> {
-    return Buffer.from(value.map((byte) => byte ^ 0xa5)).toString("utf8");
+  public async decryptStringAsync(value: Buffer): Promise<{
+    readonly result: string;
+    readonly shouldReEncrypt: boolean;
+  }> {
+    return {
+      result: Buffer.from(value.map((byte) => byte ^ 0xa5)).toString("utf8"),
+      shouldReEncrypt: false,
+    };
   }
 }
 
@@ -209,7 +226,45 @@ describe("durable desktop kernel lifecycle", () => {
     });
   });
 
-  it("recovers a wrapped identity when database creation was interrupted", async () => {
+  it("recovers a prepared identity when database creation was interrupted", async () => {
+    await withStateRoot(async (stateRoot) => {
+      const safeStorage = new SyntheticSafeStorage();
+      const input = {
+        databaseFactory: new SyntheticEncryptedFactory(),
+        safeStorage,
+        stateRoot,
+        timezone: "Europe/Warsaw",
+        platform: "darwin" as const,
+      };
+      const identity = {
+        workspaceId: WorkspaceIdSchema.parse(
+          "00000000-0000-4000-8000-000000000101",
+        ),
+        rootSpaceId: SpaceIdSchema.parse(
+          "00000000-0000-4000-8000-000000000102",
+        ),
+        principalId: PrincipalIdSchema.parse(
+          "00000000-0000-4000-8000-000000000103",
+        ),
+        credentialId: CredentialIdSchema.parse(
+          "00000000-0000-4000-8000-000000000104",
+        ),
+        grantId: GrantIdSchema.parse("00000000-0000-4000-8000-000000000105"),
+      };
+      const custody = new WorkspaceKeyCustody(
+        safeStorage,
+        path.join(stateRoot, "local-alpha-workspace", "key-wrapper.json"),
+      );
+      const prepared = await custody.create(identity);
+      prepared.key.fill(0);
+
+      const recovered = await createDurableKernelService(input);
+      assert.deepEqual(recovered.identity, identity);
+      recovered.close();
+    });
+  });
+
+  it("fails into recovery when a ready workspace database is missing", async () => {
     await withStateRoot(async (stateRoot) => {
       const input = {
         databaseFactory: new SyntheticEncryptedFactory(),
@@ -218,14 +273,50 @@ describe("durable desktop kernel lifecycle", () => {
         timezone: "Europe/Warsaw",
         platform: "darwin" as const,
       };
-      const first = await createDurableKernelService(input);
-      const identity = first.identity;
-      first.close();
+      const ready = await createDurableKernelService(input);
+      ready.close();
       rmSync(path.join(stateRoot, "local-alpha-workspace", "workspace.db"));
+      await assert.rejects(
+        () => createDurableKernelService(input),
+        (error: unknown) => {
+          assert(error instanceof DurableWorkspaceOpenError);
+          return error.code === "workspace_recovery_required";
+        },
+      );
+    });
+  });
 
-      const recovered = await createDurableKernelService(input);
-      assert.deepEqual(recovered.identity, identity);
-      recovered.close();
+  it("keeps first creation retryable when the native driver is incompatible", async () => {
+    await withStateRoot(async (stateRoot) => {
+      const safeStorage = new SyntheticSafeStorage();
+      await assert.rejects(() =>
+        createDurableKernelService({
+          databaseFactory: {
+            open: () => {
+              throw new TypeError("incompatible native driver");
+            },
+          },
+          safeStorage,
+          stateRoot,
+          timezone: "Europe/Warsaw",
+          platform: "darwin",
+        }),
+      );
+      const workspaceRoot = path.join(stateRoot, "local-alpha-workspace");
+      assert.equal(existsSync(path.join(workspaceRoot, "workspace.db")), false);
+      assert.equal(
+        existsSync(path.join(workspaceRoot, "key-wrapper.json")),
+        true,
+      );
+
+      const retried = await createDurableKernelService({
+        databaseFactory: new SyntheticEncryptedFactory(),
+        safeStorage,
+        stateRoot,
+        timezone: "Europe/Warsaw",
+        platform: "darwin",
+      });
+      retried.close();
     });
   });
 
