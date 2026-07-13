@@ -47,6 +47,9 @@ const providerBootstrapReadyType =
   "constellation.packaged-store-probe.provider-bootstrap-ready/v1";
 const providerBootstrapContinueType =
   "constellation.packaged-store-probe.provider-bootstrap-continue/v1";
+const PRE_EXIT_CLEANUP_DEADLINE_MS = 10_000;
+const PRE_EXIT_CLEANUP_RETRY_MS = 250;
+const MAX_CAPTURED_OUTPUT_BYTES = 64 * 1024;
 const processIds = new Set();
 let verifiedProcessTerminations = 0;
 const captured = [];
@@ -196,11 +199,13 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     let stderrLength = 0;
     let settled = false;
     let timer;
-    let terminationTimer;
+    let preExitCleanupDeadlineTimer;
+    let preExitCleanupRetryTimer;
     let helperCleanupTimer;
     let postExitTimer;
-    let timedOut = false;
-    let preExitCleanupFailed = false;
+    let preExitCleanupError;
+    let preExitCleanupStarted = false;
+    let outputCollectionStopped = false;
     let mainProcessExited = false;
     let mainExitCode;
     let mainExitSignal;
@@ -211,20 +216,90 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
-      if (terminationTimer) clearTimeout(terminationTimer);
+      if (preExitCleanupDeadlineTimer) {
+        clearTimeout(preExitCleanupDeadlineTimer);
+      }
+      if (preExitCleanupRetryTimer) clearTimeout(preExitCleanupRetryTimer);
       if (helperCleanupTimer) clearTimeout(helperCleanupTimer);
       if (postExitTimer) clearTimeout(postExitTimer);
       callback();
     };
+    const clearCapturedOutput = () => {
+      for (const chunk of stdout) chunk.fill(0);
+      for (const chunk of stderr) chunk.fill(0);
+      stdout.length = 0;
+      stderr.length = 0;
+      stdoutLength = 0;
+      stderrLength = 0;
+    };
+    const rejectAtPreExitCleanupDeadline = () => {
+      if (settled || !preExitCleanupStarted) return;
+      outputCollectionStopped = true;
+      clearCapturedOutput();
+      child.stdout.destroy();
+      child.stderr.destroy();
+      finish(() =>
+        reject(
+          new Error(
+            `PACKAGED_TERMINATION_TIMEOUT:${mode}:${wrapperName}:${databaseName}:${preExitCleanupError.message}`,
+          ),
+        ),
+      );
+    };
+    const startPreExitCleanup = (error) => {
+      if (settled || preExitCleanupStarted) return;
+      preExitCleanupStarted = true;
+      preExitCleanupError = error;
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      if (postExitTimer) {
+        clearTimeout(postExitTimer);
+        postExitTimer = undefined;
+      }
+      if (helperCleanupTimer) {
+        clearTimeout(helperCleanupTimer);
+        helperCleanupTimer = undefined;
+      }
+      const cleanupDeadline = Date.now() + PRE_EXIT_CLEANUP_DEADLINE_MS;
+      const retryCleanup = () => {
+        if (settled || !preExitCleanupStarted) return;
+        if (Date.now() >= cleanupDeadline) {
+          rejectAtPreExitCleanupDeadline();
+          return;
+        }
+        terminateTree(child);
+        const remaining = cleanupDeadline - Date.now();
+        preExitCleanupRetryTimer = setTimeout(
+          retryCleanup,
+          Math.max(0, Math.min(PRE_EXIT_CLEANUP_RETRY_MS, remaining)),
+        );
+      };
+      preExitCleanupDeadlineTimer = setTimeout(
+        rejectAtPreExitCleanupDeadline,
+        PRE_EXIT_CLEANUP_DEADLINE_MS,
+      );
+      retryCleanup();
+    };
     const collect = (target, chunk, isStdout) => {
       const buffer = Buffer.from(chunk);
-      target.push(buffer);
-      if (isStdout) stdoutLength += buffer.length;
-      else stderrLength += buffer.length;
-      if (stdoutLength > 64 * 1024 || stderrLength > 64 * 1024) {
-        preExitCleanupFailed = true;
-        terminateTree(child);
+      if (outputCollectionStopped) {
+        buffer.fill(0);
+        return;
       }
+      const nextLength =
+        (isStdout ? stdoutLength : stderrLength) + buffer.length;
+      if (nextLength > MAX_CAPTURED_OUTPUT_BYTES) {
+        buffer.fill(0);
+        outputCollectionStopped = true;
+        clearCapturedOutput();
+        startPreExitCleanup(new Error("PACKAGED_OUTPUT_LIMIT_EXCEEDED"));
+        return;
+      }
+      target.push(buffer);
+      if (isStdout) stdoutLength = nextLength;
+      else stderrLength = nextLength;
     };
 
     child.stdout.on("data", (chunk) => collect(stdout, chunk, true));
@@ -243,10 +318,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
           message.processId !== child.pid ||
           message.bootstrapEnvironmentCleared !== true
         ) {
-          terminateTree(child);
-          finish(() =>
-            reject(new Error("PROVIDER_BOOTSTRAP_PROTOCOL_INVALID")),
-          );
+          startPreExitCleanup(new Error("PROVIDER_BOOTSTRAP_PROTOCOL_INVALID"));
           return;
         }
 
@@ -262,20 +334,18 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
                 providerBootstrapCompleted = true;
                 return;
               }
-              terminateTree(child);
-              finish(() => reject(new Error("PROVIDER_BOOTSTRAP_SEND_FAILED")));
+              startPreExitCleanup(new Error("PROVIDER_BOOTSTRAP_SEND_FAILED"));
             },
           );
         } catch {
           if (!settled) {
-            terminateTree(child);
-            finish(() => reject(new Error("PROVIDER_BOOTSTRAP_SEND_FAILED")));
+            startPreExitCleanup(new Error("PROVIDER_BOOTSTRAP_SEND_FAILED"));
           }
         }
       });
     }
     child.on("error", () =>
-      finish(() => reject(new Error("PACKAGED_LAUNCH_FAILED"))),
+      startPreExitCleanup(new Error("PACKAGED_LAUNCH_FAILED")),
     );
     const complete = (code, signal) =>
       finish(() => {
@@ -284,42 +354,25 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
           const stderrBuffer = Buffer.concat(stderr, stderrLength);
           inspectOutput(stdoutBuffer);
           inspectOutput(stderrBuffer);
-          if (timedOut || preExitCleanupFailed) {
-            let childCode = "NO_FIXED_RESULT";
-            try {
-              childCode = parseFixedResult(stdoutBuffer).code;
-            } catch {
-              // The bounded timeout marker is sufficient without child output.
-            }
-            const failure = timedOut
-              ? "PACKAGED_LAUNCH_TIMEOUT"
-              : "PACKAGED_OUTPUT_LIMIT_EXCEEDED";
-            reject(
-              new Error(
-                `${failure}:${mode}:${wrapperName}:${databaseName}:${childCode}`,
-              ),
-            );
-          } else {
-            const result = parseFixedResult(stdoutBuffer);
-            ensure(
-              code === result.declaredExitCode && signal === null,
-              `PACKAGED_EXIT_STATUS_INVALID:${String(code)}:${String(signal)}:${result.declaredExitCode}`,
-            );
-            ensure(
-              providerBootstrapCompleted &&
-                providerBootstrapMessageCount === (providerChannel ? 1 : 0),
-              "PROVIDER_BOOTSTRAP_EVIDENCE_INVALID",
-            );
-            resolve({
-              actualCode: code,
-              actualSignal: signal,
-              declaredExitCode: result.declaredExitCode,
-              providerBootstrapCompleted,
-              providerBootstrapMessageCount,
-              childPid: child.pid,
-              result,
-            });
-          }
+          const result = parseFixedResult(stdoutBuffer);
+          ensure(
+            code === result.declaredExitCode && signal === null,
+            `PACKAGED_EXIT_STATUS_INVALID:${String(code)}:${String(signal)}:${result.declaredExitCode}`,
+          );
+          ensure(
+            providerBootstrapCompleted &&
+              providerBootstrapMessageCount === (providerChannel ? 1 : 0),
+            "PROVIDER_BOOTSTRAP_EVIDENCE_INVALID",
+          );
+          resolve({
+            actualCode: code,
+            actualSignal: signal,
+            declaredExitCode: result.declaredExitCode,
+            providerBootstrapCompleted,
+            providerBootstrapMessageCount,
+            childPid: child.pid,
+            result,
+          });
         } catch (error) {
           reject(error);
         }
@@ -328,9 +381,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       finish(() =>
         reject(
           new Error(
-            timedOut
-              ? `PACKAGED_TERMINATION_TIMEOUT:${mode}:${wrapperName}:${databaseName}`
-              : `PACKAGED_HELPER_CLEANUP_UNVERIFIED:${mode}:${wrapperName}:${databaseName}`,
+            `PACKAGED_HELPER_CLEANUP_UNVERIFIED:${mode}:${wrapperName}:${databaseName}`,
           ),
         ),
       );
@@ -342,6 +393,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       mainProcessExited = true;
       mainExitCode = code;
       mainExitSignal = signal;
+      if (preExitCleanupStarted) return;
       if (timer) {
         clearTimeout(timer);
         timer = undefined;
@@ -363,6 +415,12 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       }, 1_000);
     });
     child.on("close", (code, signal) => {
+      if (preExitCleanupStarted) {
+        outputCollectionStopped = true;
+        clearCapturedOutput();
+        finish(() => reject(preExitCleanupError));
+        return;
+      }
       complete(
         mainProcessExited ? mainExitCode : code,
         mainProcessExited ? mainExitSignal : signal,
@@ -370,18 +428,10 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     });
 
     timer = setTimeout(() => {
-      timedOut = true;
-      terminateTree(child);
-      terminationTimer = setTimeout(
-        () =>
-          finish(() =>
-            reject(
-              new Error(
-                `PACKAGED_TERMINATION_TIMEOUT:${mode}:${wrapperName}:${databaseName}`,
-              ),
-            ),
-          ),
-        10_000,
+      startPreExitCleanup(
+        new Error(
+          `PACKAGED_LAUNCH_TIMEOUT:${mode}:${wrapperName}:${databaseName}`,
+        ),
       );
     }, 45_000);
 
@@ -389,8 +439,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       providerChannel &&
       (typeof child.send !== "function" || !child.connected)
     ) {
-      terminateTree(child);
-      finish(() => reject(new Error("PROVIDER_BOOTSTRAP_CHANNEL_UNAVAILABLE")));
+      startPreExitCleanup(new Error("PROVIDER_BOOTSTRAP_CHANNEL_UNAVAILABLE"));
     }
   });
 }
