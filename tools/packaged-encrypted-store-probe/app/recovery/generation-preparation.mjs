@@ -6,6 +6,7 @@ import { canonicalJson } from "./capture-command.mjs";
 import {
   GENERATION_PUBLICATION_IDS,
   GenerationPublicationError,
+  assertRecoverableGenerationSourceSidecars,
   canonicalGenerationBytes,
   createGenerationPublicationFixture,
   digestGenerationValue,
@@ -19,12 +20,24 @@ export const GENERATION_PREPARATION_FAILPOINTS = Object.freeze([
   "after-candidate-read-only-verified",
   "after-candidate-moved-into-generations",
 ]);
+export const GENERATION_CANDIDATE_BUILD_SCENARIO =
+  "generation-candidate-build-recovery";
+export const GENERATION_CANDIDATE_BUILD_FAILPOINTS = Object.freeze([
+  "none",
+  "during-sqlcipher-export",
+  "during-synthetic-migration",
+  "after-synthetic-migration-commit",
+  "after-candidate-checkpointed",
+  "after-verified-candidate-renamed",
+]);
 
 const INTENT_FORMAT = "constellation.generation-preparation-intent/v1";
 const VERIFIED_FORMAT = "constellation.generation-candidate-verified/v1";
 const OUTCOME_FORMAT = "constellation.generation-handoff-outcome/v1";
 const BOUNDARY_FORMAT = "constellation.generation-handoff-fault-boundary/v1";
-const EXPORT_RECIPE_VERSION = "sqlcipher-export/v1";
+const CANDIDATE_BUILD_BOUNDARY_FORMAT =
+  "constellation.generation-candidate-build-fault-boundary/v1";
+const EXPORT_RECIPE_VERSION = "sqlcipher-export-transactional/v2";
 const MIGRATION_RECIPE_VERSION = "synthetic-schema-v2/v1";
 const VERIFICATION_CONTRACT_VERSION = "generation-candidate-verification/v1";
 const MAX_JSON_BYTES = 64 * 1024;
@@ -382,6 +395,24 @@ export function getGenerationPreparationPaths(workspaceRoot, operationId) {
       "candidate",
       "workspace.db",
     ),
+    buildingCandidateDirectoryPath: path.join(
+      publication.operationDirectoryPath,
+      "candidate-building",
+    ),
+    buildingDatabasePath: path.join(
+      publication.operationDirectoryPath,
+      "candidate-building",
+      "workspace.db",
+    ),
+    discardingCandidateDirectoryPath: path.join(
+      publication.operationDirectoryPath,
+      "candidate-discarding",
+    ),
+    discardingDatabasePath: path.join(
+      publication.operationDirectoryPath,
+      "candidate-discarding",
+      "workspace.db",
+    ),
     verifiedRecordPath: path.join(
       publication.operationDirectoryPath,
       "candidate-verified.json",
@@ -438,6 +469,199 @@ function assertExactDirectory(target, expectedEntries, code) {
   return after;
 }
 
+function assertSourceGenerationDirectory(paths) {
+  const code = "GENERATION_PREPARATION_SOURCE_SIDECAR_INVALID";
+  const directoryBefore = lstatBigInt(
+    paths.sourceGenerationDirectoryPath,
+    "directory",
+    code,
+  );
+  let entries;
+  try {
+    entries = fs.readdirSync(paths.sourceGenerationDirectoryPath).sort();
+  } catch {
+    throw new GenerationPublicationError(code);
+  }
+  invariant(
+    entries.includes("workspace.db") &&
+      entries.every((entry) =>
+        ["workspace.db", "workspace.db-shm", "workspace.db-wal"].includes(
+          entry,
+        ),
+      ),
+    code,
+  );
+  assertRecoverableGenerationSourceSidecars(paths.sourceDatabasePath, code);
+  const directoryAfter = lstatBigInt(
+    paths.sourceGenerationDirectoryPath,
+    "directory",
+    code,
+  );
+  invariant(sameDirectoryIdentity(directoryBefore, directoryAfter), code);
+  return directoryAfter;
+}
+
+const UNSEALED_CANDIDATE_ENTRIES = Object.freeze([
+  "workspace.db",
+  "workspace.db-journal",
+  "workspace.db-shm",
+  "workspace.db-wal",
+]);
+
+function captureUnsealedCandidateDirectory(target) {
+  const code = "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID";
+  const directoryBefore = lstatBigInt(target, "directory", code);
+  let entries;
+  try {
+    entries = fs.readdirSync(target).sort();
+  } catch {
+    throw new GenerationPublicationError(code);
+  }
+  invariant(
+    entries.every((entry) => UNSEALED_CANDIDATE_ENTRIES.includes(entry)),
+    code,
+  );
+  const files = new Map();
+  for (const entry of entries) {
+    const metadata = lstatBigInt(path.join(target, entry), "file", code);
+    invariant(
+      metadata.nlink === 1n &&
+        metadata.size >= 0n &&
+        metadata.size <= BigInt(MAX_CANDIDATE_BYTES),
+      code,
+    );
+    files.set(entry, metadata);
+  }
+  const directoryAfter = lstatBigInt(target, "directory", code);
+  invariant(sameDirectoryIdentity(directoryBefore, directoryAfter), code);
+  return { directory: directoryAfter, files };
+}
+
+function assertSameUnsealedCandidateDirectory(left, right) {
+  invariant(
+    sameDirectoryIdentity(left.directory, right.directory) &&
+      left.files.size === right.files.size &&
+      [...left.files].every(([entry, metadata]) => {
+        const current = right.files.get(entry);
+        return current && sameFileIdentity(metadata, current);
+      }),
+    "GENERATION_CANDIDATE_BUILD_CHANGED",
+  );
+}
+
+function removeUnsealedCandidateDirectory(target) {
+  const snapshot = captureUnsealedCandidateDirectory(target);
+  try {
+    for (const entry of [...snapshot.files.keys()].sort().reverse()) {
+      fs.unlinkSync(path.join(target, entry));
+    }
+    fs.rmdirSync(target);
+  } catch (error) {
+    if (error instanceof GenerationPublicationError) throw error;
+    throw new GenerationPublicationError("GENERATION_CANDIDATE_DISCARD_FAILED");
+  }
+}
+
+export function recoverUnsealedGenerationCandidateBuild(options) {
+  invariant(
+    isRecord(options) &&
+      hasExactKeys(options, ["operationId", "workspaceRoot"]),
+    "GENERATION_CANDIDATE_BUILD_OPTIONS_INVALID",
+  );
+  const paths = getGenerationPreparationPaths(
+    options.workspaceRoot,
+    options.operationId,
+  );
+  invariant(
+    !lstatOptional(
+      paths.stagingCandidateDirectoryPath,
+      "directory",
+      "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+    ) &&
+      !lstatOptional(
+        paths.candidateGenerationDirectoryPath,
+        "directory",
+        "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+      ) &&
+      !lstatOptional(
+        paths.verifiedRecordPath,
+        "file",
+        "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+      ) &&
+      !lstatOptional(
+        paths.operationRecordPath,
+        "file",
+        "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+      ),
+    "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+  );
+  const building = lstatOptional(
+    paths.buildingCandidateDirectoryPath,
+    "directory",
+    "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+  );
+  const discarding = lstatOptional(
+    paths.discardingCandidateDirectoryPath,
+    "directory",
+    "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+  );
+  invariant(
+    !(building && discarding),
+    "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+  );
+  if (!building && !discarding) {
+    assertExactDirectory(
+      paths.operationDirectoryPath,
+      ["intent.json"],
+      "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+    );
+    return Object.freeze({ kind: "none", quarantinedFileCount: 0 });
+  }
+
+  const activePath = building
+    ? paths.buildingCandidateDirectoryPath
+    : paths.discardingCandidateDirectoryPath;
+  const activeName = building ? "candidate-building" : "candidate-discarding";
+  assertExactDirectory(
+    paths.operationDirectoryPath,
+    [activeName, "intent.json"].sort(),
+    "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+  );
+  const initial = captureUnsealedCandidateDirectory(activePath);
+  const quarantinedFileCount = initial.files.size;
+  if (building) {
+    try {
+      fs.renameSync(
+        paths.buildingCandidateDirectoryPath,
+        paths.discardingCandidateDirectoryPath,
+      );
+    } catch {
+      throw new GenerationPublicationError(
+        "GENERATION_CANDIDATE_QUARANTINE_FAILED",
+      );
+    }
+    invariant(
+      !lstatOptional(
+        paths.buildingCandidateDirectoryPath,
+        "directory",
+        "GENERATION_CANDIDATE_QUARANTINE_FAILED",
+      ),
+      "GENERATION_CANDIDATE_QUARANTINE_FAILED",
+    );
+    const quarantined = captureUnsealedCandidateDirectory(
+      paths.discardingCandidateDirectoryPath,
+    );
+    assertSameUnsealedCandidateDirectory(initial, quarantined);
+  }
+  removeUnsealedCandidateDirectory(paths.discardingCandidateDirectoryPath);
+  assertExactDirectory(
+    paths.operationDirectoryPath,
+    ["intent.json"],
+    "GENERATION_CANDIDATE_DISCARD_FAILED",
+  );
+  return Object.freeze({ kind: "discarded", quarantinedFileCount });
+}
+
 function assertClosedPreparationLayout(paths, phase) {
   const candidateDirectoryPath =
     phase === "staged"
@@ -473,11 +697,7 @@ function assertClosedPreparationLayout(paths, phase) {
     ],
     [
       paths.sourceGenerationDirectoryPath,
-      assertExactDirectory(
-        paths.sourceGenerationDirectoryPath,
-        ["workspace.db"],
-        "GENERATION_PREPARATION_LAYOUT_INVALID",
-      ),
+      assertSourceGenerationDirectory(paths),
     ],
     [
       paths.recoveryRoot,
@@ -581,7 +801,13 @@ function verifyIdentity(verifyGeneration, context) {
   );
 }
 
-function assertRecordAdvanceEntries(paths, nextRecordKind, candidatePresent) {
+function assertRecordAdvanceEntries(
+  paths,
+  nextRecordKind,
+  candidatePresent,
+  buildingPresent,
+  discardingPresent,
+) {
   const currentBasename = {
     intent: "intent.json",
     "candidate-verified": "candidate-verified.json",
@@ -590,6 +816,8 @@ function assertRecordAdvanceEntries(paths, nextRecordKind, candidatePresent) {
   const stableEntries = [];
   if (nextRecordKind !== "intent") stableEntries.push("intent.json");
   if (candidatePresent) stableEntries.push("candidate");
+  if (buildingPresent) stableEntries.push("candidate-building");
+  if (discardingPresent) stableEntries.push("candidate-discarding");
   if (nextRecordKind === "operation") {
     stableEntries.push("candidate-verified.json");
   }
@@ -631,6 +859,13 @@ function assertRecordAdvanceEntries(paths, nextRecordKind, candidatePresent) {
     "GENERATION_PREPARATION_CANDIDATE_INVALID",
   );
   invariant(
+    !(buildingPresent && discardingPresent) &&
+      !(candidatePresent && (buildingPresent || discardingPresent)) &&
+      (!(buildingPresent || discardingPresent) ||
+        nextRecordKind === "candidate-verified"),
+    "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+  );
+  invariant(
     nextRecordKind !== "candidate-verified" ||
       candidatePresent ||
       currentEntries.length === 0,
@@ -645,11 +880,19 @@ function assertRecordAdvanceEntries(paths, nextRecordKind, candidatePresent) {
   return { expectedEntries, metadata };
 }
 
-function captureRecordAdvanceLayout(paths, nextRecordKind, candidatePresent) {
+function captureRecordAdvanceLayout(
+  paths,
+  nextRecordKind,
+  candidatePresent,
+  buildingPresent,
+  discardingPresent,
+) {
   const operation = assertRecordAdvanceEntries(
     paths,
     nextRecordKind,
     candidatePresent,
+    buildingPresent,
+    discardingPresent,
   );
   const layout = new Map([
     [
@@ -670,11 +913,7 @@ function captureRecordAdvanceLayout(paths, nextRecordKind, candidatePresent) {
     ],
     [
       paths.sourceGenerationDirectoryPath,
-      assertExactDirectory(
-        paths.sourceGenerationDirectoryPath,
-        ["workspace.db"],
-        "GENERATION_PREPARATION_LAYOUT_INVALID",
-      ),
+      assertSourceGenerationDirectory(paths),
     ],
     [
       paths.recoveryRoot,
@@ -696,7 +935,17 @@ function captureRecordAdvanceLayout(paths, nextRecordKind, candidatePresent) {
       ),
     );
   }
-  return layout;
+  const unsealedPath = buildingPresent
+    ? paths.buildingCandidateDirectoryPath
+    : discardingPresent
+      ? paths.discardingCandidateDirectoryPath
+      : undefined;
+  return {
+    directories: layout,
+    unsealed: unsealedPath
+      ? captureUnsealedCandidateDirectory(unsealedPath)
+      : undefined,
+  };
 }
 
 export function verifyGenerationPreparationRecordPrerequisites(options) {
@@ -745,11 +994,7 @@ export function verifyGenerationPreparationRecordPrerequisites(options) {
     [GENERATION_PUBLICATION_IDS.sourceGenerationId],
     "GENERATION_PREPARATION_LAYOUT_INVALID",
   );
-  assertExactDirectory(
-    paths.sourceGenerationDirectoryPath,
-    ["workspace.db"],
-    "GENERATION_PREPARATION_LAYOUT_INVALID",
-  );
+  assertSourceGenerationDirectory(paths);
   assertExactDirectory(
     paths.recoveryRoot,
     [`operation-${GENERATION_PUBLICATION_IDS.operationId}`],
@@ -766,7 +1011,7 @@ export function verifyGenerationPreparationRecordPrerequisites(options) {
     MAX_CANDIDATE_BYTES,
     "GENERATION_DATABASE_INVALID",
   );
-  assertNoSidecars(paths.sourceDatabasePath);
+  assertSourceGenerationDirectory(paths);
   const fixture = createGenerationPublicationFixture(
     (() => {
       const sourceManifest = readCanonicalFile(
@@ -824,6 +1069,16 @@ export function verifyGenerationPreparationRecordPrerequisites(options) {
       "directory",
       "GENERATION_PREPARATION_CANDIDATE_INVALID",
     );
+    const buildingDirectory = lstatOptional(
+      paths.buildingCandidateDirectoryPath,
+      "directory",
+      "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+    );
+    const discardingDirectory = lstatOptional(
+      paths.discardingCandidateDirectoryPath,
+      "directory",
+      "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+    );
     invariant(
       !lstatOptional(
         paths.candidateGenerationDirectoryPath,
@@ -836,6 +1091,8 @@ export function verifyGenerationPreparationRecordPrerequisites(options) {
       paths,
       options.nextRecordKind,
       Boolean(candidateDirectory),
+      Boolean(buildingDirectory),
+      Boolean(discardingDirectory),
     );
     if (candidateDirectory) {
       candidate = digestBoundedRegularFile(
@@ -885,8 +1142,23 @@ export function verifyGenerationPreparationRecordPrerequisites(options) {
       paths,
       options.nextRecordKind,
       Boolean(candidateDirectory),
+      Boolean(buildingDirectory),
+      Boolean(discardingDirectory),
     );
-    assertSameClosedPreparationLayout(layout, layoutAfterVerification);
+    assertSameClosedPreparationLayout(
+      layout.directories,
+      layoutAfterVerification.directories,
+    );
+    invariant(
+      Boolean(layout.unsealed) === Boolean(layoutAfterVerification.unsealed),
+      "GENERATION_CANDIDATE_BUILD_CHANGED",
+    );
+    if (layout.unsealed && layoutAfterVerification.unsealed) {
+      assertSameUnsealedCandidateDirectory(
+        layout.unsealed,
+        layoutAfterVerification.unsealed,
+      );
+    }
     assertCanonicalFileUnchanged(
       paths.manifestPath,
       manifest,
@@ -947,6 +1219,8 @@ export function verifyGenerationPreparationRecordPrerequisites(options) {
       intent: intent?.value ?? null,
       intentDigest: intent?.digest ?? null,
       candidatePresent: Boolean(candidate),
+      candidateBuildPresent: Boolean(buildingDirectory),
+      candidateDiscardingPresent: Boolean(discardingDirectory),
       candidateDatabaseDigest: candidate?.digest ?? null,
       candidateDatabaseSize: candidate ? Number(candidate.metadata.size) : null,
       verifiedRecord: verified?.value ?? null,
@@ -993,7 +1267,7 @@ function loadPreparationContext({
     MAX_CANDIDATE_BYTES,
     "GENERATION_DATABASE_INVALID",
   );
-  assertNoSidecars(paths.sourceDatabasePath);
+  assertSourceGenerationDirectory(paths);
 
   const intent = readCanonicalFile(
     paths.intentPath,
@@ -1393,6 +1667,100 @@ export function assertGenerationPreparationFaultBoundaryRecord(value) {
     "wrapperDigest",
   ]) {
     assertDigest(value[key], "GENERATION_PREPARATION_BOUNDARY_INVALID");
+  }
+  return value;
+}
+
+export function createGenerationCandidateBuildFaultBoundaryRecord({
+  processId,
+  failpoint,
+  state,
+}) {
+  invariant(
+    Number.isSafeInteger(processId) &&
+      processId > 0 &&
+      GENERATION_CANDIDATE_BUILD_FAILPOINTS.includes(failpoint) &&
+      failpoint !== "none" &&
+      isRecord(state),
+    "GENERATION_CANDIDATE_BUILD_BOUNDARY_INVALID",
+  );
+  return deepFreeze(
+    assertGenerationCandidateBuildFaultBoundaryRecord({
+      type: CANDIDATE_BUILD_BOUNDARY_FORMAT,
+      processId,
+      failpoint,
+      workspaceId: state.workspaceId,
+      operationId: state.operationId,
+      activeGenerationId: state.activeGenerationId,
+      candidateGenerationId: state.candidateGenerationId,
+      candidateGenerationIdentityDigest:
+        state.candidateGenerationIdentityDigest,
+      sourceManifestDigest: state.sourceManifestDigest,
+      intentDigest: state.intentDigest,
+      wrapperDigest: state.wrapperDigest,
+      candidateBuildingPresent: state.candidateBuildingPresent,
+      candidateStagingPresent: state.candidateStagingPresent,
+      candidateGenerationPresent: state.candidateGenerationPresent,
+      migrationTransactionOpen: state.migrationTransactionOpen,
+      resultPublished: false,
+    }),
+  );
+}
+
+export function assertGenerationCandidateBuildFaultBoundaryRecord(value) {
+  invariant(
+    hasExactKeys(value, [
+      "activeGenerationId",
+      "candidateBuildingPresent",
+      "candidateGenerationId",
+      "candidateGenerationIdentityDigest",
+      "candidateGenerationPresent",
+      "candidateStagingPresent",
+      "failpoint",
+      "intentDigest",
+      "migrationTransactionOpen",
+      "operationId",
+      "processId",
+      "resultPublished",
+      "sourceManifestDigest",
+      "type",
+      "workspaceId",
+      "wrapperDigest",
+    ]) &&
+      value.type === CANDIDATE_BUILD_BOUNDARY_FORMAT &&
+      Number.isSafeInteger(value.processId) &&
+      value.processId > 0 &&
+      GENERATION_CANDIDATE_BUILD_FAILPOINTS.includes(value.failpoint) &&
+      value.failpoint !== "none" &&
+      typeof value.workspaceId === "string" &&
+      /^workspace-[a-z0-9-]{1,48}$/.test(value.workspaceId) &&
+      value.operationId === GENERATION_PUBLICATION_IDS.operationId &&
+      value.activeGenerationId ===
+        GENERATION_PUBLICATION_IDS.sourceGenerationId &&
+      value.candidateGenerationId ===
+        GENERATION_PUBLICATION_IDS.candidateGenerationId &&
+      typeof value.candidateBuildingPresent === "boolean" &&
+      typeof value.candidateStagingPresent === "boolean" &&
+      typeof value.candidateGenerationPresent === "boolean" &&
+      typeof value.migrationTransactionOpen === "boolean" &&
+      value.resultPublished === false &&
+      (value.failpoint === "after-verified-candidate-renamed"
+        ? !value.candidateBuildingPresent && value.candidateStagingPresent
+        : value.candidateBuildingPresent && !value.candidateStagingPresent) &&
+      !value.candidateGenerationPresent &&
+      (value.failpoint === "during-sqlcipher-export" ||
+      value.failpoint === "during-synthetic-migration"
+        ? value.migrationTransactionOpen
+        : !value.migrationTransactionOpen),
+    "GENERATION_CANDIDATE_BUILD_BOUNDARY_INVALID",
+  );
+  for (const key of [
+    "candidateGenerationIdentityDigest",
+    "intentDigest",
+    "sourceManifestDigest",
+    "wrapperDigest",
+  ]) {
+    assertDigest(value[key], "GENERATION_CANDIDATE_BUILD_BOUNDARY_INVALID");
   }
   return value;
 }

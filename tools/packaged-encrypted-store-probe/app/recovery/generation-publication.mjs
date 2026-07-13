@@ -516,6 +516,25 @@ function lstatOptionalFile(target, code) {
   }
 }
 
+export function assertRecoverableGenerationSourceSidecars(
+  databasePath,
+  code = "GENERATION_DATABASE_SIDECAR_INVALID",
+) {
+  invariant(
+    lstatOptionalFile(`${databasePath}-journal`, code) === undefined,
+    code,
+  );
+  for (const suffix of ["-wal", "-shm"]) {
+    const metadata = lstatOptionalFile(`${databasePath}${suffix}`, code);
+    if (!metadata) continue;
+    invariant(
+      metadata.nlink === 1 &&
+        (suffix === "-wal" ? metadata.size === 0 : metadata.size <= 128 * 1024),
+      code,
+    );
+  }
+}
+
 function readCanonicalFile(target, validator, code) {
   const metadata = lstatRequired(target, "file", code);
   invariant(metadata.size > 0 && metadata.size <= MAX_JSON_BYTES, code);
@@ -589,19 +608,15 @@ function verifyRequiredLayout(paths) {
     "file",
     "GENERATION_DATABASE_INVALID",
   );
-  for (const databasePath of [
-    paths.sourceDatabasePath,
-    paths.candidateDatabasePath,
-  ]) {
-    for (const suffix of ["-wal", "-shm", "-journal"]) {
-      invariant(
-        lstatOptionalFile(
-          `${databasePath}${suffix}`,
-          "GENERATION_DATABASE_SIDECAR_INVALID",
-        ) === undefined,
+  assertRecoverableGenerationSourceSidecars(paths.sourceDatabasePath);
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    invariant(
+      lstatOptionalFile(
+        `${paths.candidateDatabasePath}${suffix}`,
         "GENERATION_DATABASE_SIDECAR_INVALID",
-      );
-    }
+      ) === undefined,
+      "GENERATION_DATABASE_SIDECAR_INVALID",
+    );
   }
 }
 

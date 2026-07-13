@@ -5,13 +5,18 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  GENERATION_CANDIDATE_BUILD_FAILPOINTS,
+  GENERATION_CANDIDATE_BUILD_SCENARIO,
   GENERATION_PREPARATION_FAILPOINTS,
+  assertGenerationCandidateBuildFaultBoundaryRecord,
   assertGenerationPreparationFaultBoundaryRecord,
+  createGenerationCandidateBuildFaultBoundaryRecord,
   createGenerationCandidateVerifiedRecord,
   createGenerationPreparationFaultBoundaryRecord,
   createGenerationPreparationIntent,
   getGenerationPreparationPaths,
   handoffPreparedGeneration,
+  recoverUnsealedGenerationCandidateBuild,
   verifyGenerationPreparationRecordPrerequisites,
   verifyGenerationPreparationState,
   writeGenerationCandidateVerifiedRecord,
@@ -161,11 +166,33 @@ function stopAt(workspace, expectedFailpoint) {
   );
 }
 
+function createUnsealedWorkspace(slug) {
+  const workspace = createPreparedWorkspace(slug);
+  fs.rmSync(workspace.paths.operationRecordPath);
+  fs.rmSync(workspace.paths.verifiedRecordPath);
+  fs.rmSync(workspace.paths.stagingCandidateDirectoryPath, {
+    recursive: true,
+  });
+  return workspace;
+}
+
 try {
   assert.deepEqual(GENERATION_PREPARATION_FAILPOINTS, [
     "none",
     "after-candidate-read-only-verified",
     "after-candidate-moved-into-generations",
+  ]);
+  assert.equal(
+    GENERATION_CANDIDATE_BUILD_SCENARIO,
+    "generation-candidate-build-recovery",
+  );
+  assert.deepEqual(GENERATION_CANDIDATE_BUILD_FAILPOINTS, [
+    "none",
+    "during-sqlcipher-export",
+    "during-synthetic-migration",
+    "after-synthetic-migration-commit",
+    "after-candidate-checkpointed",
+    "after-verified-candidate-renamed",
   ]);
 
   const advancing = createPreparedWorkspace("record-advance");
@@ -230,6 +257,220 @@ try {
   assert.equal(
     verifyGenerationPreparationState(advancing.options).phase,
     "staged",
+  );
+
+  const abandonedBuild = createUnsealedWorkspace("abandoned-build");
+  fs.mkdirSync(abandonedBuild.paths.buildingCandidateDirectoryPath);
+  for (const [suffix, contents] of [
+    ["", Buffer.alloc(0)],
+    ["-journal", Buffer.from("encrypted-journal")],
+    ["-shm", Buffer.from("bounded-shm")],
+    ["-wal", Buffer.from("encrypted-wal")],
+  ]) {
+    fs.writeFileSync(
+      `${abandonedBuild.paths.buildingDatabasePath}${suffix}`,
+      contents,
+    );
+    contents.fill(0);
+  }
+  const abandonedState = verifyGenerationPreparationRecordPrerequisites({
+    workspaceRoot: abandonedBuild.options.workspaceRoot,
+    operationId: abandonedBuild.options.operationId,
+    inputFingerprint: abandonedBuild.options.inputFingerprint,
+    verifyGeneration: abandonedBuild.options.verifyGeneration,
+    nextRecordKind: "candidate-verified",
+  });
+  assert.equal(abandonedState.candidateBuildPresent, true);
+  assert.equal(abandonedState.candidateDiscardingPresent, false);
+  assert.deepEqual(
+    recoverUnsealedGenerationCandidateBuild({
+      workspaceRoot: abandonedBuild.options.workspaceRoot,
+      operationId: abandonedBuild.options.operationId,
+    }),
+    { kind: "discarded", quarantinedFileCount: 4 },
+  );
+  assert.deepEqual(
+    fs.readdirSync(abandonedBuild.paths.operationDirectoryPath),
+    ["intent.json"],
+  );
+
+  const interruptedDiscard = createUnsealedWorkspace("interrupted-discard");
+  fs.mkdirSync(interruptedDiscard.paths.discardingCandidateDirectoryPath);
+  fs.writeFileSync(interruptedDiscard.paths.discardingDatabasePath, "partial");
+  assert.deepEqual(
+    recoverUnsealedGenerationCandidateBuild({
+      workspaceRoot: interruptedDiscard.options.workspaceRoot,
+      operationId: interruptedDiscard.options.operationId,
+    }),
+    { kind: "discarded", quarantinedFileCount: 1 },
+  );
+  assert.equal(
+    fs.existsSync(interruptedDiscard.paths.discardingCandidateDirectoryPath),
+    false,
+  );
+
+  const ambiguousDiscard = createUnsealedWorkspace("ambiguous-discard");
+  fs.mkdirSync(ambiguousDiscard.paths.buildingCandidateDirectoryPath);
+  fs.mkdirSync(ambiguousDiscard.paths.discardingCandidateDirectoryPath);
+  const ambiguousSnapshot = snapshotTree(ambiguousDiscard.workspaceRoot);
+  expectCode(
+    () =>
+      recoverUnsealedGenerationCandidateBuild({
+        workspaceRoot: ambiguousDiscard.options.workspaceRoot,
+        operationId: ambiguousDiscard.options.operationId,
+      }),
+    "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+  );
+  assert.equal(snapshotTree(ambiguousDiscard.workspaceRoot), ambiguousSnapshot);
+
+  const foreignBuildEntry = createUnsealedWorkspace("foreign-build-entry");
+  fs.mkdirSync(foreignBuildEntry.paths.buildingCandidateDirectoryPath);
+  fs.writeFileSync(
+    path.join(
+      foreignBuildEntry.paths.buildingCandidateDirectoryPath,
+      "foreign.tmp",
+    ),
+    "foreign",
+  );
+  const foreignSnapshot = snapshotTree(foreignBuildEntry.workspaceRoot);
+  expectCode(
+    () =>
+      recoverUnsealedGenerationCandidateBuild({
+        workspaceRoot: foreignBuildEntry.options.workspaceRoot,
+        operationId: foreignBuildEntry.options.operationId,
+      }),
+    "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+  );
+  assert.equal(snapshotTree(foreignBuildEntry.workspaceRoot), foreignSnapshot);
+
+  const symlinkBuildEntry = createUnsealedWorkspace("symlink-build-entry");
+  fs.mkdirSync(symlinkBuildEntry.paths.buildingCandidateDirectoryPath);
+  fs.symlinkSync(
+    symlinkBuildEntry.paths.sourceDatabasePath,
+    symlinkBuildEntry.paths.buildingDatabasePath,
+  );
+  const symlinkBuildSnapshot = snapshotTree(symlinkBuildEntry.workspaceRoot);
+  expectCode(
+    () =>
+      recoverUnsealedGenerationCandidateBuild({
+        workspaceRoot: symlinkBuildEntry.options.workspaceRoot,
+        operationId: symlinkBuildEntry.options.operationId,
+      }),
+    "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+  );
+  assert.equal(
+    snapshotTree(symlinkBuildEntry.workspaceRoot),
+    symlinkBuildSnapshot,
+  );
+
+  const hardlinkBuildEntry = createUnsealedWorkspace("hardlink-build-entry");
+  fs.mkdirSync(hardlinkBuildEntry.paths.buildingCandidateDirectoryPath);
+  fs.linkSync(
+    hardlinkBuildEntry.paths.sourceDatabasePath,
+    hardlinkBuildEntry.paths.buildingDatabasePath,
+  );
+  const hardlinkBuildSnapshot = snapshotTree(hardlinkBuildEntry.workspaceRoot);
+  expectCode(
+    () =>
+      recoverUnsealedGenerationCandidateBuild({
+        workspaceRoot: hardlinkBuildEntry.options.workspaceRoot,
+        operationId: hardlinkBuildEntry.options.operationId,
+      }),
+    "GENERATION_CANDIDATE_BUILD_LAYOUT_INVALID",
+  );
+  assert.equal(
+    snapshotTree(hardlinkBuildEntry.workspaceRoot),
+    hardlinkBuildSnapshot,
+  );
+
+  const buildBoundaryState = {
+    workspaceId: abandonedBuild.intent.workspaceId,
+    operationId: GENERATION_PUBLICATION_IDS.operationId,
+    activeGenerationId: GENERATION_PUBLICATION_IDS.sourceGenerationId,
+    candidateGenerationId: GENERATION_PUBLICATION_IDS.candidateGenerationId,
+    candidateGenerationIdentityDigest:
+      abandonedBuild.publication.candidateGenerationIdentityDigest,
+    sourceManifestDigest: digestGenerationValue(
+      abandonedBuild.publication.sourceManifest,
+    ),
+    intentDigest: digestGenerationValue(abandonedBuild.intent),
+    wrapperDigest: abandonedBuild.intent.wrapperDigest,
+    candidateBuildingPresent: true,
+    candidateStagingPresent: false,
+    candidateGenerationPresent: false,
+    migrationTransactionOpen: true,
+  };
+  const buildBoundary = createGenerationCandidateBuildFaultBoundaryRecord({
+    processId: 42,
+    failpoint: "during-sqlcipher-export",
+    state: buildBoundaryState,
+  });
+  assert.equal(
+    assertGenerationCandidateBuildFaultBoundaryRecord(buildBoundary),
+    buildBoundary,
+  );
+  expectCode(
+    () =>
+      assertGenerationCandidateBuildFaultBoundaryRecord({
+        ...buildBoundary,
+        candidateStagingPresent: true,
+      }),
+    "GENERATION_CANDIDATE_BUILD_BOUNDARY_INVALID",
+  );
+
+  const sourceReadSidecars = createUnsealedWorkspace("source-read-sidecars");
+  fs.writeFileSync(`${sourceReadSidecars.paths.sourceDatabasePath}-wal`, "");
+  fs.writeFileSync(
+    `${sourceReadSidecars.paths.sourceDatabasePath}-shm`,
+    Buffer.alloc(32 * 1024),
+  );
+  assert.equal(
+    verifyGenerationPreparationRecordPrerequisites({
+      workspaceRoot: sourceReadSidecars.options.workspaceRoot,
+      operationId: sourceReadSidecars.options.operationId,
+      inputFingerprint: sourceReadSidecars.options.inputFingerprint,
+      verifyGeneration: sourceReadSidecars.options.verifyGeneration,
+      nextRecordKind: "candidate-verified",
+    }).candidatePresent,
+    false,
+  );
+
+  const sourceWalFrames = createUnsealedWorkspace("source-wal-frames");
+  fs.writeFileSync(
+    `${sourceWalFrames.paths.sourceDatabasePath}-wal`,
+    "nonzero-wal",
+  );
+  expectCode(
+    () =>
+      verifyGenerationPreparationRecordPrerequisites({
+        workspaceRoot: sourceWalFrames.options.workspaceRoot,
+        operationId: sourceWalFrames.options.operationId,
+        inputFingerprint: sourceWalFrames.options.inputFingerprint,
+        verifyGeneration: sourceWalFrames.options.verifyGeneration,
+        nextRecordKind: "candidate-verified",
+      }),
+    "GENERATION_PREPARATION_SOURCE_SIDECAR_INVALID",
+  );
+
+  const sourceHardlinkSidecar = createUnsealedWorkspace(
+    "source-hardlink-sidecar",
+  );
+  const outsideSourceWal = path.join(root, "outside-source-wal");
+  fs.writeFileSync(outsideSourceWal, "");
+  fs.linkSync(
+    outsideSourceWal,
+    `${sourceHardlinkSidecar.paths.sourceDatabasePath}-wal`,
+  );
+  expectCode(
+    () =>
+      verifyGenerationPreparationRecordPrerequisites({
+        workspaceRoot: sourceHardlinkSidecar.options.workspaceRoot,
+        operationId: sourceHardlinkSidecar.options.operationId,
+        inputFingerprint: sourceHardlinkSidecar.options.inputFingerprint,
+        verifyGeneration: sourceHardlinkSidecar.options.verifyGeneration,
+        nextRecordKind: "candidate-verified",
+      }),
+    "GENERATION_PREPARATION_SOURCE_SIDECAR_INVALID",
   );
 
   const candidateBeforeIntent = createPreparedWorkspace(
@@ -551,6 +792,12 @@ try {
       replayWithoutChurnVerified: true,
       conflictWithoutMutationVerified: true,
       recordAdvanceOrderingVerified: true,
+      unsealedCandidateQuarantineVerified: true,
+      interruptedDiscardRecoveryVerified: true,
+      ambiguousCandidateBuildLayoutsRejected: true,
+      candidateBuildBoundaryValidationVerified: true,
+      boundedSourceReadSidecarsAccepted: true,
+      nonzeroSourceWalRejected: true,
       partialVerifierCallbackMutationRejected: true,
       malformedMissingCorruptSymlinkRejected: true,
       processCrashScopeOnly: true,

@@ -4,8 +4,10 @@ import { fileURLToPath } from "node:url";
 
 import {
   forceCrashPackagedProcessAtBoundary,
+  guardCapturedRootTermination,
   launchManagedPackagedProcess,
   retryTerminateWindowsProcessIdentities,
+  selectWindowsProcessTree,
   snapshotWindowsProcessTree,
   terminatePackagedProcessTree,
 } from "./packaged-process-harness.mjs";
@@ -374,6 +376,163 @@ if (childArgument) {
     diagnosticFault.stderr.fill(0);
   }
 
+  let delayedBeforeKillCompleted = false;
+  let releaseBeforeKill;
+  const beforeKillRelease = new Promise((resolve) => {
+    releaseBeforeKill = resolve;
+  });
+  let resolveBeforeKillCompletion;
+  const beforeKillCompletion = new Promise((resolve) => {
+    resolveBeforeKillCompletion = resolve;
+  });
+  let preKillExitError;
+  try {
+    await forceCrashPackagedProcessAtBoundary({
+      executable: process.execPath,
+      args: [filename, "--harness-child=fault"],
+      errorContext: "fault-exit-during-pre-kill-test",
+      timeoutMs: 10_000,
+      parseBoundary: parseSimpleFaultBoundary,
+      beforeKill: async (_boundary, processId) => {
+        ensure(
+          process.kill(processId, "SIGTERM") === true,
+          "TEST_PRE_KILL_EXIT_TRIGGER_FAILED",
+        );
+        await beforeKillRelease;
+        delayedBeforeKillCompleted = true;
+        resolveBeforeKillCompletion();
+        return { boundaryObserved: true };
+      },
+    });
+  } catch (error) {
+    preKillExitError = error;
+  } finally {
+    releaseBeforeKill();
+  }
+  ensure(
+    preKillExitError?.message === "FAULT_PROCESS_EXITED_DURING_PRE_KILL",
+    "TEST_PRE_KILL_EXIT_GUARD_INVALID",
+  );
+  await beforeKillCompletion;
+  ensure(delayedBeforeKillCompleted, "TEST_PRE_KILL_CALLBACK_STALLED");
+
+  let identityChangedTerminationCalls = 0;
+  const capturedWindowsRoot = {
+    pid: 4242,
+    creationDate: "2026-01-01T00:00:00.0000000Z",
+  };
+  const capturedPosixRoot = {
+    pid: 4242,
+    pgid: 4242,
+    uid: 501,
+    startedAt: "Thu Jan  1 00:00:00 2026",
+  };
+  for (const [platform, capturedIdentity, currentIdentity] of [
+    [
+      "win32",
+      capturedWindowsRoot,
+      { ...capturedWindowsRoot, creationDate: "2026-01-01T00:00:01.0000000Z" },
+    ],
+    [
+      "darwin",
+      capturedPosixRoot,
+      { ...capturedPosixRoot, startedAt: "Thu Jan  1 00:00:01 2026" },
+    ],
+  ]) {
+    ensure(
+      guardCapturedRootTermination({
+        platform,
+        capturedIdentity,
+        currentIdentity,
+        terminate: () => {
+          identityChangedTerminationCalls += 1;
+          return true;
+        },
+      }) === false,
+      "TEST_CHANGED_ROOT_IDENTITY_ACCEPTED",
+    );
+  }
+  let matchingCapturedIdentity;
+  ensure(
+    guardCapturedRootTermination({
+      platform: "win32",
+      capturedIdentity: capturedWindowsRoot,
+      currentIdentity: { ...capturedWindowsRoot },
+      terminate: (capturedIdentity) => {
+        matchingCapturedIdentity = capturedIdentity;
+        return true;
+      },
+    }) === true &&
+      matchingCapturedIdentity === capturedWindowsRoot &&
+      identityChangedTerminationCalls === 0,
+    "TEST_CAPTURED_ROOT_TERMINATION_GUARD_INVALID",
+  );
+
+  const selectedWindowsTree = selectWindowsProcessTree(
+    [
+      {
+        pid: 4242,
+        parentPid: 7,
+        creationDate: "2026-01-01T00:00:10.0000000Z",
+      },
+      {
+        pid: 4243,
+        parentPid: 4242,
+        creationDate: "2026-01-01T00:00:10.0000000Z",
+      },
+      {
+        pid: 4244,
+        parentPid: 4243,
+        creationDate: "2026-01-01T00:00:11.0000000Z",
+      },
+      {
+        pid: 4000,
+        parentPid: 4242,
+        creationDate: "2026-01-01T00:00:09.0000000Z",
+      },
+      {
+        pid: 4001,
+        parentPid: 4000,
+        creationDate: "2026-01-01T00:00:12.0000000Z",
+      },
+      {
+        pid: 5000,
+        parentPid: 8,
+        creationDate: "2026-01-01T00:00:12.0000000Z",
+      },
+    ],
+    4242,
+  );
+  ensure(
+    selectedWindowsTree.map((identity) => identity.pid).join(",") ===
+      "4242,4243,4244",
+    "TEST_WINDOWS_STALE_PARENT_ACCEPTED",
+  );
+  let invalidWindowsRowsError;
+  try {
+    selectWindowsProcessTree(
+      [
+        {
+          pid: 4242,
+          parentPid: 7,
+          creationDate: "2026-01-01T00:00:10.0000000Z",
+        },
+        {
+          pid: 4242,
+          parentPid: 8,
+          creationDate: "2026-01-01T00:00:11.0000000Z",
+        },
+      ],
+      4242,
+    );
+  } catch (error) {
+    invalidWindowsRowsError = error;
+  }
+  ensure(
+    invalidWindowsRowsError?.message === "WINDOWS_PROCESS_ROWS_INVALID",
+    "TEST_WINDOWS_DUPLICATE_PID_ACCEPTED",
+  );
+
   let duplicateError;
   try {
     await forceCrashPackagedProcessAtBoundary({
@@ -626,6 +785,9 @@ if (childArgument) {
       stdoutProtocolScanner: true,
       detachedProcessGroupRejected: process.platform !== "win32",
       postKillWatchdog: postKillWatchdogVerified,
+      preKillExitGuard: true,
+      identityChangeTerminationGuard: true,
+      windowsLineageGuard: true,
       windowsIdentityGuard: windowsIdentityGuardVerified,
       windowsIdentityRetry: windowsIdentityRetryVerified,
     })}\n`,

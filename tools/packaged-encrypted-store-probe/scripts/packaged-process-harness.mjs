@@ -96,7 +96,7 @@ function parseLastProgress(stderr, mode, processId, protocol) {
 
 export function terminatePackagedProcessTree(
   child,
-  { windowsRootIdentity } = {},
+  { windowsProcessIdentities, windowsRootIdentity } = {},
 ) {
   if (!child.pid) return false;
   if (process.platform === "win32") {
@@ -104,11 +104,40 @@ export function terminatePackagedProcessTree(
       child.exitCode !== null ||
       child.signalCode !== null ||
       !isWindowsProcessIdentity(windowsRootIdentity) ||
-      windowsRootIdentity.pid !== child.pid
+      windowsRootIdentity.pid !== child.pid ||
+      (windowsProcessIdentities !== undefined &&
+        (!Array.isArray(windowsProcessIdentities) ||
+          !windowsProcessIdentities.some(
+            (identity) =>
+              identity?.pid === windowsRootIdentity.pid &&
+              identity?.creationDate === windowsRootIdentity.creationDate,
+          )))
     ) {
       return false;
     }
-    return terminateWindowsProcessTree(windowsRootIdentity);
+    const identities = windowsProcessIdentities ?? [windowsRootIdentity];
+    let matchingPids;
+    try {
+      matchingPids = matchingWindowsProcessIdentities(identities);
+    } catch {
+      return false;
+    }
+    if (!matchingPids.includes(windowsRootIdentity.pid)) return false;
+    const matchingIdentities = identities.filter((identity) =>
+      matchingPids.includes(identity.pid),
+    );
+    const rootLast = [
+      ...matchingIdentities.filter(
+        (identity) => identity.pid !== windowsRootIdentity.pid,
+      ),
+      windowsRootIdentity,
+    ];
+    try {
+      retryTerminateWindowsProcessIdentities(rootLast);
+      return true;
+    } catch {
+      return false;
+    }
   }
   try {
     process.kill(-child.pid, "SIGKILL");
@@ -167,6 +196,7 @@ export async function launchManagedPackagedProcess({
     let mainExitSignal;
     let providerBootstrapMessageCount = 0;
     let providerBootstrapCompleted = !providerChannel;
+    let windowsFailureProcessIdentities = [];
     let windowsFailureRootIdentity;
     let windowsTerminationAttempted = false;
 
@@ -233,10 +263,14 @@ export async function launchManagedPackagedProcess({
         child.signalCode === null
       ) {
         try {
-          windowsFailureRootIdentity = snapshotWindowsProcessTree(
+          windowsFailureProcessIdentities = snapshotWindowsProcessTree(
             child.pid,
-          ).find((identity) => identity.pid === child.pid);
+          );
+          windowsFailureRootIdentity = windowsFailureProcessIdentities.find(
+            (identity) => identity.pid === child.pid,
+          );
         } catch {
+          windowsFailureProcessIdentities = [];
           windowsFailureRootIdentity = undefined;
         }
       }
@@ -260,6 +294,7 @@ export async function launchManagedPackagedProcess({
         ) {
           windowsTerminationAttempted = true;
           terminatePackagedProcessTree(child, {
+            windowsProcessIdentities: windowsFailureProcessIdentities,
             windowsRootIdentity: windowsFailureRootIdentity,
           });
         }
@@ -417,39 +452,120 @@ function isWindowsProcessIdentity(value) {
     value.pid > 0 &&
     value.pid <= 0x7fffffff &&
     typeof value.creationDate === "string" &&
-    /^[\x20-\x7e]{1,64}$/.test(value.creationDate)
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$/.test(value.creationDate)
   );
+}
+
+function isWindowsProcessRow(value) {
+  return (
+    hasExactKeys(value, ["creationDate", "parentPid", "pid"]) &&
+    isWindowsProcessIdentity({
+      pid: value.pid,
+      creationDate: value.creationDate,
+    }) &&
+    Number.isSafeInteger(value.parentPid) &&
+    value.parentPid >= 0 &&
+    value.parentPid <= 0x7fffffff
+  );
+}
+
+export function selectWindowsProcessTree(rows, rootPid) {
+  if (
+    !Array.isArray(rows) ||
+    rows.length === 0 ||
+    rows.length > 4096 ||
+    !rows.every(isWindowsProcessRow) ||
+    !Number.isSafeInteger(rootPid) ||
+    rootPid <= 0 ||
+    rootPid > 0x7fffffff ||
+    new Set(rows.map((row) => row.pid)).size !== rows.length
+  ) {
+    throw new Error("WINDOWS_PROCESS_ROWS_INVALID");
+  }
+  const byPid = new Map(rows.map((row) => [row.pid, row]));
+  if (!byPid.has(rootPid)) {
+    throw new Error("WINDOWS_PROCESS_ROOT_MISSING");
+  }
+  const pending = [rootPid];
+  const selected = new Set();
+  while (pending.length > 0) {
+    const currentPid = pending.shift();
+    if (selected.has(currentPid)) continue;
+    selected.add(currentPid);
+    const parent = byPid.get(currentPid);
+    for (const row of rows) {
+      if (
+        row.parentPid === currentPid &&
+        row.creationDate >= parent.creationDate
+      ) {
+        pending.push(row.pid);
+      }
+    }
+  }
+  if (selected.size > 64) {
+    throw new Error("WINDOWS_PROCESS_TREE_TOO_LARGE");
+  }
+  return Object.freeze(
+    [...selected]
+      .map((pid) => {
+        const row = byPid.get(pid);
+        return Object.freeze({
+          pid: row.pid,
+          creationDate: row.creationDate,
+        });
+      })
+      .sort((left, right) => left.pid - right.pid),
+  );
+}
+
+function capturedRootIdentityMatches(
+  platform,
+  capturedIdentity,
+  currentIdentity,
+) {
+  return Boolean(
+    capturedIdentity &&
+    currentIdentity &&
+    capturedIdentity.pid === currentIdentity.pid &&
+    (platform === "win32"
+      ? capturedIdentity.creationDate === currentIdentity.creationDate
+      : capturedIdentity.pgid === currentIdentity.pgid &&
+        capturedIdentity.uid === currentIdentity.uid &&
+        capturedIdentity.startedAt === currentIdentity.startedAt),
+  );
+}
+
+export function guardCapturedRootTermination({
+  platform = process.platform,
+  capturedIdentity,
+  currentIdentity,
+  terminate,
+}) {
+  if (typeof terminate !== "function") {
+    throw new Error("CAPTURED_ROOT_TERMINATION_GUARD_INVALID");
+  }
+  return capturedRootIdentityMatches(
+    platform,
+    capturedIdentity,
+    currentIdentity,
+  )
+    ? terminate(capturedIdentity) === true
+    : false;
 }
 
 export function snapshotWindowsProcessTree(rootPid) {
   const script = String.raw`
 $ErrorActionPreference = 'Stop'
-$root = [int]$env:CONSTELLATION_FAULT_ROOT_PID
 $rows = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, CreationDate)
-$byPid = @{}
-foreach ($row in $rows) { $byPid[[int]$row.ProcessId] = $row }
-if (-not $byPid.ContainsKey($root)) { exit 3 }
-$pending = [System.Collections.Generic.Queue[int]]::new()
-$seen = [System.Collections.Generic.HashSet[int]]::new()
-$pending.Enqueue($root)
-while ($pending.Count -gt 0) {
-  $current = $pending.Dequeue()
-  if (-not $seen.Add($current)) { continue }
-  foreach ($row in $rows) {
-    if ([int]$row.ParentProcessId -eq $current) {
-      $pending.Enqueue([int]$row.ProcessId)
-    }
-  }
-}
-$identities = foreach ($processId in $seen) {
-  $row = $byPid[$processId]
-  if ($null -eq $row) { continue }
+$snapshot = foreach ($row in $rows) {
+  if ([int]$row.ProcessId -le 0 -or $null -eq $row.CreationDate) { continue }
   [pscustomobject]@{
     pid = [int]$row.ProcessId
+    parentPid = [int]$row.ParentProcessId
     creationDate = ([datetime]$row.CreationDate).ToUniversalTime().ToString('o', [Globalization.CultureInfo]::InvariantCulture)
   }
 }
-ConvertTo-Json -InputObject @($identities | Sort-Object pid) -Compress
+ConvertTo-Json -InputObject @($snapshot | Sort-Object pid) -Compress
 `;
   const result = spawnSync(
     "powershell.exe",
@@ -457,12 +573,11 @@ ConvertTo-Json -InputObject @($identities | Sort-Object pid) -Compress
     {
       env: {
         ...process.env,
-        CONSTELLATION_FAULT_ROOT_PID: String(rootPid),
       },
       encoding: "utf8",
       windowsHide: true,
       timeout: 10_000,
-      maxBuffer: 64 * 1024,
+      maxBuffer: 512 * 1024,
     },
   );
   if (result.status !== 0 || result.signal !== null) {
@@ -474,53 +589,14 @@ ConvertTo-Json -InputObject @($identities | Sort-Object pid) -Compress
   } catch {
     throw new Error("WINDOWS_PROCESS_TREE_SNAPSHOT_INVALID");
   }
-  const identities = Array.isArray(value) ? value : [value];
-  if (
-    identities.length === 0 ||
-    identities.length > 64 ||
-    !identities.every(isWindowsProcessIdentity) ||
-    !identities.some((identity) => identity.pid === rootPid) ||
-    new Set(identities.map((identity) => identity.pid)).size !==
-      identities.length
-  ) {
+  try {
+    return selectWindowsProcessTree(
+      Array.isArray(value) ? value : [value],
+      rootPid,
+    );
+  } catch {
     throw new Error("WINDOWS_PROCESS_TREE_SNAPSHOT_INVALID");
   }
-  return Object.freeze(
-    identities
-      .map((identity) => Object.freeze({ ...identity }))
-      .sort((left, right) => left.pid - right.pid),
-  );
-}
-
-function terminateWindowsProcessTree(rootIdentity) {
-  const script = String.raw`
-$ErrorActionPreference = 'Stop'
-$root = [int]$env:CONSTELLATION_FAULT_ROOT_PID
-$expectedCreationDate = $env:CONSTELLATION_FAULT_ROOT_CREATION_DATE
-$rows = @(Get-CimInstance Win32_Process -Filter "ProcessId = $root")
-if ($rows.Count -ne 1) { exit 3 }
-$actualCreationDate = ([datetime]$rows[0].CreationDate).ToUniversalTime().ToString('o', [Globalization.CultureInfo]::InvariantCulture)
-if (-not [string]::Equals($actualCreationDate, $expectedCreationDate, [StringComparison]::Ordinal)) { exit 4 }
-$taskkill = Join-Path $env:SystemRoot 'System32\taskkill.exe'
-if (-not (Test-Path -LiteralPath $taskkill -PathType Leaf)) { exit 5 }
-& $taskkill /PID $root /T /F *> $null
-exit $LASTEXITCODE
-`;
-  const result = spawnSync(
-    "powershell.exe",
-    ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
-    {
-      env: {
-        ...process.env,
-        CONSTELLATION_FAULT_ROOT_PID: String(rootIdentity.pid),
-        CONSTELLATION_FAULT_ROOT_CREATION_DATE: rootIdentity.creationDate,
-      },
-      windowsHide: true,
-      stdio: "ignore",
-      timeout: 10_000,
-    },
-  );
-  return result.status === 0 && result.signal === null;
 }
 
 export function retryTerminateWindowsProcessIdentities(identities) {
@@ -553,7 +629,7 @@ foreach ($line in @($text -split [char]10)) {
   if ($rows.Count -ne 1) { exit 3 }
   $actualCreationDate = ([datetime]$rows[0].CreationDate).ToUniversalTime().ToString('o', [Globalization.CultureInfo]::InvariantCulture)
   if (-not [string]::Equals($actualCreationDate, $expectedCreationDate, [StringComparison]::Ordinal)) { continue }
-  & $taskkill /PID $processId /T /F *> $null
+  & $taskkill /PID $processId /F *> $null
 }
 exit 0
 `;
@@ -759,6 +835,10 @@ export async function forceCrashPackagedProcessAtBoundary({
     let failurePosixProcessGroup;
     let windowsFailureTerminationAttempted = false;
     let acceptedBoundaryLine;
+    let initialWindowsProcessIdentities = [];
+    let initialPosixProcessGroup;
+    let initialWindowsRootIdentity;
+    let initialPosixRootIdentity;
 
     const clearTimers = () => {
       if (timeoutTimer) clearTimeout(timeoutTimer);
@@ -784,6 +864,37 @@ export async function forceCrashPackagedProcessAtBoundary({
       clearOutput();
       reject(error);
     };
+    const terminateCapturedBoundaryProcessTree = () => {
+      try {
+        if (process.platform === "win32") {
+          const currentRootIdentity = snapshotWindowsProcessTree(
+            child.pid,
+          ).find((identity) => identity.pid === child.pid);
+          return guardCapturedRootTermination({
+            capturedIdentity: initialWindowsRootIdentity,
+            currentIdentity: currentRootIdentity,
+            terminate: (capturedIdentity) =>
+              terminatePackagedProcessTree(child, {
+                windowsProcessIdentities: initialWindowsProcessIdentities,
+                windowsRootIdentity: capturedIdentity,
+              }),
+          });
+        }
+        const currentRootIdentity = readPosixProcessSnapshot().find(
+          (identity) =>
+            identity.pid === child.pid &&
+            identity.pgid === child.pid &&
+            identity.uid === process.geteuid?.(),
+        );
+        return guardCapturedRootTermination({
+          capturedIdentity: initialPosixRootIdentity,
+          currentIdentity: currentRootIdentity,
+          terminate: () => terminatePackagedProcessTree(child),
+        });
+      } catch {
+        return false;
+      }
+    };
     const beginFailureCleanup = (error) => {
       if (settled || primaryError) return;
       primaryError = error;
@@ -792,25 +903,30 @@ export async function forceCrashPackagedProcessAtBoundary({
         timeoutTimer = undefined;
       }
       try {
-        failureWindowsProcessIdentities =
-          process.platform === "win32" &&
-          child.pid &&
-          !exitObserved &&
-          child.exitCode === null &&
-          child.signalCode === null
-            ? snapshotWindowsProcessTree(child.pid)
-            : [];
-        if (
-          process.platform !== "win32" &&
-          child.pid &&
-          !exitObserved &&
-          child.exitCode === null &&
-          child.signalCode === null
-        ) {
-          failurePosixProcessGroup = selectPosixProcessGroup(
-            readPosixProcessSnapshot(),
-            child.pid,
-          );
+        if (boundaryAccepted) {
+          failureWindowsProcessIdentities = initialWindowsProcessIdentities;
+          failurePosixProcessGroup = initialPosixProcessGroup;
+        } else {
+          failureWindowsProcessIdentities =
+            process.platform === "win32" &&
+            child.pid &&
+            !exitObserved &&
+            child.exitCode === null &&
+            child.signalCode === null
+              ? snapshotWindowsProcessTree(child.pid)
+              : [];
+          if (
+            process.platform !== "win32" &&
+            child.pid &&
+            !exitObserved &&
+            child.exitCode === null &&
+            child.signalCode === null
+          ) {
+            failurePosixProcessGroup = selectPosixProcessGroup(
+              readPosixProcessSnapshot(),
+              child.pid,
+            );
+          }
         }
       } catch {
         failureWindowsProcessIdentities = [];
@@ -819,17 +935,26 @@ export async function forceCrashPackagedProcessAtBoundary({
       if (process.platform === "win32") {
         if (!windowsFailureTerminationAttempted && !exitObserved) {
           windowsFailureTerminationAttempted = true;
-          const rootIdentity = failureWindowsProcessIdentities.find(
-            (identity) => identity.pid === child.pid,
-          );
-          if (rootIdentity) {
-            terminatePackagedProcessTree(child, {
-              windowsRootIdentity: rootIdentity,
-            });
+          if (boundaryAccepted) {
+            terminateCapturedBoundaryProcessTree();
+          } else {
+            const rootIdentity = failureWindowsProcessIdentities.find(
+              (identity) => identity.pid === child.pid,
+            );
+            if (rootIdentity) {
+              terminatePackagedProcessTree(child, {
+                windowsProcessIdentities: failureWindowsProcessIdentities,
+                windowsRootIdentity: rootIdentity,
+              });
+            }
           }
         }
       } else if (!exitObserved) {
-        terminatePackagedProcessTree(child);
+        if (boundaryAccepted) {
+          terminateCapturedBoundaryProcessTree();
+        } else {
+          terminatePackagedProcessTree(child);
+        }
       }
       terminationTimer = setTimeout(() => {
         child.stdout.destroy();
@@ -889,26 +1014,84 @@ export async function forceCrashPackagedProcessAtBoundary({
       }
 
       try {
+        if (process.platform === "win32") {
+          initialWindowsProcessIdentities = snapshotWindowsProcessTree(
+            child.pid,
+          );
+          initialWindowsRootIdentity = initialWindowsProcessIdentities.find(
+            (identity) => identity.pid === child.pid,
+          );
+          if (!initialWindowsRootIdentity) {
+            throw new Error("FAULT_PROCESS_ROOT_IDENTITY_MISSING");
+          }
+        } else {
+          const initialPosixSnapshot = readPosixProcessSnapshot();
+          initialPosixRootIdentity = initialPosixSnapshot.find(
+            (identity) =>
+              identity.pid === child.pid &&
+              identity.pgid === child.pid &&
+              identity.uid === process.geteuid?.(),
+          );
+          if (!initialPosixRootIdentity) {
+            throw new Error("FAULT_PROCESS_ROOT_IDENTITY_MISSING");
+          }
+          initialPosixProcessGroup = selectPosixProcessGroup(
+            initialPosixSnapshot,
+            child.pid,
+          );
+        }
         beforeKillEvidence = await beforeKill(boundary, child.pid);
+        if (settled || primaryError) return;
+        if (
+          exitObserved ||
+          child.exitCode !== null ||
+          child.signalCode !== null
+        ) {
+          throw new Error("FAULT_PROCESS_EXITED_DURING_PRE_KILL");
+        }
         if (process.platform === "win32") {
           windowsProcessIdentities = snapshotWindowsProcessTree(child.pid);
+          const currentRootIdentity = windowsProcessIdentities.find(
+            (identity) => identity.pid === child.pid,
+          );
+          if (
+            !capturedRootIdentityMatches(
+              process.platform,
+              initialWindowsRootIdentity,
+              currentRootIdentity,
+            )
+          ) {
+            throw new Error("FAULT_PROCESS_ROOT_IDENTITY_CHANGED");
+          }
           processIds = Object.freeze(
             windowsProcessIdentities.map((identity) => identity.pid),
           );
-          const rootIdentity = windowsProcessIdentities.find(
-            (identity) => identity.pid === child.pid,
-          );
+          if (settled || primaryError || exitObserved) return;
           forcedKillRequested = terminatePackagedProcessTree(child, {
-            windowsRootIdentity: rootIdentity,
+            windowsProcessIdentities,
+            windowsRootIdentity: initialWindowsRootIdentity,
           });
         } else {
           posixProcessGroup = selectPosixProcessGroup(
             readPosixProcessSnapshot(),
             child.pid,
           );
+          const currentRootIdentity = posixProcessGroup.find(
+            (identity) => identity.pid === child.pid,
+          );
+          if (
+            !capturedRootIdentityMatches(
+              process.platform,
+              initialPosixRootIdentity,
+              currentRootIdentity,
+            )
+          ) {
+            throw new Error("FAULT_PROCESS_ROOT_IDENTITY_CHANGED");
+          }
           processIds = Object.freeze(
             posixProcessGroup.map((identity) => identity.pid),
           );
+          if (settled || primaryError || exitObserved) return;
           forcedKillRequested = terminatePackagedProcessTree(child);
         }
         if (!forcedKillRequested) {
@@ -944,6 +1127,8 @@ export async function forceCrashPackagedProcessAtBoundary({
       exitSignal = signal;
       if (!boundaryAccepted && !primaryError) {
         beginFailureCleanup(new Error("FAULT_PROCESS_EXITED_BEFORE_BOUNDARY"));
+      } else if (!forcedKillRequested && !primaryError) {
+        beginFailureCleanup(new Error("FAULT_PROCESS_EXITED_DURING_PRE_KILL"));
       }
     });
     child.on("close", async (code, signal) => {

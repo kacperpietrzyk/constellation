@@ -310,6 +310,40 @@ try {
     );
   }
 
+  const sourceReadSidecars = createWorkspace("source-read-sidecars");
+  fs.writeFileSync(`${sourceReadSidecars.paths.sourceDatabasePath}-wal`, "");
+  fs.writeFileSync(
+    `${sourceReadSidecars.paths.sourceDatabasePath}-shm`,
+    Buffer.alloc(32 * 1024),
+  );
+  assert.equal(
+    verifyGenerationPublicationState(sourceReadSidecars.options)
+      .sourceGenerationPresent,
+    true,
+  );
+
+  const sourceWalFrames = createWorkspace("source-wal-frames");
+  fs.writeFileSync(
+    `${sourceWalFrames.paths.sourceDatabasePath}-wal`,
+    "committed-or-uncommitted-frames",
+  );
+  expectCode(
+    () => verifyGenerationPublicationState(sourceWalFrames.options),
+    "GENERATION_DATABASE_SIDECAR_INVALID",
+  );
+
+  const sourceHardlinkWal = createWorkspace("source-hardlink-wal");
+  const outsideSourceWal = path.join(sandboxRoot, "outside-source-wal");
+  fs.writeFileSync(outsideSourceWal, "");
+  fs.linkSync(
+    outsideSourceWal,
+    `${sourceHardlinkWal.paths.sourceDatabasePath}-wal`,
+  );
+  expectCode(
+    () => verifyGenerationPublicationState(sourceHardlinkWal.options),
+    "GENERATION_DATABASE_SIDECAR_INVALID",
+  );
+
   const identityDatabase = new NodeSqliteAdapter(
     path.join(sandboxRoot, "generation-identity.db"),
   );
@@ -327,10 +361,20 @@ try {
       }),
       beforeReplace.fixture.sourceIdentity,
     );
+    let migrationTransactionBoundaryReached = false;
     applySyntheticGenerationMigration(
       identityDatabase,
       beforeReplace.fixture.candidateIdentity,
+      {
+        reachTransactionFailpoint: ({ failpoint, transactionOpen }) => {
+          assert.equal(failpoint, "during-synthetic-migration");
+          assert.equal(transactionOpen, true);
+          assert.equal(identityDatabase.inTransaction, true);
+          migrationTransactionBoundaryReached = true;
+        },
+      },
     );
+    assert.equal(migrationTransactionBoundaryReached, true);
     assert.deepEqual(
       verifyGenerationDatabaseIdentity(identityDatabase, {
         expectedIdentity: beforeReplace.fixture.candidateIdentity,
@@ -344,6 +388,65 @@ try {
     identityDatabase.close();
   }
 
+  const rollbackDatabase = new NodeSqliteAdapter(
+    path.join(sandboxRoot, "generation-migration-rollback.db"),
+  );
+  try {
+    installInitialGenerationIdentity(
+      rollbackDatabase,
+      beforeReplace.fixture.sourceIdentity,
+    );
+    expectCode(
+      () =>
+        applySyntheticGenerationMigration(
+          rollbackDatabase,
+          beforeReplace.fixture.candidateIdentity,
+          {
+            reachTransactionFailpoint: () => {
+              throw new Error("forced-migration-stop");
+            },
+          },
+        ),
+      "GENERATION_MIGRATION_FAILED",
+    );
+    assert.equal(rollbackDatabase.inTransaction, false);
+    assert.deepEqual(
+      verifyGenerationDatabaseIdentity(rollbackDatabase, {
+        expectedIdentity: beforeReplace.fixture.sourceIdentity,
+        expectedIdentityDigest:
+          beforeReplace.fixture.sourceGenerationIdentityDigest,
+        expectMigration: false,
+      }),
+      beforeReplace.fixture.sourceIdentity,
+    );
+    for (const invalidOptions of [
+      null,
+      { extra: true },
+      { reachTransactionFailpoint: true },
+    ]) {
+      expectCode(
+        () =>
+          applySyntheticGenerationMigration(
+            rollbackDatabase,
+            beforeReplace.fixture.candidateIdentity,
+            invalidOptions,
+          ),
+        "GENERATION_MIGRATION_OPTIONS_INVALID",
+      );
+    }
+    assert.deepEqual(
+      verifyGenerationDatabaseIdentity(rollbackDatabase, {
+        expectedIdentity: beforeReplace.fixture.sourceIdentity,
+        expectedIdentityDigest:
+          beforeReplace.fixture.sourceGenerationIdentityDigest,
+        expectMigration: false,
+      }),
+      beforeReplace.fixture.sourceIdentity,
+    );
+  } finally {
+    rollbackDatabase.close();
+  }
+
   process.stdout.write(
     `${JSON.stringify({
       status: "pass",
@@ -352,7 +455,12 @@ try {
       exactReplayWithoutChurnVerified: true,
       conflictWithoutMutationVerified: true,
       malformedMissingCorruptSymlinkRejected: true,
+      boundedSourceReadSidecarsAccepted: true,
+      unsafeSourceSidecarsRejected: true,
       generationIdentityMigrationVerified: true,
+      migrationTransactionFailpointVerified: true,
+      migrationFailpointRollbackVerified: true,
+      migrationOptionsFailClosedVerified: true,
       processCrashScopeOnly: true,
     })}\n`,
   );
