@@ -37,7 +37,6 @@ const temporaryRoot = process.env.RUNNER_TEMP || os.tmpdir();
 const stateRoot = fs.mkdtempSync(
   path.join(temporaryRoot, "constellation-packaged-store-probe-"),
 );
-const profile = path.join(stateRoot, "profile");
 const workspace = "workspace-alpha";
 const primaryWrapper = "primary.wrap.json";
 const primaryDatabase = "primary.db";
@@ -60,8 +59,6 @@ let forcedProcessExits = 0;
 let acknowledgedShutdowns = 0;
 let acknowledgedExitAuthorizations = 0;
 let terminallyConfirmedShutdowns = 0;
-let windowsProviderStateFaultRejected = false;
-let windowsProviderStateDigest;
 const captured = [];
 const forbiddenOutput = [
   Buffer.from('"keyMaterial"'),
@@ -92,58 +89,6 @@ function digestFile(filename) {
 
 function sameDigest(left, right) {
   return left.length === right.length && crypto.timingSafeEqual(left, right);
-}
-
-function readWindowsProviderStateDigest(profileRoot = profile) {
-  if (process.platform !== "win32") return undefined;
-  const localStatePath = path.join(profileRoot, "Local State");
-  ensure(fs.existsSync(localStatePath), "WINDOWS_PROVIDER_STATE_INVALID");
-  const metadata = fs.lstatSync(localStatePath);
-  ensure(
-    metadata.isFile() &&
-      !metadata.isSymbolicLink() &&
-      metadata.size > 0 &&
-      metadata.size <= 1024 * 1024,
-    "WINDOWS_PROVIDER_STATE_INVALID",
-  );
-
-  const contents = fs.readFileSync(localStatePath);
-  let decoded;
-  try {
-    let localState;
-    try {
-      localState = JSON.parse(contents.toString("utf8"));
-    } catch {
-      throw new Error("WINDOWS_PROVIDER_STATE_INVALID");
-    }
-    const encryptedKey = localState?.os_crypt?.encrypted_key;
-    ensure(
-      typeof encryptedKey === "string" && encryptedKey.length > 0,
-      "WINDOWS_PROVIDER_KEY_MISSING",
-    );
-    decoded = Buffer.from(encryptedKey, "base64");
-    ensure(
-      decoded.toString("base64") === encryptedKey &&
-        decoded.length > 5 &&
-        decoded.subarray(0, 5).toString("ascii") === "DPAPI",
-      "WINDOWS_PROVIDER_KEY_INVALID",
-    );
-    return crypto.createHash("sha256").update(decoded).digest();
-  } finally {
-    decoded?.fill(0);
-    contents.fill(0);
-  }
-}
-
-function assertWindowsProviderStateUnchanged(expected) {
-  if (process.platform !== "win32") return;
-  ensure(Buffer.isBuffer(expected), "WINDOWS_PROVIDER_STATE_MISSING");
-  const actual = readWindowsProviderStateDigest();
-  try {
-    ensure(sameDigest(actual, expected), "WINDOWS_PROVIDER_STATE_CHANGED");
-  } finally {
-    actual.fill(0);
-  }
 }
 
 function assertExactResultKeys(result, extraKeys = []) {
@@ -231,26 +176,20 @@ function terminateTree(child) {
   }
 }
 
-async function launch({
-  mode,
-  workspaceId,
-  wrapperName,
-  databaseName,
-  probeStateRoot = stateRoot,
-}) {
+async function launch({ mode, workspaceId, wrapperName, databaseName }) {
   const environment = { ...process.env };
   delete environment.ELECTRON_RUN_AS_NODE;
-  const probeProfile = path.join(probeStateRoot, "profile");
+  const probeProfile = path.join(stateRoot, "profile");
   const shutdownControlToken = crypto.randomBytes(32).toString("hex");
   const shutdownControlPath = path.join(
-    probeStateRoot,
+    stateRoot,
     `.shutdown-${shutdownControlToken}.json`,
   );
   const shutdownControlTemporaryPath = `${shutdownControlPath}.tmp`;
   const argumentsForProbe = [
     `--user-data-dir=${probeProfile}`,
     `--probe-mode=${mode}`,
-    `--probe-state-root=${probeStateRoot}`,
+    `--probe-state-root=${stateRoot}`,
     `--probe-workspace=${workspaceId}`,
     `--probe-wrapper=${wrapperName}`,
     `--probe-database=${databaseName}`,
@@ -443,19 +382,6 @@ async function launch({
                   shutdownInternalExitCode === 0,
                 "FORCED_SHUTDOWN_COMPLETION_INVALID",
               );
-            }
-            if (process.platform === "win32") {
-              if (mode === "shutdown-provider-state-fault") {
-                const beforeInjection =
-                  readWindowsProviderStateDigest(probeProfile);
-                beforeInjection.fill(0);
-                fs.rmSync(path.join(probeProfile, "Local State"), {
-                  force: true,
-                });
-              }
-              const providerStateDigest =
-                readWindowsProviderStateDigest(probeProfile);
-              providerStateDigest.fill(0);
             }
             resolve({
               declaredExitCode: result.declaredExitCode,
@@ -1004,38 +930,6 @@ async function expectPreExitAcknowledgementRejected(expectedState) {
   assertPrimaryUnchanged(expectedState);
 }
 
-async function expectProviderStateFaultRejected() {
-  if (process.platform !== "win32") return;
-  const faultStateRoot = fs.mkdtempSync(
-    path.join(temporaryRoot, "constellation-provider-state-fault-"),
-  );
-  let rejection;
-  try {
-    await launch({
-      mode: "shutdown-provider-state-fault",
-      workspaceId: workspace,
-      wrapperName: "unused-provider-state-fault.wrap.json",
-      databaseName: "unused-provider-state-fault.db",
-      probeStateRoot: faultStateRoot,
-    });
-  } catch (error) {
-    rejection = error;
-  } finally {
-    await removeDirectory(faultStateRoot);
-  }
-  ensure(rejection instanceof Error, "PROVIDER_STATE_FAULT_NOT_REJECTED");
-  if (
-    !new Set([
-      "WINDOWS_PROVIDER_STATE_INVALID",
-      "WINDOWS_PROVIDER_KEY_MISSING",
-      "WINDOWS_PROVIDER_KEY_INVALID",
-    ]).has(rejection.message)
-  ) {
-    throw rejection;
-  }
-  windowsProviderStateFaultRejected = true;
-}
-
 function assertPrimaryUnchanged(expected) {
   for (const [filename, expectedDigest] of expected) {
     const exists = fs.existsSync(filename);
@@ -1170,7 +1064,6 @@ try {
     artifactDigests.set(artifact, digestFile(artifact));
   }
   removeProbeKeychainItem();
-  await expectProviderStateFaultRejected();
 
   const writer = await launch({
     mode: "provision",
@@ -1206,7 +1099,6 @@ try {
   );
   ensure(writer.result.encryptedWal === true, "ENCRYPTED_WAL_INVALID");
   assertProbeKeychainItemPresent();
-  windowsProviderStateDigest = readWindowsProviderStateDigest();
 
   ensure(fs.existsSync(primaryWrapperPath), "PRIMARY_WRAPPER_MISSING");
   ensure(fs.existsSync(primaryDatabasePath), "PRIMARY_DATABASE_MISSING");
@@ -1242,7 +1134,6 @@ try {
     "RECOVERED_MARKER_MISMATCH",
   );
   ensure(reader.result.integrityVerified === true, "INTEGRITY_INVALID");
-  assertWindowsProviderStateUnchanged(windowsProviderStateDigest);
   const primaryState = snapshotPrimaryState();
   assertPrimaryUnchanged(primaryState);
 
@@ -1413,7 +1304,6 @@ try {
   );
 
   await expectPreExitAcknowledgementRejected(primaryState);
-  assertWindowsProviderStateUnchanged(windowsProviderStateDigest);
 
   ensure(processIds.size === 12, "PROCESS_COUNT_INVALID");
   ensure(
@@ -1432,13 +1322,6 @@ try {
     terminallyConfirmedShutdowns === processIds.size,
     "SHUTDOWN_COMPLETION_COUNT_INVALID",
   );
-  if (process.platform === "win32") {
-    ensure(
-      windowsProviderStateFaultRejected,
-      "PROVIDER_STATE_FAULT_NOT_REJECTED",
-    );
-  }
-  assertWindowsProviderStateUnchanged(windowsProviderStateDigest);
   for (const [artifact, expected] of artifactDigests) {
     const actual = digestFile(artifact);
     try {
@@ -1469,10 +1352,6 @@ try {
           ? EXPECTED_NATURAL_EXIT_CODE
           : "not-observed",
       preExitAcknowledgementFaultRejected: true,
-      windowsProviderStateFaultRejected:
-        process.platform === "win32"
-          ? windowsProviderStateFaultRejected
-          : "not-applicable",
       distinctProcesses: processIds.size,
       internallyGeneratedDek: true,
       asyncSafeStorage: true,
@@ -1501,7 +1380,6 @@ try {
     })}\n`,
   );
 } finally {
-  windowsProviderStateDigest?.fill(0);
   for (const digest of artifactDigests.values()) digest.fill(0);
   for (const output of captured) output.fill(0);
   try {

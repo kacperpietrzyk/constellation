@@ -28,9 +28,10 @@ The probe fails unless all of these checks pass:
   applies the recovered DEK to the existing database, clears the Buffer, and
   verifies the exact marker digest, FTS result, cipher/database/foreign-key
   integrity, provider, compile options, and disabled extension loading;
-- on Windows, the exact Electron `app.quit()` lifecycle persists a canonical
-  DPAPI-prefixed async-provider key in the disposable profile `Local State`, and
-  its digest remains stable through the reader and negative-process matrix;
+- on Windows, a packaged writer and distinct packaged reader exercise the
+  asynchronous safeStorage contract end to end through DPAPI, recovering the
+  same workspace-bound wrapper and exact encrypted marker without relying on
+  Chromium's private profile representation;
 - missing, modified, and wrong-context wrappers (at both the public wrapper and
   decrypted payload boundaries), a valid same-context wrapper with the wrong
   key, a plaintext SQLite database, a corrupted encrypted database, and
@@ -56,17 +57,11 @@ The probe fails unless all of these checks pass:
   record requires the exact Electron `before-quit` → `will-quit` → `quit(0)`
   lifecycle. The harness preserves the declared outcome separately from the
   observed process result, reports natural exits and forced post-lifecycle
-  cleanup separately, validates provider state after either path, retains an
-  unreferenced child self-kill failsafe, and requires both inherited output pipes
-  to close;
+  cleanup separately, retains an unreferenced child self-kill failsafe, and
+  requires both inherited output pipes to close;
 - a dedicated falsification launch emits readiness and the pre-exit
   acknowledgement, then exits internally with code `1`; the harness must reject
   it before the ordinary twelve-process result can pass;
-- a Windows-only provider-state falsification launch initializes the async
-  provider and completes the exact managed lifecycle on a fresh profile. The
-  parent first proves a canonical DPAPI state exists, deletes that isolated
-  `Local State` as an explicit fault injection, and must then reject the missing
-  provider state despite the otherwise valid lifecycle;
 - macOS uses an ad-hoc-signed package and disposable hosted-runner Keychain;
   Windows uses an unsigned mechanism package with statically linked pinned
   OpenSSL; every generated file and exact probe-only Keychain item is removed
@@ -80,11 +75,11 @@ for a natural process exit. A lingering process tree is force-terminated only
 after that terminal evidence; either outcome must close both inherited output
 pipes within five more seconds or the probe fails closed. Natural exits record
 the observed status `0` without a signal on both targets, while forced
-post-lifecycle cleanup is reported separately. Windows validates
-canonical DPAPI provider state after every one of the twelve ordinary launches
-regardless of exit outcome, and the isolated deletion fault proves that lifecycle
-evidence alone cannot satisfy persistence validation. The fixed declared outcome
-remains authoritative for each probe operation.
+post-lifecycle cleanup is reported separately. On Windows, the evidence is the
+real async wrap/unwrap through distinct processes and exact marker recovery;
+provider rotation and temporary unavailability remain outside this bounded
+mechanism probe. The fixed declared outcome remains authoritative for each probe
+operation.
 
 ## Pinned inputs
 

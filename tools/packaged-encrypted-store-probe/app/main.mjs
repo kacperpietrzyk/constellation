@@ -276,12 +276,10 @@ function waitForParentShutdownProtocol() {
     exitAuthorizationAccepted = true;
     writeShutdownAcknowledgement();
     writeExitAcknowledgement();
-    // An Electron-managed main-loop shutdown is required on Windows so
-    // Chromium can commit the DPAPI-wrapped async-provider key in profile
-    // Local State. The declared probe outcome remains in the fixed protocol;
-    // the terminal Electron quit event must report zero and the parent records
-    // the platform-observed status separately. The parent owns the deadline
-    // and force-kill fallback.
+    // The declared probe outcome remains in the fixed protocol; the terminal
+    // Electron quit event must report zero and the parent records the
+    // platform-observed status separately. The parent owns the deadline and
+    // force-kill fallback.
     if (config?.mode === "shutdown-fault") {
       faultExitRequested = true;
       process.exit(1);
@@ -403,13 +401,7 @@ function parseConfig() {
   const shutdownControlToken = getArgument("shutdown-control");
 
   if (
-    !new Set([
-      "provision",
-      "verify",
-      "plaintext",
-      "shutdown-fault",
-      "shutdown-provider-state-fault",
-    ]).has(mode)
+    !new Set(["provision", "verify", "plaintext", "shutdown-fault"]).has(mode)
   ) {
     fail("CONFIG_INVALID");
   }
@@ -657,24 +649,6 @@ async function requireAsyncEncryption() {
     fail("ENCRYPTION_UNAVAILABLE");
   }
   if (available !== true) fail("ENCRYPTION_UNAVAILABLE");
-}
-
-async function initializeAsyncProviderForShutdownFault() {
-  await requireAsyncEncryption();
-  let encrypted;
-  try {
-    encrypted = await safeStorage.encryptStringAsync(
-      "constellation-provider-state-fault-fixture",
-    );
-    if (!Buffer.isBuffer(encrypted) || encrypted.length === 0) {
-      fail("ENCRYPTION_UNAVAILABLE");
-    }
-  } catch (error) {
-    if (error instanceof ProbeFailure) throw error;
-    fail("ENCRYPTION_UNAVAILABLE");
-  } finally {
-    encrypted?.fill?.(0);
-  }
 }
 
 async function encryptPayload(payload, canaries, scope) {
@@ -1335,9 +1309,6 @@ if (config) {
       let result;
       if (config.mode === "shutdown-fault") {
         result = fixedResult("pass", "SHUTDOWN_FAULT_ARMED");
-      } else if (config.mode === "shutdown-provider-state-fault") {
-        await initializeAsyncProviderForShutdownFault();
-        result = fixedResult("pass", "PROVIDER_STATE_FAULT_ARMED");
       } else if (config.mode === "plaintext") {
         const Database = await loadDatabaseConstructor();
         result = createPlaintextFixture(Database);
