@@ -2541,14 +2541,17 @@ async function advanceGenerationPreparationRecords(
   let captureCanaries = [];
   let operationLockDatabase;
   let preparationBusy = false;
-  let sourceSharedMemoryPath;
+  let busyScanIgnoredPaths = new Set();
   try {
     captureCanaries = createRecoveryCaptureCanaries(scope);
     const paths = getGenerationPreparationPaths(
       config.generationWorkspaceRoot,
       GENERATION_PUBLICATION_IDS.operationId,
     );
-    sourceSharedMemoryPath = `${paths.sourceDatabasePath}-shm`;
+    busyScanIgnoredPaths = new Set([
+      `${paths.sourceDatabasePath}-shm`,
+      `${paths.buildingDatabasePath}-shm`,
+    ]);
     const unwrapped = await unwrapKey(scope, canaries, paths.wrapperPath);
     const baseKey = scope.keep(Buffer.from(unwrapped.key));
     const fixture = createGenerationPublicationFixture(
@@ -2812,10 +2815,11 @@ async function advanceGenerationPreparationRecords(
       operationLockDatabase = undefined;
     } finally {
       try {
-        const ignoredPaths =
-          preparationBusy && sourceSharedMemoryPath
-            ? new Set([sourceSharedMemoryPath])
-            : new Set();
+        // A typed busy result means another packaged builder can still hold
+        // Windows byte-range locks on both SQLite SHM files. Defer only those
+        // exact coordination files; the recovery parent scans them after the
+        // captured holder terminates.
+        const ignoredPaths = preparationBusy ? busyScanIgnoredPaths : new Set();
         if (canaries.length > 0) scanKnownSecrets(canaries, ignoredPaths);
         if (captureCanaries.length > 0) {
           scanForCanaries([config.stateRoot], captureCanaries, ignoredPaths);
