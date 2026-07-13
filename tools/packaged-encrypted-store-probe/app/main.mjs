@@ -126,8 +126,24 @@ function awaitProviderBootstrapTurn() {
       settled = true;
       cleanup();
       setImmediate(() => {
-        if (process.connected) process.disconnect();
-        resolve();
+        if (!process.connected && !process.channel) {
+          resolve();
+          return;
+        }
+        const completeDisconnect = () => {
+          if (process.connected || process.channel) {
+            reject(new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID"));
+          } else {
+            resolve();
+          }
+        };
+        process.once("disconnect", completeDisconnect);
+        try {
+          process.disconnect();
+        } catch {
+          process.removeListener("disconnect", completeDisconnect);
+          reject(new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID"));
+        }
       });
     };
 
