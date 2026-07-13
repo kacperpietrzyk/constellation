@@ -53,7 +53,10 @@ const providerBootstrapReadyType =
   "constellation.packaged-store-probe.provider-bootstrap-ready/v1";
 const providerBootstrapContinueType =
   "constellation.packaged-store-probe.provider-bootstrap-continue/v1";
-const AUTHORIZED_EXIT_GRACE_MS = 5_000;
+// Windows CI can spend several seconds unwinding Chromium and committing the
+// provider profile after app.exit(0). Keep this below the child's independent
+// 30-second failsafe, but do not misclassify a slow managed exit as a hang.
+const AUTHORIZED_EXIT_GRACE_MS = process.platform === "win32" ? 12_000 : 5_000;
 const EXPECTED_NATURAL_EXIT_CODE = 0;
 const processIds = new Set();
 let naturalElectronProcessExits = 0;
@@ -838,7 +841,7 @@ function recordProcess(execution, mode) {
   ensure(
     process.platform !== "win32" ||
       execution.lifecycle === "electron-exit-after-parent-authorization",
-    "WINDOWS_NATURAL_EXIT_REQUIRED",
+    `WINDOWS_NATURAL_EXIT_REQUIRED:${mode}`,
   );
   ensure(
     execution.lifecycle === "electron-exit-after-parent-authorization" ||
