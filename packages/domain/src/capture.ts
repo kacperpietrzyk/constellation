@@ -64,6 +64,7 @@ export const routeCaptureAsTask = (
     spaceId: input.capture.spaceId,
     title: input.title,
     statusId: input.taskStatusId,
+    recordState: "active",
     completionState: "open",
     sourceCaptureId: input.capture.id,
     createdBy: input.routedBy,
@@ -72,3 +73,34 @@ export const routeCaptureAsTask = (
     updatedAt: input.occurredAt,
   },
 });
+
+export const undoCaptureTaskRoute = (input: {
+  readonly capture: RoutedTaskCapture;
+  readonly task: Task;
+  readonly occurredAt: string;
+}): { readonly capture: PendingCapture; readonly task: Task } => {
+  if (input.capture.derivedTaskId !== input.task.id) {
+    throw new Error("Capture provenance does not match the Task being undone.");
+  }
+  const pending: PendingCapture = {
+    id: input.capture.id,
+    workspaceId: input.capture.workspaceId,
+    spaceId: input.capture.spaceId,
+    originalText: input.capture.originalText,
+    deviceId: input.capture.deviceId,
+    source: input.capture.source,
+    capturedAt: input.capture.capturedAt,
+    submittedBy: input.capture.submittedBy,
+    processingState: "pending_processing",
+    version: input.capture.version + 1,
+  };
+  return {
+    capture: pending,
+    task: {
+      ...input.task,
+      recordState: "removed",
+      version: input.task.version + 1,
+      updatedAt: input.occurredAt,
+    },
+  };
+};

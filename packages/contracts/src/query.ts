@@ -67,6 +67,13 @@ export const ProjectListQuerySchema = QueryMetadataSchema.extend({
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
 }).strict();
 
+export const ProjectOperationalOverviewQuerySchema = QueryMetadataSchema.extend(
+  {
+    queryName: z.literal("project.operationalOverview"),
+    parameters: z.object({ projectId: ProjectIdSchema }).strict(),
+  },
+).strict();
+
 export const GlobalSearchQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("search.global"),
   parameters: z
@@ -103,14 +110,21 @@ export const MeaningfulActivityQuerySchema = QueryMetadataSchema.extend({
     .strict(),
 }).strict();
 
+export const RecoveryPreviewQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("recovery.preview"),
+  parameters: z.object({ targetCommandId: CommandIdSchema }).strict(),
+}).strict();
+
 export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   WorkspaceBootstrapContextQuerySchema,
   CaptureHistoryQuerySchema,
   TaskListQuerySchema,
   ProjectListQuerySchema,
+  ProjectOperationalOverviewQuerySchema,
   GlobalSearchQuerySchema,
   CockpitWeekQuerySchema,
   MeaningfulActivityQuerySchema,
+  RecoveryPreviewQuerySchema,
   AuditReceiptQuerySchema,
 ]);
 export type QueryEnvelope = z.infer<typeof QueryEnvelopeSchema>;
@@ -236,6 +250,32 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
+      kind: z.literal("project.operationalOverview"),
+      project: z
+        .object({
+          id: ProjectIdSchema,
+          spaceId: SpaceIdSchema,
+          title: z.string(),
+          intendedOutcome: z.string(),
+          lifecycle: z.literal("active"),
+          version: z.int().positive(),
+          updatedAt: z.iso.datetime({ offset: true }),
+        })
+        .strict(),
+      relatedTasks: z.array(
+        z
+          .object({
+            id: TaskIdSchema,
+            title: z.string(),
+            completionState: z.enum(["open", "completed"]),
+            version: z.int().positive(),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("search.global"),
       normalizedQuery: z.string(),
       items: z.array(
@@ -319,6 +359,27 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           })
           .strict(),
       ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("recovery.preview"),
+      targetCommandId: CommandIdSchema,
+      available: z.boolean(),
+      compensationKind: z
+        .enum([
+          "project.restore_outcome",
+          "task.restore_state",
+          "relation.remove",
+          "relation.restore",
+          "capture.undo_route",
+        ])
+        .optional(),
+      affectedRecordIds: z.array(z.uuid()),
+      requiredVersions: z.record(z.uuid(), z.int().positive()),
+      unavailableReason: z
+        .enum(["unsupported", "already_undone", "later_change"])
+        .optional(),
     })
     .strict(),
   z

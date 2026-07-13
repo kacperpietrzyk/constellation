@@ -54,6 +54,7 @@ const context = (): ExecutionContext =>
       "project.create",
       "project.updateOutcome",
       "project.list",
+      "project.operationalOverview",
       "task.setStatus",
       "task.complete",
       "task.reopen",
@@ -66,6 +67,7 @@ const context = (): ExecutionContext =>
       "capture.history",
       "command.previewUndo",
       "command.undo",
+      "recovery.preview",
       "audit.receipt",
     ],
     origin: "desktop",
@@ -320,6 +322,27 @@ describe("Wave 2 reference semantics", () => {
       );
     } else throw new Error("Expected project list.");
 
+    const overview = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "project.operationalOverview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { projectId },
+    });
+    if (
+      overview.kind !== "query_result" ||
+      overview.result.outcome !== "success" ||
+      overview.result.projection.kind !== "project.operationalOverview"
+    ) {
+      throw new Error("Expected Project operational overview.");
+    }
+    assert.equal(overview.result.projection.relatedTasks[0]?.id, taskId);
+    assert.equal(
+      overview.result.projection.project.intendedOutcome,
+      "The local alpha survives restart and review",
+    );
+
     const search = harness.kernel.query(context(), {
       contractVersion: 1,
       queryName: "search.global",
@@ -477,6 +500,26 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(preview.projection.available, true);
     assert.deepEqual(preview.projection.requiredVersions, { [projectId]: 2 });
 
+    const recoveryPreview = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "recovery.preview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { targetCommandId: updateCommand.commandId },
+    });
+    if (
+      recoveryPreview.kind !== "query_result" ||
+      recoveryPreview.result.outcome !== "success" ||
+      recoveryPreview.result.projection.kind !== "recovery.preview"
+    ) {
+      throw new Error("Expected recovery preview query.");
+    }
+    assert.equal(recoveryPreview.result.projection.available, true);
+    assert.deepEqual(recoveryPreview.result.projection.requiredVersions, {
+      [projectId]: 2,
+    });
+
     const undo = unwrap(
       harness.kernel.execute(context(), {
         ...metadata("undo", { [projectId]: 2 }),
@@ -530,6 +573,60 @@ describe("Wave 2 reference semantics", () => {
       }),
     );
     assert.equal(blocked.diagnosticCode, "undo.not_available");
+  });
+
+  it("undoes Capture routing without losing the original or exposing a removed Task", () => {
+    const harness = setup();
+    const before = harness.store.snapshot();
+    const taskId = createTask(harness, "Undo routed Task");
+    const routed = harness.store.snapshot();
+    const capture = routed.captures.at(-1);
+    const routeReceipt = routed.auditReceipts.find(
+      (receipt) =>
+        receipt.commandName === "capture.routeAsTask" &&
+        receipt.affectedRecordIds.includes(taskId),
+    );
+    assert.ok(capture);
+    assert.ok(routeReceipt);
+    const preview = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("preview-route-undo"),
+        commandName: "command.previewUndo",
+        payload: { targetCommandId: routeReceipt.commandId },
+      }),
+    );
+    if (preview.outcome !== "preview") throw new Error("Expected preview.");
+    assert.equal(preview.projection.compensationKind, "capture.undo_route");
+    const undo = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("undo-route", preview.projection.requiredVersions),
+        commandName: "command.undo",
+        payload: { targetCommandId: routeReceipt.commandId },
+      }),
+    );
+    assert.equal(undo.diagnosticCode, "command.undone");
+    const after = harness.store.snapshot();
+    assert.equal(after.captures.at(-1)?.processingState, "pending_processing");
+    assert.equal(after.captures.at(-1)?.originalText, capture.originalText);
+    assert.equal(
+      after.tasks.find((task) => task.id === taskId)?.recordState,
+      "removed",
+    );
+    const tasks = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      tasks.kind !== "query_result" ||
+      tasks.result.outcome !== "success" ||
+      tasks.result.projection.kind !== "task.list"
+    )
+      throw new Error("Expected task list.");
+    assert.equal(tasks.result.projection.items.length, before.tasks.length);
   });
 
   it("unrelates atomically and restores the typed relation through undo", () => {

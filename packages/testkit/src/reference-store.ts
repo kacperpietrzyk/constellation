@@ -221,7 +221,10 @@ class ReadView implements ApplicationReadView {
   ): readonly Task[] {
     return [...this.state.tasks.values()]
       .filter(
-        (task) => task.workspaceId === workspaceId && task.spaceId === spaceId,
+        (task) =>
+          task.recordState === "active" &&
+          task.workspaceId === workspaceId &&
+          task.spaceId === spaceId,
       )
       .sort(compareTaskDescending);
   }
@@ -306,6 +309,7 @@ class ReadView implements ApplicationReadView {
     const tasks = [...this.state.tasks.values()]
       .filter(
         (task) =>
+          task.recordState === "active" &&
           task.workspaceId === request.workspaceId &&
           task.spaceId === request.spaceId,
       )

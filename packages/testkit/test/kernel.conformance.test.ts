@@ -870,6 +870,7 @@ describe("reference kernel conformance", () => {
       "audit",
       "idempotency",
       "outbox",
+      "undo",
     ];
     for (const boundary of boundaries) {
       const harness = bootstrappedHarness();

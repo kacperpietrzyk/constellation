@@ -165,8 +165,8 @@ export const UndoAppliedProjectionSchema = z
   .object({
     kind: z.literal("command.undone"),
     targetCommandId: CommandIdSchema,
-    compensatedRecordId: z.uuid(),
-    version: z.int().positive(),
+    compensatedRecordIds: z.array(z.uuid()).min(1),
+    recordVersions: z.record(z.uuid(), z.int().positive()),
   })
   .strict();
 
@@ -308,6 +308,7 @@ export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
           "task.restore_state",
           "relation.remove",
           "relation.restore",
+          "capture.undo_route",
         ])
         .optional(),
       affectedRecordIds: z.array(z.uuid()),

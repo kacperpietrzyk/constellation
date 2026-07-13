@@ -36,6 +36,7 @@ export const CapabilitySchema = z.enum([
   "project.create",
   "project.updateOutcome",
   "project.list",
+  "project.operationalOverview",
   "task.setStatus",
   "task.complete",
   "task.reopen",
@@ -46,6 +47,7 @@ export const CapabilitySchema = z.enum([
   "activity.meaningful",
   "command.previewUndo",
   "command.undo",
+  "recovery.preview",
   "task.list",
   "audit.receipt",
 ]);

@@ -21,6 +21,7 @@ import {
   reopenTask,
   restoreTaskProjectRelation,
   setTaskStatus,
+  undoCaptureTaskRoute,
   updateProjectOutcome,
   type AuditReceipt,
   type DomainEvent,
@@ -71,7 +72,12 @@ export type Wave2Query = Extract<
   QueryEnvelope,
   {
     queryName:
-      "project.list" | "search.global" | "cockpit.week" | "activity.meaningful";
+      | "project.list"
+      | "project.operationalOverview"
+      | "search.global"
+      | "cockpit.week"
+      | "activity.meaningful"
+      | "recovery.preview";
   }
 >;
 
@@ -249,7 +255,9 @@ const appendJournal = (
   changedFields: readonly string[],
   result: Record<string, unknown>,
   undoDescriptor?: UndoDescriptor,
-  affectedKind?: "task" | "project" | "relation",
+  affectedKinds?: Readonly<
+    Record<string, "capture" | "task" | "project" | "relation">
+  >,
 ): CommandOutcome => {
   const eventId = EventIdSchema.parse(dependencies.ids.next("event"));
   const auditReceiptId = AuditReceiptIdSchema.parse(
@@ -263,7 +271,7 @@ const appendJournal = (
     affected: Object.entries(recordVersions).map(([recordId, version]) => ({
       recordId,
       recordKind:
-        affectedKind ??
+        affectedKinds?.[recordId] ??
         (event.type.startsWith("project.")
           ? "project"
           : event.type.startsWith("relation.")
@@ -747,6 +755,28 @@ const descriptorState = (
             versions: {},
             reason: "later_change",
           };
+    case "capture.undo_route": {
+      const capture = view.getCapture(descriptor.captureId);
+      const task = view.getTask(descriptor.taskId);
+      return capture?.processingState === "routed_as_task" &&
+        capture.version === descriptor.resultingCaptureVersion &&
+        task?.recordState === "active" &&
+        task.version === descriptor.resultingTaskVersion
+        ? {
+            available: true,
+            recordIds: [capture.id, task.id],
+            versions: {
+              [capture.id]: capture.version,
+              [task.id]: task.version,
+            },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
   }
 };
 
@@ -756,37 +786,43 @@ const previewUndo = (
   occurredAt: string,
 ): CommandOutcome => {
   if (!exactExpected(command, {})) return precondition(command, occurredAt);
-  const descriptor = view.getUndoDescriptor(command.payload.targetCommandId);
-  if (descriptor === undefined) {
-    return outcome(command, occurredAt, {
-      outcome: "preview",
-      diagnosticCode: "undo.previewed",
-      projection: {
-        kind: "undo.previewed",
-        targetCommandId: command.payload.targetCommandId,
-        available: false,
-        affectedRecordIds: [],
-        requiredVersions: {},
-        unavailableReason: "unsupported",
-      },
-    });
-  }
-  const state = descriptorState(view, descriptor);
   return outcome(command, occurredAt, {
     outcome: "preview",
     diagnosticCode: "undo.previewed",
-    projection: {
-      kind: "undo.previewed",
-      targetCommandId: command.payload.targetCommandId,
-      available: state.available,
-      ...(state.available ? { compensationKind: descriptor.kind } : {}),
-      affectedRecordIds: state.recordIds,
-      requiredVersions: state.versions,
-      ...(state.reason === undefined
-        ? {}
-        : { unavailableReason: state.reason }),
-    },
+    projection: undoPreviewProjection(
+      view,
+      command.payload.targetCommandId,
+      "undo.previewed",
+    ),
   });
+};
+
+const undoPreviewProjection = (
+  view: ApplicationWave2ReadView,
+  targetCommandId: Wave2Command["commandId"],
+  kind: "undo.previewed" | "recovery.preview",
+): Record<string, unknown> => {
+  const descriptor = view.getUndoDescriptor(targetCommandId);
+  if (descriptor === undefined) {
+    return {
+      kind,
+      targetCommandId,
+      available: false,
+      affectedRecordIds: [],
+      requiredVersions: {},
+      unavailableReason: "unsupported",
+    };
+  }
+  const state = descriptorState(view, descriptor);
+  return {
+    kind,
+    targetCommandId,
+    available: state.available,
+    ...(state.available ? { compensationKind: descriptor.kind } : {}),
+    affectedRecordIds: state.recordIds,
+    requiredVersions: state.versions,
+    ...(state.reason === undefined ? {} : { unavailableReason: state.reason }),
+  };
 };
 
 const applyUndo = (
@@ -825,8 +861,11 @@ const applyUndo = (
       currentVersions: state.versions,
     });
   }
-  let compensatedRecordId: string;
-  let compensatedVersion: number;
+  let compensatedVersions: Record<string, number>;
+  let compensatedKinds: Record<
+    string,
+    "capture" | "task" | "project" | "relation"
+  >;
   if (descriptor.kind === "project.restore_outcome") {
     const project = transaction.getProject(descriptor.projectId) as Project;
     const restored = updateProjectOutcome(
@@ -835,8 +874,8 @@ const applyUndo = (
       occurredAt,
     );
     transaction.updateProject(restored, project.version);
-    compensatedRecordId = restored.id;
-    compensatedVersion = restored.version;
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "project" };
   } else if (descriptor.kind === "task.restore_state") {
     const task = transaction.getTask(descriptor.taskId) as Task;
     const base = setTaskStatus(task, descriptor.priorStatusId, occurredAt);
@@ -857,8 +896,8 @@ const applyUndo = (
             return { ...withoutCompletedAt, completionState: "open" };
           })();
     transaction.updateTask(restored, task.version);
-    compensatedRecordId = restored.id;
-    compensatedVersion = restored.version;
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "task" };
   } else if (descriptor.kind === "relation.remove") {
     const relation = transaction.getRelation(
       descriptor.relationId,
@@ -867,16 +906,39 @@ const applyUndo = (
       removeTaskProjectRelation(relation, occurredAt),
       descriptor.resultingVersion,
     );
-    compensatedRecordId = descriptor.relationId;
-    compensatedVersion = descriptor.resultingVersion + 1;
-  } else {
+    compensatedVersions = {
+      [descriptor.relationId]: descriptor.resultingVersion + 1,
+    };
+    compensatedKinds = { [descriptor.relationId]: "relation" };
+  } else if (descriptor.kind === "relation.restore") {
     const relation = transaction.getRelation(
       descriptor.relationId,
     ) as TaskProjectRelation;
     const restored = restoreTaskProjectRelation(relation);
     transaction.updateRelation(restored, relation.version);
-    compensatedRecordId = restored.id;
-    compensatedVersion = restored.version;
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "relation" };
+  } else {
+    const capture = transaction.getCapture(descriptor.captureId);
+    const task = transaction.getTask(descriptor.taskId);
+    if (capture?.processingState !== "routed_as_task" || task === undefined) {
+      return outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "undo.not_available",
+        currentVersions: state.versions,
+      });
+    }
+    const restored = undoCaptureTaskRoute({ capture, task, occurredAt });
+    transaction.updateCapture(restored.capture, capture.version);
+    transaction.updateTask(restored.task, task.version);
+    compensatedVersions = {
+      [restored.capture.id]: restored.capture.version,
+      [restored.task.id]: restored.task.version,
+    };
+    compensatedKinds = {
+      [restored.capture.id]: "capture",
+      [restored.task.id]: "task",
+    };
   }
   transaction.updateUndoDescriptor({
     ...descriptor,
@@ -893,28 +955,24 @@ const applyUndo = (
       type: "command.undone",
       workspaceId: descriptor.workspaceId,
       spaceId: descriptor.spaceId,
-      aggregateId: compensatedRecordId,
-      aggregateVersion: compensatedVersion,
+      aggregateId: Object.keys(compensatedVersions)[0] as string,
+      aggregateVersion: Math.max(...Object.values(compensatedVersions)),
       targetCommandId: descriptor.targetCommandId,
       occurredAt,
     },
-    { [compensatedRecordId]: compensatedVersion },
+    compensatedVersions,
     ["compensated", "targetCommandId"],
     {
       diagnosticCode: "command.undone",
       projection: {
         kind: "command.undone",
         targetCommandId: descriptor.targetCommandId,
-        compensatedRecordId,
-        version: compensatedVersion,
+        compensatedRecordIds: Object.keys(compensatedVersions),
+        recordVersions: compensatedVersions,
       },
     },
     undefined,
-    descriptor.kind.startsWith("project.")
-      ? "project"
-      : descriptor.kind.startsWith("relation.")
-        ? "relation"
-        : "task",
+    compensatedKinds,
   );
 };
 
@@ -1016,8 +1074,27 @@ export const executeWave2Query = (
   const spaceIds =
     query.queryName === "search.global"
       ? query.parameters.spaceIds
-      : [query.parameters.spaceId];
-  if (!authorizeSpaces(dependencies, view, context, query, spaceIds)) {
+      : query.queryName === "project.operationalOverview"
+        ? (() => {
+            const project = view.getProject(query.parameters.projectId);
+            return project?.workspaceId === query.workspaceId
+              ? [project.spaceId]
+              : [];
+          })()
+        : query.queryName === "recovery.preview"
+          ? (() => {
+              const receipt = view.getAuditReceiptByCommand(
+                query.parameters.targetCommandId,
+              );
+              return receipt?.workspaceId === query.workspaceId
+                ? [receipt.spaceId]
+                : [];
+            })()
+          : [query.parameters.spaceId];
+  if (
+    spaceIds.length === 0 ||
+    !authorizeSpaces(dependencies, view, context, query, spaceIds)
+  ) {
     return queryRejected(query, kernelTime, "authorization.denied");
   }
   if (query.queryName === "project.list") {
@@ -1050,6 +1127,51 @@ export const executeWave2Query = (
           updatedAt: project.updatedAt,
         })),
     });
+  }
+  if (query.queryName === "project.operationalOverview") {
+    const project = view.getProject(query.parameters.projectId);
+    if (project === undefined) {
+      return queryRejected(query, kernelTime, "authorization.denied");
+    }
+    const taskIds = new Set(
+      view
+        .listRelations(query.workspaceId, project.spaceId)
+        .filter((relation) => relation.projectId === project.id)
+        .map((relation) => relation.taskId),
+    );
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "project.operationalOverview",
+      project: {
+        id: project.id,
+        spaceId: project.spaceId,
+        title: project.title,
+        intendedOutcome: project.intendedOutcome,
+        lifecycle: project.lifecycle,
+        version: project.version,
+        updatedAt: project.updatedAt,
+      },
+      relatedTasks: view
+        .listTasksInSpace(query.workspaceId, project.spaceId)
+        .filter((task) => taskIds.has(task.id))
+        .map((task) => ({
+          id: task.id,
+          title: task.title,
+          completionState: task.completionState,
+          version: task.version,
+        })),
+    });
+  }
+  if (query.queryName === "recovery.preview") {
+    return querySuccess(
+      query,
+      kernelTime,
+      freshness,
+      undoPreviewProjection(
+        view,
+        query.parameters.targetCommandId,
+        "recovery.preview",
+      ),
+    );
   }
   if (query.queryName === "search.global") {
     const needle = normalizeSearch(query.parameters.text);

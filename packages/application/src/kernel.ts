@@ -31,6 +31,7 @@ import {
 } from "@constellation/domain";
 
 import {
+  isApplicationWave2Transaction,
   RetryableUnitOfWorkError,
   type ApplicationKernelDependencies,
   type ApplicationReadView,
@@ -899,6 +900,18 @@ export class ApplicationKernel {
     transaction.insertAuditReceipt(audit);
     transaction.insertIdempotency({ scope, fingerprint, outcome });
     transaction.insertOutbox(outbox);
+    if (isApplicationWave2Transaction(transaction)) {
+      transaction.insertUndoDescriptor({
+        targetCommandId: command.commandId,
+        workspaceId: capture.workspaceId,
+        spaceId: capture.spaceId,
+        kind: "capture.undo_route",
+        captureId: routed.capture.id,
+        taskId: routed.task.id,
+        resultingCaptureVersion: routed.capture.version,
+        resultingTaskVersion: routed.task.version,
+      });
+    }
     return outcome;
   }
 
@@ -940,9 +953,11 @@ export class ApplicationKernel {
             freshness,
           );
         case "project.list":
+        case "project.operationalOverview":
         case "search.global":
         case "cockpit.week":
         case "activity.meaningful":
+        case "recovery.preview":
           return executeWave2Query(
             this.dependencies,
             view,

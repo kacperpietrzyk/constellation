@@ -89,6 +89,7 @@ export interface Task {
   readonly spaceId: SpaceId;
   readonly title: string;
   readonly statusId: TaskStatusId;
+  readonly recordState: "active" | "removed";
   readonly completionState: "open" | "completed";
   readonly completedAt?: string;
   readonly sourceCaptureId?: CaptureId;
@@ -164,6 +165,17 @@ export type UndoDescriptor =
       readonly kind: "relation.restore";
       readonly relationId: RelationId;
       readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "capture.undo_route";
+      readonly captureId: CaptureId;
+      readonly taskId: TaskId;
+      readonly resultingCaptureVersion: number;
+      readonly resultingTaskVersion: number;
       readonly consumedByCommandId?: CommandId;
     };
 
