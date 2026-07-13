@@ -464,6 +464,8 @@ export const App = ({
         </div>
         <button
           className="workspace-switcher"
+          disabled
+          title="Ten podgląd ma jeden workspace"
           aria-label={`Workspace ${bootstrap.workspace.name}, lokalny`}
         >
           <span className="workspace-avatar">I</span>
@@ -598,7 +600,12 @@ export const App = ({
               </section>
             </div>
             <footer>
-              <button className="ghost-button">Zachowaj nowszą</button>
+              <button
+                className="ghost-button"
+                onClick={() => setCondition("ready")}
+              >
+                Zachowaj nowszą
+              </button>
               <button
                 className="secondary-button"
                 onClick={() => setCondition("ready")}

@@ -1571,7 +1571,8 @@ kbd {
   max-width: 58rem;
   margin: 0 auto;
 }
-.compact-record-list > button {
+.compact-record-list > button,
+.compact-record-list > .compact-record {
   width: 100%;
   min-height: 3.45rem;
   display: grid;
@@ -1584,13 +1585,15 @@ kbd {
   border-bottom: 1px solid var(--border-subtle);
   background: transparent;
 }
-.compact-record-list > button:last-child {
+.compact-record-list > button:last-child,
+.compact-record-list > .compact-record:last-child {
   border-bottom: 0;
 }
 .compact-record-list > button:hover {
   background: var(--surface-hover);
 }
-.compact-record-list > button > span:nth-child(2) {
+.compact-record-list > button > span:nth-child(2),
+.compact-record-list > .compact-record > span:nth-child(2) {
   min-width: 0;
   display: flex;
   flex-direction: column;

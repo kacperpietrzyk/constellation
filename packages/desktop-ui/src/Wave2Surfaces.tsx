@@ -177,6 +177,12 @@ export const CockpitSurface = ({
           ).map((task, index) => (
             <button
               key={task.id}
+              disabled={realTasks.length === 0}
+              title={
+                realTasks.length === 0
+                  ? "Dostępne po podłączeniu cockpit.week"
+                  : undefined
+              }
               onClick={() => {
                 if (realTasks.length > 0) onSelectTask(task.id as TaskId);
               }}
@@ -284,7 +290,15 @@ export const ProjectsSurface = ({
         kicker="Projekt · aktywny"
         title={project.title}
         description="Operacyjny przegląd wyniku, następnego działania i ryzyka."
-        action={<button className="secondary-button">Edytuj wynik</button>}
+        action={
+          <button
+            className="secondary-button"
+            disabled
+            title="Dostępne po podłączeniu project.updateOutcome"
+          >
+            Edytuj wynik
+          </button>
+        }
       />
       <section className="project-overview" aria-labelledby="project-outcome">
         <div className="overview-intent">
@@ -313,7 +327,13 @@ export const ProjectsSurface = ({
             <strong>Brak cennika dystrybutora</strong>
             <span>{project.risk}</span>
           </div>
-          <button className="ghost-button">Otwórz zależność</button>
+          <button
+            className="ghost-button"
+            disabled
+            title="Dostępne po podłączeniu project.operationalOverview"
+          >
+            Otwórz zależność
+          </button>
         </div>
       </section>
       <section
@@ -334,7 +354,7 @@ export const ProjectsSurface = ({
             ...project.taskTitles,
             ...(relationAdded ? ["Sprawdź warunki odnowienia"] : []),
           ].map((title, index) => (
-            <button key={title}>
+            <div key={title} className="compact-record">
               <Mark kind="task" />
               <span>
                 <strong>{title}</strong>
@@ -343,7 +363,7 @@ export const ProjectsSurface = ({
                 </small>
               </span>
               <em>{index === 0 ? "W toku" : "Zaplanowane"}</em>
-            </button>
+            </div>
           ))}
         </div>
       </section>
@@ -420,7 +440,13 @@ export const HistorySurface = ({
               </li>
             </ol>
             <footer>
-              <button className="ghost-button">Otwórz wynik</button>
+              <button
+                className="ghost-button"
+                disabled
+                title="Dostępne po podłączeniu route target"
+              >
+                Otwórz wynik
+              </button>
               <button className="secondary-button" onClick={onUndo}>
                 Podgląd cofnięcia
               </button>
@@ -484,7 +510,13 @@ export const ActivitySurface = ({
             <p className="eyebrow">Timeline człowieka</p>
             <h2 id="timeline-title">Dzisiaj</h2>
           </div>
-          <button className="ghost-button">Pełny audyt</button>
+          <button
+            className="ghost-button"
+            disabled
+            title="Dostępne po podłączeniu audit route"
+          >
+            Pełny audyt
+          </button>
         </header>
         {activity.map((item) => (
           <ActivityRow
