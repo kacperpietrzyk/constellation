@@ -125,7 +125,9 @@ parent requires every captured identity to disappear, handles proven numeric
 process-group reuse without treating `EPERM` as absence, never repeatedly
 signals a numeric group, and waits for all inherited pipes to close. Before any
 relaunch, every row-bearing sentinel also requires the same uncommitted WAL
-bytes to remain present.
+bytes to remain present. Process accounting counts verified executions rather
+than unique numeric PIDs because an operating system may legally reuse a PID
+after the earlier process has been verified terminated.
 
 A distinct packaged process must then observe the baseline Workspace, Space,
 and membership with zero command rows and unchanged workspace version. Another
