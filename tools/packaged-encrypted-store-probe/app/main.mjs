@@ -40,6 +40,7 @@ const EXIT_CODES = Object.freeze({
 let config;
 let nativeAddonPackaged = false;
 let finishStarted = false;
+let providerBootstrapAccepted = false;
 let providerDisconnectPromise;
 
 class ProbeFailure extends Error {
@@ -134,44 +135,7 @@ function awaitProviderBootstrapTurn() {
 
       settled = true;
       cleanup();
-      providerDisconnectPromise = new Promise(
-        (resolveDisconnect, rejectDisconnect) => {
-          let disconnectSettled = false;
-          const failDisconnect = () => {
-            if (disconnectSettled) return;
-            disconnectSettled = true;
-            process.removeListener("disconnect", completeDisconnect);
-            rejectDisconnect(new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID"));
-          };
-          const completeDisconnect = () => {
-            if (disconnectSettled) return;
-            disconnectSettled = true;
-            if (process.connected || process.channel) {
-              rejectDisconnect(new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID"));
-            } else {
-              resolveDisconnect();
-            }
-          };
-
-          process.once("disconnect", completeDisconnect);
-          setImmediate(() => {
-            if (disconnectSettled) return;
-            if (!process.connected || !process.channel) {
-              failDisconnect();
-              return;
-            }
-            try {
-              process.disconnect();
-            } catch {
-              failDisconnect();
-            }
-          });
-        },
-      );
-      // The strict promise is awaited before provision emits any result. Attach
-      // a handler now so an early disconnect failure cannot become an unhandled
-      // rejection while the provider and SQLCipher work is still running.
-      void providerDisconnectPromise.catch(() => {});
+      providerBootstrapAccepted = true;
       resolve();
     };
 
@@ -197,6 +161,50 @@ function awaitProviderBootstrapTurn() {
   });
 }
 
+function disconnectProviderChannel() {
+  if (providerDisconnectPromise) return providerDisconnectPromise;
+
+  providerDisconnectPromise = new Promise((resolve, reject) => {
+    let settled = false;
+    const failDisconnect = () => {
+      if (settled) return;
+      settled = true;
+      process.removeListener("disconnect", completeDisconnect);
+      reject(new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID"));
+    };
+    const completeDisconnect = () => {
+      if (settled) return;
+      settled = true;
+      if (process.connected || process.channel) {
+        reject(new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID"));
+      } else {
+        resolve();
+      }
+    };
+
+    if (
+      !providerBootstrapAccepted ||
+      typeof process.disconnect !== "function" ||
+      !process.connected ||
+      !process.channel
+    ) {
+      failDisconnect();
+      return;
+    }
+
+    process.once("disconnect", completeDisconnect);
+    try {
+      process.disconnect();
+    } catch {
+      failDisconnect();
+    }
+  });
+  // Operational work may fail while disconnect is in flight. Attach a handler
+  // immediately; the original strict promise is still awaited before finish.
+  void providerDisconnectPromise.catch(() => {});
+  return providerDisconnectPromise;
+}
+
 function finish(result, exitCode) {
   if (finishStarted) return;
   if (!Number.isInteger(exitCode) || exitCode < 0 || exitCode > 255) {
@@ -210,9 +218,9 @@ function finish(result, exitCode) {
 async function finishAfterProviderDisconnect(result, exitCode) {
   let finalResult = result;
   let finalExitCode = exitCode;
-  if (config?.mode === "provision" && providerDisconnectPromise) {
+  if (config?.mode === "provision" && providerBootstrapAccepted) {
     try {
-      await providerDisconnectPromise;
+      await disconnectProviderChannel();
       if (process.connected || process.channel) {
         throw new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID");
       }
@@ -880,6 +888,7 @@ async function provisionStore(Database) {
     );
 
     const encrypted = await encryptPayload(payload, canaries, scope);
+    await disconnectProviderChannel();
     const payloadDigest = crypto
       .createHash("sha256")
       .update(payload)

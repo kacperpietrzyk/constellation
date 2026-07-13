@@ -21,12 +21,12 @@ The probe fails unless all of these checks pass:
 - one privileged packaged writer generates a fresh random 32-byte synthetic DEK
   internally. Before its first provider call it completes the same timed,
   keyless parent IPC turn used by the independent safeStorage probe: after the
-  exact continuation arrives, the child resumes immediately and schedules
-  channel disconnect for the next event-loop turn. The channel never carries
-  the DEK or payload. The writer then protects a strict workspace-bound payload
-  through asynchronous safeStorage and atomically publishes only its ciphertext
-  and metadata; before emitting any provision result, it requires the actual
-  disconnect event and verifies that the IPC connection and channel are absent;
+  exact continuation arrives, the child resumes immediately and the channel
+  never carries the DEK or payload. The writer then protects a strict
+  workspace-bound payload through asynchronous safeStorage. Immediately after
+  encryption succeeds, it disconnects the bootstrap channel, awaits the actual
+  disconnect event, and verifies that the IPC connection and channel are absent
+  before publishing the wrapper or opening SQLCipher;
 - that writer applies the raw DEK Buffer to SQLCipher before any schema access,
   clears the explicit Buffer, creates an encrypted WAL database, and writes a
   fresh synthetic marker plus FTS projection;
