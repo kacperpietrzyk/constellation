@@ -7,9 +7,11 @@ const packagesDirectory = path.join(root, "packages");
 
 for (const entry of readdirSync(packagesDirectory, { withFileTypes: true })) {
   if (entry.isDirectory()) {
-    rmSync(path.join(packagesDirectory, entry.name, "dist"), {
-      force: true,
-      recursive: true,
-    });
+    for (const outputDirectory of ["build", "dist"]) {
+      rmSync(path.join(packagesDirectory, entry.name, outputDirectory), {
+        force: true,
+        recursive: true,
+      });
+    }
   }
 }
