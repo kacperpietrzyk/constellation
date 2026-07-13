@@ -10,6 +10,7 @@ export default tseslint.config(
       "docs/specs/**",
       "node_modules/**",
       "**/dist/**",
+      "**/build/**",
       "coverage/**",
       "plans/**",
       "specs/**",

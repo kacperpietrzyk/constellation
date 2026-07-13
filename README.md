@@ -53,13 +53,12 @@ already solve well:
 
 Constellation is in **pre-alpha foundation work**. There is no installable
 release yet, and no contract should be considered stable. The repository now
-contains the first storage-neutral reference kernel: strict runtime contracts,
-workspace/Space bootstrap, text capture, capture history, audit receipts,
-capture-to-Task routing, a minimal versioned Task status, Task listing,
-idempotency, expected-version conflicts, and atomic failure-injection tests. The
-reference adapter preserves the original Capture while creating one canonical
-standalone Task. Encrypted persistence, automatic routing rules, Electron
-integration, MCP transport, and product UI are not implemented yet.
+contains the first storage-neutral reference kernel and an in-memory Electron
+developer preview. The preview opens Quick Capture, preserves the original
+text, routes it through the real Application Kernel as one canonical Task, and
+shows its Capture provenance and audit receipt. Its state intentionally resets
+when the app closes. Encrypted production persistence, automatic routing rules,
+MCP transport, and release packaging are not implemented yet.
 
 The current kernel boundary and implemented subset are documented in
 [Application kernel](docs/architecture/application-kernel.md).
@@ -78,6 +77,18 @@ npm run check
 Markdown, and the contract/conformance tests. The same command runs in CI on
 Linux, macOS, and Windows. CI additionally runs `npm run audit:dependencies`
 against the complete locked runtime and development dependency graph.
+
+To launch the interactive in-memory preview, install the pinned Electron binary
+and start the desktop development surface:
+
+```sh
+npm install
+npm run dev:desktop
+```
+
+Use the Quick Capture button or `Command/Ctrl+Shift+K`. The preview is
+development infrastructure, not a durable local Alpha; closing it clears its
+synthetic workspace.
 
 Questions and early product discussion belong in
 [GitHub Discussions](https://github.com/kacperpietrzyk/constellation/discussions).

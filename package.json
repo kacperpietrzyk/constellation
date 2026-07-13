@@ -15,10 +15,10 @@
   ],
   "scripts": {
     "audit:dependencies": "npm audit --audit-level=high",
-    "build": "tsc -b && npm run build -w @constellation/desktop-ui",
+    "build": "tsc -b && npm run build -w @constellation/desktop-preload && npm run build -w @constellation/desktop-ui",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "clean": "node scripts/clean.mjs",
-    "dev:desktop": "npm run dev -w @constellation/desktop-ui",
+    "dev:desktop": "node scripts/dev-desktop.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "npm run lint:code && npm run lint:md",

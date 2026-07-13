@@ -4,6 +4,7 @@ import type {
   ContractIssue,
   QueryEnvelope,
   QueryResult,
+  WorkspaceId,
 } from "@constellation/contracts";
 
 export const DESKTOP_CHANNELS = {
@@ -28,6 +29,7 @@ export type RendererQueryResponse =
 
 export interface DesktopBuildInfo {
   readonly channel: "developer-preview";
+  readonly initialWorkspaceId: WorkspaceId;
   readonly persistence: "in-memory";
   readonly version: string;
 }

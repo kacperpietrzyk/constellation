@@ -1,4 +1,7 @@
-import type { QueryEnvelope } from "@constellation/contracts";
+import {
+  WorkspaceIdSchema,
+  type QueryEnvelope,
+} from "@constellation/contracts";
 import type {
   ConstellationRendererClient,
   RendererQueryResponse,
@@ -26,6 +29,9 @@ export const createScenarioClient = (
   }),
   getBuildInfo: async () => ({
     channel: "developer-preview",
+    initialWorkspaceId: WorkspaceIdSchema.parse(
+      "00000000-0000-4000-8000-000000000001",
+    ),
     persistence: "in-memory",
     version: "scenario",
   }),

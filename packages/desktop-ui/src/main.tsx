@@ -1,11 +1,14 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { App } from "./App.js";
+import "./styles.css";
+
 const root = document.getElementById("root");
 if (root === null) throw new Error("Missing renderer root.");
 
 createRoot(root).render(
   <StrictMode>
-    <main>Constellation M0</main>
+    <App client={window.constellation} />
   </StrictMode>,
 );

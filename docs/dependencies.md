@@ -5,9 +5,12 @@ with `npm ci --ignore-scripts` and runs `npm audit` as part of lockfile review.
 
 ## Runtime
 
-| Dependency  | Purpose                                                                                       | License | Boundary         |
-| ----------- | --------------------------------------------------------------------------------------------- | ------- | ---------------- |
-| `zod` 4.4.3 | Strict runtime command, query, context, and outcome validation with inferred TypeScript types | MIT     | `contracts` only |
+| Dependency       | Purpose                                                                                       | License | Boundary                   |
+| ---------------- | --------------------------------------------------------------------------------------------- | ------- | -------------------------- |
+| `zod` 4.4.3      | Strict runtime command, query, context, and outcome validation with inferred TypeScript types | MIT     | `contracts` only           |
+| React 19.2.7     | Render the shared desktop product surface                                                     | MIT     | `desktop-ui` only          |
+| React DOM 19.2.7 | Mount the React renderer into the Electron document                                           | MIT     | `desktop-ui` only          |
+| Electron 43.1.0  | Secure desktop main/preload boundary for the developer preview                                | MIT     | `desktop-main` and preload |
 
 Zod replaces hand-written boundary parsing; it does not execute product logic,
 access storage, or receive secrets outside the values being validated. Validation
@@ -22,6 +25,13 @@ errors are converted to content-safe code/path pairs and never echo input values
 | Prettier 3.9.5                           | Deterministic formatting                  | MIT        |
 | markdownlint-cli2 0.23.0                 | Public Markdown checks                    | MIT        |
 | `@types/node` 24.13.3                    | Node.js 24 compile-time declarations      | MIT        |
+| Vite 8.1.4 + React plugin 6.0.3          | Renderer and sandboxed preload builds     | MIT        |
+| React type declarations 19.2             | React compile-time declarations           | MIT        |
+
+Electron exposes no generic renderer bridge. The sandboxed preload bundles a
+three-method allow-list, while main denies permission requests, untrusted
+navigation, new windows, and untrusted IPC senders. The current main process
+uses the in-memory reference adapter only and labels the build accordingly.
 
 ## Native compatibility probe
 
@@ -86,6 +96,8 @@ Windows packages prove same-artifact mechanism integration only, not production
 signing or update continuity.
 
 The product currently has no runtime native module, telemetry SDK, network
-client, model-provider client, or post-install build step. Native SQLCipher and
-Electron remain outside this reference-kernel dependency graph until their
-separate cross-platform gates pass.
+client, model-provider client, or post-install build step. Native SQLCipher
+remains outside the application dependency graph until the production local
+store adapter passes its separate cross-platform gates. Electron is present for
+the explicit in-memory developer preview; this does not claim release packaging,
+signing, durable storage, or update continuity.

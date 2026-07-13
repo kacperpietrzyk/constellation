@@ -5,7 +5,10 @@
   "description": "Allow-listed Electron preload bridge and renderer client contract.",
   "license": "Apache-2.0",
   "type": "module",
-  "main": "dist/src/preload.js",
+  "main": "build/preload.cjs",
+  "scripts": {
+    "build": "vite build"
+  },
   "exports": {
     "./client": {
       "types": "./dist/src/client.d.ts",
@@ -16,6 +19,7 @@
     "@constellation/contracts": "0.0.0"
   },
   "devDependencies": {
-    "electron": "43.1.0"
+    "electron": "43.1.0",
+    "vite": "8.1.4"
   }
 }
