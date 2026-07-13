@@ -1937,9 +1937,15 @@ function buildAndVerifyStagedGenerationCandidate({
       database.exec("BEGIN");
       reachCandidateFailpoint?.({
         failpoint: "during-sqlcipher-export",
+        exportCompleted: false,
         transactionOpen: database.inTransaction,
       });
       database.prepare("SELECT sqlcipher_export('encrypted_export')").get();
+      reachCandidateFailpoint?.({
+        failpoint: "during-sqlcipher-export",
+        exportCompleted: true,
+        transactionOpen: database.inTransaction,
+      });
       database.pragma("encrypted_export.user_version = 1");
       if (
         database.pragma("encrypted_export.user_version", { simple: true }) !== 1
@@ -2641,8 +2647,13 @@ async function advanceGenerationPreparationRecords(
           scope,
           expectExportTimingPayload:
             config.scenario === GENERATION_CANDIDATE_BUILD_SCENARIO,
-          reachCandidateFailpoint: ({ failpoint, transactionOpen }) => {
+          reachCandidateFailpoint: ({
+            failpoint,
+            exportCompleted,
+            transactionOpen,
+          }) => {
             reachCandidateFailpoint?.({
+              exportCompleted,
               failpoint,
               state: Object.freeze({
                 workspaceId: config.workspaceId,
@@ -3260,8 +3271,15 @@ async function runGenerationCandidateBuildMode(Database) {
   }
   const reachCandidateFailpoint =
     config.mode === "generation-candidate-fault"
-      ? ({ failpoint, state }) => {
+      ? ({ exportCompleted, failpoint, state }) => {
           if (failpoint !== config.failpoint) return;
+          if (exportCompleted === true) {
+            // The parent first observes a live partial export. If Windows
+            // identity verification makes termination slower than the export,
+            // stop before COMMIT so the process cannot cross into migration.
+            holdForForcedTermination({ timeoutMs: 120_000 });
+            return;
+          }
           const boundary = createGenerationCandidateBuildFaultBoundaryRecord({
             processId: process.pid,
             failpoint,
