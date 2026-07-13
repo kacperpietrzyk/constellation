@@ -54,7 +54,9 @@ The probe fails unless all of these checks pass:
   safeStorage probe remains the independent exact-key output-channel oracle;
 - the initializer emits one synchronous fixed result and uses `app.exit()` so
   Electron commits provider state before the parent starts phase two. Every
-  no-IPC store process emits its fixed result only after store close, post-close
+  no-IPC store process asserts that the channel is absent, yields one Electron
+  main-loop turn, and asserts the channel remains absent before provider or
+  database access. It emits its fixed result only after store close, post-close
   scanning, and failure cleanup, then uses `process.exit()` with the declared
   code. The parent accepts either launch only after the main process exits with
   that exact code and no signal, both inherited output pipes close, and the

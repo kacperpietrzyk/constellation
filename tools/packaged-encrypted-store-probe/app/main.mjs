@@ -174,6 +174,12 @@ function assertNoInheritedProviderChannel() {
   }
 }
 
+async function awaitPhaseTwoReadinessTurn() {
+  assertNoInheritedProviderChannel();
+  await new Promise((resolve) => setImmediate(resolve));
+  assertNoInheritedProviderChannel();
+}
+
 function finish(result, exitCode) {
   if (finishStarted) return;
   if (!Number.isInteger(exitCode) || exitCode < 0 || exitCode > 255) {
@@ -1161,11 +1167,11 @@ if (config) {
         await awaitProviderBootstrapTurn();
         result = await initializeProvider();
       } else if (config.mode === "plaintext") {
-        assertNoInheritedProviderChannel();
+        await awaitPhaseTwoReadinessTurn();
         const Database = await loadDatabaseConstructor();
         result = createPlaintextFixture(Database);
       } else {
-        assertNoInheritedProviderChannel();
+        await awaitPhaseTwoReadinessTurn();
         await requireAsyncEncryption();
         const Database = await loadDatabaseConstructor();
         result =
