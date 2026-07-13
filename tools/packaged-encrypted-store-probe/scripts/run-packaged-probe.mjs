@@ -386,8 +386,8 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
             resolve({
               declaredExitCode: result.declaredExitCode,
               lifecycle: electronExitObserved
-                ? "electron-quit-after-parent-authorization"
-                : "forced-after-terminal-electron-quit",
+                ? "electron-exit-after-parent-authorization"
+                : "forced-after-terminal-electron-exit",
               actualCode: code,
               actualSignal: signal,
               parentSupervisionStarted,
@@ -487,7 +487,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
         `${JSON.stringify({
           type: shutdownAuthorizationType,
           processId: child.pid,
-          method: "app.quit",
+          method: "app.exit",
           requestedExitCode: 0,
           controlToken: shutdownControlToken,
         })}\n`,
@@ -616,7 +616,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
           keys.length !== expectedKeys.length ||
           !keys.every((key, index) => key === expectedKeys[index]) ||
           value.processId !== child.pid ||
-          value.method !== "app.quit" ||
+          value.method !== "app.exit" ||
           value.requestedExitCode !== 0 ||
           !parentSupervisionStarted ||
           !shutdownAuthorizationQueued ||
@@ -643,7 +643,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
           keys.length !== expectedKeys.length ||
           !keys.every((key, index) => key === expectedKeys[index]) ||
           value.processId !== child.pid ||
-          value.method !== "app.quit" ||
+          value.method !== "app.exit" ||
           value.requestedExitCode !== 0 ||
           !parentSupervisionStarted ||
           !shutdownAuthorizationQueued ||
@@ -671,7 +671,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
           "type",
           "willQuitCount",
         ].sort();
-        const managedLifecycle = ["before-quit", "will-quit", "quit"];
+        const managedLifecycle = ["quit"];
         if (
           shutdownTerminalCount !== 1 ||
           keys.length !== expectedKeys.length ||
@@ -691,10 +691,10 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
         } else {
           shutdownInternalExitCode = value.internalExitCode;
           if (
-            value.method === "app.quit" &&
+            value.method === "app.exit" &&
             value.internalExitCode === 0 &&
-            value.beforeQuitCount === 1 &&
-            value.willQuitCount === 1 &&
+            value.beforeQuitCount === 0 &&
+            value.willQuitCount === 0 &&
             value.quitCount === 1 &&
             Array.isArray(value.lifecycle) &&
             value.lifecycle.length === managedLifecycle.length &&
@@ -847,8 +847,8 @@ function assertProvider(result) {
 function recordProcess(execution, mode) {
   const { childPid, result } = execution;
   ensure(
-    execution.lifecycle === "electron-quit-after-parent-authorization" ||
-      execution.lifecycle === "forced-after-terminal-electron-quit",
+    execution.lifecycle === "electron-exit-after-parent-authorization" ||
+      execution.lifecycle === "forced-after-terminal-electron-exit",
     "CHILD_LIFECYCLE_INVALID",
   );
   ensure(
@@ -860,7 +860,7 @@ function recordProcess(execution, mode) {
       execution.shutdownRequestedWhileAlive === true,
     "CHILD_TERMINATION_EVIDENCE_INVALID",
   );
-  if (execution.lifecycle === "electron-quit-after-parent-authorization") {
+  if (execution.lifecycle === "electron-exit-after-parent-authorization") {
     ensure(
       execution.electronExitObserved === true &&
         execution.shutdownTerminalConfirmed === true &&
@@ -1077,7 +1077,7 @@ try {
   recordProcess(writer, "provision");
   ensure(
     process.platform !== "win32" ||
-      writer.lifecycle === "electron-quit-after-parent-authorization",
+      writer.lifecycle === "electron-exit-after-parent-authorization",
     "WINDOWS_WRITER_SHUTDOWN_INVALID",
   );
   assertExactResultKeys(writer.result, [

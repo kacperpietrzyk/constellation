@@ -119,7 +119,7 @@ function writeShutdownAcknowledgement() {
     `${JSON.stringify({
       type: SHUTDOWN_ACK_TYPE,
       processId: process.pid,
-      method: "app.quit",
+      method: "app.exit",
       requestedExitCode: 0,
     })}\n`,
     "utf8",
@@ -170,7 +170,7 @@ function writeExitAcknowledgement() {
     `${JSON.stringify({
       type: EXIT_ACK_TYPE,
       processId: process.pid,
-      method: "app.quit",
+      method: "app.exit",
       requestedExitCode: 0,
     })}\n`,
     "utf8",
@@ -230,7 +230,7 @@ app.on("quit", (_event, internalExitCode) => {
   if (!exitAuthorizationAccepted) return;
   quitCount += 1;
   shutdownLifecycle.push("quit");
-  writeShutdownCompletion("app.quit", internalExitCode);
+  writeShutdownCompletion("app.exit", internalExitCode);
 });
 
 process.on("exit", (internalExitCode) => {
@@ -250,7 +250,7 @@ function waitForParentShutdownProtocol() {
       rejection = "type";
     } else if (message.processId !== process.pid) {
       rejection = "pid";
-    } else if (message.method !== "app.quit") {
+    } else if (message.method !== "app.exit") {
       rejection = "method";
     } else if (message.requestedExitCode !== 0) {
       rejection = "code";
@@ -276,19 +276,15 @@ function waitForParentShutdownProtocol() {
     exitAuthorizationAccepted = true;
     writeShutdownAcknowledgement();
     writeExitAcknowledgement();
-    // The declared probe outcome remains in the fixed protocol; the terminal
-    // Electron quit event must report zero and the parent records the
-    // platform-observed status separately. The parent owns the deadline and
-    // force-kill fallback.
+    // The declared probe outcome remains in the fixed protocol; app.exit()
+    // emits the terminal quit event and drives the browser main loop through
+    // its post-loop persistence work. The parent records the platform-observed
+    // status separately and owns the deadline and force-kill fallback.
     if (config?.mode === "shutdown-fault") {
       faultExitRequested = true;
       process.exit(1);
       return;
     }
-    app.quit();
-    // app.quit() emits the lifecycle evidence synchronously, while app.exit()
-    // ensures the browser main loop actually unwinds so Electron can run its
-    // post-loop provider-state commit before the parent observes process exit.
     app.exit(0);
   };
   const deadline = Date.now() + SHUTDOWN_CONTROL_TIMEOUT_MS;

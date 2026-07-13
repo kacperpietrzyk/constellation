@@ -50,12 +50,11 @@ The probe fails unless all of these checks pass:
   polling for one per-launch control file, avoiding dependence on late Electron
   main-loop IPC or timer delivery. Only after parsing the exact fixed readiness
   result does the parent atomically publish an authorization bound to a random
-  control token, the live process, the `app.quit()` method, and exit code zero.
+  control token, the live process, the `app.exit()` method, and exit code zero.
   The child consumes and deletes that file, then acknowledges the shutdown and
   accepted exit request as ordered synchronous records before calling
-  `app.quit()`. That call supplies the exact Electron `before-quit` →
-  `will-quit` → `quit(0)` lifecycle evidence; `app.exit(0)` then drives normal
-  browser-loop teardown under the same authorized exit code. The harness
+  `app.exit(0)`. A synchronous terminal record requires its exact Electron
+  `quit(0)` event with no `before-quit` or `will-quit` event. The harness
   preserves the declared outcome separately from the observed process result,
   reports natural exits and forced post-lifecycle cleanup separately, retains
   an unreferenced child self-kill failsafe, and requires both inherited output
@@ -71,17 +70,19 @@ The probe fails unless all of these checks pass:
 The child processes have a 45-second readiness watchdog so an interactive
 provider prompt or native hang becomes a bounded failure. After readiness, the
 parent allows up to five seconds for the acknowledged shutdown to produce the
-complete ordered Electron lifecycle and `quit` event code `0`, then five seconds
-for a natural process exit. A lingering process tree is force-terminated only
-after that terminal evidence; either outcome must close both inherited output
-pipes within five more seconds or the probe fails closed. Natural exits record
-the observed status `0` without a signal on both targets, while forced
-post-lifecycle cleanup is reported separately. The initial Windows writer must
-exit naturally before the distinct reader starts. On Windows, the evidence is
-the real async wrap/unwrap through distinct processes and exact marker recovery;
-provider rotation and temporary unavailability remain outside this bounded
-mechanism probe. The fixed declared outcome remains authoritative for each probe
-operation.
+exact Electron `quit` event code `0`, then five seconds for a natural process
+exit. A lingering process tree is force-terminated only after that terminal
+evidence; either outcome must close both inherited output pipes within five more
+seconds or the probe fails closed. Natural exits record the observed status `0`
+without a signal on both targets, while forced post-lifecycle cleanup is
+reported separately. The initial Windows writer must exit naturally before the
+distinct reader starts. On Windows, the evidence is the real async wrap/unwrap
+through distinct processes and exact marker recovery; provider rotation and
+temporary unavailability remain outside this bounded mechanism probe. The fixed
+declared outcome remains authoritative for each probe operation. The direct
+`app.exit()` path is probe-only: the fixture is headless, has no windows, and
+closes and scans every store path before exit authorization. It does not define
+the product's eventual user-facing graceful-shutdown policy.
 
 ## Pinned inputs
 
