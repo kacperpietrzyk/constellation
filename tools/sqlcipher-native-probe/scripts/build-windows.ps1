@@ -1,6 +1,9 @@
 param(
   [Parameter(Mandatory = $true)]
-  [string] $Amalgamation
+  [string] $Amalgamation,
+
+  [Parameter(Mandatory = $false)]
+  [string] $TargetProbeRoot
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,7 +12,13 @@ Set-StrictMode -Version Latest
 $OpenSslVersion = "3.5.7"
 $OpenSslSha256 = "a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8"
 $ElectronVersion = "43.1.0"
-$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$ScriptRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$Root = if ($PSBoundParameters.ContainsKey("TargetProbeRoot")) {
+  (Resolve-Path $TargetProbeRoot).Path
+}
+else {
+  $ScriptRoot
+}
 $RunnerTemp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
 $Archive = Join-Path $RunnerTemp "openssl-$OpenSslVersion.tar.gz"
 $SourceRoot = Join-Path $RunnerTemp "openssl-$OpenSslVersion"
@@ -54,7 +63,12 @@ Invoke-DeveloperCommand $Configure
 $LibCrypto = Join-Path $SourceRoot "libcrypto.lib"
 if (-not (Test-Path $LibCrypto)) { throw "Static libcrypto.lib was not produced." }
 
-node (Join-Path $Root "scripts\patch-binding.mjs")
+if ($PSBoundParameters.ContainsKey("TargetProbeRoot")) {
+  node (Join-Path $ScriptRoot "scripts\patch-binding.mjs") $Root
+}
+else {
+  node (Join-Path $ScriptRoot "scripts\patch-binding.mjs")
+}
 if ($LASTEXITCODE -ne 0) { throw "Binding patch failed." }
 
 $ModuleRoot = Join-Path $Root "node_modules\better-sqlite3"
