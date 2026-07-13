@@ -139,6 +139,13 @@ than unique numeric PIDs because an operating system may legally reuse a PID
 after the earlier process has been verified terminated. The full matrix uses 50
 verified packaged process executions: 43 managed and seven forced.
 
+On Windows, a descendant can remain visible briefly after the initial tree
+kill. During one bounded 15-second verification window, the parent may retry
+`taskkill /T /F` only for identities from the original snapshot that still
+match both PID and creation time, rechecking that pair immediately before each
+retry. A taskkill return code is never success evidence; every captured
+identity must disappear or the probe fails.
+
 A distinct packaged process must then observe the baseline Workspace, Space,
 and membership with zero command rows and unchanged workspace version. Another
 process applies the complete Capture, Event, Audit, Idempotency, and Outbox unit
