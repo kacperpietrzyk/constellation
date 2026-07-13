@@ -9,6 +9,10 @@ import {
 
 const PRE_EXIT_CLEANUP_DEADLINE_MS = 10_000;
 const POST_KILL_CLOSE_TIMEOUT_MS = 10_000;
+const FORCED_TREE_ABSENCE_TIMEOUT_MS = 5_000;
+const WINDOWS_FORCED_TREE_ABSENCE_TIMEOUT_MS = 15_000;
+const WINDOWS_FORCED_TREE_RETRY_GRACE_MS = 1_000;
+const WINDOWS_FORCED_TREE_RETRY_INTERVAL_MS = 2_000;
 const FAULT_MAX_OUTPUT_LINE_BYTES = 4 * 1024;
 const FAULT_MAX_DIAGNOSTIC_LINES = 32;
 
@@ -417,7 +421,7 @@ function isWindowsProcessIdentity(value) {
   );
 }
 
-function snapshotWindowsProcessTree(rootPid) {
+export function snapshotWindowsProcessTree(rootPid) {
   const script = String.raw`
 $ErrorActionPreference = 'Stop'
 $root = [int]$env:CONSTELLATION_FAULT_ROOT_PID
@@ -519,6 +523,58 @@ exit $LASTEXITCODE
   return result.status === 0 && result.signal === null;
 }
 
+export function retryTerminateWindowsProcessIdentities(identities) {
+  if (
+    !Array.isArray(identities) ||
+    identities.length === 0 ||
+    identities.length > 64 ||
+    !identities.every(isWindowsProcessIdentity) ||
+    new Set(identities.map((identity) => identity.pid)).size !==
+      identities.length
+  ) {
+    throw new Error("WINDOWS_PROCESS_IDENTITIES_INVALID");
+  }
+  const identityText = identities
+    .map((identity) => `${identity.pid}\t${identity.creationDate}`)
+    .join("\n");
+  const identityPayload = Buffer.from(identityText, "utf8").toString("base64");
+  const script = String.raw`
+$ErrorActionPreference = 'Stop'
+$text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:CONSTELLATION_FAULT_IDENTITIES))
+$taskkill = Join-Path $env:SystemRoot 'System32\taskkill.exe'
+if (-not (Test-Path -LiteralPath $taskkill -PathType Leaf)) { exit 5 }
+foreach ($line in @($text -split [char]10)) {
+  $fields = @($line -split [char]9)
+  if ($fields.Count -ne 2 -or $fields[0] -notmatch '^[1-9][0-9]{0,9}$') { exit 2 }
+  $processId = [int]$fields[0]
+  $expectedCreationDate = $fields[1]
+  $rows = @(Get-CimInstance Win32_Process -Filter "ProcessId = $processId")
+  if ($rows.Count -eq 0) { continue }
+  if ($rows.Count -ne 1) { exit 3 }
+  $actualCreationDate = ([datetime]$rows[0].CreationDate).ToUniversalTime().ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+  if (-not [string]::Equals($actualCreationDate, $expectedCreationDate, [StringComparison]::Ordinal)) { continue }
+  & $taskkill /PID $processId /T /F *> $null
+}
+exit 0
+`;
+  const result = spawnSync(
+    "powershell.exe",
+    ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+    {
+      env: {
+        ...process.env,
+        CONSTELLATION_FAULT_IDENTITIES: identityPayload,
+      },
+      windowsHide: true,
+      stdio: "ignore",
+      timeout: 10_000,
+    },
+  );
+  if (result.status !== 0 || result.signal !== null) {
+    throw new Error("WINDOWS_PROCESS_TREE_RETRY_FAILED");
+  }
+}
+
 function matchingWindowsProcessIdentities(identities) {
   if (
     !Array.isArray(identities) ||
@@ -599,13 +655,29 @@ async function waitForForcedTreeAbsence(
   windowsProcessIdentities,
   posixProcessGroup,
 ) {
-  const deadline = Date.now() + 5_000;
+  const startedAt = Date.now();
+  const deadline =
+    startedAt +
+    (process.platform === "win32"
+      ? WINDOWS_FORCED_TREE_ABSENCE_TIMEOUT_MS
+      : FORCED_TREE_ABSENCE_TIMEOUT_MS);
+  let nextWindowsRetryAt = startedAt + WINDOWS_FORCED_TREE_RETRY_GRACE_MS;
+  let windowsRetryCount = 0;
+  let remainingWindowsIdentities = 0;
   while (Date.now() < deadline) {
     if (process.platform === "win32") {
-      if (
-        matchingWindowsProcessIdentities(windowsProcessIdentities).length === 0
-      ) {
-        return;
+      const matchingPids = matchingWindowsProcessIdentities(
+        windowsProcessIdentities,
+      );
+      remainingWindowsIdentities = matchingPids.length;
+      if (matchingPids.length === 0) return;
+      if (Date.now() >= nextWindowsRetryAt) {
+        const matching = windowsProcessIdentities.filter((identity) =>
+          matchingPids.includes(identity.pid),
+        );
+        retryTerminateWindowsProcessIdentities(matching);
+        windowsRetryCount += 1;
+        nextWindowsRetryAt = Date.now() + WINDOWS_FORCED_TREE_RETRY_INTERVAL_MS;
       }
     } else if (posixProcessGroup) {
       if (
@@ -621,7 +693,11 @@ async function waitForForcedTreeAbsence(
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error("FORCED_PROCESS_TREE_STILL_ALIVE");
+  throw new Error(
+    process.platform === "win32"
+      ? `FORCED_PROCESS_TREE_STILL_ALIVE:REMAINING:${remainingWindowsIdentities}:RETRIES:${windowsRetryCount}`
+      : "FORCED_PROCESS_TREE_STILL_ALIVE",
+  );
 }
 
 export async function forceCrashPackagedProcessAtBoundary({
@@ -875,6 +951,10 @@ export async function forceCrashPackagedProcessAtBoundary({
       if (postKillCloseTimer) {
         clearTimeout(postKillCloseTimer);
         postKillCloseTimer = undefined;
+      }
+      if (terminationTimer) {
+        clearTimeout(terminationTimer);
+        terminationTimer = undefined;
       }
       if (primaryError) {
         try {

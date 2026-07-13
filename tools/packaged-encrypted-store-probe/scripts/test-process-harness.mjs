@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import {
   forceCrashPackagedProcessAtBoundary,
   launchManagedPackagedProcess,
+  retryTerminateWindowsProcessIdentities,
+  snapshotWindowsProcessTree,
   terminatePackagedProcessTree,
 } from "./packaged-process-harness.mjs";
 
@@ -542,6 +544,7 @@ if (childArgument) {
   }
 
   let windowsIdentityGuardVerified = false;
+  let windowsIdentityRetryVerified = false;
   if (process.platform === "win32") {
     const identityChild = spawn(
       process.execPath,
@@ -567,7 +570,40 @@ if (childArgument) {
         stillAlive = false;
       }
       ensure(!terminated && stillAlive, "TEST_WINDOWS_IDENTITY_GUARD_INVALID");
+      retryTerminateWindowsProcessIdentities([
+        {
+          pid: identityChild.pid,
+          creationDate: "1970-01-01T00:00:00.0000000Z",
+        },
+      ]);
+      try {
+        process.kill(identityChild.pid, 0);
+      } catch {
+        stillAlive = false;
+      }
+      ensure(stillAlive, "TEST_WINDOWS_RETRY_IDENTITY_GUARD_INVALID");
       windowsIdentityGuardVerified = true;
+      const identity = snapshotWindowsProcessTree(identityChild.pid).find(
+        (candidate) => candidate.pid === identityChild.pid,
+      );
+      ensure(identity, "TEST_WINDOWS_RETRY_IDENTITY_MISSING");
+      retryTerminateWindowsProcessIdentities([identity]);
+      if (
+        identityChild.exitCode === null &&
+        identityChild.signalCode === null
+      ) {
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error("TEST_WINDOWS_RETRY_TIMEOUT")),
+            5_000,
+          );
+          identityChild.once("close", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+      }
+      windowsIdentityRetryVerified = true;
     } finally {
       if (
         identityChild.exitCode === null &&
@@ -591,6 +627,7 @@ if (childArgument) {
       detachedProcessGroupRejected: process.platform !== "win32",
       postKillWatchdog: postKillWatchdogVerified,
       windowsIdentityGuard: windowsIdentityGuardVerified,
+      windowsIdentityRetry: windowsIdentityRetryVerified,
     })}\n`,
   );
 }

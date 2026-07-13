@@ -139,6 +139,13 @@ than unique numeric PIDs because an operating system may legally reuse a PID
 after the earlier process has been verified terminated. The full matrix uses 50
 verified packaged process executions: 43 managed and seven forced.
 
+On Windows, a descendant can remain visible briefly after the initial tree
+kill. During one bounded 15-second verification window, the parent may retry
+`taskkill /T /F` only for identities from the original snapshot that still
+match both PID and creation time, rechecking that pair immediately before each
+retry. A taskkill return code is never success evidence; every captured
+identity must disappear or the probe fails.
+
 A distinct packaged process must then observe the baseline Workspace, Space,
 and membership with zero command rows and unchanged workspace version. Another
 process applies the complete Capture, Event, Audit, Idempotency, and Outbox unit
@@ -220,6 +227,58 @@ proven. It also does not cover a full migration matrix, permission denial, real
 disk-full behavior, or cleanup and garbage collection of retained generations,
 operation records, or interrupted temporary manifests.
 
+## Candidate staging and handoff recovery gate
+
+The separate `probe:generation-preparation-recovery` runner moves one boundary
+earlier than manifest activation. Before export starts, it writes a canonical,
+create-only, file-synced intent that binds the workspace, source manifest,
+source and candidate identities, wrapper digest, semantic fingerprint, and
+fixed export/migration recipes. SQLCipher export and the synthetic v2 migration
+then operate only on the exact operation-local staging path.
+
+After checkpoint and close, a fresh read-only open verifies the candidate's
+identity, schema marker, logical Capture state, FTS, cipher, database, and
+foreign-key integrity. A create-only sealed record binds that verification to
+the closed encrypted file's exact digest and size. Only then may the closed
+candidate directory move by one same-workspace rename into
+`generations/generation-2`. The source manifest remains authoritative during
+the entire handoff; a final generation directory never activates itself. The
+immutable publication operation record is also present and verified before
+either tested handoff boundary is reachable.
+
+Two independent sentinels force-kill the captured packaged process:
+
+- after the sealed staged candidate has passed a second read-only verification,
+  before its final generation path exists;
+- after the candidate directory has moved into `generations`, before any result
+  is published and while the manifest still selects `generation-1`.
+
+A fresh process must recover the exact staged or handed-off state selected by
+the intent and sealed record. Identical replay reuses those same candidate
+bytes, performs at most one move, never exports again, and never creates
+`generation-3`. Reusing the operation ID with different semantic input fails
+before moving or rewriting anything. After handoff completes, the already
+proved publication pivot activates the candidate, and its replay and conflict
+checks must still cause no verified-file churn.
+
+The ordinary fixture rejects a missing or oversized record, corrupt candidate,
+digest or identity mismatch, simultaneous staging and final locations, and
+symlinked database or sidecar. The packaged runner additionally preserves the
+wrapper and package artifact digests, scans runtime state for deterministic
+Capture canaries, and verifies exact process accounting and inherited-pipe
+closure on both native hosts.
+
+This gate is process-crash evidence only for a fully verified candidate and its
+same-workspace handoff. It does not prove restart during partial export or
+migration writes; interruption while publishing the intent, sealed-candidate,
+or operation records; power-loss or parent-directory durability; cross-volume
+moves; automatic quarantine or cleanup; real disk-full/quota behavior;
+permission-denied recovery; or general migration compatibility. The path-race
+checks also assume workspace-owned `0700` directories and a cooperative
+single-writer/lock discipline. They reject mutation from a failpoint or
+verifier callback, but do not claim protection from an uncooperative same-user
+process racing the final path-based check and rename.
+
 ## Pinned inputs
 
 | Input                | Pin                                                                        | Purpose                                       | License      |
@@ -255,12 +314,13 @@ isolated from the product dependency graph.
 ## Scope limits
 
 This proves same-artifact mechanism integration plus only the process-crash
-generation-publication pivot described above. The macOS package is ad-hoc
-signed and the Windows package is unsigned. It does not prove Developer
+candidate-handoff and generation-publication pivots described above. The macOS
+package is ad-hoc signed and the Windows package is unsigned. It does not prove Developer
 ID/notarized or Authenticode-signed N-to-N+1 continuity, installer/reboot or
 OS-account migration, wrapper/database crash-atomic initial provisioning,
 generation publication or migration recovery beyond the exact retained
 `generation-1`/`generation-2` fixture, a full migration matrix,
+restart during partial export or migration writes,
 busy/read-only/permission recovery, real disk-full or power-loss recovery,
 parent-directory durability, device-cache ordering, generation cleanup or
 garbage collection, WAL checkpoint policy, client or renderer result delivery,
