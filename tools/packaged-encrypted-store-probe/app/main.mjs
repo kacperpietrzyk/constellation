@@ -40,6 +40,7 @@ const EXIT_CODES = Object.freeze({
 let config;
 let nativeAddonPackaged = false;
 let finishStarted = false;
+let providerDisconnectPromise;
 
 class ProbeFailure extends Error {
   constructor(code) {
@@ -133,9 +134,44 @@ function awaitProviderBootstrapTurn() {
 
       settled = true;
       cleanup();
-      setImmediate(() => {
-        if (process.connected) process.disconnect();
-      });
+      providerDisconnectPromise = new Promise(
+        (resolveDisconnect, rejectDisconnect) => {
+          let disconnectSettled = false;
+          const failDisconnect = () => {
+            if (disconnectSettled) return;
+            disconnectSettled = true;
+            process.removeListener("disconnect", completeDisconnect);
+            rejectDisconnect(new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID"));
+          };
+          const completeDisconnect = () => {
+            if (disconnectSettled) return;
+            disconnectSettled = true;
+            if (process.connected || process.channel) {
+              rejectDisconnect(new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID"));
+            } else {
+              resolveDisconnect();
+            }
+          };
+
+          process.once("disconnect", completeDisconnect);
+          setImmediate(() => {
+            if (disconnectSettled) return;
+            if (!process.connected || !process.channel) {
+              failDisconnect();
+              return;
+            }
+            try {
+              process.disconnect();
+            } catch {
+              failDisconnect();
+            }
+          });
+        },
+      );
+      // The strict promise is awaited before provision emits any result. Attach
+      // a handler now so an early disconnect failure cannot become an unhandled
+      // rejection while the provider and SQLCipher work is still running.
+      void providerDisconnectPromise.catch(() => {});
       resolve();
     };
 
@@ -169,6 +205,23 @@ function finish(result, exitCode) {
   finishStarted = true;
   writeFixedResult(result, exitCode);
   app.exit(exitCode);
+}
+
+async function finishAfterProviderDisconnect(result, exitCode) {
+  let finalResult = result;
+  let finalExitCode = exitCode;
+  if (config?.mode === "provision" && providerDisconnectPromise) {
+    try {
+      await providerDisconnectPromise;
+      if (process.connected || process.channel) {
+        throw new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID");
+      }
+    } catch {
+      finalResult = fixedResult("fail", "PROVIDER_BOOTSTRAP_INVALID");
+      finalExitCode = EXIT_CODES.PROVIDER_BOOTSTRAP_INVALID;
+    }
+  }
+  finish(finalResult, finalExitCode);
 }
 
 function getArgument(name) {
@@ -1102,10 +1155,11 @@ try {
 
 if (config) {
   app.whenReady().then(async () => {
+    let result;
+    let exitCode;
     try {
       verifyPackagedIdentity();
       if (config.mode === "provision") await awaitProviderBootstrapTurn();
-      let result;
       if (config.mode === "plaintext") {
         const Database = await loadDatabaseConstructor();
         result = createPlaintextFixture(Database);
@@ -1117,13 +1171,15 @@ if (config) {
             ? await provisionStore(Database)
             : await verifyStore(Database);
       }
-      finish(result, 0);
+      exitCode = 0;
     } catch (error) {
       const failure =
         error instanceof ProbeFailure
           ? error
           : new ProbeFailure("PROBE_FAILED");
-      finish(fixedResult("fail", failure.code), failure.exitCode);
+      result = fixedResult("fail", failure.code);
+      exitCode = failure.exitCode;
     }
+    await finishAfterProviderDisconnect(result, exitCode);
   });
 }

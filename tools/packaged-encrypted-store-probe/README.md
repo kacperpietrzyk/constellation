@@ -25,7 +25,8 @@ The probe fails unless all of these checks pass:
   channel disconnect for the next event-loop turn. The channel never carries
   the DEK or payload. The writer then protects a strict workspace-bound payload
   through asynchronous safeStorage and atomically publishes only its ciphertext
-  and metadata;
+  and metadata; before emitting any provision result, it requires the actual
+  disconnect event and verifies that the IPC connection and channel are absent;
 - that writer applies the raw DEK Buffer to SQLCipher before any schema access,
   clears the explicit Buffer, creates an encrypted WAL database, and writes a
   fresh synthetic marker plus FTS projection;
