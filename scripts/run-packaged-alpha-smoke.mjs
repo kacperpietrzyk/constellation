@@ -38,6 +38,7 @@ const reservePort = async () => {
 
 class CdpClient {
   #id = 0;
+  #issues = [];
   #pending = new Map();
   #socket;
 
@@ -45,6 +46,15 @@ class CdpClient {
     this.#socket = socket;
     socket.addEventListener("message", (event) => {
       const message = JSON.parse(String(event.data));
+      if (message.method === "Runtime.exceptionThrown") {
+        this.#issues.push("renderer-exception");
+      }
+      if (
+        message.method === "Log.entryAdded" &&
+        message.params?.entry?.level === "error"
+      ) {
+        this.#issues.push(`renderer-log-${message.params.entry.level}`);
+      }
       if (message.id === undefined) return;
       const pending = this.#pending.get(message.id);
       if (pending === undefined) return;
@@ -94,6 +104,10 @@ class CdpClient {
 
   close() {
     this.#socket.close();
+  }
+
+  issues() {
+    return [...this.#issues];
   }
 }
 
@@ -176,6 +190,7 @@ const run = async (phase) => {
     const target = await waitForTarget(port, packagedProcess);
     client = await CdpClient.connect(target.webSocketDebuggerUrl);
     await client.send("Runtime.enable");
+    await client.send("Log.enable");
     await waitFor(
       client,
       `document.querySelector(".desktop-shell") !== null`,
@@ -243,6 +258,11 @@ const run = async (phase) => {
       `document.querySelectorAll(".task-row").length`,
     );
     if (taskCount !== 1) throw new Error("PACKAGED_ALPHA_TASK_COUNT_INVALID");
+    if (client.issues().length > 0) {
+      throw new Error(
+        `PACKAGED_ALPHA_RENDERER_ERRORS_${client.issues().join("_")}`,
+      );
+    }
     await stopPackagedApp(client, packagedProcess);
     return {
       phase,
