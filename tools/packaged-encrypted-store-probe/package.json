@@ -20,9 +20,11 @@
     "package:probe": "node scripts/package.mjs",
     "probe:packaged": "node scripts/run-packaged-probe.mjs",
     "probe:generation-recovery": "node scripts/run-packaged-generation-recovery-probe.mjs",
+    "probe:generation-preparation-recovery": "node scripts/run-packaged-generation-preparation-recovery-probe.mjs",
     "probe:recovery": "node scripts/run-packaged-recovery-probe.mjs",
     "test:cleanup": "node scripts/test-cleanup.mjs",
     "test:generation-recovery-fixtures": "node scripts/test-generation-recovery-fixtures.mjs",
+    "test:generation-preparation-fixtures": "node scripts/test-generation-preparation-fixtures.mjs",
     "test:posix-process-tree": "node scripts/test-posix-process-tree.mjs",
     "test:process-harness": "node scripts/test-process-harness.mjs",
     "test:recovery-fixtures": "node scripts/test-recovery-fixtures.mjs"

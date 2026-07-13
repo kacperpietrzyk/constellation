@@ -85,6 +85,9 @@ jobs:
       - name: Verify generation publication fixture semantics
         run: npm --prefix tools/packaged-encrypted-store-probe run test:generation-recovery-fixtures
 
+      - name: Verify generation preparation fixture semantics
+        run: npm --prefix tools/packaged-encrypted-store-probe run test:generation-preparation-fixtures
+
       - name: Verify process harness semantics
         run: npm --prefix tools/packaged-encrypted-store-probe run test:process-harness
 
@@ -111,6 +114,9 @@ jobs:
 
       - name: Verify packaged generation publication recovery
         run: npm --prefix tools/packaged-encrypted-store-probe run probe:generation-recovery
+
+      - name: Verify packaged generation preparation recovery
+        run: npm --prefix tools/packaged-encrypted-store-probe run probe:generation-preparation-recovery
 
       - name: Restore the macOS Keychain configuration
         if: always()
@@ -160,6 +166,9 @@ jobs:
       - name: Verify generation publication fixture semantics
         run: npm --prefix tools/packaged-encrypted-store-probe run test:generation-recovery-fixtures
 
+      - name: Verify generation preparation fixture semantics
+        run: npm --prefix tools/packaged-encrypted-store-probe run test:generation-preparation-fixtures
+
       - name: Verify process harness semantics
         run: npm --prefix tools/packaged-encrypted-store-probe run test:process-harness
 
@@ -184,6 +193,9 @@ jobs:
 
       - name: Verify packaged generation publication recovery
         run: npm --prefix tools/packaged-encrypted-store-probe run probe:generation-recovery
+
+      - name: Verify packaged generation preparation recovery
+        run: npm --prefix tools/packaged-encrypted-store-probe run probe:generation-preparation-recovery
 
       - name: Audit the isolated dependency graph
         run: npm audit --prefix tools/packaged-encrypted-store-probe --audit-level=high
