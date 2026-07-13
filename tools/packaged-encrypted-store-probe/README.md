@@ -55,15 +55,17 @@ The probe fails unless all of these checks pass:
   record requires the exact Electron `before-quit` → `will-quit` → `quit(0)`
   lifecycle. The harness preserves the declared outcome separately from the
   observed process result, lets the Electron main-loop shutdown commit provider
-  state, force-terminates a stalled process tree, and requires both inherited
-  output pipes to close;
+  state, retains an unreferenced child self-kill failsafe, force-terminates a
+  stalled process tree from the parent, and requires both inherited output pipes
+  to close;
 - a dedicated falsification launch emits readiness and the pre-exit
   acknowledgement, then exits internally with code `1`; the harness must reject
   it before the ordinary twelve-process result can pass;
-- a Windows-only post-`quit(0)` falsification launch initializes the async
-  provider, emits the complete managed lifecycle, then exits before Chromium's
-  profile-state commit; the harness must reject the missing canonical DPAPI
-  state even though its outer status matches the observed Windows status;
+- a Windows-only provider-state falsification launch initializes the async
+  provider and completes the exact managed lifecycle on a fresh profile. The
+  parent first proves a canonical DPAPI state exists, deletes that isolated
+  `Local State` as an explicit fault injection, and must then reject the missing
+  provider state despite the otherwise valid lifecycle;
 - macOS uses an ad-hoc-signed package and disposable hosted-runner Keychain;
   Windows uses an unsigned mechanism package with statically linked pinned
   OpenSSL; every generated file and exact probe-only Keychain item is removed

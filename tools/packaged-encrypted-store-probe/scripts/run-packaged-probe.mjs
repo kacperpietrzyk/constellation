@@ -58,7 +58,7 @@ let forcedProcessExits = 0;
 let acknowledgedShutdowns = 0;
 let acknowledgedExitAuthorizations = 0;
 let terminallyConfirmedShutdowns = 0;
-let windowsPostQuitProviderFaultRejected = false;
+let windowsProviderStateFaultRejected = false;
 let windowsProviderStateDigest;
 const captured = [];
 const forbiddenOutput = [
@@ -436,6 +436,14 @@ async function launch({
                 `ELECTRON_SHUTDOWN_STATUS_INVALID:${codeLabel}:${signalLabel}`,
               );
               if (process.platform === "win32") {
+                if (mode === "shutdown-provider-state-fault") {
+                  const beforeInjection =
+                    readWindowsProviderStateDigest(probeProfile);
+                  beforeInjection.fill(0);
+                  fs.rmSync(path.join(probeProfile, "Local State"), {
+                    force: true,
+                  });
+                }
                 const providerStateDigest =
                   readWindowsProviderStateDigest(probeProfile);
                 providerStateDigest.fill(0);
@@ -992,18 +1000,18 @@ async function expectPreExitAcknowledgementRejected(expectedState) {
   assertPrimaryUnchanged(expectedState);
 }
 
-async function expectPostQuitProviderStateFaultRejected() {
+async function expectProviderStateFaultRejected() {
   if (process.platform !== "win32") return;
   const faultStateRoot = fs.mkdtempSync(
-    path.join(temporaryRoot, "constellation-post-quit-fault-"),
+    path.join(temporaryRoot, "constellation-provider-state-fault-"),
   );
   let rejection;
   try {
     await launch({
-      mode: "shutdown-post-quit-fault",
+      mode: "shutdown-provider-state-fault",
       workspaceId: workspace,
-      wrapperName: "unused-post-quit-fault.wrap.json",
-      databaseName: "unused-post-quit-fault.db",
+      wrapperName: "unused-provider-state-fault.wrap.json",
+      databaseName: "unused-provider-state-fault.db",
       probeStateRoot: faultStateRoot,
     });
   } catch (error) {
@@ -1011,7 +1019,7 @@ async function expectPostQuitProviderStateFaultRejected() {
   } finally {
     await removeDirectory(faultStateRoot);
   }
-  ensure(rejection instanceof Error, "POST_QUIT_PROVIDER_FAULT_NOT_REJECTED");
+  ensure(rejection instanceof Error, "PROVIDER_STATE_FAULT_NOT_REJECTED");
   if (
     !new Set([
       "WINDOWS_PROVIDER_STATE_INVALID",
@@ -1021,7 +1029,7 @@ async function expectPostQuitProviderStateFaultRejected() {
   ) {
     throw rejection;
   }
-  windowsPostQuitProviderFaultRejected = true;
+  windowsProviderStateFaultRejected = true;
 }
 
 function assertPrimaryUnchanged(expected) {
@@ -1159,7 +1167,7 @@ try {
     artifactDigests.set(artifact, digestFile(artifact));
   }
   removeProbeKeychainItem();
-  await expectPostQuitProviderStateFaultRejected();
+  await expectProviderStateFaultRejected();
 
   const writer = await launch({
     mode: "provision",
@@ -1429,8 +1437,8 @@ try {
       "WINDOWS_ELECTRON_EXIT_MATRIX_INVALID",
     );
     ensure(
-      windowsPostQuitProviderFaultRejected,
-      "POST_QUIT_PROVIDER_FAULT_NOT_REJECTED",
+      windowsProviderStateFaultRejected,
+      "PROVIDER_STATE_FAULT_NOT_REJECTED",
     );
   }
   assertWindowsProviderStateUnchanged(windowsProviderStateDigest);
@@ -1461,9 +1469,9 @@ try {
       forcedProcessExits,
       observedElectronExitCode: process.platform === "win32" ? 1 : 0,
       preExitAcknowledgementFaultRejected: true,
-      windowsPostQuitProviderFaultRejected:
+      windowsProviderStateFaultRejected:
         process.platform === "win32"
-          ? windowsPostQuitProviderFaultRejected
+          ? windowsProviderStateFaultRejected
           : "not-applicable",
       distinctProcesses: processIds.size,
       internallyGeneratedDek: true,

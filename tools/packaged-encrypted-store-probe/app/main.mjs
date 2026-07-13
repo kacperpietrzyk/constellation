@@ -51,7 +51,6 @@ let nativeAddonPackaged = false;
 let finishStarted = false;
 let exitAuthorizationAccepted = false;
 let faultExitRequested = false;
-let postQuitFaultRequested = false;
 const shutdownLifecycle = [];
 let beforeQuitCount = 0;
 let willQuitCount = 0;
@@ -232,7 +231,6 @@ app.on("quit", (_event, internalExitCode) => {
   quitCount += 1;
   shutdownLifecycle.push("quit");
   writeShutdownCompletion("app.quit", internalExitCode);
-  if (postQuitFaultRequested) process.exit(1);
 });
 
 process.on("exit", (internalExitCode) => {
@@ -289,7 +287,6 @@ function waitForParentShutdownProtocol() {
       process.exit(1);
       return;
     }
-    postQuitFaultRequested = config?.mode === "shutdown-post-quit-fault";
     app.quit();
   };
   const deadline = Date.now() + SHUTDOWN_CONTROL_TIMEOUT_MS;
@@ -355,7 +352,7 @@ function finish(result, exitCode) {
   setTimeout(
     () => process.kill(process.pid, "SIGKILL"),
     TERMINATION_FAILSAFE_MS,
-  );
+  ).unref();
   // Every store path closes and scans its state before returning here. The
   // synchronous readiness record lets the parent authorize an Electron-managed
   // main-loop exit, supervise its deadline, and verify that all inherited
@@ -411,7 +408,7 @@ function parseConfig() {
       "verify",
       "plaintext",
       "shutdown-fault",
-      "shutdown-post-quit-fault",
+      "shutdown-provider-state-fault",
     ]).has(mode)
   ) {
     fail("CONFIG_INVALID");
@@ -1338,9 +1335,9 @@ if (config) {
       let result;
       if (config.mode === "shutdown-fault") {
         result = fixedResult("pass", "SHUTDOWN_FAULT_ARMED");
-      } else if (config.mode === "shutdown-post-quit-fault") {
+      } else if (config.mode === "shutdown-provider-state-fault") {
         await initializeAsyncProviderForShutdownFault();
-        result = fixedResult("pass", "POST_QUIT_FAULT_ARMED");
+        result = fixedResult("pass", "PROVIDER_STATE_FAULT_ARMED");
       } else if (config.mode === "plaintext") {
         const Database = await loadDatabaseConstructor();
         result = createPlaintextFixture(Database);
