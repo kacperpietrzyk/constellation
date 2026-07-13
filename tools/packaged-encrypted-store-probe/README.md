@@ -213,6 +213,14 @@ for the same operation must fail closed without changing any verified bytes.
 Fresh-process source and target opens verify the expected identity, synthetic
 schema state, SQLCipher integrity, database integrity, and foreign keys.
 
+Read-only source verification may leave SQLite-owned coordination sidecars. A
+shared validator accepts only no rollback journal, an exact zero-byte
+single-link WAL, and a bounded single-link SHM, all regular and non-symlink;
+source sidecars are never manually unlinked. Every generation runner validates
+that shape before and after replay but excludes those two ephemeral files from
+the authoritative-workspace comparison. The source database, manifests,
+records, wrapper, and candidate bytes must remain exact.
+
 The gate also requires the safeStorage wrapper bytes and digest to remain
 unchanged, the executable, ASAR, and unpacked native add-on digests to remain
 unchanged across every process, and both retained database generations to stay
@@ -253,13 +261,8 @@ concurrent retry receives the fixed `GENERATION_PREPARATION_BUSY` result without
 mutating the source, intent, or partial candidate. See SQLite's
 [`BEGIN IMMEDIATE` transaction semantics](https://www.sqlite.org/lang_transaction.html#deferred_immediate_and_exclusive_transactions).
 
-Read-only verification and the operation lock may leave SQLite-owned source
-read sidecars. The shared validator accepts only no rollback journal, an exact
-zero-byte single-link WAL, and a bounded single-link SHM, all regular and
-non-symlink; source sidecars are never manually unlinked. Replay snapshots
-validate that shape before and after but exclude those two ephemeral
-coordination files from the authoritative-workspace comparison. The source
-database, manifests, records, wrapper, and candidate bytes must remain exact.
+The preparation operation and its source lock follow the same source-sidecar
+rule; they never delete a source sidecar manually.
 
 An interrupted unsealed build is never adopted as a candidate. Recovery treats
 the database and its rollback-journal or WAL sidecars as one directory unit,

@@ -11,6 +11,7 @@ import {
   GENERATION_PUBLICATION_IDS,
   GENERATION_PUBLICATION_SCENARIO,
   assertGenerationFaultBoundaryRecord,
+  assertRecoverableGenerationSourceSidecars,
   getGenerationPublicationPaths,
 } from "../app/recovery/generation-publication.mjs";
 import {
@@ -460,9 +461,10 @@ async function removeDirectory(directory) {
   throw lastError || new Error("STATE_CLEANUP_FAILED");
 }
 
-function snapshotWorkspace(workspaceRoot) {
+function snapshotWorkspace(workspaceRoot, ignoredPaths = new Set()) {
   const entries = [];
   function visit(target) {
+    if (ignoredPaths.has(target)) return;
     const metadata = fs.lstatSync(target, { bigint: true });
     ensure(!metadata.isSymbolicLink(), "WORKSPACE_SYMLINK_PRESENT");
     const relative = path.relative(workspaceRoot, target) || ".";
@@ -485,6 +487,17 @@ function snapshotWorkspace(workspaceRoot) {
   }
   visit(workspaceRoot);
   return JSON.stringify(entries);
+}
+
+function snapshotAuthoritativeGenerationWorkspace(paths) {
+  assertRecoverableGenerationSourceSidecars(paths.sourceDatabasePath);
+  return snapshotWorkspace(
+    paths.workspaceRoot,
+    new Set([
+      `${paths.sourceDatabasePath}-wal`,
+      `${paths.sourceDatabasePath}-shm`,
+    ]),
+  );
 }
 
 function scanGenerationStateCanaries(stateRoot) {
@@ -528,6 +541,10 @@ async function forceGenerationFault({
   setup,
 }) {
   const workspaceRoot = path.join(stateRoot, "workspace");
+  const paths = getGenerationPublicationPaths(
+    workspaceRoot,
+    GENERATION_PUBLICATION_IDS.operationId,
+  );
   const execution = await forceCrashPackagedProcessAtBoundary({
     executable,
     args: argumentsFor(stateRoot, {
@@ -584,7 +601,7 @@ async function forceGenerationFault({
     beforeKill: () => {
       scanGenerationStateCanaries(stateRoot);
       return {
-        workspaceSnapshot: snapshotWorkspace(workspaceRoot),
+        workspaceSnapshot: snapshotAuthoritativeGenerationWorkspace(paths),
         manifestDigest: digestFileHex(
           path.join(workspaceRoot, "workspace.json"),
         ),
@@ -619,7 +636,7 @@ async function forceGenerationFault({
       "FAULT_RESULT_PUBLICATION_BOUNDARY_INVALID",
     );
     ensure(
-      snapshotWorkspace(workspaceRoot) ===
+      snapshotAuthoritativeGenerationWorkspace(paths) ===
         execution.beforeKillEvidence.workspaceSnapshot &&
         digestFileHex(path.join(workspaceRoot, "workspace.json")) ===
           execution.beforeKillEvidence.manifestDigest,
@@ -797,7 +814,7 @@ async function runSentinel({ slug, failpoint }) {
     );
   }
 
-  const beforeReplay = snapshotWorkspace(paths.workspaceRoot);
+  const beforeReplay = snapshotAuthoritativeGenerationWorkspace(paths);
   const replay = await launch(stateRoot, {
     ...baseOptions,
     mode: "generation-publish",
@@ -817,11 +834,11 @@ async function runSentinel({ slug, failpoint }) {
         GENERATION_PUBLICATION_IDS.candidateGenerationId &&
       replay.result.manifestDigest === boundary.targetManifestDigest &&
       replay.result.temporaryManifestPresent === false &&
-      snapshotWorkspace(paths.workspaceRoot) === beforeReplay,
+      snapshotAuthoritativeGenerationWorkspace(paths) === beforeReplay,
     "GENERATION_REPLAY_CHURNED",
   );
 
-  const beforeConflict = snapshotWorkspace(paths.workspaceRoot);
+  const beforeConflict = snapshotAuthoritativeGenerationWorkspace(paths);
   const conflict = await launch(stateRoot, {
     ...baseOptions,
     mode: "generation-conflict",
@@ -841,7 +858,7 @@ async function runSentinel({ slug, failpoint }) {
         "generation.publication_input_conflict" &&
       conflict.result.activeGenerationId ===
         GENERATION_PUBLICATION_IDS.candidateGenerationId &&
-      snapshotWorkspace(paths.workspaceRoot) === beforeConflict,
+      snapshotAuthoritativeGenerationWorkspace(paths) === beforeConflict,
     "GENERATION_CONFLICT_CHURNED",
   );
 
@@ -881,8 +898,8 @@ async function runSentinel({ slug, failpoint }) {
     stateDigest: final.result.stateDigest,
     sourceGenerationRetained: true,
     candidateGenerationRetained: true,
-    replayWithoutChurn: true,
-    conflictWithoutChurn: true,
+    replayWithoutAuthoritativeWorkspaceChurn: true,
+    conflictWithoutAuthoritativeWorkspaceChurn: true,
     resultPublishedBeforeCrash: false,
   });
 }
@@ -960,8 +977,8 @@ try {
       encryptedSqlCipherExportVerified: true,
       candidateReadOnlyReopenVerified: true,
       sourceGenerationRetained: true,
-      replayWithoutChurnVerified: true,
-      conflictWithoutMutationVerified: true,
+      replayWithoutAuthoritativeWorkspaceChurnVerified: true,
+      conflictWithoutAuthoritativeWorkspaceChurnVerified: true,
       capturePlaintextStateScanVerified: true,
       exactArtifactDigestsStable: true,
       processCrashScopeOnly: true,
