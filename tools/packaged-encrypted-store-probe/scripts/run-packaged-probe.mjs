@@ -49,16 +49,14 @@ const shutdownAckType =
 const shutdownRejectedType =
   "constellation.packaged-store-probe.shutdown-rejected/v1";
 const exitAckType = "constellation.packaged-store-probe.exit-accepted/v1";
-const shutdownCompleteType =
-  "constellation.packaged-store-probe.shutdown-complete/v1";
-const TERMINAL_EXIT_GRACE_MS = 5_000;
+const AUTHORIZED_EXIT_GRACE_MS = 5_000;
 const EXPECTED_NATURAL_EXIT_CODE = 0;
 const processIds = new Set();
 let naturalElectronProcessExits = 0;
 let forcedProcessExits = 0;
 let acknowledgedShutdowns = 0;
 let acknowledgedExitAuthorizations = 0;
-let terminallyConfirmedShutdowns = 0;
+let verifiedProcessTerminations = 0;
 const captured = [];
 const forbiddenOutput = [
   Buffer.from('"keyMaterial"'),
@@ -231,9 +229,6 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     let exitAuthorizationAckCount = 0;
     let shutdownAcknowledged = false;
     let shutdownAckCount = 0;
-    let shutdownTerminalConfirmed = false;
-    let shutdownTerminalCount = 0;
-    let shutdownInternalExitCode;
     let forcedTerminationRequested = false;
     let forcedTerminationAccepted = false;
     let shutdownRequestedWhileAlive = false;
@@ -354,12 +349,6 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
               "TERMINATION_OUTCOME_UNVERIFIED",
             );
             if (electronExitObserved) {
-              ensure(
-                shutdownTerminalConfirmed &&
-                  shutdownTerminalCount === 1 &&
-                  shutdownInternalExitCode === 0,
-                "CHILD_SHUTDOWN_COMPLETION_MISSING",
-              );
               const codeLabel = Number.isInteger(code)
                 ? String(code)
                 : code === null
@@ -377,17 +366,15 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
               );
             } else {
               ensure(
-                shutdownTerminalConfirmed &&
-                  shutdownTerminalCount === 1 &&
-                  shutdownInternalExitCode === 0,
-                "FORCED_SHUTDOWN_COMPLETION_INVALID",
+                forcedTerminationRequested && forcedTerminationAccepted,
+                "FORCED_EXIT_UNVERIFIED",
               );
             }
             resolve({
               declaredExitCode: result.declaredExitCode,
               lifecycle: electronExitObserved
                 ? "electron-exit-after-parent-authorization"
-                : "forced-after-terminal-electron-exit",
+                : "forced-after-authorized-electron-exit",
               actualCode: code,
               actualSignal: signal,
               parentSupervisionStarted,
@@ -395,8 +382,6 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
               exitAuthorizationGranted,
               exitAuthorizationAcknowledged,
               shutdownAcknowledged,
-              shutdownTerminalConfirmed,
-              shutdownInternalExitCode,
               forcedTerminationRequested,
               forcedTerminationAccepted,
               shutdownRequestedWhileAlive,
@@ -523,7 +508,10 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
         clearTimeout(timer);
         timer = undefined;
       }
-      electronShutdownTimer = setTimeout(requestForcedTermination, 5_000);
+      electronShutdownTimer = setTimeout(
+        requestForcedTermination,
+        AUTHORIZED_EXIT_GRACE_MS,
+      );
     };
     const inspectProtocolLine = (line) => {
       const text = line.toString("utf8");
@@ -533,9 +521,6 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       const claimsShutdownRejected = text.includes(
         "constellation.packaged-store-probe.shutdown-rejected",
       );
-      const claimsShutdownComplete = text.includes(
-        "constellation.packaged-store-probe.shutdown-complete",
-      );
       const claimsExitAccepted = text.includes(
         "constellation.packaged-store-probe.exit-accepted",
       );
@@ -544,8 +529,7 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
         text.includes('"declaredExitCode"') ||
         claimsShutdownAccepted ||
         claimsShutdownRejected ||
-        claimsExitAccepted ||
-        claimsShutdownComplete;
+        claimsExitAccepted;
       let value;
       try {
         value = JSON.parse(text);
@@ -563,11 +547,6 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       }
       if (claimsShutdownRejected && value?.type !== shutdownRejectedType) {
         protocolError ||= "SHUTDOWN_REJECTION_INVALID";
-        startHardCleanup(protocolError);
-        return;
-      }
-      if (claimsShutdownComplete && value?.type !== shutdownCompleteType) {
-        protocolError ||= "SHUTDOWN_COMPLETION_INVALID";
         startHardCleanup(protocolError);
         return;
       }
@@ -654,63 +633,6 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
           startHardCleanup(protocolError);
         } else {
           exitAuthorizationAcknowledged = true;
-        }
-        return;
-      }
-      if (value?.type === shutdownCompleteType) {
-        shutdownTerminalCount += 1;
-        const keys = Object.keys(value).sort();
-        const expectedKeys = [
-          "beforeQuitCount",
-          "internalExitCode",
-          "lifecycle",
-          "method",
-          "processId",
-          "quitCount",
-          "requestedExitCode",
-          "type",
-          "willQuitCount",
-        ].sort();
-        const managedLifecycle = ["quit"];
-        if (
-          shutdownTerminalCount !== 1 ||
-          keys.length !== expectedKeys.length ||
-          !keys.every((key, index) => key === expectedKeys[index]) ||
-          value.processId !== child.pid ||
-          value.requestedExitCode !== 0 ||
-          !Number.isInteger(value.internalExitCode) ||
-          value.internalExitCode < 0 ||
-          value.internalExitCode > 255 ||
-          !parentSupervisionStarted ||
-          !shutdownAuthorizationQueued ||
-          !exitAuthorizationGranted ||
-          !exitAuthorizationAcknowledged ||
-          !shutdownAcknowledged
-        ) {
-          protocolError ||= "SHUTDOWN_COMPLETION_INVALID";
-        } else {
-          shutdownInternalExitCode = value.internalExitCode;
-          if (
-            value.method === "app.exit" &&
-            value.internalExitCode === 0 &&
-            value.beforeQuitCount === 0 &&
-            value.willQuitCount === 0 &&
-            value.quitCount === 1 &&
-            Array.isArray(value.lifecycle) &&
-            value.lifecycle.length === managedLifecycle.length &&
-            value.lifecycle.every(
-              (event, index) => event === managedLifecycle[index],
-            )
-          ) {
-            shutdownTerminalConfirmed = true;
-            if (electronShutdownTimer) clearTimeout(electronShutdownTimer);
-            electronShutdownTimer = setTimeout(
-              requestForcedTermination,
-              TERMINAL_EXIT_GRACE_MS,
-            );
-          } else {
-            protocolError ||= "SHUTDOWN_TERMINAL_ACK_INVALID";
-          }
         }
         return;
       }
@@ -847,8 +769,13 @@ function assertProvider(result) {
 function recordProcess(execution, mode) {
   const { childPid, result } = execution;
   ensure(
+    process.platform !== "win32" ||
+      execution.lifecycle === "electron-exit-after-parent-authorization",
+    "WINDOWS_NATURAL_EXIT_REQUIRED",
+  );
+  ensure(
     execution.lifecycle === "electron-exit-after-parent-authorization" ||
-      execution.lifecycle === "forced-after-terminal-electron-exit",
+      execution.lifecycle === "forced-after-authorized-electron-exit",
     "CHILD_LIFECYCLE_INVALID",
   );
   ensure(
@@ -863,27 +790,24 @@ function recordProcess(execution, mode) {
   if (execution.lifecycle === "electron-exit-after-parent-authorization") {
     ensure(
       execution.electronExitObserved === true &&
-        execution.shutdownTerminalConfirmed === true &&
-        execution.shutdownInternalExitCode === 0 &&
         execution.forcedTerminationRequested === false &&
         execution.actualCode === EXPECTED_NATURAL_EXIT_CODE &&
         execution.actualSignal === null,
       "CHILD_ELECTRON_EXIT_INVALID",
     );
     naturalElectronProcessExits += 1;
-    terminallyConfirmedShutdowns += 1;
   } else {
     ensure(
       execution.electronExitObserved === false &&
-        execution.shutdownTerminalConfirmed === true &&
-        execution.shutdownInternalExitCode === 0 &&
         execution.forcedTerminationRequested === true &&
-        execution.forcedTerminationAccepted === true,
+        execution.forcedTerminationAccepted === true &&
+        execution.actualCode === null &&
+        execution.actualSignal === "SIGKILL",
       "CHILD_FORCED_EXIT_INVALID",
     );
     forcedProcessExits += 1;
-    terminallyConfirmedShutdowns += 1;
   }
+  verifiedProcessTerminations += 1;
   acknowledgedShutdowns += 1;
   acknowledgedExitAuthorizations += 1;
   ensure(
@@ -913,7 +837,7 @@ async function expectFailure(options, acceptedCodes, expectedState) {
   assertPrimaryUnchanged(expectedState);
 }
 
-async function expectPreExitAcknowledgementRejected(expectedState) {
+async function expectAcknowledgedNonzeroExitRejected(expectedState) {
   let rejection;
   try {
     await launch({
@@ -925,8 +849,10 @@ async function expectPreExitAcknowledgementRejected(expectedState) {
   } catch (error) {
     rejection = error;
   }
-  ensure(rejection instanceof Error, "PRE_EXIT_ACK_FAULT_NOT_REJECTED");
-  if (rejection.message !== "SHUTDOWN_TERMINAL_ACK_INVALID") throw rejection;
+  ensure(rejection instanceof Error, "NONZERO_EXIT_FAULT_NOT_REJECTED");
+  if (rejection.message !== "ELECTRON_SHUTDOWN_STATUS_INVALID:1:null") {
+    throw rejection;
+  }
   assertPrimaryUnchanged(expectedState);
 }
 
@@ -1075,11 +1001,6 @@ try {
   ensure(writer.result.status === "pass", "WRITER_RESULT_INVALID");
   ensure(writer.result.code === "STORE_PROVISIONED", "WRITER_CODE_INVALID");
   recordProcess(writer, "provision");
-  ensure(
-    process.platform !== "win32" ||
-      writer.lifecycle === "electron-exit-after-parent-authorization",
-    "WINDOWS_WRITER_SHUTDOWN_INVALID",
-  );
   assertExactResultKeys(writer.result, [
     "asyncEncryptionAvailable",
     "cipherVersion",
@@ -1303,7 +1224,7 @@ try {
     primaryState,
   );
 
-  await expectPreExitAcknowledgementRejected(primaryState);
+  await expectAcknowledgedNonzeroExitRejected(primaryState);
 
   ensure(processIds.size === 12, "PROCESS_COUNT_INVALID");
   ensure(
@@ -1319,8 +1240,8 @@ try {
     "EXIT_AUTHORIZATION_ACK_COUNT_INVALID",
   );
   ensure(
-    terminallyConfirmedShutdowns === processIds.size,
-    "SHUTDOWN_COMPLETION_COUNT_INVALID",
+    verifiedProcessTerminations === processIds.size,
+    "PROCESS_TERMINATION_COUNT_INVALID",
   );
   for (const [artifact, expected] of artifactDigests) {
     const actual = digestFile(artifact);
@@ -1341,17 +1262,17 @@ try {
       targetArchitecture: "x64",
       electron: "43.1.0",
       packagedRelaunch: true,
-      parentManagedShutdown: true,
+      parentAuthorizedExit: true,
       acknowledgedShutdowns,
       acknowledgedExitAuthorizations,
-      terminallyConfirmedShutdowns,
+      verifiedProcessTerminations,
       naturalElectronProcessExits,
       forcedProcessExits,
       observedNaturalElectronExitCode:
         naturalElectronProcessExits > 0
           ? EXPECTED_NATURAL_EXIT_CODE
           : "not-observed",
-      preExitAcknowledgementFaultRejected: true,
+      acknowledgedNonzeroExitRejected: true,
       distinctProcesses: processIds.size,
       internallyGeneratedDek: true,
       asyncSafeStorage: true,

@@ -26,8 +26,6 @@ const SHUTDOWN_ACK_TYPE =
 const SHUTDOWN_REJECTED_TYPE =
   "constellation.packaged-store-probe.shutdown-rejected/v1";
 const EXIT_ACK_TYPE = "constellation.packaged-store-probe.exit-accepted/v1";
-const SHUTDOWN_COMPLETE_TYPE =
-  "constellation.packaged-store-probe.shutdown-complete/v1";
 const EXIT_CODES = Object.freeze({
   CONFIG_INVALID: 80,
   PACKAGED_IDENTITY_INVALID: 81,
@@ -49,12 +47,6 @@ const EXIT_CODES = Object.freeze({
 let config;
 let nativeAddonPackaged = false;
 let finishStarted = false;
-let exitAuthorizationAccepted = false;
-let faultExitRequested = false;
-const shutdownLifecycle = [];
-let beforeQuitCount = 0;
-let willQuitCount = 0;
-let quitCount = 0;
 
 class ProbeFailure extends Error {
   constructor(code) {
@@ -187,58 +179,6 @@ function writeExitAcknowledgement() {
   }
 }
 
-function writeShutdownCompletion(method, internalExitCode) {
-  const output = Buffer.from(
-    `${JSON.stringify({
-      type: SHUTDOWN_COMPLETE_TYPE,
-      processId: process.pid,
-      method,
-      requestedExitCode: 0,
-      internalExitCode,
-      lifecycle: shutdownLifecycle,
-      beforeQuitCount,
-      willQuitCount,
-      quitCount,
-    })}\n`,
-    "utf8",
-  );
-  try {
-    let offset = 0;
-    while (offset < output.length) {
-      const written = fs.writeSync(1, output, offset, output.length - offset);
-      if (written <= 0) throw new Error("SHUTDOWN_COMPLETE_WRITE_FAILED");
-      offset += written;
-    }
-  } finally {
-    output.fill(0);
-  }
-}
-
-app.on("before-quit", () => {
-  if (!exitAuthorizationAccepted) return;
-  beforeQuitCount += 1;
-  shutdownLifecycle.push("before-quit");
-});
-
-app.on("will-quit", () => {
-  if (!exitAuthorizationAccepted) return;
-  willQuitCount += 1;
-  shutdownLifecycle.push("will-quit");
-});
-
-app.on("quit", (_event, internalExitCode) => {
-  if (!exitAuthorizationAccepted) return;
-  quitCount += 1;
-  shutdownLifecycle.push("quit");
-  writeShutdownCompletion("app.exit", internalExitCode);
-});
-
-process.on("exit", (internalExitCode) => {
-  if (faultExitRequested) {
-    writeShutdownCompletion("process.exit", internalExitCode);
-  }
-});
-
 function waitForParentShutdownProtocol() {
   const accept = (message) => {
     let rejection;
@@ -273,15 +213,12 @@ function waitForParentShutdownProtocol() {
       rejectShutdown(rejection);
       return;
     }
-    exitAuthorizationAccepted = true;
     writeShutdownAcknowledgement();
     writeExitAcknowledgement();
-    // The declared probe outcome remains in the fixed protocol; app.exit()
-    // emits the terminal quit event and drives the browser main loop through
-    // its post-loop persistence work. The parent records the platform-observed
-    // status separately and owns the deadline and force-kill fallback.
+    // The declared probe outcome remains in the fixed protocol. The parent
+    // observes the actual process status after this acknowledgement and owns
+    // the deadline and force-kill fallback.
     if (config?.mode === "shutdown-fault") {
-      faultExitRequested = true;
       process.exit(1);
       return;
     }

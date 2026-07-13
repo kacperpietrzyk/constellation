@@ -53,15 +53,15 @@ The probe fails unless all of these checks pass:
   control token, the live process, the `app.exit()` method, and exit code zero.
   The child consumes and deletes that file, then acknowledges the shutdown and
   accepted exit request as ordered synchronous records before calling
-  `app.exit(0)`. A synchronous terminal record requires its exact Electron
-  `quit(0)` event with no `before-quit` or `will-quit` event. The harness
-  preserves the declared outcome separately from the observed process result,
-  reports natural exits and forced post-lifecycle cleanup separately, retains
-  an unreferenced child self-kill failsafe, and requires both inherited output
+  `app.exit(0)`. The harness then requires an observed natural main-process exit
+  with status `0` or records a bounded forced cleanup separately. It preserves
+  the declared outcome separately from the observed process result, retains an
+  unreferenced child self-kill failsafe, and requires both inherited output
   pipes to close;
-- a dedicated falsification launch emits readiness and the pre-exit
-  acknowledgement, then exits internally with code `1`; the harness must reject
-  it before the ordinary twelve-process result can pass;
+- a dedicated falsification launch emits readiness and both ordered
+  acknowledgements, then exits internally with code `1`; the harness must reject
+  that nonzero observed process result before the ordinary twelve-process result
+  can pass;
 - macOS uses an ad-hoc-signed package and disposable hosted-runner Keychain;
   Windows uses an unsigned mechanism package with statically linked pinned
   OpenSSL; every generated file and exact probe-only Keychain item is removed
@@ -69,20 +69,19 @@ The probe fails unless all of these checks pass:
 
 The child processes have a 45-second readiness watchdog so an interactive
 provider prompt or native hang becomes a bounded failure. After readiness, the
-parent allows up to five seconds for the acknowledged shutdown to produce the
-exact Electron `quit` event code `0`, then five seconds for a natural process
-exit. A lingering process tree is force-terminated only after that terminal
-evidence; either outcome must close both inherited output pipes within five more
-seconds or the probe fails closed. Natural exits record the observed status `0`
-without a signal on both targets, while forced post-lifecycle cleanup is
-reported separately. The initial Windows writer must exit naturally before the
-distinct reader starts. On Windows, the evidence is the real async wrap/unwrap
-through distinct processes and exact marker recovery; provider rotation and
-temporary unavailability remain outside this bounded mechanism probe. The fixed
-declared outcome remains authoritative for each probe operation. The direct
-`app.exit()` path is probe-only: the fixture is headless, has no windows, and
-closes and scans every store path before exit authorization. It does not define
-the product's eventual user-facing graceful-shutdown policy.
+parent allows up to five seconds for the acknowledged `app.exit(0)` request to
+produce a natural process exit. A lingering process tree is force-terminated
+only after that authorization; either outcome must close both inherited output
+pipes within five more seconds or the probe fails closed. Natural exits record
+the observed status `0` without a signal on both targets, while forced cleanup
+is reported separately. Every ordinary Windows launch must exit naturally; a
+forced cleanup is accepted only on macOS. On Windows, the evidence is the real
+async wrap/unwrap through distinct processes and exact marker recovery; provider
+rotation and temporary unavailability remain outside this bounded mechanism
+probe. The fixed declared outcome remains authoritative for each probe
+operation. The direct `app.exit()` path is probe-only: the fixture is headless,
+has no windows, and closes and scans every store path before exit authorization.
+It does not define the product's eventual user-facing graceful-shutdown policy.
 
 ## Pinned inputs
 
