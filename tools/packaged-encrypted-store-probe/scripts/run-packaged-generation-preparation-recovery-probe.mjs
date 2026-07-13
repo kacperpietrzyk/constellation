@@ -1629,14 +1629,16 @@ async function forceGenerationCandidateFault({
         });
         recordManaged(contender, "generation-candidate-recover-verified");
         assertExactResultKeys(contender.result);
-        ensure(
+        const contenderRejected =
           contender.result.status === "fail" &&
-            contender.result.code === "GENERATION_PREPARATION_BUSY" &&
-            contender.result.declaredExitCode !== 0 &&
-            contender.actualCode === contender.result.declaredExitCode &&
-            contender.declaredExitCode === contender.result.declaredExitCode &&
-            contender.actualSignal === null,
-          "GENERATION_CANDIDATE_CONCURRENT_BUILDER_NOT_REJECTED",
+          contender.result.code === "GENERATION_PREPARATION_BUSY" &&
+          contender.result.declaredExitCode !== 0 &&
+          contender.actualCode === contender.result.declaredExitCode &&
+          contender.declaredExitCode === contender.result.declaredExitCode &&
+          contender.actualSignal === null;
+        ensure(
+          contenderRejected,
+          `GENERATION_CANDIDATE_CONCURRENT_BUILDER_NOT_REJECTED:${contender.result.status}:${contender.result.code}:${contender.result.declaredExitCode}:${contender.actualCode}`,
         );
         assertStableSnapshotsUnchanged(protectedSnapshots);
         assertStableSnapshotsUnchanged(stableSnapshots);

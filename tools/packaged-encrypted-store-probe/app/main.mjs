@@ -573,7 +573,7 @@ function containsCanary(contents, canaries) {
   );
 }
 
-function scanForCanaries(targets, canaries) {
+function scanForCanaries(targets, canaries, ignoredPaths = new Set()) {
   const budget = { files: 0, bytes: 0 };
 
   function inspectBytes(contents) {
@@ -585,6 +585,7 @@ function scanForCanaries(targets, canaries) {
   }
 
   function scan(target) {
+    if (ignoredPaths.has(target)) return;
     const metadata = pathKind(target);
     if (!metadata) return;
     budget.files += 1;
@@ -1126,7 +1127,7 @@ function scanGenerationSecrets(secretCanaries, captureCanaries) {
   }
 }
 
-function scanKnownSecrets(canaries) {
+function scanKnownSecrets(canaries, ignoredPaths = new Set()) {
   scanForCanaries(
     [
       config.stateRoot,
@@ -1134,6 +1135,7 @@ function scanKnownSecrets(canaries) {
       path.join(process.resourcesPath, "app.asar.unpacked"),
     ],
     canaries,
+    ignoredPaths,
   );
 }
 
@@ -2538,12 +2540,15 @@ async function advanceGenerationPreparationRecords(
   const canaries = [];
   let captureCanaries = [];
   let operationLockDatabase;
+  let preparationBusy = false;
+  let sourceSharedMemoryPath;
   try {
     captureCanaries = createRecoveryCaptureCanaries(scope);
     const paths = getGenerationPreparationPaths(
       config.generationWorkspaceRoot,
       GENERATION_PUBLICATION_IDS.operationId,
     );
+    sourceSharedMemoryPath = `${paths.sourceDatabasePath}-shm`;
     const unwrapped = await unwrapKey(scope, canaries, paths.wrapperPath);
     const baseKey = scope.keep(Buffer.from(unwrapped.key));
     const fixture = createGenerationPublicationFixture(
@@ -2794,6 +2799,11 @@ async function advanceGenerationPreparationRecords(
       encryptedExport: candidatePresent,
       candidateReadOnlyReopen: candidatePresent,
     });
+  } catch (error) {
+    preparationBusy =
+      error instanceof GenerationPublicationError &&
+      error.code === "GENERATION_PREPARATION_BUSY";
+    throw error;
   } finally {
     try {
       // Windows WAL uses byte-range locks in SHM; release them before the
@@ -2802,9 +2812,13 @@ async function advanceGenerationPreparationRecords(
       operationLockDatabase = undefined;
     } finally {
       try {
-        if (canaries.length > 0) scanKnownSecrets(canaries);
+        const ignoredPaths =
+          preparationBusy && sourceSharedMemoryPath
+            ? new Set([sourceSharedMemoryPath])
+            : new Set();
+        if (canaries.length > 0) scanKnownSecrets(canaries, ignoredPaths);
         if (captureCanaries.length > 0) {
-          scanForCanaries([config.stateRoot], captureCanaries);
+          scanForCanaries([config.stateRoot], captureCanaries, ignoredPaths);
         }
       } finally {
         scope.clear();
