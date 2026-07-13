@@ -581,6 +581,384 @@ function verifyIdentity(verifyGeneration, context) {
   );
 }
 
+function assertRecordAdvanceEntries(paths, nextRecordKind, candidatePresent) {
+  const currentBasename = {
+    intent: "intent.json",
+    "candidate-verified": "candidate-verified.json",
+    operation: "operation.json",
+  }[nextRecordKind];
+  const stableEntries = [];
+  if (nextRecordKind !== "intent") stableEntries.push("intent.json");
+  if (candidatePresent) stableEntries.push("candidate");
+  if (nextRecordKind === "operation") {
+    stableEntries.push("candidate-verified.json");
+  }
+  let currentEntries;
+  try {
+    currentEntries = fs
+      .readdirSync(paths.operationDirectoryPath)
+      .filter((entry) => !stableEntries.includes(entry));
+  } catch {
+    throw new GenerationPublicationError(
+      "GENERATION_PREPARATION_LAYOUT_INVALID",
+    );
+  }
+  const escapedCurrentBasename = currentBasename.replaceAll(".", "\\.");
+  const temporaryEntries = currentEntries.filter((entry) =>
+    new RegExp(`^${escapedCurrentBasename}\\.[a-f0-9]{64}\\.publishing$`).test(
+      entry,
+    ),
+  );
+  const allowedCurrentEntries = [
+    [],
+    [currentBasename],
+    ...(temporaryEntries.length === 1
+      ? [[temporaryEntries[0]], [currentBasename, temporaryEntries[0]].sort()]
+      : []),
+  ];
+  invariant(
+    allowedCurrentEntries.some(
+      (allowed) =>
+        currentEntries.length === allowed.length &&
+        [...currentEntries]
+          .sort()
+          .every((entry, index) => entry === allowed[index]),
+    ),
+    "GENERATION_PREPARATION_LAYOUT_INVALID",
+  );
+  invariant(
+    nextRecordKind !== "intent" || !candidatePresent,
+    "GENERATION_PREPARATION_CANDIDATE_INVALID",
+  );
+  invariant(
+    nextRecordKind !== "candidate-verified" ||
+      candidatePresent ||
+      currentEntries.length === 0,
+    "GENERATION_PREPARATION_CANDIDATE_INVALID",
+  );
+  const expectedEntries = [...stableEntries, ...currentEntries].sort();
+  const metadata = assertExactDirectory(
+    paths.operationDirectoryPath,
+    expectedEntries,
+    "GENERATION_PREPARATION_LAYOUT_INVALID",
+  );
+  return { expectedEntries, metadata };
+}
+
+function captureRecordAdvanceLayout(paths, nextRecordKind, candidatePresent) {
+  const operation = assertRecordAdvanceEntries(
+    paths,
+    nextRecordKind,
+    candidatePresent,
+  );
+  const layout = new Map([
+    [
+      paths.workspaceRoot,
+      assertExactDirectory(
+        paths.workspaceRoot,
+        ["generations", "key.wrap.json", "recovery", "workspace.json"],
+        "GENERATION_PREPARATION_LAYOUT_INVALID",
+      ),
+    ],
+    [
+      paths.generationsRoot,
+      assertExactDirectory(
+        paths.generationsRoot,
+        [GENERATION_PUBLICATION_IDS.sourceGenerationId],
+        "GENERATION_PREPARATION_LAYOUT_INVALID",
+      ),
+    ],
+    [
+      paths.sourceGenerationDirectoryPath,
+      assertExactDirectory(
+        paths.sourceGenerationDirectoryPath,
+        ["workspace.db"],
+        "GENERATION_PREPARATION_LAYOUT_INVALID",
+      ),
+    ],
+    [
+      paths.recoveryRoot,
+      assertExactDirectory(
+        paths.recoveryRoot,
+        [`operation-${GENERATION_PUBLICATION_IDS.operationId}`],
+        "GENERATION_PREPARATION_LAYOUT_INVALID",
+      ),
+    ],
+    [paths.operationDirectoryPath, operation.metadata],
+  ]);
+  if (candidatePresent) {
+    layout.set(
+      paths.stagingCandidateDirectoryPath,
+      assertExactDirectory(
+        paths.stagingCandidateDirectoryPath,
+        ["workspace.db"],
+        "GENERATION_PREPARATION_CANDIDATE_INVALID",
+      ),
+    );
+  }
+  return layout;
+}
+
+export function verifyGenerationPreparationRecordPrerequisites(options) {
+  invariant(
+    isRecord(options) &&
+      hasExactKeys(options, [
+        "inputFingerprint",
+        "nextRecordKind",
+        "operationId",
+        "verifyGeneration",
+        "workspaceRoot",
+      ]) &&
+      ["intent", "candidate-verified", "operation"].includes(
+        options.nextRecordKind,
+      ),
+    "GENERATION_PREPARATION_OPTIONS_INVALID",
+  );
+  assertDigest(
+    options.inputFingerprint,
+    "GENERATION_PREPARATION_INPUT_FINGERPRINT_INVALID",
+  );
+  const paths = getGenerationPreparationPaths(
+    options.workspaceRoot,
+    options.operationId,
+  );
+  for (const directory of [
+    paths.workspaceRoot,
+    paths.generationsRoot,
+    paths.sourceGenerationDirectoryPath,
+    paths.recoveryRoot,
+    paths.operationDirectoryPath,
+  ]) {
+    lstatRequired(
+      directory,
+      "directory",
+      "GENERATION_PREPARATION_LAYOUT_INVALID",
+    );
+  }
+  assertExactDirectory(
+    paths.workspaceRoot,
+    ["generations", "key.wrap.json", "recovery", "workspace.json"],
+    "GENERATION_PREPARATION_LAYOUT_INVALID",
+  );
+  assertExactDirectory(
+    paths.generationsRoot,
+    [GENERATION_PUBLICATION_IDS.sourceGenerationId],
+    "GENERATION_PREPARATION_LAYOUT_INVALID",
+  );
+  assertExactDirectory(
+    paths.sourceGenerationDirectoryPath,
+    ["workspace.db"],
+    "GENERATION_PREPARATION_LAYOUT_INVALID",
+  );
+  assertExactDirectory(
+    paths.recoveryRoot,
+    [`operation-${GENERATION_PUBLICATION_IDS.operationId}`],
+    "GENERATION_PREPARATION_LAYOUT_INVALID",
+  );
+
+  const wrapper = digestBoundedRegularFile(
+    paths.wrapperPath,
+    MAX_WRAPPER_BYTES,
+    "GENERATION_WRAPPER_INVALID",
+  );
+  const sourceDatabase = digestBoundedRegularFile(
+    paths.sourceDatabasePath,
+    MAX_CANDIDATE_BYTES,
+    "GENERATION_DATABASE_INVALID",
+  );
+  assertNoSidecars(paths.sourceDatabasePath);
+  const fixture = createGenerationPublicationFixture(
+    (() => {
+      const sourceManifest = readCanonicalFile(
+        paths.manifestPath,
+        () => {},
+        "GENERATION_SOURCE_MANIFEST_MISMATCH",
+      );
+      try {
+        invariant(
+          typeof sourceManifest.value.workspaceId === "string",
+          "GENERATION_SOURCE_MANIFEST_MISMATCH",
+        );
+        return sourceManifest.value.workspaceId;
+      } finally {
+        sourceManifest.contents.fill(0);
+      }
+    })(),
+    wrapper.digest,
+  );
+  invariant(
+    fixture.inputFingerprint === options.inputFingerprint,
+    "GENERATION_PREPARATION_CONFLICT",
+  );
+  const manifest = readCanonicalFile(
+    paths.manifestPath,
+    () => {},
+    "GENERATION_SOURCE_MANIFEST_MISMATCH",
+  );
+  let intent;
+  let verified;
+  let candidate;
+  try {
+    invariant(
+      canonicalJson(manifest.value) === canonicalJson(fixture.sourceManifest),
+      "GENERATION_SOURCE_MANIFEST_MISMATCH",
+    );
+    if (options.nextRecordKind !== "intent") {
+      intent = readCanonicalFile(
+        paths.intentPath,
+        assertIntent,
+        "GENERATION_PREPARATION_INTENT_INVALID",
+      );
+      const expectedIntent = createGenerationPreparationIntent(
+        fixture.sourceManifest.workspaceId,
+        wrapper.digest,
+      );
+      invariant(
+        canonicalJson(intent.value) === canonicalJson(expectedIntent),
+        "GENERATION_PREPARATION_INTENT_INVALID",
+      );
+    }
+
+    const candidateDirectory = lstatOptional(
+      paths.stagingCandidateDirectoryPath,
+      "directory",
+      "GENERATION_PREPARATION_CANDIDATE_INVALID",
+    );
+    invariant(
+      !lstatOptional(
+        paths.candidateGenerationDirectoryPath,
+        "directory",
+        "GENERATION_PREPARATION_CANDIDATE_INVALID",
+      ),
+      "GENERATION_PREPARATION_CANDIDATE_LOCATION_INVALID",
+    );
+    const layout = captureRecordAdvanceLayout(
+      paths,
+      options.nextRecordKind,
+      Boolean(candidateDirectory),
+    );
+    if (candidateDirectory) {
+      candidate = digestBoundedRegularFile(
+        paths.stagingDatabasePath,
+        MAX_CANDIDATE_BYTES,
+        "GENERATION_PREPARATION_CANDIDATE_INVALID",
+      );
+      assertNoSidecars(paths.stagingDatabasePath);
+    }
+    invariant(
+      options.nextRecordKind !== "operation" || candidate,
+      "GENERATION_PREPARATION_CANDIDATE_INVALID",
+    );
+    if (options.nextRecordKind === "operation") {
+      verified = readCanonicalFile(
+        paths.verifiedRecordPath,
+        assertVerifiedRecord,
+        "GENERATION_CANDIDATE_VERIFIED_RECORD_INVALID",
+      );
+      const expectedVerified = createGenerationCandidateVerifiedRecord({
+        intent: intent.value,
+        candidateDatabaseDigest: candidate.digest,
+        candidateDatabaseSize: Number(candidate.metadata.size),
+      });
+      invariant(
+        canonicalJson(verified.value) === canonicalJson(expectedVerified),
+        "GENERATION_CANDIDATE_VERIFIED_RECORD_INVALID",
+      );
+    }
+
+    verifyIdentity(options.verifyGeneration, {
+      role: "source",
+      databasePath: paths.sourceDatabasePath,
+      expectedIdentity: fixture.sourceIdentity,
+      expectedIdentityDigest: fixture.sourceGenerationIdentityDigest,
+    });
+    if (candidate) {
+      verifyIdentity(options.verifyGeneration, {
+        role: "candidate",
+        databasePath: paths.stagingDatabasePath,
+        expectedIdentity: fixture.candidateIdentity,
+        expectedIdentityDigest: fixture.candidateGenerationIdentityDigest,
+      });
+    }
+
+    const layoutAfterVerification = captureRecordAdvanceLayout(
+      paths,
+      options.nextRecordKind,
+      Boolean(candidateDirectory),
+    );
+    assertSameClosedPreparationLayout(layout, layoutAfterVerification);
+    assertCanonicalFileUnchanged(
+      paths.manifestPath,
+      manifest,
+      () => {},
+      "GENERATION_SOURCE_MANIFEST_MISMATCH",
+    );
+    if (intent) {
+      assertCanonicalFileUnchanged(
+        paths.intentPath,
+        intent,
+        assertIntent,
+        "GENERATION_PREPARATION_INTENT_INVALID",
+      );
+    }
+    if (verified) {
+      assertCanonicalFileUnchanged(
+        paths.verifiedRecordPath,
+        verified,
+        assertVerifiedRecord,
+        "GENERATION_CANDIDATE_VERIFIED_RECORD_INVALID",
+      );
+    }
+
+    const wrapperAfter = digestBoundedRegularFile(
+      paths.wrapperPath,
+      MAX_WRAPPER_BYTES,
+      "GENERATION_WRAPPER_INVALID",
+    );
+    const sourceAfter = digestBoundedRegularFile(
+      paths.sourceDatabasePath,
+      MAX_CANDIDATE_BYTES,
+      "GENERATION_DATABASE_INVALID",
+    );
+    invariant(
+      wrapperAfter.digest === wrapper.digest &&
+        sameFileIdentity(wrapperAfter.metadata, wrapper.metadata) &&
+        sourceAfter.digest === sourceDatabase.digest &&
+        sameFileIdentity(sourceAfter.metadata, sourceDatabase.metadata),
+      "GENERATION_PREPARATION_FILES_CHANGED",
+    );
+    if (candidate) {
+      const candidateAfter = digestBoundedRegularFile(
+        paths.stagingDatabasePath,
+        MAX_CANDIDATE_BYTES,
+        "GENERATION_PREPARATION_CANDIDATE_INVALID",
+      );
+      invariant(
+        candidateAfter.digest === candidate.digest &&
+          sameFileIdentity(candidateAfter.metadata, candidate.metadata),
+        "GENERATION_PREPARATION_FILES_CHANGED",
+      );
+    }
+    return deepFreeze({
+      paths,
+      fixture,
+      wrapperDigest: wrapper.digest,
+      sourceManifestDigest: manifest.digest,
+      intent: intent?.value ?? null,
+      intentDigest: intent?.digest ?? null,
+      candidatePresent: Boolean(candidate),
+      candidateDatabaseDigest: candidate?.digest ?? null,
+      candidateDatabaseSize: candidate ? Number(candidate.metadata.size) : null,
+      verifiedRecord: verified?.value ?? null,
+      verifiedRecordDigest: verified?.digest ?? null,
+    });
+  } finally {
+    manifest.contents.fill(0);
+    intent?.contents.fill(0);
+    verified?.contents.fill(0);
+  }
+}
+
 function loadPreparationContext({
   workspaceRoot,
   operationId,

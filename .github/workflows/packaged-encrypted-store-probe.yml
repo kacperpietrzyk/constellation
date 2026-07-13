@@ -88,6 +88,9 @@ jobs:
       - name: Verify generation preparation fixture semantics
         run: npm --prefix tools/packaged-encrypted-store-probe run test:generation-preparation-fixtures
 
+      - name: Verify immutable generation record publication semantics
+        run: npm --prefix tools/packaged-encrypted-store-probe run test:immutable-record-publication-fixtures
+
       - name: Verify process harness semantics
         run: npm --prefix tools/packaged-encrypted-store-probe run test:process-harness
 
@@ -168,6 +171,9 @@ jobs:
 
       - name: Verify generation preparation fixture semantics
         run: npm --prefix tools/packaged-encrypted-store-probe run test:generation-preparation-fixtures
+
+      - name: Verify immutable generation record publication semantics
+        run: npm --prefix tools/packaged-encrypted-store-probe run test:immutable-record-publication-fixtures
 
       - name: Verify process harness semantics
         run: npm --prefix tools/packaged-encrypted-store-probe run test:process-harness
