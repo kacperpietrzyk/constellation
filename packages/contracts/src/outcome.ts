@@ -105,36 +105,60 @@ export const CaptureRoutedAsTaskProjectionSchema = z
   })
   .strict();
 
-export const ProjectProjectionSchema = z
+const ProjectProjectionFields = {
+  projectId: ProjectIdSchema,
+  title: z.string(),
+  intendedOutcome: z.string(),
+  lifecycle: z.literal("active"),
+  version: z.int().positive(),
+} as const;
+
+export const ProjectCreatedProjectionSchema = z
+  .object({ kind: z.literal("project.created"), ...ProjectProjectionFields })
+  .strict();
+export const ProjectOutcomeUpdatedProjectionSchema = z
   .object({
-    kind: z.enum(["project.created", "project.outcome_updated"]),
-    projectId: ProjectIdSchema,
-    title: z.string(),
-    intendedOutcome: z.string(),
-    lifecycle: z.literal("active"),
-    version: z.int().positive(),
+    kind: z.literal("project.outcome_updated"),
+    ...ProjectProjectionFields,
   })
   .strict();
 
-export const TaskMutationProjectionSchema = z
+const TaskMutationProjectionFields = {
+  taskId: TaskIdSchema,
+  statusId: TaskStatusIdSchema,
+  completionState: z.enum(["open", "completed"]),
+  completedAt: z.iso.datetime({ offset: true }).optional(),
+  version: z.int().positive(),
+} as const;
+
+export const TaskStatusChangedProjectionSchema = z
   .object({
-    kind: z.enum(["task.status_changed", "task.completed", "task.reopened"]),
-    taskId: TaskIdSchema,
-    statusId: TaskStatusIdSchema,
-    completionState: z.enum(["open", "completed"]),
-    completedAt: z.iso.datetime({ offset: true }).optional(),
-    version: z.int().positive(),
+    kind: z.literal("task.status_changed"),
+    ...TaskMutationProjectionFields,
   })
   .strict();
-
-export const RelationProjectionSchema = z
+export const TaskCompletedProjectionSchema = z
   .object({
-    kind: z.enum(["relation.created", "relation.removed"]),
-    relationId: RelationIdSchema,
-    taskId: TaskIdSchema,
-    projectId: ProjectIdSchema,
-    version: z.int().positive(),
+    kind: z.literal("task.completed"),
+    ...TaskMutationProjectionFields,
   })
+  .strict();
+export const TaskReopenedProjectionSchema = z
+  .object({ kind: z.literal("task.reopened"), ...TaskMutationProjectionFields })
+  .strict();
+
+const RelationProjectionFields = {
+  relationId: RelationIdSchema,
+  taskId: TaskIdSchema,
+  projectId: ProjectIdSchema,
+  version: z.int().positive(),
+} as const;
+
+export const RelationCreatedProjectionSchema = z
+  .object({ kind: z.literal("relation.created"), ...RelationProjectionFields })
+  .strict();
+export const RelationRemovedProjectionSchema = z
+  .object({ kind: z.literal("relation.removed"), ...RelationProjectionFields })
   .strict();
 
 export const UndoAppliedProjectionSchema = z
@@ -151,9 +175,13 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   WorkspaceRenamedProjectionSchema,
   CaptureStoredProjectionSchema,
   CaptureRoutedAsTaskProjectionSchema,
-  ProjectProjectionSchema,
-  TaskMutationProjectionSchema,
-  RelationProjectionSchema,
+  ProjectCreatedProjectionSchema,
+  ProjectOutcomeUpdatedProjectionSchema,
+  TaskStatusChangedProjectionSchema,
+  TaskCompletedProjectionSchema,
+  TaskReopenedProjectionSchema,
+  RelationCreatedProjectionSchema,
+  RelationRemovedProjectionSchema,
   UndoAppliedProjectionSchema,
 ]);
 export type CommandProjection = z.infer<typeof CommandProjectionSchema>;
@@ -202,27 +230,48 @@ const CaptureRoutedAsTaskSuccessOutcomeSchema =
     projection: CaptureRoutedAsTaskProjectionSchema,
   }).strict();
 
-const ProjectSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
+const ProjectCreatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("project.created"),
+    projection: ProjectCreatedProjectionSchema,
+  }).strict();
+const ProjectOutcomeUpdatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("project.outcome_updated"),
+    projection: ProjectOutcomeUpdatedProjectionSchema,
+  }).strict();
+const TaskStatusChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("task.status_changed"),
+    projection: TaskStatusChangedProjectionSchema,
+  }).strict();
+const TaskCompletedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend(
+  {
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("task.completed"),
+    projection: TaskCompletedProjectionSchema,
+  },
+).strict();
+const TaskReopenedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
   outcome: z.literal("success"),
-  diagnosticCode: z.enum(["project.created", "project.outcome_updated"]),
-  projection: ProjectProjectionSchema,
+  diagnosticCode: z.literal("task.reopened"),
+  projection: TaskReopenedProjectionSchema,
 }).strict();
-
-const TaskMutationSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
-  outcome: z.literal("success"),
-  diagnosticCode: z.enum([
-    "task.status_changed",
-    "task.completed",
-    "task.reopened",
-  ]),
-  projection: TaskMutationProjectionSchema,
-}).strict();
-
-const RelationSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
-  outcome: z.literal("success"),
-  diagnosticCode: z.enum(["relation.created", "relation.removed"]),
-  projection: RelationProjectionSchema,
-}).strict();
+const RelationCreatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("relation.created"),
+    projection: RelationCreatedProjectionSchema,
+  }).strict();
+const RelationRemovedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("relation.removed"),
+    projection: RelationRemovedProjectionSchema,
+  }).strict();
 
 const UndoSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
   outcome: z.literal("success"),
@@ -235,9 +284,13 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   WorkspaceRenamedSuccessOutcomeSchema,
   CaptureStoredSuccessOutcomeSchema,
   CaptureRoutedAsTaskSuccessOutcomeSchema,
-  ProjectSuccessOutcomeSchema,
-  TaskMutationSuccessOutcomeSchema,
-  RelationSuccessOutcomeSchema,
+  ProjectCreatedSuccessOutcomeSchema,
+  ProjectOutcomeUpdatedSuccessOutcomeSchema,
+  TaskStatusChangedSuccessOutcomeSchema,
+  TaskCompletedSuccessOutcomeSchema,
+  TaskReopenedSuccessOutcomeSchema,
+  RelationCreatedSuccessOutcomeSchema,
+  RelationRemovedSuccessOutcomeSchema,
   UndoSuccessOutcomeSchema,
 ]);
 

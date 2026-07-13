@@ -203,6 +203,26 @@ describe("application contracts", () => {
       },
     });
     assert.equal(result.success, false);
+
+    const wave2Result = CommandOutcomeSchema.safeParse({
+      outcome: "success",
+      contractVersion: 1,
+      commandId: ids.command,
+      correlationId: ids.correlation,
+      kernelTime: "2026-07-12T12:00:00.000Z",
+      diagnosticCode: "project.created",
+      affected: [],
+      auditReceiptId: ids.query,
+      projection: {
+        kind: "project.outcome_updated",
+        projectId: ids.query,
+        title: "Synthetic Project",
+        intendedOutcome: "Contradictory projection",
+        lifecycle: "active",
+        version: 2,
+      },
+    });
+    assert.equal(wave2Result.success, false);
   });
 
   it("allows a direct Task projection without fabricated Capture provenance", () => {
