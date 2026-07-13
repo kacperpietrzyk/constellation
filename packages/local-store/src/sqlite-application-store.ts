@@ -3,6 +3,8 @@ import {
   type ApplicationReadView,
   type ApplicationStore,
   type ApplicationTransaction,
+  type ApplicationWave2ReadView,
+  type ApplicationWave2Transaction,
   type CapturePageRequest,
   type IdempotencyRecord,
   type StoreFreshness,
@@ -12,6 +14,8 @@ import type {
   AuditReceiptId,
   CaptureId,
   PrincipalId,
+  ProjectId,
+  RelationId,
   SpaceId,
   TaskId,
   TaskStatusId,
@@ -22,11 +26,14 @@ import type {
   Capture,
   DomainEvent,
   OutboxEntry,
+  Project,
   Space,
   Task,
+  TaskProjectRelation,
   TaskStatusDefinition,
   Workspace,
   WorkspaceMembership,
+  UndoDescriptor,
 } from "@constellation/domain";
 
 import type {
@@ -35,7 +42,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
   checkpoint: null,
@@ -49,7 +56,7 @@ export class LocalStoreCorruptionError extends Error {
   }
 }
 
-const schema = `
+const schemaV1 = `
   CREATE TABLE IF NOT EXISTS workspaces (
     id TEXT PRIMARY KEY,
     version INTEGER NOT NULL CHECK (version > 0),
@@ -121,6 +128,129 @@ const schema = `
   ) STRICT;
 `;
 
+const schemaV2 = `
+  ALTER TABLE tasks ADD COLUMN record_state TEXT;
+  ALTER TABLE tasks ADD COLUMN completion_state TEXT;
+  ALTER TABLE tasks ADD COLUMN updated_at TEXT;
+  UPDATE tasks
+    SET record_state = json_extract(payload_json, '$.recordState'),
+        completion_state = json_extract(payload_json, '$.completionState'),
+        updated_at = json_extract(payload_json, '$.updatedAt')
+    WHERE record_state IS NULL OR completion_state IS NULL OR updated_at IS NULL;
+  CREATE INDEX tasks_operational
+    ON tasks(workspace_id, space_id, record_state, completion_state, updated_at DESC, id DESC);
+
+  ALTER TABLE events ADD COLUMN occurred_at TEXT;
+  UPDATE events
+    SET occurred_at = json_extract(payload_json, '$.occurredAt')
+    WHERE occurred_at IS NULL;
+  CREATE INDEX events_activity
+    ON events(workspace_id, space_id, occurred_at DESC, id DESC);
+
+  ALTER TABLE audit_receipts ADD COLUMN command_id TEXT;
+  UPDATE audit_receipts
+    SET command_id = json_extract(payload_json, '$.commandId')
+    WHERE command_id IS NULL;
+  CREATE UNIQUE INDEX audit_receipts_command
+    ON audit_receipts(command_id);
+
+  CREATE TABLE projects (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    updated_at TEXT NOT NULL,
+    version INTEGER NOT NULL CHECK (version > 0),
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX projects_page
+    ON projects(workspace_id, space_id, updated_at DESC, id DESC);
+
+  CREATE TABLE task_project_relations (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    task_id TEXT NOT NULL REFERENCES tasks(id),
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    state TEXT NOT NULL CHECK (state IN ('active', 'removed')),
+    version INTEGER NOT NULL CHECK (version > 0),
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX task_project_relations_scope
+    ON task_project_relations(workspace_id, space_id, state, id);
+  CREATE INDEX task_project_relations_task
+    ON task_project_relations(task_id, project_id, state);
+  CREATE INDEX task_project_relations_project
+    ON task_project_relations(project_id, task_id, state);
+  CREATE UNIQUE INDEX task_project_relations_one_active
+    ON task_project_relations(task_id, project_id)
+    WHERE state = 'active';
+
+  CREATE TABLE undo_descriptors (
+    target_command_id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX undo_descriptors_scope
+    ON undo_descriptors(workspace_id, space_id, target_command_id);
+
+  CREATE VIRTUAL TABLE work_search USING fts5(
+    record_id UNINDEXED,
+    workspace_id UNINDEXED,
+    space_id UNINDEXED,
+    record_kind UNINDEXED,
+    title,
+    body,
+    tokenize = 'unicode61 remove_diacritics 2'
+  );
+  CREATE TRIGGER work_search_capture_insert AFTER INSERT ON captures BEGIN
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    VALUES (new.id, new.workspace_id, new.space_id, 'capture', '', json_extract(new.payload_json, '$.originalText'));
+  END;
+  CREATE TRIGGER work_search_capture_update AFTER UPDATE OF payload_json ON captures BEGIN
+    DELETE FROM work_search WHERE record_kind = 'capture' AND record_id = old.id;
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    VALUES (new.id, new.workspace_id, new.space_id, 'capture', '', json_extract(new.payload_json, '$.originalText'));
+  END;
+  CREATE TRIGGER work_search_capture_delete AFTER DELETE ON captures BEGIN
+    DELETE FROM work_search WHERE record_kind = 'capture' AND record_id = old.id;
+  END;
+  CREATE TRIGGER work_search_task_insert AFTER INSERT ON tasks BEGIN
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    SELECT new.id, new.workspace_id, new.space_id, 'task', json_extract(new.payload_json, '$.title'), ''
+    WHERE new.record_state = 'active';
+  END;
+  CREATE TRIGGER work_search_task_update AFTER UPDATE OF payload_json ON tasks BEGIN
+    DELETE FROM work_search WHERE record_kind = 'task' AND record_id = old.id;
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    SELECT new.id, new.workspace_id, new.space_id, 'task', json_extract(new.payload_json, '$.title'), ''
+    WHERE new.record_state = 'active';
+  END;
+  CREATE TRIGGER work_search_task_delete AFTER DELETE ON tasks BEGIN
+    DELETE FROM work_search WHERE record_kind = 'task' AND record_id = old.id;
+  END;
+  CREATE TRIGGER work_search_project_insert AFTER INSERT ON projects BEGIN
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    VALUES (new.id, new.workspace_id, new.space_id, 'project', json_extract(new.payload_json, '$.title'), json_extract(new.payload_json, '$.intendedOutcome'));
+  END;
+  CREATE TRIGGER work_search_project_update AFTER UPDATE OF payload_json ON projects BEGIN
+    DELETE FROM work_search WHERE record_kind = 'project' AND record_id = old.id;
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    VALUES (new.id, new.workspace_id, new.space_id, 'project', json_extract(new.payload_json, '$.title'), json_extract(new.payload_json, '$.intendedOutcome'));
+  END;
+  CREATE TRIGGER work_search_project_delete AFTER DELETE ON projects BEGIN
+    DELETE FROM work_search WHERE record_kind = 'project' AND record_id = old.id;
+  END;
+
+  INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    SELECT id, workspace_id, space_id, 'capture', '', json_extract(payload_json, '$.originalText')
+    FROM captures;
+  INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    SELECT id, workspace_id, space_id, 'task', json_extract(payload_json, '$.title'), ''
+    FROM tasks
+    WHERE record_state = 'active';
+`;
+
 const objectValue = (
   value: unknown,
   context: string,
@@ -149,7 +279,7 @@ const numberValue = (row: unknown, key: string, context: string): number => {
 
 const parsePayload = <RecordType extends object>(
   row: unknown,
-  key: "id" | "scope",
+  key: "id" | "scope" | "targetCommandId",
   expected: string,
   context: string,
   scopedIdentities: Readonly<Record<string, string>> = {},
@@ -205,7 +335,8 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
 
   database.exec("BEGIN EXCLUSIVE;");
   try {
-    database.exec(schema);
+    if (currentVersion === 0) database.exec(schemaV1);
+    if (currentVersion < 2) database.exec(schemaV2);
     database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
     database.exec("COMMIT;");
   } catch (error) {
@@ -218,7 +349,7 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
   }
 };
 
-class SqliteReadView implements ApplicationReadView {
+class SqliteReadView implements ApplicationWave2ReadView {
   public constructor(protected readonly database: SqliteDatabase) {}
 
   public getFreshness(): StoreFreshness {
@@ -346,6 +477,168 @@ class SqliteReadView implements ApplicationReadView {
         });
   }
 
+  public listTasksInSpace(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly Task[] {
+    return this.database
+      .prepare(
+        "SELECT id, payload_json FROM tasks WHERE workspace_id = ? AND space_id = ? AND record_state = 'active' ORDER BY created_at DESC, id DESC",
+      )
+      .all(workspaceId, spaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "task");
+        return parsePayload<Task>(row, "id", id, "task", {
+          workspaceId,
+          spaceId,
+        });
+      });
+  }
+
+  public getProject(id: ProjectId): Project | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, space_id, payload_json FROM projects WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<Project>(row, "id", id, "project", {
+          workspaceId: stringValue(row, "workspace_id", "project"),
+          spaceId: stringValue(row, "space_id", "project"),
+        });
+  }
+
+  public listProjects(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly Project[] {
+    return this.database
+      .prepare(
+        "SELECT id, payload_json FROM projects WHERE workspace_id = ? AND space_id = ? ORDER BY updated_at DESC, id DESC",
+      )
+      .all(workspaceId, spaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "project");
+        return parsePayload<Project>(row, "id", id, "project", {
+          workspaceId,
+          spaceId,
+        });
+      });
+  }
+
+  public getRelation(id: RelationId): TaskProjectRelation | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, space_id, task_id, project_id, state, payload_json FROM task_project_relations WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<TaskProjectRelation>(row, "id", id, "relation", {
+          workspaceId: stringValue(row, "workspace_id", "relation"),
+          spaceId: stringValue(row, "space_id", "relation"),
+          taskId: stringValue(row, "task_id", "relation"),
+          projectId: stringValue(row, "project_id", "relation"),
+          state: stringValue(row, "state", "relation"),
+        });
+  }
+
+  public findTaskProjectRelation(
+    taskId: TaskId,
+    projectId: ProjectId,
+  ): TaskProjectRelation | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT id, workspace_id, space_id, task_id, project_id, state, payload_json FROM task_project_relations WHERE task_id = ? AND project_id = ? AND state = 'active' ORDER BY id LIMIT 1",
+      )
+      .get(taskId, projectId);
+    if (row === undefined) return undefined;
+    const id = stringValue(row, "id", "relation");
+    return parsePayload<TaskProjectRelation>(row, "id", id, "relation", {
+      workspaceId: stringValue(row, "workspace_id", "relation"),
+      spaceId: stringValue(row, "space_id", "relation"),
+      taskId,
+      projectId,
+      state: "active",
+    });
+  }
+
+  public listRelations(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly TaskProjectRelation[] {
+    return this.database
+      .prepare(
+        "SELECT id, task_id, project_id, state, payload_json FROM task_project_relations WHERE workspace_id = ? AND space_id = ? AND state = 'active' ORDER BY id",
+      )
+      .all(workspaceId, spaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "relation");
+        return parsePayload<TaskProjectRelation>(row, "id", id, "relation", {
+          workspaceId,
+          spaceId,
+          taskId: stringValue(row, "task_id", "relation"),
+          projectId: stringValue(row, "project_id", "relation"),
+          state: stringValue(row, "state", "relation"),
+        });
+      });
+  }
+
+  public listEvents(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly DomainEvent[] {
+    return this.database
+      .prepare(
+        "SELECT id, occurred_at, payload_json FROM events WHERE workspace_id = ? AND space_id = ? ORDER BY occurred_at DESC, id DESC",
+      )
+      .all(workspaceId, spaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "event");
+        return parsePayload<DomainEvent>(row, "id", id, "event", {
+          workspaceId,
+          spaceId,
+          occurredAt: stringValue(row, "occurred_at", "event"),
+        });
+      });
+  }
+
+  public getAuditReceiptByCommand(commandId: string): AuditReceipt | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT id, workspace_id, space_id, command_id, payload_json FROM audit_receipts WHERE command_id = ? ORDER BY id LIMIT 1",
+      )
+      .get(commandId);
+    if (row === undefined) return undefined;
+    const id = stringValue(row, "id", "audit receipt");
+    return parsePayload<AuditReceipt>(row, "id", id, "audit receipt", {
+      workspaceId: stringValue(row, "workspace_id", "audit receipt"),
+      spaceId: stringValue(row, "space_id", "audit receipt"),
+      commandId: stringValue(row, "command_id", "audit receipt"),
+    });
+  }
+
+  public getUndoDescriptor(commandId: string): UndoDescriptor | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, space_id, payload_json FROM undo_descriptors WHERE target_command_id = ?",
+      )
+      .get(commandId);
+    return row === undefined
+      ? undefined
+      : parsePayload<UndoDescriptor>(
+          row,
+          "targetCommandId",
+          commandId,
+          "undo descriptor",
+          {
+            workspaceId: stringValue(row, "workspace_id", "undo descriptor"),
+            spaceId: stringValue(row, "space_id", "undo descriptor"),
+          },
+        );
+  }
+
   public listTasks(request: TaskPageRequest): readonly Task[] | undefined {
     return this.listPage<Task>("tasks", "created_at", request, "task");
   }
@@ -353,7 +646,7 @@ class SqliteReadView implements ApplicationReadView {
   public getAuditReceipt(id: AuditReceiptId): AuditReceipt | undefined {
     const row = this.database
       .prepare(
-        "SELECT workspace_id, space_id, payload_json FROM audit_receipts WHERE id = ?",
+        "SELECT workspace_id, space_id, command_id, payload_json FROM audit_receipts WHERE id = ?",
       )
       .get(id);
     return row === undefined
@@ -361,6 +654,7 @@ class SqliteReadView implements ApplicationReadView {
       : parsePayload<AuditReceipt>(row, "id", id, "audit receipt", {
           workspaceId: stringValue(row, "workspace_id", "audit receipt"),
           spaceId: stringValue(row, "space_id", "audit receipt"),
+          commandId: stringValue(row, "command_id", "audit receipt"),
         });
   }
 
@@ -385,11 +679,13 @@ class SqliteReadView implements ApplicationReadView {
     context: string,
   ): readonly RecordType[] | undefined {
     const parameters: SqliteValue[] = [request.workspaceId, request.spaceId];
+    const recordStateWhere =
+      table === "tasks" ? " AND record_state = 'active'" : "";
     let cursorWhere = "";
     if (request.after !== undefined) {
       const cursor = this.database
         .prepare(
-          `SELECT 1 AS present FROM ${table} WHERE id = ? AND workspace_id = ? AND space_id = ? AND ${orderedColumn} = ?`,
+          `SELECT 1 AS present FROM ${table} WHERE id = ? AND workspace_id = ? AND space_id = ? AND ${orderedColumn} = ?${recordStateWhere}`,
         )
         .get(
           request.after.recordId,
@@ -408,7 +704,7 @@ class SqliteReadView implements ApplicationReadView {
     parameters.push(request.limit);
     return this.database
       .prepare(
-        `SELECT id, payload_json FROM ${table} WHERE workspace_id = ? AND space_id = ?${cursorWhere} ORDER BY ${orderedColumn} DESC, id DESC LIMIT ?`,
+        `SELECT id, payload_json FROM ${table} WHERE workspace_id = ? AND space_id = ?${recordStateWhere}${cursorWhere} ORDER BY ${orderedColumn} DESC, id DESC LIMIT ?`,
       )
       .all(...parameters)
       .map((row) => {
@@ -423,7 +719,7 @@ class SqliteReadView implements ApplicationReadView {
 
 class SqliteTransaction
   extends SqliteReadView
-  implements ApplicationTransaction
+  implements ApplicationWave2Transaction
 {
   public insertWorkspace(record: Workspace): void {
     this.insert(
@@ -512,6 +808,9 @@ class SqliteTransaction
         "workspace_id",
         "space_id",
         "created_at",
+        "record_state",
+        "completion_state",
+        "updated_at",
         "version",
         "payload_json",
       ],
@@ -520,23 +819,163 @@ class SqliteTransaction
         record.workspaceId,
         record.spaceId,
         record.createdAt,
+        record.recordState,
+        record.completionState,
+        record.updatedAt,
         record.version,
         payload(record),
       ],
     );
   }
+  public updateTask(record: Task, expectedVersion: number): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE tasks SET record_state = ?, completion_state = ?, updated_at = ?, version = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(
+          record.recordState,
+          record.completionState,
+          record.updatedAt,
+          record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+        ),
+    );
+  }
+  public insertProject(record: Project): void {
+    this.insert(
+      "projects",
+      [
+        "id",
+        "workspace_id",
+        "space_id",
+        "updated_at",
+        "version",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.spaceId,
+        record.updatedAt,
+        record.version,
+        payload(record),
+      ],
+    );
+  }
+  public updateProject(record: Project, expectedVersion: number): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE projects SET updated_at = ?, version = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(
+          record.updatedAt,
+          record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+        ),
+    );
+  }
+  public insertRelation(record: TaskProjectRelation): void {
+    this.insert(
+      "task_project_relations",
+      [
+        "id",
+        "workspace_id",
+        "space_id",
+        "task_id",
+        "project_id",
+        "state",
+        "version",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.spaceId,
+        record.taskId,
+        record.projectId,
+        record.state,
+        record.version,
+        payload(record),
+      ],
+    );
+  }
+  public updateRelation(
+    record: TaskProjectRelation,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE task_project_relations SET state = ?, version = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(
+          record.state,
+          record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+        ),
+    );
+  }
+  public insertUndoDescriptor(record: UndoDescriptor): void {
+    this.insert(
+      "undo_descriptors",
+      ["target_command_id", "workspace_id", "space_id", "payload_json"],
+      [
+        record.targetCommandId,
+        record.workspaceId,
+        record.spaceId,
+        payload(record),
+      ],
+    );
+  }
+  public updateUndoDescriptor(record: UndoDescriptor): void {
+    const result = this.database
+      .prepare(
+        "UPDATE undo_descriptors SET workspace_id = ?, space_id = ?, payload_json = ? WHERE target_command_id = ?",
+      )
+      .run(
+        record.workspaceId,
+        record.spaceId,
+        payload(record),
+        record.targetCommandId,
+      );
+    if (!changed(result)) {
+      throw new LocalStoreCorruptionError(
+        `Missing undo descriptor: ${record.targetCommandId}`,
+      );
+    }
+  }
   public insertEvent(record: DomainEvent): void {
     this.insert(
       "events",
-      ["id", "workspace_id", "space_id", "payload_json"],
-      [record.id, record.workspaceId, record.spaceId, payload(record)],
+      ["id", "workspace_id", "space_id", "occurred_at", "payload_json"],
+      [
+        record.id,
+        record.workspaceId,
+        record.spaceId,
+        record.occurredAt,
+        payload(record),
+      ],
     );
   }
   public insertAuditReceipt(record: AuditReceipt): void {
     this.insert(
       "audit_receipts",
-      ["id", "workspace_id", "space_id", "payload_json"],
-      [record.id, record.workspaceId, record.spaceId, payload(record)],
+      ["id", "workspace_id", "space_id", "command_id", "payload_json"],
+      [
+        record.id,
+        record.workspaceId,
+        record.spaceId,
+        record.commandId,
+        payload(record),
+      ],
     );
   }
   public insertIdempotency(record: IdempotencyRecord): void {
