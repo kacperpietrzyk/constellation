@@ -9,6 +9,7 @@ export const RECOVERY_CAPTURE_FAILPOINTS = Object.freeze([
   "after-audit-row",
   "after-idempotency-row",
   "after-outbox-row",
+  "after-commit-before-result",
 ]);
 
 const MAX_CAPTURE_TEXT_LENGTH = 262_144;
@@ -126,6 +127,14 @@ const RECOVERY_CAPTURE_FAILPOINT_ROWS = deepFreeze({
     idempotency: 1,
     outbox: 1,
   },
+  "after-commit-before-result": {
+    captures: 1,
+    fts: 1,
+    events: 1,
+    audits: 1,
+    idempotency: 1,
+    outbox: 1,
+  },
 });
 
 export function getRecoveryCaptureExpectedRowsAtFailpoint(failpoint) {
@@ -168,6 +177,8 @@ const ids = Object.freeze({
   event: "00000000-0000-4000-8000-000000000111",
   audit: "00000000-0000-4000-8000-000000000112",
   outbox: "00000000-0000-4000-8000-000000000113",
+  conflictCommand: "00000000-0000-4000-8000-000000000114",
+  conflictCorrelation: "00000000-0000-4000-8000-000000000115",
 });
 
 const occurredAt = "2026-07-13T03:00:00.000Z";
@@ -195,6 +206,15 @@ const command = {
     originalText: RECOVERY_CAPTURE_BODY,
     deviceId: "packaged-recovery-probe-device",
     source: "global_quick_capture",
+  },
+};
+const conflictCommand = {
+  ...command,
+  commandId: ids.conflictCommand,
+  correlationId: ids.conflictCorrelation,
+  payload: {
+    ...command.payload,
+    deviceId: "packaged-recovery-probe-conflict-device",
   },
 };
 
@@ -332,6 +352,17 @@ export const RECOVERY_CAPTURE_FIXTURE = deepFreeze({
     .digest("hex"),
   outcomeDigest: sha256Canonical(outcome),
   ftsQuery: "constellationrecovery",
+});
+
+export const RECOVERY_CAPTURE_CONFLICT_FIXTURE = deepFreeze({
+  command: conflictCommand,
+  diagnosticCode: "idempotency.key_reused",
+  idempotencyScope: captureIdempotencyScope(context, conflictCommand),
+  requestedSemanticFingerprint: sha256Canonical(
+    semanticCommandInput(conflictCommand),
+  ),
+  storedSemanticFingerprint: RECOVERY_CAPTURE_FIXTURE.semanticFingerprint,
+  storedOutcomeDigest: RECOVERY_CAPTURE_FIXTURE.outcomeDigest,
 });
 
 function assertDatabase(database) {
@@ -849,6 +880,9 @@ export function executeRecoveryCapture(database, options = {}) {
       invokeFailpoint(database, failpoint, reachFailpoint);
     }
     database.exec("COMMIT");
+    if (failpoint === "after-commit-before-result") {
+      invokeFailpoint(database, failpoint, reachFailpoint);
+    }
 
     const connectionChanges = totalChanges(database) - changesBefore;
     invariant(connectionChanges > 0, "RECOVERY_APPLY_DID_NOT_MUTATE");
@@ -864,6 +898,58 @@ export function executeRecoveryCapture(database, options = {}) {
     rollbackQuietly(database);
     if (error instanceof RecoveryCaptureFixtureError) throw error;
     throw new RecoveryCaptureFixtureError("RECOVERY_CAPTURE_EXECUTION_FAILED");
+  }
+}
+
+export function executeRecoveryCaptureConflict(database) {
+  assertDatabase(database);
+  invariant(!database.inTransaction, "RECOVERY_TRANSACTION_ALREADY_OPEN");
+  invariant(
+    RECOVERY_CAPTURE_CONFLICT_FIXTURE.idempotencyScope ===
+      RECOVERY_CAPTURE_FIXTURE.idempotencyScope &&
+      RECOVERY_CAPTURE_CONFLICT_FIXTURE.requestedSemanticFingerprint !==
+        RECOVERY_CAPTURE_FIXTURE.semanticFingerprint,
+    "RECOVERY_CONFLICT_FIXTURE_INVALID",
+  );
+  const changesBefore = totalChanges(database);
+
+  try {
+    database.exec("BEGIN IMMEDIATE");
+    invariant(database.inTransaction, "RECOVERY_BEGIN_FAILED");
+    const existing = database
+      .prepare(
+        `SELECT fingerprint, outcome_json, outcome_digest
+         FROM recovery_idempotency_outcomes WHERE scope = ?`,
+      )
+      .get(RECOVERY_CAPTURE_CONFLICT_FIXTURE.idempotencyScope);
+    invariant(existing !== undefined, "RECOVERY_CONFLICT_PRECONDITION_MISSING");
+    parseStoredOutcome(existing);
+    invariant(
+      existing.fingerprint ===
+        RECOVERY_CAPTURE_CONFLICT_FIXTURE.storedSemanticFingerprint &&
+        existing.fingerprint !==
+          RECOVERY_CAPTURE_CONFLICT_FIXTURE.requestedSemanticFingerprint,
+      "RECOVERY_CONFLICT_FINGERPRINT_INVALID",
+    );
+    database.exec("ROLLBACK");
+    const connectionChanges = totalChanges(database) - changesBefore;
+    invariant(connectionChanges === 0, "RECOVERY_CONFLICT_MUTATED");
+    return deepFreeze({
+      kind: "conflict",
+      diagnosticCode: RECOVERY_CAPTURE_CONFLICT_FIXTURE.diagnosticCode,
+      idempotencyScope: RECOVERY_CAPTURE_CONFLICT_FIXTURE.idempotencyScope,
+      requestedSemanticFingerprint:
+        RECOVERY_CAPTURE_CONFLICT_FIXTURE.requestedSemanticFingerprint,
+      storedSemanticFingerprint:
+        RECOVERY_CAPTURE_CONFLICT_FIXTURE.storedSemanticFingerprint,
+      storedOutcomeDigest:
+        RECOVERY_CAPTURE_CONFLICT_FIXTURE.storedOutcomeDigest,
+      connectionChanges,
+    });
+  } catch (error) {
+    rollbackQuietly(database);
+    if (error instanceof RecoveryCaptureFixtureError) throw error;
+    throw new RecoveryCaptureFixtureError("RECOVERY_CONFLICT_EXECUTION_FAILED");
   }
 }
 

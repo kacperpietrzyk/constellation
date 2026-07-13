@@ -5,17 +5,26 @@ import { DatabaseSync } from "node:sqlite";
 
 import {
   RECOVERY_CAPTURE_FAILPOINTS,
+  RECOVERY_CAPTURE_CONFLICT_FIXTURE,
   RECOVERY_CAPTURE_FIXTURE,
   RecoveryCaptureFixtureError,
   bootstrapRecoveryCaptureSchema,
   canonicalJson,
   executeRecoveryCapture,
+  executeRecoveryCaptureConflict,
   getRecoveryCapturePlaintextCanaries,
   readRecoveryCaptureCounts,
 } from "../app/recovery/capture-command.mjs";
-import { readCanonicalRecoveryCaptureState } from "../app/recovery/capture-verifier.mjs";
 import {
+  getRecoveryCaptureExpectedStateDigest,
+  readCanonicalRecoveryCaptureState,
+  verifyRecoveryCaptureState,
+} from "../app/recovery/capture-verifier.mjs";
+import {
+  RECOVERY_POST_COMMIT_FAULT_BOUNDARY_TYPE,
+  assertRecoveryPostCommitFaultBoundaryRecord,
   createRecoveryFaultBoundaryRecord,
+  createRecoveryPostCommitFaultBoundaryRecord,
   inspectRecoveryWal,
   prepareRecoveryWalFaultBaseline,
   verifyPlaintextRecoveryWalControl,
@@ -249,7 +258,9 @@ try {
 
   const spillFailpoints = RECOVERY_CAPTURE_FAILPOINTS.filter(
     (failpoint) =>
-      failpoint !== "none" && failpoint !== "after-begin-immediate",
+      failpoint !== "none" &&
+      failpoint !== "after-begin-immediate" &&
+      failpoint !== "after-commit-before-result",
   );
   for (const failpoint of spillFailpoints) {
     baseline = prepareRecoveryWalFaultBaseline(database, {
@@ -355,12 +366,160 @@ try {
     );
   }
 
-  const applied = executeRecoveryCapture(database);
+  baseline = prepareRecoveryWalFaultBaseline(database, {
+    walPath,
+    cacheSizePages: 8,
+  });
+  let postCommitReached = false;
+  let postCommitVisibleRows;
+  let postCommitWal;
+  let plaintextPostCommitRejected = false;
+  try {
+    executeRecoveryCapture(database, {
+      failpoint: "after-commit-before-result",
+      reachFailpoint: ({ failpoint, visibleRows }) => {
+        ensure(
+          failpoint === "after-commit-before-result" &&
+            !database.inTransaction &&
+            canonicalJson(visibleRows) ===
+              canonicalJson(TEST_PRECOMMIT_ROWS["after-outbox-row"]),
+          "TEST_POST_COMMIT_ROWS_INVALID",
+        );
+        const verification = verifyRecoveryCaptureState(database, {
+          expectedState: "committed",
+        });
+        ensure(
+          verification.stateDigest ===
+            getRecoveryCaptureExpectedStateDigest("committed"),
+          "TEST_POST_COMMIT_STATE_INVALID",
+        );
+        postCommitWal = inspectRecoveryWal({
+          walPath,
+          expectedPageSize: baseline.walPageSize,
+        });
+        ensure(
+          postCommitWal.walFrames > 0 && postCommitWal.walCommitFrames === 1,
+          "TEST_POST_COMMIT_WAL_INVALID",
+        );
+        const contents = fs.readFileSync(walPath);
+        const canaries = getRecoveryCapturePlaintextCanaries();
+        try {
+          ensure(
+            canaries.some((canary) => contents.includes(canary)),
+            "TEST_POST_COMMIT_CANARY_NOT_SPILLED",
+          );
+        } finally {
+          contents.fill(0);
+          for (const canary of canaries) canary.fill(0);
+        }
+        try {
+          createRecoveryPostCommitFaultBoundaryRecord({
+            database,
+            walPath,
+            failpoint,
+            visibleRows,
+            baseline,
+            plaintextWalControlVerified: true,
+          });
+        } catch (error) {
+          plaintextPostCommitRejected =
+            error instanceof RecoveryCaptureFixtureError &&
+            error.code === "RECOVERY_WAL_PLAINTEXT_EXPOSED";
+        }
+        postCommitReached = true;
+        postCommitVisibleRows = visibleRows;
+        throw new RecoveryCaptureFixtureError(
+          "TEST_POST_COMMIT_BOUNDARY_REACHED",
+        );
+      },
+    });
+  } catch (error) {
+    ensure(
+      error instanceof RecoveryCaptureFixtureError &&
+        error.code === "TEST_POST_COMMIT_BOUNDARY_REACHED",
+      "TEST_POST_COMMIT_FAILPOINT_FAILED",
+    );
+  }
   ensure(
-    applied.kind === "applied" && applied.connectionChanges > 0,
-    "TEST_APPLY_FAILED",
+    postCommitReached && plaintextPostCommitRejected && !database.inTransaction,
+    "TEST_POST_COMMIT_BOUNDARY_INVALID",
   );
   assertCounts(database, 1);
+
+  const validPostCommitRecord = Object.freeze({
+    type: RECOVERY_POST_COMMIT_FAULT_BOUNDARY_TYPE,
+    processId: 12_345,
+    scenario: RECOVERY_CAPTURE_FIXTURE.scenario,
+    failpoint: "after-commit-before-result",
+    commitReturned: true,
+    transactionOpen: false,
+    commandResultPublished: false,
+    canonicalStateVerified: true,
+    workspaceVersion: RECOVERY_CAPTURE_FIXTURE.workspace.version,
+    visibleRows: Object.freeze({ ...postCommitVisibleRows }),
+    stateDigest: getRecoveryCaptureExpectedStateDigest("committed"),
+    originalTextDigest: RECOVERY_CAPTURE_FIXTURE.originalTextDigest,
+    semanticFingerprint: RECOVERY_CAPTURE_FIXTURE.semanticFingerprint,
+    outcomeDigest: RECOVERY_CAPTURE_FIXTURE.outcomeDigest,
+    walBaselineBytes: baseline.walBaselineBytes,
+    walPageSize: baseline.walPageSize,
+    walBytes: postCommitWal.walBytes,
+    walFrames: postCommitWal.walFrames,
+    walCommitFrames: postCommitWal.walCommitFrames,
+    walSpillObserved: true,
+    walEncrypted: true,
+    plaintextWalControlVerified: true,
+    readyForForcedCrash: true,
+  });
+  ensure(
+    assertRecoveryPostCommitFaultBoundaryRecord(validPostCommitRecord) ===
+      validPostCommitRecord,
+    "TEST_POST_COMMIT_RECORD_REJECTED",
+  );
+  let unexpectedPostCommitFieldRejected = false;
+  try {
+    assertRecoveryPostCommitFaultBoundaryRecord({
+      ...validPostCommitRecord,
+      unexpected: true,
+    });
+  } catch (error) {
+    unexpectedPostCommitFieldRejected =
+      error instanceof RecoveryCaptureFixtureError &&
+      error.code === "RECOVERY_POST_COMMIT_BOUNDARY_SHAPE_INVALID";
+  }
+  ensure(
+    unexpectedPostCommitFieldRejected,
+    "TEST_POST_COMMIT_RECORD_SHAPE_ACCEPTED",
+  );
+  for (const mutation of [
+    { transactionOpen: true },
+    { commandResultPublished: true },
+    { canonicalStateVerified: false },
+    { stateDigest: "0".repeat(64) },
+    { walCommitFrames: 0 },
+    { walCommitFrames: 2 },
+    { walEncrypted: false },
+    {
+      visibleRows: {
+        ...validPostCommitRecord.visibleRows,
+        outbox: 0,
+      },
+    },
+  ]) {
+    let malformedRejected = false;
+    try {
+      assertRecoveryPostCommitFaultBoundaryRecord({
+        ...validPostCommitRecord,
+        ...mutation,
+      });
+    } catch (error) {
+      malformedRejected =
+        error instanceof RecoveryCaptureFixtureError &&
+        error.code === "RECOVERY_POST_COMMIT_BOUNDARY_VALUE_INVALID";
+    }
+    ensure(malformedRejected, "TEST_MALFORMED_POST_COMMIT_RECORD_ACCEPTED");
+  }
+
   const beforeReplay = canonicalJson(
     readCanonicalRecoveryCaptureState(database),
   );
@@ -368,13 +527,27 @@ try {
   const afterReplay = canonicalJson(
     readCanonicalRecoveryCaptureState(database),
   );
+  const conflict = executeRecoveryCaptureConflict(database);
+  const afterConflict = canonicalJson(
+    readCanonicalRecoveryCaptureState(database),
+  );
   ensure(
     replay.kind === "replayed" &&
       replay.connectionChanges === 0 &&
-      replay.outcomeDigest === applied.outcomeDigest &&
+      replay.outcomeDigest === RECOVERY_CAPTURE_FIXTURE.outcomeDigest &&
+      conflict.kind === "conflict" &&
+      conflict.diagnosticCode ===
+        RECOVERY_CAPTURE_CONFLICT_FIXTURE.diagnosticCode &&
+      conflict.connectionChanges === 0 &&
+      conflict.requestedSemanticFingerprint ===
+        "42e7000a85fb02207e52b8618211e1b9641b875949906f19932ea01227a9be92" &&
+      conflict.storedSemanticFingerprint ===
+        "41fb2096fd21e2e58cf199704dc43195c12b2f73e3cd7c02f55e0700a93a17b5" &&
+      conflict.storedOutcomeDigest === RECOVERY_CAPTURE_FIXTURE.outcomeDigest &&
       beforeReplay === afterReplay &&
+      afterReplay === afterConflict &&
       afterReplay.includes(RECOVERY_CAPTURE_FIXTURE.capture.id),
-    "TEST_REPLAY_FAILED",
+    "TEST_REPLAY_OR_CONFLICT_FAILED",
   );
 
   process.stdout.write(
@@ -387,7 +560,11 @@ try {
       missingFtsProjectionBoundaryRejected: true,
       plaintextWalCanaryControl: true,
       uncommittedWalFramesObserved: true,
+      postCommitBeforeResultCommitted: true,
+      postCommitWalCommitFrameObserved: true,
       idempotentReplayWithoutChurn: true,
+      idempotencyConflictWithoutChurn: true,
+      malformedPostCommitRecordsRejected: true,
       sqlCipherTextPageSizeNormalized: true,
       malformedTextPageSizesRejected: true,
     })}\n`,

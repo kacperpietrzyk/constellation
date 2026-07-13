@@ -8,11 +8,13 @@ import { fileURLToPath } from "node:url";
 
 import {
   RECOVERY_CAPTURE_FAILPOINTS,
+  RECOVERY_CAPTURE_CONFLICT_FIXTURE,
   RECOVERY_CAPTURE_SCENARIO,
   getRecoveryCapturePlaintextCanaries,
 } from "../app/recovery/capture-command.mjs";
 import {
   assertRecoveryFaultBoundaryRecord,
+  assertRecoveryPostCommitFaultBoundaryRecord,
   inspectRecoveryWal,
 } from "../app/recovery/failpoint.mjs";
 import {
@@ -81,8 +83,10 @@ const progressStages = new Set([
   "recovery-schema-bootstrapped",
   "recovery-state-verified",
   "recovery-command-applied",
+  "recovery-idempotency-conflict-verified",
   "recovery-fault-baseline-ready",
   "recovery-plaintext-control-verified",
+  "recovery-post-commit-state-verified",
   "recovery-fault-boundary-ready",
   "result-ready",
   "result-published",
@@ -181,6 +185,29 @@ function parseFixedResult(stdout) {
     "FIXED_RESULT_INVALID",
   );
   return result;
+}
+
+function parseRecoveryFaultProgress(stderr, processId) {
+  const stages = [];
+  const lines = stderr.toString("utf8").split(/\r?\n/).filter(Boolean);
+  for (const line of lines) {
+    let value;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (
+      hasExactKeys(value, ["mode", "processId", "stage", "type"]) &&
+      value.type === progressType &&
+      value.mode === "recovery-fault" &&
+      value.processId === processId
+    ) {
+      ensure(progressStages.has(value.stage), "FAULT_PROGRESS_STAGE_INVALID");
+      stages.push(value.stage);
+    }
+  }
+  return stages;
 }
 
 function argumentsFor({
@@ -421,7 +448,11 @@ async function forceFault(options) {
         );
         throw new Error(`FAULT_CHILD_FAILED_BEFORE_BOUNDARY:${record.code}`);
       }
-      assertRecoveryFaultBoundaryRecord(record);
+      if (options.failpoint === "after-commit-before-result") {
+        assertRecoveryPostCommitFaultBoundaryRecord(record);
+      } else {
+        assertRecoveryFaultBoundaryRecord(record);
+      }
       ensure(record.processId === processId, "FAULT_PROCESS_ID_INVALID");
       ensure(record.failpoint === options.failpoint, "FAULT_POINT_INVALID");
       return record;
@@ -441,10 +472,12 @@ async function forceFault(options) {
       } finally {
         for (const canary of canaries) canary.fill(0);
       }
+      const expectedCommitFrames =
+        options.failpoint === "after-commit-before-result" ? 1 : 0;
       ensure(
         wal.walBytes === boundary.walBytes &&
           wal.walFrames === boundary.walFrames &&
-          wal.walCommitFrames === 0 &&
+          wal.walCommitFrames === expectedCommitFrames &&
           boundary.plaintextWalControlVerified === true,
         "FAULT_WAL_EVIDENCE_MISMATCH",
       );
@@ -465,6 +498,28 @@ async function forceFault(options) {
       "FAULT_DIAGNOSTIC_COUNT_INVALID",
     );
     ensure(execution.forcedKillVerified === true, "FORCED_KILL_UNVERIFIED");
+    const progress = parseRecoveryFaultProgress(
+      execution.stderr,
+      execution.childPid,
+    );
+    ensure(
+      progress.at(-1) === "recovery-fault-boundary-ready" &&
+        !progress.includes("recovery-command-applied") &&
+        !progress.includes("result-ready") &&
+        !progress.includes("result-published"),
+      "FAULT_RESULT_PUBLICATION_BOUNDARY_INVALID",
+    );
+    if (options.failpoint === "after-commit-before-result") {
+      ensure(
+        progress.includes("recovery-post-commit-state-verified"),
+        "POST_COMMIT_PROGRESS_EVIDENCE_MISSING",
+      );
+    } else {
+      ensure(
+        !progress.includes("recovery-post-commit-state-verified"),
+        "PRE_COMMIT_PROGRESS_EVIDENCE_INVALID",
+      );
+    }
     recordProcessExecution(execution.childPid);
     verifiedForcedTerminations += 1;
 
@@ -550,19 +605,26 @@ async function runSentinel({ slug, failpoint }) {
     databaseName,
     failpoint,
   });
-
-  const empty = await launch({
-    mode: "recovery-verify-empty",
+  const postCommit = failpoint === "after-commit-before-result";
+  const recoveredMode = postCommit
+    ? "recovery-verify-committed"
+    : "recovery-verify-empty";
+  const recovered = await launch({
+    mode: recoveredMode,
     workspaceId,
     wrapperName,
     databaseName,
     scenario: RECOVERY_CAPTURE_SCENARIO,
     failpoint: "none",
   });
-  ensure(empty.result.status === "pass", "RECOVERY_EMPTY_FAILED");
-  ensure(empty.result.code === "RECOVERY_EMPTY_VERIFIED", "EMPTY_CODE_INVALID");
-  recordManaged(empty, "recovery-verify-empty");
-  assertExactResultKeys(empty.result, [
+  ensure(recovered.result.status === "pass", "RECOVERY_STATE_FAILED");
+  ensure(
+    recovered.result.code ===
+      (postCommit ? "RECOVERY_COMMITTED_VERIFIED" : "RECOVERY_EMPTY_VERIFIED"),
+    "RECOVERY_STATE_CODE_INVALID",
+  );
+  recordManaged(recovered, recoveredMode);
+  assertExactResultKeys(recovered.result, [
     ...recoveryCommonKeys,
     "expectedState",
     "ftsVerified",
@@ -571,48 +633,52 @@ async function runSentinel({ slug, failpoint }) {
     "stateDigest",
     "workspaceVersion",
   ]);
-  assertRecoveryCommon(empty.result, markerDigest);
-  ensure(empty.result.expectedState === "empty", "EMPTY_STATE_INVALID");
+  assertRecoveryCommon(recovered.result, markerDigest);
   ensure(
-    empty.result.stateDigest === bootstrap.result.stateDigest,
-    "EMPTY_STATE_CHANGED",
+    recovered.result.expectedState === (postCommit ? "committed" : "empty") &&
+      recovered.result.stateDigest ===
+        (postCommit ? boundary.stateDigest : bootstrap.result.stateDigest),
+    "RECOVERY_STATE_CHANGED",
   );
-  assertRows(empty.result.rows, 0);
+  assertRows(recovered.result.rows, postCommit ? 1 : 0);
 
-  const applied = await launch({
-    mode: "recovery-apply",
-    workspaceId,
-    wrapperName,
-    databaseName,
-    scenario: RECOVERY_CAPTURE_SCENARIO,
-    failpoint: "none",
-  });
-  ensure(applied.result.status === "pass", "RECOVERY_APPLY_FAILED");
-  ensure(
-    applied.result.code === "RECOVERY_CAPTURE_APPLIED",
-    "APPLY_CODE_INVALID",
-  );
-  recordManaged(applied, "recovery-apply");
-  assertExactResultKeys(applied.result, [
-    ...recoveryCommonKeys,
-    "applicationKind",
-    "connectionChanges",
-    "ftsVerified",
-    "integrityVerified",
-    "outcomeDigest",
-    "rows",
-    "semanticFingerprint",
-    "stateDigest",
-    "workspaceVersion",
-  ]);
-  assertRecoveryCommon(applied.result, markerDigest);
-  ensure(
-    applied.result.applicationKind === "applied" &&
-      Number.isSafeInteger(applied.result.connectionChanges) &&
-      applied.result.connectionChanges > 0,
-    "APPLY_EVIDENCE_INVALID",
-  );
-  assertRows(applied.result.rows, 1);
+  let applied;
+  if (!postCommit) {
+    applied = await launch({
+      mode: "recovery-apply",
+      workspaceId,
+      wrapperName,
+      databaseName,
+      scenario: RECOVERY_CAPTURE_SCENARIO,
+      failpoint: "none",
+    });
+    ensure(applied.result.status === "pass", "RECOVERY_APPLY_FAILED");
+    ensure(
+      applied.result.code === "RECOVERY_CAPTURE_APPLIED",
+      "APPLY_CODE_INVALID",
+    );
+    recordManaged(applied, "recovery-apply");
+    assertExactResultKeys(applied.result, [
+      ...recoveryCommonKeys,
+      "applicationKind",
+      "connectionChanges",
+      "ftsVerified",
+      "integrityVerified",
+      "outcomeDigest",
+      "rows",
+      "semanticFingerprint",
+      "stateDigest",
+      "workspaceVersion",
+    ]);
+    assertRecoveryCommon(applied.result, markerDigest);
+    ensure(
+      applied.result.applicationKind === "applied" &&
+        Number.isSafeInteger(applied.result.connectionChanges) &&
+        applied.result.connectionChanges > 0,
+      "APPLY_EVIDENCE_INVALID",
+    );
+    assertRows(applied.result.rows, 1);
+  }
 
   const replay = await launch({
     mode: "recovery-apply",
@@ -641,16 +707,72 @@ async function runSentinel({ slug, failpoint }) {
     "workspaceVersion",
   ]);
   assertRecoveryCommon(replay.result, markerDigest);
+  const expectedOutcomeDigest = postCommit
+    ? boundary.outcomeDigest
+    : applied.result.outcomeDigest;
+  const expectedSemanticFingerprint = postCommit
+    ? boundary.semanticFingerprint
+    : applied.result.semanticFingerprint;
+  const expectedStateDigest = postCommit
+    ? recovered.result.stateDigest
+    : applied.result.stateDigest;
   ensure(
     replay.result.applicationKind === "replayed" &&
       replay.result.connectionChanges === 0 &&
-      replay.result.outcomeDigest === applied.result.outcomeDigest &&
-      replay.result.semanticFingerprint ===
-        applied.result.semanticFingerprint &&
-      replay.result.stateDigest === applied.result.stateDigest,
+      replay.result.outcomeDigest === expectedOutcomeDigest &&
+      replay.result.semanticFingerprint === expectedSemanticFingerprint &&
+      replay.result.stateDigest === expectedStateDigest,
     "REPLAY_EVIDENCE_INVALID",
   );
   assertRows(replay.result.rows, 1);
+
+  let conflict;
+  if (postCommit) {
+    conflict = await launch({
+      mode: "recovery-conflict",
+      workspaceId,
+      wrapperName,
+      databaseName,
+      scenario: RECOVERY_CAPTURE_SCENARIO,
+      failpoint: "none",
+    });
+    ensure(conflict.result.status === "pass", "RECOVERY_CONFLICT_FAILED");
+    ensure(
+      conflict.result.code === "RECOVERY_IDEMPOTENCY_CONFLICT_VERIFIED",
+      "CONFLICT_CODE_INVALID",
+    );
+    recordManaged(conflict, "recovery-conflict");
+    assertExactResultKeys(conflict.result, [
+      ...recoveryCommonKeys,
+      "applicationKind",
+      "connectionChanges",
+      "diagnosticCode",
+      "ftsVerified",
+      "integrityVerified",
+      "requestedSemanticFingerprint",
+      "rows",
+      "stateDigest",
+      "storedOutcomeDigest",
+      "storedSemanticFingerprint",
+      "workspaceVersion",
+    ]);
+    assertRecoveryCommon(conflict.result, markerDigest);
+    ensure(
+      conflict.result.applicationKind === "conflict" &&
+        conflict.result.diagnosticCode ===
+          RECOVERY_CAPTURE_CONFLICT_FIXTURE.diagnosticCode &&
+        conflict.result.connectionChanges === 0 &&
+        conflict.result.requestedSemanticFingerprint ===
+          RECOVERY_CAPTURE_CONFLICT_FIXTURE.requestedSemanticFingerprint &&
+        conflict.result.storedSemanticFingerprint ===
+          RECOVERY_CAPTURE_CONFLICT_FIXTURE.storedSemanticFingerprint &&
+        conflict.result.storedOutcomeDigest ===
+          RECOVERY_CAPTURE_CONFLICT_FIXTURE.storedOutcomeDigest &&
+        conflict.result.stateDigest === replay.result.stateDigest,
+      "CONFLICT_EVIDENCE_INVALID",
+    );
+    assertRows(conflict.result.rows, 1);
+  }
 
   const committed = await launch({
     mode: "recovery-verify-committed",
@@ -678,7 +800,9 @@ async function runSentinel({ slug, failpoint }) {
   assertRecoveryCommon(committed.result, markerDigest);
   ensure(
     committed.result.expectedState === "committed" &&
-      committed.result.stateDigest === applied.result.stateDigest,
+      committed.result.stateDigest === replay.result.stateDigest &&
+      (!postCommit ||
+        committed.result.stateDigest === conflict.result.stateDigest),
     "COMMITTED_STATE_INVALID",
   );
   assertRows(committed.result.rows, 1);
@@ -686,12 +810,17 @@ async function runSentinel({ slug, failpoint }) {
   return Object.freeze({
     failpoint,
     visibleRowsAtCrash: boundary.visibleRows,
-    rollbackVerified: true,
+    transactionStateAtCrash: postCommit ? "committed" : "uncommitted",
+    rollbackVerified: !postCommit,
+    committedBeforeResultVerified: postCommit,
+    commandResultPublishedBeforeCrash: false,
+    idempotencyConflictVerified: postCommit,
     plaintextWalControlVerified: boundary.plaintextWalControlVerified,
     walSpillObserved: boundary.walSpillObserved,
     walFrames: boundary.walFrames,
+    walCommitFrames: boundary.walCommitFrames,
     stateDigest: committed.result.stateDigest,
-    outcomeDigest: applied.result.outcomeDigest,
+    outcomeDigest: replay.result.outcomeDigest,
     replayConnectionChanges: replay.result.connectionChanges,
   });
 }
@@ -770,6 +899,12 @@ try {
       failpoint: "after-outbox-row",
     }),
   );
+  sentinels.push(
+    await runSentinel({
+      slug: "after-commit",
+      failpoint: "after-commit-before-result",
+    }),
+  );
 
   ensure(
     sentinels.length === RECOVERY_CAPTURE_FAILPOINTS.length - 1,
@@ -783,14 +918,14 @@ try {
     ),
     "SENTINEL_RESULT_DIVERGED",
   );
-  ensure(verifiedProcessExecutions === 43, "PROCESS_COUNT_INVALID");
+  ensure(verifiedProcessExecutions === 50, "PROCESS_COUNT_INVALID");
   ensure(
     observedNumericProcessIds.size > 0 &&
       observedNumericProcessIds.size <= verifiedProcessExecutions,
     "PROCESS_ID_ACCOUNTING_INVALID",
   );
-  ensure(verifiedManagedTerminations === 37, "MANAGED_PROCESS_COUNT_INVALID");
-  ensure(verifiedForcedTerminations === 6, "FORCED_PROCESS_COUNT_INVALID");
+  ensure(verifiedManagedTerminations === 43, "MANAGED_PROCESS_COUNT_INVALID");
+  ensure(verifiedForcedTerminations === 7, "FORCED_PROCESS_COUNT_INVALID");
   for (const [artifact, expected] of artifactDigests) {
     const actual = digestFile(artifact);
     try {
@@ -821,8 +956,11 @@ try {
           ? "captured-posix-process-group"
           : "captured-windows-process-tree",
       inheritedPipesClosed: true,
-      rollbackVerified: true,
+      preCommitRollbackVerified: true,
+      postCommitBeforeResultRecoveryVerified: true,
+      commandResultAbsentBeforeForcedCrash: true,
       idempotentReplayVerified: true,
+      idempotencyConflictVerified: true,
       zeroReplayChurn: true,
       workspaceVersionPreserved: true,
       plaintextWalControlVerified: true,
