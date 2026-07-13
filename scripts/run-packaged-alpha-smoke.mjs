@@ -246,6 +246,11 @@ const run = async (phase) => {
         document.querySelector(".capture-footer .primary-button").click();
         return true;
       })()`);
+    } else {
+      await client.evaluate(`(() => {
+        document.querySelector('.nav-item[data-surface="tasks"]').click();
+        return true;
+      })()`);
     }
     await waitFor(
       client,

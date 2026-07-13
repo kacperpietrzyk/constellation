@@ -450,6 +450,7 @@ export const RealApp = ({
           {navItems.map((item) => (
             <button
               key={item.id}
+              data-surface={item.id}
               className={`nav-item ${surface === item.id ? "active" : ""}`}
               aria-current={surface === item.id ? "page" : undefined}
               onClick={() => setSurface(item.id)}
