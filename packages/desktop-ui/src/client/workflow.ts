@@ -2,36 +2,55 @@ import {
   CommandEnvelopeSchema,
   QueryEnvelopeSchema,
   type AuditReceiptId,
+  type CommandId,
+  type ProjectId,
+  type QueryName,
   type QueryProjection,
+  type RelationId,
   type SpaceId,
   type TaskId,
+  type TaskStatusId,
   type WorkspaceId,
 } from "@constellation/contracts";
 import type {
   ConstellationRendererClient,
   DesktopBuildInfo,
+  RendererCommandResponse,
   RendererQueryResponse,
 } from "@constellation/desktop-preload/client";
 
-type BootstrapProjection = Extract<
+type Projection<Kind extends QueryProjection["kind"]> = Extract<
   QueryProjection,
-  { kind: "workspace.bootstrapContext" }
+  { kind: Kind }
 >;
-type TaskListProjection = Extract<QueryProjection, { kind: "task.list" }>;
-type CaptureHistoryProjection = Extract<
-  QueryProjection,
-  { kind: "capture.history" }
->;
-export type AuditReceiptProjection = Extract<
-  QueryProjection,
-  { kind: "audit.receipt" }
->["receipt"];
+type BootstrapProjection = Projection<"workspace.bootstrapContext">;
+type TaskListProjection = Projection<"task.list">;
+type CaptureHistoryProjection = Projection<"capture.history">;
+export type ProjectListProjection = Projection<"project.list">;
+export type ProjectOverviewProjection =
+  Projection<"project.operationalOverview">;
+export type SearchProjection = Projection<"search.global">;
+export type CockpitProjection = Projection<"cockpit.week">;
+export type ActivityProjection = Projection<"activity.meaningful">;
+export type RecoveryProjection = Projection<"recovery.preview">;
+export type AuditReceiptProjection = Projection<"audit.receipt">["receipt"];
+
+export type DataSlice<T> =
+  | { readonly kind: "ready"; readonly data: T }
+  | {
+      readonly kind: "unavailable";
+      readonly message: string;
+      readonly diagnosticCode?: string;
+    };
 
 export interface DesktopSnapshot {
   readonly build: DesktopBuildInfo;
   readonly bootstrap: BootstrapProjection;
   readonly captures: CaptureHistoryProjection["items"];
   readonly tasks: TaskListProjection["items"];
+  readonly projects: DataSlice<ProjectListProjection>;
+  readonly cockpit: DataSlice<CockpitProjection>;
+  readonly activity: DataSlice<ActivityProjection>;
 }
 
 export type SubmitTaskResult =
@@ -41,32 +60,52 @@ export type SubmitTaskResult =
       readonly selectedTaskId: TaskId;
       readonly snapshot: DesktopSnapshot;
     }
+  | MutationFailure;
+
+export type MutationFailure =
   | { readonly kind: "conflict"; readonly message: string }
+  | {
+      readonly kind: "retry";
+      readonly message: string;
+      readonly retryAfterMs?: number;
+    }
   | { readonly kind: "unavailable"; readonly message: string }
   | { readonly kind: "error"; readonly message: string };
+
+export type MutationResult<T> =
+  { readonly kind: "success"; readonly data: T } | MutationFailure;
 
 const queryProjection = async <Kind extends QueryProjection["kind"]>(
   client: ConstellationRendererClient,
   query: Parameters<ConstellationRendererClient["runQuery"]>[0],
   kind: Kind,
-): Promise<Extract<QueryProjection, { kind: Kind }>> => {
+): Promise<Projection<Kind>> => {
   const response: RendererQueryResponse = await client.runQuery(query);
-  if (response.kind === "contract_rejected") {
+  if (response.kind === "contract_rejected")
     throw new Error("The desktop boundary rejected an invalid query.");
-  }
-  if (response.result.outcome !== "success") {
+  if (response.result.outcome !== "success")
     throw new Error(`Query unavailable: ${response.result.diagnosticCode}`);
-  }
-  if (response.result.projection.kind !== kind) {
+  if (response.result.projection.kind !== kind)
     throw new Error(
       `Unexpected projection: ${response.result.projection.kind}`,
     );
+  return response.result.projection as Projection<Kind>;
+};
+
+const optionalProjection = async <Kind extends QueryProjection["kind"]>(
+  promise: Promise<Projection<Kind>>,
+): Promise<DataSlice<Projection<Kind>>> => {
+  try {
+    return { kind: "ready", data: await promise };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Query unavailable.";
+    return { kind: "unavailable", message };
   }
-  return response.result.projection as Extract<QueryProjection, { kind: Kind }>;
 };
 
 const queryEnvelope = (
-  queryName: "workspace.bootstrapContext" | "task.list" | "capture.history",
+  queryName: QueryName,
   workspaceId: WorkspaceId,
   parameters: Record<string, unknown>,
 ) =>
@@ -79,6 +118,20 @@ const queryEnvelope = (
     parameters,
   });
 
+const firstSpace = (snapshot: Pick<DesktopSnapshot, "bootstrap">): SpaceId => {
+  const spaceId = snapshot.bootstrap.spaces[0]?.id;
+  if (spaceId === undefined)
+    throw new Error("Workspace has no accessible Space.");
+  return spaceId;
+};
+
+const currentWeekStart = (): string => {
+  const now = new Date();
+  const day = now.getDay() || 7;
+  now.setDate(now.getDate() - day + 1);
+  return now.toISOString().slice(0, 10);
+};
+
 export const loadDesktopSnapshot = async (
   client: ConstellationRendererClient,
   knownBuild?: DesktopBuildInfo,
@@ -90,50 +143,395 @@ export const loadDesktopSnapshot = async (
     queryEnvelope("workspace.bootstrapContext", workspaceId, {}),
     "workspace.bootstrapContext",
   );
-  const spaceId = bootstrap.spaces[0]?.id;
-  if (spaceId === undefined)
-    throw new Error("Workspace has no accessible Space.");
-
-  const [tasks, captures] = await Promise.all([
+  const spaceId = firstSpace({ bootstrap });
+  const [tasks, captures, projects, cockpit, activity] = await Promise.all([
     queryProjection(
       client,
-      queryEnvelope("task.list", bootstrap.workspace.id, {
-        spaceId,
-        limit: 100,
-      }),
+      queryEnvelope("task.list", workspaceId, { spaceId, limit: 100 }),
       "task.list",
     ),
     queryProjection(
       client,
-      queryEnvelope("capture.history", bootstrap.workspace.id, {
-        spaceId,
-        limit: 100,
-      }),
+      queryEnvelope("capture.history", workspaceId, { spaceId, limit: 100 }),
       "capture.history",
     ),
+    optionalProjection(
+      queryProjection(
+        client,
+        queryEnvelope("project.list", workspaceId, { spaceId }),
+        "project.list",
+      ),
+    ),
+    optionalProjection(
+      queryProjection(
+        client,
+        queryEnvelope("cockpit.week", workspaceId, {
+          spaceId,
+          weekStart: currentWeekStart(),
+          limit: 20,
+        }),
+        "cockpit.week",
+      ),
+    ),
+    optionalProjection(
+      queryProjection(
+        client,
+        queryEnvelope("activity.meaningful", workspaceId, {
+          spaceId,
+          limit: 100,
+        }),
+        "activity.meaningful",
+      ),
+    ),
   ]);
-  return { build, bootstrap, captures: captures.items, tasks: tasks.items };
+  return {
+    build,
+    bootstrap,
+    captures: captures.items,
+    tasks: tasks.items,
+    projects,
+    cockpit,
+    activity,
+  };
 };
+
+export const loadProjectOverview = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  projectId: ProjectId,
+) =>
+  queryProjection(
+    client,
+    queryEnvelope(
+      "project.operationalOverview",
+      snapshot.bootstrap.workspace.id,
+      {
+        projectId,
+      },
+    ),
+    "project.operationalOverview",
+  );
+
+export const searchGlobal = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  text: string,
+): Promise<SearchProjection> => {
+  const trimmed = text.trim();
+  if (trimmed.length === 0)
+    return { kind: "search.global", normalizedQuery: "", items: [] };
+  return queryProjection(
+    client,
+    queryEnvelope("search.global", snapshot.bootstrap.workspace.id, {
+      spaceIds: snapshot.bootstrap.spaces.map((space) => space.id),
+      text: trimmed,
+      limit: 50,
+    }),
+    "search.global",
+  );
+};
+
+const commandFailure = (response: RendererCommandResponse): MutationFailure => {
+  if (response.kind === "contract_rejected")
+    return {
+      kind: "error",
+      message: "Polecenie odrzucono na granicy desktopu.",
+    };
+  const outcome = response.outcome;
+  if (outcome.outcome === "conflict")
+    return {
+      kind: "conflict",
+      message: `Zmiana nie została zapisana: ${outcome.diagnosticCode}. Odśwież dane i spróbuj ponownie.`,
+    };
+  if (outcome.outcome === "retryable")
+    return {
+      kind: "retry",
+      message:
+        "Lokalny store jest chwilowo zajęty. Nic nie zapisano częściowo.",
+      ...(outcome.retryAfterMs === undefined
+        ? {}
+        : { retryAfterMs: outcome.retryAfterMs }),
+    };
+  if (outcome.outcome === "rejected")
+    return {
+      kind: "unavailable",
+      message:
+        outcome.diagnosticCode === "authorization.denied"
+          ? "Brak uprawnienia do tej zmiany."
+          : "Warunki polecenia nie są już aktualne.",
+    };
+  return {
+    kind: "unavailable",
+    message: `Nie można teraz potwierdzić wyniku: ${outcome.diagnosticCode}.`,
+  };
+};
+
+const execute = async <T>(
+  client: ConstellationRendererClient,
+  input: unknown,
+  read: (
+    response: Extract<RendererCommandResponse, { kind: "command_outcome" }>,
+  ) => T | undefined,
+): Promise<MutationResult<T>> => {
+  try {
+    const response = await client.executeCommand(
+      CommandEnvelopeSchema.parse(input),
+    );
+    const data =
+      response.kind === "command_outcome" ? read(response) : undefined;
+    return data === undefined
+      ? commandFailure(response)
+      : { kind: "success", data };
+  } catch (error) {
+    return {
+      kind: "error",
+      message:
+        error instanceof Error ? error.message : "Nieoczekiwany błąd desktopu.",
+    };
+  }
+};
+
+const commandBase = (
+  workspaceId: WorkspaceId,
+  expectedVersions: Readonly<Record<string, number>>,
+) => ({
+  contractVersion: 1,
+  commandId: crypto.randomUUID(),
+  workspaceId,
+  idempotencyKey: `desktop-${crypto.randomUUID()}`,
+  expectedVersions,
+  correlationId: crypto.randomUUID(),
+});
+
+export const createProject = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  title: string,
+  intendedOutcome: string,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "project.create",
+      payload: { spaceId: firstSpace(snapshot), title, intendedOutcome },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "project.created"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const updateProjectOutcome = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  project: ProjectOverviewProjection["project"],
+  intendedOutcome: string,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [project.id]: project.version,
+      }),
+      commandName: "project.updateOutcome",
+      payload: { projectId: project.id, intendedOutcome },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "project.outcome_updated"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const setTaskStatus = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  taskId: TaskId,
+  taskVersion: number,
+  statusId: TaskStatusId,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [taskId]: taskVersion,
+      }),
+      commandName: "task.setStatus",
+      payload: { taskId, statusId },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "task.status_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const setTaskCompletion = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  taskId: TaskId,
+  taskVersion: number,
+  completed: boolean,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [taskId]: taskVersion,
+      }),
+      commandName: completed ? "task.complete" : "task.reopen",
+      payload: { taskId },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      (response.outcome.projection.kind === "task.completed" ||
+        response.outcome.projection.kind === "task.reopened")
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const relateTask = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  taskId: TaskId,
+  taskVersion: number,
+  projectId: ProjectId,
+  projectVersion: number,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [taskId]: taskVersion,
+        [projectId]: projectVersion,
+      }),
+      commandName: "record.relate",
+      payload: {
+        relationType: "task_contributes_to_project",
+        taskId,
+        projectId,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "relation.created"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const unrelateTask = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  relationId: RelationId,
+  relationVersion: number,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [relationId]: relationVersion,
+      }),
+      commandName: "record.unrelate",
+      payload: { relationId },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "relation.removed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export interface UndoPreview {
+  readonly targetCommandId: CommandId;
+  readonly command: Extract<
+    RendererCommandResponse,
+    { kind: "command_outcome" }
+  >["outcome"] & { readonly outcome: "preview" };
+  readonly recovery: RecoveryProjection;
+}
+
+export const previewUndo = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  targetCommandId: CommandId,
+): Promise<MutationResult<UndoPreview>> => {
+  try {
+    const [recovery, response] = await Promise.all([
+      queryProjection(
+        client,
+        queryEnvelope("recovery.preview", snapshot.bootstrap.workspace.id, {
+          targetCommandId,
+        }),
+        "recovery.preview",
+      ),
+      client.executeCommand(
+        CommandEnvelopeSchema.parse({
+          ...commandBase(snapshot.bootstrap.workspace.id, {}),
+          commandName: "command.previewUndo",
+          payload: { targetCommandId },
+        }),
+      ),
+    ]);
+    if (
+      response.kind !== "command_outcome" ||
+      response.outcome.outcome !== "preview"
+    )
+      return commandFailure(response);
+    if (
+      response.outcome.projection.available !== recovery.available ||
+      response.outcome.projection.targetCommandId !== recovery.targetCommandId
+    )
+      return {
+        kind: "error",
+        message: "Podglądy cofnięcia nie są spójne. Nie wykonano zmiany.",
+      };
+    return {
+      kind: "success",
+      data: { targetCommandId, command: response.outcome, recovery },
+    };
+  } catch (error) {
+    return {
+      kind: "error",
+      message:
+        error instanceof Error ? error.message : "Podgląd jest niedostępny.",
+    };
+  }
+};
+
+export const undoCommand = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  preview: UndoPreview,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(
+        snapshot.bootstrap.workspace.id,
+        preview.recovery.requiredVersions,
+      ),
+      commandName: "command.undo",
+      payload: { targetCommandId: preview.targetCommandId },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "command.undone"
+        ? response.outcome.projection
+        : undefined,
+  );
 
 const loadReceipt = async (
   client: ConstellationRendererClient,
   workspaceId: WorkspaceId,
   receiptId: AuditReceiptId,
-): Promise<AuditReceiptProjection> => {
-  const projection = await queryProjection(
+): Promise<AuditReceiptProjection> =>
+  queryProjection(
     client,
-    QueryEnvelopeSchema.parse({
-      contractVersion: 1,
-      queryName: "audit.receipt",
-      queryId: crypto.randomUUID(),
-      workspaceId,
-      consistency: "local_authoritative",
-      parameters: { receiptId },
-    }),
+    queryEnvelope("audit.receipt", workspaceId, { receiptId }),
     "audit.receipt",
-  );
-  return projection.receipt;
-};
+  ).then((projection) => projection.receipt);
 
 export const submitCaptureAsTask = async (
   client: ConstellationRendererClient,
@@ -142,91 +540,44 @@ export const submitCaptureAsTask = async (
 ): Promise<SubmitTaskResult> => {
   const title = originalText.trim();
   const workspaceId = snapshot.bootstrap.workspace.id;
-  const spaceId = snapshot.bootstrap.spaces[0]?.id as SpaceId | undefined;
-  if (spaceId === undefined) {
-    return { kind: "unavailable", message: "No writable Space is available." };
-  }
-
+  const spaceId = firstSpace(snapshot);
   try {
     const correlationId = crypto.randomUUID();
     const submitted = await client.executeCommand(
       CommandEnvelopeSchema.parse({
-        contractVersion: 1,
-        commandName: "capture.submitText",
-        commandId: crypto.randomUUID(),
-        workspaceId,
-        idempotencyKey: `desktop-capture-${crypto.randomUUID()}`,
-        expectedVersions: {},
+        ...commandBase(workspaceId, {}),
         correlationId,
+        commandName: "capture.submitText",
         payload: {
           spaceId,
           originalText,
-          deviceId: "interactive-alpha-device",
+          deviceId: crypto.randomUUID(),
           source: "in_app_quick_capture",
         },
       }),
     );
-    if (submitted.kind === "contract_rejected") {
-      return {
-        kind: "error",
-        message: "Capture was rejected at the desktop boundary.",
-      };
-    }
-    if (submitted.outcome.outcome !== "success") {
-      return submitted.outcome.outcome === "conflict"
-        ? {
-            kind: "conflict",
-            message: "Capture conflicted with newer workspace state.",
-          }
-        : {
-            kind: "unavailable",
-            message: "Capture could not be stored. Try again.",
-          };
-    }
-    if (submitted.outcome.projection.kind !== "capture.stored") {
-      return {
-        kind: "error",
-        message: "Capture returned an unexpected result.",
-      };
-    }
-
+    if (
+      submitted.kind !== "command_outcome" ||
+      submitted.outcome.outcome !== "success" ||
+      submitted.outcome.projection.kind !== "capture.stored"
+    )
+      return commandFailure(submitted);
     const capture = submitted.outcome.projection;
     const routed = await client.executeCommand(
       CommandEnvelopeSchema.parse({
-        contractVersion: 1,
-        commandName: "capture.routeAsTask",
-        commandId: crypto.randomUUID(),
-        workspaceId,
-        idempotencyKey: `desktop-route-${capture.captureId}`,
-        expectedVersions: { [capture.captureId]: capture.version },
+        ...commandBase(workspaceId, { [capture.captureId]: capture.version }),
         correlationId,
+        idempotencyKey: `desktop-route-${capture.captureId}`,
+        commandName: "capture.routeAsTask",
         payload: { captureId: capture.captureId, title },
       }),
     );
-    if (routed.kind === "contract_rejected") {
-      return {
-        kind: "error",
-        message: "Task routing was rejected at the desktop boundary.",
-      };
-    }
-    if (routed.outcome.outcome !== "success") {
-      return routed.outcome.outcome === "conflict"
-        ? {
-            kind: "conflict",
-            message: "The Capture was already routed or changed.",
-          }
-        : {
-            kind: "unavailable",
-            message: "The Capture is safe, but routing is unavailable.",
-          };
-    }
-    if (routed.outcome.projection.kind !== "capture.routed_as_task") {
-      return {
-        kind: "error",
-        message: "Task routing returned an unexpected result.",
-      };
-    }
-
+    if (
+      routed.kind !== "command_outcome" ||
+      routed.outcome.outcome !== "success" ||
+      routed.outcome.projection.kind !== "capture.routed_as_task"
+    )
+      return commandFailure(routed);
     const [nextSnapshot, receipt] = await Promise.all([
       loadDesktopSnapshot(client, snapshot.build),
       loadReceipt(client, workspaceId, routed.outcome.auditReceiptId),
@@ -241,7 +592,7 @@ export const submitCaptureAsTask = async (
     return {
       kind: "error",
       message:
-        error instanceof Error ? error.message : "Unexpected desktop error.",
+        error instanceof Error ? error.message : "Nieoczekiwany błąd desktopu.",
     };
   }
 };

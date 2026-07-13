@@ -1,22 +1,30 @@
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
+  type FormEvent,
   type KeyboardEvent,
 } from "react";
 
-import type { TaskId } from "@constellation/contracts";
+import type {
+  CommandId,
+  ProjectId,
+  RelationId,
+  TaskId,
+  TaskStatusId,
+} from "@constellation/contracts";
+import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
-import type { DesktopSnapshot } from "./client/workflow.js";
 import {
-  activity,
-  buildSearchFixtures,
-  projects,
-  type ActivityFixture,
-  type SearchFixture,
-  type SurfaceId,
-} from "./client/wave2-fixtures.js";
+  searchGlobal,
+  type ActivityProjection,
+  type DesktopSnapshot,
+  type MutationFailure,
+  type ProjectOverviewProjection,
+  type SearchProjection,
+  type UndoPreview,
+} from "./client/workflow.js";
+import type { SurfaceId } from "./client/wave2-fixtures.js";
 
 const Mark = ({ kind }: { readonly kind: string }) => (
   <span className={`record-mark mark-${kind}`} aria-hidden="true" />
@@ -43,161 +51,162 @@ const SurfaceHeader = ({
   </header>
 );
 
+const InlineState = ({
+  title,
+  detail,
+  action,
+}: {
+  readonly title: string;
+  readonly detail: string;
+  readonly action?: React.ReactNode;
+}) => (
+  <div className="empty-state" role="status">
+    <span className="empty-glyph">
+      <Mark kind="warning" />
+    </span>
+    <div>
+      <h3>{title}</h3>
+      <p>{detail}</p>
+    </div>
+    {action}
+  </div>
+);
+
 export const CockpitSurface = ({
   snapshot,
   onOpenProject,
   onSelectTask,
 }: {
   readonly snapshot: DesktopSnapshot;
-  readonly onOpenProject: () => void;
+  readonly onOpenProject: (id: ProjectId) => void;
   readonly onSelectTask: (id: TaskId) => void;
 }) => {
-  const realTasks = snapshot.tasks.slice(0, 3);
+  const cockpit = snapshot.cockpit;
+  const projects = snapshot.projects;
+  const focus = cockpit.kind === "ready" ? cockpit.data.focus : [];
   return (
     <div className="surface-scroll cockpit-surface">
       <SurfaceHeader
-        kicker="Tydzień 29 · 13–19 lipca"
-        title="Dziś prowadzi jeden wynik"
-        description="Deterministyczny widok lokalnych terminów, priorytetów i wyjątków. Bez generowanych rekomendacji."
+        kicker={
+          cockpit.kind === "ready"
+            ? `${cockpit.data.weekStart} – ${cockpit.data.weekEnd}`
+            : "Widok tygodnia"
+        }
+        title="Tydzień oparty na aktualnych danych"
+        description="Deterministyczna kolejność otwartych zadań i aktywnych projektów. Bez generowanych rekomendacji."
       />
-      <section className="now-panel" aria-labelledby="now-title">
-        <div className="now-copy">
-          <p className="eyebrow">Teraz · 10:45–12:15</p>
-          <h2 id="now-title">Oferta gotowa do decyzji handlowej</h2>
-          <p>
-            Najbliższy termin przypada w piątek, a model cenowy pozostaje jedyną
-            jawną blokadą wyniku.
-          </p>
-          <div className="reason-line" aria-label="Powody priorytetu">
-            <span>Termin w tym tygodniu</span>
-            <span>Aktywny projekt</span>
-            <span>1 blokada</span>
-          </div>
-        </div>
-        <button className="primary-button" onClick={onOpenProject}>
-          Otwórz projekt
-        </button>
-      </section>
-
-      <div className="cockpit-grid">
-        <section
-          className="outcome-rail reading-panel"
-          aria-labelledby="outcomes-title"
-        >
-          <header className="section-heading">
-            <div>
-              <p className="eyebrow">Wyniki tygodnia</p>
-              <h2 id="outcomes-title">Dwa aktywne kierunki</h2>
-            </div>
-            <span>2 projekty</span>
-          </header>
-          {projects.map((project, index) => (
-            <button
-              className={`outcome-row ${index === 0 ? "selected" : ""}`}
-              key={project.id}
-              onClick={onOpenProject}
-            >
-              <span className="outcome-number">0{index + 1}</span>
-              <span>
-                <strong>{project.outcome}</strong>
-                <small>{project.nextAction}</small>
-              </span>
-              <em>{project.deadline}</em>
-            </button>
-          ))}
-        </section>
-
-        <section
-          className="capacity-panel reading-panel"
-          aria-labelledby="capacity-title"
-        >
-          <header className="section-heading">
-            <div>
-              <p className="eyebrow">Pojemność</p>
-              <h2 id="capacity-title">Najbliższe spokojne okno</h2>
-            </div>
-            <span>14:00–15:30</span>
-          </header>
-          <div className="week-strip" aria-label="Obciążenie dni tygodnia">
-            {[
-              ["Pon", "3h", 64],
-              ["Wt", "5h", 86],
-              ["Śr", "2h", 42],
-              ["Czw", "4h", 72],
-              ["Pt", "3h", 58],
-            ].map(([day, label, value]) => (
-              <div key={day as string}>
-                <span>{day}</span>
-                <i
-                  style={
-                    { "--load": `${String(value)}%` } as React.CSSProperties
-                  }
-                />
-                <small>{label}</small>
+      {cockpit.kind === "unavailable" ? (
+        <InlineState
+          title="Widok tygodnia jest niedostępny"
+          detail={cockpit.message}
+        />
+      ) : focus.length === 0 ? (
+        <InlineState
+          title="Brak otwartych działań na ten tydzień"
+          detail="Dodaj zadanie przez Quick Capture albo utwórz projekt z konkretnym wynikiem."
+        />
+      ) : (
+        <>
+          <section className="now-panel" aria-labelledby="now-title">
+            <div className="now-copy">
+              <p className="eyebrow">Pierwszy fokus</p>
+              <h2 id="now-title">{focus[0]?.title}</h2>
+              <div className="reason-line" aria-label="Powody kolejności">
+                {focus[0]?.reasons.map((reason) => (
+                  <span key={reason.code}>
+                    {reason.code === "task_open"
+                      ? "Otwarte zadanie"
+                      : reason.code === "created_this_week"
+                        ? "Utworzone w tym tygodniu"
+                        : `Aktywny projekt: ${reason.projectTitle}`}
+                  </span>
+                ))}
               </div>
-            ))}
-          </div>
-          <p className="capacity-note">
-            Dziś: 2 spotkania · 1 blok pracy · 90 min bez fragmentacji
-          </p>
-        </section>
-      </div>
-
+            </div>
+            <button
+              className="primary-button"
+              onClick={() => focus[0] && onSelectTask(focus[0].taskId)}
+            >
+              Otwórz zadanie
+            </button>
+          </section>
+          <section
+            className="active-work reading-panel"
+            aria-labelledby="active-work-title"
+          >
+            <header className="section-heading">
+              <div>
+                <p className="eyebrow">Aktywna praca</p>
+                <h2 id="active-work-title">Następne działania</h2>
+              </div>
+              <span>{focus.length} w kolejności</span>
+            </header>
+            <div className="compact-record-list">
+              {focus.map((task) => (
+                <button
+                  key={task.taskId}
+                  onClick={() => onSelectTask(task.taskId)}
+                >
+                  <Mark kind="task" />
+                  <span>
+                    <strong>{task.title}</strong>
+                    <small>
+                      {task.reasons
+                        .map((reason) =>
+                          reason.code === "active_project"
+                            ? reason.projectTitle
+                            : reason.code === "created_this_week"
+                              ? "Utworzone w tym tygodniu"
+                              : "Otwarte",
+                        )
+                        .join(" · ")}
+                    </small>
+                  </span>
+                  <em>{task.score} pkt</em>
+                </button>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
       <section
-        className="active-work reading-panel"
-        aria-labelledby="active-work-title"
+        className="outcome-rail reading-panel"
+        aria-labelledby="outcomes-title"
       >
         <header className="section-heading">
           <div>
-            <p className="eyebrow">Aktywna praca</p>
-            <h2 id="active-work-title">Następne działania</h2>
+            <p className="eyebrow">Aktywne projekty</p>
+            <h2 id="outcomes-title">Wyniki do osiągnięcia</h2>
           </div>
-          <span>{Math.max(realTasks.length, 3)} w kolejności</span>
+          <span>
+            {projects.kind === "ready" ? projects.data.items.length : "—"}
+          </span>
         </header>
-        <div className="compact-record-list">
-          {(realTasks.length > 0
-            ? realTasks
-            : [
-                {
-                  id: "fixture-1",
-                  title: "Uzupełnij model cenowy",
-                  status: { label: "W toku" },
-                },
-                {
-                  id: "fixture-2",
-                  title: "Zsyntetyzuj wywiady kwalifikacyjne",
-                  status: { label: "Zaplanowane" },
-                },
-                {
-                  id: "fixture-3",
-                  title: "Sprawdź warunki odnowienia",
-                  status: { label: "Oczekuje" },
-                },
-              ]
-          ).map((task, index) => (
+        {projects.kind === "unavailable" ? (
+          <InlineState
+            title="Projekty są niedostępne"
+            detail={projects.message}
+          />
+        ) : projects.data.items.length === 0 ? (
+          <p className="capacity-note">Nie ma jeszcze aktywnych projektów.</p>
+        ) : (
+          projects.data.items.map((project, index) => (
             <button
-              key={task.id}
-              disabled={realTasks.length === 0}
-              title={
-                realTasks.length === 0
-                  ? "Dostępne po podłączeniu cockpit.week"
-                  : undefined
-              }
-              onClick={() => {
-                if (realTasks.length > 0) onSelectTask(task.id as TaskId);
-              }}
+              className="outcome-row"
+              key={project.id}
+              onClick={() => onOpenProject(project.id)}
             >
-              <Mark kind="task" />
-              <span>
-                <strong>{task.title}</strong>
-                <small>
-                  {index === 0 ? "Oferta Northstar · dziś" : "Root Space"}
-                </small>
+              <span className="outcome-number">
+                {String(index + 1).padStart(2, "0")}
               </span>
-              <em>{task.status.label}</em>
+              <span>
+                <strong>{project.intendedOutcome}</strong>
+                <small>{project.title}</small>
+              </span>
+              <em>{project.relatedOpenTaskCount} otw.</em>
             </button>
-          ))}
-        </div>
+          ))
+        )}
       </section>
     </div>
   );
@@ -206,19 +215,25 @@ export const CockpitSurface = ({
 export const TasksSurface = ({
   snapshot,
   selectedTaskId,
+  busyTaskId,
   onSelectTask,
   onCapture,
+  onSetStatus,
+  onSetCompleted,
 }: {
   readonly snapshot: DesktopSnapshot;
   readonly selectedTaskId: TaskId | undefined;
+  readonly busyTaskId: TaskId | undefined;
   readonly onSelectTask: (id: TaskId) => void;
   readonly onCapture: () => void;
+  readonly onSetStatus: (id: TaskId, statusId: TaskStatusId) => void;
+  readonly onSetCompleted: (id: TaskId, completed: boolean) => void;
 }) => (
   <div className="surface-scroll">
     <SurfaceHeader
       kicker="Root Space · lokalny widok"
       title="Zadania"
-      description="Przechwycone działania i ich zachowane źródła."
+      description="Przechwycone działania, ich stan i zachowane źródła."
       action={
         <button className="secondary-button" onClick={onCapture}>
           Nowe zadanie
@@ -233,42 +248,65 @@ export const TasksSurface = ({
         </div>
       </header>
       {snapshot.tasks.length === 0 ? (
-        <div className="empty-state">
-          <span className="empty-glyph">
-            <Mark kind="task" />
-          </span>
-          <div>
-            <h3>Jeszcze nie ma zadań</h3>
-            <p>
-              Zapisz pierwszą myśl. Oryginał pozostanie powiązany z wynikiem
-              routingu.
-            </p>
-          </div>
-          <button className="secondary-button" onClick={onCapture}>
-            Otwórz Quick Capture
-          </button>
-        </div>
+        <InlineState
+          title="Jeszcze nie ma zadań"
+          detail="Zapisz pierwszą myśl. Oryginał pozostanie powiązany z wynikiem routingu."
+          action={
+            <button className="secondary-button" onClick={onCapture}>
+              Otwórz Quick Capture
+            </button>
+          }
+        />
       ) : (
         <div className="task-list">
           {snapshot.tasks.map((task) => (
-            <button
+            <div
               key={task.id}
               className={`task-row ${task.id === selectedTaskId ? "selected" : ""}`}
-              onClick={() => onSelectTask(task.id)}
-              aria-pressed={task.id === selectedTaskId}
             >
-              <span className="task-check" aria-hidden="true" />
-              <span className="task-copy">
+              <button
+                className="task-check"
+                aria-label={
+                  task.completionState === "completed"
+                    ? `Otwórz ponownie: ${task.title}`
+                    : `Ukończ: ${task.title}`
+                }
+                aria-pressed={task.completionState === "completed"}
+                disabled={busyTaskId === task.id}
+                onClick={() =>
+                  onSetCompleted(task.id, task.completionState !== "completed")
+                }
+              />
+              <button
+                className="task-copy"
+                onClick={() => onSelectTask(task.id)}
+              >
                 <strong>{task.title}</strong>
                 <span>
                   {task.sourceCaptureId
                     ? "Z Quick Capture · oryginał zachowany"
                     : "Root Space"}
                 </span>
-              </span>
-              <span className="task-status">{task.status.label}</span>
-              <span aria-hidden="true">›</span>
-            </button>
+              </button>
+              <label className="sr-only" htmlFor={`status-${task.id}`}>
+                Status zadania {task.title}
+              </label>
+              <select
+                id={`status-${task.id}`}
+                className="task-status"
+                value={task.status.id}
+                disabled={busyTaskId === task.id}
+                onChange={(event) =>
+                  onSetStatus(task.id, event.target.value as TaskStatusId)
+                }
+              >
+                {snapshot.bootstrap.taskStatuses.map((status) => (
+                  <option key={status.id} value={status.id}>
+                    {status.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           ))}
         </div>
       )}
@@ -277,96 +315,230 @@ export const TasksSurface = ({
 );
 
 export const ProjectsSurface = ({
-  relationAdded,
+  snapshot,
+  selectedProjectId,
+  overview,
+  relation,
+  busy,
+  onSelectProject,
+  onCreate,
+  onUpdateOutcome,
   onRelate,
+  onUnrelate,
 }: {
-  readonly relationAdded: boolean;
-  readonly onRelate: () => void;
+  readonly snapshot: DesktopSnapshot;
+  readonly selectedProjectId: ProjectId | undefined;
+  readonly overview: ProjectOverviewProjection | undefined;
+  readonly relation:
+    | {
+        readonly id: RelationId;
+        readonly version: number;
+        readonly taskId: TaskId;
+      }
+    | undefined;
+  readonly busy: boolean;
+  readonly onSelectProject: (id: ProjectId) => void;
+  readonly onCreate: (title: string, outcome: string) => void;
+  readonly onUpdateOutcome: (outcome: string) => void;
+  readonly onRelate: (taskId: TaskId) => void;
+  readonly onUnrelate: () => void;
 }) => {
-  const project = projects[0]!;
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState("");
+  const [outcome, setOutcome] = useState(
+    overview?.project.intendedOutcome ?? "",
+  );
+  useEffect(
+    () => setOutcome(overview?.project.intendedOutcome ?? ""),
+    [overview],
+  );
+  const projects = snapshot.projects;
+  const unrelated = snapshot.tasks.filter(
+    (task) => !overview?.relatedTasks.some((related) => related.id === task.id),
+  );
   return (
     <div className="surface-scroll project-surface">
       <SurfaceHeader
-        kicker="Projekt · aktywny"
-        title={project.title}
-        description="Operacyjny przegląd wyniku, następnego działania i ryzyka."
+        kicker="Projekty · aktywne"
+        title={overview?.project.title ?? "Projekty"}
+        description="Operacyjny przegląd zamierzonego wyniku i powiązanej pracy."
         action={
           <button
             className="secondary-button"
-            disabled
-            title="Dostępne po podłączeniu project.updateOutcome"
+            onClick={() => setCreating((value) => !value)}
           >
-            Edytuj wynik
+            {creating ? "Anuluj" : "Nowy projekt"}
           </button>
         }
       />
-      <section className="project-overview" aria-labelledby="project-outcome">
-        <div className="overview-intent">
-          <p className="eyebrow">Oczekiwany wynik</p>
-          <h2 id="project-outcome">{project.outcome}</h2>
-          <p>Jeden wariant zakresu, kosztu i odpowiedzialności partnerów.</p>
-        </div>
-        <dl className="overview-facts">
-          <div>
-            <dt>Stan</dt>
-            <dd>{project.state}</dd>
+      {creating && (
+        <form
+          className="project-overview"
+          onSubmit={(event: FormEvent) => {
+            event.preventDefault();
+            if (title.trim() && outcome.trim()) onCreate(title, outcome);
+          }}
+        >
+          <div className="overview-intent">
+            <label htmlFor="project-title">Nazwa projektu</label>
+            <input
+              id="project-title"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+            <label htmlFor="project-outcome">Zamierzony wynik</label>
+            <textarea
+              id="project-outcome"
+              value={outcome}
+              onChange={(event) => setOutcome(event.target.value)}
+            />
+            <button className="primary-button" disabled={busy} type="submit">
+              {busy ? "Tworzę…" : "Utwórz projekt"}
+            </button>
           </div>
-          <div>
-            <dt>Następna akcja</dt>
-            <dd>{project.nextAction}</dd>
-          </div>
-          <div>
-            <dt>Najbliższy termin</dt>
-            <dd>{project.deadline}</dd>
-          </div>
-        </dl>
-        <div className="overview-attention" role="note">
-          <Mark kind="warning" />
-          <div>
-            <p className="eyebrow">Ryzyko</p>
-            <strong>Brak cennika dystrybutora</strong>
-            <span>{project.risk}</span>
-          </div>
-          <button
-            className="ghost-button"
-            disabled
-            title="Dostępne po podłączeniu project.operationalOverview"
+        </form>
+      )}
+      {projects.kind === "unavailable" ? (
+        <InlineState
+          title="Lista projektów jest niedostępna"
+          detail={projects.message}
+        />
+      ) : projects.data.items.length === 0 ? (
+        <InlineState
+          title="Nie ma jeszcze projektów"
+          detail="Utwórz projekt i nazwij wynik, po którym poznasz, że praca jest skończona."
+        />
+      ) : (
+        <div className="cockpit-grid">
+          <section
+            className="outcome-rail reading-panel"
+            aria-label="Lista projektów"
           >
-            Otwórz zależność
-          </button>
+            {projects.data.items.map((project) => (
+              <button
+                className={`outcome-row ${project.id === selectedProjectId ? "selected" : ""}`}
+                key={project.id}
+                onClick={() => onSelectProject(project.id)}
+              >
+                <Mark kind="project" />
+                <span>
+                  <strong>{project.title}</strong>
+                  <small>{project.intendedOutcome}</small>
+                </span>
+                <em>{project.relatedOpenTaskCount} otw.</em>
+              </button>
+            ))}
+          </section>
+          {overview && (
+            <section
+              className="project-overview"
+              aria-labelledby="project-outcome-title"
+            >
+              <div className="overview-intent">
+                <p className="eyebrow">Zamierzony wynik</p>
+                {editing ? (
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      onUpdateOutcome(outcome);
+                    }}
+                  >
+                    <label className="sr-only" htmlFor="edited-project-outcome">
+                      Zamierzony wynik
+                    </label>
+                    <textarea
+                      id="edited-project-outcome"
+                      value={outcome}
+                      onChange={(event) => setOutcome(event.target.value)}
+                    />
+                    <div className="capture-footer">
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => setEditing(false)}
+                      >
+                        Anuluj
+                      </button>
+                      <button
+                        className="primary-button"
+                        disabled={busy}
+                        type="submit"
+                      >
+                        Zapisz wynik
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <h2 id="project-outcome-title">
+                      {overview.project.intendedOutcome}
+                    </h2>
+                    <button
+                      className="ghost-button"
+                      onClick={() => setEditing(true)}
+                    >
+                      Edytuj wynik
+                    </button>
+                  </>
+                )}
+              </div>
+            </section>
+          )}
         </div>
-      </section>
-      <section
-        className="project-work reading-panel"
-        aria-labelledby="project-work-title"
-      >
-        <header className="section-heading">
-          <div>
-            <p className="eyebrow">Powiązana praca</p>
-            <h2 id="project-work-title">Zadania projektu</h2>
-          </div>
-          <button className="secondary-button compact" onClick={onRelate}>
-            Powiąż zadanie
-          </button>
-        </header>
-        <div className="compact-record-list">
-          {[
-            ...project.taskTitles,
-            ...(relationAdded ? ["Sprawdź warunki odnowienia"] : []),
-          ].map((title, index) => (
-            <div key={title} className="compact-record">
-              <Mark kind="task" />
-              <span>
-                <strong>{title}</strong>
-                <small>
-                  {index === 0 ? "Dziś · wysoki priorytet" : "Root Space"}
-                </small>
-              </span>
-              <em>{index === 0 ? "W toku" : "Zaplanowane"}</em>
+      )}
+      {overview && (
+        <section
+          className="project-work reading-panel"
+          aria-labelledby="project-work-title"
+        >
+          <header className="section-heading">
+            <div>
+              <p className="eyebrow">Powiązana praca</p>
+              <h2 id="project-work-title">Zadania projektu</h2>
             </div>
-          ))}
-        </div>
-      </section>
+            {relation ? (
+              <button
+                className="secondary-button compact"
+                disabled={busy}
+                onClick={onUnrelate}
+              >
+                Usuń ostatnie powiązanie
+              </button>
+            ) : unrelated[0] ? (
+              <button
+                className="secondary-button compact"
+                disabled={busy}
+                onClick={() => onRelate(unrelated[0]!.id)}
+              >
+                Powiąż „{unrelated[0].title}”
+              </button>
+            ) : null}
+          </header>
+          {overview.relatedTasks.length === 0 ? (
+            <p className="capacity-note">
+              Ten projekt nie ma jeszcze powiązanych zadań.
+            </p>
+          ) : (
+            <div className="compact-record-list">
+              {overview.relatedTasks.map((task) => (
+                <div key={task.id} className="compact-record">
+                  <Mark kind="task" />
+                  <span>
+                    <strong>{task.title}</strong>
+                    <small>Powiązane z projektem</small>
+                  </span>
+                  <em>
+                    {task.completionState === "completed"
+                      ? "Ukończone"
+                      : "Otwarte"}
+                  </em>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 };
@@ -376,203 +548,225 @@ export const HistorySurface = ({
   onUndo,
 }: {
   readonly snapshot: DesktopSnapshot;
-  readonly onUndo: () => void;
+  readonly onUndo: (targetCommandId: CommandId) => void;
 }) => {
-  const captures =
-    snapshot.captures.length > 0
-      ? snapshot.captures
-      : [
-          {
-            id: "fixture-capture",
-            originalText: "Sprawdź warunki odnowienia",
-            processingState: "routed_as_task" as const,
-            capturedAt: "2026-07-13T09:18:02.000Z",
-          },
-        ];
+  const activity =
+    snapshot.activity.kind === "ready" ? snapshot.activity.data.items : [];
   return (
     <div className="surface-scroll">
       <SurfaceHeader
         kicker="Capture History"
         title="Każdy oryginał ma dalszy ślad"
-        description="Udane przetworzenie nie zajmuje skrzynki uwagi, ale pozostaje sprawdzalne i odwracalne."
+        description="Udane przetworzenie pozostaje sprawdzalne i odwracalne, jeśli bieżące wersje na to pozwalają."
       />
-      <div className="history-grid">
-        {captures.map((capture) => (
-          <article className="history-card" key={capture.id}>
-            <header>
-              <Mark kind="capture" />
-              <div>
-                <p className="eyebrow">Oryginał · Quick Capture</p>
-                <h2>{capture.originalText}</h2>
-              </div>
-              <time>
-                {new Date(capture.capturedAt).toLocaleTimeString("pl-PL", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </time>
-            </header>
-            <ol className="processing-timeline">
-              <li className="done">
-                <i />
-                <div>
-                  <strong>Zapisano oryginał</strong>
-                  <span>Stan lokalny potwierdzony</span>
-                </div>
-              </li>
-              <li className="done">
-                <i />
-                <div>
-                  <strong>Rozpoznano jawny zamiar</strong>
-                  <span>Deterministyczna reguła routingu</span>
-                </div>
-              </li>
-              <li className="current">
-                <i />
-                <div>
-                  <strong>
-                    {capture.processingState === "routed_as_task"
-                      ? "Utworzono zadanie"
-                      : "Oczekuje na decyzję"}
-                  </strong>
-                  <span>{capture.originalText}</span>
-                </div>
-              </li>
-            </ol>
-            <footer>
-              <button
-                className="ghost-button"
-                disabled
-                title="Dostępne po podłączeniu route target"
-              >
-                Otwórz wynik
-              </button>
-              <button className="secondary-button" onClick={onUndo}>
-                Podgląd cofnięcia
-              </button>
-            </footer>
-          </article>
-        ))}
-      </div>
+      {snapshot.captures.length === 0 ? (
+        <InlineState
+          title="Historia Capture jest pusta"
+          detail="Pierwszy zapis przez Quick Capture pojawi się tutaj wraz z wynikiem przetwarzania."
+        />
+      ) : (
+        <div className="history-grid">
+          {snapshot.captures.map((capture) => {
+            const routeActivity = activity.find(
+              (item) =>
+                item.activityType === "capture_routed" &&
+                item.recordId === capture.id,
+            );
+            return (
+              <article className="history-card" key={capture.id}>
+                <header>
+                  <Mark kind="capture" />
+                  <div>
+                    <p className="eyebrow">Oryginał · Quick Capture</p>
+                    <h2>{capture.originalText}</h2>
+                  </div>
+                  <time>
+                    {new Date(capture.capturedAt).toLocaleTimeString("pl-PL", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </time>
+                </header>
+                <ol className="processing-timeline">
+                  <li className="done">
+                    <i />
+                    <div>
+                      <strong>Zapisano oryginał</strong>
+                      <span>Stan lokalny potwierdzony</span>
+                    </div>
+                  </li>
+                  <li className="current">
+                    <i />
+                    <div>
+                      <strong>
+                        {capture.processingState === "routed_as_task"
+                          ? "Utworzono zadanie"
+                          : "Oczekuje na decyzję"}
+                      </strong>
+                      <span>{capture.originalText}</span>
+                    </div>
+                  </li>
+                </ol>
+                <footer>
+                  <button
+                    className="secondary-button"
+                    disabled={routeActivity === undefined}
+                    title={
+                      routeActivity === undefined
+                        ? "Brak odwracalnego polecenia dla tego Capture"
+                        : undefined
+                    }
+                    onClick={() =>
+                      routeActivity && onUndo(routeActivity.targetCommandId)
+                    }
+                  >
+                    Podgląd cofnięcia
+                  </button>
+                </footer>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
 
-const ActivityRow = ({
-  item,
-  undone,
-  onUndo,
-}: {
-  readonly item: ActivityFixture;
-  readonly undone: boolean;
-  readonly onUndo: (item: ActivityFixture) => void;
-}) => (
-  <div className={`activity-row ${undone ? "undone" : ""}`}>
-    <span className={`actor-avatar actor-${item.actor}`}>
-      {item.actor === "human" ? "KN" : item.actor === "agent" ? "A" : "↗"}
-    </span>
-    <span>
-      <strong>{undone ? `Cofnięto: ${item.title}` : item.title}</strong>
-      <small>
-        {item.time} · {item.detail}
-      </small>
-    </span>
-    <button
-      className="ghost-button"
-      disabled={!item.reversible || undone}
-      onClick={() => onUndo(item)}
-    >
-      {undone ? "Cofnięte" : item.reversible ? "Zobacz zmiany" : "Otwórz"}
-    </button>
-  </div>
-);
+const activityLabels: Record<
+  ActivityProjection["items"][number]["activityType"],
+  string
+> = {
+  capture_routed: "Capture przekształcono w zadanie",
+  project_created: "Utworzono projekt",
+  project_outcome_changed: "Zmieniono zamierzony wynik projektu",
+  task_completed: "Ukończono zadanie",
+  task_reopened: "Ponownie otwarto zadanie",
+  relation_added: "Powiązano zadanie z projektem",
+  relation_removed: "Usunięto powiązanie",
+  command_undone: "Cofnięto polecenie",
+};
 
 export const ActivitySurface = ({
-  undoneActivityId,
+  activity,
   onUndo,
 }: {
-  readonly undoneActivityId: string | undefined;
-  readonly onUndo: (item: ActivityFixture) => void;
+  readonly activity: DesktopSnapshot["activity"];
+  readonly onUndo: (targetCommandId: CommandId) => void;
 }) => (
   <div className="surface-scroll">
     <SurfaceHeader
       kicker="Znacząca aktywność"
       title="Historia pracy, nie log techniczny"
-      description="Codzienny timeline mówi, co zmieniło się w pracy. Pełny receipt pozostaje obok."
+      description="Timeline pokazuje potwierdzone zmiany. Atrybucja i pełny receipt pozostają w audycie."
     />
-    <div className="activity-layout">
-      <section
-        className="meaningful-timeline reading-panel"
-        aria-labelledby="timeline-title"
-      >
-        <header className="section-heading">
-          <div>
-            <p className="eyebrow">Timeline człowieka</p>
-            <h2 id="timeline-title">Dzisiaj</h2>
+    <section
+      className="meaningful-timeline reading-panel"
+      aria-labelledby="timeline-title"
+    >
+      <header className="section-heading">
+        <div>
+          <p className="eyebrow">Lokalny timeline</p>
+          <h2 id="timeline-title">Ostatnie zmiany</h2>
+        </div>
+      </header>
+      {activity.kind === "unavailable" ? (
+        <InlineState
+          title="Aktywność jest niedostępna"
+          detail={activity.message}
+        />
+      ) : activity.data.items.length === 0 ? (
+        <InlineState
+          title="Nie ma jeszcze znaczących zmian"
+          detail="Utworzenie projektu, routing Capture lub zmiana zadania pojawią się tutaj."
+        />
+      ) : (
+        activity.data.items.map((item) => (
+          <div className="activity-row" key={item.eventId}>
+            <span className="actor-avatar actor-human">•</span>
+            <span>
+              <strong>{activityLabels[item.activityType]}</strong>
+              <small>
+                {new Date(item.occurredAt).toLocaleString("pl-PL")} · rekord{" "}
+                {item.recordId.slice(0, 8)}
+              </small>
+            </span>
+            <button
+              className="ghost-button"
+              onClick={() => onUndo(item.targetCommandId)}
+            >
+              Podgląd cofnięcia
+            </button>
           </div>
-          <button
-            className="ghost-button"
-            disabled
-            title="Dostępne po podłączeniu audit route"
-          >
-            Pełny audyt
-          </button>
-        </header>
-        {activity.map((item) => (
-          <ActivityRow
-            key={item.id}
-            item={item}
-            undone={undoneActivityId === item.id}
-            onUndo={onUndo}
-          />
-        ))}
-      </section>
-      <aside className="deep-audit" aria-labelledby="audit-title">
-        <p className="eyebrow">Pełny ślad</p>
-        <h2 id="audit-title">Ostatni receipt</h2>
-        <code>record.relate · version 18 → 19</code>
-        <code>actor user_KN · grant owner_local</code>
-        <code>corr_81B2 · checkpoint cp_07</code>
-        <p>Zmiana jest atrybuowalna, wersjonowana i odwracalna.</p>
-      </aside>
-    </div>
+        ))
+      )}
+    </section>
   </div>
 );
 
 export const SearchOverlay = ({
+  client,
   snapshot,
   onClose,
   onNavigate,
 }: {
+  readonly client: ConstellationRendererClient;
   readonly snapshot: DesktopSnapshot;
   readonly onClose: () => void;
-  readonly onNavigate: (surface: SurfaceId) => void;
+  readonly onNavigate: (surface: SurfaceId, recordId: string) => void;
 }) => {
   const [query, setQuery] = useState("");
+  const [state, setState] = useState<
+    | { readonly kind: "idle" | "loading" }
+    | { readonly kind: "ready"; readonly data: SearchProjection }
+    | { readonly kind: "error"; readonly message: string }
+  >({ kind: "idle" });
   const [activeIndex, setActiveIndex] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = dialogRef.current;
     dialog?.showModal();
     return () => dialog?.close();
   }, []);
-  const allResults = useMemo(() => buildSearchFixtures(snapshot), [snapshot]);
-  const results = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase("pl");
-    return normalized.length === 0
-      ? allResults.slice(0, 5)
-      : allResults.filter((item) =>
-          `${item.title} ${item.detail} ${item.kind}`
-            .toLocaleLowerCase("pl")
-            .includes(normalized),
-        );
-  }, [allResults, query]);
-  const choose = (item: SearchFixture | undefined) => {
-    if (item) {
-      onNavigate(item.surface);
-      onClose();
+  useEffect(() => {
+    const text = query.trim();
+    if (!text) {
+      setState({ kind: "idle" });
+      return;
     }
+    setState({ kind: "loading" });
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void searchGlobal(client, snapshot, text)
+        .then((data) => active && setState({ kind: "ready", data }))
+        .catch(
+          (error: unknown) =>
+            active &&
+            setState({
+              kind: "error",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Wyszukiwanie jest niedostępne.",
+            }),
+        );
+    }, 180);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [client, query, snapshot]);
+  const results = state.kind === "ready" ? state.data.items : [];
+  const choose = (item: SearchProjection["items"][number] | undefined) => {
+    if (!item) return;
+    onNavigate(
+      item.recordKind === "project"
+        ? "projects"
+        : item.recordKind === "task"
+          ? "tasks"
+          : "history",
+      item.recordId,
+    );
+    onClose();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "ArrowDown") {
@@ -611,7 +805,6 @@ export const SearchOverlay = ({
           </label>
           <input
             id="global-search"
-            ref={inputRef}
             autoFocus
             value={query}
             onChange={(event) => {
@@ -624,10 +817,27 @@ export const SearchOverlay = ({
           <kbd>Esc</kbd>
         </div>
         <p className="search-scope">
-          Lokalny indeks · {snapshot.bootstrap.workspace.name} · dane
-          syntetyczne i bieżąca sesja
+          Lokalny indeks · {snapshot.bootstrap.workspace.name} · dane bieżącego
+          workspace
         </p>
-        {results.length === 0 ? (
+        {state.kind === "idle" ? (
+          <div className="search-empty">
+            <strong>Wpisz co najmniej jeden znak</strong>
+            <span>
+              Wyniki pochodzą z lokalnego indeksu z zachowaniem zakresu Space.
+            </span>
+          </div>
+        ) : state.kind === "loading" ? (
+          <div className="search-empty" aria-busy="true">
+            <strong>Wyszukuję…</strong>
+            <span>Sprawdzam projekty, zadania i Capture.</span>
+          </div>
+        ) : state.kind === "error" ? (
+          <div className="search-empty" role="alert">
+            <strong>Wyszukiwanie jest niedostępne</strong>
+            <span>{state.message}</span>
+          </div>
+        ) : results.length === 0 ? (
           <div className="search-empty">
             <strong>Brak wyników dla „{query}”</strong>
             <span>Sprawdź pisownię albo wyszukaj szersze pojęcie.</span>
@@ -643,21 +853,21 @@ export const SearchOverlay = ({
           >
             {results.map((item, index) => (
               <button
-                key={`${item.kind}-${item.id}`}
+                key={`${item.recordKind}-${item.recordId}`}
                 role="option"
                 aria-selected={index === activeIndex}
                 className={index === activeIndex ? "active" : ""}
                 onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => choose(item)}
               >
-                <Mark kind={item.kind.toLocaleLowerCase("pl")} />
+                <Mark kind={item.recordKind} />
                 <span>
                   <strong>{item.title}</strong>
                   <small>
-                    {item.kind} · {item.detail}
+                    {item.recordKind} · {item.snippet}
                   </small>
                 </span>
-                <em>{item.group}</em>
+                <em>{item.score}</em>
               </button>
             ))}
           </div>
@@ -673,16 +883,20 @@ export const SearchOverlay = ({
 };
 
 export const UndoDialog = ({
-  item,
+  preview,
+  busy,
   onClose,
   onConfirm,
 }: {
-  readonly item: ActivityFixture;
+  readonly preview: UndoPreview;
+  readonly busy: boolean;
   readonly onClose: () => void;
   readonly onConfirm: () => void;
 }) => {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const available =
+    preview.recovery.available && preview.command.projection.available;
   useEffect(() => {
     const dialog = dialogRef.current;
     dialog?.showModal();
@@ -697,56 +911,80 @@ export const UndoDialog = ({
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        if (!busy) onClose();
       }}
     >
       <section className="undo-dialog">
         <header>
           <div>
             <p className="eyebrow">Podgląd cofnięcia</p>
-            <h2 id="undo-title">Cofnij tę zmianę?</h2>
+            <h2 id="undo-title">
+              {available ? "Cofnij tę zmianę?" : "Tej zmiany nie można cofnąć"}
+            </h2>
           </div>
           <button
             className="icon-button"
             aria-label="Zamknij podgląd cofnięcia"
+            disabled={busy}
             onClick={onClose}
           >
             ×
           </button>
         </header>
-        <p className="undo-summary">{item.title}</p>
         <dl>
           <div>
             <dt>Polecenie</dt>
-            <dd>{item.command}</dd>
-          </div>
-          <div>
-            <dt>Wersje</dt>
-            <dd>{item.version}</dd>
+            <dd className="mono">{preview.targetCommandId.slice(0, 18)}…</dd>
           </div>
           <div>
             <dt>Wpływ</dt>
+            <dd>{preview.recovery.affectedRecordIds.length} rekordów</dd>
+          </div>
+          <div>
+            <dt>Kompensacja</dt>
             <dd>
-              Usunięte zostanie jedno powiązanie. Rekordy pozostaną zachowane.
+              {preview.recovery.compensationKind ??
+                preview.recovery.unavailableReason ??
+                "Niedostępna"}
             </dd>
           </div>
         </dl>
         <div className="undo-safety">
-          <Mark kind="recovery" />
+          <Mark kind={available ? "recovery" : "warning"} />
           <span>
-            <strong>Bezpieczne do natychmiastowego cofnięcia</strong>
-            <small>Preview nie wykrył późniejszych zmian zależnych.</small>
+            <strong>
+              {available
+                ? "Wersje są zgodne"
+                : "Stan zmienił się od czasu polecenia"}
+            </strong>
+            <small>
+              {available
+                ? "Cofnięcie zapisze osobne, audytowalne polecenie."
+                : "Nie wykonano żadnej zmiany."}
+            </small>
           </span>
         </div>
         <footer>
-          <button ref={cancelRef} className="ghost-button" onClick={onClose}>
+          <button
+            ref={cancelRef}
+            className="ghost-button"
+            disabled={busy}
+            onClick={onClose}
+          >
             Anuluj
           </button>
-          <button className="primary-button" onClick={onConfirm}>
-            Cofnij zmianę
+          <button
+            className="primary-button"
+            disabled={!available || busy}
+            onClick={onConfirm}
+          >
+            {busy ? "Cofam…" : "Cofnij zmianę"}
           </button>
         </footer>
       </section>
     </dialog>
   );
 };
+
+export const failureMessage = (failure: MutationFailure): string =>
+  failure.message;
