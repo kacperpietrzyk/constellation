@@ -6,7 +6,11 @@ import type { EncryptedSqliteDatabase } from "@constellation/local-store";
 import { createBetterSqlite3Factory } from "../src/better-sqlite3-factory.js";
 
 test("native factory rejects an unpatched better-sqlite3 binding", () => {
+  let constructed = false;
   class UnpatchedDatabase {
+    public constructor() {
+      constructed = true;
+    }
     public close(): void {}
   }
   const factory = createBetterSqlite3Factory({ load: () => UnpatchedDatabase });
@@ -14,6 +18,7 @@ test("native factory rejects an unpatched better-sqlite3 binding", () => {
     () => factory.open("workspace.db", { fileMustExist: false }),
     /SQLCipher database driver is incompatible/,
   );
+  assert.equal(constructed, false);
 });
 
 test("native factory exposes the patched SQLCipher database", () => {

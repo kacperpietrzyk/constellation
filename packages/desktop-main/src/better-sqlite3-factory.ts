@@ -10,8 +10,25 @@ type BetterSqlite3Constructor = new (
   options: { readonly fileMustExist: boolean },
 ) => EncryptedSqliteDatabase;
 
-const isConstructor = (value: unknown): value is BetterSqlite3Constructor =>
-  typeof value === "function";
+const isConstructor = (value: unknown): value is BetterSqlite3Constructor => {
+  if (typeof value !== "function") return false;
+  const prototype = (value as { readonly prototype?: unknown }).prototype;
+  if (
+    typeof prototype !== "object" ||
+    prototype === null ||
+    Array.isArray(prototype)
+  ) {
+    return false;
+  }
+  const driver = prototype as Record<string, unknown>;
+  return (
+    typeof driver.key === "function" &&
+    typeof driver.loadExtension === "function" &&
+    typeof driver.prepare === "function" &&
+    typeof driver.exec === "function" &&
+    typeof driver.close === "function"
+  );
+};
 
 export const createBetterSqlite3Factory = (input?: {
   readonly load?: () => unknown;
@@ -23,22 +40,9 @@ export const createBetterSqlite3Factory = (input?: {
     open(filename, options) {
       const Database = load();
       if (!isConstructor(Database)) {
-        throw new TypeError(
-          "The SQLCipher database constructor is unavailable.",
-        );
-      }
-      const database = new Database(filename, options);
-      if (
-        typeof database.key !== "function" ||
-        typeof database.loadExtension !== "function" ||
-        typeof database.prepare !== "function" ||
-        typeof database.exec !== "function" ||
-        typeof database.close !== "function"
-      ) {
-        database.close?.();
         throw new TypeError("The SQLCipher database driver is incompatible.");
       }
-      return database;
+      return new Database(filename, options);
     },
   };
 };
