@@ -18,11 +18,13 @@ import {
   type CaptureId,
   type CommandEnvelope,
   type CommandOutcome,
+  type EventId,
   type ExecutionContext,
   type ProjectId,
   type RelationId,
   type TaskId,
 } from "@constellation/contracts";
+import type { DomainEvent } from "@constellation/domain";
 import {
   Base64JsonCursorCodec,
   DeterministicIdGenerator,
@@ -207,6 +209,44 @@ const wave2Command = (
   });
 
 describe("SQLite ApplicationStore", () => {
+  it("preserves event command attribution across restart", () => {
+    withDatabase((filename) => {
+      const eventId = "00000000-0000-4000-8000-000000000089" as EventId;
+      const firstDatabase = new DatabaseSync(filename);
+      const first = createKernel(firstDatabase);
+      assert.equal(
+        unwrap(first.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      const attributedEvent: DomainEvent = {
+        id: eventId,
+        type: "workspace.renamed",
+        workspaceId: context().workspaceId,
+        spaceId: context().spaceScope[0]!,
+        aggregateId: context().workspaceId,
+        aggregateVersion: 2,
+        occurredAt: "2026-07-13T10:00:00.000Z",
+        commandId: workspaceCommand.commandId,
+      };
+      first.store.transact((transaction) => {
+        transaction.insertEvent(attributedEvent);
+      });
+      firstDatabase.close();
+
+      const reopenedDatabase = new DatabaseSync(filename);
+      const reopened = createKernel(reopenedDatabase);
+      reopened.store.read((view) => {
+        assert.equal(isApplicationWave2ReadView(view), true);
+        if (!isApplicationWave2ReadView(view)) return;
+        const restored = view
+          .listEvents(context().workspaceId, context().spaceScope[0]!)
+          .find((event) => event.id === eventId);
+        assert.equal(restored?.commandId, workspaceCommand.commandId);
+      });
+      reopenedDatabase.close();
+    });
+  });
+
   it("migrates a v1 database transactionally and backfills scoped FTS records", () => {
     const database = new DatabaseSync(":memory:");
     database.exec(versionOneSchema);
