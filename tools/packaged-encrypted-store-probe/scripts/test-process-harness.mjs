@@ -376,6 +376,14 @@ if (childArgument) {
   }
 
   let delayedBeforeKillCompleted = false;
+  let releaseBeforeKill;
+  const beforeKillRelease = new Promise((resolve) => {
+    releaseBeforeKill = resolve;
+  });
+  let resolveBeforeKillCompletion;
+  const beforeKillCompletion = new Promise((resolve) => {
+    resolveBeforeKillCompletion = resolve;
+  });
   let preKillExitError;
   try {
     await forceCrashPackagedProcessAtBoundary({
@@ -389,20 +397,23 @@ if (childArgument) {
           process.kill(processId, "SIGTERM") === true,
           "TEST_PRE_KILL_EXIT_TRIGGER_FAILED",
         );
-        await new Promise((resolve) => setTimeout(resolve, 150));
+        await beforeKillRelease;
         delayedBeforeKillCompleted = true;
+        resolveBeforeKillCompletion();
         return { boundaryObserved: true };
       },
     });
   } catch (error) {
     preKillExitError = error;
+  } finally {
+    releaseBeforeKill();
   }
-  await new Promise((resolve) => setTimeout(resolve, 200));
   ensure(
-    preKillExitError?.message === "FAULT_PROCESS_EXITED_DURING_PRE_KILL" &&
-      delayedBeforeKillCompleted === true,
+    preKillExitError?.message === "FAULT_PROCESS_EXITED_DURING_PRE_KILL",
     "TEST_PRE_KILL_EXIT_GUARD_INVALID",
   );
+  await beforeKillCompletion;
+  ensure(delayedBeforeKillCompleted, "TEST_PRE_KILL_CALLBACK_STALLED");
 
   let identityChangedTerminationCalls = 0;
   const capturedWindowsRoot = {
