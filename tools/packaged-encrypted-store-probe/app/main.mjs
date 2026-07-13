@@ -306,7 +306,7 @@ function waitForParentShutdownProtocol() {
       process.exit(1);
       return;
     }
-    app.exit(0);
+    setImmediate(() => app.exit(0));
   };
   const deadline = Date.now() + SHUTDOWN_CONTROL_TIMEOUT_MS;
   while (Date.now() < deadline) {
