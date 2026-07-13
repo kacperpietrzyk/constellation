@@ -126,7 +126,7 @@ function awaitProviderBootstrapTurn() {
       if (
         !hasExactKeys(message, ["mode", "processId", "type"]) ||
         message.type !== PROVIDER_BOOTSTRAP_CONTINUE_TYPE ||
-        message.mode !== "provision" ||
+        message.mode !== "provider-initialize" ||
         message.processId !== process.pid
       ) {
         failBootstrap();
@@ -145,7 +145,7 @@ function awaitProviderBootstrapTurn() {
       process.send(
         {
           type: PROVIDER_BOOTSTRAP_READY_TYPE,
-          mode: "provision",
+          mode: "provider-initialize",
           processId: process.pid,
           bootstrapEnvironmentCleared:
             process.env.NODE_CHANNEL_FD === undefined &&
@@ -205,6 +205,19 @@ function disconnectProviderChannel() {
   return providerDisconnectPromise;
 }
 
+function assertNoInheritedProviderChannel() {
+  if (
+    typeof process.send === "function" ||
+    typeof process.disconnect === "function" ||
+    process.connected === true ||
+    process.channel ||
+    process.env.NODE_CHANNEL_FD !== undefined ||
+    process.env.NODE_CHANNEL_SERIALIZATION_MODE !== undefined
+  ) {
+    fail("PROVIDER_BOOTSTRAP_INVALID");
+  }
+}
+
 function finish(result, exitCode) {
   if (finishStarted) return;
   if (!Number.isInteger(exitCode) || exitCode < 0 || exitCode > 255) {
@@ -212,13 +225,14 @@ function finish(result, exitCode) {
   }
   finishStarted = true;
   writeFixedResult(result, exitCode);
-  app.exit(exitCode);
+  if (config?.mode === "provider-initialize") app.exit(exitCode);
+  else process.exit(exitCode);
 }
 
-async function finishAfterProviderDisconnect(result, exitCode) {
+async function finishResult(result, exitCode) {
   let finalResult = result;
   let finalExitCode = exitCode;
-  if (config?.mode === "provision" && providerBootstrapAccepted) {
+  if (config?.mode === "provider-initialize" && providerBootstrapAccepted) {
     try {
       await disconnectProviderChannel();
       if (process.connected || process.channel) {
@@ -268,7 +282,11 @@ function parseConfig() {
   const wrapperName = getArgument("wrapper");
   const databaseName = getArgument("database");
 
-  if (!new Set(["provision", "verify", "plaintext"]).has(mode)) {
+  if (
+    !new Set(["provider-initialize", "provision", "verify", "plaintext"]).has(
+      mode,
+    )
+  ) {
     fail("CONFIG_INVALID");
   }
   if (!path.isAbsolute(stateRoot) || stateRoot.includes("\0")) {
@@ -522,6 +540,43 @@ async function encryptPayload(payload, canaries, scope) {
   scope.keep(encrypted);
   if (containsCanary(encrypted, canaries)) fail("PLAINTEXT_EXPOSED");
   return encrypted;
+}
+
+async function initializeProvider() {
+  const scope = createSensitiveScope();
+  const canaries = [];
+  const sentinel = "constellation-provider-initialization-sentinel-v1";
+  try {
+    await requireAsyncEncryption();
+    addEncodedCanaries(
+      scope,
+      canaries,
+      scope.keep(Buffer.from(sentinel, "utf8")),
+    );
+    const encrypted = await encryptPayload(sentinel, canaries, scope);
+    let decrypted;
+    try {
+      decrypted = await safeStorage.decryptStringAsync(encrypted);
+    } catch {
+      fail("ENCRYPTION_UNAVAILABLE");
+    }
+    if (
+      !hasExactKeys(decrypted, ["result", "shouldReEncrypt"]) ||
+      decrypted.result !== sentinel ||
+      typeof decrypted.shouldReEncrypt !== "boolean"
+    ) {
+      fail("ENCRYPTION_UNAVAILABLE");
+    }
+    await disconnectProviderChannel();
+    scanKnownSecrets(canaries);
+    return fixedResult("pass", "PROVIDER_INITIALIZED", {
+      asyncEncryptionAvailable: true,
+      providerInitializationRoundTrip: true,
+      plaintextScan: true,
+    });
+  } finally {
+    scope.clear();
+  }
 }
 
 async function unwrapKey(scope, canaries) {
@@ -888,7 +943,6 @@ async function provisionStore(Database) {
     );
 
     const encrypted = await encryptPayload(payload, canaries, scope);
-    await disconnectProviderChannel();
     const payloadDigest = crypto
       .createHash("sha256")
       .update(payload)
@@ -932,7 +986,6 @@ async function provisionStore(Database) {
       fts5: true,
       loadableExtensions: false,
       plaintextScan: true,
-      providerBootstrapRoundTrip: true,
       markerDigest,
       encryptedWal: true,
     });
@@ -1168,11 +1221,15 @@ if (config) {
     let exitCode;
     try {
       verifyPackagedIdentity();
-      if (config.mode === "provision") await awaitProviderBootstrapTurn();
-      if (config.mode === "plaintext") {
+      if (config.mode === "provider-initialize") {
+        await awaitProviderBootstrapTurn();
+        result = await initializeProvider();
+      } else if (config.mode === "plaintext") {
+        assertNoInheritedProviderChannel();
         const Database = await loadDatabaseConstructor();
         result = createPlaintextFixture(Database);
       } else {
+        assertNoInheritedProviderChannel();
         await requireAsyncEncryption();
         const Database = await loadDatabaseConstructor();
         result =
@@ -1189,6 +1246,6 @@ if (config) {
       result = fixedResult("fail", failure.code);
       exitCode = failure.exitCode;
     }
-    await finishAfterProviderDisconnect(result, exitCode);
+    await finishResult(result, exitCode);
   });
 }

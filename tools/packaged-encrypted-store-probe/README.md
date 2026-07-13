@@ -18,15 +18,15 @@ The probe fails unless all of these checks pass:
 - the pre-sign packaged add-on digest equals the just-built SQLCipher add-on,
   the finished package passes its platform identity check, and the executable,
   ASAR, and finished add-on digests remain unchanged across every process;
-- one privileged packaged writer generates a fresh random 32-byte synthetic DEK
-  internally. Before its first provider call it completes the same timed,
-  keyless parent IPC turn used by the independent safeStorage probe: after the
-  exact continuation arrives, the child resumes immediately and the channel
-  never carries the DEK or payload. The writer then protects a strict
-  workspace-bound payload through asynchronous safeStorage. Immediately after
-  encryption succeeds, it disconnects the bootstrap channel, awaits the actual
-  disconnect event, and verifies that the IPC connection and channel are absent
-  before publishing the wrapper or opening SQLCipher;
+- one provider-initialization process completes an exact keyless parent IPC
+  turn, performs a fixed non-secret asynchronous safeStorage round trip, closes
+  the channel, and exits naturally before any workspace wrapper or database can
+  be created. This establishes the durable same-profile provider boundary that
+  the later no-IPC processes must actually use;
+- one later privileged packaged writer, launched without any IPC capability,
+  generates a fresh random 32-byte synthetic DEK internally, protects a strict
+  workspace-bound payload through asynchronous safeStorage, and atomically
+  publishes only its ciphertext and metadata;
 - that writer applies the raw DEK Buffer to SQLCipher before any schema access,
   clears the explicit Buffer, creates an encrypted WAL database, and writes a
   fresh synthetic marker plus FTS projection;
@@ -51,11 +51,13 @@ The probe fails unless all of these checks pass:
 - unbounded application stdout/stderr and console methods are disabled, the
   harness accepts exact fixed result shapes only, and the earlier dedicated
   safeStorage probe remains the independent exact-key output-channel oracle;
-- each process emits exactly one synchronous fixed result only after store close,
-  post-close scanning, and failure cleanup, then calls `app.exit()` with the
-  declared result code. The parent accepts the launch only after the main process
-  exits naturally with that exact code and no signal, both inherited output
-  pipes close, and the result shape and status/code relationship validate;
+- the initializer emits one synchronous fixed result and uses `app.exit()` so
+  Electron commits provider state before the parent starts phase two. Every
+  no-IPC store process emits its fixed result only after store close, post-close
+  scanning, and failure cleanup, then uses `process.exit()` with the declared
+  code. The parent accepts either launch only after the main process exits with
+  that exact code and no signal, both inherited output pipes close, and the
+  result shape and status/code relationship validate;
 - macOS uses an ad-hoc-signed package and disposable hosted-runner Keychain;
   Windows uses an unsigned mechanism package with statically linked pinned
   OpenSSL; every generated file and exact probe-only Keychain item is removed
@@ -70,10 +72,10 @@ for `close`, preserves the already observed main-process status, and fails if
 cleanup cannot be verified within five seconds. On Windows, the evidence is the
 real async wrap/unwrap through distinct processes and exact marker recovery;
 provider rotation and temporary unavailability remain outside this bounded
-mechanism probe. The direct `app.exit()` path is probe-only: the fixture is
-headless, has no windows, and closes and scans every store path before emitting
-its fixed result. It does not define the product's eventual user-facing
-graceful-shutdown policy.
+mechanism probe. The direct exit paths are probe-only: the fixture is headless,
+has no windows, and completes the relevant provider or store work before
+emitting its fixed result. They do not define the product's eventual
+user-facing graceful-shutdown policy.
 
 ## Pinned inputs
 
@@ -117,6 +119,13 @@ or power-loss recovery, migration recovery, rotation, temporary provider
 unavailability, Windows workspace ACLs, optimized Windows crypto performance,
 portable recovery, reliable JavaScript heap zeroization, renderer isolation, or
 same-user malware resistance.
+
+The initializer alone is not evidence that provider state is durable; the later
+no-IPC writer and reader recovering the exact marker provide that evidence. The
+probe does not claim that no OS permission UI can appear, or that plaintext is
+absent from the packaged child or OS cryptographic provider memory. Its
+no-exposure claim is limited to IPC, the harness, output, and persisted
+plaintext artifacts.
 
 See Electron's versioned
 [`safeStorage` documentation](https://github.com/electron/electron/blob/v43.1.0/docs/api/safe-storage.md)

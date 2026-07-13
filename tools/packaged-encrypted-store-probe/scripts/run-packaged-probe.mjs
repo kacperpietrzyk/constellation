@@ -169,7 +169,7 @@ function terminateTree(child) {
 async function launch({ mode, workspaceId, wrapperName, databaseName }) {
   const environment = { ...process.env };
   delete environment.ELECTRON_RUN_AS_NODE;
-  const providerChannel = mode === "provision";
+  const providerChannel = mode === "provider-initialize";
   const argumentsForProbe = [
     `--user-data-dir=${profile}`,
     `--probe-mode=${mode}`,
@@ -493,7 +493,7 @@ function recordProcess(execution, mode) {
   ensure(
     execution.providerBootstrapCompleted === true &&
       execution.providerBootstrapMessageCount ===
-        (mode === "provision" ? 1 : 0),
+        (mode === "provider-initialize" ? 1 : 0),
     "PROVIDER_BOOTSTRAP_EVIDENCE_INVALID",
   );
   verifiedProcessTerminations += 1;
@@ -652,6 +652,43 @@ try {
   }
   removeProbeKeychainItem();
 
+  const providerInitializer = await launch({
+    mode: "provider-initialize",
+    workspaceId: "workspace-provider-initialization",
+    wrapperName: "unused-provider.wrap.json",
+    databaseName: "unused-provider.db",
+  });
+  ensure(
+    providerInitializer.declaredExitCode === 0,
+    `PROVIDER_INITIALIZER_FAILED:${providerInitializer.result.code}`,
+  );
+  ensure(
+    providerInitializer.result.status === "pass" &&
+      providerInitializer.result.code === "PROVIDER_INITIALIZED",
+    "PROVIDER_INITIALIZER_RESULT_INVALID",
+  );
+  recordProcess(providerInitializer, "provider-initialize");
+  assertExactResultKeys(providerInitializer.result, [
+    "asyncEncryptionAvailable",
+    "plaintextScan",
+    "providerInitializationRoundTrip",
+  ]);
+  ensure(
+    providerInitializer.result.asyncEncryptionAvailable === true &&
+      providerInitializer.result.providerInitializationRoundTrip === true &&
+      providerInitializer.result.plaintextScan === true,
+    "PROVIDER_INITIALIZATION_EVIDENCE_INVALID",
+  );
+  ensure(
+    !fs.existsSync(primaryWrapperPath) &&
+      !fs.existsSync(primaryDatabasePath) &&
+      !fs.existsSync(path.join(stateRoot, "unused-provider.wrap.json")) &&
+      !fs.existsSync(path.join(stateRoot, "unused-provider.db")),
+    "PROVIDER_INITIALIZATION_TOUCHED_STORE",
+  );
+  assertNoProbeTemps();
+  assertProbeKeychainItemPresent();
+
   const writer = await launch({
     mode: "provision",
     workspaceId: workspace,
@@ -671,15 +708,10 @@ try {
     "markerDigest",
     "plaintextScan",
     "provider",
-    "providerBootstrapRoundTrip",
     "providerVersion",
     "rawKeyBinding",
   ]);
   assertProvider(writer.result);
-  ensure(
-    writer.result.providerBootstrapRoundTrip === true,
-    "PROVIDER_BOOTSTRAP_RESULT_INVALID",
-  );
   ensure(
     /^[a-f0-9]{64}$/.test(writer.result.markerDigest),
     "MARKER_DIGEST_INVALID",
@@ -806,15 +838,10 @@ try {
     "markerDigest",
     "plaintextScan",
     "provider",
-    "providerBootstrapRoundTrip",
     "providerVersion",
     "rawKeyBinding",
   ]);
   assertProvider(secondaryWriter.result);
-  ensure(
-    secondaryWriter.result.providerBootstrapRoundTrip === true,
-    "PROVIDER_BOOTSTRAP_RESULT_INVALID",
-  );
   ensure(
     secondaryWriter.result.markerDigest !== writer.result.markerDigest,
     "SECONDARY_MARKER_REUSED",
@@ -895,7 +922,7 @@ try {
     primaryState,
   );
 
-  ensure(processIds.size === 12, "PROCESS_COUNT_INVALID");
+  ensure(processIds.size === 13, "PROCESS_COUNT_INVALID");
   ensure(
     verifiedProcessTerminations === processIds.size,
     "PROCESS_TERMINATION_COUNT_INVALID",
@@ -921,7 +948,8 @@ try {
       packagedRelaunch: true,
       verifiedProcessTerminations,
       declaredExitCodesMatched: true,
-      providerBootstrapRoundTrip: true,
+      providerInitializationRoundTrip: true,
+      phaseTwoIpcChannelAbsent: true,
       distinctProcesses: processIds.size,
       internallyGeneratedDek: true,
       asyncSafeStorage: true,
