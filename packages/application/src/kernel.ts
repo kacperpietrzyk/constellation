@@ -40,6 +40,13 @@ import {
   type StoreFreshness,
   type TaskPaginationCursor,
 } from "./ports.js";
+import {
+  executeWave2Command,
+  executeWave2Query,
+  isWave2CommandAuthorized,
+  type Wave2Command,
+  type Wave2Query,
+} from "./wave2.js";
 
 export interface ContractBoundaryRejection {
   readonly kind: "contract_rejected";
@@ -184,6 +191,21 @@ const isCurrentlyAuthorized = (
         canUseSpace(context, command.workspaceId, capture.spaceId)
       );
     }
+    case "project.create":
+    case "project.updateOutcome":
+    case "task.setStatus":
+    case "task.complete":
+    case "task.reopen":
+    case "record.relate":
+    case "record.unrelate":
+    case "command.previewUndo":
+    case "command.undo":
+      return isWave2CommandAuthorized(
+        { authorization },
+        view,
+        context,
+        command,
+      );
   }
 };
 
@@ -334,6 +356,23 @@ export class ApplicationKernel {
           command,
           scope,
           fingerprint,
+          occurredAt,
+        );
+      case "project.create":
+      case "project.updateOutcome":
+      case "task.setStatus":
+      case "task.complete":
+      case "task.reopen":
+      case "record.relate":
+      case "record.unrelate":
+      case "command.previewUndo":
+      case "command.undo":
+        return executeWave2Command(
+          this.dependencies,
+          transaction,
+          context,
+          command as Wave2Command,
+          { scope, fingerprint },
           occurredAt,
         );
     }
@@ -900,6 +939,17 @@ export class ApplicationKernel {
             kernelTime,
             freshness,
           );
+        case "project.list":
+        case "search.global":
+        case "cockpit.week":
+        case "activity.meaningful":
+          return executeWave2Query(
+            this.dependencies,
+            view,
+            context,
+            query as Wave2Query,
+            kernelTime,
+          );
       }
     });
   }
@@ -1151,6 +1201,10 @@ export class ApplicationKernel {
               label: status.label,
               operationalSemantics: status.operationalSemantics,
             },
+            completionState: task.completionState,
+            ...(task.completedAt === undefined
+              ? {}
+              : { completedAt: task.completedAt }),
             ...(task.sourceCaptureId === undefined
               ? {}
               : { sourceCaptureId: task.sourceCaptureId }),

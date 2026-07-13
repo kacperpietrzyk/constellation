@@ -13,6 +13,8 @@ import type {
   AuditReceiptId,
   CaptureId,
   PrincipalId,
+  ProjectId,
+  RelationId,
   SpaceId,
   TaskId,
   TaskStatusId,
@@ -23,11 +25,14 @@ import type {
   Capture,
   DomainEvent,
   OutboxEntry,
+  Project,
   Space,
   Task,
+  TaskProjectRelation,
   TaskStatusDefinition,
   Workspace,
   WorkspaceMembership,
+  UndoDescriptor,
 } from "@constellation/domain";
 
 export type FailureBoundary =
@@ -39,6 +44,12 @@ export type FailureBoundary =
   | "capture"
   | "capture-update"
   | "task"
+  | "task-update"
+  | "project"
+  | "project-update"
+  | "relation"
+  | "relation-update"
+  | "undo"
   | "event"
   | "audit"
   | "idempotency"
@@ -71,6 +82,9 @@ interface MutableState {
   readonly taskStatuses: Map<TaskStatusId, TaskStatusDefinition>;
   readonly captures: Map<CaptureId, Capture>;
   readonly tasks: Map<TaskId, Task>;
+  readonly projects: Map<ProjectId, Project>;
+  readonly relations: Map<RelationId, TaskProjectRelation>;
+  readonly undoDescriptors: Map<string, UndoDescriptor>;
   readonly events: Map<string, DomainEvent>;
   readonly auditReceipts: Map<AuditReceiptId, AuditReceipt>;
   readonly idempotencyRecords: Map<string, IdempotencyRecord>;
@@ -84,6 +98,9 @@ const emptyState = (): MutableState => ({
   taskStatuses: new Map(),
   captures: new Map(),
   tasks: new Map(),
+  projects: new Map(),
+  relations: new Map(),
+  undoDescriptors: new Map(),
   events: new Map(),
   auditReceipts: new Map(),
   idempotencyRecords: new Map(),
@@ -97,6 +114,9 @@ const cloneState = (state: MutableState): MutableState => ({
   taskStatuses: new Map(state.taskStatuses),
   captures: new Map(state.captures),
   tasks: new Map(state.tasks),
+  projects: new Map(state.projects),
+  relations: new Map(state.relations),
+  undoDescriptors: new Map(state.undoDescriptors),
   events: new Map(state.events),
   auditReceipts: new Map(state.auditReceipts),
   idempotencyRecords: new Map(state.idempotencyRecords),
@@ -193,6 +213,93 @@ class ReadView implements ApplicationReadView {
 
   public getTask(id: TaskId): Task | undefined {
     return this.state.tasks.get(id);
+  }
+
+  public listTasksInSpace(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly Task[] {
+    return [...this.state.tasks.values()]
+      .filter(
+        (task) => task.workspaceId === workspaceId && task.spaceId === spaceId,
+      )
+      .sort(compareTaskDescending);
+  }
+
+  public getProject(id: ProjectId): Project | undefined {
+    return this.state.projects.get(id);
+  }
+
+  public listProjects(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly Project[] {
+    return [...this.state.projects.values()]
+      .filter(
+        (project) =>
+          project.workspaceId === workspaceId && project.spaceId === spaceId,
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          right.id.localeCompare(left.id),
+      );
+  }
+
+  public getRelation(id: RelationId): TaskProjectRelation | undefined {
+    return this.state.relations.get(id);
+  }
+
+  public findTaskProjectRelation(
+    taskId: TaskId,
+    projectId: ProjectId,
+  ): TaskProjectRelation | undefined {
+    return [...this.state.relations.values()].find(
+      (relation) =>
+        relation.state === "active" &&
+        relation.taskId === taskId &&
+        relation.projectId === projectId,
+    );
+  }
+
+  public listRelations(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly TaskProjectRelation[] {
+    return [...this.state.relations.values()]
+      .filter(
+        (relation) =>
+          relation.state === "active" &&
+          relation.workspaceId === workspaceId &&
+          relation.spaceId === spaceId,
+      )
+      .sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  public listEvents(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly DomainEvent[] {
+    return [...this.state.events.values()]
+      .filter(
+        (event) =>
+          event.workspaceId === workspaceId && event.spaceId === spaceId,
+      )
+      .sort(
+        (left, right) =>
+          right.occurredAt.localeCompare(left.occurredAt) ||
+          right.id.localeCompare(left.id),
+      );
+  }
+
+  public getAuditReceiptByCommand(commandId: string): AuditReceipt | undefined {
+    return [...this.state.auditReceipts.values()].find(
+      (receipt) => receipt.commandId === commandId,
+    );
+  }
+
+  public getUndoDescriptor(commandId: string): UndoDescriptor | undefined {
+    return this.state.undoDescriptors.get(commandId);
   }
 
   public listTasks(request: TaskPageRequest): readonly Task[] | undefined {
@@ -306,6 +413,65 @@ class Transaction extends ReadView implements ApplicationTransaction {
     this.failures.reached("task");
   }
 
+  public updateTask(task: Task, expectedVersion: number): boolean {
+    const current = this.state.tasks.get(task.id);
+    if (current?.version !== expectedVersion) return false;
+    this.state.tasks.set(task.id, task);
+    this.failures.reached("task-update");
+    return true;
+  }
+
+  public insertProject(project: Project): void {
+    if (this.state.projects.has(project.id))
+      throw new Error(`Duplicate project ID: ${project.id}`);
+    this.state.projects.set(project.id, project);
+    this.failures.reached("project");
+  }
+
+  public updateProject(project: Project, expectedVersion: number): boolean {
+    const current = this.state.projects.get(project.id);
+    if (current?.version !== expectedVersion) return false;
+    this.state.projects.set(project.id, project);
+    this.failures.reached("project-update");
+    return true;
+  }
+
+  public insertRelation(relation: TaskProjectRelation): void {
+    if (this.state.relations.has(relation.id))
+      throw new Error(`Duplicate relation ID: ${relation.id}`);
+    this.state.relations.set(relation.id, relation);
+    this.failures.reached("relation");
+  }
+
+  public updateRelation(
+    relation: TaskProjectRelation,
+    expectedVersion: number,
+  ): boolean {
+    const current = this.state.relations.get(relation.id);
+    if (current?.version !== expectedVersion) return false;
+    this.state.relations.set(relation.id, relation);
+    this.failures.reached("relation-update");
+    return true;
+  }
+
+  public insertUndoDescriptor(descriptor: UndoDescriptor): void {
+    if (this.state.undoDescriptors.has(descriptor.targetCommandId)) {
+      throw new Error(
+        `Duplicate undo descriptor: ${descriptor.targetCommandId}`,
+      );
+    }
+    this.state.undoDescriptors.set(descriptor.targetCommandId, descriptor);
+    this.failures.reached("undo");
+  }
+
+  public updateUndoDescriptor(descriptor: UndoDescriptor): void {
+    if (!this.state.undoDescriptors.has(descriptor.targetCommandId)) {
+      throw new Error(`Missing undo descriptor: ${descriptor.targetCommandId}`);
+    }
+    this.state.undoDescriptors.set(descriptor.targetCommandId, descriptor);
+    this.failures.reached("undo");
+  }
+
   public insertEvent(event: DomainEvent): void {
     if (this.state.events.has(event.id)) {
       throw new Error(`Duplicate event ID: ${event.id}`);
@@ -374,6 +540,9 @@ export class InMemoryReferenceStore implements ApplicationStore {
       taskStatuses: [...this.state.taskStatuses.values()],
       captures: [...this.state.captures.values()],
       tasks: [...this.state.tasks.values()],
+      projects: [...this.state.projects.values()],
+      relations: [...this.state.relations.values()],
+      undoDescriptors: [...this.state.undoDescriptors.values()],
       events: [...this.state.events.values()],
       auditReceipts: [...this.state.auditReceipts.values()],
       idempotencyRecords: [...this.state.idempotencyRecords.values()],
