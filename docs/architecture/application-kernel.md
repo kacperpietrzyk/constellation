@@ -35,8 +35,10 @@ Queries:
 - `task.list`
 - `audit.receipt`
 
-This subset proves the command/query mechanics before encrypted persistence or a
-desktop transport is introduced. A local workspace starts with one versioned
+This subset proves the command/query mechanics across the in-memory reference
+adapter, the Electron preview transport, and a restart-safe relational local
+store adapter. The desktop preview has not switched to the local store yet. A
+local workspace starts with one versioned
 default Task status whose display label is data and whose broad operational
 semantics are `actionable`. An explicit routing command preserves the original
 Capture, advances its processing state, and creates one canonical standalone
@@ -95,6 +97,8 @@ contracts -> Zod
   storage ports.
 - `testkit` owns deterministic clocks/IDs, hashing/cursor fixtures, the in-memory
   reference adapter, and failure injection. It is not production persistence.
+- `local-store` owns the relational ApplicationStore schema and the fail-closed
+  SQLCipher driver gate. Electron main retains native loading and key custody.
 
 ## Verification
 
@@ -117,7 +121,10 @@ denial without target disclosure, typed opaque pagination, actual freshness,
 and rollback after every Capture update, Task, event, audit, idempotency, and
 outbox boundary.
 
-The production encrypted store, process-kill durability, Electron preload
-surface, MCP mapping, deterministic syntax parser, Attention processing,
+The production native SQLCipher package integration, process-kill durability,
+MCP mapping, deterministic syntax parser, Attention processing,
 projects/relations, undo/checkpoints, editable configuration, and the exhaustive
 cross-workspace leak matrix remain later capability gates.
+
+The current adapter and its remaining runtime boundary are documented in
+[Local store](local-store.md).

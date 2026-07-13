@@ -96,8 +96,9 @@ Windows packages prove same-artifact mechanism integration only, not production
 signing or update continuity.
 
 The product currently has no runtime native module, telemetry SDK, network
-client, model-provider client, or post-install build step. Native SQLCipher
-remains outside the application dependency graph until the production local
-store adapter passes its separate cross-platform gates. Electron is present for
-the explicit in-memory developer preview; this does not claim release packaging,
-signing, durable storage, or update continuity.
+client, model-provider client, or post-install build step. The production
+relational adapter and SQLCipher capability gate are implemented without adding
+a native dependency; pinned SQLCipher remains outside the application dependency
+graph until packaging passes its separate cross-platform gates. Electron is
+present for the explicit in-memory developer preview; this does not claim
+release packaging, signing, runtime durable storage, or update continuity.

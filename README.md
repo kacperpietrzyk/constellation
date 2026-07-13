@@ -53,15 +53,19 @@ already solve well:
 
 Constellation is in **pre-alpha foundation work**. There is no installable
 release yet, and no contract should be considered stable. The repository now
-contains the first storage-neutral reference kernel and an in-memory Electron
-developer preview. The preview opens Quick Capture, preserves the original
+contains the first storage-neutral reference kernel, a restart-safe relational
+local-store adapter, and an in-memory Electron developer preview. The preview
+opens Quick Capture, preserves the original
 text, routes it through the real Application Kernel as one canonical Task, and
 shows its Capture provenance and audit receipt. Its state intentionally resets
-when the app closes. Encrypted production persistence, automatic routing rules,
-MCP transport, and release packaging are not implemented yet.
+when the app closes. The local-store adapter is not connected to the desktop
+runtime until the pinned SQLCipher native binding passes its application
+packaging gate. Automatic routing rules, MCP transport, and release packaging
+are not implemented yet.
 
 The current kernel boundary and implemented subset are documented in
-[Application kernel](docs/architecture/application-kernel.md).
+[Application kernel](docs/architecture/application-kernel.md) and
+[Local store](docs/architecture/local-store.md).
 
 ## Development
 

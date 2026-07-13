@@ -11,5 +11,10 @@
       "default": "./dist/src/index.js"
     }
   },
-  "types": "./dist/src/index.d.ts"
+  "types": "./dist/src/index.d.ts",
+  "dependencies": {
+    "@constellation/application": "0.0.0",
+    "@constellation/contracts": "0.0.0",
+    "@constellation/domain": "0.0.0"
+  }
 }
