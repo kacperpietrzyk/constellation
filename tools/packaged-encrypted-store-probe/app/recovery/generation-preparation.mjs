@@ -891,6 +891,12 @@ export function handoffPreparedGeneration(options) {
       state: handedOff,
     }),
   );
+  const confirmed = verifyGenerationPreparationState(options);
+  invariant(
+    confirmed.phase === "handed_off" &&
+      canonicalJson(confirmed) === canonicalJson(handedOff),
+    "GENERATION_PREPARATION_STATE_CHANGED",
+  );
   return deepFreeze({
     kind: "applied",
     outcome: handedOff.handoffOutcome,

@@ -369,6 +369,28 @@ try {
     false,
   );
 
+  const postMoveSwap = createPreparedWorkspace("post-move-swap");
+  const outsidePostMoveCandidate = path.join(
+    root,
+    "outside-post-move-candidate.db",
+  );
+  fs.writeFileSync(outsidePostMoveCandidate, CANDIDATE_BYTES);
+  expectCode(
+    () =>
+      handoffPreparedGeneration({
+        ...postMoveSwap.options,
+        reachFailpoint: ({ failpoint }) => {
+          if (failpoint !== "after-candidate-moved-into-generations") return;
+          fs.rmSync(postMoveSwap.paths.candidateDatabasePath);
+          fs.symlinkSync(
+            outsidePostMoveCandidate,
+            postMoveSwap.paths.candidateDatabasePath,
+          );
+        },
+      }),
+    "GENERATION_PREPARATION_CANDIDATE_INVALID",
+  );
+
   const identityMismatch = createPreparedWorkspace("identity-mismatch");
   expectCode(
     () =>
