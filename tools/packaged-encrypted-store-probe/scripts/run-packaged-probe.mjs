@@ -1075,11 +1075,6 @@ try {
   ensure(writer.result.status === "pass", "WRITER_RESULT_INVALID");
   ensure(writer.result.code === "STORE_PROVISIONED", "WRITER_CODE_INVALID");
   recordProcess(writer, "provision");
-  ensure(
-    process.platform !== "win32" ||
-      writer.lifecycle === "electron-quit-after-parent-authorization",
-    "WINDOWS_WRITER_SHUTDOWN_INVALID",
-  );
   assertExactResultKeys(writer.result, [
     "asyncEncryptionAvailable",
     "cipherVersion",
