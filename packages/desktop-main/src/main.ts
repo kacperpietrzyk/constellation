@@ -15,15 +15,12 @@ import {
 } from "@constellation/desktop-preload/client";
 
 import { DESKTOP_PREVIEW_VERSION } from "./index.js";
+import { runAlphaSmoke } from "./alpha-smoke.js";
 import { createBetterSqlite3Factory } from "./better-sqlite3-factory.js";
 import {
   createDurableKernelService,
   type DurableKernelService,
 } from "./durable-kernel-service.js";
-import {
-  PREVIEW_IDENTITY,
-  createPreviewKernelService,
-} from "./preview-service.js";
 import type { DesktopKernelService } from "./runtime-kernel-service.js";
 import { assertTrustedSender, isTrustedRendererUrl } from "./security.js";
 import type { AsyncSafeStorage } from "./workspace-key-custody.js";
@@ -52,6 +49,13 @@ const electronSafeStorage: AsyncSafeStorage = {
 
 const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
   if (process.env.CONSTELLATION_DESKTOP_MODE === "preview") {
+    if (app.isPackaged) {
+      throw new Error(
+        "The in-memory preview is not included in local Alpha builds.",
+      );
+    }
+    const { PREVIEW_IDENTITY, createPreviewKernelService } =
+      await import("./preview-service.js");
     return {
       service: createPreviewKernelService(),
       buildInfo: {
@@ -129,6 +133,20 @@ void app.whenReady().then(async () => {
   );
 
   const runtime = await createDesktopRuntime();
+  const smokeReport = process.env.CONSTELLATION_ALPHA_SMOKE_REPORT;
+  if (smokeReport !== undefined) {
+    if (durableKernel === undefined) {
+      throw new Error("Alpha smoke requires the durable runtime.");
+    }
+    runAlphaSmoke({
+      facts: durableKernel.facts,
+      identity: durableKernel.identity,
+      reportPath: smokeReport,
+      service: durableKernel.service,
+    });
+    app.quit();
+    return;
+  }
   ipcMain.handle(DESKTOP_CHANNELS.executeCommand, (event, command: unknown) => {
     assertTrustedSender(event, developmentUrl);
     return runtime.service.execute(command);

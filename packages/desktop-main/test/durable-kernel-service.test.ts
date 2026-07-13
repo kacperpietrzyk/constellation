@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -16,6 +16,7 @@ import type {
 } from "@constellation/local-store";
 
 import { createDurableKernelService } from "../src/durable-kernel-service.js";
+import { runAlphaSmoke } from "../src/alpha-smoke.js";
 import type { AsyncSafeStorage } from "../src/workspace-key-custody.js";
 
 const rowStatement = (row: unknown): SqliteStatement => ({
@@ -225,6 +226,44 @@ describe("durable desktop kernel lifecycle", () => {
       const recovered = await createDurableKernelService(input);
       assert.deepEqual(recovered.identity, identity);
       recovered.close();
+    });
+  });
+
+  it("proves the packaged smoke journey is created once and restored", async () => {
+    await withStateRoot(async (stateRoot) => {
+      const input = {
+        databaseFactory: new SyntheticEncryptedFactory(),
+        safeStorage: new SyntheticSafeStorage(),
+        stateRoot,
+        timezone: "Europe/Warsaw",
+        platform: "darwin" as const,
+      };
+      const reportPath = path.join(stateRoot, "smoke.json");
+      const first = await createDurableKernelService(input);
+      runAlphaSmoke({
+        facts: first.facts,
+        identity: first.identity,
+        reportPath,
+        service: first.service,
+      });
+      assert.equal(
+        JSON.parse(readFileSync(reportPath, "utf8")).phase,
+        "created",
+      );
+      first.close();
+
+      const second = await createDurableKernelService(input);
+      runAlphaSmoke({
+        facts: second.facts,
+        identity: second.identity,
+        reportPath,
+        service: second.service,
+      });
+      assert.equal(
+        JSON.parse(readFileSync(reportPath, "utf8")).phase,
+        "restored",
+      );
+      second.close();
     });
   });
 });
