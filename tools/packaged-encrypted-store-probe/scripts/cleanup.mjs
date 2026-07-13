@@ -1,27 +1,15 @@
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+
+import {
+  removeOwnedProbeTemporaryRoots,
+  removeWithRetry,
+} from "./cleanup-targets.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryRoot = process.env.RUNNER_TEMP || os.tmpdir();
-let removed = 0;
-
-async function removeWithRetry(target) {
-  let lastError;
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    try {
-      fs.rmSync(target, { recursive: true, force: true });
-      return;
-    } catch (error) {
-      lastError = error;
-      await delay(200 * (attempt + 1));
-    }
-  }
-  throw lastError || new Error("CLEANUP_FAILED");
-}
 
 function removeProbeKeychainItem() {
   if (process.platform !== "darwin") return;
@@ -54,15 +42,7 @@ function removeProbeKeychainItem() {
 
 await removeWithRetry(path.join(root, "out"));
 await removeWithRetry(path.join(root, "build"));
-for (const entry of fs.readdirSync(temporaryRoot, { withFileTypes: true })) {
-  if (
-    entry.isDirectory() &&
-    entry.name.startsWith("constellation-packaged-store-probe-")
-  ) {
-    await removeWithRetry(path.join(temporaryRoot, entry.name));
-    removed += 1;
-  }
-}
+const removed = await removeOwnedProbeTemporaryRoots(temporaryRoot);
 removeProbeKeychainItem();
 
 process.stdout.write(`${JSON.stringify({ status: "clean", removed })}\n`);

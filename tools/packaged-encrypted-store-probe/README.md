@@ -75,16 +75,65 @@ The probe fails unless all of these checks pass:
 The child processes have a 45-second watchdog so an interactive provider prompt
 or native hang becomes a bounded failure. Any forced cleanup before an observed
 natural main-process exit is failure-only and can never become passing evidence.
-After the main process exits with the exact declared code, the parent may
-terminate only lingering inherited helpers to close their pipes; it still waits
-for `close`, preserves the already observed main-process status, and fails if
-cleanup cannot be verified within five seconds. On Windows, the evidence is the
-real async wrap/unwrap through distinct processes and exact marker recovery;
+After the main process exits with the exact declared code, the parent never
+retargets its numeric PID or process-group ID. It waits for `close`, preserves
+the already observed main-process status, and fails if inherited helpers do not
+close their pipes within five seconds. On Windows, the evidence is the real
+async wrap/unwrap through distinct processes and exact marker recovery;
 provider rotation and temporary unavailability remain outside this bounded
 mechanism probe. The direct exit paths are probe-only: the fixture is headless,
 has no windows, and completes the relevant provider or store work before
 emitting its fixed result. They do not define the product's eventual
 user-facing graceful-shutdown policy.
+
+## Forced-crash recovery sentinels
+
+The separate `probe:recovery` runner reuses the already-built package and native
+binding. It currently covers the first two transaction sentinels for one
+deterministic `capture.submitText` fixture:
+
+- immediately after `BEGIN IMMEDIATE`, before any command row exists;
+- after the Capture row and its external-content FTS projection are visible
+  inside the still-open transaction, before Event, Audit, Idempotency, or Outbox
+  rows exist.
+
+Before each fault, the child truncates the WAL baseline, enables a small
+probe-only page cache with spill, and records the database page size. The Capture
+fixture fills the public 262,144-character limit with a repeated canary. A
+temporary plaintext control executes the same spill and must expose that canary
+in an uncommitted WAL frame; the control database and sidecars are then deleted.
+The SQLCipher WAL must contain aligned frames with matching salts, zero commit
+markers, and none of the proven spilled canaries. This relative control avoids
+claiming encryption merely because a canary happened to remain in page cache.
+
+At the exact boundary, the child writes one strict content-safe record and
+blocks synchronously without closing or rolling back. Bounded non-object
+Chromium diagnostics are not evidence; the parent still requires exactly one
+valid record. It independently checks the WAL, proves the process is live, and
+captures creation-bound process identities before force-killing the captured
+POSIX process group with `SIGKILL` on macOS or the captured Windows process tree
+with `taskkill /T /F`. macOS tracks PID, parent PID, process group, UID, and start
+time;
+Windows tracks PID and creation time. The controlled POSIX fixture fails before
+the kill if any observed descendant has escaped the captured process group. The
+parent requires every captured identity to disappear, handles proven numeric
+process-group reuse without treating `EPERM` as absence, never repeatedly
+signals a numeric group, and waits for all inherited pipes to close. Before any
+relaunch, the Capture-row sentinel also requires the same uncommitted WAL bytes
+to remain present.
+
+A distinct packaged process must then observe the baseline Workspace, Space,
+and membership with zero command rows and unchanged workspace version. Another
+process applies the complete Capture, Event, Audit, Idempotency, and Outbox unit
+of work once. An identical replay must return the stored outcome with zero
+connection changes and an unchanged canonical logical-state digest; a final
+process verifies the committed state, FTS result, and cipher/database/foreign-key
+integrity.
+
+The fixture semantics also run against Node's ordinary SQLite before the native
+package build. That check proves both rollback boundaries, the plaintext WAL
+control, uncommitted frame observation, and replay without churn; it is not a
+substitute for the packaged SQLCipher crash evidence.
 
 ## Pinned inputs
 
@@ -123,10 +172,13 @@ isolated from the product dependency graph.
 This proves same-artifact mechanism integration only. The macOS package is
 ad-hoc signed and the Windows package is unsigned. It does not prove Developer
 ID/notarized or Authenticode-signed N-to-N+1 continuity, installer/reboot or
-OS-account migration, wrapper/database crash-atomic provisioning, real disk-full
-or power-loss recovery, migration recovery, rotation, temporary provider
-unavailability, Windows workspace ACLs, optimized Windows crypto performance,
-portable recovery, reliable JavaScript heap zeroization, renderer isolation, or
+OS-account migration, wrapper/database crash-atomic provisioning, the remaining
+Event/Audit/Idempotency/Outbox/post-commit fault boundaries, generation-manifest
+publication, busy/read-only/permission recovery, real disk-full or power-loss
+recovery, migration recovery, rotation, temporary provider unavailability,
+Windows workspace ACLs, optimized Windows crypto performance, unobserved
+pre-boundary daemonization outside the captured POSIX process group, portable
+recovery, reliable JavaScript heap zeroization, renderer isolation, or
 same-user malware resistance.
 
 The initializer alone is not evidence that provider state is durable; the later

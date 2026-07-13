@@ -18,7 +18,12 @@
     "keychain:prepare": "node scripts/prepare-macos-keychain.mjs",
     "keychain:restore": "node scripts/restore-macos-keychain.mjs",
     "package:probe": "node scripts/package.mjs",
-    "probe:packaged": "node scripts/run-packaged-probe.mjs"
+    "probe:packaged": "node scripts/run-packaged-probe.mjs",
+    "probe:recovery": "node scripts/run-packaged-recovery-probe.mjs",
+    "test:cleanup": "node scripts/test-cleanup.mjs",
+    "test:posix-process-tree": "node scripts/test-posix-process-tree.mjs",
+    "test:process-harness": "node scripts/test-process-harness.mjs",
+    "test:recovery-fixtures": "node scripts/test-recovery-fixtures.mjs"
   },
   "dependencies": {
     "better-sqlite3": "12.11.1"

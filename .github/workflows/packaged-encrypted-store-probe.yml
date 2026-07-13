@@ -76,6 +76,18 @@ jobs:
       - name: Install probe dependencies without lifecycle scripts
         run: npm ci --prefix tools/packaged-encrypted-store-probe --ignore-scripts
 
+      - name: Verify interruption cleanup scope
+        run: npm --prefix tools/packaged-encrypted-store-probe run test:cleanup
+
+      - name: Verify recovery fixture semantics
+        run: npm --prefix tools/packaged-encrypted-store-probe run test:recovery-fixtures
+
+      - name: Verify process harness semantics
+        run: npm --prefix tools/packaged-encrypted-store-probe run test:process-harness
+
+      - name: Verify POSIX process identity semantics
+        run: npm --prefix tools/packaged-encrypted-store-probe run test:posix-process-tree
+
       - name: Build the Electron native binding
         run: bash tools/sqlcipher-native-probe/scripts/build-macos.sh "$RUNNER_TEMP/sqlcipher-amalgamation" "$PWD/tools/packaged-encrypted-store-probe"
 
@@ -90,6 +102,9 @@ jobs:
 
       - name: Verify packaged encrypted-store relaunch
         run: npm --prefix tools/packaged-encrypted-store-probe run probe:packaged
+
+      - name: Verify packaged forced-crash recovery
+        run: npm --prefix tools/packaged-encrypted-store-probe run probe:recovery
 
       - name: Restore the macOS Keychain configuration
         if: always()
@@ -130,6 +145,18 @@ jobs:
       - name: Install probe dependencies without lifecycle scripts
         run: npm ci --prefix tools/packaged-encrypted-store-probe --ignore-scripts
 
+      - name: Verify interruption cleanup scope
+        run: npm --prefix tools/packaged-encrypted-store-probe run test:cleanup
+
+      - name: Verify recovery fixture semantics
+        run: npm --prefix tools/packaged-encrypted-store-probe run test:recovery-fixtures
+
+      - name: Verify process harness semantics
+        run: npm --prefix tools/packaged-encrypted-store-probe run test:process-harness
+
+      - name: Verify POSIX process identity semantics
+        run: npm --prefix tools/packaged-encrypted-store-probe run test:posix-process-tree
+
       - name: Build OpenSSL and the Electron native binding
         shell: pwsh
         run: ./tools/sqlcipher-native-probe/scripts/build-windows.ps1 -Amalgamation "$env:RUNNER_TEMP\sqlcipher-amalgamation" -TargetProbeRoot (Resolve-Path "tools/packaged-encrypted-store-probe").Path
@@ -142,6 +169,9 @@ jobs:
 
       - name: Verify packaged encrypted-store relaunch
         run: npm --prefix tools/packaged-encrypted-store-probe run probe:packaged
+
+      - name: Verify packaged forced-crash recovery
+        run: npm --prefix tools/packaged-encrypted-store-probe run probe:recovery
 
       - name: Audit the isolated dependency graph
         run: npm audit --prefix tools/packaged-encrypted-store-probe --audit-level=high
