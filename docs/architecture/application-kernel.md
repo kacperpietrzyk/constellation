@@ -27,18 +27,34 @@ Commands:
 - `workspace.rename`
 - `capture.submitText`
 - `capture.routeAsTask`
+- `project.create`
+- `project.updateOutcome`
+- `task.setStatus`
+- `task.complete`
+- `task.reopen`
+- `record.relate`
+- `record.unrelate`
+- `command.previewUndo`
+- `command.undo`
 
 Queries:
 
 - `workspace.bootstrapContext`
 - `capture.history`
 - `task.list`
+- `project.list`
+- `project.operationalOverview`
+- `search.global`
+- `cockpit.week`
+- `activity.meaningful`
+- `recovery.preview`
 - `audit.receipt`
 
 This subset proves the command/query mechanics across the in-memory reference
-adapter, the Electron preview transport, and a restart-safe relational local
-store adapter. The desktop preview has not switched to the local store yet. A
-local workspace starts with one versioned
+adapter, the Electron transport, and a restart-safe encrypted relational local
+store adapter. The packaged production entry point uses that durable store; the
+developer preview remains an explicit in-memory adapter. A local workspace
+starts with one versioned
 default Task status whose display label is data and whose broad operational
 semantics are `actionable`. An explicit routing command preserves the original
 Capture, advances its processing state, and creates one canonical standalone
@@ -49,9 +65,11 @@ its source Capture, while future direct `task.create` commands will not invent
 one.
 
 The implementation deliberately does not parse task syntax or start automatic
-processing. A future deterministic rule adapter and the desktop UI must invoke
-the same `capture.routeAsTask` command. It does not yet claim a runnable capture
-UI, Attention handling, project relations, undo, synchronization, or MCP server.
+processing. A future deterministic rule adapter must invoke the same
+`capture.routeAsTask` command. The current slice has a runnable desktop flow,
+typed Project relations, status/completion, scoped search, explainable cockpit,
+meaningful activity, and version-safe undo. It does not yet claim Attention
+processing, synchronization, editable workflow configuration, or an MCP server.
 
 ## Boundary rules
 
@@ -121,10 +139,10 @@ denial without target disclosure, typed opaque pagination, actual freshness,
 and rollback after every Capture update, Task, event, audit, idempotency, and
 outbox boundary.
 
-The production native SQLCipher package integration, process-kill durability,
-MCP mapping, deterministic syntax parser, Attention processing,
-projects/relations, undo/checkpoints, editable configuration, and the exhaustive
-cross-workspace leak matrix remain later capability gates.
+Production signing/notarization, installer/updater continuity, MCP mapping,
+deterministic syntax parsing, Attention processing, checkpoint revert, editable
+configuration, synchronized Data Homes, and the exhaustive cross-workspace leak
+matrix remain later capability gates.
 
 The current adapter and its remaining runtime boundary are documented in
 [Local store](local-store.md).

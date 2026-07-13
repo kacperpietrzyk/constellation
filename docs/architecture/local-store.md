@@ -1,7 +1,7 @@
 # Local store
 
-Status: relational adapter, key custody, and Electron runtime lifecycle
-implemented; native application packaging remains gated.
+Status: relational adapter, key custody, Electron lifecycle, and packaged Alpha
+path implemented; distribution signing remains gated.
 
 `@constellation/local-store` implements the existing synchronous
 `ApplicationStore` port over a deliberately small SQLite-shaped driver. It does
@@ -51,7 +51,11 @@ Keychain/DPAPI custody through `safeStorage`, workspace-context binding,
 authenticated wrapper metadata, and atomic `0600` wrapper publication. The
 wrapped payload also retains generated workspace, root Space, principal,
 credential, and grant identifiers so desktop bootstrap never relies on a
-hard-coded privileged identity.
+hard-coded privileged identity. Its authenticated `prepared`/`ready` state
+distinguishes an interrupted first bootstrap from loss of an established
+database: only the former can resume creation, while the latter stops in
+explicit recovery instead of silently creating an empty workspace. SafeStorage
+rotation requests rewrap the validated payload atomically.
 
 The production desktop lifecycle creates or opens a fixed local workspace,
 verifies the stored root Space and membership, and exposes the same
@@ -59,7 +63,7 @@ command/query service used by the in-memory preview. Restart tests cover
 workspace identity, Capture, Task, provenance, and the interrupted state where
 the wrapped identity exists but database creation did not finish.
 
-## Remaining integration gate
+## Packaged application gate
 
 The desktop entry point selects the durable runtime by default and requires the
 patched, capability-verified `better-sqlite3` binding. `npm run dev:desktop`
@@ -67,7 +71,11 @@ explicitly selects the in-memory developer preview so ordinary web UI work does
 not imply durability. There is no plaintext or in-memory fallback in the local
 Alpha path.
 
-The remaining gate is to package that pinned native binding as the only
-unpacked native module and run the real application journey on packaged macOS
-and native Windows. No installable release claims encrypted local storage until
-that evidence passes.
+The production package uses a dedicated entry point and dependency manifest.
+It excludes preview/testkit/smoke artifacts, verifies a pinned Electron archive,
+and permits exactly one unpacked native module. The packaged test drives the
+real window through the context-isolated preload and IPC, creates a Capture and
+Task, closes the browser, relaunches the same encrypted workspace, and requires
+the Task to return without renderer or load errors. Native macOS x64 and Windows
+x64 jobs are required. Remaining release gates are production code signing,
+notarization, installer/updater behavior, and distribution continuity.

@@ -51,18 +51,25 @@ already solve well:
 
 ## Project status
 
-Constellation is in **pre-alpha foundation work**. There is no installable
-release yet, and no contract should be considered stable. The repository now
-contains the first storage-neutral reference kernel, a restart-safe relational
-local-store adapter, and an in-memory Electron developer preview. The preview
-opens Quick Capture, preserves the original text, routes it through the real
-Application Kernel as one canonical Task, and shows its Capture provenance and
-audit receipt. Its state intentionally resets when the app closes. A separate
-desktop runtime now creates or opens the same journey through the encrypted
-local-store boundary with OS-backed key custody and no plaintext fallback. It
-is not an installable Alpha until the pinned native SQLCipher binding passes the
-real application packaging gate on macOS and Windows. Automatic routing rules,
-MCP transport, and release packaging are not implemented yet.
+Constellation is in **pre-alpha local Alpha work**. There is no distributed
+installer yet, and no contract should be considered stable. The repository now
+contains a storage-neutral Application Kernel, a restart-safe encrypted local
+store, an in-memory Electron developer preview, and a packaged Alpha candidate.
+The implemented desktop journey covers Quick Capture to Task, Project outcome
+and Task relations, task status/completion, deterministic scoped search,
+explainable weekly focus, Capture History, meaningful activity, and previewed
+undo. The production runtime keeps generated workspace identity and key custody
+in the operating-system credential store, has no plaintext or in-memory
+fallback, and stops in recovery instead of silently replacing a missing ready
+database.
+
+The packaged gate builds the pinned SQLCipher binding as the only unpacked
+native module and drives the real window, context-isolated preload, IPC,
+Capture-to-Task interaction, and encrypted relaunch on macOS x64 and Windows
+x64. The resulting ad-hoc macOS and unsigned Windows application folders are
+verification artifacts, not a signed/notarized release. MCP transport,
+installers, updater, synchronized Data Homes, and automatic routing rules beyond
+the explicit Capture action remain later work.
 
 The current kernel boundary and implemented subset are documented in
 [Application kernel](docs/architecture/application-kernel.md) and
