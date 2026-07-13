@@ -1,0 +1,269 @@
+/* Distilled runtime copy of the accepted private Black Glass token contract. */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI",
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI",
+    sans-serif;
+  --font-mono:
+    "SFMono-Regular", "Cascadia Code", "Cascadia Mono", ui-monospace, monospace;
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-display: clamp(1.9rem, 2.2vw, 2.6rem);
+  --leading-tight: 1.12;
+  --leading-snug: 1.3;
+  --leading-normal: 1.52;
+  --tracking-tight: -0.035em;
+  --tracking-wide: 0.025em;
+
+  --neutral-1000: oklch(7.4% 0.003 255);
+  --neutral-950: oklch(10.2% 0.004 255);
+  --neutral-900: oklch(13.2% 0.005 255);
+  --neutral-850: oklch(16.4% 0.006 255);
+  --neutral-800: oklch(21% 0.006 255);
+  --neutral-750: oklch(27% 0.007 255);
+  --neutral-700: oklch(35% 0.007 255);
+  --neutral-600: oklch(49% 0.007 255);
+  --neutral-500: oklch(58% 0.007 255);
+  --neutral-400: oklch(66% 0.006 255);
+  --neutral-300: oklch(77% 0.006 255);
+  --neutral-200: oklch(86% 0.005 255);
+  --neutral-100: oklch(93.5% 0.004 255);
+  --neutral-50: oklch(97.3% 0.003 255);
+  --white-a02: oklch(100% 0 0 / 0.02);
+  --white-a035: oklch(100% 0 0 / 0.035);
+  --white-a055: oklch(100% 0 0 / 0.055);
+  --white-a075: oklch(100% 0 0 / 0.075);
+  --white-a10: oklch(100% 0 0 / 0.1);
+  --white-a14: oklch(100% 0 0 / 0.14);
+  --white-a20: oklch(100% 0 0 / 0.2);
+  --black-a24: oklch(0% 0 0 / 0.24);
+  --black-a48: oklch(0% 0 0 / 0.48);
+  --black-a72: oklch(0% 0 0 / 0.72);
+  --green-400: oklch(74% 0.1 150);
+  --amber-400: oklch(79% 0.1 78);
+  --red-400: oklch(71% 0.14 25);
+  --blue-400: oklch(73% 0.075 245);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5625rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.375rem;
+  --radius-full: 999rem;
+  --duration-instant: 80ms;
+  --duration-fast: 150ms;
+  --duration-normal: 240ms;
+  --duration-slow: 360ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --z-base: 0;
+  --z-raised: 2;
+  --z-sticky: 20;
+  --z-dropdown: 30;
+  --z-overlay: 40;
+  --z-toast: 50;
+  --z-tooltip: 60;
+
+  --surface-stage: var(--neutral-1000);
+  --surface-window: var(--neutral-950);
+  --surface-canvas: var(--neutral-950);
+  --surface-content: var(--neutral-900);
+  --surface-raised: var(--white-a035);
+  --surface-overlay: oklch(13.5% 0.005 255 / 0.94);
+  --surface-sunken: var(--black-a24);
+  --surface-glass: oklch(11.8% 0.005 255 / 0.68);
+  --surface-glass-strong: oklch(13% 0.005 255 / 0.86);
+  --surface-hover: var(--white-a055);
+  --surface-pressed: oklch(100% 0 0 / 0.085);
+  --surface-selected: var(--white-a075);
+  --glass-fill:
+    linear-gradient(
+      180deg,
+      oklch(100% 0 0 / 0.055),
+      oklch(100% 0 0 / 0.018) 30%,
+      oklch(0% 0 0 / 0.08)
+    ),
+    oklch(10.5% 0.004 255 / 0.72);
+  --glass-blur: 1.75rem;
+  --glass-saturation: 0.72;
+  --text-primary: var(--neutral-100);
+  --text-secondary: var(--neutral-300);
+  --text-tertiary: var(--neutral-400);
+  --text-quaternary: var(--neutral-500);
+  --text-disabled: var(--neutral-600);
+  --text-on-action: var(--neutral-1000);
+  --text-link: var(--text-secondary);
+  --text-link-hover: var(--text-primary);
+  --border-subtle: var(--white-a055);
+  --border-default: oklch(100% 0 0 / 0.095);
+  --border-strong: var(--white-a14);
+  --edge-specular: oklch(100% 0 0 / 0.18);
+  --status-success: var(--green-400);
+  --status-warning: var(--amber-400);
+  --status-error: var(--red-400);
+  --status-info: var(--blue-400);
+  --status-success-bg: oklch(74% 0.1 150 / 0.1);
+  --status-warning-bg: oklch(79% 0.1 78 / 0.1);
+  --status-error-bg: oklch(71% 0.14 25 / 0.1);
+  --status-info-bg: oklch(73% 0.075 245 / 0.1);
+  --focus-ring:
+    inset 0 0 0 0.0625rem oklch(100% 0 0 / 0.36),
+    0 0 0 0.0625rem oklch(97.3% 0.003 255 / 0.84),
+    0 0 0 0.1875rem oklch(97.3% 0.003 255 / 0.12),
+    0 0 0.875rem oklch(97.3% 0.003 255 / 0.12);
+  --elevation-rest:
+    inset 0 0.0625rem 0 var(--white-a055), 0 0.0625rem 0 oklch(0% 0 0 / 0.35);
+  --elevation-raised:
+    inset 0 0.0625rem 0 oklch(100% 0 0 / 0.07),
+    0 0.5rem 1.5rem oklch(0% 0 0 / 0.22),
+    0 0.125rem 0.375rem oklch(0% 0 0 / 0.2);
+  --elevation-overlay:
+    inset 0 0.0625rem 0 oklch(100% 0 0 / 0.12),
+    0 1.75rem 5rem oklch(0% 0 0 / 0.56), 0 0.5rem 1.5rem oklch(0% 0 0 / 0.42);
+  --elevation-window:
+    inset 0 0.0625rem 0 oklch(100% 0 0 / 0.12),
+    0 0 0 0.0625rem var(--white-a055), 0 3rem 8.75rem var(--black-a72),
+    0 0.875rem 2.625rem oklch(0% 0 0 / 0.46);
+
+  --shell-window-bg: var(--surface-window);
+  --shell-chrome-bg: var(--surface-glass);
+  --shell-sidebar-bg: var(--surface-glass);
+  --shell-inspector-bg: var(--surface-glass);
+  --shell-border: var(--border-default);
+  --panel-reading-bg: var(--surface-content);
+  --panel-reading-border: var(--border-subtle);
+  --panel-raised-bg: var(--surface-raised);
+  --panel-raised-border: var(--border-default);
+  --action-primary-bg: var(--neutral-100);
+  --action-primary-hover: var(--neutral-50);
+  --action-primary-pressed: var(--neutral-200);
+  --action-primary-text: var(--text-on-action);
+  --action-secondary-bg: var(--surface-raised);
+  --action-secondary-hover: var(--surface-hover);
+  --action-secondary-border: var(--border-default);
+  --action-secondary-text: var(--text-primary);
+  --input-bg: var(--surface-sunken);
+  --input-border: var(--border-default);
+  --input-border-hover: var(--border-strong);
+  --input-text: var(--text-primary);
+  --input-placeholder: var(--text-quaternary);
+  --nav-active-bg: var(--surface-selected);
+  --nav-active-text: var(--text-primary);
+  --nav-active-border: var(--border-default);
+  --context-bg:
+    linear-gradient(
+      145deg,
+      oklch(100% 0 0 / 0.1),
+      oklch(100% 0 0 / 0.025) 42%,
+      oklch(0% 0 0 / 0.06)
+    ),
+    var(--surface-content);
+  --context-border: oklch(100% 0 0 / 0.28);
+  --context-shadow:
+    inset 0 0.0625rem 0 oklch(100% 0 0 / 0.12),
+    0 1.125rem 2.875rem oklch(0% 0 0 / 0.28),
+    0 0.25rem 0.875rem oklch(0% 0 0 / 0.24);
+  --context-seam: linear-gradient(
+    115deg,
+    transparent 12%,
+    oklch(100% 0 0 / 0.25) 31%,
+    oklch(100% 0 0 / 0.07) 47%,
+    transparent 66%
+  );
+  --capture-bg: var(--glass-fill);
+  --capture-border: var(--border-strong);
+  --capture-shadow: var(--elevation-overlay);
+  --overlay-bg: var(--surface-overlay);
+  --overlay-border: var(--border-strong);
+  --overlay-shadow: var(--elevation-overlay);
+  --control-focus-ring: var(--focus-ring);
+
+  --sidebar-width: 13.75rem;
+  --inspector-width: 20rem;
+  --titlebar-height: 2.875rem;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --surface-stage: oklch(94.5% 0.004 255);
+  --surface-window: oklch(97.2% 0.003 255);
+  --surface-canvas: oklch(98.2% 0.003 255);
+  --surface-content: oklch(100% 0 0);
+  --surface-raised: oklch(100% 0 0 / 0.76);
+  --surface-overlay: oklch(99% 0.002 255 / 0.94);
+  --surface-sunken: oklch(91.5% 0.005 255 / 0.72);
+  --surface-glass: oklch(98% 0.003 255 / 0.68);
+  --surface-glass-strong: oklch(99% 0.002 255 / 0.86);
+  --surface-hover: oklch(12% 0.006 255 / 0.045);
+  --surface-pressed: oklch(12% 0.006 255 / 0.08);
+  --surface-selected: oklch(12% 0.006 255 / 0.07);
+  --glass-fill:
+    linear-gradient(
+      180deg,
+      oklch(100% 0 0 / 0.74),
+      oklch(100% 0 0 / 0.34) 32%,
+      oklch(70% 0.008 255 / 0.08)
+    ),
+    oklch(98% 0.003 255 / 0.72);
+  --glass-saturation: 0.84;
+  --text-primary: var(--neutral-950);
+  --text-secondary: var(--neutral-750);
+  --text-tertiary: var(--neutral-700);
+  --text-quaternary: var(--neutral-600);
+  --text-disabled: var(--neutral-500);
+  --text-on-action: var(--neutral-50);
+  --border-subtle: oklch(12% 0.006 255 / 0.08);
+  --border-default: oklch(12% 0.006 255 / 0.13);
+  --border-strong: oklch(12% 0.006 255 / 0.2);
+  --edge-specular: oklch(100% 0 0 / 0.86);
+  --action-primary-bg: var(--neutral-900);
+  --action-primary-hover: var(--neutral-950);
+  --action-primary-pressed: var(--neutral-800);
+  --context-bg:
+    linear-gradient(
+      145deg,
+      oklch(100% 0 0 / 0.9),
+      oklch(100% 0 0 / 0.5) 42%,
+      oklch(70% 0.008 255 / 0.08)
+    ),
+    var(--surface-content);
+  --context-border: oklch(12% 0.006 255 / 0.24);
+}
+
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: var(--control-focus-ring);
+}
+
+@media (forced-colors: active) {
+  :where(button, a, input, textarea, select, [tabindex]):focus-visible {
+    outline-color: Highlight;
+    box-shadow: none;
+  }
+}
