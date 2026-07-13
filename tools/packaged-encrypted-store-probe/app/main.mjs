@@ -1872,7 +1872,6 @@ function buildAndVerifyStagedGenerationCandidate({
   baseKey,
   scope,
   reachCandidateFailpoint,
-  sourceLockHeld = false,
   expectExportTimingPayload = false,
 }) {
   if (
@@ -1958,9 +1957,7 @@ function buildAndVerifyStagedGenerationCandidate({
     }
     closeDatabase(database);
     database = undefined;
-    if (!sourceLockHeld) {
-      removeGenerationReadSidecars(paths.sourceDatabasePath);
-    }
+    assertRecoverableGenerationSourceSidecars(paths.sourceDatabasePath);
 
     const candidateKey = scope.keep(Buffer.from(baseKey));
     database = openKeyedDatabase(
@@ -2291,7 +2288,7 @@ async function setupGenerationPublication(
       }
       closeDatabase(database);
       database = undefined;
-      removeGenerationReadSidecars(paths.sourceDatabasePath);
+      assertRecoverableGenerationSourceSidecars(paths.sourceDatabasePath);
 
       database = openKeyedDatabase(
         Database,
@@ -2487,7 +2484,6 @@ function createStagedCandidateForRecordRecovery({
   baseKey,
   scope,
   reachCandidateFailpoint,
-  sourceLockHeld,
   expectExportTimingPayload,
 }) {
   if (pathKind(paths.stagingCandidateDirectoryPath)) return false;
@@ -2499,7 +2495,6 @@ function createStagedCandidateForRecordRecovery({
     baseKey,
     scope,
     reachCandidateFailpoint,
-    sourceLockHeld,
     expectExportTimingPayload,
   });
   return true;
@@ -2625,7 +2620,6 @@ async function advanceGenerationPreparationRecords(
           markerDigest: unwrapped.markerDigest,
           baseKey,
           scope,
-          sourceLockHeld: true,
           expectExportTimingPayload:
             config.scenario === GENERATION_CANDIDATE_BUILD_SCENARIO,
           reachCandidateFailpoint: ({ failpoint, transactionOpen }) => {
@@ -2719,7 +2713,6 @@ async function advanceGenerationPreparationRecords(
         paths.stagingDatabasePath,
       );
     }
-    scanGenerationSecrets(canaries, captureCanaries);
     const recordPhase =
       throughRecordKind === "intent"
         ? "intent_ready"
@@ -2792,6 +2785,8 @@ async function advanceGenerationPreparationRecords(
     });
   } finally {
     try {
+      // Windows WAL uses byte-range locks in SHM; release them before the
+      // full persisted-state canary scan opens every file through new handles.
       releaseGenerationPreparationLock(operationLockDatabase);
       operationLockDatabase = undefined;
     } finally {

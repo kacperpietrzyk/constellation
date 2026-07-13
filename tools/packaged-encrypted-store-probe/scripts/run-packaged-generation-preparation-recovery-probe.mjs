@@ -601,13 +601,16 @@ function assertGenerationRecordSource(
 }
 
 function assertGenerationCandidateIntent(result, source, intentPath) {
+  ensure(
+    result?.status === "pass" &&
+      result?.code === "GENERATION_RECORD_INTENT_APPLIED",
+    `GENERATION_CANDIDATE_INTENT_FAILED:${result?.code ?? "missing"}`,
+  );
   assertExactResultKeys(result, generationRecordResultKeys);
   assertProvider(result);
   const intentValue = JSON.parse(fs.readFileSync(intentPath, "utf8"));
   ensure(
-    result.status === "pass" &&
-      result.code === "GENERATION_RECORD_INTENT_APPLIED" &&
-      result.scenario === IMMUTABLE_RECORD_PUBLICATION_SCENARIO &&
+    result.scenario === IMMUTABLE_RECORD_PUBLICATION_SCENARIO &&
       result.markerDigest === source.markerDigest &&
       result.sourceGenerationId === source.sourceGenerationId &&
       result.sourceGenerationIdentityDigest ===
