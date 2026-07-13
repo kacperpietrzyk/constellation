@@ -52,6 +52,7 @@ const EXIT_CODES = Object.freeze({
 let config;
 let nativeAddonPackaged = false;
 let finishStarted = false;
+let authorizedExitReady = false;
 
 class ProbeFailure extends Error {
   constructor(code) {
@@ -306,7 +307,7 @@ function waitForParentShutdownProtocol() {
       process.exit(1);
       return;
     }
-    setImmediate(() => app.exit(0));
+    authorizedExitReady = true;
   };
   const deadline = Date.now() + SHUTDOWN_CONTROL_TIMEOUT_MS;
   while (Date.now() < deadline) {
@@ -381,6 +382,8 @@ function finish(result, exitCode) {
   // not part of the shutdown oracle.
   writeFixedResult(result, exitCode);
   waitForParentShutdownProtocol();
+  if (!authorizedExitReady) throw new Error("EXIT_AUTHORIZATION_MISSING");
+  app.exit(0);
 }
 
 function getArgument(name) {
