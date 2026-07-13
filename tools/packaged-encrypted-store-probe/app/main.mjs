@@ -41,6 +41,7 @@ const PROGRESS_STAGES = new Set([
   "database-closed",
   "closed-store-scanned",
   "result-ready",
+  "result-published",
 ]);
 const EXIT_CODES = Object.freeze({
   CONFIG_INVALID: 80,
@@ -221,10 +222,11 @@ function assertNoInheritedProviderChannel() {
   }
 }
 
-async function awaitPhaseTwoReadinessTurn() {
-  assertNoInheritedProviderChannel();
-  await new Promise((resolve) => setImmediate(resolve));
-  assertNoInheritedProviderChannel();
+function exitImmediately(exitCode) {
+  if (typeof process.reallyExit !== "function") {
+    throw new Error("IMMEDIATE_EXIT_UNAVAILABLE");
+  }
+  process.reallyExit(exitCode);
 }
 
 function finish(result, exitCode) {
@@ -234,8 +236,9 @@ function finish(result, exitCode) {
   }
   finishStarted = true;
   writeFixedResult(result, exitCode);
+  writeFixedProgress("result-published");
   if (config?.mode === "provider-initialize") app.exit(exitCode);
-  else process.exit(exitCode);
+  else exitImmediately(exitCode);
 }
 
 function getArgument(name) {
@@ -1215,7 +1218,7 @@ try {
   const failure =
     error instanceof ProbeFailure ? error : new ProbeFailure("CONFIG_INVALID");
   writeFixedResult(fixedResult("fail", failure.code), failure.exitCode);
-  process.exit(failure.exitCode);
+  exitImmediately(failure.exitCode);
 }
 
 if (config) {
@@ -1231,13 +1234,13 @@ if (config) {
         result = await initializeProvider();
         writeFixedProgress("provider-roundtrip-complete");
       } else if (config.mode === "plaintext") {
-        await awaitPhaseTwoReadinessTurn();
+        assertNoInheritedProviderChannel();
         writeFixedProgress("phase-two-ready");
         const Database = await loadDatabaseConstructor();
         writeFixedProgress("native-addon-ready");
         result = createPlaintextFixture(Database);
       } else {
-        await awaitPhaseTwoReadinessTurn();
+        assertNoInheritedProviderChannel();
         writeFixedProgress("phase-two-ready");
         await requireAsyncEncryption();
         writeFixedProgress("safe-storage-ready");

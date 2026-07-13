@@ -70,6 +70,7 @@ const progressStages = new Set([
   "database-closed",
   "closed-store-scanned",
   "result-ready",
+  "result-published",
 ]);
 const PRE_EXIT_CLEANUP_DEADLINE_MS = 10_000;
 const PRE_EXIT_CLEANUP_RETRY_MS = 250;

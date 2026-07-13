@@ -56,13 +56,17 @@ The probe fails unless all of these checks pass:
   output-channel oracle;
 - the initializer emits one synchronous fixed result and uses `app.exit()` so
   Electron commits provider state before the parent starts phase two. Every
-  no-IPC store process asserts that the channel is absent, yields one Electron
-  main-loop turn, and asserts the channel remains absent before provider or
+  no-IPC store process asserts that the channel is absent before provider or
   database access. It emits its fixed result only after store close, post-close
-  scanning, and failure cleanup, then uses `process.exit()` with the declared
-  code. The parent accepts either launch only after the main process exits with
-  that exact code and no signal, both inherited output pipes close, and the
-  result shape and status/code relationship validate;
+  scanning, and failure cleanup. Electron
+  [maps `process.exit()` to graceful `app.exit()`](https://github.com/electron/electron/blob/v43.1.0/lib/browser/init.ts#L76-L86)
+  in the browser process, so this synthetic mechanism probe invokes Node's
+  [internal immediate exit](https://github.com/nodejs/node/blob/v24.15.0/src/node_process_methods.cc#L501-L510)
+  only after synchronous result publication. The parent accepts either launch
+  only after the main process exits with that exact code and no signal, both
+  inherited output pipes close, and the result shape and status/code
+  relationship validate. Immediate exit is not a production
+  application-shutdown contract;
 - macOS uses an ad-hoc-signed package and disposable hosted-runner Keychain;
   Windows uses an unsigned mechanism package with statically linked pinned
   OpenSSL; every generated file and exact probe-only Keychain item is removed
