@@ -53,12 +53,13 @@ The probe fails unless all of these checks pass:
   control token, the live process, the `app.quit()` method, and exit code zero.
   The child consumes and deletes that file, then acknowledges the shutdown and
   accepted exit request as ordered synchronous records before calling
-  `app.quit()`. A synchronous terminal
-  record requires the exact Electron `before-quit` → `will-quit` → `quit(0)`
-  lifecycle. The harness preserves the declared outcome separately from the
-  observed process result, reports natural exits and forced post-lifecycle
-  cleanup separately, retains an unreferenced child self-kill failsafe, and
-  requires both inherited output pipes to close;
+  `app.quit()`. That call supplies the exact Electron `before-quit` →
+  `will-quit` → `quit(0)` lifecycle evidence; `app.exit(0)` then drives normal
+  browser-loop teardown under the same authorized exit code. The harness
+  preserves the declared outcome separately from the observed process result,
+  reports natural exits and forced post-lifecycle cleanup separately, retains
+  an unreferenced child self-kill failsafe, and requires both inherited output
+  pipes to close;
 - a dedicated falsification launch emits readiness and the pre-exit
   acknowledgement, then exits internally with code `1`; the harness must reject
   it before the ordinary twelve-process result can pass;
@@ -70,13 +71,14 @@ The probe fails unless all of these checks pass:
 The child processes have a 45-second readiness watchdog so an interactive
 provider prompt or native hang becomes a bounded failure. After readiness, the
 parent allows up to five seconds for the acknowledged shutdown to produce the
-complete ordered Electron lifecycle and `quit` event code `0`, then one second
+complete ordered Electron lifecycle and `quit` event code `0`, then five seconds
 for a natural process exit. A lingering process tree is force-terminated only
 after that terminal evidence; either outcome must close both inherited output
 pipes within five more seconds or the probe fails closed. Natural exits record
 the observed status `0` without a signal on both targets, while forced
-post-lifecycle cleanup is reported separately. On Windows, the evidence is the
-real async wrap/unwrap through distinct processes and exact marker recovery;
+post-lifecycle cleanup is reported separately. The initial Windows writer must
+exit naturally before the distinct reader starts. On Windows, the evidence is
+the real async wrap/unwrap through distinct processes and exact marker recovery;
 provider rotation and temporary unavailability remain outside this bounded
 mechanism probe. The fixed declared outcome remains authoritative for each probe
 operation.

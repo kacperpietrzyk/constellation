@@ -51,7 +51,7 @@ const shutdownRejectedType =
 const exitAckType = "constellation.packaged-store-probe.exit-accepted/v1";
 const shutdownCompleteType =
   "constellation.packaged-store-probe.shutdown-complete/v1";
-const TERMINAL_EXIT_GRACE_MS = 1_000;
+const TERMINAL_EXIT_GRACE_MS = 5_000;
 const EXPECTED_NATURAL_EXIT_CODE = 0;
 const processIds = new Set();
 let naturalElectronProcessExits = 0;
@@ -1075,6 +1075,11 @@ try {
   ensure(writer.result.status === "pass", "WRITER_RESULT_INVALID");
   ensure(writer.result.code === "STORE_PROVISIONED", "WRITER_CODE_INVALID");
   recordProcess(writer, "provision");
+  ensure(
+    process.platform !== "win32" ||
+      writer.lifecycle === "electron-quit-after-parent-authorization",
+    "WINDOWS_WRITER_SHUTDOWN_INVALID",
+  );
   assertExactResultKeys(writer.result, [
     "asyncEncryptionAvailable",
     "cipherVersion",

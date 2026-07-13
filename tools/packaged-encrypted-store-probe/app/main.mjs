@@ -286,6 +286,10 @@ function waitForParentShutdownProtocol() {
       return;
     }
     app.quit();
+    // app.quit() emits the lifecycle evidence synchronously, while app.exit()
+    // ensures the browser main loop actually unwinds so Electron can run its
+    // post-loop provider-state commit before the parent observes process exit.
+    app.exit(0);
   };
   const deadline = Date.now() + SHUTDOWN_CONTROL_TIMEOUT_MS;
   while (Date.now() < deadline) {
