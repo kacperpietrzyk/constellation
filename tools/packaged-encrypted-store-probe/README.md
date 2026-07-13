@@ -19,8 +19,11 @@ The probe fails unless all of these checks pass:
   the finished package passes its platform identity check, and the executable,
   ASAR, and finished add-on digests remain unchanged across every process;
 - one privileged packaged writer generates a fresh random 32-byte synthetic DEK
-  internally, protects a strict workspace-bound payload through asynchronous
-  safeStorage, and atomically publishes only its ciphertext and metadata;
+  internally. Before its first provider call it completes one exact, keyless
+  parent IPC round trip that establishes an observable event-loop boundary; the
+  channel never carries the DEK or payload. The writer then protects a strict
+  workspace-bound payload through asynchronous safeStorage and atomically
+  publishes only its ciphertext and metadata;
 - that writer applies the raw DEK Buffer to SQLCipher before any schema access,
   clears the explicit Buffer, creates an encrypted WAL database, and writes a
   fresh synthetic marker plus FTS projection;
