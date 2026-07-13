@@ -116,8 +116,18 @@ export function terminatePackagedProcessTree(
       return false;
     }
     const identities = windowsProcessIdentities ?? [windowsRootIdentity];
+    let matchingPids;
+    try {
+      matchingPids = matchingWindowsProcessIdentities(identities);
+    } catch {
+      return false;
+    }
+    if (!matchingPids.includes(windowsRootIdentity.pid)) return false;
+    const matchingIdentities = identities.filter((identity) =>
+      matchingPids.includes(identity.pid),
+    );
     const rootLast = [
-      ...identities.filter(
+      ...matchingIdentities.filter(
         (identity) => identity.pid !== windowsRootIdentity.pid,
       ),
       windowsRootIdentity,
