@@ -19,8 +19,13 @@ The probe fails unless all of these checks pass:
   the finished package passes its platform identity check, and the executable,
   ASAR, and finished add-on digests remain unchanged across every process;
 - one privileged packaged writer generates a fresh random 32-byte synthetic DEK
-  internally, protects a strict workspace-bound payload through asynchronous
-  safeStorage, and atomically publishes only its ciphertext and metadata;
+  internally. Before its first provider call it completes the same timed,
+  keyless parent IPC turn used by the independent safeStorage probe: after the
+  exact continuation arrives, the child resumes immediately and schedules
+  channel disconnect for the next event-loop turn. The channel never carries
+  the DEK or payload. The writer then protects a strict workspace-bound payload
+  through asynchronous safeStorage and atomically publishes only its ciphertext
+  and metadata;
 - that writer applies the raw DEK Buffer to SQLCipher before any schema access,
   clears the explicit Buffer, creates an encrypted WAL database, and writes a
   fresh synthetic marker plus FTS projection;
@@ -45,53 +50,29 @@ The probe fails unless all of these checks pass:
 - unbounded application stdout/stderr and console methods are disabled, the
   harness accepts exact fixed result shapes only, and the earlier dedicated
   safeStorage probe remains the independent exact-key output-channel oracle;
-- each process emits one synchronous readiness record only after store close,
-  post-close scanning, and failure cleanup. It then performs bounded synchronous
-  polling for one per-launch control file, avoiding dependence on late Electron
-  main-loop IPC or timer delivery. Only after parsing the exact fixed readiness
-  result does the parent atomically publish an authorization bound to a random
-  control token, the live process, the `app.exit()` method, and exit code zero.
-  The child consumes and deletes that file, then acknowledges the shutdown and
-  accepted exit request as ordered synchronous records before calling
-  `app.exit(0)`. The harness then requires an observed natural main-process exit
-  with status `0` or records a bounded forced cleanup separately. It preserves
-  the declared outcome separately from the observed process result, retains an
-  unreferenced child self-kill failsafe, and requires both inherited output
-  pipes to close;
-- a dedicated falsification launch emits readiness and both ordered
-  acknowledgements, then exits internally with code `1`; the harness must reject
-  that nonzero observed process result before the ordinary twelve-process result
-  can pass;
-- before the Windows integration run, three isolated shutdown diagnostics bisect
-  the baseline control, an asynchronous safeStorage round trip without a native
-  import, and a raw-key SQLCipher write without a safeStorage call. Each uses a
-  separate disposable profile and state root, validates exact entered, quit, and
-  returned lifecycle marker shapes and ordering, and reports only a fixed
-  content-safe summary;
+- each process emits exactly one synchronous fixed result only after store close,
+  post-close scanning, and failure cleanup, then calls `app.exit()` with the
+  declared result code. The parent accepts the launch only after the main process
+  exits naturally with that exact code and no signal, both inherited output
+  pipes close, and the result shape and status/code relationship validate;
 - macOS uses an ad-hoc-signed package and disposable hosted-runner Keychain;
   Windows uses an unsigned mechanism package with statically linked pinned
   OpenSSL; every generated file and exact probe-only Keychain item is removed
   without artifact upload.
 
-The child processes have a 45-second readiness watchdog so an interactive
-provider prompt or native hang becomes a bounded failure. After readiness, the
-parent allows up to five seconds on macOS or twelve seconds on Windows for the
-acknowledged `app.exit(0)` request to produce a natural process exit. A
-lingering process tree is force-terminated
-only after that authorization; either outcome must close both inherited output
-pipes within five more seconds or the probe fails closed. Natural exits record
-the observed status `0` without a signal on both targets, while forced cleanup
-is reported separately. The Windows-only boundary diagnostic accepts either
-the exact natural `0`/no-signal result or the exact Taskkill `1`/no-signal result
-after the authorized twelve-second boundary. Every ordinary Windows integration
-launch must still exit naturally; a forced cleanup there remains invalid. On
-Windows, the evidence is the real
-async wrap/unwrap through distinct processes and exact marker recovery; provider
-rotation and temporary unavailability remain outside this bounded mechanism
-probe. The fixed declared outcome remains authoritative for each probe
-operation. The direct `app.exit()` path is probe-only: the fixture is headless,
-has no windows, and closes and scans every store path before exit authorization.
-It does not define the product's eventual user-facing graceful-shutdown policy.
+The child processes have a 45-second watchdog so an interactive provider prompt
+or native hang becomes a bounded failure. Any forced cleanup before an observed
+natural main-process exit is failure-only and can never become passing evidence.
+After the main process exits with the exact declared code, the parent may
+terminate only lingering inherited helpers to close their pipes; it still waits
+for `close`, preserves the already observed main-process status, and fails if
+cleanup cannot be verified within five seconds. On Windows, the evidence is the
+real async wrap/unwrap through distinct processes and exact marker recovery;
+provider rotation and temporary unavailability remain outside this bounded
+mechanism probe. The direct `app.exit()` path is probe-only: the fixture is
+headless, has no windows, and closes and scans every store path before emitting
+its fixed result. It does not define the product's eventual user-facing
+graceful-shutdown policy.
 
 ## Pinned inputs
 

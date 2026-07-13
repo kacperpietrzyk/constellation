@@ -37,43 +37,17 @@ const temporaryRoot = process.env.RUNNER_TEMP || os.tmpdir();
 const stateRoot = fs.mkdtempSync(
   path.join(temporaryRoot, "constellation-packaged-store-probe-"),
 );
+const profile = path.join(stateRoot, "profile");
 const workspace = "workspace-alpha";
 const primaryWrapper = "primary.wrap.json";
 const primaryDatabase = "primary.db";
 const primaryWrapperPath = path.join(stateRoot, primaryWrapper);
 const primaryDatabasePath = path.join(stateRoot, primaryDatabase);
-const shutdownAuthorizationType =
-  "constellation.packaged-store-probe.shutdown/v1";
-const shutdownAckType =
-  "constellation.packaged-store-probe.shutdown-accepted/v1";
-const shutdownRejectedType =
-  "constellation.packaged-store-probe.shutdown-rejected/v1";
-const exitAckType = "constellation.packaged-store-probe.exit-accepted/v1";
-const shutdownDiagnosticModes = new Set([
-  "shutdown-control",
-  "shutdown-provider",
-  "shutdown-sqlcipher",
-]);
-const appExitEnteredType = "app-exit-entered/v1";
-const electronQuitObservedType = "electron-quit-observed/v1";
-const appExitReturnedType = "app-exit-returned/v1";
-const lifecycleMarkerTypes = new Set([
-  appExitEnteredType,
-  electronQuitObservedType,
-  appExitReturnedType,
-]);
-const shutdownDiagnosticOnly =
-  process.argv.length === 3 && process.argv[2] === "--shutdown-diagnostic";
-// Windows CI can spend several seconds unwinding Chromium and committing the
-// provider profile after app.exit(0). Keep this below the child's independent
-// 30-second failsafe, but do not misclassify a slow managed exit as a hang.
-const AUTHORIZED_EXIT_GRACE_MS = process.platform === "win32" ? 12_000 : 5_000;
-const EXPECTED_NATURAL_EXIT_CODE = 0;
+const providerBootstrapReadyType =
+  "constellation.packaged-store-probe.provider-bootstrap-ready/v1";
+const providerBootstrapContinueType =
+  "constellation.packaged-store-probe.provider-bootstrap-continue/v1";
 const processIds = new Set();
-let naturalElectronProcessExits = 0;
-let forcedProcessExits = 0;
-let acknowledgedShutdowns = 0;
-let acknowledgedExitAuthorizations = 0;
 let verifiedProcessTerminations = 0;
 const captured = [];
 const forbiddenOutput = [
@@ -91,7 +65,6 @@ const fixedResultKeys = [
   "phase",
   "platform",
   "processId",
-  "readyForShutdown",
   "status",
 ];
 
@@ -125,20 +98,18 @@ function inspectOutput(contents) {
   captured.push(contents);
 }
 
-function hasShutdownFields(value) {
+function hasFixedResultFields(value) {
   return (
     value &&
     typeof value === "object" &&
     !Array.isArray(value) &&
-    (Object.hasOwn(value, "readyForShutdown") ||
-      Object.hasOwn(value, "declaredExitCode"))
+    Object.hasOwn(value, "declaredExitCode")
   );
 }
 
-function isReadyShutdownEnvelope(value) {
+function isFixedResultEnvelope(value) {
   return (
-    hasShutdownFields(value) &&
-    value.readyForShutdown === true &&
+    hasFixedResultFields(value) &&
     (value.status === "pass" || value.status === "fail") &&
     typeof value.code === "string" &&
     Number.isInteger(value.declaredExitCode) &&
@@ -155,14 +126,14 @@ function parseFixedResult(stdout) {
   for (const line of lines) {
     try {
       const value = JSON.parse(line);
-      if (hasShutdownFields(value)) candidates.push(value);
+      if (hasFixedResultFields(value)) candidates.push(value);
     } catch {
-      // Invalid non-protocol diagnostics are ignored here and rejected by the
-      // incremental scanner if they claim shutdown fields.
+      // Chromium may emit unrelated diagnostic lines; only the exact bounded
+      // result envelope is accepted as evidence.
     }
   }
   ensure(candidates.length === 1, "FIXED_RESULT_COUNT_INVALID");
-  ensure(isReadyShutdownEnvelope(candidates[0]), "FIXED_RESULT_INVALID");
+  ensure(isFixedResultEnvelope(candidates[0]), "FIXED_RESULT_INVALID");
   return candidates[0];
 }
 
@@ -192,30 +163,17 @@ function terminateTree(child) {
   }
 }
 
-async function launch({
-  mode,
-  workspaceId,
-  wrapperName,
-  databaseName,
-  launchStateRoot = stateRoot,
-}) {
+async function launch({ mode, workspaceId, wrapperName, databaseName }) {
   const environment = { ...process.env };
   delete environment.ELECTRON_RUN_AS_NODE;
-  const probeProfile = path.join(launchStateRoot, "profile");
-  const shutdownControlToken = crypto.randomBytes(32).toString("hex");
-  const shutdownControlPath = path.join(
-    launchStateRoot,
-    `.shutdown-${shutdownControlToken}.json`,
-  );
-  const shutdownControlTemporaryPath = `${shutdownControlPath}.tmp`;
+  const providerChannel = mode === "provision";
   const argumentsForProbe = [
-    `--user-data-dir=${probeProfile}`,
+    `--user-data-dir=${profile}`,
     `--probe-mode=${mode}`,
-    `--probe-state-root=${launchStateRoot}`,
+    `--probe-state-root=${stateRoot}`,
     `--probe-workspace=${workspaceId}`,
     `--probe-wrapper=${wrapperName}`,
     `--probe-database=${databaseName}`,
-    `--probe-shutdown-control=${shutdownControlToken}`,
   ];
 
   return await new Promise((resolve, reject) => {
@@ -224,7 +182,7 @@ async function launch({
       child = spawn(executable, argumentsForProbe, {
         detached: process.platform !== "win32",
         env: environment,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["ignore", "pipe", "pipe", providerChannel ? "ipc" : "ignore"],
         windowsHide: true,
       });
     } catch {
@@ -238,63 +196,24 @@ async function launch({
     let stderrLength = 0;
     let settled = false;
     let timer;
-    let hardCleanupTimer;
-    let cleanupRetryTimer;
-    let forcedTerminationRecheckTimer;
-    let electronShutdownTimer;
+    let terminationTimer;
     let helperCleanupTimer;
     let postExitTimer;
     let timedOut = false;
-    let parentSupervisionStarted = false;
-    let shutdownAuthorizationQueued = false;
-    let shutdownAuthorizationPublishStatus = "not-started";
-    let exitAuthorizationGranted = false;
-    let exitAuthorizationAcknowledged = false;
-    let exitAuthorizationAckCount = 0;
-    let shutdownAcknowledged = false;
-    let shutdownAckCount = 0;
-    let forcedTerminationRequested = false;
-    let forcedTerminationAccepted = false;
-    let shutdownRequestedWhileAlive = false;
-    let electronExitObserved = false;
-    let readyResult;
-    let protocolError;
-    let protocolResultCount = 0;
-    let protocolLineStart = 0;
-    let protocolScanOffset = 0;
-    let hardCleanupStarted = false;
+    let preExitCleanupFailed = false;
     let mainProcessExited = false;
     let mainExitCode;
     let mainExitSignal;
-    const lifecycleMarkers = [];
+    let providerBootstrapMessageCount = 0;
+    let providerBootstrapCompleted = !providerChannel;
 
-    const removeShutdownControlArtifacts = () => {
-      try {
-        fs.rmSync(shutdownControlTemporaryPath, { force: true });
-        fs.rmSync(shutdownControlPath, { force: true });
-        return (
-          !fs.existsSync(shutdownControlTemporaryPath) &&
-          !fs.existsSync(shutdownControlPath)
-        );
-      } catch {
-        return false;
-      }
-    };
     const finish = (callback) => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
-      if (hardCleanupTimer) clearTimeout(hardCleanupTimer);
-      if (cleanupRetryTimer) clearTimeout(cleanupRetryTimer);
-      if (forcedTerminationRecheckTimer) {
-        clearTimeout(forcedTerminationRecheckTimer);
-      }
-      if (electronShutdownTimer) clearTimeout(electronShutdownTimer);
+      if (terminationTimer) clearTimeout(terminationTimer);
       if (helperCleanupTimer) clearTimeout(helperCleanupTimer);
       if (postExitTimer) clearTimeout(postExitTimer);
-      if (!removeShutdownControlArtifacts()) {
-        protocolError ||= "SHUTDOWN_CONTROL_CLEANUP_UNVERIFIED";
-      }
       callback();
     };
     const collect = (target, chunk, isStdout) => {
@@ -303,10 +222,61 @@ async function launch({
       if (isStdout) stdoutLength += buffer.length;
       else stderrLength += buffer.length;
       if (stdoutLength > 64 * 1024 || stderrLength > 64 * 1024) {
+        preExitCleanupFailed = true;
         terminateTree(child);
       }
-      if (isStdout) scanProtocolLines();
     };
+
+    child.stdout.on("data", (chunk) => collect(stdout, chunk, true));
+    child.stderr.on("data", (chunk) => collect(stderr, chunk, false));
+    if (providerChannel) {
+      child.on("message", (message) => {
+        providerBootstrapMessageCount += 1;
+        if (
+          providerBootstrapMessageCount !== 1 ||
+          !message ||
+          typeof message !== "object" ||
+          Array.isArray(message) ||
+          Object.keys(message).length !== 4 ||
+          message.type !== providerBootstrapReadyType ||
+          message.mode !== mode ||
+          message.processId !== child.pid ||
+          message.bootstrapEnvironmentCleared !== true
+        ) {
+          terminateTree(child);
+          finish(() =>
+            reject(new Error("PROVIDER_BOOTSTRAP_PROTOCOL_INVALID")),
+          );
+          return;
+        }
+
+        try {
+          child.send(
+            {
+              type: providerBootstrapContinueType,
+              mode,
+              processId: child.pid,
+            },
+            (error) => {
+              if (!error) {
+                providerBootstrapCompleted = true;
+                return;
+              }
+              terminateTree(child);
+              finish(() => reject(new Error("PROVIDER_BOOTSTRAP_SEND_FAILED")));
+            },
+          );
+        } catch {
+          if (!settled) {
+            terminateTree(child);
+            finish(() => reject(new Error("PROVIDER_BOOTSTRAP_SEND_FAILED")));
+          }
+        }
+      });
+    }
+    child.on("error", () =>
+      finish(() => reject(new Error("PACKAGED_LAUNCH_FAILED"))),
+    );
     const complete = (code, signal) =>
       finish(() => {
         try {
@@ -314,123 +284,38 @@ async function launch({
           const stderrBuffer = Buffer.concat(stderr, stderrLength);
           inspectOutput(stdoutBuffer);
           inspectOutput(stderrBuffer);
-          if (timedOut) {
+          if (timedOut || preExitCleanupFailed) {
             let childCode = "NO_FIXED_RESULT";
             try {
               childCode = parseFixedResult(stdoutBuffer).code;
             } catch {
               // The bounded timeout marker is sufficient without child output.
             }
+            const failure = timedOut
+              ? "PACKAGED_LAUNCH_TIMEOUT"
+              : "PACKAGED_OUTPUT_LIMIT_EXCEEDED";
             reject(
               new Error(
-                `PACKAGED_LAUNCH_TIMEOUT:${mode}:${wrapperName}:${databaseName}:${childCode}`,
+                `${failure}:${mode}:${wrapperName}:${databaseName}:${childCode}`,
               ),
             );
           } else {
             const result = parseFixedResult(stdoutBuffer);
-            if (
-              !shutdownAcknowledged &&
-              shutdownAuthorizationPublishStatus !== "succeeded"
-            ) {
-              protocolError ||=
-                shutdownAuthorizationPublishStatus === "failed"
-                  ? "SHUTDOWN_AUTHORIZATION_REJECTED"
-                  : "SHUTDOWN_AUTHORIZATION_UNCONFIRMED";
-            }
-            ensure(!protocolError, protocolError);
-            ensure(protocolResultCount === 1, "PROTOCOL_RESULT_COUNT_INVALID");
             ensure(
-              parentSupervisionStarted &&
-                shutdownAuthorizationQueued &&
-                exitAuthorizationGranted,
-              "PARENT_SHUTDOWN_PROTOCOL_MISSING",
-            );
-            ensure(shutdownAcknowledged, "CHILD_SHUTDOWN_ACK_MISSING");
-            ensure(shutdownAckCount === 1, "CHILD_SHUTDOWN_ACK_COUNT_INVALID");
-            ensure(
-              exitAuthorizationAcknowledged,
-              "CHILD_EXIT_AUTHORIZATION_ACK_MISSING",
+              code === result.declaredExitCode && signal === null,
+              `PACKAGED_EXIT_STATUS_INVALID:${String(code)}:${String(signal)}:${result.declaredExitCode}`,
             );
             ensure(
-              exitAuthorizationAckCount === 1,
-              "CHILD_EXIT_AUTHORIZATION_ACK_COUNT_INVALID",
+              providerBootstrapCompleted &&
+                providerBootstrapMessageCount === (providerChannel ? 1 : 0),
+              "PROVIDER_BOOTSTRAP_EVIDENCE_INVALID",
             );
-            ensure(
-              shutdownRequestedWhileAlive,
-              "PARENT_SHUTDOWN_LIVENESS_MISSING",
-            );
-            ensure(
-              readyResult &&
-                JSON.stringify(result) === JSON.stringify(readyResult),
-              "PROTOCOL_RESULT_CHANGED",
-            );
-            ensure(
-              code !== null || signal !== null,
-              "ACTUAL_TERMINATION_STATUS_MISSING",
-            );
-            ensure(
-              electronExitObserved ||
-                (forcedTerminationRequested && forcedTerminationAccepted),
-              "TERMINATION_OUTCOME_UNVERIFIED",
-            );
-            if (shutdownDiagnosticModes.has(mode)) {
-              const lifecycleSequence = lifecycleMarkers.join(",");
-              const validSequences = new Set([
-                appExitEnteredType,
-                `${appExitEnteredType},${appExitReturnedType}`,
-                `${appExitEnteredType},${electronQuitObservedType}`,
-                `${appExitEnteredType},${electronQuitObservedType},${appExitReturnedType}`,
-                `${appExitEnteredType},${appExitReturnedType},${electronQuitObservedType}`,
-              ]);
-              ensure(
-                validSequences.has(lifecycleSequence),
-                "LIFECYCLE_MARKER_ORDER_INVALID",
-              );
-            } else {
-              ensure(
-                lifecycleMarkers.length === 0,
-                "UNEXPECTED_LIFECYCLE_MARKER",
-              );
-            }
-            if (electronExitObserved) {
-              const codeLabel = Number.isInteger(code)
-                ? String(code)
-                : code === null
-                  ? "null"
-                  : typeof code;
-              const signalLabel =
-                typeof signal === "string"
-                  ? signal
-                  : signal === null
-                    ? "null"
-                    : typeof signal;
-              ensure(
-                code === EXPECTED_NATURAL_EXIT_CODE && signal === null,
-                `ELECTRON_SHUTDOWN_STATUS_INVALID:${codeLabel}:${signalLabel}`,
-              );
-            } else {
-              ensure(
-                forcedTerminationRequested && forcedTerminationAccepted,
-                "FORCED_EXIT_UNVERIFIED",
-              );
-            }
             resolve({
-              declaredExitCode: result.declaredExitCode,
-              lifecycle: electronExitObserved
-                ? "electron-exit-after-parent-authorization"
-                : "forced-after-authorized-electron-exit",
               actualCode: code,
               actualSignal: signal,
-              parentSupervisionStarted,
-              shutdownAuthorizationQueued,
-              exitAuthorizationGranted,
-              exitAuthorizationAcknowledged,
-              shutdownAcknowledged,
-              forcedTerminationRequested,
-              forcedTerminationAccepted,
-              shutdownRequestedWhileAlive,
-              electronExitObserved,
-              lifecycleMarkers: [...lifecycleMarkers],
+              declaredExitCode: result.declaredExitCode,
+              providerBootstrapCompleted,
+              providerBootstrapMessageCount,
               childPid: child.pid,
               result,
             });
@@ -439,329 +324,19 @@ async function launch({
           reject(error);
         }
       });
-    const failUnverifiedHelperCleanup = () => {
+    const rejectUnverifiedHelperCleanup = () => {
       finish(() =>
         reject(
           new Error(
             timedOut
               ? `PACKAGED_TERMINATION_TIMEOUT:${mode}:${wrapperName}:${databaseName}`
-              : `${protocolError || "PACKAGED_HELPER_CLEANUP_UNVERIFIED"}:${mode}:${wrapperName}:${databaseName}`,
+              : `PACKAGED_HELPER_CLEANUP_UNVERIFIED:${mode}:${wrapperName}:${databaseName}`,
           ),
         ),
       );
       child.stdout.destroy();
       child.stderr.destroy();
     };
-    const startHardCleanup = (reason) => {
-      protocolError ||= reason;
-      if (settled || hardCleanupStarted) return;
-      hardCleanupStarted = true;
-      if (helperCleanupTimer) {
-        clearTimeout(helperCleanupTimer);
-        helperCleanupTimer = undefined;
-      }
-      const retry = () => {
-        if (settled) return;
-        const treeTerminationAccepted = terminateTree(child);
-        if (!treeTerminationAccepted) {
-          try {
-            child.kill("SIGKILL");
-          } catch {
-            // Keep retrying until close or the hard cleanup deadline.
-          }
-        }
-        cleanupRetryTimer = setTimeout(retry, 500);
-      };
-      retry();
-      // Keep retrying past the child's 30-second self-kill failsafe before an
-      // unverified cleanup is allowed to fail the launch.
-      hardCleanupTimer = setTimeout(failUnverifiedHelperCleanup, 35_000);
-    };
-    const childHasExited = () =>
-      mainProcessExited || child.exitCode !== null || child.signalCode !== null;
-    const requestForcedTermination = () => {
-      if (settled || forcedTerminationRequested || childHasExited()) return;
-      forcedTerminationRequested = true;
-      forcedTerminationAccepted = terminateTree(child);
-      if (!forcedTerminationAccepted) {
-        // The grace timer can race a natural process exit whose event has not
-        // reached Node yet. A rejected force request is not a failure until a
-        // short recheck proves the child is still live.
-        forcedTerminationRequested = false;
-        forcedTerminationRecheckTimer = setTimeout(() => {
-          if (!settled && !childHasExited()) {
-            startHardCleanup("PARENT_TERMINATION_REJECTED");
-          }
-        }, 50);
-        return;
-      }
-      helperCleanupTimer = setTimeout(
-        () => startHardCleanup("HELPER_CLOSE_TIMEOUT"),
-        5_000,
-      );
-    };
-    const requestParentShutdown = () => {
-      if (settled || parentSupervisionStarted) return;
-      if (
-        mainProcessExited ||
-        child.exitCode !== null ||
-        child.signalCode !== null
-      ) {
-        protocolError ||= "CHILD_NOT_LIVE_AT_READINESS";
-        return;
-      }
-      shutdownRequestedWhileAlive = true;
-      parentSupervisionStarted = true;
-      let descriptor;
-      const authorization = Buffer.from(
-        `${JSON.stringify({
-          type: shutdownAuthorizationType,
-          processId: child.pid,
-          method: "app.exit",
-          requestedExitCode: 0,
-          controlToken: shutdownControlToken,
-        })}\n`,
-        "utf8",
-      );
-      try {
-        shutdownAuthorizationPublishStatus = "pending";
-        descriptor = fs.openSync(shutdownControlTemporaryPath, "wx", 0o600);
-        fs.writeFileSync(descriptor, authorization);
-        fs.fsyncSync(descriptor);
-        fs.closeSync(descriptor);
-        descriptor = undefined;
-        fs.renameSync(shutdownControlTemporaryPath, shutdownControlPath);
-        shutdownAuthorizationPublishStatus = "succeeded";
-        shutdownAuthorizationQueued = true;
-        exitAuthorizationGranted = true;
-      } catch {
-        shutdownAuthorizationPublishStatus = "failed";
-        if (descriptor !== undefined) {
-          try {
-            fs.closeSync(descriptor);
-          } catch {
-            // The original publication failure remains authoritative.
-          }
-        }
-        removeShutdownControlArtifacts();
-        startHardCleanup("SHUTDOWN_AUTHORIZATION_REJECTED");
-        return;
-      } finally {
-        authorization.fill(0);
-      }
-      if (timer) {
-        clearTimeout(timer);
-        timer = undefined;
-      }
-      electronShutdownTimer = setTimeout(
-        requestForcedTermination,
-        AUTHORIZED_EXIT_GRACE_MS,
-      );
-    };
-    const inspectProtocolLine = (line) => {
-      const text = line.toString("utf8");
-      const claimsShutdownAccepted = text.includes(
-        "constellation.packaged-store-probe.shutdown-accepted",
-      );
-      const claimsShutdownRejected = text.includes(
-        "constellation.packaged-store-probe.shutdown-rejected",
-      );
-      const claimsExitAccepted = text.includes(
-        "constellation.packaged-store-probe.exit-accepted",
-      );
-      const claimsLifecycleMarker = [...lifecycleMarkerTypes].some((type) =>
-        text.includes(type),
-      );
-      const claimsProtocol =
-        text.includes('"readyForShutdown"') ||
-        text.includes('"declaredExitCode"') ||
-        claimsShutdownAccepted ||
-        claimsShutdownRejected ||
-        claimsExitAccepted ||
-        claimsLifecycleMarker;
-      let value;
-      try {
-        value = JSON.parse(text);
-      } catch {
-        if (claimsProtocol) {
-          protocolError ||= "PROTOCOL_RESULT_JSON_INVALID";
-          startHardCleanup(protocolError);
-        }
-        return;
-      }
-      if (claimsShutdownAccepted && value?.type !== shutdownAckType) {
-        protocolError ||= "SHUTDOWN_ACK_INVALID";
-        startHardCleanup(protocolError);
-        return;
-      }
-      if (claimsShutdownRejected && value?.type !== shutdownRejectedType) {
-        protocolError ||= "SHUTDOWN_REJECTION_INVALID";
-        startHardCleanup(protocolError);
-        return;
-      }
-      if (claimsExitAccepted && value?.type !== exitAckType) {
-        protocolError ||= "EXIT_ACK_INVALID";
-        startHardCleanup(protocolError);
-        return;
-      }
-      if (claimsLifecycleMarker && !lifecycleMarkerTypes.has(value?.type)) {
-        protocolError ||= "LIFECYCLE_MARKER_INVALID";
-        startHardCleanup(protocolError);
-        return;
-      }
-      if (value?.type === shutdownRejectedType) {
-        const keys = Object.keys(value).sort();
-        const expectedKeys = ["processId", "reason", "type"].sort();
-        const allowedReasons = new Set([
-          "code",
-          "control-timeout",
-          "control-unavailable",
-          "method",
-          "pid",
-          "shape",
-          "token",
-          "type",
-        ]);
-        if (
-          keys.length !== expectedKeys.length ||
-          !keys.every((key, index) => key === expectedKeys[index]) ||
-          value.processId !== child.pid ||
-          !allowedReasons.has(value.reason)
-        ) {
-          protocolError ||= "SHUTDOWN_REJECTION_INVALID";
-        } else {
-          protocolError ||= `CHILD_SHUTDOWN_REJECTED:${value.reason}`;
-        }
-        startHardCleanup(protocolError);
-        return;
-      }
-      if (value?.type === shutdownAckType) {
-        shutdownAckCount += 1;
-        const keys = Object.keys(value).sort();
-        const expectedKeys = [
-          "method",
-          "processId",
-          "requestedExitCode",
-          "type",
-        ].sort();
-        if (
-          shutdownAckCount !== 1 ||
-          keys.length !== expectedKeys.length ||
-          !keys.every((key, index) => key === expectedKeys[index]) ||
-          value.processId !== child.pid ||
-          value.method !== "app.exit" ||
-          value.requestedExitCode !== 0 ||
-          !parentSupervisionStarted ||
-          !shutdownAuthorizationQueued ||
-          !exitAuthorizationGranted
-        ) {
-          protocolError ||= "SHUTDOWN_ACK_INVALID";
-          startHardCleanup(protocolError);
-        } else {
-          shutdownAcknowledged = true;
-        }
-        return;
-      }
-      if (value?.type === exitAckType) {
-        exitAuthorizationAckCount += 1;
-        const keys = Object.keys(value).sort();
-        const expectedKeys = [
-          "method",
-          "processId",
-          "requestedExitCode",
-          "type",
-        ].sort();
-        if (
-          exitAuthorizationAckCount !== 1 ||
-          keys.length !== expectedKeys.length ||
-          !keys.every((key, index) => key === expectedKeys[index]) ||
-          value.processId !== child.pid ||
-          value.method !== "app.exit" ||
-          value.requestedExitCode !== 0 ||
-          !parentSupervisionStarted ||
-          !shutdownAuthorizationQueued ||
-          !exitAuthorizationGranted ||
-          !shutdownAcknowledged
-        ) {
-          protocolError ||= "EXIT_ACK_INVALID";
-          startHardCleanup(protocolError);
-        } else {
-          exitAuthorizationAcknowledged = true;
-        }
-        return;
-      }
-      if (lifecycleMarkerTypes.has(value?.type)) {
-        const keys = Object.keys(value).sort();
-        const expectedKeys = ["mode", "processId", "type"].sort();
-        const valid =
-          shutdownDiagnosticModes.has(mode) &&
-          keys.length === expectedKeys.length &&
-          keys.every((key, index) => key === expectedKeys[index]) &&
-          value.mode === mode &&
-          value.processId === child.pid &&
-          readyResult !== undefined &&
-          parentSupervisionStarted &&
-          shutdownAuthorizationQueued &&
-          exitAuthorizationGranted &&
-          shutdownAcknowledged &&
-          exitAuthorizationAcknowledged &&
-          !lifecycleMarkers.includes(value.type) &&
-          (lifecycleMarkers.length > 0 || value.type === appExitEnteredType) &&
-          (value.type !== appExitEnteredType || lifecycleMarkers.length === 0);
-        if (!valid) {
-          protocolError ||= "LIFECYCLE_MARKER_INVALID";
-          startHardCleanup(protocolError);
-        } else {
-          lifecycleMarkers.push(value.type);
-        }
-        return;
-      }
-      if (!hasShutdownFields(value)) return;
-      protocolResultCount += 1;
-      if (protocolResultCount !== 1) {
-        protocolError ||= "PROTOCOL_RESULT_DUPLICATED";
-      }
-      if (
-        !isReadyShutdownEnvelope(value) ||
-        value.processId !== child.pid ||
-        value.phase !== mode ||
-        value.platform !== process.platform ||
-        value.architecture !== "x64" ||
-        value.electron !== "43.1.0" ||
-        value.packaged !== true
-      ) {
-        protocolError ||= "PROTOCOL_RESULT_ENVELOPE_INVALID";
-      } else if (protocolResultCount === 1) {
-        readyResult = value;
-      }
-      if (protocolError) startHardCleanup(protocolError);
-      else requestParentShutdown();
-    };
-    const scanProtocolLines = () => {
-      const contents = Buffer.concat(stdout, stdoutLength);
-      try {
-        let newline = contents.indexOf(0x0a, protocolScanOffset);
-        while (newline !== -1) {
-          let lineEnd = newline;
-          if (lineEnd > protocolLineStart && contents[lineEnd - 1] === 0x0d) {
-            lineEnd -= 1;
-          }
-          inspectProtocolLine(contents.subarray(protocolLineStart, lineEnd));
-          protocolLineStart = newline + 1;
-          protocolScanOffset = newline + 1;
-          newline = contents.indexOf(0x0a, protocolScanOffset);
-        }
-        protocolScanOffset = contents.length;
-      } finally {
-        contents.fill(0);
-      }
-    };
-
-    child.stdout.on("data", (chunk) => collect(stdout, chunk, true));
-    child.stderr.on("data", (chunk) => collect(stderr, chunk, false));
-    child.on("error", () =>
-      finish(() => reject(new Error("PACKAGED_LAUNCH_FAILED"))),
-    );
 
     child.on("exit", (code, signal) => {
       mainProcessExited = true;
@@ -771,20 +346,6 @@ async function launch({
         clearTimeout(timer);
         timer = undefined;
       }
-      if (electronShutdownTimer) {
-        clearTimeout(electronShutdownTimer);
-        electronShutdownTimer = undefined;
-      }
-      if (parentSupervisionStarted) {
-        if (!forcedTerminationRequested) electronExitObserved = true;
-        if (!helperCleanupTimer) {
-          helperCleanupTimer = setTimeout(
-            () => startHardCleanup("HELPER_CLOSE_TIMEOUT"),
-            5_000,
-          );
-        }
-        return;
-      }
       // Electron helpers may inherit the main process pipes after the main
       // executable has exited. Give pending bytes a bounded drain window,
       // then finalize from the main process exit rather than misclassifying a
@@ -792,16 +353,13 @@ async function launch({
       postExitTimer = setTimeout(() => {
         const cleanupVerified = terminateTree(child);
         if (!cleanupVerified) {
-          startHardCleanup("POST_EXIT_TERMINATION_REJECTED");
+          rejectUnverifiedHelperCleanup();
           return;
         }
         // A successful signal request is not cleanup evidence. Wait for the
         // child close event, which confirms that both inherited output pipes
         // have closed, and fail closed if that signal never arrives.
-        helperCleanupTimer = setTimeout(
-          () => startHardCleanup("HELPER_CLOSE_TIMEOUT"),
-          5_000,
-        );
+        helperCleanupTimer = setTimeout(rejectUnverifiedHelperCleanup, 5_000);
       }, 1_000);
     });
     child.on("close", (code, signal) => {
@@ -813,8 +371,27 @@ async function launch({
 
     timer = setTimeout(() => {
       timedOut = true;
-      startHardCleanup("PACKAGED_LAUNCH_TIMEOUT");
+      terminateTree(child);
+      terminationTimer = setTimeout(
+        () =>
+          finish(() =>
+            reject(
+              new Error(
+                `PACKAGED_TERMINATION_TIMEOUT:${mode}:${wrapperName}:${databaseName}`,
+              ),
+            ),
+          ),
+        10_000,
+      );
     }, 45_000);
+
+    if (
+      providerChannel &&
+      (typeof child.send !== "function" || !child.connected)
+    ) {
+      terminateTree(child);
+      finish(() => reject(new Error("PROVIDER_BOOTSTRAP_CHANNEL_UNAVAILABLE")));
+    }
   });
 }
 
@@ -849,101 +426,21 @@ function assertProvider(result) {
 function recordProcess(execution, mode) {
   const { childPid, result } = execution;
   ensure(
-    process.platform !== "win32" ||
-      execution.lifecycle === "electron-exit-after-parent-authorization",
-    `WINDOWS_NATURAL_EXIT_REQUIRED:${mode}`,
+    execution.actualCode === result.declaredExitCode &&
+      execution.declaredExitCode === result.declaredExitCode &&
+      execution.actualSignal === null,
+    `CHILD_EXIT_STATUS_INVALID:${mode}`,
   );
   ensure(
-    execution.lifecycle === "electron-exit-after-parent-authorization" ||
-      execution.lifecycle === "forced-after-authorized-electron-exit",
-    "CHILD_LIFECYCLE_INVALID",
+    execution.providerBootstrapCompleted === true &&
+      execution.providerBootstrapMessageCount ===
+        (mode === "provision" ? 1 : 0),
+    "PROVIDER_BOOTSTRAP_EVIDENCE_INVALID",
   );
-  ensure(
-    execution.parentSupervisionStarted === true &&
-      execution.shutdownAuthorizationQueued === true &&
-      execution.exitAuthorizationGranted === true &&
-      execution.exitAuthorizationAcknowledged === true &&
-      execution.shutdownAcknowledged === true &&
-      execution.shutdownRequestedWhileAlive === true,
-    "CHILD_TERMINATION_EVIDENCE_INVALID",
-  );
-  if (execution.lifecycle === "electron-exit-after-parent-authorization") {
-    ensure(
-      execution.electronExitObserved === true &&
-        execution.forcedTerminationRequested === false &&
-        execution.actualCode === EXPECTED_NATURAL_EXIT_CODE &&
-        execution.actualSignal === null,
-      "CHILD_ELECTRON_EXIT_INVALID",
-    );
-    naturalElectronProcessExits += 1;
-  } else {
-    ensure(
-      execution.electronExitObserved === false &&
-        execution.forcedTerminationRequested === true &&
-        execution.forcedTerminationAccepted === true &&
-        execution.actualCode === null &&
-        execution.actualSignal === "SIGKILL",
-      "CHILD_FORCED_EXIT_INVALID",
-    );
-    forcedProcessExits += 1;
-  }
   verifiedProcessTerminations += 1;
-  acknowledgedShutdowns += 1;
-  acknowledgedExitAuthorizations += 1;
-  ensure(
-    execution.actualCode !== null || execution.actualSignal !== null,
-    "CHILD_ACTUAL_TERMINATION_INVALID",
-  );
-  ensure(result.readyForShutdown === true, "CHILD_READINESS_INVALID");
-  ensure(
-    result.declaredExitCode === execution.declaredExitCode,
-    "CHILD_EXIT_CODE_INVALID",
-  );
   assertFixedIdentity(result, childPid, mode);
   ensure(!processIds.has(result.processId), "PROCESS_REUSED");
   processIds.add(result.processId);
-}
-
-function assertDiagnosticProcess(execution, mode) {
-  ensure(
-    execution.lifecycle === "electron-exit-after-parent-authorization" ||
-      execution.lifecycle === "forced-after-authorized-electron-exit",
-    "DIAGNOSTIC_LIFECYCLE_INVALID",
-  );
-  ensure(
-    execution.parentSupervisionStarted === true &&
-      execution.shutdownAuthorizationQueued === true &&
-      execution.exitAuthorizationGranted === true &&
-      execution.exitAuthorizationAcknowledged === true &&
-      execution.shutdownAcknowledged === true &&
-      execution.shutdownRequestedWhileAlive === true,
-    "DIAGNOSTIC_AUTHORIZATION_INVALID",
-  );
-  if (execution.lifecycle === "electron-exit-after-parent-authorization") {
-    ensure(
-      execution.electronExitObserved === true &&
-        execution.forcedTerminationRequested === false &&
-        execution.actualCode === 0 &&
-        execution.actualSignal === null,
-      "DIAGNOSTIC_NATURAL_EXIT_INVALID",
-    );
-  } else {
-    ensure(
-      execution.electronExitObserved === false &&
-        execution.forcedTerminationRequested === true &&
-        execution.forcedTerminationAccepted === true &&
-        execution.actualCode === 1 &&
-        execution.actualSignal === null,
-      "DIAGNOSTIC_FORCED_EXIT_INVALID",
-    );
-  }
-  ensure(
-    execution.result.readyForShutdown === true &&
-      execution.result.declaredExitCode === 0 &&
-      execution.result.status === "pass",
-    "DIAGNOSTIC_RESULT_INVALID",
-  );
-  assertFixedIdentity(execution.result, execution.childPid, mode);
 }
 
 async function expectFailure(options, acceptedCodes, expectedState) {
@@ -956,25 +453,6 @@ async function expectFailure(options, acceptedCodes, expectedState) {
     acceptedCodes.includes(execution.result.code),
     "NEGATIVE_CODE_INVALID",
   );
-  assertPrimaryUnchanged(expectedState);
-}
-
-async function expectAcknowledgedNonzeroExitRejected(expectedState) {
-  let rejection;
-  try {
-    await launch({
-      mode: "shutdown-fault",
-      workspaceId: workspace,
-      wrapperName: "unused-fault.wrap.json",
-      databaseName: "unused-fault.db",
-    });
-  } catch (error) {
-    rejection = error;
-  }
-  ensure(rejection instanceof Error, "NONZERO_EXIT_FAULT_NOT_REJECTED");
-  if (rejection.message !== "ELECTRON_SHUTDOWN_STATUS_INVALID:1:null") {
-    throw rejection;
-  }
   assertPrimaryUnchanged(expectedState);
 }
 
@@ -1104,130 +582,6 @@ async function removeStateRoot() {
 const artifactPaths = [executable, appArchive, nativeAddon];
 const artifactDigests = new Map();
 
-async function runShutdownDiagnostic() {
-  ensure(process.platform === "win32", "DIAGNOSTIC_PLATFORM_UNSUPPORTED");
-  ensure(process.arch === "x64", "HOST_ARCH_UNSUPPORTED");
-  const expectedArtifacts = new Map();
-  const diagnosticRoots = new Set();
-  const summaries = [];
-  try {
-    for (const artifact of artifactPaths) {
-      ensure(fs.existsSync(artifact), "PACKAGED_ARTIFACT_MISSING");
-      expectedArtifacts.set(artifact, digestFile(artifact));
-    }
-    const cases = [
-      {
-        mode: "shutdown-control",
-        code: "SHUTDOWN_CONTROL_READY",
-        extraKeys: [],
-      },
-      {
-        mode: "shutdown-provider",
-        code: "SHUTDOWN_PROVIDER_READY",
-        extraKeys: ["providerRoundTrip"],
-      },
-      {
-        mode: "shutdown-sqlcipher",
-        code: "SHUTDOWN_SQLCIPHER_READY",
-        extraKeys: ["cipherVersion", "integrityVerified", "rawKeyBinding"],
-      },
-    ];
-    for (const diagnosticCase of cases) {
-      const diagnosticRoot = fs.mkdtempSync(
-        path.join(temporaryRoot, `constellation-${diagnosticCase.mode}-`),
-      );
-      diagnosticRoots.add(diagnosticRoot);
-      const execution = await launch({
-        mode: diagnosticCase.mode,
-        workspaceId: "workspace-shutdown-diagnostic",
-        wrapperName: "unused-diagnostic.wrap.json",
-        databaseName: "shutdown-diagnostic.db",
-        launchStateRoot: diagnosticRoot,
-      });
-      assertDiagnosticProcess(execution, diagnosticCase.mode);
-      assertExactResultKeys(execution.result, diagnosticCase.extraKeys);
-      ensure(
-        execution.result.code === diagnosticCase.code,
-        "DIAGNOSTIC_CODE_INVALID",
-      );
-      if (diagnosticCase.mode === "shutdown-provider") {
-        ensure(
-          execution.result.providerRoundTrip === true,
-          "DIAGNOSTIC_PROVIDER_INVALID",
-        );
-      }
-      if (diagnosticCase.mode === "shutdown-sqlcipher") {
-        ensure(
-          execution.result.cipherVersion === "4.16.0 community" &&
-            execution.result.integrityVerified === true &&
-            execution.result.rawKeyBinding === true,
-          "DIAGNOSTIC_SQLCIPHER_INVALID",
-        );
-      }
-      summaries.push({
-        mode: diagnosticCase.mode,
-        outcome:
-          execution.lifecycle === "electron-exit-after-parent-authorization"
-            ? "natural-0-null"
-            : "forced-1-null-after-12s",
-        lifecycleMarkers: execution.lifecycleMarkers,
-      });
-      await removeDirectory(diagnosticRoot);
-      diagnosticRoots.delete(diagnosticRoot);
-      ensure(!fs.existsSync(diagnosticRoot), "DIAGNOSTIC_STATE_CLEANUP_FAILED");
-    }
-    for (const [artifact, expected] of expectedArtifacts) {
-      const actual = digestFile(artifact);
-      try {
-        ensure(sameDigest(actual, expected), "PACKAGED_ARTIFACT_CHANGED");
-      } finally {
-        actual.fill(0);
-      }
-    }
-    for (const output of captured) output.fill(0);
-    captured.length = 0;
-    const summary = Buffer.from(
-      `${JSON.stringify({
-        status: "pass",
-        platform: "win32",
-        targetArchitecture: "x64",
-        electron: "43.1.0",
-        authorizedExitGraceMs: AUTHORIZED_EXIT_GRACE_MS,
-        separateStateRoots: true,
-        packageIdentityStable: true,
-        cases: summaries,
-      })}\n`,
-      "utf8",
-    );
-    try {
-      let offset = 0;
-      while (offset < summary.length) {
-        const written = fs.writeSync(
-          1,
-          summary,
-          offset,
-          summary.length - offset,
-        );
-        ensure(written > 0, "DIAGNOSTIC_SUMMARY_WRITE_FAILED");
-        offset += written;
-      }
-    } finally {
-      summary.fill(0);
-    }
-  } finally {
-    for (const digest of expectedArtifacts.values()) digest.fill(0);
-    for (const output of captured) output.fill(0);
-    for (const diagnosticRoot of diagnosticRoots) {
-      await removeDirectory(diagnosticRoot);
-    }
-    await removeStateRoot();
-  }
-}
-
-if (shutdownDiagnosticOnly) {
-  await runShutdownDiagnostic();
-  process.exit(0);
-}
 ensure(process.argv.length === 2, "RUNNER_ARGUMENT_INVALID");
 
 try {
@@ -1258,10 +612,15 @@ try {
     "markerDigest",
     "plaintextScan",
     "provider",
+    "providerBootstrapRoundTrip",
     "providerVersion",
     "rawKeyBinding",
   ]);
   assertProvider(writer.result);
+  ensure(
+    writer.result.providerBootstrapRoundTrip === true,
+    "PROVIDER_BOOTSTRAP_RESULT_INVALID",
+  );
   ensure(
     /^[a-f0-9]{64}$/.test(writer.result.markerDigest),
     "MARKER_DIGEST_INVALID",
@@ -1388,10 +747,15 @@ try {
     "markerDigest",
     "plaintextScan",
     "provider",
+    "providerBootstrapRoundTrip",
     "providerVersion",
     "rawKeyBinding",
   ]);
   assertProvider(secondaryWriter.result);
+  ensure(
+    secondaryWriter.result.providerBootstrapRoundTrip === true,
+    "PROVIDER_BOOTSTRAP_RESULT_INVALID",
+  );
   ensure(
     secondaryWriter.result.markerDigest !== writer.result.markerDigest,
     "SECONDARY_MARKER_REUSED",
@@ -1472,21 +836,7 @@ try {
     primaryState,
   );
 
-  await expectAcknowledgedNonzeroExitRejected(primaryState);
-
   ensure(processIds.size === 12, "PROCESS_COUNT_INVALID");
-  ensure(
-    naturalElectronProcessExits + forcedProcessExits === processIds.size,
-    "PROCESS_LIFECYCLE_COUNT_INVALID",
-  );
-  ensure(
-    acknowledgedShutdowns === processIds.size,
-    "SHUTDOWN_ACK_COUNT_INVALID",
-  );
-  ensure(
-    acknowledgedExitAuthorizations === processIds.size,
-    "EXIT_AUTHORIZATION_ACK_COUNT_INVALID",
-  );
   ensure(
     verifiedProcessTerminations === processIds.size,
     "PROCESS_TERMINATION_COUNT_INVALID",
@@ -1510,17 +860,9 @@ try {
       targetArchitecture: "x64",
       electron: "43.1.0",
       packagedRelaunch: true,
-      parentAuthorizedExit: true,
-      acknowledgedShutdowns,
-      acknowledgedExitAuthorizations,
       verifiedProcessTerminations,
-      naturalElectronProcessExits,
-      forcedProcessExits,
-      observedNaturalElectronExitCode:
-        naturalElectronProcessExits > 0
-          ? EXPECTED_NATURAL_EXIT_CODE
-          : "not-observed",
-      acknowledgedNonzeroExitRejected: true,
+      declaredExitCodesMatched: true,
+      providerBootstrapRoundTrip: true,
       distinctProcesses: processIds.size,
       internallyGeneratedDek: true,
       asyncSafeStorage: true,

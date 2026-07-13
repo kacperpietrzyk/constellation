@@ -14,26 +14,10 @@ const MAX_WRAPPER_BYTES = 64 * 1024;
 const MAX_SCAN_FILES = 20_000;
 const MAX_SCAN_FILE_BYTES = 128 * 1024 * 1024;
 const MAX_SCAN_TOTAL_BYTES = 512 * 1024 * 1024;
-const TERMINATION_FAILSAFE_MS = 30_000;
-const MAX_SHUTDOWN_CONTROL_BYTES = 4 * 1024;
-const SHUTDOWN_CONTROL_POLL_MS = 10;
-const SHUTDOWN_CONTROL_TIMEOUT_MS = 4_000;
-const SHUTDOWN_CONTROL_WAIT_STATE = new Int32Array(new SharedArrayBuffer(4));
-const SHUTDOWN_AUTHORIZATION_TYPE =
-  "constellation.packaged-store-probe.shutdown/v1";
-const SHUTDOWN_ACK_TYPE =
-  "constellation.packaged-store-probe.shutdown-accepted/v1";
-const SHUTDOWN_REJECTED_TYPE =
-  "constellation.packaged-store-probe.shutdown-rejected/v1";
-const EXIT_ACK_TYPE = "constellation.packaged-store-probe.exit-accepted/v1";
-const SHUTDOWN_DIAGNOSTIC_MODES = new Set([
-  "shutdown-control",
-  "shutdown-provider",
-  "shutdown-sqlcipher",
-]);
-const APP_EXIT_ENTERED_TYPE = "app-exit-entered/v1";
-const ELECTRON_QUIT_OBSERVED_TYPE = "electron-quit-observed/v1";
-const APP_EXIT_RETURNED_TYPE = "app-exit-returned/v1";
+const PROVIDER_BOOTSTRAP_READY_TYPE =
+  "constellation.packaged-store-probe.provider-bootstrap-ready/v1";
+const PROVIDER_BOOTSTRAP_CONTINUE_TYPE =
+  "constellation.packaged-store-probe.provider-bootstrap-continue/v1";
 const EXIT_CODES = Object.freeze({
   CONFIG_INVALID: 80,
   PACKAGED_IDENTITY_INVALID: 81,
@@ -49,13 +33,13 @@ const EXIT_CODES = Object.freeze({
   DATABASE_OPEN_FAILED: 91,
   DATABASE_INTEGRITY_FAILED: 92,
   PLAINTEXT_EXPOSED: 93,
+  PROVIDER_BOOTSTRAP_INVALID: 94,
   PROBE_FAILED: 99,
 });
 
 let config;
 let nativeAddonPackaged = false;
 let finishStarted = false;
-let authorizedExitReady = false;
 
 class ProbeFailure extends Error {
   constructor(code) {
@@ -99,7 +83,6 @@ function writeFixedResult(result, declaredExitCode) {
     `${JSON.stringify({
       ...result,
       declaredExitCode,
-      readyForShutdown: true,
     })}\n`,
     "utf8",
   );
@@ -115,198 +98,67 @@ function writeFixedResult(result, declaredExitCode) {
   }
 }
 
-function writeShutdownAcknowledgement() {
-  const output = Buffer.from(
-    `${JSON.stringify({
-      type: SHUTDOWN_ACK_TYPE,
-      processId: process.pid,
-      method: "app.exit",
-      requestedExitCode: 0,
-    })}\n`,
-    "utf8",
-  );
-  try {
-    let offset = 0;
-    while (offset < output.length) {
-      const written = fs.writeSync(1, output, offset, output.length - offset);
-      if (written <= 0) throw new Error("SHUTDOWN_ACK_WRITE_FAILED");
-      offset += written;
-    }
-  } finally {
-    output.fill(0);
+function awaitProviderBootstrapTurn() {
+  if (
+    typeof process.send !== "function" ||
+    typeof process.disconnect !== "function" ||
+    !process.connected ||
+    !process.channel
+  ) {
+    fail("PROVIDER_BOOTSTRAP_INVALID");
   }
-}
 
-function writeShutdownRejection(reason) {
-  const output = Buffer.from(
-    `${JSON.stringify({
-      type: SHUTDOWN_REJECTED_TYPE,
-      processId: process.pid,
-      reason,
-    })}\n`,
-    "utf8",
-  );
-  try {
-    let offset = 0;
-    while (offset < output.length) {
-      const written = fs.writeSync(1, output, offset, output.length - offset);
-      if (written <= 0) throw new Error("SHUTDOWN_REJECTION_WRITE_FAILED");
-      offset += written;
-    }
-  } finally {
-    output.fill(0);
-  }
-}
-
-function rejectShutdown(reason) {
-  try {
-    writeShutdownRejection(reason);
-  } finally {
-    process.kill(process.pid, "SIGKILL");
-  }
-}
-
-function writeExitAcknowledgement() {
-  const output = Buffer.from(
-    `${JSON.stringify({
-      type: EXIT_ACK_TYPE,
-      processId: process.pid,
-      method: "app.exit",
-      requestedExitCode: 0,
-    })}\n`,
-    "utf8",
-  );
-  try {
-    let offset = 0;
-    while (offset < output.length) {
-      const written = fs.writeSync(1, output, offset, output.length - offset);
-      if (written <= 0) throw new Error("EXIT_ACK_WRITE_FAILED");
-      offset += written;
-    }
-  } finally {
-    output.fill(0);
-  }
-}
-
-function writeLifecycleMarker(type) {
-  if (!SHUTDOWN_DIAGNOSTIC_MODES.has(config?.mode)) return;
-  const output = Buffer.from(
-    `${JSON.stringify({
-      type,
-      mode: config.mode,
-      processId: process.pid,
-    })}\n`,
-    "utf8",
-  );
-  try {
-    let offset = 0;
-    while (offset < output.length) {
-      const written = fs.writeSync(1, output, offset, output.length - offset);
-      if (written <= 0) throw new Error("LIFECYCLE_MARKER_WRITE_FAILED");
-      offset += written;
-    }
-  } finally {
-    output.fill(0);
-  }
-}
-
-function waitForParentShutdownProtocol() {
-  const accept = (message) => {
-    let rejection;
-    if (!message || typeof message !== "object" || Array.isArray(message)) {
-      rejection = "shape";
-    } else if (Object.keys(message).length !== 5) {
-      rejection = "shape";
-    } else if (message.type !== SHUTDOWN_AUTHORIZATION_TYPE) {
-      rejection = "type";
-    } else if (message.processId !== process.pid) {
-      rejection = "pid";
-    } else if (message.method !== "app.exit") {
-      rejection = "method";
-    } else if (message.requestedExitCode !== 0) {
-      rejection = "code";
-    } else if (
-      typeof message.controlToken !== "string" ||
-      !/^[a-f0-9]{64}$/.test(message.controlToken)
-    ) {
-      rejection = "token";
-    } else {
-      const actual = Buffer.from(message.controlToken, "hex");
-      const expected = Buffer.from(config.shutdownControlToken, "hex");
-      try {
-        if (!crypto.timingSafeEqual(actual, expected)) rejection = "token";
-      } finally {
-        actual.fill(0);
-        expected.fill(0);
-      }
-    }
-    if (rejection) {
-      rejectShutdown(rejection);
-      return;
-    }
-    writeShutdownAcknowledgement();
-    writeExitAcknowledgement();
-    // The declared probe outcome remains in the fixed protocol. The parent
-    // observes the actual process status after this acknowledgement and owns
-    // the deadline and force-kill fallback.
-    if (config?.mode === "shutdown-fault") {
-      process.exit(1);
-      return;
-    }
-    authorizedExitReady = true;
-  };
-  const deadline = Date.now() + SHUTDOWN_CONTROL_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    let contents;
-    try {
-      const metadata = fs.lstatSync(config.shutdownControlPath);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      process.removeListener("disconnect", failBootstrap);
+      process.removeListener("message", receiveBootstrap);
+    };
+    const failBootstrap = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID"));
+    };
+    const receiveBootstrap = (message) => {
       if (
-        !metadata.isFile() ||
-        metadata.isSymbolicLink() ||
-        metadata.size <= 0 ||
-        metadata.size > MAX_SHUTDOWN_CONTROL_BYTES
+        !hasExactKeys(message, ["mode", "processId", "type"]) ||
+        message.type !== PROVIDER_BOOTSTRAP_CONTINUE_TYPE ||
+        message.mode !== "provision" ||
+        message.processId !== process.pid
       ) {
-        rejectShutdown("shape");
+        failBootstrap();
         return;
       }
-      contents = fs.readFileSync(config.shutdownControlPath);
-      if (
-        contents.length <= 0 ||
-        contents.length > MAX_SHUTDOWN_CONTROL_BYTES
-      ) {
-        contents.fill(0);
-        rejectShutdown("shape");
-        return;
-      }
-      fs.unlinkSync(config.shutdownControlPath);
-    } catch (error) {
-      if (error?.code === "ENOENT") {
-        Atomics.wait(
-          SHUTDOWN_CONTROL_WAIT_STATE,
-          0,
-          0,
-          SHUTDOWN_CONTROL_POLL_MS,
-        );
-        continue;
-      }
-      contents?.fill(0);
-      rejectShutdown("control-unavailable");
-      return;
-    }
 
-    let message;
+      settled = true;
+      cleanup();
+      setImmediate(() => {
+        if (process.connected) process.disconnect();
+      });
+      resolve();
+    };
+
+    process.once("disconnect", failBootstrap);
+    process.once("message", receiveBootstrap);
     try {
-      message = JSON.parse(contents.toString("utf8"));
+      process.send(
+        {
+          type: PROVIDER_BOOTSTRAP_READY_TYPE,
+          mode: "provision",
+          processId: process.pid,
+          bootstrapEnvironmentCleared:
+            process.env.NODE_CHANNEL_FD === undefined &&
+            process.env.NODE_CHANNEL_SERIALIZATION_MODE === undefined,
+        },
+        (error) => {
+          if (error) failBootstrap();
+        },
+      );
     } catch {
-      rejectShutdown("shape");
-      return;
-    } finally {
-      contents.fill(0);
+      failBootstrap();
     }
-    accept(message);
-    return;
-  }
-  rejectShutdown("control-timeout");
+  });
 }
 
 function finish(result, exitCode) {
@@ -315,27 +167,8 @@ function finish(result, exitCode) {
     throw new Error("EXIT_CODE_INVALID");
   }
   finishStarted = true;
-  setTimeout(
-    () => process.kill(process.pid, "SIGKILL"),
-    TERMINATION_FAILSAFE_MS,
-  ).unref();
-  // Every store path closes and scans its state before returning here. The
-  // synchronous readiness record lets the parent authorize an Electron-managed
-  // main-loop exit, supervise its deadline, and verify that all inherited
-  // pipes close. The synchronous fixed record lets the separate parent process
-  // publish its atomic authorization; this process then blocks on bounded
-  // synchronous file polling so late Electron main-loop IPC/timer delivery is
-  // not part of the shutdown oracle.
   writeFixedResult(result, exitCode);
-  waitForParentShutdownProtocol();
-  if (!authorizedExitReady) throw new Error("EXIT_AUTHORIZATION_MISSING");
-  if (!SHUTDOWN_DIAGNOSTIC_MODES.has(config?.mode)) {
-    app.exit(0);
-    return;
-  }
-  writeLifecycleMarker(APP_EXIT_ENTERED_TYPE);
-  app.exit(0);
-  writeLifecycleMarker(APP_EXIT_RETURNED_TYPE);
+  app.exit(exitCode);
 }
 
 function getArgument(name) {
@@ -354,7 +187,6 @@ function parseConfig() {
     "--probe-workspace=",
     "--probe-wrapper=",
     "--probe-database=",
-    "--probe-shutdown-control=",
   ];
   const probeArguments = process.argv.filter((argument) =>
     argument.startsWith("--probe-"),
@@ -374,17 +206,8 @@ function parseConfig() {
   const workspaceId = getArgument("workspace");
   const wrapperName = getArgument("wrapper");
   const databaseName = getArgument("database");
-  const shutdownControlToken = getArgument("shutdown-control");
 
-  if (
-    !new Set([
-      "provision",
-      "verify",
-      "plaintext",
-      "shutdown-fault",
-      ...SHUTDOWN_DIAGNOSTIC_MODES,
-    ]).has(mode)
-  ) {
+  if (!new Set(["provision", "verify", "plaintext"]).has(mode)) {
     fail("CONFIG_INVALID");
   }
   if (!path.isAbsolute(stateRoot) || stateRoot.includes("\0")) {
@@ -399,10 +222,6 @@ function parseConfig() {
   if (!/^[a-z0-9][a-z0-9-]{0,47}\.db$/.test(databaseName)) {
     fail("CONFIG_INVALID");
   }
-  if (!/^[a-f0-9]{64}$/.test(shutdownControlToken)) {
-    fail("CONFIG_INVALID");
-  }
-
   const resolvedRoot = path.resolve(stateRoot);
   const expectedUserData = path.join(resolvedRoot, "profile");
   return {
@@ -414,11 +233,6 @@ function parseConfig() {
     workspaceId,
     wrapperPath: path.join(resolvedRoot, wrapperName),
     databasePath: path.join(resolvedRoot, databaseName),
-    shutdownControlToken,
-    shutdownControlPath: path.join(
-      resolvedRoot,
-      `.shutdown-${shutdownControlToken}.json`,
-    ),
   };
 }
 
@@ -1056,6 +870,7 @@ async function provisionStore(Database) {
       fts5: true,
       loadableExtensions: false,
       plaintextScan: true,
+      providerBootstrapRoundTrip: true,
       markerDigest,
       encryptedWal: true,
     });
@@ -1152,69 +967,6 @@ function createPlaintextFixture(Database) {
     if (error instanceof ProbeFailure) throw error;
     fail("PROBE_FAILED");
   } finally {
-    closeQuietly(database);
-  }
-}
-
-async function verifyShutdownProvider() {
-  const sentinel = "constellation-shutdown-provider-sentinel-v1";
-  let encrypted;
-  try {
-    await requireAsyncEncryption();
-    encrypted = await safeStorage.encryptStringAsync(sentinel);
-    if (!Buffer.isBuffer(encrypted) || encrypted.length === 0) {
-      fail("ENCRYPTION_UNAVAILABLE");
-    }
-    const decrypted = await safeStorage.decryptStringAsync(encrypted);
-    if (
-      !hasExactKeys(decrypted, ["result", "shouldReEncrypt"]) ||
-      decrypted.result !== sentinel ||
-      typeof decrypted.shouldReEncrypt !== "boolean"
-    ) {
-      fail("ENCRYPTION_UNAVAILABLE");
-    }
-    return fixedResult("pass", "SHUTDOWN_PROVIDER_READY", {
-      providerRoundTrip: true,
-    });
-  } finally {
-    encrypted?.fill?.(0);
-  }
-}
-
-async function verifyShutdownSqlcipher() {
-  if (pathKind(config.databasePath)) fail("DATABASE_EXISTS");
-  const key = crypto.randomBytes(32);
-  let database;
-  try {
-    const Database = await loadDatabaseConstructor();
-    reserveDatabase(config.databasePath);
-    database = openKeyedDatabase(Database, key, { fileMustExist: true });
-    if (!key.every((byte) => byte === 0)) fail("PROBE_FAILED");
-    const cipherVersion = database.pragma("cipher_version", { simple: true });
-    if (cipherVersion !== "4.16.0 community") {
-      fail("ENCRYPTION_UNAVAILABLE");
-    }
-    database.exec(`
-      CREATE TABLE shutdown_diagnostic (
-        id INTEGER PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-    `);
-    database
-      .prepare("INSERT INTO shutdown_diagnostic (id, value) VALUES (?, ?)")
-      .run(1, "fixed-nonsecret-sentinel");
-    if (database.pragma("integrity_check", { simple: true }) !== "ok") {
-      fail("DATABASE_INTEGRITY_FAILED");
-    }
-    closeDatabase(database);
-    database = undefined;
-    return fixedResult("pass", "SHUTDOWN_SQLCIPHER_READY", {
-      cipherVersion,
-      integrityVerified: true,
-      rawKeyBinding: true,
-    });
-  } finally {
-    key.fill(0);
     closeQuietly(database);
   }
 }
@@ -1344,28 +1096,17 @@ try {
 } catch (error) {
   const failure =
     error instanceof ProbeFailure ? error : new ProbeFailure("CONFIG_INVALID");
-  finish(fixedResult("fail", failure.code), failure.exitCode);
+  writeFixedResult(fixedResult("fail", failure.code), failure.exitCode);
+  process.exit(failure.exitCode);
 }
 
 if (config) {
-  if (SHUTDOWN_DIAGNOSTIC_MODES.has(config.mode)) {
-    app.on("quit", () => {
-      writeLifecycleMarker(ELECTRON_QUIT_OBSERVED_TYPE);
-    });
-  }
   app.whenReady().then(async () => {
     try {
       verifyPackagedIdentity();
+      if (config.mode === "provision") await awaitProviderBootstrapTurn();
       let result;
-      if (config.mode === "shutdown-fault") {
-        result = fixedResult("pass", "SHUTDOWN_FAULT_ARMED");
-      } else if (config.mode === "shutdown-control") {
-        result = fixedResult("pass", "SHUTDOWN_CONTROL_READY");
-      } else if (config.mode === "shutdown-provider") {
-        result = await verifyShutdownProvider();
-      } else if (config.mode === "shutdown-sqlcipher") {
-        result = await verifyShutdownSqlcipher();
-      } else if (config.mode === "plaintext") {
+      if (config.mode === "plaintext") {
         const Database = await loadDatabaseConstructor();
         result = createPlaintextFixture(Database);
       } else {
