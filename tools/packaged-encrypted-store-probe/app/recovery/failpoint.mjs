@@ -182,7 +182,12 @@ export function prepareRecoveryWalFaultBaseline(
   const walBaselineBytes = normalizedWalBytes(walPath);
   invariant(walBaselineBytes === 0, "RECOVERY_WAL_BASELINE_NOT_EMPTY");
 
-  const walPageSize = database.pragma("page_size", { simple: true });
+  const rawWalPageSize = database.pragma("page_size", { simple: true });
+  const walPageSize =
+    typeof rawWalPageSize === "string" &&
+    /^[1-9][0-9]{2,4}$/.test(rawWalPageSize)
+      ? Number(rawWalPageSize)
+      : rawWalPageSize;
   invariant(
     Number.isSafeInteger(walPageSize) &&
       walPageSize >= 512 &&

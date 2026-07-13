@@ -7,6 +7,7 @@ import { app, safeStorage } from "electron";
 import {
   RECOVERY_CAPTURE_FAILPOINTS,
   RECOVERY_CAPTURE_SCENARIO,
+  RecoveryCaptureFixtureError,
   bootstrapRecoveryCaptureSchema,
   executeRecoveryCapture,
 } from "./recovery/capture-command.mjs";
@@ -1486,10 +1487,16 @@ if (config) {
       }
       exitCode = 0;
     } catch (error) {
+      const recoveryFailureCode =
+        error instanceof RecoveryCaptureFixtureError &&
+        typeof error.code === "string" &&
+        /^RECOVERY_[A-Z0-9_]+$/.test(error.code)
+          ? error.code
+          : undefined;
       const failure =
         error instanceof ProbeFailure
           ? error
-          : new ProbeFailure("PROBE_FAILED");
+          : new ProbeFailure(recoveryFailureCode ?? "PROBE_FAILED");
       result = fixedResult("fail", failure.code);
       exitCode = failure.exitCode;
     }

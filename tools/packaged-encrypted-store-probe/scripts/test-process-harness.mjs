@@ -71,7 +71,7 @@ function runChild(mode) {
       process.execPath,
       [filename, "--harness-child=pipe-holder"],
       {
-        detached: true,
+        detached: process.platform !== "win32",
         stdio: ["ignore", 1, 2],
         windowsHide: true,
       },
@@ -141,13 +141,31 @@ if (childArgument) {
     provider.stderr.fill(0);
   }
 
+  const windowsTreeFault = process.platform === "win32";
+  let windowsSurvivorPid;
   const fault = await forceCrashPackagedProcessAtBoundary({
     executable: process.execPath,
-    args: [filename, "--harness-child=fault"],
+    args: [
+      filename,
+      `--harness-child=${windowsTreeFault ? "fault-survivor" : "fault"}`,
+    ],
     errorContext: "fault-test",
     timeoutMs: 10_000,
     parseBoundary: (line, processId) => {
       const value = JSON.parse(line.toString("utf8"));
+      if (windowsTreeFault) {
+        ensure(
+          value?.type === "fault-survivor-boundary/v1" &&
+            value.processId === processId &&
+            Number.isSafeInteger(value.survivorPid) &&
+            value.survivorPid > 0 &&
+            Object.keys(value).sort().join(",") ===
+              "processId,survivorPid,type",
+          "TEST_FAULT_BOUNDARY_INVALID",
+        );
+        windowsSurvivorPid = value.survivorPid;
+        return value;
+      }
       ensure(
         value?.type === "fault-boundary/v1" &&
           value.processId === processId &&
@@ -163,10 +181,16 @@ if (childArgument) {
   });
   try {
     ensure(
-      fault.boundary.type === "fault-boundary/v1" &&
+      fault.boundary.type ===
+        (windowsTreeFault
+          ? "fault-survivor-boundary/v1"
+          : "fault-boundary/v1") &&
         fault.beforeKillEvidence.boundaryObserved === true &&
         fault.forcedKillVerified === true &&
-        fault.processIds.includes(fault.childPid),
+        fault.processIds.includes(fault.childPid) &&
+        (!windowsTreeFault ||
+          (fault.processIds.length >= 2 &&
+            fault.processIds.includes(windowsSurvivorPid))),
       "TEST_FORCED_PROCESS_INVALID",
     );
   } finally {

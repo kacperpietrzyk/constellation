@@ -26,9 +26,15 @@ function ensure(condition, code) {
 
 class NodeSqliteAdapter {
   #database;
+  #pageSizeOverride;
 
-  constructor(filename) {
+  constructor(filename, { pageSizeOverride } = {}) {
+    ensure(
+      pageSizeOverride === undefined || typeof pageSizeOverride === "string",
+      "TEST_PAGE_SIZE_OVERRIDE_INVALID",
+    );
     this.#database = new DatabaseSync(filename, { timeout: 5_000 });
+    this.#pageSizeOverride = pageSizeOverride;
   }
 
   get inTransaction() {
@@ -49,6 +55,9 @@ class NodeSqliteAdapter {
     if (rows.length === 0) return undefined;
     const values = Object.values(rows[0]);
     ensure(values.length === 1, "TEST_PRAGMA_SHAPE_INVALID");
+    if (source === "page_size" && this.#pageSizeOverride !== undefined) {
+      return this.#pageSizeOverride;
+    }
     return values[0];
   }
 
@@ -74,6 +83,60 @@ let database;
 let missingProjectionDatabase;
 
 try {
+  const textPageSizeDatabase = new NodeSqliteAdapter(
+    path.join(root, "text-page-size.db"),
+    { pageSizeOverride: "4096" },
+  );
+  try {
+    bootstrapRecoveryCaptureSchema(textPageSizeDatabase);
+    const textPageSizeBaseline = prepareRecoveryWalFaultBaseline(
+      textPageSizeDatabase,
+      {
+        walPath: path.join(root, "text-page-size.db-wal"),
+        cacheSizePages: 8,
+      },
+    );
+    ensure(
+      textPageSizeBaseline.walPageSize === 4096,
+      "TEST_TEXT_PAGE_SIZE_NOT_NORMALIZED",
+    );
+  } finally {
+    textPageSizeDatabase.close();
+  }
+
+  for (const [index, malformedPageSize] of [
+    " 4096",
+    "04096",
+    "+4096",
+    "4096.0",
+    "4096x",
+  ].entries()) {
+    const malformedPageSizeDatabase = new NodeSqliteAdapter(
+      path.join(root, `malformed-page-size-${index}.db`),
+      { pageSizeOverride: malformedPageSize },
+    );
+    try {
+      bootstrapRecoveryCaptureSchema(malformedPageSizeDatabase);
+      let malformedPageSizeRejected = false;
+      try {
+        prepareRecoveryWalFaultBaseline(malformedPageSizeDatabase, {
+          walPath: path.join(root, `malformed-page-size-${index}.db-wal`),
+          cacheSizePages: 8,
+        });
+      } catch (error) {
+        malformedPageSizeRejected =
+          error instanceof RecoveryCaptureFixtureError &&
+          error.code === "RECOVERY_WAL_PAGE_SIZE_INVALID";
+      }
+      ensure(
+        malformedPageSizeRejected,
+        "TEST_MALFORMED_TEXT_PAGE_SIZE_ACCEPTED",
+      );
+    } finally {
+      malformedPageSizeDatabase.close();
+    }
+  }
+
   missingProjectionDatabase = new NodeSqliteAdapter(
     path.join(root, "missing-fts-projection.db"),
   );
@@ -227,6 +290,8 @@ try {
       plaintextWalCanaryControl: true,
       uncommittedWalFramesObserved: true,
       idempotentReplayWithoutChurn: true,
+      sqlCipherTextPageSizeNormalized: true,
+      malformedTextPageSizesRejected: true,
     })}\n`,
   );
 } finally {

@@ -392,6 +392,25 @@ async function forceFault(options) {
       } catch {
         throw new Error("FAULT_BOUNDARY_INVALID");
       }
+      if (hasExactKeys(record, fixedResultKeys)) {
+        ensure(
+          record.status === "fail" &&
+            typeof record.code === "string" &&
+            /^[A-Z][A-Z0-9_]{0,127}$/.test(record.code) &&
+            record.phase === "recovery-fault" &&
+            record.platform === process.platform &&
+            record.architecture === "x64" &&
+            record.electron === "43.1.0" &&
+            record.packaged === true &&
+            record.processId === processId &&
+            record.nativeAddonPackaged === true &&
+            Number.isInteger(record.declaredExitCode) &&
+            record.declaredExitCode > 0 &&
+            record.declaredExitCode <= 255,
+          "FAULT_CHILD_FAILURE_RESULT_INVALID",
+        );
+        throw new Error(`FAULT_CHILD_FAILED_BEFORE_BOUNDARY:${record.code}`);
+      }
       assertRecoveryFaultBoundaryRecord(record);
       ensure(record.processId === processId, "FAULT_PROCESS_ID_INVALID");
       ensure(record.failpoint === options.failpoint, "FAULT_POINT_INVALID");

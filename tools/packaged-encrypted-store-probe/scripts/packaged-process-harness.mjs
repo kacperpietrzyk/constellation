@@ -509,26 +509,26 @@ function matchingWindowsProcessIdentities(identities) {
   if (
     !Array.isArray(identities) ||
     identities.length > 64 ||
-    !identities.every(isWindowsProcessIdentity)
+    !identities.every(isWindowsProcessIdentity) ||
+    new Set(identities.map((identity) => identity.pid)).size !==
+      identities.length
   ) {
     throw new Error("WINDOWS_PROCESS_IDENTITIES_INVALID");
   }
   if (identities.length === 0) return [];
   const script = String.raw`
 $ErrorActionPreference = 'Stop'
-$expected = @(ConvertFrom-Json $env:CONSTELLATION_FAULT_PROCESS_IDENTITIES)
-$rows = @(Get-CimInstance Win32_Process | Select-Object ProcessId, CreationDate)
-$byPid = @{}
-foreach ($row in $rows) { $byPid[[int]$row.ProcessId] = $row }
-$matches = foreach ($identity in $expected) {
-  $processId = [int]$identity.pid
-  if (-not $byPid.ContainsKey($processId)) { continue }
-  $actualCreationDate = ([datetime]$byPid[$processId].CreationDate).ToUniversalTime().ToString('o', [Globalization.CultureInfo]::InvariantCulture)
-  if ([string]::Equals($actualCreationDate, [string]$identity.creationDate, [StringComparison]::Ordinal)) {
-    $processId
-  }
+$pidText = $env:CONSTELLATION_FAULT_PROCESS_IDS
+if ($pidText -notmatch '^[1-9][0-9]{0,9}(,[1-9][0-9]{0,9}){0,63}$') { exit 2 }
+$expectedPids = @($pidText.Split(',') | ForEach-Object { [int]$_ })
+$filterClauses = @($expectedPids | ForEach-Object { "ProcessId = $_" })
+$filter = [string]::Join(' OR ', [string[]]$filterClauses)
+$rows = @(Get-CimInstance Win32_Process -Filter $filter | Select-Object ProcessId, CreationDate)
+foreach ($row in ($rows | Sort-Object ProcessId)) {
+  $processId = [int]$row.ProcessId
+  $actualCreationDate = ([datetime]$row.CreationDate).ToUniversalTime().ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+  [Console]::Out.WriteLine(("{0}{1}{2}" -f $processId, [char]9, $actualCreationDate))
 }
-ConvertTo-Json -InputObject @($matches | Sort-Object) -Compress
 `;
   const result = spawnSync(
     "powershell.exe",
@@ -536,7 +536,9 @@ ConvertTo-Json -InputObject @($matches | Sort-Object) -Compress
     {
       env: {
         ...process.env,
-        CONSTELLATION_FAULT_PROCESS_IDENTITIES: JSON.stringify(identities),
+        CONSTELLATION_FAULT_PROCESS_IDS: identities
+          .map((identity) => identity.pid)
+          .join(","),
       },
       encoding: "utf8",
       windowsHide: true,
@@ -547,24 +549,35 @@ ConvertTo-Json -InputObject @($matches | Sort-Object) -Compress
   if (result.status !== 0 || result.signal !== null) {
     throw new Error("WINDOWS_PROCESS_IDENTITY_CHECK_FAILED");
   }
-  let value;
-  try {
-    value = JSON.parse(result.stdout.trim());
-  } catch {
-    throw new Error("WINDOWS_PROCESS_IDENTITY_CHECK_INVALID");
-  }
+  const output = result.stdout.trim();
+  const value = output
+    ? output.split(/\r?\n/).map((line) => {
+        const fields = line.split("\t");
+        return {
+          pid: fields.length === 2 ? Number(fields[0]) : Number.NaN,
+          creationDate: fields.length === 2 ? fields[1] : "",
+        };
+      })
+    : [];
   if (
     !Array.isArray(value) ||
-    !value.every(
-      (pid) =>
-        Number.isSafeInteger(pid) &&
-        identities.some((identity) => identity.pid === pid),
+    !value.every(isWindowsProcessIdentity) ||
+    !value.every((actualIdentity) =>
+      identities.some((identity) => identity.pid === actualIdentity.pid),
     ) ||
-    new Set(value).size !== value.length
+    new Set(value.map((identity) => identity.pid)).size !== value.length
   ) {
     throw new Error("WINDOWS_PROCESS_IDENTITY_CHECK_INVALID");
   }
-  return value;
+  return identities
+    .filter((identity) =>
+      value.some(
+        (actualIdentity) =>
+          actualIdentity.pid === identity.pid &&
+          actualIdentity.creationDate === identity.creationDate,
+      ),
+    )
+    .map((identity) => identity.pid);
 }
 
 async function waitForForcedTreeAbsence(rootPid, processIdentities) {
