@@ -14,10 +14,21 @@ import {
 } from "node:fs";
 import path from "node:path";
 
-import type { WorkspaceId } from "@constellation/contracts";
+import {
+  CredentialIdSchema,
+  GrantIdSchema,
+  PrincipalIdSchema,
+  SpaceIdSchema,
+  WorkspaceIdSchema,
+  type CredentialId,
+  type GrantId,
+  type PrincipalId,
+  type SpaceId,
+  type WorkspaceId,
+} from "@constellation/contracts";
 
-const PAYLOAD_FORMAT = "constellation.workspace-key-payload/v1";
-const WRAPPER_FORMAT = "constellation.workspace-key-wrapper/v1";
+const PAYLOAD_FORMAT = "constellation.workspace-key-payload/v2";
+const WRAPPER_FORMAT = "constellation.workspace-key-wrapper/v2";
 const KEY_VERSION = 1;
 const MAX_WRAPPER_BYTES = 64 * 1024;
 
@@ -25,6 +36,19 @@ export interface AsyncSafeStorage {
   isAsyncEncryptionAvailable(): Promise<boolean>;
   encryptStringAsync(value: string): Promise<Buffer>;
   decryptStringAsync(value: Buffer): Promise<string>;
+}
+
+export interface WorkspaceBootstrapIdentity {
+  readonly workspaceId: WorkspaceId;
+  readonly rootSpaceId: SpaceId;
+  readonly principalId: PrincipalId;
+  readonly credentialId: CredentialId;
+  readonly grantId: GrantId;
+}
+
+export interface WorkspaceKeyBundle {
+  readonly identity: WorkspaceBootstrapIdentity;
+  readonly key: Buffer;
 }
 
 export class WorkspaceKeyCustodyError extends Error {
@@ -122,7 +146,37 @@ export class WorkspaceKeyCustody {
     private readonly wrapperPath: string,
   ) {}
 
-  public async create(workspaceId: WorkspaceId): Promise<Buffer> {
+  public discoverWorkspaceId(): WorkspaceId {
+    assertRegularFile(this.wrapperPath);
+    let contents: Buffer | undefined;
+    try {
+      contents = readFileSync(this.wrapperPath);
+      const wrapper = exactObject(parseJson(contents.toString("utf8")), [
+        "format",
+        "workspaceId",
+        "keyVersion",
+        "ciphertext",
+        "payloadDigest",
+      ]);
+      if (
+        wrapper?.format !== WRAPPER_FORMAT ||
+        wrapper.keyVersion !== KEY_VERSION
+      ) {
+        throw new WorkspaceKeyCustodyError("wrapper_invalid");
+      }
+      const workspaceId = WorkspaceIdSchema.safeParse(wrapper.workspaceId);
+      if (!workspaceId.success) {
+        throw new WorkspaceKeyCustodyError("wrapper_invalid");
+      }
+      return workspaceId.data;
+    } finally {
+      contents?.fill(0);
+    }
+  }
+
+  public async create(
+    identity: WorkspaceBootstrapIdentity,
+  ): Promise<WorkspaceKeyBundle> {
     if (!(await this.safeStorage.isAsyncEncryptionAvailable())) {
       throw new WorkspaceKeyCustodyError("encryption_unavailable");
     }
@@ -131,14 +185,18 @@ export class WorkspaceKeyCustody {
     try {
       const payload = JSON.stringify({
         format: PAYLOAD_FORMAT,
-        workspaceId,
+        workspaceId: identity.workspaceId,
+        rootSpaceId: identity.rootSpaceId,
+        principalId: identity.principalId,
+        credentialId: identity.credentialId,
+        grantId: identity.grantId,
         keyVersion: KEY_VERSION,
         keyMaterial: key.toString("base64url"),
       });
       const ciphertext = await this.safeStorage.encryptStringAsync(payload);
       const wrapper = {
         format: WRAPPER_FORMAT,
-        workspaceId,
+        workspaceId: identity.workspaceId,
         keyVersion: KEY_VERSION,
         ciphertext: ciphertext.toString("base64"),
         payloadDigest: sha256(payload),
@@ -151,7 +209,7 @@ export class WorkspaceKeyCustody {
         throw new WorkspaceKeyCustodyError("wrapper_invalid");
       }
       publishAtomically(this.wrapperPath, wrapperContents);
-      return key;
+      return { identity, key };
     } catch (error) {
       key.fill(0);
       if (error instanceof WorkspaceKeyCustodyError) throw error;
@@ -161,7 +219,7 @@ export class WorkspaceKeyCustody {
     }
   }
 
-  public async load(workspaceId: WorkspaceId): Promise<Buffer> {
+  public async load(workspaceId: WorkspaceId): Promise<WorkspaceKeyBundle> {
     if (!(await this.safeStorage.isAsyncEncryptionAvailable())) {
       throw new WorkspaceKeyCustodyError("encryption_unavailable");
     }
@@ -210,6 +268,10 @@ export class WorkspaceKeyCustody {
       const payload = exactObject(parseJson(payloadText), [
         "format",
         "workspaceId",
+        "rootSpaceId",
+        "principalId",
+        "credentialId",
+        "grantId",
         "keyVersion",
         "keyMaterial",
       ]);
@@ -233,7 +295,33 @@ export class WorkspaceKeyCustody {
         key.fill(0);
         throw new WorkspaceKeyCustodyError("wrapper_invalid");
       }
-      return key;
+      const identityResult = {
+        workspaceId: WorkspaceIdSchema.safeParse(payload.workspaceId),
+        rootSpaceId: SpaceIdSchema.safeParse(payload.rootSpaceId),
+        principalId: PrincipalIdSchema.safeParse(payload.principalId),
+        credentialId: CredentialIdSchema.safeParse(payload.credentialId),
+        grantId: GrantIdSchema.safeParse(payload.grantId),
+      };
+      if (
+        !identityResult.workspaceId.success ||
+        !identityResult.rootSpaceId.success ||
+        !identityResult.principalId.success ||
+        !identityResult.credentialId.success ||
+        !identityResult.grantId.success
+      ) {
+        key.fill(0);
+        throw new WorkspaceKeyCustodyError("wrapper_invalid");
+      }
+      return {
+        key,
+        identity: {
+          workspaceId: identityResult.workspaceId.data,
+          rootSpaceId: identityResult.rootSpaceId.data,
+          principalId: identityResult.principalId.data,
+          credentialId: identityResult.credentialId.data,
+          grantId: identityResult.grantId.data,
+        },
+      };
     } catch (error) {
       if (error instanceof WorkspaceKeyCustodyError) throw error;
       throw new WorkspaceKeyCustodyError("wrapper_invalid");

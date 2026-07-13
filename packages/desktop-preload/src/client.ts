@@ -28,9 +28,9 @@ export type RendererQueryResponse =
   | ContractRejection;
 
 export interface DesktopBuildInfo {
-  readonly channel: "developer-preview";
+  readonly channel: "developer-preview" | "local-alpha";
   readonly initialWorkspaceId: WorkspaceId;
-  readonly persistence: "in-memory";
+  readonly persistence: "in-memory" | "encrypted-local";
   readonly version: string;
 }
 

@@ -50,7 +50,11 @@ electron = spawn(
   ),
   ["./packages/desktop-main/dist/src/main.js"],
   {
-    env: { ...process.env, CONSTELLATION_RENDERER_URL: rendererUrl },
+    env: {
+      ...process.env,
+      CONSTELLATION_DESKTOP_MODE: "preview",
+      CONSTELLATION_RENDERER_URL: rendererUrl,
+    },
     stdio: "inherit",
   },
 );

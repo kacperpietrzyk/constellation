@@ -10,7 +10,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 
-import { WorkspaceIdSchema } from "@constellation/contracts";
+import {
+  CredentialIdSchema,
+  GrantIdSchema,
+  PrincipalIdSchema,
+  SpaceIdSchema,
+  WorkspaceIdSchema,
+} from "@constellation/contracts";
 
 import {
   WorkspaceKeyCustody,
@@ -21,6 +27,15 @@ import {
 const workspaceId = WorkspaceIdSchema.parse(
   "00000000-0000-4000-8000-000000000001",
 );
+const identity = {
+  workspaceId,
+  rootSpaceId: SpaceIdSchema.parse("00000000-0000-4000-8000-000000000002"),
+  principalId: PrincipalIdSchema.parse("00000000-0000-4000-8000-000000000003"),
+  credentialId: CredentialIdSchema.parse(
+    "00000000-0000-4000-8000-000000000004",
+  ),
+  grantId: GrantIdSchema.parse("00000000-0000-4000-8000-000000000005"),
+} as const;
 
 class SyntheticSafeStorage implements AsyncSafeStorage {
   public constructor(private readonly available = true) {}
@@ -60,26 +75,28 @@ describe("workspace key custody", () => {
         new SyntheticSafeStorage(),
         filename,
       );
-      const created = await custody.create(workspaceId);
-      assert.equal(created.length, 32);
-      const createdCopy = Buffer.from(created);
+      const created = await custody.create(identity);
+      assert.equal(created.key.length, 32);
+      assert.deepEqual(created.identity, identity);
+      const createdCopy = Buffer.from(created.key);
       const wrapper = readFileSync(filename);
-      assert.equal(wrapper.includes(created), false);
+      assert.equal(wrapper.includes(created.key), false);
       if (process.platform !== "win32") {
         assert.equal(statSync(filename).mode & 0o777, 0o600);
       }
       const restored = await custody.load(workspaceId);
-      assert.deepEqual(restored, createdCopy);
+      assert.deepEqual(restored.key, createdCopy);
+      assert.deepEqual(restored.identity, identity);
       assert.equal(
-        wrapper.includes(Buffer.from(created.toString("base64url"))),
+        wrapper.includes(Buffer.from(created.key.toString("base64url"))),
         false,
       );
-      created.fill(0);
+      created.key.fill(0);
       createdCopy.fill(0);
-      restored.fill(0);
+      restored.key.fill(0);
       wrapper.fill(0);
       await assert.rejects(
-        () => custody.create(workspaceId),
+        () => custody.create(identity),
         (error: unknown) => {
           assert(error instanceof WorkspaceKeyCustodyError);
           return error.code === "wrapper_exists";
@@ -95,7 +112,7 @@ describe("workspace key custody", () => {
         filename,
       );
       await assert.rejects(
-        () => unavailable.create(workspaceId),
+        () => unavailable.create(identity),
         (error: unknown) => {
           assert(error instanceof WorkspaceKeyCustodyError);
           return error.code === "encryption_unavailable";
@@ -106,8 +123,8 @@ describe("workspace key custody", () => {
         new SyntheticSafeStorage(),
         filename,
       );
-      const key = await custody.create(workspaceId);
-      key.fill(0);
+      const bundle = await custody.create(identity);
+      bundle.key.fill(0);
       const otherWorkspace = WorkspaceIdSchema.parse(
         "00000000-0000-4000-8000-000000000002",
       );

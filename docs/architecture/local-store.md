@@ -1,7 +1,7 @@
 # Local store
 
-Status: relational adapter and key-custody boundary implemented; not yet wired
-into the Electron developer preview.
+Status: relational adapter, key custody, and Electron runtime lifecycle
+implemented; native application packaging remains gated.
 
 `@constellation/local-store` implements the existing synchronous
 `ApplicationStore` port over a deliberately small SQLite-shaped driver. It does
@@ -41,13 +41,26 @@ proves all of the following:
 
 The key buffer is wiped after it is applied. Electron main owns asynchronous
 Keychain/DPAPI custody through `safeStorage`, workspace-context binding,
-authenticated wrapper metadata, and atomic `0600` wrapper publication.
+authenticated wrapper metadata, and atomic `0600` wrapper publication. The
+wrapped payload also retains generated workspace, root Space, principal,
+credential, and grant identifiers so desktop bootstrap never relies on a
+hard-coded privileged identity.
+
+The production desktop lifecycle creates or opens a fixed local workspace,
+verifies the stored root Space and membership, and exposes the same
+command/query service used by the in-memory preview. Restart tests cover
+workspace identity, Capture, Task, provenance, and the interrupted state where
+the wrapped identity exists but database creation did not finish.
 
 ## Remaining integration gate
 
-The desktop runtime still selects the in-memory preview service. The next step
-is to package the pinned native SQLCipher binding with the application, open the
-workspace through the encrypted gate, and replace the preview service only
-after packaged macOS and native Windows verification passes. Until then the UI
-continues to label itself as non-durable and no release claims encrypted local
-storage.
+The desktop entry point selects the durable runtime by default and requires the
+patched, capability-verified `better-sqlite3` binding. `npm run dev:desktop`
+explicitly selects the in-memory developer preview so ordinary web UI work does
+not imply durability. There is no plaintext or in-memory fallback in the local
+Alpha path.
+
+The remaining gate is to package that pinned native binding as the only
+unpacked native module and run the real application journey on packaged macOS
+and native Windows. No installable release claims encrypted local storage until
+that evidence passes.

@@ -5,6 +5,7 @@ import {
   BrowserWindow,
   globalShortcut,
   ipcMain,
+  safeStorage,
   session,
   shell,
 } from "electron";
@@ -14,11 +15,18 @@ import {
 } from "@constellation/desktop-preload/client";
 
 import { DESKTOP_PREVIEW_VERSION } from "./index.js";
+import { createBetterSqlite3Factory } from "./better-sqlite3-factory.js";
+import {
+  createDurableKernelService,
+  type DurableKernelService,
+} from "./durable-kernel-service.js";
 import {
   PREVIEW_IDENTITY,
   createPreviewKernelService,
 } from "./preview-service.js";
+import type { DesktopKernelService } from "./runtime-kernel-service.js";
 import { assertTrustedSender, isTrustedRendererUrl } from "./security.js";
+import type { AsyncSafeStorage } from "./workspace-key-custody.js";
 
 const developmentUrl = process.env.CONSTELLATION_RENDERER_URL;
 const preloadPath = fileURLToPath(
@@ -28,6 +36,48 @@ const rendererPath = fileURLToPath(
   new URL("../../../desktop-ui/dist/index.html", import.meta.url),
 );
 let mainWindow: BrowserWindow | undefined;
+let durableKernel: DurableKernelService | undefined;
+
+interface DesktopRuntime {
+  readonly buildInfo: DesktopBuildInfo;
+  readonly service: DesktopKernelService;
+}
+
+const electronSafeStorage: AsyncSafeStorage = {
+  isAsyncEncryptionAvailable: () => safeStorage.isAsyncEncryptionAvailable(),
+  encryptStringAsync: (value) => safeStorage.encryptStringAsync(value),
+  decryptStringAsync: async (value) =>
+    (await safeStorage.decryptStringAsync(value)).result,
+};
+
+const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
+  if (process.env.CONSTELLATION_DESKTOP_MODE === "preview") {
+    return {
+      service: createPreviewKernelService(),
+      buildInfo: {
+        channel: "developer-preview",
+        initialWorkspaceId: PREVIEW_IDENTITY.workspaceId,
+        persistence: "in-memory",
+        version: DESKTOP_PREVIEW_VERSION,
+      },
+    };
+  }
+  durableKernel = await createDurableKernelService({
+    databaseFactory: createBetterSqlite3Factory(),
+    safeStorage: electronSafeStorage,
+    stateRoot: app.getPath("userData"),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+  });
+  return {
+    service: durableKernel.service,
+    buildInfo: {
+      channel: "local-alpha",
+      initialWorkspaceId: durableKernel.identity.workspaceId,
+      persistence: "encrypted-local",
+      version: DESKTOP_PREVIEW_VERSION,
+    },
+  };
+};
 
 const createWindow = async (): Promise<BrowserWindow> => {
   const window = new BrowserWindow({
@@ -78,23 +128,18 @@ void app.whenReady().then(async () => {
     },
   );
 
-  const service = createPreviewKernelService();
+  const runtime = await createDesktopRuntime();
   ipcMain.handle(DESKTOP_CHANNELS.executeCommand, (event, command: unknown) => {
     assertTrustedSender(event, developmentUrl);
-    return service.execute(command);
+    return runtime.service.execute(command);
   });
   ipcMain.handle(DESKTOP_CHANNELS.runQuery, (event, query: unknown) => {
     assertTrustedSender(event, developmentUrl);
-    return service.query(query);
+    return runtime.service.query(query);
   });
   ipcMain.handle(DESKTOP_CHANNELS.getBuildInfo, (event) => {
     assertTrustedSender(event, developmentUrl);
-    return {
-      channel: "developer-preview",
-      initialWorkspaceId: PREVIEW_IDENTITY.workspaceId,
-      persistence: "in-memory",
-      version: DESKTOP_PREVIEW_VERSION,
-    } satisfies DesktopBuildInfo;
+    return runtime.buildInfo;
   });
 
   await createWindow();
@@ -125,4 +170,8 @@ void app.whenReady().then(async () => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
-app.on("will-quit", () => globalShortcut.unregisterAll());
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
+  durableKernel?.close();
+  durableKernel = undefined;
+});
