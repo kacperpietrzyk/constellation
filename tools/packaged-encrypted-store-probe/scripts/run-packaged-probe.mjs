@@ -236,8 +236,18 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
       if (settled || !preExitCleanupStarted) return;
       outputCollectionStopped = true;
       clearCapturedOutput();
+      if (child.connected && typeof child.disconnect === "function") {
+        try {
+          child.disconnect();
+        } catch {
+          // Cleanup is already failing; the bounded termination error remains
+          // authoritative after the remaining handles are detached.
+        }
+      }
+      child.channel?.unref?.();
       child.stdout.destroy();
       child.stderr.destroy();
+      child.unref();
       finish(() =>
         reject(
           new Error(
