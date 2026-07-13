@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   forceCrashPackagedProcessAtBoundary,
+  guardCapturedRootTermination,
   launchManagedPackagedProcess,
   retryTerminateWindowsProcessIdentities,
   snapshotWindowsProcessTree,
@@ -106,6 +107,11 @@ function runChild(mode) {
       holdForTest();
       process.exit(97);
     }, 25);
+    return;
+  }
+  if (mode === "fault-exit-after-boundary") {
+    writeObject({ type: "fault-boundary/v1", processId: process.pid });
+    setTimeout(() => process.exit(0), 25);
     return;
   }
   if (mode === "fault-duplicate") {
@@ -374,6 +380,83 @@ if (childArgument) {
     diagnosticFault.stderr.fill(0);
   }
 
+  let delayedBeforeKillCompleted = false;
+  let preKillExitError;
+  try {
+    await forceCrashPackagedProcessAtBoundary({
+      executable: process.execPath,
+      args: [filename, "--harness-child=fault-exit-after-boundary"],
+      errorContext: "fault-exit-during-pre-kill-test",
+      timeoutMs: 10_000,
+      parseBoundary: parseSimpleFaultBoundary,
+      beforeKill: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        delayedBeforeKillCompleted = true;
+        return { boundaryObserved: true };
+      },
+    });
+  } catch (error) {
+    preKillExitError = error;
+  }
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  ensure(
+    preKillExitError?.message === "FAULT_PROCESS_EXITED_DURING_PRE_KILL" &&
+      delayedBeforeKillCompleted === true,
+    "TEST_PRE_KILL_EXIT_GUARD_INVALID",
+  );
+
+  let identityChangedTerminationCalls = 0;
+  const capturedWindowsRoot = {
+    pid: 4242,
+    creationDate: "2026-01-01T00:00:00.0000000Z",
+  };
+  const capturedPosixRoot = {
+    pid: 4242,
+    pgid: 4242,
+    uid: 501,
+    startedAt: "Thu Jan  1 00:00:00 2026",
+  };
+  for (const [platform, capturedIdentity, currentIdentity] of [
+    [
+      "win32",
+      capturedWindowsRoot,
+      { ...capturedWindowsRoot, creationDate: "2026-01-01T00:00:01.0000000Z" },
+    ],
+    [
+      "darwin",
+      capturedPosixRoot,
+      { ...capturedPosixRoot, startedAt: "Thu Jan  1 00:00:01 2026" },
+    ],
+  ]) {
+    ensure(
+      guardCapturedRootTermination({
+        platform,
+        capturedIdentity,
+        currentIdentity,
+        terminate: () => {
+          identityChangedTerminationCalls += 1;
+          return true;
+        },
+      }) === false,
+      "TEST_CHANGED_ROOT_IDENTITY_ACCEPTED",
+    );
+  }
+  let matchingCapturedIdentity;
+  ensure(
+    guardCapturedRootTermination({
+      platform: "win32",
+      capturedIdentity: capturedWindowsRoot,
+      currentIdentity: { ...capturedWindowsRoot },
+      terminate: (capturedIdentity) => {
+        matchingCapturedIdentity = capturedIdentity;
+        return true;
+      },
+    }) === true &&
+      matchingCapturedIdentity === capturedWindowsRoot &&
+      identityChangedTerminationCalls === 0,
+    "TEST_CAPTURED_ROOT_TERMINATION_GUARD_INVALID",
+  );
+
   let duplicateError;
   try {
     await forceCrashPackagedProcessAtBoundary({
@@ -626,6 +709,8 @@ if (childArgument) {
       stdoutProtocolScanner: true,
       detachedProcessGroupRejected: process.platform !== "win32",
       postKillWatchdog: postKillWatchdogVerified,
+      preKillExitGuard: true,
+      identityChangeTerminationGuard: true,
       windowsIdentityGuard: windowsIdentityGuardVerified,
       windowsIdentityRetry: windowsIdentityRetryVerified,
     })}\n`,

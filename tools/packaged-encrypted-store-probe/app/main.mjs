@@ -28,8 +28,10 @@ import {
   GENERATION_PUBLICATION_IDS,
   GENERATION_PUBLICATION_SCENARIO,
   GenerationPublicationError,
+  assertRecoverableGenerationSourceSidecars,
   createGenerationFaultBoundaryRecord,
   createGenerationPublicationFixture,
+  digestGenerationValue,
   getGenerationPublicationPaths,
   publishGenerationManifest,
   verifyGenerationPublicationState,
@@ -41,13 +43,17 @@ import {
   verifyGenerationDatabaseIdentity,
 } from "./recovery/generation-verifier.mjs";
 import {
+  GENERATION_CANDIDATE_BUILD_FAILPOINTS,
+  GENERATION_CANDIDATE_BUILD_SCENARIO,
   GENERATION_PREPARATION_FAILPOINTS,
   GENERATION_PREPARATION_SCENARIO,
+  createGenerationCandidateBuildFaultBoundaryRecord,
   createGenerationCandidateVerifiedRecord,
   createGenerationPreparationFaultBoundaryRecord,
   createGenerationPreparationIntent,
   getGenerationPreparationPaths,
   handoffPreparedGeneration,
+  recoverUnsealedGenerationCandidateBuild,
   verifyGenerationPreparationRecordPrerequisites,
   verifyGenerationPreparationState,
 } from "./recovery/generation-preparation.mjs";
@@ -122,6 +128,7 @@ const PROGRESS_STAGES = new Set([
   "generation-record-operation-ready",
   "generation-record-source-ready",
   "generation-record-fault-boundary-ready",
+  "generation-candidate-build-fault-boundary-ready",
   "result-ready",
   "result-published",
 ]);
@@ -160,6 +167,11 @@ const GENERATION_RECORD_MODES = new Set([
   "generation-record-recover-intent",
   "generation-record-recover-verified",
   "generation-record-recover-operation",
+]);
+const GENERATION_CANDIDATE_BUILD_MODES = new Set([
+  "generation-candidate-source-setup",
+  "generation-candidate-fault",
+  "generation-candidate-recover-verified",
 ]);
 const EXIT_CODES = Object.freeze({
   CONFIG_INVALID: 80,
@@ -381,11 +393,14 @@ function parseConfig() {
   const generationMode = GENERATION_MODES.has(mode);
   const generationPreparationMode = GENERATION_PREPARATION_MODES.has(mode);
   const generationRecordMode = GENERATION_RECORD_MODES.has(mode);
+  const generationCandidateBuildMode =
+    GENERATION_CANDIDATE_BUILD_MODES.has(mode);
   const scenarioMode =
     recoveryMode ||
     generationMode ||
     generationPreparationMode ||
-    generationRecordMode;
+    generationRecordMode ||
+    generationCandidateBuildMode;
   if (!STANDARD_MODES.has(mode) && !scenarioMode) fail("CONFIG_INVALID");
   const allowedPrefixes = scenarioMode
     ? [...basePrefixes, "--probe-scenario=", "--probe-failpoint="]
@@ -443,6 +458,15 @@ function parseConfig() {
       !IMMUTABLE_RECORD_FAILPOINTS.includes(failpoint) ||
       (mode === "generation-record-fault" && failpoint === "none") ||
       (mode !== "generation-record-fault" && failpoint !== "none"))
+  ) {
+    fail("CONFIG_INVALID");
+  }
+  if (
+    generationCandidateBuildMode &&
+    (scenario !== GENERATION_CANDIDATE_BUILD_SCENARIO ||
+      !GENERATION_CANDIDATE_BUILD_FAILPOINTS.includes(failpoint) ||
+      (mode === "generation-candidate-fault" && failpoint === "none") ||
+      (mode !== "generation-candidate-fault" && failpoint !== "none"))
   ) {
     fail("CONFIG_INVALID");
   }
@@ -882,6 +906,7 @@ function readEncryptionFacts(database) {
       !/^OpenSSL 3\.5\.7\b/.test(providerVersion)) ||
     !compileOptions.has("HAS_CODEC") ||
     !compileOptions.has("ENABLE_FTS5") ||
+    !compileOptions.has("TEMP_STORE=2") ||
     !compileOptions.has("OMIT_LOAD_EXTENSION")
   ) {
     fail("ENCRYPTION_UNAVAILABLE");
@@ -1524,14 +1549,20 @@ async function runRecoveryMode(Database) {
   });
 }
 
-function checkpointAndCloseGenerationDatabase(database, databasePath) {
+function checkpointAndCloseGenerationDatabase(
+  database,
+  databasePath,
+  reachCheckpointFailpoint,
+) {
   try {
     const checkpoint = database.pragma("wal_checkpoint(TRUNCATE)");
     if (
       !Array.isArray(checkpoint) ||
       checkpoint.length !== 1 ||
       !hasExactKeys(checkpoint[0], ["busy", "checkpointed", "log"]) ||
-      checkpoint[0].busy !== 0
+      checkpoint[0].busy !== 0 ||
+      checkpoint[0].checkpointed !== 0 ||
+      checkpoint[0].log !== 0
     ) {
       fail("DATABASE_INTEGRITY_FAILED");
     }
@@ -1539,6 +1570,10 @@ function checkpointAndCloseGenerationDatabase(database, databasePath) {
     if (error instanceof ProbeFailure) throw error;
     fail("DATABASE_INTEGRITY_FAILED");
   }
+  reachCheckpointFailpoint?.({
+    failpoint: "after-candidate-checkpointed",
+    transactionOpen: database.inTransaction,
+  });
   closeDatabase(database);
   for (const suffix of ["-wal", "-shm", "-journal"]) {
     const sidecar = `${databasePath}${suffix}`;
@@ -1587,6 +1622,7 @@ function removeGenerationReadSidecars(databasePath) {
     if (
       !metadata.isFile() ||
       metadata.isSymbolicLink() ||
+      metadata.nlink !== 1 ||
       (suffix === "-wal" && metadata.size !== 0) ||
       (suffix === "-shm" && metadata.size > 128 * 1024)
     ) {
@@ -1607,12 +1643,47 @@ function createGenerationDatabaseVerifier({
   markerDigest,
   scope,
   canaries,
+  expectExportTimingPayload = false,
 }) {
   let lastFacts;
   let lastCaptureVerification;
+  const verifyOpenedDatabase = (
+    database,
+    { expectedIdentity, expectedIdentityDigest, role },
+  ) => {
+    lastFacts = readEncryptionFacts(database);
+    const marker = readAndVerifyMarker(database, markerDigest);
+    addEncodedCanaries(
+      scope,
+      canaries,
+      scope.keep(Buffer.from(marker, "utf8")),
+    );
+    lastCaptureVerification = verifyRecoveryCaptureState(database, {
+      expectedState: "committed",
+    });
+    if (expectExportTimingPayload) {
+      verifyGenerationExportTimingPayload(database);
+    }
+    const identity = verifyGenerationDatabaseIdentity(database, {
+      expectedIdentity,
+      expectedIdentityDigest,
+      expectMigration: role === "candidate",
+    });
+    verifyDatabaseIntegrity(database);
+    return identity;
+  };
   return {
     verify({ databasePath, expectedIdentity, expectedIdentityDigest, role }) {
-      assertGenerationDatabaseSidecarsAbsent(databasePath);
+      if (role !== "source" && role !== "candidate") {
+        throw new GenerationPublicationError(
+          "GENERATION_DATABASE_ROLE_INVALID",
+        );
+      }
+      if (role === "source") {
+        assertRecoverableGenerationSourceSidecars(databasePath);
+      } else {
+        assertGenerationDatabaseSidecarsAbsent(databasePath);
+      }
       const key = scope.keep(Buffer.from(baseKey));
       let database;
       try {
@@ -1622,26 +1693,19 @@ function createGenerationDatabaseVerifier({
           { readonly: true, fileMustExist: true },
           databasePath,
         );
-        lastFacts = readEncryptionFacts(database);
-        const marker = readAndVerifyMarker(database, markerDigest);
-        addEncodedCanaries(
-          scope,
-          canaries,
-          scope.keep(Buffer.from(marker, "utf8")),
-        );
-        lastCaptureVerification = verifyRecoveryCaptureState(database, {
-          expectedState: "committed",
-        });
-        const identity = verifyGenerationDatabaseIdentity(database, {
+        const identity = verifyOpenedDatabase(database, {
           expectedIdentity,
           expectedIdentityDigest,
-          expectMigration: role === "candidate",
+          role,
         });
-        verifyDatabaseIntegrity(database);
         closeDatabase(database);
         database = undefined;
-        removeGenerationReadSidecars(databasePath);
-        assertGenerationDatabaseSidecarsAbsent(databasePath);
+        if (role === "source") {
+          assertRecoverableGenerationSourceSidecars(databasePath);
+        } else {
+          removeGenerationReadSidecars(databasePath);
+          assertGenerationDatabaseSidecarsAbsent(databasePath);
+        }
         return identity;
       } finally {
         closeQuietly(database);
@@ -1656,6 +1720,67 @@ function createGenerationDatabaseVerifier({
       return lastCaptureVerification;
     },
   };
+}
+
+function acquireGenerationPreparationLock({
+  Database,
+  sourceDatabasePath,
+  key,
+}) {
+  assertRecoverableGenerationSourceSidecars(sourceDatabasePath);
+  let database;
+  try {
+    database = openKeyedDatabase(
+      Database,
+      key,
+      { fileMustExist: true },
+      sourceDatabasePath,
+    );
+    database.pragma("foreign_keys = ON");
+    if (database.pragma("foreign_keys", { simple: true }) !== 1) {
+      throw new GenerationPublicationError(
+        "GENERATION_PREPARATION_LOCK_INVALID",
+      );
+    }
+    database.pragma("busy_timeout = 0");
+    database.exec("BEGIN IMMEDIATE");
+    if (!database.inTransaction) {
+      throw new GenerationPublicationError(
+        "GENERATION_PREPARATION_LOCK_INVALID",
+      );
+    }
+    return database;
+  } catch (error) {
+    closeQuietly(database);
+    if (
+      error instanceof ProbeFailure ||
+      error instanceof GenerationPublicationError
+    ) {
+      throw error;
+    }
+    if (
+      error?.code === "SQLITE_BUSY" ||
+      (typeof error?.code === "string" && error.code.startsWith("SQLITE_BUSY_"))
+    ) {
+      throw new GenerationPublicationError("GENERATION_PREPARATION_BUSY");
+    }
+    throw new GenerationPublicationError("GENERATION_PREPARATION_LOCK_FAILED");
+  }
+}
+
+function releaseGenerationPreparationLock(database) {
+  if (!database) return;
+  if (database.inTransaction) {
+    try {
+      database.exec("ROLLBACK");
+    } catch {
+      closeQuietly(database);
+      throw new GenerationPublicationError(
+        "GENERATION_PREPARATION_LOCK_RELEASE_FAILED",
+      );
+    }
+  }
+  closeDatabase(database);
 }
 
 function emitGenerationFaultBoundaryRecord(record) {
@@ -1679,12 +1804,292 @@ function digestFileHex(filename) {
     .digest("hex");
 }
 
+function installGenerationExportTimingPayload(database) {
+  try {
+    database.exec("BEGIN IMMEDIATE");
+    database.exec(`
+      CREATE TABLE generation_export_timing_payload (
+        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+        payload BLOB NOT NULL CHECK (length(payload) = 67108864)
+      ) STRICT;
+      INSERT INTO generation_export_timing_payload (singleton, payload)
+      VALUES (1, zeroblob(67108864));
+    `);
+    database.exec("COMMIT");
+    verifyGenerationExportTimingPayload(database);
+  } catch {
+    if (database.inTransaction) {
+      try {
+        database.exec("ROLLBACK");
+      } catch {
+        // Preserve the bounded fixture failure.
+      }
+    }
+    fail("DATABASE_INTEGRITY_FAILED");
+  }
+}
+
+function verifyGenerationExportTimingPayload(database) {
+  let row;
+  try {
+    row = database
+      .prepare(
+        `SELECT
+          count(*) AS rows,
+          min(singleton) AS minimumSingleton,
+          max(singleton) AS maximumSingleton,
+          sum(length(payload)) AS payloadBytes,
+          min(typeof(payload)) AS payloadType
+         FROM generation_export_timing_payload`,
+      )
+      .get();
+  } catch {
+    fail("DATABASE_INTEGRITY_FAILED");
+  }
+  if (
+    !hasExactKeys(row, [
+      "maximumSingleton",
+      "minimumSingleton",
+      "payloadBytes",
+      "payloadType",
+      "rows",
+    ]) ||
+    row.rows !== 1 ||
+    row.minimumSingleton !== 1 ||
+    row.maximumSingleton !== 1 ||
+    row.payloadBytes !== 67_108_864 ||
+    row.payloadType !== "blob"
+  ) {
+    fail("DATABASE_INTEGRITY_FAILED");
+  }
+}
+
+function buildAndVerifyStagedGenerationCandidate({
+  Database,
+  paths,
+  fixture,
+  markerDigest,
+  baseKey,
+  scope,
+  reachCandidateFailpoint,
+  sourceLockHeld = false,
+  expectExportTimingPayload = false,
+}) {
+  if (
+    pathKind(paths.buildingCandidateDirectoryPath) ||
+    pathKind(paths.discardingCandidateDirectoryPath) ||
+    pathKind(paths.stagingCandidateDirectoryPath) ||
+    pathKind(paths.candidateGenerationDirectoryPath)
+  ) {
+    fail("DATABASE_EXISTS");
+  }
+  try {
+    fs.mkdirSync(paths.buildingCandidateDirectoryPath, {
+      recursive: false,
+      mode: 0o700,
+    });
+  } catch {
+    fail("DATABASE_INTEGRITY_FAILED");
+  }
+  reserveDatabase(paths.buildingDatabasePath);
+
+  let database;
+  let attached = false;
+  try {
+    const sourceKey = scope.keep(Buffer.from(baseKey));
+    const exportKey = scope.keep(Buffer.from(baseKey));
+    database = openKeyedDatabase(
+      Database,
+      sourceKey,
+      { fileMustExist: true },
+      paths.sourceDatabasePath,
+    );
+    try {
+      database
+        .prepare("ATTACH DATABASE ? AS encrypted_export")
+        .run(paths.buildingDatabasePath);
+      attached = true;
+      try {
+        database.key(exportKey, "encrypted_export");
+      } finally {
+        exportKey.fill(0);
+      }
+      if (
+        database.pragma("encrypted_export.journal_mode = DELETE", {
+          simple: true,
+        }) !== "delete"
+      ) {
+        fail("DATABASE_INTEGRITY_FAILED");
+      }
+      database.pragma("encrypted_export.synchronous = FULL");
+      database.exec("BEGIN");
+      reachCandidateFailpoint?.({
+        failpoint: "during-sqlcipher-export",
+        transactionOpen: database.inTransaction,
+      });
+      database.prepare("SELECT sqlcipher_export('encrypted_export')").get();
+      database.pragma("encrypted_export.user_version = 1");
+      if (
+        database.pragma("encrypted_export.user_version", { simple: true }) !== 1
+      ) {
+        fail("DATABASE_INTEGRITY_FAILED");
+      }
+      database.exec("COMMIT");
+      database.exec("DETACH DATABASE encrypted_export");
+      attached = false;
+    } catch (error) {
+      if (database.inTransaction) {
+        try {
+          database.exec("ROLLBACK");
+        } catch {
+          // Preserve the bounded export failure.
+        }
+      }
+      if (attached) {
+        try {
+          database.exec("DETACH DATABASE encrypted_export");
+          attached = false;
+        } catch {
+          // Closing the source connection is the final cleanup attempt.
+        }
+      }
+      if (error instanceof ProbeFailure) throw error;
+      fail("DATABASE_INTEGRITY_FAILED");
+    }
+    closeDatabase(database);
+    database = undefined;
+    if (!sourceLockHeld) {
+      removeGenerationReadSidecars(paths.sourceDatabasePath);
+    }
+
+    const candidateKey = scope.keep(Buffer.from(baseKey));
+    database = openKeyedDatabase(
+      Database,
+      candidateKey,
+      { fileMustExist: true },
+      paths.buildingDatabasePath,
+    );
+    configureGenerationDatabase(database);
+    readEncryptionFacts(database);
+    readAndVerifyMarker(database, markerDigest);
+    verifyRecoveryCaptureState(database, { expectedState: "committed" });
+    verifyGenerationDatabaseIdentity(database, {
+      expectedIdentity: fixture.sourceIdentity,
+      expectedIdentityDigest: fixture.sourceGenerationIdentityDigest,
+      expectMigration: false,
+    });
+    if (expectExportTimingPayload) {
+      verifyGenerationExportTimingPayload(database);
+    }
+    applySyntheticGenerationMigration(database, fixture.candidateIdentity, {
+      reachTransactionFailpoint: ({ transactionOpen }) => {
+        reachCandidateFailpoint?.({
+          failpoint: "during-synthetic-migration",
+          transactionOpen,
+        });
+      },
+    });
+    reachCandidateFailpoint?.({
+      failpoint: "after-synthetic-migration-commit",
+      transactionOpen: database.inTransaction,
+    });
+    verifyGenerationDatabaseIdentity(database, {
+      expectedIdentity: fixture.candidateIdentity,
+      expectedIdentityDigest: fixture.candidateGenerationIdentityDigest,
+      expectMigration: true,
+    });
+    verifyDatabaseIntegrity(database);
+    checkpointAndCloseGenerationDatabase(
+      database,
+      paths.buildingDatabasePath,
+      ({ transactionOpen }) => {
+        reachCandidateFailpoint?.({
+          failpoint: "after-candidate-checkpointed",
+          transactionOpen,
+        });
+      },
+    );
+    database = undefined;
+
+    const candidateReopenKey = scope.keep(Buffer.from(baseKey));
+    database = openKeyedDatabase(
+      Database,
+      candidateReopenKey,
+      { readonly: true, fileMustExist: true },
+      paths.buildingDatabasePath,
+    );
+    const facts = readEncryptionFacts(database);
+    readAndVerifyMarker(database, markerDigest);
+    const candidateCapture = verifyRecoveryCaptureState(database, {
+      expectedState: "committed",
+    });
+    if (expectExportTimingPayload) {
+      verifyGenerationExportTimingPayload(database);
+    }
+    verifyGenerationDatabaseIdentity(database, {
+      expectedIdentity: fixture.candidateIdentity,
+      expectedIdentityDigest: fixture.candidateGenerationIdentityDigest,
+      expectMigration: true,
+    });
+    verifyDatabaseIntegrity(database);
+    closeDatabase(database);
+    database = undefined;
+    removeGenerationReadSidecars(paths.buildingDatabasePath);
+    assertGenerationDatabaseSidecarsAbsent(paths.buildingDatabasePath);
+    const buildingEntries = fs
+      .readdirSync(paths.buildingCandidateDirectoryPath)
+      .sort();
+    const buildingDatabase = pathKind(paths.buildingDatabasePath);
+    if (
+      buildingEntries.length !== 1 ||
+      buildingEntries[0] !== "workspace.db" ||
+      !buildingDatabase?.isFile() ||
+      buildingDatabase.isSymbolicLink() ||
+      buildingDatabase.size <= 0 ||
+      pathKind(paths.stagingCandidateDirectoryPath) ||
+      pathKind(paths.discardingCandidateDirectoryPath)
+    ) {
+      fail("DATABASE_INTEGRITY_FAILED");
+    }
+    const promotedDigest = digestFileHex(paths.buildingDatabasePath);
+    const promotedSize = buildingDatabase.size;
+    try {
+      fs.renameSync(
+        paths.buildingCandidateDirectoryPath,
+        paths.stagingCandidateDirectoryPath,
+      );
+    } catch {
+      fail("DATABASE_INTEGRITY_FAILED");
+    }
+    reachCandidateFailpoint?.({
+      failpoint: "after-verified-candidate-renamed",
+      transactionOpen: false,
+    });
+    const promotedDatabase = pathKind(paths.stagingDatabasePath);
+    if (
+      pathKind(paths.buildingCandidateDirectoryPath) ||
+      pathKind(paths.discardingCandidateDirectoryPath) ||
+      !promotedDatabase?.isFile() ||
+      promotedDatabase.isSymbolicLink() ||
+      promotedDatabase.size !== promotedSize ||
+      digestFileHex(paths.stagingDatabasePath) !== promotedDigest
+    ) {
+      fail("DATABASE_INTEGRITY_FAILED");
+    }
+    return Object.freeze({ facts, candidateCapture });
+  } finally {
+    closeQuietly(database);
+  }
+}
+
 async function setupGenerationPublication(
   Database,
   {
     stagedCandidate = false,
     sourceOnly = false,
     reachRecordFailpoint = undefined,
+    reachCandidateFailpoint = undefined,
+    exportTimingPayload = false,
   } = {},
 ) {
   if (sourceOnly && !stagedCandidate) fail("CONFIG_INVALID");
@@ -1697,10 +2102,6 @@ async function setupGenerationPublication(
     captureCanaries = createRecoveryCaptureCanaries(scope);
     const { key, markerDigest } = await unwrapKey(scope, canaries);
     const baseKey = scope.keep(Buffer.from(key));
-    const sourceReopenKey = scope.keep(Buffer.from(key));
-    const exportKey = scope.keep(Buffer.from(key));
-    const candidateKey = scope.keep(Buffer.from(key));
-    const candidateReopenKey = scope.keep(Buffer.from(key));
     const wrapperDigest = digestFileHex(config.wrapperPath);
     const fixture = createGenerationPublicationFixture(
       config.workspaceId,
@@ -1726,6 +2127,7 @@ async function setupGenerationPublication(
       expectedState: "committed",
     });
     installInitialGenerationIdentity(database, fixture.sourceIdentity);
+    if (exportTimingPayload) installGenerationExportTimingPayload(database);
     verifyGenerationDatabaseIdentity(database, {
       expectedIdentity: fixture.sourceIdentity,
       expectedIdentityDigest: fixture.sourceGenerationIdentityDigest,
@@ -1753,13 +2155,11 @@ async function setupGenerationPublication(
       recursive: true,
       mode: 0o700,
     });
-    if (!sourceOnly) {
-      fs.mkdirSync(
-        stagedCandidate
-          ? preparationPaths.stagingCandidateDirectoryPath
-          : paths.candidateGenerationDirectoryPath,
-        { recursive: true, mode: 0o700 },
-      );
+    if (!sourceOnly && !stagedCandidate) {
+      fs.mkdirSync(paths.candidateGenerationDirectoryPath, {
+        recursive: true,
+        mode: 0o700,
+      });
     }
     fs.renameSync(config.wrapperPath, paths.wrapperPath);
     fs.renameSync(config.databasePath, paths.sourceDatabasePath);
@@ -1774,6 +2174,7 @@ async function setupGenerationPublication(
           markerDigest,
           scope,
           canaries,
+          expectExportTimingPayload: exportTimingPayload,
         });
         const sourceState = verifyGenerationPreparationRecordPrerequisites({
           workspaceRoot: config.generationWorkspaceRoot,
@@ -1837,81 +2238,110 @@ async function setupGenerationPublication(
     const candidateDatabasePath = stagedCandidate
       ? preparationPaths.stagingDatabasePath
       : paths.candidateDatabasePath;
-    reserveDatabase(candidateDatabasePath);
-    database = openKeyedDatabase(
-      Database,
-      sourceReopenKey,
-      { fileMustExist: true },
-      paths.sourceDatabasePath,
-    );
-    try {
-      database
-        .prepare("ATTACH DATABASE ? AS encrypted_export")
-        .run(candidateDatabasePath);
+    let facts;
+    let candidateCapture;
+    if (stagedCandidate) {
+      const built = buildAndVerifyStagedGenerationCandidate({
+        Database,
+        paths: preparationPaths,
+        fixture,
+        markerDigest,
+        baseKey,
+        scope,
+        reachCandidateFailpoint,
+        expectExportTimingPayload: exportTimingPayload,
+      });
+      facts = built.facts;
+      candidateCapture = built.candidateCapture;
+    } else {
+      const sourceReopenKey = scope.keep(Buffer.from(baseKey));
+      const exportKey = scope.keep(Buffer.from(baseKey));
+      const candidateKey = scope.keep(Buffer.from(baseKey));
+      const candidateReopenKey = scope.keep(Buffer.from(baseKey));
+      reserveDatabase(candidateDatabasePath);
+      database = openKeyedDatabase(
+        Database,
+        sourceReopenKey,
+        { fileMustExist: true },
+        paths.sourceDatabasePath,
+      );
       try {
-        database.key(exportKey, "encrypted_export");
-      } finally {
-        exportKey.fill(0);
+        database
+          .prepare("ATTACH DATABASE ? AS encrypted_export")
+          .run(candidateDatabasePath);
+        try {
+          database.key(exportKey, "encrypted_export");
+        } finally {
+          exportKey.fill(0);
+        }
+        database.exec("BEGIN");
+        database.prepare("SELECT sqlcipher_export('encrypted_export')").get();
+        database.pragma("encrypted_export.user_version = 1");
+        database.exec("COMMIT");
+        database.exec("DETACH DATABASE encrypted_export");
+      } catch {
+        if (database.inTransaction) {
+          try {
+            database.exec("ROLLBACK");
+          } catch {
+            // Preserve the bounded export failure.
+          }
+        }
+        fail("DATABASE_INTEGRITY_FAILED");
       }
-      database.prepare("SELECT sqlcipher_export('encrypted_export')").get();
-      database.exec("DETACH DATABASE encrypted_export");
-    } catch {
-      fail("DATABASE_INTEGRITY_FAILED");
-    }
-    closeDatabase(database);
-    database = undefined;
+      closeDatabase(database);
+      database = undefined;
+      removeGenerationReadSidecars(paths.sourceDatabasePath);
 
-    database = openKeyedDatabase(
-      Database,
-      candidateKey,
-      { fileMustExist: true },
-      candidateDatabasePath,
-    );
-    configureGenerationDatabase(database);
-    // sqlcipher_export intentionally leaves the target user_version unchanged.
-    // Restore the verified source header before applying the synthetic v2 step.
-    database.pragma("user_version = 1");
-    if (database.pragma("user_version", { simple: true }) !== 1) {
-      fail("DATABASE_INTEGRITY_FAILED");
-    }
-    readEncryptionFacts(database);
-    readAndVerifyMarker(database, markerDigest);
-    verifyRecoveryCaptureState(database, { expectedState: "committed" });
-    verifyGenerationDatabaseIdentity(database, {
-      expectedIdentity: fixture.sourceIdentity,
-      expectedIdentityDigest: fixture.sourceGenerationIdentityDigest,
-      expectMigration: false,
-    });
-    applySyntheticGenerationMigration(database, fixture.candidateIdentity);
-    verifyGenerationDatabaseIdentity(database, {
-      expectedIdentity: fixture.candidateIdentity,
-      expectedIdentityDigest: fixture.candidateGenerationIdentityDigest,
-      expectMigration: true,
-    });
-    verifyDatabaseIntegrity(database);
-    checkpointAndCloseGenerationDatabase(database, candidateDatabasePath);
-    database = undefined;
+      database = openKeyedDatabase(
+        Database,
+        candidateKey,
+        { fileMustExist: true },
+        candidateDatabasePath,
+      );
+      configureGenerationDatabase(database);
+      if (database.pragma("user_version", { simple: true }) !== 1) {
+        fail("DATABASE_INTEGRITY_FAILED");
+      }
+      readEncryptionFacts(database);
+      readAndVerifyMarker(database, markerDigest);
+      verifyRecoveryCaptureState(database, { expectedState: "committed" });
+      verifyGenerationDatabaseIdentity(database, {
+        expectedIdentity: fixture.sourceIdentity,
+        expectedIdentityDigest: fixture.sourceGenerationIdentityDigest,
+        expectMigration: false,
+      });
+      applySyntheticGenerationMigration(database, fixture.candidateIdentity);
+      verifyGenerationDatabaseIdentity(database, {
+        expectedIdentity: fixture.candidateIdentity,
+        expectedIdentityDigest: fixture.candidateGenerationIdentityDigest,
+        expectMigration: true,
+      });
+      verifyDatabaseIntegrity(database);
+      checkpointAndCloseGenerationDatabase(database, candidateDatabasePath);
+      database = undefined;
 
-    database = openKeyedDatabase(
-      Database,
-      candidateReopenKey,
-      { readonly: true, fileMustExist: true },
-      candidateDatabasePath,
-    );
-    const facts = readEncryptionFacts(database);
-    readAndVerifyMarker(database, markerDigest);
-    const candidateCapture = verifyRecoveryCaptureState(database, {
-      expectedState: "committed",
-    });
-    verifyGenerationDatabaseIdentity(database, {
-      expectedIdentity: fixture.candidateIdentity,
-      expectedIdentityDigest: fixture.candidateGenerationIdentityDigest,
-      expectMigration: true,
-    });
-    verifyDatabaseIntegrity(database);
-    closeDatabase(database);
-    database = undefined;
-    removeGenerationReadSidecars(candidateDatabasePath);
+      database = openKeyedDatabase(
+        Database,
+        candidateReopenKey,
+        { readonly: true, fileMustExist: true },
+        candidateDatabasePath,
+      );
+      facts = readEncryptionFacts(database);
+      readAndVerifyMarker(database, markerDigest);
+      candidateCapture = verifyRecoveryCaptureState(database, {
+        expectedState: "committed",
+      });
+      verifyGenerationDatabaseIdentity(database, {
+        expectedIdentity: fixture.candidateIdentity,
+        expectedIdentityDigest: fixture.candidateGenerationIdentityDigest,
+        expectMigration: true,
+      });
+      verifyDatabaseIntegrity(database);
+      closeDatabase(database);
+      database = undefined;
+      removeGenerationReadSidecars(candidateDatabasePath);
+    }
 
     const verifier = createGenerationDatabaseVerifier({
       Database,
@@ -2056,78 +2486,23 @@ function createStagedCandidateForRecordRecovery({
   markerDigest,
   baseKey,
   scope,
+  reachCandidateFailpoint,
+  sourceLockHeld,
+  expectExportTimingPayload,
 }) {
   if (pathKind(paths.stagingCandidateDirectoryPath)) return false;
-  try {
-    fs.mkdirSync(paths.stagingCandidateDirectoryPath, {
-      recursive: false,
-      mode: 0o700,
-    });
-  } catch {
-    fail("DATABASE_INTEGRITY_FAILED");
-  }
-  reserveDatabase(paths.stagingDatabasePath);
-  let database;
-  try {
-    const sourceKey = scope.keep(Buffer.from(baseKey));
-    const exportKey = scope.keep(Buffer.from(baseKey));
-    database = openKeyedDatabase(
-      Database,
-      sourceKey,
-      { fileMustExist: true },
-      paths.sourceDatabasePath,
-    );
-    try {
-      database
-        .prepare("ATTACH DATABASE ? AS encrypted_export")
-        .run(paths.stagingDatabasePath);
-      try {
-        database.key(exportKey, "encrypted_export");
-      } finally {
-        exportKey.fill(0);
-      }
-      database.prepare("SELECT sqlcipher_export('encrypted_export')").get();
-      database.exec("DETACH DATABASE encrypted_export");
-    } catch {
-      fail("DATABASE_INTEGRITY_FAILED");
-    }
-    closeDatabase(database);
-    database = undefined;
-
-    const candidateKey = scope.keep(Buffer.from(baseKey));
-    database = openKeyedDatabase(
-      Database,
-      candidateKey,
-      { fileMustExist: true },
-      paths.stagingDatabasePath,
-    );
-    configureGenerationDatabase(database);
-    // sqlcipher_export intentionally leaves the target user_version unchanged.
-    database.pragma("user_version = 1");
-    if (database.pragma("user_version", { simple: true }) !== 1) {
-      fail("DATABASE_INTEGRITY_FAILED");
-    }
-    readEncryptionFacts(database);
-    readAndVerifyMarker(database, markerDigest);
-    verifyRecoveryCaptureState(database, { expectedState: "committed" });
-    verifyGenerationDatabaseIdentity(database, {
-      expectedIdentity: fixture.sourceIdentity,
-      expectedIdentityDigest: fixture.sourceGenerationIdentityDigest,
-      expectMigration: false,
-    });
-    applySyntheticGenerationMigration(database, fixture.candidateIdentity);
-    verifyGenerationDatabaseIdentity(database, {
-      expectedIdentity: fixture.candidateIdentity,
-      expectedIdentityDigest: fixture.candidateGenerationIdentityDigest,
-      expectMigration: true,
-    });
-    verifyDatabaseIntegrity(database);
-    checkpointAndCloseGenerationDatabase(database, paths.stagingDatabasePath);
-    database = undefined;
-    return true;
-  } finally {
-    closeQuietly(database);
-  }
+  buildAndVerifyStagedGenerationCandidate({
+    Database,
+    paths,
+    fixture,
+    markerDigest,
+    baseKey,
+    scope,
+    reachCandidateFailpoint,
+    sourceLockHeld,
+    expectExportTimingPayload,
+  });
+  return true;
 }
 
 function recordReadyProgressStage(recordKind) {
@@ -2140,20 +2515,23 @@ function recordReadyProgressStage(recordKind) {
 
 async function advanceGenerationPreparationRecords(
   Database,
-  { throughRecordKind, reachRecordFailpoint },
+  { throughRecordKind, reachRecordFailpoint, reachCandidateFailpoint },
 ) {
   if (
     !["intent", "candidate-verified", "operation"].includes(
       throughRecordKind,
     ) ||
     (reachRecordFailpoint !== undefined &&
-      typeof reachRecordFailpoint !== "function")
+      typeof reachRecordFailpoint !== "function") ||
+    (reachCandidateFailpoint !== undefined &&
+      typeof reachCandidateFailpoint !== "function")
   ) {
     fail("CONFIG_INVALID");
   }
   const scope = createSensitiveScope();
   const canaries = [];
   let captureCanaries = [];
+  let operationLockDatabase;
   try {
     captureCanaries = createRecoveryCaptureCanaries(scope);
     const paths = getGenerationPreparationPaths(
@@ -2166,12 +2544,20 @@ async function advanceGenerationPreparationRecords(
       config.workspaceId,
       digestFileHex(paths.wrapperPath),
     );
+    const operationLockKey = scope.keep(Buffer.from(baseKey));
+    operationLockDatabase = acquireGenerationPreparationLock({
+      Database,
+      sourceDatabasePath: paths.sourceDatabasePath,
+      key: operationLockKey,
+    });
     const verifier = createGenerationDatabaseVerifier({
       Database,
       baseKey,
       markerDigest: unwrapped.markerDigest,
       scope,
       canaries,
+      expectExportTimingPayload:
+        config.scenario === GENERATION_CANDIDATE_BUILD_SCENARIO,
     });
     const prerequisiteOptions = {
       workspaceRoot: config.generationWorkspaceRoot,
@@ -2179,6 +2565,13 @@ async function advanceGenerationPreparationRecords(
       inputFingerprint: fixture.inputFingerprint,
       verifyGeneration: verifier.verify,
     };
+
+    verifier.verify({
+      role: "source",
+      databasePath: paths.sourceDatabasePath,
+      expectedIdentity: fixture.sourceIdentity,
+      expectedIdentityDigest: fixture.sourceGenerationIdentityDigest,
+    });
 
     let partial = verifyGenerationPreparationRecordPrerequisites({
       ...prerequisiteOptions,
@@ -2212,6 +2605,19 @@ async function advanceGenerationPreparationRecords(
         if (throughRecordKind === "operation") {
           fail("DATABASE_INTEGRITY_FAILED");
         }
+        if (
+          partial.candidateBuildPresent ||
+          partial.candidateDiscardingPresent
+        ) {
+          recoverUnsealedGenerationCandidateBuild({
+            workspaceRoot: config.generationWorkspaceRoot,
+            operationId: GENERATION_PUBLICATION_IDS.operationId,
+          });
+          partial = verifyGenerationPreparationRecordPrerequisites({
+            ...prerequisiteOptions,
+            nextRecordKind: throughRecordKind,
+          });
+        }
         createStagedCandidateForRecordRecovery({
           Database,
           paths,
@@ -2219,6 +2625,33 @@ async function advanceGenerationPreparationRecords(
           markerDigest: unwrapped.markerDigest,
           baseKey,
           scope,
+          sourceLockHeld: true,
+          expectExportTimingPayload:
+            config.scenario === GENERATION_CANDIDATE_BUILD_SCENARIO,
+          reachCandidateFailpoint: ({ failpoint, transactionOpen }) => {
+            reachCandidateFailpoint?.({
+              failpoint,
+              state: Object.freeze({
+                workspaceId: config.workspaceId,
+                operationId: GENERATION_PUBLICATION_IDS.operationId,
+                activeGenerationId: fixture.sourceIdentity.generationId,
+                candidateGenerationId: fixture.candidateIdentity.generationId,
+                candidateGenerationIdentityDigest:
+                  fixture.candidateGenerationIdentityDigest,
+                sourceManifestDigest: digestGenerationValue(
+                  fixture.sourceManifest,
+                ),
+                intentDigest: digestGenerationValue(intent),
+                wrapperDigest: digestFileHex(paths.wrapperPath),
+                candidateBuildingPresent:
+                  failpoint !== "after-verified-candidate-renamed",
+                candidateStagingPresent:
+                  failpoint === "after-verified-candidate-renamed",
+                candidateGenerationPresent: false,
+                migrationTransactionOpen: transactionOpen,
+              }),
+            });
+          },
         });
       }
       partial = verifyGenerationPreparationRecordPrerequisites({
@@ -2359,12 +2792,17 @@ async function advanceGenerationPreparationRecords(
     });
   } finally {
     try {
-      if (canaries.length > 0) scanKnownSecrets(canaries);
-      if (captureCanaries.length > 0) {
-        scanForCanaries([config.stateRoot], captureCanaries);
-      }
+      releaseGenerationPreparationLock(operationLockDatabase);
+      operationLockDatabase = undefined;
     } finally {
-      scope.clear();
+      try {
+        if (canaries.length > 0) scanKnownSecrets(canaries);
+        if (captureCanaries.length > 0) {
+          scanForCanaries([config.stateRoot], captureCanaries);
+        }
+      } finally {
+        scope.clear();
+      }
     }
   }
 }
@@ -2792,6 +3230,39 @@ async function runGenerationRecordMode(Database) {
   return result;
 }
 
+async function runGenerationCandidateBuildMode(Database) {
+  if (config.mode === "generation-candidate-source-setup") {
+    return await setupGenerationPublication(Database, {
+      stagedCandidate: true,
+      sourceOnly: true,
+      exportTimingPayload: true,
+    });
+  }
+  const reachCandidateFailpoint =
+    config.mode === "generation-candidate-fault"
+      ? ({ failpoint, state }) => {
+          if (failpoint !== config.failpoint) return;
+          const boundary = createGenerationCandidateBuildFaultBoundaryRecord({
+            processId: process.pid,
+            failpoint,
+            state,
+          });
+          writeFixedProgress("generation-candidate-build-fault-boundary-ready");
+          emitGenerationFaultBoundaryRecord(boundary);
+          if (failpoint !== "during-sqlcipher-export") {
+            holdForForcedTermination({ timeoutMs: 120_000 });
+          }
+        }
+      : undefined;
+  const result = await advanceGenerationPreparationRecords(Database, {
+    throughRecordKind: "candidate-verified",
+    reachRecordFailpoint: undefined,
+    reachCandidateFailpoint,
+  });
+  if (config.mode === "generation-candidate-fault") fail("PROBE_FAILED");
+  return result;
+}
+
 function verifyPackagedIdentity() {
   const expectedArchive = path.join(process.resourcesPath, "app.asar");
   const expectedUnpackedRoot = path.join(
@@ -2950,6 +3421,8 @@ if (config) {
           result = await provisionStore(Database);
         } else if (config.mode === "verify") {
           result = await verifyStore(Database);
+        } else if (GENERATION_CANDIDATE_BUILD_MODES.has(config.mode)) {
+          result = await runGenerationCandidateBuildMode(Database);
         } else if (GENERATION_RECORD_MODES.has(config.mode)) {
           result = await runGenerationRecordMode(Database);
         } else if (GENERATION_PREPARATION_MODES.has(config.mode)) {

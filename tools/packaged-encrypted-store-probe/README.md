@@ -130,6 +130,10 @@ with `taskkill /T /F`. macOS tracks PID, parent PID, process group, UID, and sta
 time;
 Windows tracks PID and creation time. The controlled POSIX fixture fails before
 the kill if any observed descendant has escaped the captured process group. The
+root identity is captured before any asynchronous pre-kill observer and checked
+again afterward. An exited, missing, or changed root aborts the kill, and failure
+cleanup may use only the original identity set rather than adopting a fresh
+numeric PID or process group. The
 parent requires every captured identity to disappear, handles proven numeric
 process-group reuse without treating `EPERM` as absence, never repeatedly
 signals a numeric group, and waits for all inherited pipes to close. Before any
@@ -227,14 +231,48 @@ proven. It also does not cover a full migration matrix, permission denial, real
 disk-full behavior, or cleanup and garbage collection of retained generations,
 operation records, or interrupted temporary manifests.
 
-## Candidate staging and handoff recovery gate
+## Candidate build, staging, and handoff recovery gate
 
 The separate `probe:generation-preparation-recovery` runner moves one boundary
 earlier than manifest activation. Before export starts, it writes a canonical,
 create-only, file-synced intent that binds the workspace, source manifest,
 source and candidate identities, wrapper digest, semantic fingerprint, and
-fixed export/migration recipes. SQLCipher export and the synthetic v2 migration
-then operate only on the exact operation-local staging path.
+fixed export/migration recipes. The intent specifically binds
+`sqlcipher-export-transactional/v2`: the operation attaches a reserved target,
+configures its rollback journal and `synchronous = FULL`, and wraps
+[`sqlcipher_export`](https://www.zetetic.net/sqlcipher/sqlcipher-api/#sqlcipher_export),
+the target `user_version`, and their commit in one explicit transaction. The
+synthetic v2 migration then runs in its own transaction. Both write only to the
+exact operation-local `candidate-building` directory.
+
+The operation holds `BEGIN IMMEDIATE` on the source database from prerequisite
+verification through candidate publication. This is the cross-process
+single-writer lock for the complete preparation operation, while the source
+remains the verified read input. Lock acquisition uses no busy wait: a
+concurrent retry receives the fixed `GENERATION_PREPARATION_BUSY` result without
+mutating the source, intent, or partial candidate. See SQLite's
+[`BEGIN IMMEDIATE` transaction semantics](https://www.sqlite.org/lang_transaction.html#deferred_immediate_and_exclusive_transactions).
+
+Read-only verification and the operation lock may leave SQLite-owned source
+read sidecars. The shared validator accepts only no rollback journal, an exact
+zero-byte single-link WAL, and a bounded single-link SHM, all regular and
+non-symlink; source sidecars are never manually unlinked. Replay snapshots
+validate that shape before and after but exclude those two ephemeral
+coordination files from the authoritative-workspace comparison. The source
+database, manifests, records, wrapper, and candidate bytes must remain exact.
+
+An interrupted unsealed build is never adopted as a candidate. Recovery treats
+the database and its rollback-journal or WAL sidecars as one directory unit,
+renames `candidate-building` to the fixed `candidate-discarding` name, verifies
+that the move preserved the exact bounded regular-file set, explicitly deletes
+only those recognized files, removes the now-empty directory, and regenerates
+the candidate from the verified source under the same intent. Recovery resumes
+that bounded deletion if a crash leaves `candidate-discarding` behind; it does
+not recursively delete an arbitrary tree. This follows SQLite's requirement to
+keep a database with its
+[`hot journal`](https://www.sqlite.org/lockingv3.html#hot_journals) or
+[`WAL file`](https://www.sqlite.org/wal.html#the_wal_file) rather than deleting
+a sidecar independently.
 
 Intent, sealed-candidate, and publication-operation records now share one
 crash-recoverable create-only contract. Each canonical value selects a
@@ -281,6 +319,34 @@ boundaries:
 - after the candidate directory has moved into `generations`, before any result
   is published and while the manifest still selects `generation-1`.
 
+Five additional native packaged sentinels cover the unsealed candidate build:
+
+- during the transactional SQLCipher export, after the child reports the open
+  transaction and while the parent independently observes a non-empty,
+  incomplete database plus non-empty rollback journal with that child still
+  alive;
+- during the synthetic migration, after its writes and before `COMMIT`, with
+  the migration transaction still open;
+- after the synthetic migration commits, while committed frames remain in WAL;
+- after a successful
+  [`wal_checkpoint(TRUNCATE)`](https://www.sqlite.org/pragma.html#pragma_wal_checkpoint)
+  has reduced WAL to zero bytes, before the database closes;
+- after close, sidecar removal, a fresh read-only integrity and identity
+  verification, and the rename from `candidate-building` to the sealed
+  `candidate` staging name, before its immutable verification record is
+  published.
+
+The first four recoveries discard the complete unsealed directory unit and
+regenerate it. The fifth adopts the already closed and verified staged
+candidate, after re-verification, and continues normal immutable-record and
+handoff recovery. Every sentinel must converge on the same intent-bound
+candidate identity and logical state. The verified-rename sentinel additionally
+continues through the operation record, handoff, manifest publication, replay,
+and final target verification to prove downstream compatibility. Rebuilt
+encrypted database bytes are deliberately not an identity contract and may
+differ across attempts; replay after the verified record is published must keep
+that attempt's sealed bytes unchanged.
+
 A fresh process must recover the exact staged or handed-off state selected by
 the intent and sealed record. Identical replay reuses those same candidate
 bytes, performs at most one move, never exports again, and never creates
@@ -291,26 +357,28 @@ checks must still cause no verified-file churn.
 
 The ordinary fixture rejects a missing or oversized record, corrupt candidate,
 digest or identity mismatch, simultaneous staging and final locations, and
-symlinked database or sidecar. The packaged runner additionally preserves the
-wrapper and package artifact digests, scans runtime state for deterministic
-Capture canaries, and verifies exact process accounting and inherited-pipe
-closure on both native hosts. Its combined record-publication, handoff,
-activation, and direct preparation-setup compatibility matrix uses 43 verified
-packaged process executions: 35 managed and eight force-terminated at exact
-creation-bound identities.
+symlinked database or sidecar. The packaged build is also rejected unless
+SQLCipher reports SQLite's [`TEMP_STORE=2`](https://www.sqlite.org/compile.html#temp_store)
+compile-time option. The packaged runner preserves the wrapper and package
+artifact digests, scans runtime state for deterministic Capture canaries, and
+verifies exact process accounting and inherited-pipe closure on both native
+hosts. A passing combined record-publication, candidate-build, handoff,
+activation, and direct preparation-setup matrix is currently required to report
+exactly 85 packaged process executions: 72 managed and 13 force-terminated at
+exact creation-bound identities. Those counts are the runner's acceptance
+condition, not completed native evidence until both hosted jobs are green.
 
-This gate proves process-crash recovery for the six exact immutable-record
-boundaries, a fully verified candidate, and its same-workspace handoff. It does
-not prove restart during partial SQLCipher export or migration writes;
-power-loss or parent-directory durability; cross-volume or filesystems without
-same-directory hard-link support; automatic quarantine or cleanup; real
-disk-full/quota behavior; permission-denied recovery; or general migration
-compatibility. There is no copy or overwrite fallback when hard links are
-unsupported. The path-race checks also assume workspace-owned `0700`
-directories and a cooperative single-writer/lock discipline. They reject
-mutation from a failpoint or verifier callback, but do not claim protection
-from an uncooperative same-user process racing the final path-based check and
-filesystem operation.
+Once green on both native hosts, this gate is process-crash evidence for the
+five candidate-build boundaries, six exact immutable-record boundaries, a fully
+verified candidate, and its same-workspace handoff. It does not prove power-loss
+or parent-directory durability; cross-volume or filesystems without
+same-directory hard-link support; real disk-full/quota behavior;
+permission-denied recovery; arbitrary production migrations; a
+non-cooperating same-user writer outside the application lock discipline; or
+long-term secure erasure of discarded encrypted candidate bytes. There is no
+copy or overwrite fallback when hard links are unsupported. The path-race
+checks assume workspace-owned `0700` directories and cooperative access through
+the application operation lock.
 
 ## Pinned inputs
 
@@ -347,21 +415,23 @@ isolated from the product dependency graph.
 ## Scope limits
 
 This proves same-artifact mechanism integration plus only the process-crash
-immutable-record, candidate-handoff, and generation-publication pivots
-described above. The macOS package is ad-hoc signed and the Windows package is
-unsigned. It does not prove Developer ID/notarized or Authenticode-signed N-to-N+1 continuity, installer/reboot or
+immutable-record, transactional candidate-build, candidate-handoff, and
+generation-publication pivots described above. The macOS package is ad-hoc
+signed and the Windows package is unsigned. It does not prove Developer
+ID/notarized or Authenticode-signed N-to-N+1 continuity, installer/reboot or
 OS-account migration, wrapper/database crash-atomic initial provisioning,
 generation publication or migration recovery beyond the exact retained
-`generation-1`/`generation-2` fixture, a full migration matrix,
-restart during partial export or migration writes,
-busy/read-only/permission recovery, real disk-full or power-loss recovery,
+`generation-1`/`generation-2` fixture, arbitrary production migrations,
+read-only/permission recovery, real disk-full or power-loss recovery,
 parent-directory durability, device-cache ordering, generation cleanup or
-garbage collection, WAL checkpoint policy, client or renderer result delivery,
-authorization rechecks, external-effect delivery, rotation, temporary provider
-unavailability, Windows workspace ACLs, optimized Windows crypto performance,
-unobserved pre-boundary daemonization outside the captured POSIX process group,
-portable recovery, reliable JavaScript heap zeroization, renderer isolation,
-or same-user malware resistance.
+garbage collection, long-term secure erasure of discarded encrypted bytes,
+client or renderer result delivery, authorization rechecks, external-effect
+delivery, rotation, temporary provider unavailability, Windows workspace ACLs,
+optimized Windows crypto performance, a non-cooperating same-user writer
+outside the application lock discipline, unobserved pre-boundary daemonization
+outside the captured POSIX process group, portable recovery, reliable
+JavaScript heap zeroization, renderer isolation, or same-user malware
+resistance.
 
 The initializer alone is not evidence that provider state is durable; the later
 no-IPC writer and reader recovering the exact marker provide that evidence. The

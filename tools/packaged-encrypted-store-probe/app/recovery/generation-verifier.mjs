@@ -92,10 +92,22 @@ export function installInitialGenerationIdentity(database, identity) {
   return Object.freeze({ identity, identityDigest: digest });
 }
 
-export function applySyntheticGenerationMigration(database, identity) {
+export function applySyntheticGenerationMigration(
+  database,
+  identity,
+  options = {},
+) {
   assertDatabase(database);
   invariant(!database.inTransaction, "GENERATION_TRANSACTION_ALREADY_OPEN");
   invariant(identity.schemaVersion === 2, "GENERATION_IDENTITY_INVALID");
+  invariant(
+    isRecord(options) &&
+      (hasExactKeys(options, []) ||
+        hasExactKeys(options, ["reachTransactionFailpoint"])) &&
+      (options.reachTransactionFailpoint === undefined ||
+        typeof options.reachTransactionFailpoint === "function"),
+    "GENERATION_MIGRATION_OPTIONS_INVALID",
+  );
   const digest = digestGenerationValue(identity);
   try {
     database.exec("BEGIN IMMEDIATE");
@@ -122,6 +134,10 @@ export function applySyntheticGenerationMigration(database, identity) {
       .run(identityJson(identity), digest);
     invariant(update.changes === 1, "GENERATION_IDENTITY_UPDATE_FAILED");
     database.pragma("user_version = 2");
+    options.reachTransactionFailpoint?.({
+      failpoint: "during-synthetic-migration",
+      transactionOpen: database.inTransaction,
+    });
     database.exec("COMMIT");
   } catch (error) {
     rollbackQuietly(database);

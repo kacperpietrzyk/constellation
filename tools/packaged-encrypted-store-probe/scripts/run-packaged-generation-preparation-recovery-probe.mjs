@@ -8,12 +8,16 @@ import { fileURLToPath } from "node:url";
 
 import { getRecoveryCapturePlaintextCanaries } from "../app/recovery/capture-command.mjs";
 import {
+  GENERATION_CANDIDATE_BUILD_FAILPOINTS,
+  GENERATION_CANDIDATE_BUILD_SCENARIO,
   GENERATION_PREPARATION_SCENARIO,
+  assertGenerationCandidateBuildFaultBoundaryRecord,
   assertGenerationPreparationFaultBoundaryRecord,
   getGenerationPreparationPaths,
 } from "../app/recovery/generation-preparation.mjs";
 import {
   GENERATION_PUBLICATION_IDS,
+  assertRecoverableGenerationSourceSidecars,
   digestGenerationValue,
 } from "../app/recovery/generation-publication.mjs";
 import {
@@ -95,6 +99,7 @@ const progressStages = new Set([
   "generation-preparation-state-verified",
   "generation-preparation-completed",
   "generation-preparation-fault-boundary-ready",
+  "generation-candidate-build-fault-boundary-ready",
   "generation-record-intent-ready",
   "generation-record-candidate-verified-ready",
   "generation-record-operation-ready",
@@ -556,11 +561,15 @@ function assertDirectPreparationSetup(result, markerDigest) {
   assertRows(result.rows);
 }
 
-function assertGenerationRecordSource(result, markerDigest) {
+function assertGenerationRecordSource(
+  result,
+  markerDigest,
+  scenario = IMMUTABLE_RECORD_PUBLICATION_SCENARIO,
+) {
   assertExactResultKeys(result, generationRecordSourceResultKeys);
   assertProvider(result);
   ensure(
-    result.scenario === IMMUTABLE_RECORD_PUBLICATION_SCENARIO &&
+    result.scenario === scenario &&
       result.markerDigest === markerDigest &&
       result.sourceGenerationId ===
         GENERATION_PUBLICATION_IDS.sourceGenerationId &&
@@ -588,6 +597,175 @@ function assertGenerationRecordSource(result, markerDigest) {
       "GENERATION_RECORD_DIGEST_INVALID",
     );
   }
+  assertRows(result.rows);
+}
+
+function assertGenerationCandidateIntent(result, source, intentPath) {
+  assertExactResultKeys(result, generationRecordResultKeys);
+  assertProvider(result);
+  const intentValue = JSON.parse(fs.readFileSync(intentPath, "utf8"));
+  ensure(
+    result.status === "pass" &&
+      result.code === "GENERATION_RECORD_INTENT_APPLIED" &&
+      result.scenario === IMMUTABLE_RECORD_PUBLICATION_SCENARIO &&
+      result.markerDigest === source.markerDigest &&
+      result.sourceGenerationId === source.sourceGenerationId &&
+      result.sourceGenerationIdentityDigest ===
+        source.sourceGenerationIdentityDigest &&
+      result.candidateGenerationId ===
+        GENERATION_PUBLICATION_IDS.candidateGenerationId &&
+      /^[a-f0-9]{64}$/.test(result.candidateGenerationIdentityDigest) &&
+      result.activeGenerationId === source.activeGenerationId &&
+      result.manifestDigest === source.manifestDigest &&
+      result.wrapperDigest === source.wrapperDigest &&
+      result.inputFingerprint === source.inputFingerprint &&
+      result.sourceGenerationPresent === true &&
+      result.candidateGenerationPresent === false &&
+      result.candidateStagingPresent === false &&
+      result.candidateDatabaseDigest === null &&
+      result.candidateDatabaseSize === null &&
+      result.intentDigest === digestGenerationValue(intentValue) &&
+      result.recordDigest === digestFileHex(intentPath) &&
+      /^[a-f0-9]{64}$/.test(result.intentDigest) &&
+      result.verifiedRecordDigest === null &&
+      result.operationRecordDigest === null &&
+      result.recordKind === "intent" &&
+      result.recordPhase === "intent_ready" &&
+      result.recordPublicationKind === "applied" &&
+      Number.isSafeInteger(result.recordSize) &&
+      result.recordSize > 0 &&
+      /^[a-f0-9]{64}$/.test(result.recordOutcomeDigest) &&
+      result.recoveredPrefix === false &&
+      result.recoveredSyncedTemporary === false &&
+      result.recoveredPublishedLink === false &&
+      result.applicationKind === "applied" &&
+      result.diagnosticCode === null &&
+      result.workspaceVersion === source.workspaceVersion &&
+      result.stateDigest === source.stateDigest &&
+      result.integrityVerified === true &&
+      result.ftsVerified === true &&
+      result.encryptedExport === false &&
+      result.candidateReadOnlyReopen === false,
+    "GENERATION_CANDIDATE_INTENT_INVALID",
+  );
+  assertRows(result.rows);
+}
+
+function assertGenerationCandidateRecovery(
+  result,
+  { source, intent, expectedPublicationKind, verifiedRecordPath },
+) {
+  assertExactResultKeys(result, generationRecordResultKeys);
+  assertProvider(result);
+  const publicationCode = expectedPublicationKind.toUpperCase();
+  const verifiedRecordValue = JSON.parse(
+    fs.readFileSync(verifiedRecordPath, "utf8"),
+  );
+  ensure(
+    result.status === "pass" &&
+      result.code ===
+        `GENERATION_RECORD_CANDIDATE_VERIFIED_${publicationCode}` &&
+      result.scenario === GENERATION_CANDIDATE_BUILD_SCENARIO &&
+      result.markerDigest === source.markerDigest &&
+      result.sourceGenerationId === source.sourceGenerationId &&
+      result.sourceGenerationIdentityDigest ===
+        source.sourceGenerationIdentityDigest &&
+      result.candidateGenerationId === intent.candidateGenerationId &&
+      result.candidateGenerationIdentityDigest ===
+        intent.candidateGenerationIdentityDigest &&
+      result.activeGenerationId === source.activeGenerationId &&
+      result.manifestDigest === source.manifestDigest &&
+      result.wrapperDigest === source.wrapperDigest &&
+      result.inputFingerprint === source.inputFingerprint &&
+      result.sourceGenerationPresent === true &&
+      result.candidateGenerationPresent === false &&
+      result.candidateStagingPresent === true &&
+      /^[a-f0-9]{64}$/.test(result.candidateDatabaseDigest) &&
+      Number.isSafeInteger(result.candidateDatabaseSize) &&
+      result.candidateDatabaseSize > 0 &&
+      result.intentDigest === intent.intentDigest &&
+      result.verifiedRecordDigest ===
+        digestGenerationValue(verifiedRecordValue) &&
+      result.recordDigest === digestFileHex(verifiedRecordPath) &&
+      /^[a-f0-9]{64}$/.test(result.verifiedRecordDigest) &&
+      result.operationRecordDigest === null &&
+      result.recordKind === "candidate-verified" &&
+      result.recordPhase === "candidate_verified" &&
+      result.recordPublicationKind === expectedPublicationKind &&
+      Number.isSafeInteger(result.recordSize) &&
+      result.recordSize > 0 &&
+      /^[a-f0-9]{64}$/.test(result.recordOutcomeDigest) &&
+      result.recoveredPrefix === false &&
+      result.recoveredSyncedTemporary === false &&
+      result.recoveredPublishedLink === false &&
+      result.applicationKind === expectedPublicationKind &&
+      result.diagnosticCode === null &&
+      result.workspaceVersion === source.workspaceVersion &&
+      result.stateDigest === source.stateDigest &&
+      result.integrityVerified === true &&
+      result.ftsVerified === true &&
+      result.encryptedExport === true &&
+      result.candidateReadOnlyReopen === true,
+    "GENERATION_CANDIDATE_RECOVERY_INVALID",
+  );
+  assertRows(result.rows);
+}
+
+function assertGenerationCandidateOperation(
+  result,
+  candidate,
+  operationRecordPath,
+) {
+  assertExactResultKeys(result, generationRecordResultKeys);
+  assertProvider(result);
+  const operationRecordValue = JSON.parse(
+    fs.readFileSync(operationRecordPath, "utf8"),
+  );
+  ensure(
+    result.status === "pass" &&
+      result.code === "GENERATION_RECORD_OPERATION_APPLIED" &&
+      result.scenario === IMMUTABLE_RECORD_PUBLICATION_SCENARIO &&
+      result.markerDigest === candidate.markerDigest &&
+      result.sourceGenerationId === candidate.sourceGenerationId &&
+      result.sourceGenerationIdentityDigest ===
+        candidate.sourceGenerationIdentityDigest &&
+      result.candidateGenerationId === candidate.candidateGenerationId &&
+      result.candidateGenerationIdentityDigest ===
+        candidate.candidateGenerationIdentityDigest &&
+      result.activeGenerationId === candidate.activeGenerationId &&
+      result.manifestDigest === candidate.manifestDigest &&
+      result.wrapperDigest === candidate.wrapperDigest &&
+      result.inputFingerprint === candidate.inputFingerprint &&
+      result.sourceGenerationPresent === true &&
+      result.candidateGenerationPresent === false &&
+      result.candidateStagingPresent === true &&
+      result.candidateDatabaseDigest === candidate.candidateDatabaseDigest &&
+      result.candidateDatabaseSize === candidate.candidateDatabaseSize &&
+      result.intentDigest === candidate.intentDigest &&
+      result.verifiedRecordDigest === candidate.verifiedRecordDigest &&
+      result.operationRecordDigest ===
+        digestGenerationValue(operationRecordValue) &&
+      result.recordDigest === digestFileHex(operationRecordPath) &&
+      /^[a-f0-9]{64}$/.test(result.operationRecordDigest) &&
+      result.recordKind === "operation" &&
+      result.recordPhase === "staged" &&
+      result.recordPublicationKind === "applied" &&
+      Number.isSafeInteger(result.recordSize) &&
+      result.recordSize > 0 &&
+      /^[a-f0-9]{64}$/.test(result.recordOutcomeDigest) &&
+      result.recoveredPrefix === false &&
+      result.recoveredSyncedTemporary === false &&
+      result.recoveredPublishedLink === false &&
+      result.applicationKind === "applied" &&
+      result.diagnosticCode === null &&
+      result.workspaceVersion === candidate.workspaceVersion &&
+      result.stateDigest === candidate.stateDigest &&
+      result.integrityVerified === true &&
+      result.ftsVerified === true &&
+      result.encryptedExport === true &&
+      result.candidateReadOnlyReopen === true,
+    "GENERATION_CANDIDATE_OPERATION_INVALID",
+  );
   assertRows(result.rows);
 }
 
@@ -789,9 +967,10 @@ async function removeDirectory(directory) {
   throw lastError || new Error("STATE_CLEANUP_FAILED");
 }
 
-function snapshotWorkspace(workspaceRoot) {
+function snapshotWorkspace(workspaceRoot, ignoredPaths = new Set()) {
   const entries = [];
   function visit(target) {
+    if (ignoredPaths.has(target)) return;
     const metadata = fs.lstatSync(target, { bigint: true });
     ensure(!metadata.isSymbolicLink(), "WORKSPACE_SYMLINK_PRESENT");
     const relative = path.relative(workspaceRoot, target) || ".";
@@ -814,6 +993,17 @@ function snapshotWorkspace(workspaceRoot) {
   }
   visit(workspaceRoot);
   return JSON.stringify(entries);
+}
+
+function snapshotAuthoritativeGenerationWorkspace(paths) {
+  assertRecoverableGenerationSourceSidecars(paths.sourceDatabasePath);
+  return snapshotWorkspace(
+    paths.workspaceRoot,
+    new Set([
+      `${paths.sourceDatabasePath}-wal`,
+      `${paths.sourceDatabasePath}-shm`,
+    ]),
+  );
 }
 
 function scanStateCanaries(stateRoot) {
@@ -880,6 +1070,178 @@ function stableFileSnapshot(target) {
     mtimeNs: metadata.mtimeNs.toString(),
     ctimeNs: metadata.ctimeNs.toString(),
     digest: digestFileHex(target),
+  });
+}
+
+function assertExactDirectoryEntries(target, expectedEntries, code) {
+  const metadata = fs.lstatSync(target);
+  ensure(metadata.isDirectory() && !metadata.isSymbolicLink(), code);
+  const actual = fs.readdirSync(target).sort();
+  const expected = [...expectedEntries].sort();
+  ensure(
+    actual.length === expected.length &&
+      actual.every((entry, index) => entry === expected[index]),
+    code,
+  );
+}
+
+function regularFileSize(target, code) {
+  const metadata = fs.lstatSync(target, { bigint: true });
+  ensure(metadata.isFile() && !metadata.isSymbolicLink(), code);
+  return metadata.size;
+}
+
+function optionalRegularFileSize(target, code) {
+  try {
+    return regularFileSize(target, code);
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+function processAppearsAlive(processId) {
+  try {
+    process.kill(processId, 0);
+    return true;
+  } catch (error) {
+    if (error?.code === "EPERM") return true;
+    if (error?.code === "ESRCH") return false;
+    throw error;
+  }
+}
+
+async function observePartialSqlcipherExport(paths, processId) {
+  const sourceDatabaseSize = regularFileSize(
+    paths.sourceDatabasePath,
+    "GENERATION_CANDIDATE_SOURCE_INVALID",
+  );
+  ensure(
+    sourceDatabaseSize > 64n * 1024n * 1024n,
+    "GENERATION_CANDIDATE_SOURCE_TOO_SMALL",
+  );
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    ensure(
+      processAppearsAlive(processId),
+      "GENERATION_CANDIDATE_EXPORT_PROCESS_EXITED",
+    );
+    const databaseSize = optionalRegularFileSize(
+      paths.buildingDatabasePath,
+      "GENERATION_CANDIDATE_EXPORT_DATABASE_INVALID",
+    );
+    const journalSize = optionalRegularFileSize(
+      `${paths.buildingDatabasePath}-journal`,
+      "GENERATION_CANDIDATE_EXPORT_JOURNAL_INVALID",
+    );
+    if (
+      databaseSize !== undefined &&
+      databaseSize > 1024n * 1024n &&
+      databaseSize < sourceDatabaseSize / 2n &&
+      journalSize !== undefined &&
+      journalSize > 0n
+    ) {
+      assertExactDirectoryEntries(
+        paths.buildingCandidateDirectoryPath,
+        ["workspace.db", "workspace.db-journal"],
+        "GENERATION_CANDIDATE_EXPORT_LAYOUT_INVALID",
+      );
+      return Object.freeze({
+        sourceDatabaseSize: sourceDatabaseSize.toString(),
+        databaseSize: databaseSize.toString(),
+        journalSize: journalSize.toString(),
+        processAlive: true,
+      });
+    }
+    await delay(5);
+  }
+  throw new Error("GENERATION_CANDIDATE_PARTIAL_EXPORT_NOT_OBSERVED");
+}
+
+function inspectCandidateBuildBoundary(paths, failpoint) {
+  const building = failpoint !== "after-verified-candidate-renamed";
+  ensure(
+    fs.existsSync(paths.buildingCandidateDirectoryPath) === building &&
+      fs.existsSync(paths.stagingCandidateDirectoryPath) === !building &&
+      !fs.existsSync(paths.discardingCandidateDirectoryPath) &&
+      !fs.existsSync(paths.candidateGenerationDirectoryPath),
+    "GENERATION_CANDIDATE_BOUNDARY_LOCATION_INVALID",
+  );
+  assertExactDirectoryEntries(
+    paths.operationDirectoryPath,
+    [building ? "candidate-building" : "candidate", "intent.json"],
+    "GENERATION_CANDIDATE_BOUNDARY_OPERATION_LAYOUT_INVALID",
+  );
+  const directoryPath = building
+    ? paths.buildingCandidateDirectoryPath
+    : paths.stagingCandidateDirectoryPath;
+  const databasePath = building
+    ? paths.buildingDatabasePath
+    : paths.stagingDatabasePath;
+  const expectedEntries =
+    failpoint === "during-sqlcipher-export"
+      ? ["workspace.db", "workspace.db-journal"]
+      : failpoint === "after-verified-candidate-renamed"
+        ? ["workspace.db"]
+        : ["workspace.db", "workspace.db-shm", "workspace.db-wal"];
+  assertExactDirectoryEntries(
+    directoryPath,
+    expectedEntries,
+    "GENERATION_CANDIDATE_BOUNDARY_DATABASE_LAYOUT_INVALID",
+  );
+  const databaseSize = regularFileSize(
+    databasePath,
+    "GENERATION_CANDIDATE_BOUNDARY_DATABASE_INVALID",
+  );
+  ensure(databaseSize > 0n, "GENERATION_CANDIDATE_BOUNDARY_DATABASE_EMPTY");
+  const journalSize = optionalRegularFileSize(
+    `${databasePath}-journal`,
+    "GENERATION_CANDIDATE_BOUNDARY_JOURNAL_INVALID",
+  );
+  const walSize = optionalRegularFileSize(
+    `${databasePath}-wal`,
+    "GENERATION_CANDIDATE_BOUNDARY_WAL_INVALID",
+  );
+  const shmSize = optionalRegularFileSize(
+    `${databasePath}-shm`,
+    "GENERATION_CANDIDATE_BOUNDARY_SHM_INVALID",
+  );
+  if (failpoint === "during-sqlcipher-export") {
+    ensure(
+      journalSize !== undefined &&
+        journalSize > 0n &&
+        walSize === undefined &&
+        shmSize === undefined,
+      "GENERATION_CANDIDATE_EXPORT_SIDECAR_INVALID",
+    );
+  } else if (failpoint === "after-verified-candidate-renamed") {
+    ensure(
+      journalSize === undefined &&
+        walSize === undefined &&
+        shmSize === undefined,
+      "GENERATION_CANDIDATE_SEALED_SIDECAR_INVALID",
+    );
+  } else {
+    ensure(
+      journalSize === undefined &&
+        walSize !== undefined &&
+        shmSize !== undefined &&
+        shmSize > 0n &&
+        shmSize <= 128n * 1024n &&
+        (failpoint === "after-synthetic-migration-commit"
+          ? walSize > 0n
+          : walSize === 0n),
+      "GENERATION_CANDIDATE_WAL_STATE_INVALID",
+    );
+  }
+  return Object.freeze({
+    location: building ? "candidate-building" : "candidate",
+    databaseSize: databaseSize.toString(),
+    databaseDigest: digestFileHex(databasePath),
+    journalSize: journalSize?.toString() ?? null,
+    walSize: walSize?.toString() ?? null,
+    shmSize: shmSize?.toString() ?? null,
+    databaseSnapshot: stableFileSnapshot(databasePath),
   });
 }
 
@@ -982,7 +1344,7 @@ async function forceGenerationRecordFault({
       assertStableSnapshotsUnchanged(stableSnapshots);
       scanStateCanaries(stateRoot);
       return {
-        workspaceSnapshot: snapshotWorkspace(paths.workspaceRoot),
+        workspaceSnapshot: snapshotAuthoritativeGenerationWorkspace(paths),
         boundaryFiles: inspectImmutableRecordBoundary(
           paths,
           observedBoundary.state,
@@ -1015,7 +1377,7 @@ async function forceGenerationRecordFault({
       "GENERATION_RECORD_RESULT_BOUNDARY_INVALID",
     );
     ensure(
-      snapshotWorkspace(paths.workspaceRoot) ===
+      snapshotAuthoritativeGenerationWorkspace(paths) ===
         execution.beforeKillEvidence.workspaceSnapshot &&
         inspectImmutableRecordBoundary(paths, execution.boundary.state) ===
           execution.beforeKillEvidence.boundaryFiles,
@@ -1039,6 +1401,10 @@ async function forcePreparationFault({
   setup,
 }) {
   const workspaceRoot = path.join(stateRoot, "workspace");
+  const paths = getGenerationPreparationPaths(
+    workspaceRoot,
+    GENERATION_PUBLICATION_IDS.operationId,
+  );
   const execution = await forceCrashPackagedProcessAtBoundary({
     executable,
     args: argumentsFor(stateRoot, {
@@ -1099,7 +1465,9 @@ async function forcePreparationFault({
     },
     beforeKill: () => {
       scanStateCanaries(stateRoot);
-      return { workspaceSnapshot: snapshotWorkspace(workspaceRoot) };
+      return {
+        workspaceSnapshot: snapshotAuthoritativeGenerationWorkspace(paths),
+      };
     },
   });
   try {
@@ -1130,7 +1498,7 @@ async function forcePreparationFault({
       "FAULT_RESULT_BOUNDARY_INVALID",
     );
     ensure(
-      snapshotWorkspace(workspaceRoot) ===
+      snapshotAuthoritativeGenerationWorkspace(paths) ===
         execution.beforeKillEvidence.workspaceSnapshot,
       "POST_KILL_WORKSPACE_CHANGED",
     );
@@ -1138,6 +1506,195 @@ async function forcePreparationFault({
     recordProcessExecution(execution.childPid);
     verifiedForcedTerminations += 1;
     return execution.boundary;
+  } finally {
+    execution.stdout.fill(0);
+    execution.stderr.fill(0);
+  }
+}
+
+async function forceGenerationCandidateFault({
+  stateRoot,
+  workspaceId,
+  failpoint,
+  paths,
+  source,
+  intent,
+  stableSnapshots,
+}) {
+  let observedBoundary;
+  const execution = await forceCrashPackagedProcessAtBoundary({
+    executable,
+    args: argumentsFor(stateRoot, {
+      mode: "generation-candidate-fault",
+      workspaceId,
+      wrapperName: "key.wrap.json",
+      databaseName: "bootstrap.db",
+      scenario: GENERATION_CANDIDATE_BUILD_SCENARIO,
+      failpoint,
+    }),
+    errorContext: `${failpoint}:${workspaceId}`,
+    parseBoundary: (line, processId) => {
+      let record;
+      try {
+        record = JSON.parse(line.toString("utf8"));
+      } catch {
+        throw new Error("GENERATION_CANDIDATE_BOUNDARY_INVALID");
+      }
+      if (Object.hasOwn(record, "declaredExitCode")) {
+        throw new Error(`FAULT_CHILD_FAILED_BEFORE_BOUNDARY:${record.code}`);
+      }
+      assertGenerationCandidateBuildFaultBoundaryRecord(record);
+      ensure(
+        record.processId === processId &&
+          record.workspaceId === workspaceId &&
+          record.operationId === GENERATION_PUBLICATION_IDS.operationId &&
+          record.failpoint === failpoint &&
+          record.activeGenerationId === source.activeGenerationId &&
+          record.candidateGenerationId === intent.candidateGenerationId &&
+          record.candidateGenerationIdentityDigest ===
+            intent.candidateGenerationIdentityDigest &&
+          record.sourceManifestDigest === source.manifestDigest &&
+          record.intentDigest === intent.intentDigest &&
+          record.wrapperDigest === source.wrapperDigest &&
+          record.candidateBuildingPresent ===
+            (failpoint !== "after-verified-candidate-renamed") &&
+          record.candidateStagingPresent ===
+            (failpoint === "after-verified-candidate-renamed") &&
+          record.candidateGenerationPresent === false &&
+          record.migrationTransactionOpen ===
+            (failpoint === "during-sqlcipher-export" ||
+              failpoint === "during-synthetic-migration") &&
+          record.resultPublished === false,
+        "GENERATION_CANDIDATE_BOUNDARY_STATE_INVALID",
+      );
+      observedBoundary = record;
+      return record;
+    },
+    beforeKill: async (_boundary, processId) => {
+      ensure(observedBoundary, "GENERATION_CANDIDATE_BOUNDARY_MISSING");
+      if (failpoint === "during-sqlcipher-export") {
+        return {
+          partialExport: await observePartialSqlcipherExport(paths, processId),
+        };
+      }
+      assertStableSnapshotsUnchanged(stableSnapshots);
+      const layout = inspectCandidateBuildBoundary(paths, failpoint);
+      const workspaceSnapshot = snapshotAuthoritativeGenerationWorkspace(paths);
+      let concurrentCandidateBuilderRejected = false;
+      if (failpoint === "during-synthetic-migration") {
+        const protectedSnapshots = new Map([
+          [
+            paths.buildingDatabasePath,
+            stableFileSnapshot(paths.buildingDatabasePath),
+          ],
+          [
+            `${paths.buildingDatabasePath}-wal`,
+            stableFileSnapshot(`${paths.buildingDatabasePath}-wal`),
+          ],
+          [
+            paths.sourceDatabasePath,
+            stableFileSnapshot(paths.sourceDatabasePath),
+          ],
+          [paths.intentPath, stableFileSnapshot(paths.intentPath)],
+        ]);
+        const contender = await launch(stateRoot, {
+          mode: "generation-candidate-recover-verified",
+          workspaceId,
+          wrapperName: "key.wrap.json",
+          databaseName: "bootstrap.db",
+          scenario: GENERATION_CANDIDATE_BUILD_SCENARIO,
+          failpoint: "none",
+        });
+        recordManaged(contender, "generation-candidate-recover-verified");
+        assertExactResultKeys(contender.result);
+        ensure(
+          contender.result.status === "fail" &&
+            contender.result.code === "GENERATION_PREPARATION_BUSY" &&
+            contender.result.declaredExitCode !== 0 &&
+            contender.actualCode === contender.result.declaredExitCode &&
+            contender.declaredExitCode === contender.result.declaredExitCode &&
+            contender.actualSignal === null,
+          "GENERATION_CANDIDATE_CONCURRENT_BUILDER_NOT_REJECTED",
+        );
+        assertStableSnapshotsUnchanged(protectedSnapshots);
+        assertStableSnapshotsUnchanged(stableSnapshots);
+        ensure(
+          snapshotAuthoritativeGenerationWorkspace(paths) ===
+            workspaceSnapshot &&
+            JSON.stringify(inspectCandidateBuildBoundary(paths, failpoint)) ===
+              JSON.stringify(layout),
+          "GENERATION_CANDIDATE_BUSY_ATTEMPT_MUTATED_STATE",
+        );
+        concurrentCandidateBuilderRejected = true;
+      }
+      scanStateCanaries(stateRoot);
+      return {
+        concurrentCandidateBuilderRejected,
+        layout,
+        workspaceSnapshot,
+      };
+    },
+  });
+  try {
+    inspectOutput(execution.stdout);
+    inspectOutput(execution.stderr);
+    ensure(
+      execution.stdoutProtocolCandidateCount === 1 &&
+        execution.stdoutDiagnosticLineCount >= 0 &&
+        execution.stdoutDiagnosticLineCount <= 32 &&
+        execution.forcedKillVerified === true,
+      "GENERATION_CANDIDATE_TERMINATION_EVIDENCE_INVALID",
+    );
+    const stages = parseFaultProgress(
+      execution.stderr,
+      execution.childPid,
+      "generation-candidate-fault",
+    );
+    ensure(
+      stages.includes("generation-record-intent-ready") &&
+        stages.at(-1) === "generation-candidate-build-fault-boundary-ready" &&
+        !stages.includes("generation-record-candidate-verified-ready") &&
+        !stages.includes("result-ready") &&
+        !stages.includes("result-published"),
+      "GENERATION_CANDIDATE_RESULT_BOUNDARY_INVALID",
+    );
+    const postKillLayout = inspectCandidateBuildBoundary(paths, failpoint);
+    if (failpoint === "during-sqlcipher-export") {
+      ensure(
+        execution.beforeKillEvidence.partialExport.processAlive === true &&
+          BigInt(execution.beforeKillEvidence.partialExport.databaseSize) >
+            1024n * 1024n &&
+          BigInt(execution.beforeKillEvidence.partialExport.databaseSize) <
+            BigInt(
+              execution.beforeKillEvidence.partialExport.sourceDatabaseSize,
+            ) /
+              2n &&
+          BigInt(execution.beforeKillEvidence.partialExport.journalSize) > 0n,
+        "GENERATION_CANDIDATE_PARTIAL_EXPORT_EVIDENCE_INVALID",
+      );
+    } else {
+      ensure(
+        JSON.stringify(postKillLayout) ===
+          JSON.stringify(execution.beforeKillEvidence.layout) &&
+          snapshotAuthoritativeGenerationWorkspace(paths) ===
+            execution.beforeKillEvidence.workspaceSnapshot &&
+          execution.beforeKillEvidence.concurrentCandidateBuilderRejected ===
+            (failpoint === "during-synthetic-migration"),
+        "GENERATION_CANDIDATE_POST_KILL_STATE_CHANGED",
+      );
+    }
+    assertStableSnapshotsUnchanged(stableSnapshots);
+    scanStateCanaries(stateRoot);
+    recordProcessExecution(execution.childPid);
+    verifiedForcedTerminations += 1;
+    return Object.freeze({
+      boundary: execution.boundary,
+      concurrentCandidateBuilderRejected:
+        execution.beforeKillEvidence.concurrentCandidateBuilderRejected ??
+        false,
+      partialExport: execution.beforeKillEvidence.partialExport ?? null,
+      postKillLayout,
+    });
   } finally {
     execution.stdout.fill(0);
     execution.stderr.fill(0);
@@ -1195,6 +1752,366 @@ async function runDirectPreparationSetupSmoke() {
     candidateDatabaseDigest: setup.result.candidateDatabaseDigest,
     handoffOutcomeDigest: setup.result.outcomeDigest,
     stateDigest: setup.result.stateDigest,
+  });
+}
+
+async function runGenerationCandidateSentinel({
+  slug,
+  failpoint,
+  continueThroughPublication = false,
+}) {
+  const stateRoot = fs.mkdtempSync(
+    path.join(temporaryRoot, `constellation-packaged-store-candidate-${slug}-`),
+  );
+  sentinelRoots.push(stateRoot);
+  const workspaceId = "workspace-candidate-recovery";
+  const baseOptions = {
+    workspaceId,
+    wrapperName: "key.wrap.json",
+    databaseName: "bootstrap.db",
+  };
+
+  const provider = await launch(stateRoot, {
+    ...baseOptions,
+    mode: "provider-initialize",
+  });
+  ensure(
+    provider.result.status === "pass" &&
+      provider.result.code === "PROVIDER_INITIALIZED",
+    "GENERATION_CANDIDATE_PROVIDER_FAILED",
+  );
+  recordManaged(provider, "provider-initialize");
+  assertExactResultKeys(provider.result, [
+    "asyncEncryptionAvailable",
+    "providerInitializationRoundTrip",
+  ]);
+  ensure(
+    provider.result.asyncEncryptionAvailable === true &&
+      provider.result.providerInitializationRoundTrip === true,
+    "GENERATION_CANDIDATE_PROVIDER_EVIDENCE_INVALID",
+  );
+  assertProbeKeychainItemPresent();
+
+  const provision = await launch(stateRoot, {
+    ...baseOptions,
+    mode: "provision",
+  });
+  ensure(
+    provision.result.status === "pass" &&
+      provision.result.code === "STORE_PROVISIONED",
+    "GENERATION_CANDIDATE_PROVISION_FAILED",
+  );
+  recordManaged(provision, "provision");
+  assertExactResultKeys(provision.result, provisionResultKeys);
+  assertProvider(provision.result);
+
+  const sourceExecution = await launch(stateRoot, {
+    ...baseOptions,
+    mode: "generation-candidate-source-setup",
+    scenario: GENERATION_CANDIDATE_BUILD_SCENARIO,
+    failpoint: "none",
+  });
+  ensure(
+    sourceExecution.result.status === "pass" &&
+      sourceExecution.result.code === "GENERATION_RECORD_SOURCE_READY",
+    `GENERATION_CANDIDATE_SOURCE_FAILED:${sourceExecution.result.code}`,
+  );
+  recordManaged(sourceExecution, "generation-candidate-source-setup");
+  const source = sourceExecution.result;
+  assertGenerationRecordSource(
+    source,
+    provision.result.markerDigest,
+    GENERATION_CANDIDATE_BUILD_SCENARIO,
+  );
+
+  const paths = getGenerationPreparationPaths(
+    path.join(stateRoot, "workspace"),
+    GENERATION_PUBLICATION_IDS.operationId,
+  );
+  ensure(
+    regularFileSize(
+      paths.sourceDatabasePath,
+      "GENERATION_CANDIDATE_SOURCE_INVALID",
+    ) >
+      64n * 1024n * 1024n,
+    "GENERATION_CANDIDATE_SOURCE_PAYLOAD_MISSING",
+  );
+
+  const intentExecution = await launch(stateRoot, {
+    ...baseOptions,
+    mode: "generation-record-recover-intent",
+    scenario: IMMUTABLE_RECORD_PUBLICATION_SCENARIO,
+    failpoint: "none",
+  });
+  recordManaged(intentExecution, "generation-record-recover-intent");
+  const intent = intentExecution.result;
+  assertGenerationCandidateIntent(intent, source, paths.intentPath);
+  const stableSnapshots = new Map([
+    [paths.wrapperPath, stableFileSnapshot(paths.wrapperPath)],
+    [paths.sourceDatabasePath, stableFileSnapshot(paths.sourceDatabasePath)],
+    [paths.manifestPath, stableFileSnapshot(paths.manifestPath)],
+    [paths.intentPath, stableFileSnapshot(paths.intentPath)],
+  ]);
+
+  const fault = await forceGenerationCandidateFault({
+    stateRoot,
+    workspaceId,
+    failpoint,
+    paths,
+    source,
+    intent,
+    stableSnapshots,
+  });
+
+  const recovery = await launch(stateRoot, {
+    ...baseOptions,
+    mode: "generation-candidate-recover-verified",
+    scenario: GENERATION_CANDIDATE_BUILD_SCENARIO,
+    failpoint: "none",
+  });
+  recordManaged(recovery, "generation-candidate-recover-verified");
+  assertGenerationCandidateRecovery(recovery.result, {
+    source,
+    intent,
+    expectedPublicationKind: "applied",
+    verifiedRecordPath: paths.verifiedRecordPath,
+  });
+  ensure(
+    !fs.existsSync(paths.buildingCandidateDirectoryPath) &&
+      !fs.existsSync(paths.discardingCandidateDirectoryPath) &&
+      fs.existsSync(paths.stagingCandidateDirectoryPath),
+    "GENERATION_CANDIDATE_RECOVERY_LAYOUT_INVALID",
+  );
+  assertExactDirectoryEntries(
+    paths.stagingCandidateDirectoryPath,
+    ["workspace.db"],
+    "GENERATION_CANDIDATE_RECOVERY_DATABASE_LAYOUT_INVALID",
+  );
+  assertExactDirectoryEntries(
+    paths.operationDirectoryPath,
+    ["candidate", "candidate-verified.json", "intent.json"],
+    "GENERATION_CANDIDATE_RECOVERY_OPERATION_LAYOUT_INVALID",
+  );
+  ensure(
+    digestFileHex(paths.stagingDatabasePath) ===
+      recovery.result.candidateDatabaseDigest,
+    "GENERATION_CANDIDATE_RECOVERY_DIGEST_INVALID",
+  );
+  if (failpoint === "after-verified-candidate-renamed") {
+    ensure(
+      fault.postKillLayout.databaseDigest ===
+        recovery.result.candidateDatabaseDigest &&
+        fault.postKillLayout.databaseSnapshot ===
+          stableFileSnapshot(paths.stagingDatabasePath),
+      "GENERATION_CANDIDATE_RENAMED_ADOPTION_INVALID",
+    );
+  } else {
+    ensure(
+      fault.postKillLayout.databaseDigest !==
+        recovery.result.candidateDatabaseDigest,
+      "GENERATION_CANDIDATE_NOT_REBUILT",
+    );
+  }
+  assertStableSnapshotsUnchanged(stableSnapshots);
+  stableSnapshots.set(
+    paths.stagingDatabasePath,
+    stableFileSnapshot(paths.stagingDatabasePath),
+  );
+  stableSnapshots.set(
+    paths.verifiedRecordPath,
+    stableFileSnapshot(paths.verifiedRecordPath),
+  );
+  const beforeReplay = snapshotAuthoritativeGenerationWorkspace(paths);
+  const replay = await launch(stateRoot, {
+    ...baseOptions,
+    mode: "generation-candidate-recover-verified",
+    scenario: GENERATION_CANDIDATE_BUILD_SCENARIO,
+    failpoint: "none",
+  });
+  recordManaged(replay, "generation-candidate-recover-verified");
+  assertGenerationCandidateRecovery(replay.result, {
+    source,
+    intent,
+    expectedPublicationKind: "replayed",
+    verifiedRecordPath: paths.verifiedRecordPath,
+  });
+  ensure(
+    replay.result.recordDigest === recovery.result.recordDigest &&
+      replay.result.recordOutcomeDigest ===
+        recovery.result.recordOutcomeDigest &&
+      replay.result.candidateDatabaseDigest ===
+        recovery.result.candidateDatabaseDigest &&
+      replay.result.candidateDatabaseSize ===
+        recovery.result.candidateDatabaseSize &&
+      snapshotAuthoritativeGenerationWorkspace(paths) === beforeReplay,
+    "GENERATION_CANDIDATE_REPLAY_CHURNED",
+  );
+  assertStableSnapshotsUnchanged(stableSnapshots);
+  scanStateCanaries(stateRoot);
+
+  let lifecycle = null;
+  if (continueThroughPublication) {
+    const operation = await launch(stateRoot, {
+      ...baseOptions,
+      mode: "generation-record-recover-operation",
+      scenario: IMMUTABLE_RECORD_PUBLICATION_SCENARIO,
+      failpoint: "none",
+    });
+    recordManaged(operation, "generation-record-recover-operation");
+    assertGenerationCandidateOperation(
+      operation.result,
+      recovery.result,
+      paths.operationRecordPath,
+    );
+
+    const staged = await launch(stateRoot, {
+      ...baseOptions,
+      mode: "generation-preparation-verify-staged",
+      scenario: GENERATION_PREPARATION_SCENARIO,
+      failpoint: "none",
+    });
+    recordManaged(staged, "generation-preparation-verify-staged");
+    ensure(
+      staged.result.status === "pass" &&
+        staged.result.code === "GENERATION_CANDIDATE_STAGED_VERIFIED",
+      `GENERATION_CANDIDATE_STAGED_VERIFY_FAILED:${staged.result.code}`,
+    );
+    assertPreparationResult(staged.result, staged.result);
+    ensure(
+      staged.result.candidateDatabaseDigest ===
+        recovery.result.candidateDatabaseDigest &&
+        staged.result.candidateDatabaseSize ===
+          recovery.result.candidateDatabaseSize &&
+        staged.result.candidateGenerationIdentityDigest ===
+          recovery.result.candidateGenerationIdentityDigest &&
+        staged.result.intentDigest === recovery.result.intentDigest &&
+        staged.result.verifiedRecordDigest ===
+          recovery.result.verifiedRecordDigest &&
+        staged.result.operationRecordDigest ===
+          operation.result.operationRecordDigest &&
+        staged.result.preparationPhase === "staged" &&
+        staged.result.handoffKind === "verified" &&
+        staged.result.preparationConflictVerified === true,
+      "GENERATION_CANDIDATE_STAGED_STATE_INVALID",
+    );
+
+    const immutableCandidateDigest = digestFileHex(paths.stagingDatabasePath);
+    const complete = await launch(stateRoot, {
+      ...baseOptions,
+      mode: "generation-preparation-complete",
+      scenario: GENERATION_PREPARATION_SCENARIO,
+      failpoint: "none",
+    });
+    recordManaged(complete, "generation-preparation-complete");
+    ensure(
+      complete.result.status === "pass" &&
+        complete.result.code === "GENERATION_CANDIDATE_HANDOFF_COMPLETED",
+      "GENERATION_CANDIDATE_HANDOFF_FAILED",
+    );
+    assertPreparationResult(complete.result, staged.result);
+    ensure(
+      complete.result.preparationPhase === "handed_off" &&
+        complete.result.candidateStagingPresent === false &&
+        complete.result.candidateGenerationPresent === true &&
+        complete.result.candidateLocation === "generations" &&
+        complete.result.handoffKind === "applied" &&
+        complete.result.preparationConflictVerified === false &&
+        digestFileHex(paths.candidateDatabasePath) === immutableCandidateDigest,
+      "GENERATION_CANDIDATE_HANDOFF_STATE_INVALID",
+    );
+
+    const publicationOptions = {
+      ...baseOptions,
+      mode: "generation-publish",
+      scenario: "generation-publication-pivot",
+      failpoint: "none",
+    };
+    const applied = await launch(stateRoot, publicationOptions);
+    recordManaged(applied, "generation-publish");
+    ensure(
+      applied.result.status === "pass" &&
+        applied.result.code === "GENERATION_PUBLICATION_APPLIED",
+      "GENERATION_CANDIDATE_PUBLICATION_FAILED",
+    );
+    assertPublicationResult(applied.result, staged.result);
+    ensure(
+      applied.result.applicationKind === "applied",
+      "GENERATION_CANDIDATE_PUBLICATION_KIND_INVALID",
+    );
+
+    const beforePublicationReplay =
+      snapshotAuthoritativeGenerationWorkspace(paths);
+    const publicationReplay = await launch(stateRoot, publicationOptions);
+    recordManaged(publicationReplay, "generation-publish");
+    ensure(
+      publicationReplay.result.status === "pass" &&
+        publicationReplay.result.code === "GENERATION_PUBLICATION_REPLAYED",
+      "GENERATION_CANDIDATE_PUBLICATION_REPLAY_FAILED",
+    );
+    assertPublicationResult(publicationReplay.result, staged.result);
+    const afterPublicationReplay =
+      snapshotAuthoritativeGenerationWorkspace(paths);
+    ensure(
+      publicationReplay.result.applicationKind === "replayed" &&
+        publicationReplay.result.outcomeDigest ===
+          applied.result.outcomeDigest &&
+        afterPublicationReplay === beforePublicationReplay,
+      "GENERATION_CANDIDATE_PUBLICATION_REPLAY_CHURNED",
+    );
+
+    const final = await launch(stateRoot, {
+      ...publicationOptions,
+      mode: "generation-verify-target",
+    });
+    recordManaged(final, "generation-verify-target");
+    ensure(
+      final.result.status === "pass" &&
+        final.result.code === "GENERATION_TARGET_VERIFIED",
+      "GENERATION_CANDIDATE_FINAL_VERIFY_FAILED",
+    );
+    assertPublicationResult(final.result, staged.result);
+    ensure(
+      final.result.applicationKind === "verified" &&
+        final.result.activeGenerationId ===
+          GENERATION_PUBLICATION_IDS.candidateGenerationId &&
+        final.result.outcomeDigest === publicationReplay.result.outcomeDigest &&
+        final.result.stateDigest === staged.result.stateDigest,
+      "GENERATION_CANDIDATE_FINAL_STATE_INVALID",
+    );
+    lifecycle = Object.freeze({
+      handoffKind: complete.result.handoffKind,
+      finalGeneration: final.result.activeGenerationId,
+      publicationOutcomeDigest: final.result.outcomeDigest,
+      publicationReplayWithoutAuthoritativeWorkspaceChurn: true,
+      finalTargetVerified: true,
+    });
+  }
+
+  scanStateCanaries(stateRoot);
+  return Object.freeze({
+    failpoint,
+    intentDigest: intent.intentDigest,
+    candidateGenerationId: recovery.result.candidateGenerationId,
+    candidateGenerationIdentityDigest:
+      recovery.result.candidateGenerationIdentityDigest,
+    crashedLocation: fault.postKillLayout.location,
+    partialExport: fault.partialExport,
+    crashedDatabaseSize: fault.postKillLayout.databaseSize,
+    journalSizeAtCrash: fault.postKillLayout.journalSize,
+    walSizeAtCrash: fault.postKillLayout.walSize,
+    shmSizeAtCrash: fault.postKillLayout.shmSize,
+    recoveryKind: recovery.result.recordPublicationKind,
+    replayKind: replay.result.recordPublicationKind,
+    candidateDatabaseDigest: recovery.result.candidateDatabaseDigest,
+    candidateStateDigest: recovery.result.stateDigest,
+    abandonedBuildReconstructed:
+      failpoint !== "after-verified-candidate-renamed",
+    verifiedCandidateAdopted: failpoint === "after-verified-candidate-renamed",
+    concurrentCandidateBuilderRejected:
+      fault.concurrentCandidateBuilderRejected,
+    replayWithoutAuthoritativeWorkspaceChurn: true,
+    resultPublishedBeforeCrash: fault.boundary.resultPublished,
+    lifecycle,
   });
 }
 
@@ -1344,7 +2261,7 @@ async function runSentinel({ slug, failpoint, recordCrashPhase }) {
         stableFileSnapshot(paths.stagingDatabasePath),
       );
     }
-    const beforeRecordReplay = snapshotWorkspace(paths.workspaceRoot);
+    const beforeRecordReplay = snapshotAuthoritativeGenerationWorkspace(paths);
     const replay = await launch(stateRoot, {
       ...baseOptions,
       mode: recoverMode,
@@ -1364,7 +2281,7 @@ async function runSentinel({ slug, failpoint, recordCrashPhase }) {
         replay.result.recordOutcomeDigest ===
           recovery.result.recordOutcomeDigest &&
         replay.result[phaseDigestKey] === recordValueDigest &&
-        snapshotWorkspace(paths.workspaceRoot) === beforeRecordReplay,
+        snapshotAuthoritativeGenerationWorkspace(paths) === beforeRecordReplay,
       "GENERATION_RECORD_REPLAY_CHURNED",
     );
     assertStableSnapshotsUnchanged(stableSnapshots);
@@ -1527,7 +2444,7 @@ async function runSentinel({ slug, failpoint, recordCrashPhase }) {
     "PUBLICATION_KIND_INVALID",
   );
 
-  const beforeReplay = snapshotWorkspace(paths.workspaceRoot);
+  const beforeReplay = snapshotAuthoritativeGenerationWorkspace(paths);
   const replay = await launch(stateRoot, publicationOptions);
   ensure(
     replay.result.status === "pass" &&
@@ -1543,11 +2460,11 @@ async function runSentinel({ slug, failpoint, recordCrashPhase }) {
     replay.result.applicationKind === "replayed" &&
       replay.result.manifestDigest === applied.result.manifestDigest &&
       replay.result.outcomeDigest === applied.result.outcomeDigest &&
-      snapshotWorkspace(paths.workspaceRoot) === beforeReplay,
+      snapshotAuthoritativeGenerationWorkspace(paths) === beforeReplay,
     "PUBLICATION_REPLAY_CHURNED",
   );
 
-  const beforeConflict = snapshotWorkspace(paths.workspaceRoot);
+  const beforeConflict = snapshotAuthoritativeGenerationWorkspace(paths);
   const conflict = await launch(stateRoot, {
     ...publicationOptions,
     mode: "generation-conflict",
@@ -1566,7 +2483,7 @@ async function runSentinel({ slug, failpoint, recordCrashPhase }) {
     conflict.result.applicationKind === "conflict" &&
       conflict.result.diagnosticCode ===
         "generation.publication_input_conflict" &&
-      snapshotWorkspace(paths.workspaceRoot) === beforeConflict,
+      snapshotAuthoritativeGenerationWorkspace(paths) === beforeConflict,
     "PUBLICATION_CONFLICT_CHURNED",
   );
 
@@ -1608,7 +2525,7 @@ async function runSentinel({ slug, failpoint, recordCrashPhase }) {
     sourceManifestActiveThroughHandoff: true,
     sealedCandidateReused: true,
     preparationConflictWithoutMutation: true,
-    publicationReplayWithoutChurn: true,
+    publicationReplayWithoutAuthoritativeWorkspaceChurn: true,
     resultPublishedBeforeCrash: false,
   });
 }
@@ -1623,6 +2540,67 @@ try {
     artifactDigests.set(artifact, digestFile(artifact));
   }
   removeProbeKeychainItem();
+
+  const candidateBuildSentinels = [];
+  const candidateBuildSlugs = new Map([
+    ["during-sqlcipher-export", "export"],
+    ["during-synthetic-migration", "migration"],
+    ["after-synthetic-migration-commit", "commit"],
+    ["after-candidate-checkpointed", "checkpoint"],
+    ["after-verified-candidate-renamed", "renamed"],
+  ]);
+  for (const failpoint of GENERATION_CANDIDATE_BUILD_FAILPOINTS.slice(1)) {
+    candidateBuildSentinels.push(
+      await runGenerationCandidateSentinel({
+        slug: candidateBuildSlugs.get(failpoint),
+        failpoint,
+        continueThroughPublication:
+          failpoint === "after-verified-candidate-renamed",
+      }),
+    );
+  }
+  ensure(
+    candidateBuildSentinels.length === 5 &&
+      candidateBuildSentinels.every(
+        (sentinel, index) =>
+          sentinel.failpoint ===
+            GENERATION_CANDIDATE_BUILD_FAILPOINTS[index + 1] &&
+          sentinel.candidateGenerationId ===
+            GENERATION_PUBLICATION_IDS.candidateGenerationId &&
+          sentinel.candidateGenerationIdentityDigest ===
+            candidateBuildSentinels[0].candidateGenerationIdentityDigest &&
+          sentinel.candidateStateDigest ===
+            candidateBuildSentinels[0].candidateStateDigest &&
+          sentinel.recoveryKind === "applied" &&
+          sentinel.replayKind === "replayed" &&
+          sentinel.concurrentCandidateBuilderRejected === (index === 1) &&
+          sentinel.replayWithoutAuthoritativeWorkspaceChurn === true &&
+          sentinel.resultPublishedBeforeCrash === false,
+      ),
+    "GENERATION_CANDIDATE_SENTINELS_DIVERGED",
+  );
+  ensure(
+    candidateBuildSentinels[0].partialExport?.processAlive === true &&
+      candidateBuildSentinels[0].journalSizeAtCrash !== null &&
+      candidateBuildSentinels[0].walSizeAtCrash === null &&
+      candidateBuildSentinels[0].abandonedBuildReconstructed === true &&
+      candidateBuildSentinels[1].walSizeAtCrash === "0" &&
+      candidateBuildSentinels[1].abandonedBuildReconstructed === true &&
+      candidateBuildSentinels[1].concurrentCandidateBuilderRejected === true &&
+      BigInt(candidateBuildSentinels[2].walSizeAtCrash) > 0n &&
+      candidateBuildSentinels[2].abandonedBuildReconstructed === true &&
+      candidateBuildSentinels[3].walSizeAtCrash === "0" &&
+      candidateBuildSentinels[3].abandonedBuildReconstructed === true &&
+      candidateBuildSentinels[4].crashedLocation === "candidate" &&
+      candidateBuildSentinels[4].walSizeAtCrash === null &&
+      candidateBuildSentinels[4].verifiedCandidateAdopted === true &&
+      candidateBuildSentinels[4].lifecycle?.finalGeneration ===
+        GENERATION_PUBLICATION_IDS.candidateGenerationId &&
+      candidateBuildSentinels[4].lifecycle
+        ?.publicationReplayWithoutAuthoritativeWorkspaceChurn === true &&
+      candidateBuildSentinels[4].lifecycle?.finalTargetVerified === true,
+    "GENERATION_CANDIDATE_BOUNDARY_MATRIX_INVALID",
+  );
 
   const sentinels = [];
   sentinels.push(
@@ -1679,9 +2657,9 @@ try {
       /^[a-f0-9]{64}$/.test(directPreparationSetup.handoffOutcomeDigest),
     "DIRECT_PREPARATION_SETUP_DIVERGED",
   );
-  ensure(verifiedProcessExecutions === 43, "PROCESS_COUNT_INVALID");
-  ensure(verifiedManagedTerminations === 35, "MANAGED_PROCESS_COUNT_INVALID");
-  ensure(verifiedForcedTerminations === 8, "FORCED_PROCESS_COUNT_INVALID");
+  ensure(verifiedProcessExecutions === 85, "PROCESS_COUNT_INVALID");
+  ensure(verifiedManagedTerminations === 72, "MANAGED_PROCESS_COUNT_INVALID");
+  ensure(verifiedForcedTerminations === 13, "FORCED_PROCESS_COUNT_INVALID");
   ensure(
     observedNumericProcessIds.size > 0 &&
       observedNumericProcessIds.size <= verifiedProcessExecutions,
@@ -1705,6 +2683,8 @@ try {
       electron: "43.1.0",
       packagedGenerationPreparationRecovery: true,
       packagedImmutableRecordRecovery: true,
+      packagedGenerationCandidateBuildRecovery: true,
+      candidateBuildSentinels,
       sentinels,
       directPreparationSetup,
       processExecutions: verifiedProcessExecutions,
@@ -1719,17 +2699,28 @@ try {
       digestBoundTemporaryNamesVerified: true,
       createOnlyHardLinkPublicationVerified: true,
       immutableRecordCrashBoundariesVerified: 6,
+      candidateBuildCrashBoundariesVerified: 5,
       directPreparationSetupVerified: true,
+      partialSqlcipherExportObservedWhileChildAlive: true,
+      exportTimingPayloadPreservedVerified: true,
+      candidateMigrationOpenTransactionWalVerified: true,
+      candidateMigrationCommittedWalVerified: true,
+      candidateCheckpointTruncatedWalVerified: true,
+      concurrentCandidateBuilderRejected: true,
+      unsealedCandidateQuarantineReconstructionVerified: true,
+      renamedVerifiedCandidateAdoptionVerified: true,
+      candidateBuildReplayWithoutAuthoritativeWorkspaceChurnVerified: true,
+      candidateBuildDownstreamLifecycleVerified: true,
       sealedCandidateDigestVerified: true,
       sourceManifestActiveThroughHandoff: true,
       sameWorkspaceMoveVerified: true,
       sealedCandidateReplayVerified: true,
       preparationConflictWithoutMutationVerified: true,
-      publicationReplayWithoutChurnVerified: true,
+      publicationReplayWithoutAuthoritativeWorkspaceChurnVerified: true,
       capturePlaintextStateScanVerified: true,
       exactArtifactDigestsStable: true,
       processCrashScopeOnly: true,
-      partialExportOrMigrationRecoveryClaimed: false,
+      partialExportOrMigrationRecoveryClaimed: true,
       parentDirectoryDurabilityClaimed: false,
       provider:
         process.platform === "darwin"

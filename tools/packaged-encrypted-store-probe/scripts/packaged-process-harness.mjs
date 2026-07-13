@@ -421,6 +421,41 @@ function isWindowsProcessIdentity(value) {
   );
 }
 
+function capturedRootIdentityMatches(
+  platform,
+  capturedIdentity,
+  currentIdentity,
+) {
+  return Boolean(
+    capturedIdentity &&
+    currentIdentity &&
+    capturedIdentity.pid === currentIdentity.pid &&
+    (platform === "win32"
+      ? capturedIdentity.creationDate === currentIdentity.creationDate
+      : capturedIdentity.pgid === currentIdentity.pgid &&
+        capturedIdentity.uid === currentIdentity.uid &&
+        capturedIdentity.startedAt === currentIdentity.startedAt),
+  );
+}
+
+export function guardCapturedRootTermination({
+  platform = process.platform,
+  capturedIdentity,
+  currentIdentity,
+  terminate,
+}) {
+  if (typeof terminate !== "function") {
+    throw new Error("CAPTURED_ROOT_TERMINATION_GUARD_INVALID");
+  }
+  return capturedRootIdentityMatches(
+    platform,
+    capturedIdentity,
+    currentIdentity,
+  )
+    ? terminate(capturedIdentity) === true
+    : false;
+}
+
 export function snapshotWindowsProcessTree(rootPid) {
   const script = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -759,6 +794,10 @@ export async function forceCrashPackagedProcessAtBoundary({
     let failurePosixProcessGroup;
     let windowsFailureTerminationAttempted = false;
     let acceptedBoundaryLine;
+    let initialWindowsProcessIdentities = [];
+    let initialPosixProcessGroup;
+    let initialWindowsRootIdentity;
+    let initialPosixRootIdentity;
 
     const clearTimers = () => {
       if (timeoutTimer) clearTimeout(timeoutTimer);
@@ -784,6 +823,36 @@ export async function forceCrashPackagedProcessAtBoundary({
       clearOutput();
       reject(error);
     };
+    const terminateCapturedBoundaryProcessTree = () => {
+      try {
+        if (process.platform === "win32") {
+          const currentRootIdentity = snapshotWindowsProcessTree(
+            child.pid,
+          ).find((identity) => identity.pid === child.pid);
+          return guardCapturedRootTermination({
+            capturedIdentity: initialWindowsRootIdentity,
+            currentIdentity: currentRootIdentity,
+            terminate: (capturedIdentity) =>
+              terminatePackagedProcessTree(child, {
+                windowsRootIdentity: capturedIdentity,
+              }),
+          });
+        }
+        const currentRootIdentity = readPosixProcessSnapshot().find(
+          (identity) =>
+            identity.pid === child.pid &&
+            identity.pgid === child.pid &&
+            identity.uid === process.geteuid?.(),
+        );
+        return guardCapturedRootTermination({
+          capturedIdentity: initialPosixRootIdentity,
+          currentIdentity: currentRootIdentity,
+          terminate: () => terminatePackagedProcessTree(child),
+        });
+      } catch {
+        return false;
+      }
+    };
     const beginFailureCleanup = (error) => {
       if (settled || primaryError) return;
       primaryError = error;
@@ -792,25 +861,30 @@ export async function forceCrashPackagedProcessAtBoundary({
         timeoutTimer = undefined;
       }
       try {
-        failureWindowsProcessIdentities =
-          process.platform === "win32" &&
-          child.pid &&
-          !exitObserved &&
-          child.exitCode === null &&
-          child.signalCode === null
-            ? snapshotWindowsProcessTree(child.pid)
-            : [];
-        if (
-          process.platform !== "win32" &&
-          child.pid &&
-          !exitObserved &&
-          child.exitCode === null &&
-          child.signalCode === null
-        ) {
-          failurePosixProcessGroup = selectPosixProcessGroup(
-            readPosixProcessSnapshot(),
-            child.pid,
-          );
+        if (boundaryAccepted) {
+          failureWindowsProcessIdentities = initialWindowsProcessIdentities;
+          failurePosixProcessGroup = initialPosixProcessGroup;
+        } else {
+          failureWindowsProcessIdentities =
+            process.platform === "win32" &&
+            child.pid &&
+            !exitObserved &&
+            child.exitCode === null &&
+            child.signalCode === null
+              ? snapshotWindowsProcessTree(child.pid)
+              : [];
+          if (
+            process.platform !== "win32" &&
+            child.pid &&
+            !exitObserved &&
+            child.exitCode === null &&
+            child.signalCode === null
+          ) {
+            failurePosixProcessGroup = selectPosixProcessGroup(
+              readPosixProcessSnapshot(),
+              child.pid,
+            );
+          }
         }
       } catch {
         failureWindowsProcessIdentities = [];
@@ -819,17 +893,25 @@ export async function forceCrashPackagedProcessAtBoundary({
       if (process.platform === "win32") {
         if (!windowsFailureTerminationAttempted && !exitObserved) {
           windowsFailureTerminationAttempted = true;
-          const rootIdentity = failureWindowsProcessIdentities.find(
-            (identity) => identity.pid === child.pid,
-          );
-          if (rootIdentity) {
-            terminatePackagedProcessTree(child, {
-              windowsRootIdentity: rootIdentity,
-            });
+          if (boundaryAccepted) {
+            terminateCapturedBoundaryProcessTree();
+          } else {
+            const rootIdentity = failureWindowsProcessIdentities.find(
+              (identity) => identity.pid === child.pid,
+            );
+            if (rootIdentity) {
+              terminatePackagedProcessTree(child, {
+                windowsRootIdentity: rootIdentity,
+              });
+            }
           }
         }
       } else if (!exitObserved) {
-        terminatePackagedProcessTree(child);
+        if (boundaryAccepted) {
+          terminateCapturedBoundaryProcessTree();
+        } else {
+          terminatePackagedProcessTree(child);
+        }
       }
       terminationTimer = setTimeout(() => {
         child.stdout.destroy();
@@ -889,26 +971,83 @@ export async function forceCrashPackagedProcessAtBoundary({
       }
 
       try {
+        if (process.platform === "win32") {
+          initialWindowsProcessIdentities = snapshotWindowsProcessTree(
+            child.pid,
+          );
+          initialWindowsRootIdentity = initialWindowsProcessIdentities.find(
+            (identity) => identity.pid === child.pid,
+          );
+          if (!initialWindowsRootIdentity) {
+            throw new Error("FAULT_PROCESS_ROOT_IDENTITY_MISSING");
+          }
+        } else {
+          const initialPosixSnapshot = readPosixProcessSnapshot();
+          initialPosixRootIdentity = initialPosixSnapshot.find(
+            (identity) =>
+              identity.pid === child.pid &&
+              identity.pgid === child.pid &&
+              identity.uid === process.geteuid?.(),
+          );
+          if (!initialPosixRootIdentity) {
+            throw new Error("FAULT_PROCESS_ROOT_IDENTITY_MISSING");
+          }
+          initialPosixProcessGroup = selectPosixProcessGroup(
+            initialPosixSnapshot,
+            child.pid,
+          );
+        }
         beforeKillEvidence = await beforeKill(boundary, child.pid);
+        if (settled || primaryError) return;
+        if (
+          exitObserved ||
+          child.exitCode !== null ||
+          child.signalCode !== null
+        ) {
+          throw new Error("FAULT_PROCESS_EXITED_DURING_PRE_KILL");
+        }
         if (process.platform === "win32") {
           windowsProcessIdentities = snapshotWindowsProcessTree(child.pid);
+          const currentRootIdentity = windowsProcessIdentities.find(
+            (identity) => identity.pid === child.pid,
+          );
+          if (
+            !capturedRootIdentityMatches(
+              process.platform,
+              initialWindowsRootIdentity,
+              currentRootIdentity,
+            )
+          ) {
+            throw new Error("FAULT_PROCESS_ROOT_IDENTITY_CHANGED");
+          }
           processIds = Object.freeze(
             windowsProcessIdentities.map((identity) => identity.pid),
           );
-          const rootIdentity = windowsProcessIdentities.find(
-            (identity) => identity.pid === child.pid,
-          );
+          if (settled || primaryError || exitObserved) return;
           forcedKillRequested = terminatePackagedProcessTree(child, {
-            windowsRootIdentity: rootIdentity,
+            windowsRootIdentity: initialWindowsRootIdentity,
           });
         } else {
           posixProcessGroup = selectPosixProcessGroup(
             readPosixProcessSnapshot(),
             child.pid,
           );
+          const currentRootIdentity = posixProcessGroup.find(
+            (identity) => identity.pid === child.pid,
+          );
+          if (
+            !capturedRootIdentityMatches(
+              process.platform,
+              initialPosixRootIdentity,
+              currentRootIdentity,
+            )
+          ) {
+            throw new Error("FAULT_PROCESS_ROOT_IDENTITY_CHANGED");
+          }
           processIds = Object.freeze(
             posixProcessGroup.map((identity) => identity.pid),
           );
+          if (settled || primaryError || exitObserved) return;
           forcedKillRequested = terminatePackagedProcessTree(child);
         }
         if (!forcedKillRequested) {
@@ -944,6 +1083,8 @@ export async function forceCrashPackagedProcessAtBoundary({
       exitSignal = signal;
       if (!boundaryAccepted && !primaryError) {
         beginFailureCleanup(new Error("FAULT_PROCESS_EXITED_BEFORE_BOUNDARY"));
+      } else if (!forcedKillRequested && !primaryError) {
+        beginFailureCleanup(new Error("FAULT_PROCESS_EXITED_DURING_PRE_KILL"));
       }
     });
     child.on("close", async (code, signal) => {
