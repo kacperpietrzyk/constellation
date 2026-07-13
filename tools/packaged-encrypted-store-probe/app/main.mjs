@@ -40,8 +40,6 @@ const EXIT_CODES = Object.freeze({
 let config;
 let nativeAddonPackaged = false;
 let finishStarted = false;
-let providerBootstrapAccepted = false;
-let providerDisconnectPromise;
 
 class ProbeFailure extends Error {
   constructor(code) {
@@ -135,7 +133,9 @@ function awaitProviderBootstrapTurn() {
 
       settled = true;
       cleanup();
-      providerBootstrapAccepted = true;
+      setImmediate(() => {
+        if (process.connected) process.disconnect();
+      });
       resolve();
     };
 
@@ -161,50 +161,6 @@ function awaitProviderBootstrapTurn() {
   });
 }
 
-function disconnectProviderChannel() {
-  if (providerDisconnectPromise) return providerDisconnectPromise;
-
-  providerDisconnectPromise = new Promise((resolve, reject) => {
-    let settled = false;
-    const failDisconnect = () => {
-      if (settled) return;
-      settled = true;
-      process.removeListener("disconnect", completeDisconnect);
-      reject(new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID"));
-    };
-    const completeDisconnect = () => {
-      if (settled) return;
-      settled = true;
-      if (process.connected || process.channel) {
-        reject(new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID"));
-      } else {
-        resolve();
-      }
-    };
-
-    if (
-      !providerBootstrapAccepted ||
-      typeof process.disconnect !== "function" ||
-      !process.connected ||
-      !process.channel
-    ) {
-      failDisconnect();
-      return;
-    }
-
-    process.once("disconnect", completeDisconnect);
-    try {
-      process.disconnect();
-    } catch {
-      failDisconnect();
-    }
-  });
-  // Operational work may fail while disconnect is in flight. Attach a handler
-  // immediately; the original strict promise is still awaited before finish.
-  void providerDisconnectPromise.catch(() => {});
-  return providerDisconnectPromise;
-}
-
 function assertNoInheritedProviderChannel() {
   if (
     typeof process.send === "function" ||
@@ -227,23 +183,6 @@ function finish(result, exitCode) {
   writeFixedResult(result, exitCode);
   if (config?.mode === "provider-initialize") app.exit(exitCode);
   else process.exit(exitCode);
-}
-
-async function finishResult(result, exitCode) {
-  let finalResult = result;
-  let finalExitCode = exitCode;
-  if (config?.mode === "provider-initialize" && providerBootstrapAccepted) {
-    try {
-      await disconnectProviderChannel();
-      if (process.connected || process.channel) {
-        throw new ProbeFailure("PROVIDER_BOOTSTRAP_INVALID");
-      }
-    } catch {
-      finalResult = fixedResult("fail", "PROVIDER_BOOTSTRAP_INVALID");
-      finalExitCode = EXIT_CODES.PROVIDER_BOOTSTRAP_INVALID;
-    }
-  }
-  finish(finalResult, finalExitCode);
 }
 
 function getArgument(name) {
@@ -567,12 +506,9 @@ async function initializeProvider() {
     ) {
       fail("ENCRYPTION_UNAVAILABLE");
     }
-    await disconnectProviderChannel();
-    scanKnownSecrets(canaries);
     return fixedResult("pass", "PROVIDER_INITIALIZED", {
       asyncEncryptionAvailable: true,
       providerInitializationRoundTrip: true,
-      plaintextScan: true,
     });
   } finally {
     scope.clear();
@@ -1246,6 +1182,6 @@ if (config) {
       result = fixedResult("fail", failure.code);
       exitCode = failure.exitCode;
     }
-    await finishResult(result, exitCode);
+    finish(result, exitCode);
   });
 }

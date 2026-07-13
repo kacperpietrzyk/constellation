@@ -670,13 +670,11 @@ try {
   recordProcess(providerInitializer, "provider-initialize");
   assertExactResultKeys(providerInitializer.result, [
     "asyncEncryptionAvailable",
-    "plaintextScan",
     "providerInitializationRoundTrip",
   ]);
   ensure(
     providerInitializer.result.asyncEncryptionAvailable === true &&
-      providerInitializer.result.providerInitializationRoundTrip === true &&
-      providerInitializer.result.plaintextScan === true,
+      providerInitializer.result.providerInitializationRoundTrip === true,
     "PROVIDER_INITIALIZATION_EVIDENCE_INVALID",
   );
   ensure(

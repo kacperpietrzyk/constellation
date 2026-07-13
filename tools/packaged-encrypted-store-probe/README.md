@@ -19,10 +19,11 @@ The probe fails unless all of these checks pass:
   the finished package passes its platform identity check, and the executable,
   ASAR, and finished add-on digests remain unchanged across every process;
 - one provider-initialization process completes an exact keyless parent IPC
-  turn, performs a fixed non-secret asynchronous safeStorage round trip, closes
-  the channel, and exits naturally before any workspace wrapper or database can
-  be created. This establishes the durable same-profile provider boundary that
-  the later no-IPC processes must actually use;
+  turn, schedules channel disconnect on the next event-loop turn, performs a
+  fixed non-secret asynchronous safeStorage round trip, and exits naturally
+  before any workspace wrapper or database can be created. The parent requires
+  the main-process exit and inherited-channel close before starting the later
+  no-IPC processes on the same profile;
 - one later privileged packaged writer, launched without any IPC capability,
   generates a fresh random 32-byte synthetic DEK internally, protects a strict
   workspace-bound payload through asynchronous safeStorage, and atomically
