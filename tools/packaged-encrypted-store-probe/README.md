@@ -100,21 +100,30 @@ deterministic `capture.submitText` fixture:
 - after the Outbox row, while every command row is visible only inside the
   still-open transaction.
 
+A separate seventh sentinel enters its post-commit fault path immediately after
+`COMMIT` returns, verifies the committed state, and then stops before the
+command can publish a result envelope. At the reported boundary, the transaction
+is closed, all six command rows and the canonical state are committed, and the
+caller still has no result.
+
 Before each fault, the child truncates the WAL baseline, enables a small
 probe-only page cache with spill, and records the database page size. The Capture
 fixture fills the public 262,144-character limit with a repeated canary. For
 every row-bearing boundary, a temporary plaintext control executes that same
-boundary and must expose the canary in an uncommitted WAL frame; the pre-row
-`BEGIN IMMEDIATE` sentinel uses the Capture-row control as its encryption
-sensitivity reference. The control database and sidecars are then deleted. The
-SQLCipher WAL must contain aligned frames with matching salts, zero commit
-markers, and none of the proven spilled canaries. This relative control avoids
+boundary and must expose the canary in WAL; the pre-row `BEGIN IMMEDIATE`
+sentinel uses the Capture-row control as its encryption-sensitivity reference.
+The six pre-`COMMIT` controls require uncommitted frames with zero commit
+markers. The post-`COMMIT` control requires exactly one commit frame. The
+control database and sidecars are then deleted. The corresponding SQLCipher WAL
+must contain aligned frames with matching salts, the expected commit-frame
+count, and none of the proven spilled canaries. This relative control avoids
 claiming encryption merely because a canary happened to remain in page cache.
 
-At the exact boundary, the child writes one strict content-safe record and
-blocks synchronously without closing or rolling back. Bounded non-object
-Chromium diagnostics are not evidence; the parent still requires exactly one
-valid record. It independently checks the WAL, proves the process is live, and
+At the reported boundary, the child writes one strict content-safe record and
+blocks synchronously without closing the database; pre-`COMMIT` boundaries also
+leave the transaction open without rolling it back. Bounded non-object Chromium
+diagnostics are not evidence; the parent still requires exactly one valid
+record. It independently checks the WAL, proves the process is live, and
 captures creation-bound process identities before force-killing the captured
 POSIX process group with `SIGKILL` on macOS or the captured Windows process tree
 with `taskkill /T /F`. macOS tracks PID, parent PID, process group, UID, and start
@@ -124,10 +133,11 @@ the kill if any observed descendant has escaped the captured process group. The
 parent requires every captured identity to disappear, handles proven numeric
 process-group reuse without treating `EPERM` as absence, never repeatedly
 signals a numeric group, and waits for all inherited pipes to close. Before any
-relaunch, every row-bearing sentinel also requires the same uncommitted WAL
+relaunch, every row-bearing sentinel also requires the same fault-boundary WAL
 bytes to remain present. Process accounting counts verified executions rather
 than unique numeric PIDs because an operating system may legally reuse a PID
-after the earlier process has been verified terminated.
+after the earlier process has been verified terminated. The full matrix uses 50
+verified packaged process executions: 43 managed and seven forced.
 
 A distinct packaged process must then observe the baseline Workspace, Space,
 and membership with zero command rows and unchanged workspace version. Another
@@ -137,11 +147,20 @@ connection changes and an unchanged canonical logical-state digest; a final
 process verifies the committed state, FTS result, and cipher/database/foreign-key
 integrity.
 
+After the post-`COMMIT` kill, the first fresh process must instead recover the
+already committed canonical state. An identical command must replay the stored
+outcome with zero changes. A fixed command with the same idempotency scope but
+different semantic input must return `idempotency.key_reused`, also with zero
+changes. A final fresh process proves that replay and conflict handling left the
+committed state unchanged. The boundary stream must contain no command result,
+and the last accepted progress stage must remain the fault-boundary stage.
+
 The fixture semantics also run against Node's ordinary SQLite before the native
-package build. That check proves the complete pre-`COMMIT` rollback matrix, each
-relative plaintext WAL control, uncommitted frame observation, and replay
-without churn; it is not a substitute for the packaged SQLCipher crash
-evidence.
+package build. That check proves the complete pre-`COMMIT` rollback matrix, the
+post-`COMMIT` committed-state semantics, each relative plaintext WAL control,
+commit-frame classification, replay and idempotency conflict without churn, and
+strict post-`COMMIT` boundary validation. It is not a substitute for the
+packaged SQLCipher crash evidence.
 
 ## Pinned inputs
 
@@ -180,10 +199,11 @@ isolated from the product dependency graph.
 This proves same-artifact mechanism integration only. The macOS package is
 ad-hoc signed and the Windows package is unsigned. It does not prove Developer
 ID/notarized or Authenticode-signed N-to-N+1 continuity, installer/reboot or
-OS-account migration, wrapper/database crash-atomic provisioning, the
-post-commit-before-result fault boundary, generation-manifest
-publication, busy/read-only/permission recovery, real disk-full or power-loss
-recovery, migration recovery, rotation, temporary provider unavailability,
+OS-account migration, wrapper/database crash-atomic provisioning,
+generation-manifest publication, busy/read-only/permission recovery, real
+disk-full or power-loss recovery, device-cache ordering, WAL checkpoint policy,
+client or renderer result delivery, authorization rechecks, external-effect
+delivery, migration recovery, rotation, temporary provider unavailability,
 Windows workspace ACLs, optimized Windows crypto performance, unobserved
 pre-boundary daemonization outside the captured POSIX process group, portable
 recovery, reliable JavaScript heap zeroization, renderer isolation, or

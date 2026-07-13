@@ -10,11 +10,14 @@ import {
   RecoveryCaptureFixtureError,
   bootstrapRecoveryCaptureSchema,
   executeRecoveryCapture,
+  executeRecoveryCaptureConflict,
 } from "./recovery/capture-command.mjs";
 import { verifyRecoveryCaptureState } from "./recovery/capture-verifier.mjs";
 import {
   createRecoveryFaultBoundaryRecord,
+  createRecoveryPostCommitFaultBoundaryRecord,
   emitRecoveryFaultBoundaryRecord,
+  emitRecoveryPostCommitFaultBoundaryRecord,
   holdForForcedTermination,
   prepareRecoveryWalFaultBaseline,
   verifyPlaintextRecoveryWalControl,
@@ -59,8 +62,10 @@ const PROGRESS_STAGES = new Set([
   "recovery-schema-bootstrapped",
   "recovery-state-verified",
   "recovery-command-applied",
+  "recovery-idempotency-conflict-verified",
   "recovery-fault-baseline-ready",
   "recovery-plaintext-control-verified",
+  "recovery-post-commit-state-verified",
   "recovery-fault-boundary-ready",
   "result-ready",
   "result-published",
@@ -76,6 +81,7 @@ const RECOVERY_MODES = new Set([
   "recovery-fault",
   "recovery-verify-empty",
   "recovery-apply",
+  "recovery-conflict",
   "recovery-verify-committed",
 ]);
 const EXIT_CODES = Object.freeze({
@@ -1261,6 +1267,31 @@ async function runRecoveryMode(Database) {
             },
           };
         }
+        case "recovery-conflict": {
+          const execution = executeRecoveryCaptureConflict(database);
+          const verification = verifyRecoveryCaptureState(database, {
+            expectedState: "committed",
+          });
+          writeFixedProgress("recovery-idempotency-conflict-verified");
+          return {
+            code: "RECOVERY_IDEMPOTENCY_CONFLICT_VERIFIED",
+            evidence: {
+              scenario: config.scenario,
+              applicationKind: execution.kind,
+              diagnosticCode: execution.diagnosticCode,
+              connectionChanges: execution.connectionChanges,
+              requestedSemanticFingerprint:
+                execution.requestedSemanticFingerprint,
+              storedSemanticFingerprint: execution.storedSemanticFingerprint,
+              storedOutcomeDigest: execution.storedOutcomeDigest,
+              workspaceVersion: verification.workspaceVersion,
+              rows: verification.rows,
+              stateDigest: verification.stateDigest,
+              integrityVerified: verification.integrityVerified,
+              ftsVerified: verification.ftsVerified,
+            },
+          };
+        }
         case "recovery-verify-committed": {
           const verification = verifyRecoveryCaptureState(database, {
             expectedState: "committed",
@@ -1301,16 +1332,33 @@ async function runRecoveryMode(Database) {
           executeRecoveryCapture(database, {
             failpoint: config.failpoint,
             reachFailpoint: ({ failpoint, visibleRows }) => {
-              const boundary = createRecoveryFaultBoundaryRecord({
-                database,
-                walPath: `${config.databasePath}-wal`,
-                failpoint,
-                visibleRows,
-                baseline,
-                plaintextWalControlVerified,
-              });
+              const postCommit = failpoint === "after-commit-before-result";
+              const boundary = postCommit
+                ? createRecoveryPostCommitFaultBoundaryRecord({
+                    database,
+                    walPath: `${config.databasePath}-wal`,
+                    failpoint,
+                    visibleRows,
+                    baseline,
+                    plaintextWalControlVerified,
+                  })
+                : createRecoveryFaultBoundaryRecord({
+                    database,
+                    walPath: `${config.databasePath}-wal`,
+                    failpoint,
+                    visibleRows,
+                    baseline,
+                    plaintextWalControlVerified,
+                  });
+              if (postCommit) {
+                writeFixedProgress("recovery-post-commit-state-verified");
+              }
               writeFixedProgress("recovery-fault-boundary-ready");
-              emitRecoveryFaultBoundaryRecord(boundary);
+              if (postCommit) {
+                emitRecoveryPostCommitFaultBoundaryRecord(boundary);
+              } else {
+                emitRecoveryFaultBoundaryRecord(boundary);
+              }
               holdForForcedTermination({ timeoutMs: 120_000 });
             },
           });

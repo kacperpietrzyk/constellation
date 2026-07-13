@@ -348,6 +348,14 @@ function expectedCanonicalState(expectedState) {
   };
 }
 
+export function getRecoveryCaptureExpectedStateDigest(expectedState) {
+  invariant(
+    RECOVERY_CAPTURE_EXPECTED_STATES.includes(expectedState),
+    "RECOVERY_EXPECTED_STATE_INVALID",
+  );
+  return sha256Canonical(expectedCanonicalState(expectedState));
+}
+
 function verifySchema(database) {
   const rows = database
     .prepare(

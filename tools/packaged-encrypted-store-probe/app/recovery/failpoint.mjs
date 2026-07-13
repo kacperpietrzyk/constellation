@@ -9,12 +9,18 @@ import {
   bootstrapRecoveryCaptureSchema,
   canonicalJson,
   executeRecoveryCapture,
-  getRecoveryCapturePlaintextCanaries,
   getRecoveryCaptureExpectedRowsAtFailpoint,
+  getRecoveryCapturePlaintextCanaries,
 } from "./capture-command.mjs";
+import {
+  getRecoveryCaptureExpectedStateDigest,
+  verifyRecoveryCaptureState,
+} from "./capture-verifier.mjs";
 
 export const RECOVERY_FAULT_BOUNDARY_TYPE =
   "constellation.packaged-store-recovery.fault-boundary/v1";
+export const RECOVERY_POST_COMMIT_FAULT_BOUNDARY_TYPE =
+  "constellation.packaged-store-recovery.post-commit-boundary/v1";
 
 const WAL_HEADER_BYTES = 32;
 const WAL_FRAME_HEADER_BYTES = 24;
@@ -24,6 +30,10 @@ const MAX_WAL_BYTES = 32 * 1024 * 1024;
 const HOLD_WAIT_STATE = new Int32Array(new SharedArrayBuffer(4));
 const FAULT_FAILPOINTS = Object.freeze(
   RECOVERY_CAPTURE_FAILPOINTS.filter((value) => value !== "none"),
+);
+const POST_COMMIT_FAILPOINT = "after-commit-before-result";
+const PRE_COMMIT_FAULT_FAILPOINTS = Object.freeze(
+  FAULT_FAILPOINTS.filter((value) => value !== POST_COMMIT_FAILPOINT),
 );
 const ROW_KEYS = Object.freeze([
   "captures",
@@ -42,6 +52,31 @@ const BOUNDARY_KEYS = Object.freeze([
   "workspaceVersion",
   "visibleRows",
   "originalTextDigest",
+  "walBaselineBytes",
+  "walPageSize",
+  "walBytes",
+  "walFrames",
+  "walCommitFrames",
+  "walSpillObserved",
+  "walEncrypted",
+  "plaintextWalControlVerified",
+  "readyForForcedCrash",
+]);
+const POST_COMMIT_BOUNDARY_KEYS = Object.freeze([
+  "type",
+  "processId",
+  "scenario",
+  "failpoint",
+  "commitReturned",
+  "transactionOpen",
+  "commandResultPublished",
+  "canonicalStateVerified",
+  "workspaceVersion",
+  "visibleRows",
+  "stateDigest",
+  "originalTextDigest",
+  "semanticFingerprint",
+  "outcomeDigest",
   "walBaselineBytes",
   "walPageSize",
   "walBytes",
@@ -333,8 +368,10 @@ export function verifyPlaintextRecoveryWalControl(
             walPath,
             expectedPageSize,
           });
+          const expectedCommitFrames =
+            controlFailpoint === POST_COMMIT_FAILPOINT ? 1 : 0;
           invariant(
-            wal.walFrames > 0 && wal.walCommitFrames === 0,
+            wal.walFrames > 0 && wal.walCommitFrames === expectedCommitFrames,
             "RECOVERY_PLAINTEXT_CONTROL_WAL_INVALID",
           );
           const contents = fs.readFileSync(walPath);
@@ -397,7 +434,7 @@ export function assertRecoveryFaultBoundaryRecord(record) {
       Number.isSafeInteger(record.processId) &&
       record.processId > 0 &&
       record.scenario === RECOVERY_CAPTURE_SCENARIO &&
-      FAULT_FAILPOINTS.includes(record.failpoint) &&
+      PRE_COMMIT_FAULT_FAILPOINTS.includes(record.failpoint) &&
       record.transactionOpen === true &&
       record.workspaceVersion === RECOVERY_CAPTURE_FIXTURE.workspace.version &&
       record.originalTextDigest ===
@@ -464,7 +501,10 @@ export function createRecoveryFaultBoundaryRecord({
   assertDatabase(database);
   assertWalPath(walPath);
   invariant(database.inTransaction, "RECOVERY_TRANSACTION_NOT_OPEN");
-  invariant(FAULT_FAILPOINTS.includes(failpoint), "RECOVERY_FAILPOINT_INVALID");
+  invariant(
+    PRE_COMMIT_FAULT_FAILPOINTS.includes(failpoint),
+    "RECOVERY_FAILPOINT_INVALID",
+  );
   assertVisibleRows(visibleRows);
   invariant(
     hasExactKeys(baseline, [
@@ -515,11 +555,134 @@ export function createRecoveryFaultBoundaryRecord({
   );
 }
 
-export function emitRecoveryFaultBoundaryRecord(
+export function assertRecoveryPostCommitFaultBoundaryRecord(record) {
+  invariant(
+    hasExactKeys(record, POST_COMMIT_BOUNDARY_KEYS),
+    "RECOVERY_POST_COMMIT_BOUNDARY_SHAPE_INVALID",
+  );
+  assertVisibleRows(record.visibleRows);
+  const expectedRows = getRecoveryCaptureExpectedRowsAtFailpoint(
+    POST_COMMIT_FAILPOINT,
+  );
+  const frameBytes = WAL_FRAME_HEADER_BYTES + record.walPageSize;
+  invariant(
+    record.type === RECOVERY_POST_COMMIT_FAULT_BOUNDARY_TYPE &&
+      Number.isSafeInteger(record.processId) &&
+      record.processId > 0 &&
+      record.scenario === RECOVERY_CAPTURE_SCENARIO &&
+      record.failpoint === POST_COMMIT_FAILPOINT &&
+      record.commitReturned === true &&
+      record.transactionOpen === false &&
+      record.commandResultPublished === false &&
+      record.canonicalStateVerified === true &&
+      record.workspaceVersion === RECOVERY_CAPTURE_FIXTURE.workspace.version &&
+      canonicalJson(record.visibleRows) === canonicalJson(expectedRows) &&
+      record.stateDigest ===
+        getRecoveryCaptureExpectedStateDigest("committed") &&
+      record.originalTextDigest ===
+        RECOVERY_CAPTURE_FIXTURE.originalTextDigest &&
+      record.semanticFingerprint ===
+        RECOVERY_CAPTURE_FIXTURE.semanticFingerprint &&
+      record.outcomeDigest === RECOVERY_CAPTURE_FIXTURE.outcomeDigest &&
+      record.walBaselineBytes === 0 &&
+      Number.isSafeInteger(record.walPageSize) &&
+      record.walPageSize >= 512 &&
+      record.walPageSize <= 65_536 &&
+      isPowerOfTwo(record.walPageSize) &&
+      Number.isSafeInteger(record.walBytes) &&
+      record.walBytes >= WAL_HEADER_BYTES + frameBytes &&
+      Number.isSafeInteger(record.walFrames) &&
+      record.walFrames >= 1 &&
+      record.walBytes === WAL_HEADER_BYTES + record.walFrames * frameBytes &&
+      record.walCommitFrames === 1 &&
+      record.walSpillObserved === true &&
+      record.walEncrypted === true &&
+      record.plaintextWalControlVerified === true &&
+      record.readyForForcedCrash === true,
+    "RECOVERY_POST_COMMIT_BOUNDARY_VALUE_INVALID",
+  );
+  return record;
+}
+
+export function createRecoveryPostCommitFaultBoundaryRecord({
+  database,
+  walPath,
+  failpoint,
+  visibleRows,
+  baseline,
+  plaintextWalControlVerified,
+  processId = process.pid,
+}) {
+  assertDatabase(database);
+  assertWalPath(walPath);
+  invariant(!database.inTransaction, "RECOVERY_TRANSACTION_STILL_OPEN");
+  invariant(failpoint === POST_COMMIT_FAILPOINT, "RECOVERY_FAILPOINT_INVALID");
+  assertVisibleRows(visibleRows);
+  invariant(
+    hasExactKeys(baseline, [
+      "scenario",
+      "walBaselineBytes",
+      "walPageSize",
+      "cacheSizePages",
+    ]) &&
+      baseline.scenario === RECOVERY_CAPTURE_SCENARIO &&
+      baseline.walBaselineBytes === 0,
+    "RECOVERY_WAL_BASELINE_INVALID",
+  );
+
+  const verification = verifyRecoveryCaptureState(database, {
+    expectedState: "committed",
+  });
+  invariant(
+    canonicalJson(verification.rows) === canonicalJson(visibleRows),
+    "RECOVERY_POST_COMMIT_STATE_DIVERGED",
+  );
+  const plaintextCanaries = getRecoveryCapturePlaintextCanaries();
+  let wal;
+  try {
+    wal = inspectRecoveryWal({
+      walPath,
+      expectedPageSize: baseline.walPageSize,
+      plaintextCanaries,
+    });
+  } finally {
+    for (const canary of plaintextCanaries) canary.fill(0);
+  }
+  return assertRecoveryPostCommitFaultBoundaryRecord(
+    Object.freeze({
+      type: RECOVERY_POST_COMMIT_FAULT_BOUNDARY_TYPE,
+      processId,
+      scenario: RECOVERY_CAPTURE_SCENARIO,
+      failpoint,
+      commitReturned: true,
+      transactionOpen: false,
+      commandResultPublished: false,
+      canonicalStateVerified: true,
+      workspaceVersion: verification.workspaceVersion,
+      visibleRows: Object.freeze({ ...visibleRows }),
+      stateDigest: verification.stateDigest,
+      originalTextDigest: RECOVERY_CAPTURE_FIXTURE.originalTextDigest,
+      semanticFingerprint: RECOVERY_CAPTURE_FIXTURE.semanticFingerprint,
+      outcomeDigest: RECOVERY_CAPTURE_FIXTURE.outcomeDigest,
+      walBaselineBytes: baseline.walBaselineBytes,
+      walPageSize: baseline.walPageSize,
+      walBytes: wal.walBytes,
+      walFrames: wal.walFrames,
+      walCommitFrames: wal.walCommitFrames,
+      walSpillObserved: wal.walFrames > 0,
+      walEncrypted: wal.walEncrypted,
+      plaintextWalControlVerified,
+      readyForForcedCrash: true,
+    }),
+  );
+}
+
+function emitRecoveryBoundaryRecord(
   record,
+  assertRecord,
   { fileDescriptor = 1, writeSync = fs.writeSync } = {},
 ) {
-  assertRecoveryFaultBoundaryRecord(record);
+  assertRecord(record);
   invariant(
     Number.isSafeInteger(fileDescriptor) && fileDescriptor >= 0,
     "RECOVERY_FAULT_OUTPUT_INVALID",
@@ -545,6 +708,25 @@ export function emitRecoveryFaultBoundaryRecord(
   } finally {
     output.fill(0);
   }
+}
+
+export function emitRecoveryFaultBoundaryRecord(record, options = {}) {
+  return emitRecoveryBoundaryRecord(
+    record,
+    assertRecoveryFaultBoundaryRecord,
+    options,
+  );
+}
+
+export function emitRecoveryPostCommitFaultBoundaryRecord(
+  record,
+  options = {},
+) {
+  return emitRecoveryBoundaryRecord(
+    record,
+    assertRecoveryPostCommitFaultBoundaryRecord,
+    options,
+  );
 }
 
 export function holdForForcedTermination({
