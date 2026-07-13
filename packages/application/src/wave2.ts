@@ -48,7 +48,7 @@ import {
 
 type DomainEventBody = DomainEvent extends infer Event
   ? Event extends DomainEvent
-    ? Omit<Event, "id">
+    ? Omit<Event, "id" | "commandId">
     : never
   : never;
 
@@ -282,7 +282,11 @@ const appendJournal = (
     auditReceiptId,
     ...result,
   });
-  const storedEvent = { id: eventId, ...event } as DomainEvent;
+  const storedEvent = {
+    id: eventId,
+    commandId: command.commandId,
+    ...event,
+  } as DomainEvent;
   const audit = auditReceipt(
     auditReceiptId,
     context,
@@ -1360,6 +1364,7 @@ export const executeWave2Query = (
         : [
             {
               eventId: event.id,
+              targetCommandId: event.commandId,
               activityType,
               recordId: event.aggregateId,
               occurredAt: event.occurredAt,

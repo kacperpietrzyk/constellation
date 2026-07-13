@@ -430,6 +430,7 @@ export class ApplicationKernel {
     });
     const event: DomainEvent = {
       id: eventId,
+      commandId: command.commandId,
       type: "workspace.created",
       workspaceId: created.workspace.id,
       spaceId: created.rootSpace.id,
@@ -575,6 +576,7 @@ export class ApplicationKernel {
     );
     const event: DomainEvent = {
       id: eventId,
+      commandId: command.commandId,
       type: "workspace.renamed",
       workspaceId: workspace.id,
       spaceId: workspace.rootSpaceId,
@@ -691,6 +693,7 @@ export class ApplicationKernel {
     });
     const event: DomainEvent = {
       id: eventId,
+      commandId: command.commandId,
       type: "capture.submitted",
       workspaceId: capture.workspaceId,
       spaceId: capture.spaceId,
@@ -822,6 +825,7 @@ export class ApplicationKernel {
     });
     const event: DomainEvent = {
       id: eventId,
+      commandId: command.commandId,
       type: "capture.routed_as_task",
       workspaceId: capture.workspaceId,
       spaceId: capture.spaceId,

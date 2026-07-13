@@ -344,6 +344,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
         z
           .object({
             eventId: z.uuid(),
+            targetCommandId: CommandIdSchema,
             activityType: z.enum([
               "capture_routed",
               "project_created",

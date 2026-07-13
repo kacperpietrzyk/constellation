@@ -179,7 +179,7 @@ export type UndoDescriptor =
       readonly consumedByCommandId?: CommandId;
     };
 
-export type DomainEvent =
+export type DomainEvent = { readonly commandId: CommandId } & (
   | {
       readonly id: EventId;
       readonly type: "workspace.created";
@@ -257,7 +257,8 @@ export type DomainEvent =
       readonly aggregateVersion: number;
       readonly targetCommandId: CommandId;
       readonly occurredAt: string;
-    };
+    }
+);
 
 export interface AuditReceipt {
   readonly id: AuditReceiptId;
