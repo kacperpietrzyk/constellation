@@ -12,7 +12,15 @@ import {
   assertGenerationPreparationFaultBoundaryRecord,
   getGenerationPreparationPaths,
 } from "../app/recovery/generation-preparation.mjs";
-import { GENERATION_PUBLICATION_IDS } from "../app/recovery/generation-publication.mjs";
+import {
+  GENERATION_PUBLICATION_IDS,
+  digestGenerationValue,
+} from "../app/recovery/generation-publication.mjs";
+import {
+  IMMUTABLE_RECORD_PUBLICATION_SCENARIO,
+  assertImmutableRecordFaultBoundaryRecord,
+  getImmutableRecordPublicationPaths,
+} from "../app/recovery/immutable-record-publication.mjs";
 import {
   forceCrashPackagedProcessAtBoundary,
   launchManagedPackagedProcess,
@@ -87,6 +95,11 @@ const progressStages = new Set([
   "generation-preparation-state-verified",
   "generation-preparation-completed",
   "generation-preparation-fault-boundary-ready",
+  "generation-record-intent-ready",
+  "generation-record-candidate-verified-ready",
+  "generation-record-operation-ready",
+  "generation-record-source-ready",
+  "generation-record-fault-boundary-ready",
   "result-ready",
   "result-published",
 ]);
@@ -171,6 +184,74 @@ const preparationResultKeys = [
   "provider",
   "providerVersion",
   "rawKeyBinding",
+  "rows",
+  "scenario",
+  "sourceGenerationId",
+  "sourceGenerationIdentityDigest",
+  "sourceGenerationPresent",
+  "stateDigest",
+  "verifiedRecordDigest",
+  "workspaceVersion",
+  "wrapperDigest",
+];
+const generationRecordSourceResultKeys = [
+  "activeGenerationId",
+  "applicationKind",
+  "asyncEncryptionAvailable",
+  "candidateGenerationPresent",
+  "candidateStagingPresent",
+  "cipherVersion",
+  "diagnosticCode",
+  "ftsVerified",
+  "inputFingerprint",
+  "integrityVerified",
+  "manifestDigest",
+  "markerDigest",
+  "provider",
+  "providerVersion",
+  "rawKeyBinding",
+  "rows",
+  "scenario",
+  "sourceGenerationId",
+  "sourceGenerationIdentityDigest",
+  "sourceGenerationPresent",
+  "stateDigest",
+  "workspaceVersion",
+  "wrapperDigest",
+];
+const generationRecordResultKeys = [
+  "activeGenerationId",
+  "applicationKind",
+  "asyncEncryptionAvailable",
+  "candidateDatabaseDigest",
+  "candidateDatabaseSize",
+  "candidateGenerationId",
+  "candidateGenerationIdentityDigest",
+  "candidateGenerationPresent",
+  "candidateReadOnlyReopen",
+  "candidateStagingPresent",
+  "cipherVersion",
+  "diagnosticCode",
+  "encryptedExport",
+  "ftsVerified",
+  "inputFingerprint",
+  "integrityVerified",
+  "intentDigest",
+  "manifestDigest",
+  "markerDigest",
+  "operationRecordDigest",
+  "provider",
+  "providerVersion",
+  "rawKeyBinding",
+  "recordDigest",
+  "recordKind",
+  "recordOutcomeDigest",
+  "recordPhase",
+  "recordPublicationKind",
+  "recordSize",
+  "recoveredPrefix",
+  "recoveredPublishedLink",
+  "recoveredSyncedTemporary",
   "rows",
   "scenario",
   "sourceGenerationId",
@@ -280,7 +361,7 @@ function assertExactResultKeys(result, extraKeys = []) {
   );
 }
 
-function parseFaultProgress(stderr, processId) {
+function parseFaultProgress(stderr, processId, mode) {
   const stages = [];
   for (const line of stderr.toString("utf8").split(/\r?\n/).filter(Boolean)) {
     let value;
@@ -292,7 +373,7 @@ function parseFaultProgress(stderr, processId) {
     if (
       hasExactKeys(value, ["mode", "processId", "stage", "type"]) &&
       value.type === progressType &&
-      value.mode === "generation-preparation-fault" &&
+      value.mode === mode &&
       value.processId === processId
     ) {
       ensure(progressStages.has(value.stage), "FAULT_PROGRESS_STAGE_INVALID");
@@ -423,14 +504,16 @@ function assertRows(rows) {
   );
 }
 
-function assertPreparationSetup(result, markerDigest) {
+function assertDirectPreparationSetup(result, markerDigest) {
   assertExactResultKeys(result, [
     ...baseGenerationResultKeys,
     ...preparationSetupExtraKeys,
   ]);
   assertProvider(result);
   ensure(
-    result.scenario === GENERATION_PREPARATION_SCENARIO &&
+    result.status === "pass" &&
+      result.code === "GENERATION_CANDIDATE_STAGED" &&
+      result.scenario === GENERATION_PREPARATION_SCENARIO &&
       result.markerDigest === markerDigest &&
       result.sourceGenerationId ===
         GENERATION_PUBLICATION_IDS.sourceGenerationId &&
@@ -449,8 +532,11 @@ function assertPreparationSetup(result, markerDigest) {
       result.integrityVerified === true &&
       result.ftsVerified === true &&
       result.encryptedExport === true &&
-      result.candidateReadOnlyReopen === true,
-    "PREPARATION_SETUP_RESULT_INVALID",
+      result.candidateReadOnlyReopen === true &&
+      Number.isSafeInteger(result.candidateDatabaseSize) &&
+      result.candidateDatabaseSize > 0 &&
+      result.workspaceVersion === 1,
+    "DIRECT_PREPARATION_SETUP_INVALID",
   );
   for (const key of [
     "sourceGenerationIdentityDigest",
@@ -465,13 +551,130 @@ function assertPreparationSetup(result, markerDigest) {
     "verifiedRecordDigest",
     "stateDigest",
   ]) {
-    ensure(/^[a-f0-9]{64}$/.test(result[key]), "PREPARATION_DIGEST_INVALID");
+    ensure(/^[a-f0-9]{64}$/.test(result[key]), "DIRECT_SETUP_DIGEST_INVALID");
   }
+  assertRows(result.rows);
+}
+
+function assertGenerationRecordSource(result, markerDigest) {
+  assertExactResultKeys(result, generationRecordSourceResultKeys);
+  assertProvider(result);
   ensure(
-    Number.isSafeInteger(result.candidateDatabaseSize) &&
-      result.candidateDatabaseSize > 0 &&
-      result.workspaceVersion === 1,
-    "PREPARATION_SIZE_INVALID",
+    result.scenario === IMMUTABLE_RECORD_PUBLICATION_SCENARIO &&
+      result.markerDigest === markerDigest &&
+      result.sourceGenerationId ===
+        GENERATION_PUBLICATION_IDS.sourceGenerationId &&
+      result.activeGenerationId ===
+        GENERATION_PUBLICATION_IDS.sourceGenerationId &&
+      result.sourceGenerationPresent === true &&
+      result.candidateGenerationPresent === false &&
+      result.candidateStagingPresent === false &&
+      result.applicationKind === "source_ready" &&
+      result.diagnosticCode === null &&
+      result.workspaceVersion === 1 &&
+      result.integrityVerified === true &&
+      result.ftsVerified === true,
+    "GENERATION_RECORD_SOURCE_INVALID",
+  );
+  for (const key of [
+    "sourceGenerationIdentityDigest",
+    "manifestDigest",
+    "wrapperDigest",
+    "inputFingerprint",
+    "stateDigest",
+  ]) {
+    ensure(
+      /^[a-f0-9]{64}$/.test(result[key]),
+      "GENERATION_RECORD_DIGEST_INVALID",
+    );
+  }
+  assertRows(result.rows);
+}
+
+function assertGenerationRecordRecovery(
+  result,
+  {
+    source,
+    boundary,
+    recordKind,
+    crashPhase,
+    expectedPublicationKind = "recovered",
+  },
+) {
+  assertExactResultKeys(result, generationRecordResultKeys);
+  assertProvider(result);
+  const expectedCodeBase =
+    recordKind === "intent"
+      ? "GENERATION_RECORD_INTENT"
+      : recordKind === "candidate-verified"
+        ? "GENERATION_RECORD_CANDIDATE_VERIFIED"
+        : "GENERATION_RECORD_OPERATION";
+  const expectedCode = `${expectedCodeBase}_${expectedPublicationKind.toUpperCase()}`;
+  const expectedPhase =
+    recordKind === "intent"
+      ? "intent_ready"
+      : recordKind === "candidate-verified"
+        ? "candidate_verified"
+        : "staged";
+  ensure(
+    result.status === "pass" &&
+      result.code === expectedCode &&
+      result.scenario === IMMUTABLE_RECORD_PUBLICATION_SCENARIO &&
+      result.markerDigest === source.markerDigest &&
+      result.sourceGenerationId === source.sourceGenerationId &&
+      result.sourceGenerationIdentityDigest ===
+        source.sourceGenerationIdentityDigest &&
+      result.candidateGenerationId ===
+        GENERATION_PUBLICATION_IDS.candidateGenerationId &&
+      /^[a-f0-9]{64}$/.test(result.candidateGenerationIdentityDigest) &&
+      result.activeGenerationId === source.activeGenerationId &&
+      result.manifestDigest === source.manifestDigest &&
+      result.wrapperDigest === source.wrapperDigest &&
+      result.inputFingerprint === source.inputFingerprint &&
+      result.sourceGenerationPresent === true &&
+      result.candidateGenerationPresent === false &&
+      result.recordKind === recordKind &&
+      result.recordPhase === expectedPhase &&
+      result.recordPublicationKind === expectedPublicationKind &&
+      result.recordDigest === boundary.state.recordDigest &&
+      result.recordSize === boundary.state.recordSize &&
+      result.recoveredPrefix === false &&
+      result.recoveredSyncedTemporary ===
+        (expectedPublicationKind === "recovered" &&
+          crashPhase === "temp-synced") &&
+      result.recoveredPublishedLink ===
+        (expectedPublicationKind === "recovered" &&
+          crashPhase === "target-published") &&
+      result.applicationKind === expectedPublicationKind &&
+      result.diagnosticCode === null &&
+      result.workspaceVersion === 1 &&
+      result.stateDigest === source.stateDigest &&
+      result.integrityVerified === true &&
+      result.ftsVerified === true,
+    "GENERATION_RECORD_RECOVERY_INVALID",
+  );
+  ensure(
+    /^[a-f0-9]{64}$/.test(result.recordOutcomeDigest) &&
+      /^[a-f0-9]{64}$/.test(result.intentDigest) &&
+      (recordKind === "intent"
+        ? result.verifiedRecordDigest === null &&
+          result.operationRecordDigest === null &&
+          result.candidateStagingPresent === false &&
+          result.candidateDatabaseDigest === null &&
+          result.candidateDatabaseSize === null &&
+          result.encryptedExport === false &&
+          result.candidateReadOnlyReopen === false
+        : /^[a-f0-9]{64}$/.test(result.verifiedRecordDigest) &&
+          result.candidateStagingPresent === true &&
+          /^[a-f0-9]{64}$/.test(result.candidateDatabaseDigest) &&
+          Number.isSafeInteger(result.candidateDatabaseSize) &&
+          result.candidateDatabaseSize > 0 &&
+          result.encryptedExport === true &&
+          result.candidateReadOnlyReopen === true &&
+          (recordKind === "operation"
+            ? /^[a-f0-9]{64}$/.test(result.operationRecordDigest)
+            : result.operationRecordDigest === null)),
+    "GENERATION_RECORD_PHASE_INVALID",
   );
   assertRows(result.rows);
 }
@@ -647,6 +850,188 @@ function scanStateCanaries(stateRoot) {
   }
 }
 
+function generationRecordTargetPath(paths, recordKind) {
+  return recordKind === "intent"
+    ? paths.intentPath
+    : recordKind === "candidate-verified"
+      ? paths.verifiedRecordPath
+      : paths.operationRecordPath;
+}
+
+function recordReadyProgressStage(recordKind) {
+  return recordKind === "intent"
+    ? "generation-record-intent-ready"
+    : recordKind === "candidate-verified"
+      ? "generation-record-candidate-verified-ready"
+      : "generation-record-operation-ready";
+}
+
+function stableFileSnapshot(target) {
+  const metadata = fs.lstatSync(target, { bigint: true });
+  ensure(
+    metadata.isFile() && !metadata.isSymbolicLink(),
+    "GENERATION_RECORD_FILE_INVALID",
+  );
+  return JSON.stringify({
+    dev: metadata.dev.toString(),
+    ino: metadata.ino.toString(),
+    nlink: metadata.nlink.toString(),
+    size: metadata.size.toString(),
+    mtimeNs: metadata.mtimeNs.toString(),
+    ctimeNs: metadata.ctimeNs.toString(),
+    digest: digestFileHex(target),
+  });
+}
+
+function inspectImmutableRecordBoundary(paths, state) {
+  const targetPath = generationRecordTargetPath(paths, state.recordKind);
+  const recordPaths = getImmutableRecordPublicationPaths(
+    state.recordKind,
+    targetPath,
+    state.recordDigest,
+  );
+  ensure(
+    fs.existsSync(recordPaths.temporaryPath) &&
+      fs.existsSync(recordPaths.targetPath) === state.targetPresent,
+    "GENERATION_RECORD_BOUNDARY_LAYOUT_INVALID",
+  );
+  const temporary = fs.lstatSync(recordPaths.temporaryPath, { bigint: true });
+  ensure(
+    temporary.isFile() &&
+      !temporary.isSymbolicLink() &&
+      temporary.size === BigInt(state.recordSize) &&
+      digestFileHex(recordPaths.temporaryPath) === state.recordDigest &&
+      temporary.nlink === BigInt(state.targetPresent ? 2 : 1),
+    "GENERATION_RECORD_BOUNDARY_TEMPORARY_INVALID",
+  );
+  let target;
+  if (state.targetPresent) {
+    target = fs.lstatSync(recordPaths.targetPath, { bigint: true });
+    ensure(
+      target.isFile() &&
+        !target.isSymbolicLink() &&
+        target.dev === temporary.dev &&
+        target.ino === temporary.ino &&
+        target.nlink === 2n &&
+        target.size === BigInt(state.recordSize) &&
+        digestFileHex(recordPaths.targetPath) === state.recordDigest,
+      "GENERATION_RECORD_BOUNDARY_TARGET_INVALID",
+    );
+  }
+  return JSON.stringify({
+    targetPresent: state.targetPresent,
+    temporary: stableFileSnapshot(recordPaths.temporaryPath),
+    target: target ? stableFileSnapshot(recordPaths.targetPath) : null,
+  });
+}
+
+function assertStableSnapshotsUnchanged(snapshots) {
+  for (const [target, expected] of snapshots) {
+    ensure(
+      stableFileSnapshot(target) === expected,
+      "GENERATION_RECORD_CHURNED",
+    );
+  }
+}
+
+async function forceGenerationRecordFault({
+  stateRoot,
+  workspaceId,
+  failpoint,
+  paths,
+  stableSnapshots,
+}) {
+  let observedBoundary;
+  const execution = await forceCrashPackagedProcessAtBoundary({
+    executable,
+    args: argumentsFor(stateRoot, {
+      mode: "generation-record-fault",
+      workspaceId,
+      wrapperName: "key.wrap.json",
+      databaseName: "bootstrap.db",
+      scenario: IMMUTABLE_RECORD_PUBLICATION_SCENARIO,
+      failpoint,
+    }),
+    errorContext: `${failpoint}:${workspaceId}`,
+    parseBoundary: (line, processId) => {
+      let record;
+      try {
+        record = JSON.parse(line.toString("utf8"));
+      } catch {
+        throw new Error("GENERATION_RECORD_BOUNDARY_INVALID");
+      }
+      if (Object.hasOwn(record, "declaredExitCode")) {
+        throw new Error(`FAULT_CHILD_FAILED_BEFORE_BOUNDARY:${record.code}`);
+      }
+      assertImmutableRecordFaultBoundaryRecord(record);
+      ensure(
+        record.processId === processId &&
+          record.workspaceId === workspaceId &&
+          record.operationId === GENERATION_PUBLICATION_IDS.operationId &&
+          record.state.failpoint === failpoint &&
+          record.state.recoveredPrefix === false &&
+          record.state.recoveredSyncedTemporary === false &&
+          record.state.recoveredPublishedLink === false,
+        "GENERATION_RECORD_BOUNDARY_STATE_INVALID",
+      );
+      observedBoundary = record;
+      return record;
+    },
+    beforeKill: () => {
+      ensure(observedBoundary, "GENERATION_RECORD_BOUNDARY_MISSING");
+      assertStableSnapshotsUnchanged(stableSnapshots);
+      scanStateCanaries(stateRoot);
+      return {
+        workspaceSnapshot: snapshotWorkspace(paths.workspaceRoot),
+        boundaryFiles: inspectImmutableRecordBoundary(
+          paths,
+          observedBoundary.state,
+        ),
+      };
+    },
+  });
+  try {
+    inspectOutput(execution.stdout);
+    inspectOutput(execution.stderr);
+    ensure(
+      execution.stdoutProtocolCandidateCount === 1 &&
+        execution.stdoutDiagnosticLineCount >= 0 &&
+        execution.stdoutDiagnosticLineCount <= 32 &&
+        execution.forcedKillVerified === true,
+      "GENERATION_RECORD_TERMINATION_EVIDENCE_INVALID",
+    );
+    const stages = parseFaultProgress(
+      execution.stderr,
+      execution.childPid,
+      "generation-record-fault",
+    );
+    ensure(
+      stages.includes(
+        recordReadyProgressStage(execution.boundary.state.recordKind),
+      ) &&
+        stages.at(-1) === "generation-record-fault-boundary-ready" &&
+        !stages.includes("result-ready") &&
+        !stages.includes("result-published"),
+      "GENERATION_RECORD_RESULT_BOUNDARY_INVALID",
+    );
+    ensure(
+      snapshotWorkspace(paths.workspaceRoot) ===
+        execution.beforeKillEvidence.workspaceSnapshot &&
+        inspectImmutableRecordBoundary(paths, execution.boundary.state) ===
+          execution.beforeKillEvidence.boundaryFiles,
+      "GENERATION_RECORD_POST_KILL_STATE_CHANGED",
+    );
+    assertStableSnapshotsUnchanged(stableSnapshots);
+    scanStateCanaries(stateRoot);
+    recordProcessExecution(execution.childPid);
+    verifiedForcedTerminations += 1;
+    return execution.boundary;
+  } finally {
+    execution.stdout.fill(0);
+    execution.stderr.fill(0);
+  }
+}
+
 async function forcePreparationFault({
   stateRoot,
   workspaceId,
@@ -727,7 +1112,11 @@ async function forcePreparationFault({
         execution.forcedKillVerified === true,
       "FAULT_TERMINATION_EVIDENCE_INVALID",
     );
-    const stages = parseFaultProgress(execution.stderr, execution.childPid);
+    const stages = parseFaultProgress(
+      execution.stderr,
+      execution.childPid,
+      "generation-preparation-fault",
+    );
     const expectedStage =
       failpoint === "after-candidate-read-only-verified"
         ? "generation-preparation-candidate-verified"
@@ -755,11 +1144,65 @@ async function forcePreparationFault({
   }
 }
 
-async function runSentinel({ slug, failpoint }) {
+async function runDirectPreparationSetupSmoke() {
+  const stateRoot = fs.mkdtempSync(
+    path.join(temporaryRoot, "constellation-packaged-store-generation-direct-"),
+  );
+  sentinelRoots.push(stateRoot);
+  const baseOptions = {
+    workspaceId: "workspace-generation-setup-smoke",
+    wrapperName: "key.wrap.json",
+    databaseName: "bootstrap.db",
+  };
+  const provider = await launch(stateRoot, {
+    ...baseOptions,
+    mode: "provider-initialize",
+  });
+  ensure(
+    provider.result.status === "pass" &&
+      provider.result.code === "PROVIDER_INITIALIZED",
+    "DIRECT_SETUP_PROVIDER_FAILED",
+  );
+  recordManaged(provider, "provider-initialize");
+  assertExactResultKeys(provider.result, [
+    "asyncEncryptionAvailable",
+    "providerInitializationRoundTrip",
+  ]);
+
+  const provision = await launch(stateRoot, {
+    ...baseOptions,
+    mode: "provision",
+  });
+  ensure(
+    provision.result.status === "pass" &&
+      provision.result.code === "STORE_PROVISIONED",
+    "DIRECT_SETUP_PROVISION_FAILED",
+  );
+  recordManaged(provision, "provision");
+  assertExactResultKeys(provision.result, provisionResultKeys);
+  assertProvider(provision.result);
+
+  const setup = await launch(stateRoot, {
+    ...baseOptions,
+    mode: "generation-preparation-setup",
+    scenario: GENERATION_PREPARATION_SCENARIO,
+    failpoint: "none",
+  });
+  recordManaged(setup, "generation-preparation-setup");
+  assertDirectPreparationSetup(setup.result, provision.result.markerDigest);
+  scanStateCanaries(stateRoot);
+  return Object.freeze({
+    candidateDatabaseDigest: setup.result.candidateDatabaseDigest,
+    handoffOutcomeDigest: setup.result.outcomeDigest,
+    stateDigest: setup.result.stateDigest,
+  });
+}
+
+async function runSentinel({ slug, failpoint, recordCrashPhase }) {
   const stateRoot = fs.mkdtempSync(
     path.join(
       temporaryRoot,
-      `constellation-packaged-store-generation-preparation-${slug}-`,
+      `constellation-packaged-store-generation-${slug}-`,
     ),
   );
   sentinelRoots.push(stateRoot);
@@ -804,25 +1247,172 @@ async function runSentinel({ slug, failpoint }) {
   assertExactResultKeys(provision.result, provisionResultKeys);
   assertProvider(provision.result);
 
-  const setupExecution = await launch(stateRoot, {
+  const sourceExecution = await launch(stateRoot, {
     ...baseOptions,
-    mode: "generation-preparation-setup",
-    scenario: GENERATION_PREPARATION_SCENARIO,
+    mode: "generation-record-source-setup",
+    scenario: IMMUTABLE_RECORD_PUBLICATION_SCENARIO,
     failpoint: "none",
   });
   ensure(
-    setupExecution.result.status === "pass" &&
-      setupExecution.result.code === "GENERATION_CANDIDATE_STAGED",
-    `PREPARATION_SETUP_FAILED:${setupExecution.result.code}`,
+    sourceExecution.result.status === "pass" &&
+      sourceExecution.result.code === "GENERATION_RECORD_SOURCE_READY",
+    `GENERATION_RECORD_SOURCE_FAILED:${sourceExecution.result.code}`,
   );
-  recordManaged(setupExecution, "generation-preparation-setup");
-  const setup = setupExecution.result;
-  assertPreparationSetup(setup, provision.result.markerDigest);
+  recordManaged(sourceExecution, "generation-record-source-setup");
+  const source = sourceExecution.result;
+  assertGenerationRecordSource(source, provision.result.markerDigest);
 
   const paths = getGenerationPreparationPaths(
     path.join(stateRoot, "workspace"),
     GENERATION_PUBLICATION_IDS.operationId,
   );
+  const stableSnapshots = new Map([
+    [paths.wrapperPath, stableFileSnapshot(paths.wrapperPath)],
+    [paths.sourceDatabasePath, stableFileSnapshot(paths.sourceDatabasePath)],
+    [paths.manifestPath, stableFileSnapshot(paths.manifestPath)],
+  ]);
+  const recordRecoveries = [];
+  for (const recordKind of ["intent", "candidate-verified", "operation"]) {
+    const recordFailpoint = `after-${recordKind}-${recordCrashPhase}`;
+    const recordBoundary = await forceGenerationRecordFault({
+      stateRoot,
+      workspaceId,
+      failpoint: recordFailpoint,
+      paths,
+      stableSnapshots,
+    });
+    const recoverMode =
+      recordKind === "intent"
+        ? "generation-record-recover-intent"
+        : recordKind === "candidate-verified"
+          ? "generation-record-recover-verified"
+          : "generation-record-recover-operation";
+    const recovery = await launch(stateRoot, {
+      ...baseOptions,
+      mode: recoverMode,
+      scenario: IMMUTABLE_RECORD_PUBLICATION_SCENARIO,
+      failpoint: "none",
+    });
+    recordManaged(recovery, recoverMode);
+    assertGenerationRecordRecovery(recovery.result, {
+      source,
+      boundary: recordBoundary,
+      recordKind,
+      crashPhase: recordCrashPhase,
+    });
+    assertStableSnapshotsUnchanged(stableSnapshots);
+    const recordTargetPath = generationRecordTargetPath(paths, recordKind);
+    const recordPaths = getImmutableRecordPublicationPaths(
+      recordKind,
+      recordTargetPath,
+      recordBoundary.state.recordDigest,
+    );
+    ensure(
+      fs.existsSync(recordTargetPath) &&
+        !fs.existsSync(recordPaths.temporaryPath) &&
+        fs.lstatSync(recordTargetPath, { bigint: true }).nlink === 1n &&
+        digestFileHex(recordTargetPath) === recordBoundary.state.recordDigest,
+      "GENERATION_RECORD_RECOVERED_FILE_INVALID",
+    );
+    const recordValue = JSON.parse(fs.readFileSync(recordTargetPath, "utf8"));
+    const recordValueDigest = digestGenerationValue(recordValue);
+    const phaseDigestKey =
+      recordKind === "intent"
+        ? "intentDigest"
+        : recordKind === "candidate-verified"
+          ? "verifiedRecordDigest"
+          : "operationRecordDigest";
+    ensure(
+      recordValue.candidateGenerationId ===
+        recovery.result.candidateGenerationId &&
+        recordValue.candidateGenerationIdentityDigest ===
+          recovery.result.candidateGenerationIdentityDigest &&
+        recovery.result[phaseDigestKey] === recordValueDigest &&
+        recovery.result.recordOutcomeDigest ===
+          digestGenerationValue({
+            format: "constellation.immutable-record-outcome/v1",
+            recordKind,
+            recordDigest: recovery.result.recordDigest,
+            recordSize: recovery.result.recordSize,
+          }),
+      "GENERATION_RECORD_RESULT_DIGEST_INVALID",
+    );
+    stableSnapshots.set(recordTargetPath, stableFileSnapshot(recordTargetPath));
+    if (recordKind === "candidate-verified") {
+      stableSnapshots.set(
+        paths.stagingDatabasePath,
+        stableFileSnapshot(paths.stagingDatabasePath),
+      );
+    }
+    const beforeRecordReplay = snapshotWorkspace(paths.workspaceRoot);
+    const replay = await launch(stateRoot, {
+      ...baseOptions,
+      mode: recoverMode,
+      scenario: IMMUTABLE_RECORD_PUBLICATION_SCENARIO,
+      failpoint: "none",
+    });
+    recordManaged(replay, recoverMode);
+    assertGenerationRecordRecovery(replay.result, {
+      source,
+      boundary: recordBoundary,
+      recordKind,
+      crashPhase: recordCrashPhase,
+      expectedPublicationKind: "replayed",
+    });
+    ensure(
+      replay.result.recordDigest === recovery.result.recordDigest &&
+        replay.result.recordOutcomeDigest ===
+          recovery.result.recordOutcomeDigest &&
+        replay.result[phaseDigestKey] === recordValueDigest &&
+        snapshotWorkspace(paths.workspaceRoot) === beforeRecordReplay,
+      "GENERATION_RECORD_REPLAY_CHURNED",
+    );
+    assertStableSnapshotsUnchanged(stableSnapshots);
+    recordRecoveries.push({
+      recordKind,
+      failpoint: recordFailpoint,
+      recordDigest: recovery.result.recordDigest,
+      recordOutcomeDigest: recovery.result.recordOutcomeDigest,
+      recoveryKind: recovery.result.recordPublicationKind,
+      replayKind: replay.result.recordPublicationKind,
+      candidateDatabaseDigest: recovery.result.candidateDatabaseDigest,
+      candidateGenerationIdentityDigest:
+        recovery.result.candidateGenerationIdentityDigest,
+    });
+    scanStateCanaries(stateRoot);
+  }
+
+  const stagedExecution = await launch(stateRoot, {
+    ...baseOptions,
+    mode: "generation-preparation-verify-staged",
+    scenario: GENERATION_PREPARATION_SCENARIO,
+    failpoint: "none",
+  });
+  ensure(
+    stagedExecution.result.status === "pass" &&
+      stagedExecution.result.code === "GENERATION_CANDIDATE_STAGED_VERIFIED",
+    `PREPARATION_SETUP_FAILED:${stagedExecution.result.code}`,
+  );
+  recordManaged(stagedExecution, "generation-preparation-verify-staged");
+  const setup = stagedExecution.result;
+  assertPreparationResult(setup, setup);
+  ensure(
+    setup.markerDigest === source.markerDigest &&
+      setup.wrapperDigest === source.wrapperDigest &&
+      setup.manifestDigest === source.manifestDigest &&
+      setup.stateDigest === source.stateDigest &&
+      setup.candidateDatabaseDigest ===
+        recordRecoveries[1].candidateDatabaseDigest &&
+      setup.candidateGenerationIdentityDigest ===
+        recordRecoveries[1].candidateGenerationIdentityDigest &&
+      setup.preparationPhase === "staged" &&
+      setup.candidateStagingPresent === true &&
+      setup.candidateGenerationPresent === false &&
+      setup.handoffKind === "verified" &&
+      setup.preparationConflictVerified === true,
+    "GENERATION_RECORD_STAGED_STATE_INVALID",
+  );
+  assertStableSnapshotsUnchanged(stableSnapshots);
   const immutableBaseline = {
     wrapper: digestFileHex(paths.wrapperPath),
     sourceDatabase: digestFileHex(paths.sourceDatabasePath),
@@ -1004,6 +1594,8 @@ async function runSentinel({ slug, failpoint }) {
 
   return Object.freeze({
     failpoint,
+    recordCrashPhase,
+    recordRecoveries,
     candidateLocationAtCrash: boundary.candidateLocation,
     activeGenerationAtCrash: boundary.activeGenerationId,
     recoveredPreparationPhase: recovered.result.preparationPhase,
@@ -1037,12 +1629,15 @@ try {
     await runSentinel({
       slug: "verified",
       failpoint: "after-candidate-read-only-verified",
+      recordCrashPhase: "temp-synced",
     }),
   );
+  const directPreparationSetup = await runDirectPreparationSetupSmoke();
   sentinels.push(
     await runSentinel({
       slug: "moved",
       failpoint: "after-candidate-moved-into-generations",
+      recordCrashPhase: "target-published",
     }),
   );
   ensure(
@@ -1057,9 +1652,36 @@ try {
       ),
     "PREPARATION_SENTINELS_DIVERGED",
   );
-  ensure(verifiedProcessExecutions === 20, "PROCESS_COUNT_INVALID");
-  ensure(verifiedManagedTerminations === 18, "MANAGED_PROCESS_COUNT_INVALID");
-  ensure(verifiedForcedTerminations === 2, "FORCED_PROCESS_COUNT_INVALID");
+  ensure(
+    sentinels[0].recordCrashPhase === "temp-synced" &&
+      sentinels[1].recordCrashPhase === "target-published" &&
+      sentinels.every(
+        (sentinel) =>
+          sentinel.recordRecoveries.length === 3 &&
+          sentinel.recordRecoveries.every(
+            (record) =>
+              record.recoveryKind === "recovered" &&
+              record.replayKind === "replayed",
+          ),
+      ) &&
+      sentinels[0].recordRecoveries.every(
+        (record, index) =>
+          record.recordDigest !==
+            sentinels[1].recordRecoveries[index].recordDigest &&
+          record.recordOutcomeDigest !==
+            sentinels[1].recordRecoveries[index].recordOutcomeDigest,
+      ),
+    "GENERATION_RECORD_SENTINELS_INVALID",
+  );
+  ensure(
+    directPreparationSetup.stateDigest === sentinels[0].stateDigest &&
+      /^[a-f0-9]{64}$/.test(directPreparationSetup.candidateDatabaseDigest) &&
+      /^[a-f0-9]{64}$/.test(directPreparationSetup.handoffOutcomeDigest),
+    "DIRECT_PREPARATION_SETUP_DIVERGED",
+  );
+  ensure(verifiedProcessExecutions === 43, "PROCESS_COUNT_INVALID");
+  ensure(verifiedManagedTerminations === 35, "MANAGED_PROCESS_COUNT_INVALID");
+  ensure(verifiedForcedTerminations === 8, "FORCED_PROCESS_COUNT_INVALID");
   ensure(
     observedNumericProcessIds.size > 0 &&
       observedNumericProcessIds.size <= verifiedProcessExecutions,
@@ -1082,7 +1704,9 @@ try {
       targetArchitecture: "x64",
       electron: "43.1.0",
       packagedGenerationPreparationRecovery: true,
+      packagedImmutableRecordRecovery: true,
       sentinels,
+      directPreparationSetup,
       processExecutions: verifiedProcessExecutions,
       uniqueNumericProcessIds: observedNumericProcessIds.size,
       numericPidReuseObserved:
@@ -1092,6 +1716,10 @@ try {
       capturedProcessIdentitiesTerminated: true,
       inheritedPipesClosed: true,
       preExportIntentVerified: true,
+      digestBoundTemporaryNamesVerified: true,
+      createOnlyHardLinkPublicationVerified: true,
+      immutableRecordCrashBoundariesVerified: 6,
+      directPreparationSetupVerified: true,
       sealedCandidateDigestVerified: true,
       sourceManifestActiveThroughHandoff: true,
       sameWorkspaceMoveVerified: true,

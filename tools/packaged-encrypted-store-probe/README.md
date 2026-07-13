@@ -236,6 +236,19 @@ source and candidate identities, wrapper digest, semantic fingerprint, and
 fixed export/migration recipes. SQLCipher export and the synthetic v2 migration
 then operate only on the exact operation-local staging path.
 
+Intent, sealed-candidate, and publication-operation records now share one
+crash-recoverable create-only contract. Each canonical value selects a
+same-directory temporary name containing its SHA-256 digest. The writer creates
+that file with exclusive create, file-syncs and descriptor-reverifies it, then
+publishes the final name with a hard link that cannot overwrite an existing
+record. Before removing the temporary name, both names must contain the exact
+bytes, identify the same inode, and report the expected link count. Replay
+accepts only an exact single-link final record. Case variants, foreign suffixes,
+unexpected hard links, symlinks, oversized or non-canonical values, and a
+temporary name bound to another expected digest all fail closed. A strict
+digest-bound partial prefix may be recreated; a conflicting retry cannot adopt
+it as a different operation value.
+
 After checkpoint and close, a fresh read-only open verifies the candidate's
 identity, schema marker, logical Capture state, FTS, cipher, database, and
 foreign-key integrity. A create-only sealed record binds that verification to
@@ -246,7 +259,22 @@ the entire handoff; a final generation directory never activates itself. The
 immutable publication operation record is also present and verified before
 either tested handoff boundary is reachable.
 
-Two independent sentinels force-kill the captured packaged process:
+The two independent sentinels first cover all six record-publication boundaries:
+
+- each of the three records after the complete temporary file is re-synced and
+  reverified, before the final hard link exists;
+- each record after the final hard link exists, while both exact names still
+  identify the same two-link file.
+
+Fresh processes recover intent and stop, recover the sealed-candidate record and
+stop, then recover the operation record into the complete staged state. The
+first sentinel uses all three temporary-file boundaries; the second uses all
+three published-link boundaries. Earlier record inodes and bytes, the wrapper,
+source database, source manifest, and sealed candidate must not churn. Only
+after each recovery an additional fresh process must return the record's replay
+outcome with an unchanged workspace snapshot. Only after that matrix passes do
+the same sentinels force-kill the captured packaged process at the handoff
+boundaries:
 
 - after the sealed staged candidate has passed a second read-only verification,
   before its final generation path exists;
@@ -266,18 +294,23 @@ digest or identity mismatch, simultaneous staging and final locations, and
 symlinked database or sidecar. The packaged runner additionally preserves the
 wrapper and package artifact digests, scans runtime state for deterministic
 Capture canaries, and verifies exact process accounting and inherited-pipe
-closure on both native hosts.
+closure on both native hosts. Its combined record-publication, handoff,
+activation, and direct preparation-setup compatibility matrix uses 43 verified
+packaged process executions: 35 managed and eight force-terminated at exact
+creation-bound identities.
 
-This gate is process-crash evidence only for a fully verified candidate and its
-same-workspace handoff. It does not prove restart during partial export or
-migration writes; interruption while publishing the intent, sealed-candidate,
-or operation records; power-loss or parent-directory durability; cross-volume
-moves; automatic quarantine or cleanup; real disk-full/quota behavior;
-permission-denied recovery; or general migration compatibility. The path-race
-checks also assume workspace-owned `0700` directories and a cooperative
-single-writer/lock discipline. They reject mutation from a failpoint or
-verifier callback, but do not claim protection from an uncooperative same-user
-process racing the final path-based check and rename.
+This gate proves process-crash recovery for the six exact immutable-record
+boundaries, a fully verified candidate, and its same-workspace handoff. It does
+not prove restart during partial SQLCipher export or migration writes;
+power-loss or parent-directory durability; cross-volume or filesystems without
+same-directory hard-link support; automatic quarantine or cleanup; real
+disk-full/quota behavior; permission-denied recovery; or general migration
+compatibility. There is no copy or overwrite fallback when hard links are
+unsupported. The path-race checks also assume workspace-owned `0700`
+directories and a cooperative single-writer/lock discipline. They reject
+mutation from a failpoint or verifier callback, but do not claim protection
+from an uncooperative same-user process racing the final path-based check and
+filesystem operation.
 
 ## Pinned inputs
 
@@ -314,9 +347,9 @@ isolated from the product dependency graph.
 ## Scope limits
 
 This proves same-artifact mechanism integration plus only the process-crash
-candidate-handoff and generation-publication pivots described above. The macOS
-package is ad-hoc signed and the Windows package is unsigned. It does not prove Developer
-ID/notarized or Authenticode-signed N-to-N+1 continuity, installer/reboot or
+immutable-record, candidate-handoff, and generation-publication pivots
+described above. The macOS package is ad-hoc signed and the Windows package is
+unsigned. It does not prove Developer ID/notarized or Authenticode-signed N-to-N+1 continuity, installer/reboot or
 OS-account migration, wrapper/database crash-atomic initial provisioning,
 generation publication or migration recovery beyond the exact retained
 `generation-1`/`generation-2` fixture, a full migration matrix,
