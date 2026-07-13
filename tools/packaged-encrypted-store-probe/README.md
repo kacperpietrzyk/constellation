@@ -162,6 +162,64 @@ commit-frame classification, replay and idempotency conflict without churn, and
 strict post-`COMMIT` boundary validation. It is not a substitute for the
 packaged SQLCipher crash evidence.
 
+## Generation publication recovery gate
+
+The separate `probe:generation-recovery` runner covers one exact generation
+publication pivot. It starts with an encrypted `generation-1` selected by a
+strict workspace manifest, exports that database through SQLCipher's
+[`sqlcipher_export`](https://www.zetetic.net/sqlcipher/sqlcipher-api/#sqlcipher_export)
+into an encrypted `generation-2`, and retains both generations. The candidate
+receives the verified source `user_version` explicitly because
+`sqlcipher_export` intentionally leaves the target value unchanged, then applies
+the synthetic v2 migration. It is closed and reopened for integrity and
+immutable-identity verification before publication. Activation changes only
+the canonical workspace manifest; the runner never selects a generation by
+directory order, modification time, or the largest identifier.
+
+The prepared publication has one create-only, immutable operation record. Its
+canonical contents bind the workspace and operation identifiers, source and
+candidate generation identities, semantic input fingerprint, target manifest,
+and stored outcome by digest. Reuse with the identical fingerprint is replay;
+reuse of that operation identifier with different semantic input is a conflict.
+Strict path, identifier, regular-file, and canonical-content checks reject
+symlinks, malformed records, corrupt manifests, and corrupt or mismatched
+generations before publication.
+
+Two independent sentinels force-kill a creation-bound packaged process:
+
+- after the complete temporary manifest has been file-synced, while the source
+  manifest still selects `generation-1`;
+- after the temporary manifest has replaced the workspace manifest, while the
+  new manifest selects `generation-2` and before the child can report success.
+
+After the first crash, a fresh packaged process must open the source selected by
+the unchanged manifest. An identical replay must reuse the already verified
+candidate and publish it exactly once; it must not export `generation-3`. After
+the second crash, a fresh packaged process must open the target selected by the
+new manifest. Identical replay must return the stored outcome without changing
+the manifest or either generation. At both boundaries, a different fingerprint
+for the same operation must fail closed without changing any verified bytes.
+Fresh-process source and target opens verify the expected identity, synthetic
+schema state, SQLCipher integrity, database integrity, and foreign keys.
+
+The gate also requires the safeStorage wrapper bytes and digest to remain
+unchanged, the executable, ASAR, and unpacked native add-on digests to remain
+unchanged across every process, and both retained database generations to stay
+encrypted. Package and runtime-tree scans must not persist the actual raw or
+encoded DEK, protected payload, or random marker; runtime-state scans also
+exclude the deterministic Capture canaries from profile, wrapper, manifest,
+operation, generation, temp, and crash artifacts. Rejected symlink and
+corruption fixtures must leave the last valid manifest, operation record,
+wrapper, and generation bytes unchanged.
+
+This is process-crash evidence for the two reported boundaries on the tested
+native hosted runners. File sync before replacement and the observed manifest
+replacement are part of the fixture, but it does not claim that the replacement
+directory entry survives power loss: no parent-directory durability barrier is
+proven. It also does not cover a full migration matrix, permission denial, real
+disk-full behavior, or cleanup and garbage collection of retained generations,
+operation records, or interrupted temporary manifests.
+
 ## Pinned inputs
 
 | Input                | Pin                                                                        | Purpose                                       | License      |
@@ -196,18 +254,21 @@ isolated from the product dependency graph.
 
 ## Scope limits
 
-This proves same-artifact mechanism integration only. The macOS package is
-ad-hoc signed and the Windows package is unsigned. It does not prove Developer
+This proves same-artifact mechanism integration plus only the process-crash
+generation-publication pivot described above. The macOS package is ad-hoc
+signed and the Windows package is unsigned. It does not prove Developer
 ID/notarized or Authenticode-signed N-to-N+1 continuity, installer/reboot or
-OS-account migration, wrapper/database crash-atomic provisioning,
-generation-manifest publication, busy/read-only/permission recovery, real
-disk-full or power-loss recovery, device-cache ordering, WAL checkpoint policy,
-client or renderer result delivery, authorization rechecks, external-effect
-delivery, migration recovery, rotation, temporary provider unavailability,
-Windows workspace ACLs, optimized Windows crypto performance, unobserved
-pre-boundary daemonization outside the captured POSIX process group, portable
-recovery, reliable JavaScript heap zeroization, renderer isolation, or
-same-user malware resistance.
+OS-account migration, wrapper/database crash-atomic initial provisioning,
+generation publication or migration recovery beyond the exact retained
+`generation-1`/`generation-2` fixture, a full migration matrix,
+busy/read-only/permission recovery, real disk-full or power-loss recovery,
+parent-directory durability, device-cache ordering, generation cleanup or
+garbage collection, WAL checkpoint policy, client or renderer result delivery,
+authorization rechecks, external-effect delivery, rotation, temporary provider
+unavailability, Windows workspace ACLs, optimized Windows crypto performance,
+unobserved pre-boundary daemonization outside the captured POSIX process group,
+portable recovery, reliable JavaScript heap zeroization, renderer isolation,
+or same-user malware resistance.
 
 The initializer alone is not evidence that provider state is durable; the later
 no-IPC writer and reader recovering the exact marker provide that evidence. The

@@ -11,6 +11,7 @@ const sandboxRoot = fs.mkdtempSync(
 const ownedDirectoryNames = [
   "constellation-packaged-store-probe-owned",
   "constellation-packaged-store-recovery-owned",
+  "constellation-packaged-store-generation-owned",
 ];
 const preservedDirectoryNames = [
   "constellation-packaged-store-probe",
@@ -18,11 +19,15 @@ const preservedDirectoryNames = [
   "constellation-packaged-store-recovery",
   "constellation-packaged-store-recovery-",
   "constellation-packaged-store-recoverable-owned",
+  "constellation-packaged-store-generation",
+  "constellation-packaged-store-generation-",
+  "constellation-packaged-store-generational-owned",
   "unrelated-probe-output",
 ];
 const preservedFileNames = [
   "constellation-packaged-store-probe-file",
   "constellation-packaged-store-recovery-file",
+  "constellation-packaged-store-generation-file",
 ];
 
 try {
@@ -38,7 +43,7 @@ try {
     fs.writeFileSync(path.join(sandboxRoot, name), "not a directory");
   }
 
-  assert.equal(await removeOwnedProbeTemporaryRoots(sandboxRoot), 2);
+  assert.equal(await removeOwnedProbeTemporaryRoots(sandboxRoot), 3);
   for (const name of ownedDirectoryNames) {
     assert.equal(fs.existsSync(path.join(sandboxRoot, name)), false);
   }
@@ -59,6 +64,7 @@ process.stdout.write(
     status: "pass",
     existingProbeRootRemoved: true,
     recoveryProbeRootRemoved: true,
+    generationProbeRootRemoved: true,
     nearMatchesPreserved: true,
   })}\n`,
 );

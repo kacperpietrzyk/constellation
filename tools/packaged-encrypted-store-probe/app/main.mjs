@@ -11,6 +11,7 @@ import {
   bootstrapRecoveryCaptureSchema,
   executeRecoveryCapture,
   executeRecoveryCaptureConflict,
+  getRecoveryCapturePlaintextCanaries,
 } from "./recovery/capture-command.mjs";
 import { verifyRecoveryCaptureState } from "./recovery/capture-verifier.mjs";
 import {
@@ -22,6 +23,23 @@ import {
   prepareRecoveryWalFaultBaseline,
   verifyPlaintextRecoveryWalControl,
 } from "./recovery/failpoint.mjs";
+import {
+  GENERATION_PUBLICATION_FAILPOINTS,
+  GENERATION_PUBLICATION_IDS,
+  GENERATION_PUBLICATION_SCENARIO,
+  GenerationPublicationError,
+  createGenerationFaultBoundaryRecord,
+  createGenerationPublicationFixture,
+  getGenerationPublicationPaths,
+  publishGenerationManifest,
+  verifyGenerationPublicationState,
+  writeCanonicalGenerationFile,
+} from "./recovery/generation-publication.mjs";
+import {
+  applySyntheticGenerationMigration,
+  installInitialGenerationIdentity,
+  verifyGenerationDatabaseIdentity,
+} from "./recovery/generation-verifier.mjs";
 
 const APP_ID = "io.constellation.packaged-store-probe";
 const APP_NAME = "Constellation Packaged Store Probe";
@@ -67,6 +85,15 @@ const PROGRESS_STAGES = new Set([
   "recovery-plaintext-control-verified",
   "recovery-post-commit-state-verified",
   "recovery-fault-boundary-ready",
+  "generation-setup-complete",
+  "generation-candidate-verified",
+  "generation-temporary-manifest-synced",
+  "generation-manifest-replaced",
+  "generation-state-verified",
+  "generation-publication-applied",
+  "generation-publication-replayed",
+  "generation-publication-conflict-verified",
+  "generation-fault-boundary-ready",
   "result-ready",
   "result-published",
 ]);
@@ -83,6 +110,14 @@ const RECOVERY_MODES = new Set([
   "recovery-apply",
   "recovery-conflict",
   "recovery-verify-committed",
+]);
+const GENERATION_MODES = new Set([
+  "generation-setup",
+  "generation-fault",
+  "generation-verify-source",
+  "generation-publish",
+  "generation-conflict",
+  "generation-verify-target",
 ]);
 const EXIT_CODES = Object.freeze({
   CONFIG_INVALID: 80,
@@ -301,8 +336,10 @@ function parseConfig() {
   ];
   const mode = getArgument("mode");
   const recoveryMode = RECOVERY_MODES.has(mode);
-  if (!STANDARD_MODES.has(mode) && !recoveryMode) fail("CONFIG_INVALID");
-  const allowedPrefixes = recoveryMode
+  const generationMode = GENERATION_MODES.has(mode);
+  const scenarioMode = recoveryMode || generationMode;
+  if (!STANDARD_MODES.has(mode) && !scenarioMode) fail("CONFIG_INVALID");
+  const allowedPrefixes = scenarioMode
     ? [...basePrefixes, "--probe-scenario=", "--probe-failpoint="]
     : basePrefixes;
   const probeArguments = process.argv.filter((argument) =>
@@ -322,8 +359,8 @@ function parseConfig() {
   const workspaceId = getArgument("workspace");
   const wrapperName = getArgument("wrapper");
   const databaseName = getArgument("database");
-  const scenario = recoveryMode ? getArgument("scenario") : undefined;
-  const failpoint = recoveryMode ? getArgument("failpoint") : undefined;
+  const scenario = scenarioMode ? getArgument("scenario") : undefined;
+  const failpoint = scenarioMode ? getArgument("failpoint") : undefined;
 
   if (
     recoveryMode &&
@@ -331,6 +368,15 @@ function parseConfig() {
       !RECOVERY_CAPTURE_FAILPOINTS.includes(failpoint) ||
       (mode === "recovery-fault" && failpoint === "none") ||
       (mode !== "recovery-fault" && failpoint !== "none"))
+  ) {
+    fail("CONFIG_INVALID");
+  }
+  if (
+    generationMode &&
+    (scenario !== GENERATION_PUBLICATION_SCENARIO ||
+      !GENERATION_PUBLICATION_FAILPOINTS.includes(failpoint) ||
+      (mode === "generation-fault" && failpoint === "none") ||
+      (mode !== "generation-fault" && failpoint !== "none"))
   ) {
     fail("CONFIG_INVALID");
   }
@@ -357,6 +403,7 @@ function parseConfig() {
     workspaceId,
     wrapperPath: path.join(resolvedRoot, wrapperName),
     databasePath: path.join(resolvedRoot, databaseName),
+    generationWorkspaceRoot: path.join(resolvedRoot, "workspace"),
     scenario,
     failpoint,
   };
@@ -623,12 +670,12 @@ async function initializeProvider() {
   }
 }
 
-async function unwrapKey(scope, canaries) {
-  const metadata = pathKind(config.wrapperPath);
+async function unwrapKey(scope, canaries, wrapperPath = config.wrapperPath) {
+  const metadata = pathKind(wrapperPath);
   if (!metadata) fail("WRAPPER_MISSING");
   if (!metadata.isFile() || metadata.isSymbolicLink()) fail("WRAPPER_INVALID");
 
-  const contents = scope.keep(fs.readFileSync(config.wrapperPath));
+  const contents = scope.keep(fs.readFileSync(wrapperPath));
   const { wrapper, ciphertext } = parseWrapper(contents);
   scope.keep(ciphertext);
 
@@ -704,10 +751,15 @@ async function unwrapKey(scope, canaries) {
   return { key, markerDigest: payload.markerDigest };
 }
 
-function openKeyedDatabase(Database, key, options) {
+function openKeyedDatabase(
+  Database,
+  key,
+  options,
+  databasePath = config.databasePath,
+) {
   let database;
   try {
-    database = new Database(config.databasePath, options);
+    database = new Database(databasePath, options);
   } catch {
     key.fill(0);
     fail("DATABASE_OPEN_FAILED");
@@ -911,8 +963,11 @@ function verifyDatabaseIntegrity(database) {
   }
 }
 
-function assertEncryptedDatabaseAndWal(canaries) {
-  const databaseContents = fs.readFileSync(config.databasePath);
+function assertEncryptedDatabaseAndWal(
+  canaries,
+  databasePath = config.databasePath,
+) {
+  const databaseContents = fs.readFileSync(databasePath);
   try {
     if (
       databaseContents.subarray(0, 16).toString("utf8") ===
@@ -925,7 +980,7 @@ function assertEncryptedDatabaseAndWal(canaries) {
     databaseContents.fill(0);
   }
 
-  const walPath = `${config.databasePath}-wal`;
+  const walPath = `${databasePath}-wal`;
   const metadata = pathKind(walPath);
   if (!metadata?.isFile() || metadata.size <= 32) {
     fail("DATABASE_INTEGRITY_FAILED");
@@ -936,6 +991,37 @@ function assertEncryptedDatabaseAndWal(canaries) {
   } finally {
     walContents.fill(0);
   }
+}
+
+function assertEncryptedDatabaseFile(canaries, databasePath) {
+  const metadata = pathKind(databasePath);
+  if (!metadata?.isFile() || metadata.isSymbolicLink() || metadata.size <= 0) {
+    fail("DATABASE_INTEGRITY_FAILED");
+  }
+  const contents = fs.readFileSync(databasePath);
+  try {
+    if (
+      contents.subarray(0, 16).toString("utf8") === "SQLite format 3\0" ||
+      containsCanary(contents, canaries)
+    ) {
+      fail("PLAINTEXT_EXPOSED");
+    }
+  } finally {
+    contents.fill(0);
+  }
+}
+
+function createRecoveryCaptureCanaries(scope) {
+  const canaries = getRecoveryCapturePlaintextCanaries();
+  for (const canary of canaries) {
+    scope.keep(canary);
+  }
+  return canaries;
+}
+
+function scanGenerationSecrets(secretCanaries, captureCanaries) {
+  scanKnownSecrets(secretCanaries);
+  scanForCanaries([config.stateRoot], captureCanaries);
 }
 
 function scanKnownSecrets(canaries) {
@@ -1372,6 +1458,567 @@ async function runRecoveryMode(Database) {
   });
 }
 
+function checkpointAndCloseGenerationDatabase(database, databasePath) {
+  try {
+    const checkpoint = database.pragma("wal_checkpoint(TRUNCATE)");
+    if (
+      !Array.isArray(checkpoint) ||
+      checkpoint.length !== 1 ||
+      !hasExactKeys(checkpoint[0], ["busy", "checkpointed", "log"]) ||
+      checkpoint[0].busy !== 0
+    ) {
+      fail("DATABASE_INTEGRITY_FAILED");
+    }
+  } catch (error) {
+    if (error instanceof ProbeFailure) throw error;
+    fail("DATABASE_INTEGRITY_FAILED");
+  }
+  closeDatabase(database);
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    const sidecar = `${databasePath}${suffix}`;
+    const metadata = pathKind(sidecar);
+    if (!metadata) continue;
+    if (
+      !metadata.isFile() ||
+      metadata.isSymbolicLink() ||
+      metadata.size !== 0
+    ) {
+      fail("DATABASE_INTEGRITY_FAILED");
+    }
+    fs.rmSync(sidecar);
+  }
+}
+
+function configureGenerationDatabase(database) {
+  try {
+    database.pragma("foreign_keys = ON");
+    database.pragma("synchronous = FULL");
+    if (database.pragma("journal_mode = WAL", { simple: true }) !== "wal") {
+      fail("DATABASE_INTEGRITY_FAILED");
+    }
+    database.pragma("wal_autocheckpoint = 0");
+  } catch (error) {
+    if (error instanceof ProbeFailure) throw error;
+    fail("DATABASE_INTEGRITY_FAILED");
+  }
+}
+
+function assertGenerationDatabaseSidecarsAbsent(databasePath) {
+  for (const suffix of ["-wal", "-shm", "-journal"]) {
+    if (pathKind(`${databasePath}${suffix}`)) {
+      throw new GenerationPublicationError(
+        "GENERATION_DATABASE_SIDECAR_INVALID",
+      );
+    }
+  }
+}
+
+function removeGenerationReadSidecars(databasePath) {
+  for (const suffix of ["-wal", "-shm"]) {
+    const sidecar = `${databasePath}${suffix}`;
+    const metadata = pathKind(sidecar);
+    if (!metadata) continue;
+    if (
+      !metadata.isFile() ||
+      metadata.isSymbolicLink() ||
+      (suffix === "-wal" && metadata.size !== 0) ||
+      (suffix === "-shm" && metadata.size > 128 * 1024)
+    ) {
+      throw new GenerationPublicationError(
+        "GENERATION_DATABASE_SIDECAR_INVALID",
+      );
+    }
+    fs.rmSync(sidecar);
+  }
+  if (pathKind(`${databasePath}-journal`)) {
+    throw new GenerationPublicationError("GENERATION_DATABASE_SIDECAR_INVALID");
+  }
+}
+
+function createGenerationDatabaseVerifier({
+  Database,
+  baseKey,
+  markerDigest,
+  scope,
+  canaries,
+}) {
+  let lastFacts;
+  let lastCaptureVerification;
+  return {
+    verify({ databasePath, expectedIdentity, expectedIdentityDigest, role }) {
+      assertGenerationDatabaseSidecarsAbsent(databasePath);
+      const key = scope.keep(Buffer.from(baseKey));
+      let database;
+      try {
+        database = openKeyedDatabase(
+          Database,
+          key,
+          { readonly: true, fileMustExist: true },
+          databasePath,
+        );
+        lastFacts = readEncryptionFacts(database);
+        const marker = readAndVerifyMarker(database, markerDigest);
+        addEncodedCanaries(
+          scope,
+          canaries,
+          scope.keep(Buffer.from(marker, "utf8")),
+        );
+        lastCaptureVerification = verifyRecoveryCaptureState(database, {
+          expectedState: "committed",
+        });
+        const identity = verifyGenerationDatabaseIdentity(database, {
+          expectedIdentity,
+          expectedIdentityDigest,
+          expectMigration: role === "candidate",
+        });
+        verifyDatabaseIntegrity(database);
+        closeDatabase(database);
+        database = undefined;
+        removeGenerationReadSidecars(databasePath);
+        assertGenerationDatabaseSidecarsAbsent(databasePath);
+        return identity;
+      } finally {
+        closeQuietly(database);
+      }
+    },
+    facts() {
+      if (!lastFacts) fail("DATABASE_INTEGRITY_FAILED");
+      return lastFacts;
+    },
+    captureVerification() {
+      if (!lastCaptureVerification) fail("DATABASE_INTEGRITY_FAILED");
+      return lastCaptureVerification;
+    },
+  };
+}
+
+function emitGenerationFaultBoundaryRecord(record) {
+  const output = Buffer.from(`${JSON.stringify(record)}\n`, "utf8");
+  try {
+    let offset = 0;
+    while (offset < output.length) {
+      const written = fs.writeSync(1, output, offset, output.length - offset);
+      if (written <= 0) throw new Error("GENERATION_BOUNDARY_WRITE_FAILED");
+      offset += written;
+    }
+  } finally {
+    output.fill(0);
+  }
+}
+
+function digestFileHex(filename) {
+  return crypto
+    .createHash("sha256")
+    .update(fs.readFileSync(filename))
+    .digest("hex");
+}
+
+async function setupGenerationPublication(Database) {
+  if (pathKind(config.generationWorkspaceRoot)) fail("DATABASE_EXISTS");
+  const scope = createSensitiveScope();
+  const canaries = [];
+  let captureCanaries = [];
+  let database;
+  try {
+    captureCanaries = createRecoveryCaptureCanaries(scope);
+    const { key, markerDigest } = await unwrapKey(scope, canaries);
+    const baseKey = scope.keep(Buffer.from(key));
+    const sourceReopenKey = scope.keep(Buffer.from(key));
+    const exportKey = scope.keep(Buffer.from(key));
+    const candidateKey = scope.keep(Buffer.from(key));
+    const candidateReopenKey = scope.keep(Buffer.from(key));
+    const wrapperDigest = digestFileHex(config.wrapperPath);
+    const fixture = createGenerationPublicationFixture(
+      config.workspaceId,
+      wrapperDigest,
+    );
+
+    const databaseMetadata = pathKind(config.databasePath);
+    if (!databaseMetadata?.isFile() || databaseMetadata.isSymbolicLink()) {
+      fail("DATABASE_MISSING");
+    }
+    database = openKeyedDatabase(Database, key, { fileMustExist: true });
+    readEncryptionFacts(database);
+    const marker = readAndVerifyMarker(database, markerDigest);
+    addEncodedCanaries(
+      scope,
+      canaries,
+      scope.keep(Buffer.from(marker, "utf8")),
+    );
+    bootstrapRecoveryCaptureSchema(database);
+    const captureExecution = executeRecoveryCapture(database);
+    if (captureExecution.kind !== "applied") fail("DATABASE_INTEGRITY_FAILED");
+    const sourceCapture = verifyRecoveryCaptureState(database, {
+      expectedState: "committed",
+    });
+    installInitialGenerationIdentity(database, fixture.sourceIdentity);
+    verifyGenerationDatabaseIdentity(database, {
+      expectedIdentity: fixture.sourceIdentity,
+      expectedIdentityDigest: fixture.sourceGenerationIdentityDigest,
+      expectMigration: false,
+    });
+    verifyDatabaseIntegrity(database);
+    checkpointAndCloseGenerationDatabase(database, config.databasePath);
+    database = undefined;
+
+    const paths = getGenerationPublicationPaths(
+      config.generationWorkspaceRoot,
+      GENERATION_PUBLICATION_IDS.operationId,
+    );
+    fs.mkdirSync(paths.sourceGenerationDirectoryPath, {
+      recursive: true,
+      mode: 0o700,
+    });
+    fs.mkdirSync(paths.candidateGenerationDirectoryPath, {
+      recursive: true,
+      mode: 0o700,
+    });
+    fs.mkdirSync(paths.operationDirectoryPath, {
+      recursive: true,
+      mode: 0o700,
+    });
+    fs.renameSync(config.wrapperPath, paths.wrapperPath);
+    fs.renameSync(config.databasePath, paths.sourceDatabasePath);
+
+    reserveDatabase(paths.candidateDatabasePath);
+    database = openKeyedDatabase(
+      Database,
+      sourceReopenKey,
+      { fileMustExist: true },
+      paths.sourceDatabasePath,
+    );
+    try {
+      database
+        .prepare("ATTACH DATABASE ? AS encrypted_export")
+        .run(paths.candidateDatabasePath);
+      try {
+        database.key(exportKey, "encrypted_export");
+      } finally {
+        exportKey.fill(0);
+      }
+      database.prepare("SELECT sqlcipher_export('encrypted_export')").get();
+      database.exec("DETACH DATABASE encrypted_export");
+    } catch {
+      fail("DATABASE_INTEGRITY_FAILED");
+    }
+    closeDatabase(database);
+    database = undefined;
+
+    database = openKeyedDatabase(
+      Database,
+      candidateKey,
+      { fileMustExist: true },
+      paths.candidateDatabasePath,
+    );
+    configureGenerationDatabase(database);
+    // sqlcipher_export intentionally leaves the target user_version unchanged.
+    // Restore the verified source header before applying the synthetic v2 step.
+    database.pragma("user_version = 1");
+    if (database.pragma("user_version", { simple: true }) !== 1) {
+      fail("DATABASE_INTEGRITY_FAILED");
+    }
+    readEncryptionFacts(database);
+    readAndVerifyMarker(database, markerDigest);
+    verifyRecoveryCaptureState(database, { expectedState: "committed" });
+    verifyGenerationDatabaseIdentity(database, {
+      expectedIdentity: fixture.sourceIdentity,
+      expectedIdentityDigest: fixture.sourceGenerationIdentityDigest,
+      expectMigration: false,
+    });
+    applySyntheticGenerationMigration(database, fixture.candidateIdentity);
+    verifyGenerationDatabaseIdentity(database, {
+      expectedIdentity: fixture.candidateIdentity,
+      expectedIdentityDigest: fixture.candidateGenerationIdentityDigest,
+      expectMigration: true,
+    });
+    verifyDatabaseIntegrity(database);
+    checkpointAndCloseGenerationDatabase(database, paths.candidateDatabasePath);
+    database = undefined;
+
+    database = openKeyedDatabase(
+      Database,
+      candidateReopenKey,
+      { readonly: true, fileMustExist: true },
+      paths.candidateDatabasePath,
+    );
+    const facts = readEncryptionFacts(database);
+    readAndVerifyMarker(database, markerDigest);
+    const candidateCapture = verifyRecoveryCaptureState(database, {
+      expectedState: "committed",
+    });
+    verifyGenerationDatabaseIdentity(database, {
+      expectedIdentity: fixture.candidateIdentity,
+      expectedIdentityDigest: fixture.candidateGenerationIdentityDigest,
+      expectMigration: true,
+    });
+    verifyDatabaseIntegrity(database);
+    closeDatabase(database);
+    database = undefined;
+    removeGenerationReadSidecars(paths.candidateDatabasePath);
+
+    writeCanonicalGenerationFile(paths.manifestPath, fixture.sourceManifest);
+    writeCanonicalGenerationFile(
+      paths.operationRecordPath,
+      fixture.operationRecord,
+    );
+    const verifier = createGenerationDatabaseVerifier({
+      Database,
+      baseKey,
+      markerDigest,
+      scope,
+      canaries,
+    });
+    const state = verifyGenerationPublicationState({
+      workspaceRoot: config.generationWorkspaceRoot,
+      operationId: GENERATION_PUBLICATION_IDS.operationId,
+      inputFingerprint: fixture.inputFingerprint,
+      verifyGeneration: verifier.verify,
+      reachFailpoint: undefined,
+    });
+    if (
+      state.activeGenerationId !== fixture.sourceIdentity.generationId ||
+      state.temporaryManifestPresent
+    ) {
+      fail("DATABASE_INTEGRITY_FAILED");
+    }
+    assertEncryptedDatabaseFile(
+      [...canaries, ...captureCanaries],
+      paths.sourceDatabasePath,
+    );
+    assertEncryptedDatabaseFile(
+      [...canaries, ...captureCanaries],
+      paths.candidateDatabasePath,
+    );
+    scanGenerationSecrets(canaries, captureCanaries);
+    writeFixedProgress("generation-candidate-verified");
+    writeFixedProgress("generation-setup-complete");
+    return fixedResult("pass", "GENERATION_PUBLICATION_PREPARED", {
+      asyncEncryptionAvailable: true,
+      cipherVersion: facts.cipherVersion,
+      provider: facts.provider,
+      providerVersion: facts.providerVersion,
+      rawKeyBinding: true,
+      scenario: config.scenario,
+      markerDigest,
+      sourceGenerationId: fixture.sourceIdentity.generationId,
+      sourceGenerationIdentityDigest: fixture.sourceGenerationIdentityDigest,
+      candidateGenerationId: fixture.candidateIdentity.generationId,
+      candidateGenerationIdentityDigest:
+        fixture.candidateGenerationIdentityDigest,
+      activeGenerationId: state.activeGenerationId,
+      manifestDigest: state.manifestDigest,
+      operationRecordDigest: state.operationRecordDigest,
+      wrapperDigest: state.wrapperDigest,
+      inputFingerprint: state.inputFingerprint,
+      outcomeDigest: state.publicationOutcomeDigest,
+      temporaryManifestPresent: state.temporaryManifestPresent,
+      sourceGenerationPresent: state.sourceGenerationPresent,
+      candidateGenerationPresent: state.candidateGenerationPresent,
+      applicationKind: "prepared",
+      diagnosticCode: null,
+      workspaceVersion: candidateCapture.workspaceVersion,
+      rows: candidateCapture.rows,
+      stateDigest: candidateCapture.stateDigest,
+      integrityVerified:
+        sourceCapture.integrityVerified && candidateCapture.integrityVerified,
+      ftsVerified: sourceCapture.ftsVerified && candidateCapture.ftsVerified,
+      encryptedExport: true,
+      candidateReadOnlyReopen: true,
+    });
+  } finally {
+    closeQuietly(database);
+    try {
+      if (canaries.length > 0) scanKnownSecrets(canaries);
+      if (captureCanaries.length > 0) {
+        scanForCanaries([config.stateRoot], captureCanaries);
+      }
+    } finally {
+      scope.clear();
+    }
+  }
+}
+
+async function useGenerationPublicationWorkspace(Database) {
+  const scope = createSensitiveScope();
+  const canaries = [];
+  let captureCanaries = [];
+  let baseKey;
+  try {
+    captureCanaries = createRecoveryCaptureCanaries(scope);
+    const paths = getGenerationPublicationPaths(
+      config.generationWorkspaceRoot,
+      GENERATION_PUBLICATION_IDS.operationId,
+    );
+    const unwrapped = await unwrapKey(scope, canaries, paths.wrapperPath);
+    baseKey = unwrapped.key;
+    const fixture = createGenerationPublicationFixture(
+      config.workspaceId,
+      digestFileHex(paths.wrapperPath),
+    );
+    const verifier = createGenerationDatabaseVerifier({
+      Database,
+      baseKey,
+      markerDigest: unwrapped.markerDigest,
+      scope,
+      canaries,
+    });
+    const publicationOptions = {
+      workspaceRoot: config.generationWorkspaceRoot,
+      operationId: GENERATION_PUBLICATION_IDS.operationId,
+      inputFingerprint: fixture.inputFingerprint,
+      verifyGeneration: verifier.verify,
+      reachFailpoint: undefined,
+    };
+    let applicationKind = "verified";
+    let diagnosticCode = null;
+
+    if (config.mode === "generation-fault") {
+      publishGenerationManifest({
+        ...publicationOptions,
+        reachFailpoint: ({ failpoint, state }) => {
+          if (failpoint !== config.failpoint) return;
+          writeFixedProgress(
+            failpoint === "after-temporary-manifest-synced"
+              ? "generation-temporary-manifest-synced"
+              : "generation-manifest-replaced",
+          );
+          const boundary = createGenerationFaultBoundaryRecord({
+            processId: process.pid,
+            failpoint,
+            state,
+          });
+          writeFixedProgress("generation-fault-boundary-ready");
+          emitGenerationFaultBoundaryRecord(boundary);
+          holdForForcedTermination({ timeoutMs: 120_000 });
+        },
+      });
+      fail("PROBE_FAILED");
+    }
+
+    let stateBefore = verifyGenerationPublicationState(publicationOptions);
+    if (config.mode === "generation-verify-source") {
+      if (
+        stateBefore.activeGenerationId !==
+          fixture.sourceIdentity.generationId ||
+        !stateBefore.temporaryManifestPresent
+      ) {
+        fail("DATABASE_INTEGRITY_FAILED");
+      }
+    } else if (config.mode === "generation-verify-target") {
+      if (
+        stateBefore.activeGenerationId !==
+          fixture.candidateIdentity.generationId ||
+        stateBefore.temporaryManifestPresent
+      ) {
+        fail("DATABASE_INTEGRITY_FAILED");
+      }
+    } else if (config.mode === "generation-publish") {
+      const publication = publishGenerationManifest(publicationOptions);
+      applicationKind = publication.kind;
+      writeFixedProgress(
+        publication.kind === "applied"
+          ? "generation-publication-applied"
+          : "generation-publication-replayed",
+      );
+    } else if (config.mode === "generation-conflict") {
+      const before = JSON.stringify(stateBefore);
+      try {
+        publishGenerationManifest({
+          ...publicationOptions,
+          inputFingerprint: fixture.conflictInputFingerprint,
+        });
+        fail("DATABASE_INTEGRITY_FAILED");
+      } catch (error) {
+        if (
+          !(error instanceof GenerationPublicationError) ||
+          error.code !== "GENERATION_PUBLICATION_CONFLICT"
+        ) {
+          throw error;
+        }
+      }
+      const after = verifyGenerationPublicationState(publicationOptions);
+      if (JSON.stringify(after) !== before) fail("DATABASE_INTEGRITY_FAILED");
+      applicationKind = "conflict";
+      diagnosticCode = "generation.publication_input_conflict";
+      writeFixedProgress("generation-publication-conflict-verified");
+    } else {
+      fail("CONFIG_INVALID");
+    }
+
+    const state = verifyGenerationPublicationState(publicationOptions);
+    const facts = verifier.facts();
+    const capture = verifier.captureVerification();
+    assertEncryptedDatabaseFile(
+      [...canaries, ...captureCanaries],
+      paths.sourceDatabasePath,
+    );
+    assertEncryptedDatabaseFile(
+      [...canaries, ...captureCanaries],
+      paths.candidateDatabasePath,
+    );
+    scanGenerationSecrets(canaries, captureCanaries);
+    writeFixedProgress("generation-state-verified");
+    const code =
+      config.mode === "generation-verify-source"
+        ? "GENERATION_SOURCE_VERIFIED"
+        : config.mode === "generation-verify-target"
+          ? "GENERATION_TARGET_VERIFIED"
+          : config.mode === "generation-conflict"
+            ? "GENERATION_PUBLICATION_CONFLICT_VERIFIED"
+            : applicationKind === "applied"
+              ? "GENERATION_PUBLICATION_APPLIED"
+              : "GENERATION_PUBLICATION_REPLAYED";
+    return fixedResult("pass", code, {
+      asyncEncryptionAvailable: true,
+      cipherVersion: facts.cipherVersion,
+      provider: facts.provider,
+      providerVersion: facts.providerVersion,
+      rawKeyBinding: true,
+      scenario: config.scenario,
+      markerDigest: unwrapped.markerDigest,
+      sourceGenerationId: fixture.sourceIdentity.generationId,
+      sourceGenerationIdentityDigest: fixture.sourceGenerationIdentityDigest,
+      candidateGenerationId: fixture.candidateIdentity.generationId,
+      candidateGenerationIdentityDigest:
+        fixture.candidateGenerationIdentityDigest,
+      activeGenerationId: state.activeGenerationId,
+      manifestDigest: state.manifestDigest,
+      operationRecordDigest: state.operationRecordDigest,
+      wrapperDigest: state.wrapperDigest,
+      inputFingerprint: state.inputFingerprint,
+      outcomeDigest: state.publicationOutcomeDigest,
+      temporaryManifestPresent: state.temporaryManifestPresent,
+      sourceGenerationPresent: state.sourceGenerationPresent,
+      candidateGenerationPresent: state.candidateGenerationPresent,
+      applicationKind,
+      diagnosticCode,
+      workspaceVersion: capture.workspaceVersion,
+      rows: capture.rows,
+      stateDigest: capture.stateDigest,
+      integrityVerified: capture.integrityVerified,
+      ftsVerified: capture.ftsVerified,
+      encryptedExport: true,
+      candidateReadOnlyReopen: true,
+    });
+  } finally {
+    try {
+      if (canaries.length > 0) scanKnownSecrets(canaries);
+      if (captureCanaries.length > 0) {
+        scanForCanaries([config.stateRoot], captureCanaries);
+      }
+    } finally {
+      scope.clear();
+    }
+  }
+}
+
+async function runGenerationMode(Database) {
+  if (config.mode === "generation-setup") {
+    return await setupGenerationPublication(Database);
+  }
+  return await useGenerationPublicationWorkspace(Database);
+}
+
 function verifyPackagedIdentity() {
   const expectedArchive = path.join(process.resourcesPath, "app.asar");
   const expectedUnpackedRoot = path.join(
@@ -1530,6 +2177,8 @@ if (config) {
           result = await provisionStore(Database);
         } else if (config.mode === "verify") {
           result = await verifyStore(Database);
+        } else if (GENERATION_MODES.has(config.mode)) {
+          result = await runGenerationMode(Database);
         } else {
           result = await runRecoveryMode(Database);
         }
@@ -1542,10 +2191,18 @@ if (config) {
         /^RECOVERY_[A-Z0-9_]+$/.test(error.code)
           ? error.code
           : undefined;
+      const generationFailureCode =
+        error instanceof GenerationPublicationError &&
+        typeof error.code === "string" &&
+        /^GENERATION_[A-Z0-9_]+$/.test(error.code)
+          ? error.code
+          : undefined;
       const failure =
         error instanceof ProbeFailure
           ? error
-          : new ProbeFailure(recoveryFailureCode ?? "PROBE_FAILED");
+          : new ProbeFailure(
+              recoveryFailureCode ?? generationFailureCode ?? "PROBE_FAILED",
+            );
       result = fixedResult("fail", failure.code);
       exitCode = failure.exitCode;
     }
