@@ -10,6 +10,7 @@ import {
   RECOVERY_CAPTURE_FAILPOINTS,
   RECOVERY_CAPTURE_CONFLICT_FIXTURE,
   RECOVERY_CAPTURE_SCENARIO,
+  STORE_BUSY_RETRYABLE,
   getRecoveryCapturePlaintextCanaries,
 } from "../app/recovery/capture-command.mjs";
 import {
@@ -411,6 +412,12 @@ function normalizedWalMetadata(walPath) {
   }
 }
 
+function regularFileMetadata(filename, code) {
+  const metadata = fs.lstatSync(filename);
+  ensure(metadata.isFile() && !metadata.isSymbolicLink(), code);
+  return { bytes: metadata.size, digest: digestFile(filename) };
+}
+
 async function forceFault(options) {
   const walPath = path.join(stateRoot, `${options.databaseName}-wal`);
   const execution = await forceCrashPackagedProcessAtBoundary({
@@ -457,7 +464,7 @@ async function forceFault(options) {
       ensure(record.failpoint === options.failpoint, "FAULT_POINT_INVALID");
       return record;
     },
-    beforeKill: (boundary) => {
+    beforeKill: async (boundary) => {
       const canaries =
         options.failpoint === "after-begin-immediate"
           ? []
@@ -481,7 +488,71 @@ async function forceFault(options) {
           boundary.plaintextWalControlVerified === true,
         "FAULT_WAL_EVIDENCE_MISMATCH",
       );
-      return normalizedWalMetadata(walPath);
+      const walMetadata = normalizedWalMetadata(walPath);
+      let concurrentCommandBusyRejected = false;
+      if (options.failpoint === "after-outbox-row") {
+        const databasePath = path.join(stateRoot, options.databaseName);
+        const wrapperPath = path.join(stateRoot, options.wrapperName);
+        const databaseBefore = regularFileMetadata(
+          databasePath,
+          "RECOVERY_BUSY_DATABASE_INVALID",
+        );
+        const wrapperBefore = regularFileMetadata(
+          wrapperPath,
+          "RECOVERY_BUSY_WRAPPER_INVALID",
+        );
+        let databaseAfter;
+        let walAfter;
+        let wrapperAfter;
+        try {
+          const contender = await launch({
+            mode: "recovery-apply",
+            workspaceId: options.workspaceId,
+            wrapperName: options.wrapperName,
+            databaseName: options.databaseName,
+            scenario: RECOVERY_CAPTURE_SCENARIO,
+            failpoint: "none",
+          });
+          assertExactResultKeys(contender.result);
+          ensure(
+            contender.result.status === "fail" &&
+              contender.result.code === STORE_BUSY_RETRYABLE &&
+              contender.result.declaredExitCode !== 0 &&
+              contender.actualCode === contender.result.declaredExitCode &&
+              contender.declaredExitCode ===
+                contender.result.declaredExitCode &&
+              contender.actualSignal === null,
+            "RECOVERY_BUSY_CONTENDER_RESULT_INVALID",
+          );
+          recordManaged(contender, "recovery-apply");
+          databaseAfter = regularFileMetadata(
+            databasePath,
+            "RECOVERY_BUSY_DATABASE_INVALID",
+          );
+          walAfter = normalizedWalMetadata(walPath);
+          wrapperAfter = regularFileMetadata(
+            wrapperPath,
+            "RECOVERY_BUSY_WRAPPER_INVALID",
+          );
+          ensure(
+            databaseAfter.bytes === databaseBefore.bytes &&
+              sameDigest(databaseAfter.digest, databaseBefore.digest) &&
+              walAfter.bytes === walMetadata.bytes &&
+              sameDigest(walAfter.digest, walMetadata.digest) &&
+              wrapperAfter.bytes === wrapperBefore.bytes &&
+              sameDigest(wrapperAfter.digest, wrapperBefore.digest),
+            "RECOVERY_BUSY_CONTENDER_MUTATED_STATE",
+          );
+          concurrentCommandBusyRejected = true;
+        } finally {
+          databaseBefore.digest.fill(0);
+          wrapperBefore.digest.fill(0);
+          databaseAfter?.digest.fill(0);
+          walAfter?.digest.fill(0);
+          wrapperAfter?.digest.fill(0);
+        }
+      }
+      return { ...walMetadata, concurrentCommandBusyRejected };
     },
   });
   try {
@@ -533,9 +604,18 @@ async function forceFault(options) {
     } else {
       ensure(postKill.bytes === 0, "BEGIN_WAL_NOT_EMPTY");
     }
+    ensure(
+      execution.beforeKillEvidence.concurrentCommandBusyRejected ===
+        (options.failpoint === "after-outbox-row"),
+      "RECOVERY_BUSY_CONTENDER_EVIDENCE_INVALID",
+    );
     execution.beforeKillEvidence.digest.fill(0);
     postKill.digest.fill(0);
-    return execution.boundary;
+    return Object.freeze({
+      boundary: execution.boundary,
+      concurrentCommandBusyRejected:
+        execution.beforeKillEvidence.concurrentCommandBusyRejected,
+    });
   } finally {
     execution.stdout.fill(0);
     execution.stderr.fill(0);
@@ -553,7 +633,10 @@ async function runSentinel({ slug, failpoint }) {
     wrapperName,
     databaseName,
   });
-  ensure(provision.result.status === "pass", "RECOVERY_PROVISION_FAILED");
+  ensure(
+    provision.result.status === "pass",
+    `RECOVERY_PROVISION_FAILED:${provision.result.code}`,
+  );
   ensure(
     provision.result.code === "STORE_PROVISIONED",
     "PROVISION_CODE_INVALID",
@@ -599,12 +682,13 @@ async function runSentinel({ slug, failpoint }) {
   assertRecoveryCommon(bootstrap.result, markerDigest);
   assertRows(bootstrap.result.rows, 0);
 
-  const boundary = await forceFault({
+  const fault = await forceFault({
     workspaceId,
     wrapperName,
     databaseName,
     failpoint,
   });
+  const { boundary } = fault;
   const postCommit = failpoint === "after-commit-before-result";
   const recoveredMode = postCommit
     ? "recovery-verify-committed"
@@ -814,6 +898,7 @@ async function runSentinel({ slug, failpoint }) {
     rollbackVerified: !postCommit,
     committedBeforeResultVerified: postCommit,
     commandResultPublishedBeforeCrash: false,
+    concurrentCommandBusyRejected: fault.concurrentCommandBusyRejected,
     idempotencyConflictVerified: postCommit,
     plaintextWalControlVerified: boundary.plaintextWalControlVerified,
     walSpillObserved: boundary.walSpillObserved,
@@ -918,13 +1003,20 @@ try {
     ),
     "SENTINEL_RESULT_DIVERGED",
   );
-  ensure(verifiedProcessExecutions === 50, "PROCESS_COUNT_INVALID");
+  ensure(
+    sentinels.filter((sentinel) => sentinel.concurrentCommandBusyRejected)
+      .length === 1 &&
+      sentinels.find((sentinel) => sentinel.concurrentCommandBusyRejected)
+        ?.failpoint === "after-outbox-row",
+    "CONCURRENT_COMMAND_BUSY_EVIDENCE_INVALID",
+  );
+  ensure(verifiedProcessExecutions === 51, "PROCESS_COUNT_INVALID");
   ensure(
     observedNumericProcessIds.size > 0 &&
       observedNumericProcessIds.size <= verifiedProcessExecutions,
     "PROCESS_ID_ACCOUNTING_INVALID",
   );
-  ensure(verifiedManagedTerminations === 43, "MANAGED_PROCESS_COUNT_INVALID");
+  ensure(verifiedManagedTerminations === 44, "MANAGED_PROCESS_COUNT_INVALID");
   ensure(verifiedForcedTerminations === 7, "FORCED_PROCESS_COUNT_INVALID");
   for (const [artifact, expected] of artifactDigests) {
     const actual = digestFile(artifact);
@@ -951,6 +1043,7 @@ try {
       verifiedManagedTerminations,
       verifiedForcedTerminations,
       capturedProcessIdentitiesTerminated: true,
+      concurrentCommandBusyRecoveryVerified: true,
       terminationScope:
         process.platform === "darwin"
           ? "captured-posix-process-group"

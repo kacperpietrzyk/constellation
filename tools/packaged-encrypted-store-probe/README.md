@@ -142,8 +142,8 @@ signals a numeric group, and waits for all inherited pipes to close. Before any
 relaunch, every row-bearing sentinel also requires the same fault-boundary WAL
 bytes to remain present. Process accounting counts verified executions rather
 than unique numeric PIDs because an operating system may legally reuse a PID
-after the earlier process has been verified terminated. The full matrix uses 50
-verified packaged process executions: 43 managed and seven forced.
+after the earlier process has been verified terminated. The full matrix uses 51
+verified packaged process executions: 44 managed and seven forced.
 
 On Windows, a descendant can remain visible briefly after the initial tree
 kill. During one bounded 15-second verification window, the parent may retry
@@ -151,6 +151,16 @@ kill. During one bounded 15-second verification window, the parent may retry
 still match both PID and creation time, rechecking that pair immediately before
 each retry. A taskkill return code is never success evidence; every captured
 identity must disappear or the probe fails.
+
+At `after-outbox-row`, while the holder still owns `BEGIN IMMEDIATE` and all six
+command rows remain uncommitted, a fresh packaged process executes the identical
+semantic command with `busy_timeout = 0`. Only SQLite's `SQLITE_BUSY` extended
+family maps to the content-safe `STORE_BUSY_RETRYABLE` result; `SQLITE_LOCKED`,
+`FULL`, `IOERR`, `CANTOPEN`, and unrelated errors remain failures. The contender
+must close naturally without changing the exact database, WAL, or key-wrapper
+bytes. The SHM file is intentionally not compared because it is SQLite-owned
+coordination state. Only then does the harness terminate the captured holder and
+continue the existing empty, apply, replay, and final-verification sequence.
 
 A distinct packaged process must then observe the baseline Workspace, Space,
 and membership with zero command rows and unchanged workspace version. Another

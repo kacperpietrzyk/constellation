@@ -7,12 +7,14 @@ import {
   RECOVERY_CAPTURE_FAILPOINTS,
   RECOVERY_CAPTURE_CONFLICT_FIXTURE,
   RECOVERY_CAPTURE_FIXTURE,
+  STORE_BUSY_RETRYABLE,
   RecoveryCaptureFixtureError,
   bootstrapRecoveryCaptureSchema,
   canonicalJson,
   executeRecoveryCapture,
   executeRecoveryCaptureConflict,
   getRecoveryCapturePlaintextCanaries,
+  isSqliteBusyError,
   readRecoveryCaptureCounts,
 } from "../app/recovery/capture-command.mjs";
 import {
@@ -124,6 +126,41 @@ function assertCounts(database, expected) {
   ensure(
     Object.values(counts).every((count) => count === expected),
     "TEST_ROW_COUNTS_INVALID",
+  );
+}
+
+ensure(
+  STORE_BUSY_RETRYABLE === "STORE_BUSY_RETRYABLE",
+  "TEST_BUSY_CODE_INVALID",
+);
+for (const code of [
+  "SQLITE_BUSY",
+  "SQLITE_BUSY_RECOVERY",
+  "SQLITE_BUSY_SNAPSHOT",
+  "SQLITE_BUSY_TIMEOUT",
+]) {
+  ensure(
+    isSqliteBusyError(Object.assign(new Error("busy"), { code })),
+    `TEST_BUSY_CODE_REJECTED:${code}`,
+  );
+}
+for (const code of [
+  undefined,
+  "SQLITE_BUSYNESS",
+  "SQLITE_BUSY_",
+  "SQLITE_LOCKED",
+  "SQLITE_LOCKED_SHAREDCACHE",
+  "SQLITE_FULL",
+  "SQLITE_IOERR",
+  "SQLITE_IOERR_READ",
+  "SQLITE_CANTOPEN",
+  "SQLITE_CANTOPEN_ISDIR",
+  "SQLITE_PROTOCOL",
+  "SQLITE_ERROR_RETRY",
+]) {
+  ensure(
+    !isSqliteBusyError(Object.assign(new Error("not busy"), { code })),
+    `TEST_NON_BUSY_CODE_ACCEPTED:${code ?? "missing"}`,
   );
 }
 
@@ -565,6 +602,7 @@ try {
       idempotentReplayWithoutChurn: true,
       idempotencyConflictWithoutChurn: true,
       malformedPostCommitRecordsRejected: true,
+      sqliteBusyTaxonomyVerified: true,
       sqlCipherTextPageSizeNormalized: true,
       malformedTextPageSizesRejected: true,
     })}\n`,

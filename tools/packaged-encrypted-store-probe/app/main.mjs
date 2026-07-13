@@ -7,6 +7,7 @@ import { app, safeStorage } from "electron";
 import {
   RECOVERY_CAPTURE_FAILPOINTS,
   RECOVERY_CAPTURE_SCENARIO,
+  STORE_BUSY_RETRYABLE,
   RecoveryCaptureFixtureError,
   bootstrapRecoveryCaptureSchema,
   executeRecoveryCapture,
@@ -1337,7 +1338,9 @@ function createPlaintextFixture(Database) {
 async function useRecoveryStore(Database, { readonly, operation }) {
   const scope = createSensitiveScope();
   const canaries = [];
+  const liveDatabaseIgnoredPaths = new Set([`${config.databasePath}-shm`]);
   let database;
+  let externalBusy = false;
   try {
     const { key, markerDigest } = await unwrapKey(scope, canaries);
     const metadata = pathKind(config.databasePath);
@@ -1357,12 +1360,15 @@ async function useRecoveryStore(Database, { readonly, operation }) {
       scope.keep(Buffer.from(marker, "utf8")),
     );
     verifyDatabaseIntegrity(database);
-    scanKnownSecrets(canaries);
+    // Active WAL shared-memory is SQLite coordination state and may carry
+    // mandatory byte-range locks on Windows. Scan it only after this connection
+    // closes; an external busy holder is covered by the later recovery process.
+    scanKnownSecrets(canaries, liveDatabaseIgnoredPaths);
 
     const operationResult = await operation(database);
     readAndVerifyMarker(database, markerDigest);
     verifyDatabaseIntegrity(database);
-    scanKnownSecrets(canaries);
+    scanKnownSecrets(canaries, liveDatabaseIgnoredPaths);
     closeDatabase(database);
     database = undefined;
     scanKnownSecrets(canaries);
@@ -1375,10 +1381,20 @@ async function useRecoveryStore(Database, { readonly, operation }) {
       markerDigest,
       ...operationResult.evidence,
     });
+  } catch (error) {
+    externalBusy =
+      error instanceof RecoveryCaptureFixtureError &&
+      error.code === STORE_BUSY_RETRYABLE;
+    throw error;
   } finally {
     closeQuietly(database);
     try {
-      if (canaries.length > 0) scanKnownSecrets(canaries);
+      if (canaries.length > 0) {
+        scanKnownSecrets(
+          canaries,
+          externalBusy ? liveDatabaseIgnoredPaths : new Set(),
+        );
+      }
     } finally {
       scope.clear();
     }
@@ -3476,7 +3492,8 @@ if (config) {
       const recoveryFailureCode =
         error instanceof RecoveryCaptureFixtureError &&
         typeof error.code === "string" &&
-        /^RECOVERY_[A-Z0-9_]+$/.test(error.code)
+        (error.code === STORE_BUSY_RETRYABLE ||
+          /^RECOVERY_[A-Z0-9_]+$/.test(error.code))
           ? error.code
           : undefined;
       const generationFailureCode =

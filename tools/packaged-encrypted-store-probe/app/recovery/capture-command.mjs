@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 export const RECOVERY_CAPTURE_SCENARIO = "capture-submit-text";
+export const STORE_BUSY_RETRYABLE = "STORE_BUSY_RETRYABLE";
 export const RECOVERY_CAPTURE_FAILPOINTS = Object.freeze([
   "none",
   "after-begin-immediate",
@@ -60,6 +61,15 @@ function invariant(condition, code) {
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+export function isSqliteBusyError(error) {
+  return (
+    isRecord(error) &&
+    typeof error.code === "string" &&
+    (error.code === "SQLITE_BUSY" ||
+      /^SQLITE_BUSY(?:_[A-Z0-9]+)+$/.test(error.code))
+  );
 }
 
 function hasExactKeys(value, expectedKeys) {
@@ -447,6 +457,14 @@ function rollbackQuietly(database) {
   }
 }
 
+function configureImmediateBusyFailure(database) {
+  database.pragma("busy_timeout = 0");
+  invariant(
+    database.pragma("busy_timeout", { simple: true }) === 0,
+    "RECOVERY_BUSY_TIMEOUT_INVALID",
+  );
+}
+
 function assertEmptyCounts(counts, code) {
   invariant(
     Object.values(counts).every((count) => count === 0),
@@ -749,6 +767,7 @@ export function executeRecoveryCapture(database, options = {}) {
   const changesBefore = totalChanges(database);
 
   try {
+    configureImmediateBusyFailure(database);
     database.exec("BEGIN IMMEDIATE");
     invariant(database.inTransaction, "RECOVERY_BEGIN_FAILED");
     if (failpoint === "after-begin-immediate") {
@@ -897,6 +916,9 @@ export function executeRecoveryCapture(database, options = {}) {
   } catch (error) {
     rollbackQuietly(database);
     if (error instanceof RecoveryCaptureFixtureError) throw error;
+    if (isSqliteBusyError(error)) {
+      throw new RecoveryCaptureFixtureError(STORE_BUSY_RETRYABLE);
+    }
     throw new RecoveryCaptureFixtureError("RECOVERY_CAPTURE_EXECUTION_FAILED");
   }
 }
@@ -914,6 +936,7 @@ export function executeRecoveryCaptureConflict(database) {
   const changesBefore = totalChanges(database);
 
   try {
+    configureImmediateBusyFailure(database);
     database.exec("BEGIN IMMEDIATE");
     invariant(database.inTransaction, "RECOVERY_BEGIN_FAILED");
     const existing = database
@@ -949,6 +972,9 @@ export function executeRecoveryCaptureConflict(database) {
   } catch (error) {
     rollbackQuietly(database);
     if (error instanceof RecoveryCaptureFixtureError) throw error;
+    if (isSqliteBusyError(error)) {
+      throw new RecoveryCaptureFixtureError(STORE_BUSY_RETRYABLE);
+    }
     throw new RecoveryCaptureFixtureError("RECOVERY_CONFLICT_EXECUTION_FAILED");
   }
 }
