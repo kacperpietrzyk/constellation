@@ -86,6 +86,47 @@ has no windows, and completes the relevant provider or store work before
 emitting its fixed result. They do not define the product's eventual
 user-facing graceful-shutdown policy.
 
+## Forced-crash recovery sentinels
+
+The separate `probe:recovery` runner reuses the already-built package and native
+binding. It currently covers the first two transaction sentinels for one
+deterministic `capture.submitText` fixture:
+
+- immediately after `BEGIN IMMEDIATE`, before any command row exists;
+- after the Capture row and its external-content FTS projection are visible
+  inside the still-open transaction, before Event, Audit, Idempotency, or Outbox
+  rows exist.
+
+Before each fault, the child truncates the WAL baseline, enables a small
+probe-only page cache with spill, and records the database page size. The Capture
+fixture fills the public 262,144-character limit with a repeated canary. A
+temporary plaintext control executes the same spill and must expose that canary
+in an uncommitted WAL frame; the control database and sidecars are then deleted.
+The SQLCipher WAL must contain aligned frames with matching salts, zero commit
+markers, and none of the proven spilled canaries. This relative control avoids
+claiming encryption merely because a canary happened to remain in page cache.
+
+At the exact boundary, the child writes one strict content-safe record and
+blocks synchronously without closing or rolling back. The parent independently
+checks the WAL, proves the process is still live, and force-kills the complete
+synthetic process tree with `SIGKILL` on macOS or `taskkill /T /F` on Windows.
+It requires the main process and captured tree to disappear and both inherited
+pipes to close. Before any relaunch, the Capture-row sentinel also requires the
+same uncommitted WAL bytes to remain present.
+
+A distinct packaged process must then observe the baseline Workspace, Space,
+and membership with zero command rows and unchanged workspace version. Another
+process applies the complete Capture, Event, Audit, Idempotency, and Outbox unit
+of work once. An identical replay must return the stored outcome with zero
+connection changes and an unchanged canonical logical-state digest; a final
+process verifies the committed state, FTS result, and cipher/database/foreign-key
+integrity.
+
+The fixture semantics also run against Node's ordinary SQLite before the native
+package build. That check proves both rollback boundaries, the plaintext WAL
+control, uncommitted frame observation, and replay without churn; it is not a
+substitute for the packaged SQLCipher crash evidence.
+
 ## Pinned inputs
 
 | Input                | Pin                                                                        | Purpose                                       | License      |
@@ -123,11 +164,13 @@ isolated from the product dependency graph.
 This proves same-artifact mechanism integration only. The macOS package is
 ad-hoc signed and the Windows package is unsigned. It does not prove Developer
 ID/notarized or Authenticode-signed N-to-N+1 continuity, installer/reboot or
-OS-account migration, wrapper/database crash-atomic provisioning, real disk-full
-or power-loss recovery, migration recovery, rotation, temporary provider
-unavailability, Windows workspace ACLs, optimized Windows crypto performance,
-portable recovery, reliable JavaScript heap zeroization, renderer isolation, or
-same-user malware resistance.
+OS-account migration, wrapper/database crash-atomic provisioning, the remaining
+Event/Audit/Idempotency/Outbox/post-commit fault boundaries, generation-manifest
+publication, busy/read-only/permission recovery, real disk-full or power-loss
+recovery, migration recovery, rotation, temporary provider unavailability,
+Windows workspace ACLs, optimized Windows crypto performance, portable
+recovery, reliable JavaScript heap zeroization, renderer isolation, or same-user
+malware resistance.
 
 The initializer alone is not evidence that provider state is durable; the later
 no-IPC writer and reader recovering the exact marker provide that evidence. The

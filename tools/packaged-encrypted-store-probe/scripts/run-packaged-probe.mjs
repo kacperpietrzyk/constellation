@@ -1,10 +1,12 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+
+import { launchManagedPackagedProcess } from "./packaged-process-harness.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const appName = "Constellation Packaged Store Probe";
@@ -72,8 +74,6 @@ const progressStages = new Set([
   "result-ready",
   "result-published",
 ]);
-const PRE_EXIT_CLEANUP_DEADLINE_MS = 10_000;
-const PRE_EXIT_CLEANUP_RETRY_MS = 250;
 const MAX_CAPTURED_OUTPUT_BYTES = 64 * 1024;
 const processIds = new Set();
 let verifiedProcessTerminations = 0;
@@ -165,59 +165,6 @@ function parseFixedResult(stdout) {
   return candidates[0];
 }
 
-function parseLastProgress(stderr, mode, processId) {
-  let lastStage = "none";
-  const lines = stderr.toString("utf8").split(/\r?\n/).filter(Boolean);
-  for (const line of lines) {
-    try {
-      const value = JSON.parse(line);
-      const keys = Object.keys(value).sort();
-      if (
-        keys.length === 4 &&
-        keys[0] === "mode" &&
-        keys[1] === "processId" &&
-        keys[2] === "stage" &&
-        keys[3] === "type" &&
-        value.type === progressType &&
-        value.mode === mode &&
-        value.processId === processId &&
-        progressStages.has(value.stage)
-      ) {
-        lastStage = value.stage;
-      }
-    } catch {
-      // Only exact probe-owned progress envelopes are diagnostic evidence.
-    }
-  }
-  return lastStage;
-}
-
-function terminateTree(child) {
-  if (!child.pid) return false;
-  if (process.platform === "win32") {
-    const result = spawnSync(
-      "taskkill",
-      ["/PID", String(child.pid), "/T", "/F"],
-      {
-        windowsHide: true,
-        stdio: "ignore",
-        timeout: 5_000,
-      },
-    );
-    return result.status === 0;
-  }
-  try {
-    process.kill(-child.pid, "SIGKILL");
-    return true;
-  } catch {
-    try {
-      return child.kill("SIGKILL");
-    } catch {
-      return false;
-    }
-  }
-}
-
 async function launch({ mode, workspaceId, wrapperName, databaseName }) {
   const environment = { ...process.env };
   delete environment.ELECTRON_RUN_AS_NODE;
@@ -230,289 +177,52 @@ async function launch({ mode, workspaceId, wrapperName, databaseName }) {
     `--probe-wrapper=${wrapperName}`,
     `--probe-database=${databaseName}`,
   ];
-
-  return await new Promise((resolve, reject) => {
-    let child;
-    try {
-      child = spawn(executable, argumentsForProbe, {
-        detached: process.platform !== "win32",
-        env: environment,
-        stdio: ["ignore", "pipe", "pipe", providerChannel ? "ipc" : "ignore"],
-        windowsHide: true,
-      });
-    } catch {
-      reject(new Error("PACKAGED_LAUNCH_FAILED"));
-      return;
-    }
-
-    const stdout = [];
-    const stderr = [];
-    let stdoutLength = 0;
-    let stderrLength = 0;
-    let settled = false;
-    let timer;
-    let preExitCleanupDeadlineTimer;
-    let preExitCleanupRetryTimer;
-    let helperCleanupTimer;
-    let postExitTimer;
-    let preExitCleanupError;
-    let preExitCleanupStarted = false;
-    let outputCollectionStopped = false;
-    let mainProcessExited = false;
-    let mainExitCode;
-    let mainExitSignal;
-    let providerBootstrapMessageCount = 0;
-    let providerBootstrapCompleted = !providerChannel;
-
-    const finish = (callback) => {
-      if (settled) return;
-      settled = true;
-      if (timer) clearTimeout(timer);
-      if (preExitCleanupDeadlineTimer) {
-        clearTimeout(preExitCleanupDeadlineTimer);
-      }
-      if (preExitCleanupRetryTimer) clearTimeout(preExitCleanupRetryTimer);
-      if (helperCleanupTimer) clearTimeout(helperCleanupTimer);
-      if (postExitTimer) clearTimeout(postExitTimer);
-      callback();
-    };
-    const clearCapturedOutput = () => {
-      for (const chunk of stdout) chunk.fill(0);
-      for (const chunk of stderr) chunk.fill(0);
-      stdout.length = 0;
-      stderr.length = 0;
-      stdoutLength = 0;
-      stderrLength = 0;
-    };
-    const rejectAtPreExitCleanupDeadline = () => {
-      if (settled || !preExitCleanupStarted) return;
-      outputCollectionStopped = true;
-      clearCapturedOutput();
-      if (child.connected && typeof child.disconnect === "function") {
-        try {
-          child.disconnect();
-        } catch {
-          // Cleanup is already failing; the bounded termination error remains
-          // authoritative after the remaining handles are detached.
+  const execution = await launchManagedPackagedProcess({
+    executable,
+    args: argumentsForProbe,
+    environment,
+    mode,
+    errorContext: `${mode}:${wrapperName}:${databaseName}`,
+    providerBootstrap: providerChannel
+      ? {
+          readyType: providerBootstrapReadyType,
+          continueType: providerBootstrapContinueType,
         }
-      }
-      child.channel?.unref?.();
-      child.stdout.destroy();
-      child.stderr.destroy();
-      child.unref();
-      finish(() =>
-        reject(
-          new Error(
-            `PACKAGED_TERMINATION_TIMEOUT:${mode}:${wrapperName}:${databaseName}:${preExitCleanupError.message}`,
-          ),
-        ),
-      );
-    };
-    const startPreExitCleanup = (error) => {
-      if (settled || preExitCleanupStarted) return;
-      preExitCleanupStarted = true;
-      const stderrBuffer = Buffer.concat(stderr, stderrLength);
-      const lastProgressStage = parseLastProgress(
-        stderrBuffer,
-        mode,
-        child.pid,
-      );
-      stderrBuffer.fill(0);
-      preExitCleanupError = new Error(
-        `${error.message}:LAST_STAGE:${lastProgressStage}`,
-      );
-      if (timer) {
-        clearTimeout(timer);
-        timer = undefined;
-      }
-      if (postExitTimer) {
-        clearTimeout(postExitTimer);
-        postExitTimer = undefined;
-      }
-      if (helperCleanupTimer) {
-        clearTimeout(helperCleanupTimer);
-        helperCleanupTimer = undefined;
-      }
-      const cleanupDeadline = Date.now() + PRE_EXIT_CLEANUP_DEADLINE_MS;
-      const retryCleanup = () => {
-        if (settled || !preExitCleanupStarted) return;
-        if (Date.now() >= cleanupDeadline) {
-          rejectAtPreExitCleanupDeadline();
-          return;
-        }
-        terminateTree(child);
-        const remaining = cleanupDeadline - Date.now();
-        preExitCleanupRetryTimer = setTimeout(
-          retryCleanup,
-          Math.max(0, Math.min(PRE_EXIT_CLEANUP_RETRY_MS, remaining)),
-        );
-      };
-      preExitCleanupDeadlineTimer = setTimeout(
-        rejectAtPreExitCleanupDeadline,
-        PRE_EXIT_CLEANUP_DEADLINE_MS,
-      );
-      retryCleanup();
-    };
-    const collect = (target, chunk, isStdout) => {
-      const buffer = Buffer.from(chunk);
-      if (outputCollectionStopped) {
-        buffer.fill(0);
-        return;
-      }
-      const nextLength =
-        (isStdout ? stdoutLength : stderrLength) + buffer.length;
-      if (nextLength > MAX_CAPTURED_OUTPUT_BYTES) {
-        buffer.fill(0);
-        outputCollectionStopped = true;
-        clearCapturedOutput();
-        startPreExitCleanup(new Error("PACKAGED_OUTPUT_LIMIT_EXCEEDED"));
-        return;
-      }
-      target.push(buffer);
-      if (isStdout) stdoutLength = nextLength;
-      else stderrLength = nextLength;
-    };
-
-    child.stdout.on("data", (chunk) => collect(stdout, chunk, true));
-    child.stderr.on("data", (chunk) => collect(stderr, chunk, false));
-    if (providerChannel) {
-      child.on("message", (message) => {
-        providerBootstrapMessageCount += 1;
-        if (
-          providerBootstrapMessageCount !== 1 ||
-          !message ||
-          typeof message !== "object" ||
-          Array.isArray(message) ||
-          Object.keys(message).length !== 4 ||
-          message.type !== providerBootstrapReadyType ||
-          message.mode !== mode ||
-          message.processId !== child.pid ||
-          message.bootstrapEnvironmentCleared !== true
-        ) {
-          startPreExitCleanup(new Error("PROVIDER_BOOTSTRAP_PROTOCOL_INVALID"));
-          return;
-        }
-
-        try {
-          child.send(
-            {
-              type: providerBootstrapContinueType,
-              mode,
-              processId: child.pid,
-            },
-            (error) => {
-              if (!error) {
-                providerBootstrapCompleted = true;
-                return;
-              }
-              startPreExitCleanup(new Error("PROVIDER_BOOTSTRAP_SEND_FAILED"));
-            },
-          );
-        } catch {
-          if (!settled) {
-            startPreExitCleanup(new Error("PROVIDER_BOOTSTRAP_SEND_FAILED"));
-          }
-        }
-      });
-    }
-    child.on("error", () =>
-      startPreExitCleanup(new Error("PACKAGED_LAUNCH_FAILED")),
-    );
-    const complete = (code, signal) =>
-      finish(() => {
-        try {
-          const stdoutBuffer = Buffer.concat(stdout, stdoutLength);
-          const stderrBuffer = Buffer.concat(stderr, stderrLength);
-          inspectOutput(stdoutBuffer);
-          inspectOutput(stderrBuffer);
-          const result = parseFixedResult(stdoutBuffer);
-          ensure(
-            code === result.declaredExitCode && signal === null,
-            `PACKAGED_EXIT_STATUS_INVALID:${String(code)}:${String(signal)}:${result.declaredExitCode}`,
-          );
-          ensure(
-            providerBootstrapCompleted &&
-              providerBootstrapMessageCount === (providerChannel ? 1 : 0),
-            "PROVIDER_BOOTSTRAP_EVIDENCE_INVALID",
-          );
-          resolve({
-            actualCode: code,
-            actualSignal: signal,
-            declaredExitCode: result.declaredExitCode,
-            providerBootstrapCompleted,
-            providerBootstrapMessageCount,
-            childPid: child.pid,
-            result,
-          });
-        } catch (error) {
-          reject(error);
-        }
-      });
-    const rejectUnverifiedHelperCleanup = () => {
-      finish(() =>
-        reject(
-          new Error(
-            `PACKAGED_HELPER_CLEANUP_UNVERIFIED:${mode}:${wrapperName}:${databaseName}`,
-          ),
-        ),
-      );
-      child.stdout.destroy();
-      child.stderr.destroy();
-    };
-
-    child.on("exit", (code, signal) => {
-      mainProcessExited = true;
-      mainExitCode = code;
-      mainExitSignal = signal;
-      if (preExitCleanupStarted) return;
-      if (timer) {
-        clearTimeout(timer);
-        timer = undefined;
-      }
-      // Electron helpers may inherit the main process pipes after the main
-      // executable has exited. Give pending bytes a bounded drain window,
-      // then finalize from the main process exit rather than misclassifying a
-      // valid fixed result as a launch timeout.
-      postExitTimer = setTimeout(() => {
-        const cleanupVerified = terminateTree(child);
-        if (!cleanupVerified) {
-          rejectUnverifiedHelperCleanup();
-          return;
-        }
-        // A successful signal request is not cleanup evidence. Wait for the
-        // child close event, which confirms that both inherited output pipes
-        // have closed, and fail closed if that signal never arrives.
-        helperCleanupTimer = setTimeout(rejectUnverifiedHelperCleanup, 5_000);
-      }, 1_000);
-    });
-    child.on("close", (code, signal) => {
-      if (preExitCleanupStarted) {
-        outputCollectionStopped = true;
-        clearCapturedOutput();
-        finish(() => reject(preExitCleanupError));
-        return;
-      }
-      complete(
-        mainProcessExited ? mainExitCode : code,
-        mainProcessExited ? mainExitSignal : signal,
-      );
-    });
-
-    timer = setTimeout(() => {
-      startPreExitCleanup(
-        new Error(
-          `PACKAGED_LAUNCH_TIMEOUT:${mode}:${wrapperName}:${databaseName}`,
-        ),
-      );
-    }, 45_000);
-
-    if (
-      providerChannel &&
-      (typeof child.send !== "function" || !child.connected)
-    ) {
-      startPreExitCleanup(new Error("PROVIDER_BOOTSTRAP_CHANNEL_UNAVAILABLE"));
-    }
+      : undefined,
+    progressProtocol: { type: progressType, stages: progressStages },
+    maxOutputBytes: MAX_CAPTURED_OUTPUT_BYTES,
   });
+  let retainedOutput = false;
+  try {
+    inspectOutput(execution.stdout);
+    inspectOutput(execution.stderr);
+    retainedOutput = true;
+    const result = parseFixedResult(execution.stdout);
+    ensure(
+      execution.actualCode === result.declaredExitCode &&
+        execution.actualSignal === null,
+      `PACKAGED_EXIT_STATUS_INVALID:${String(execution.actualCode)}:${String(execution.actualSignal)}:${result.declaredExitCode}`,
+    );
+    ensure(
+      execution.providerBootstrapCompleted &&
+        execution.providerBootstrapMessageCount === (providerChannel ? 1 : 0),
+      "PROVIDER_BOOTSTRAP_EVIDENCE_INVALID",
+    );
+    return {
+      actualCode: execution.actualCode,
+      actualSignal: execution.actualSignal,
+      declaredExitCode: result.declaredExitCode,
+      providerBootstrapCompleted: execution.providerBootstrapCompleted,
+      providerBootstrapMessageCount: execution.providerBootstrapMessageCount,
+      childPid: execution.childPid,
+      result,
+    };
+  } finally {
+    if (!retainedOutput) {
+      execution.stdout.fill(0);
+      execution.stderr.fill(0);
+    }
+  }
 }
 
 function assertFixedIdentity(result, childPid, mode) {

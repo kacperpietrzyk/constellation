@@ -4,6 +4,21 @@ import path from "node:path";
 import originalFs from "original-fs";
 import { app, safeStorage } from "electron";
 
+import {
+  RECOVERY_CAPTURE_FAILPOINTS,
+  RECOVERY_CAPTURE_SCENARIO,
+  bootstrapRecoveryCaptureSchema,
+  executeRecoveryCapture,
+} from "./recovery/capture-command.mjs";
+import { verifyRecoveryCaptureState } from "./recovery/capture-verifier.mjs";
+import {
+  createRecoveryFaultBoundaryRecord,
+  emitRecoveryFaultBoundaryRecord,
+  holdForForcedTermination,
+  prepareRecoveryWalFaultBaseline,
+  verifyPlaintextRecoveryWalControl,
+} from "./recovery/failpoint.mjs";
+
 const APP_ID = "io.constellation.packaged-store-probe";
 const APP_NAME = "Constellation Packaged Store Probe";
 const ELECTRON_VERSION = "43.1.0";
@@ -40,8 +55,27 @@ const PROGRESS_STAGES = new Set([
   "live-store-scanned",
   "database-closed",
   "closed-store-scanned",
+  "recovery-schema-bootstrapped",
+  "recovery-state-verified",
+  "recovery-command-applied",
+  "recovery-fault-baseline-ready",
+  "recovery-plaintext-control-verified",
+  "recovery-fault-boundary-ready",
   "result-ready",
   "result-published",
+]);
+const STANDARD_MODES = new Set([
+  "provider-initialize",
+  "provision",
+  "verify",
+  "plaintext",
+]);
+const RECOVERY_MODES = new Set([
+  "recovery-bootstrap",
+  "recovery-fault",
+  "recovery-verify-empty",
+  "recovery-apply",
+  "recovery-verify-committed",
 ]);
 const EXIT_CODES = Object.freeze({
   CONFIG_INVALID: 80,
@@ -251,13 +285,19 @@ function getArgument(name) {
 }
 
 function parseConfig() {
-  const allowedPrefixes = [
+  const basePrefixes = [
     "--probe-mode=",
     "--probe-state-root=",
     "--probe-workspace=",
     "--probe-wrapper=",
     "--probe-database=",
   ];
+  const mode = getArgument("mode");
+  const recoveryMode = RECOVERY_MODES.has(mode);
+  if (!STANDARD_MODES.has(mode) && !recoveryMode) fail("CONFIG_INVALID");
+  const allowedPrefixes = recoveryMode
+    ? [...basePrefixes, "--probe-scenario=", "--probe-failpoint="]
+    : basePrefixes;
   const probeArguments = process.argv.filter((argument) =>
     argument.startsWith("--probe-"),
   );
@@ -271,16 +311,19 @@ function parseConfig() {
     fail("CONFIG_INVALID");
   }
 
-  const mode = getArgument("mode");
   const stateRoot = getArgument("state-root");
   const workspaceId = getArgument("workspace");
   const wrapperName = getArgument("wrapper");
   const databaseName = getArgument("database");
+  const scenario = recoveryMode ? getArgument("scenario") : undefined;
+  const failpoint = recoveryMode ? getArgument("failpoint") : undefined;
 
   if (
-    !new Set(["provider-initialize", "provision", "verify", "plaintext"]).has(
-      mode,
-    )
+    recoveryMode &&
+    (scenario !== RECOVERY_CAPTURE_SCENARIO ||
+      !RECOVERY_CAPTURE_FAILPOINTS.includes(failpoint) ||
+      (mode === "recovery-fault" && failpoint === "none") ||
+      (mode !== "recovery-fault" && failpoint !== "none"))
   ) {
     fail("CONFIG_INVALID");
   }
@@ -307,6 +350,8 @@ function parseConfig() {
     workspaceId,
     wrapperPath: path.join(resolvedRoot, wrapperName),
     databasePath: path.join(resolvedRoot, databaseName),
+    scenario,
+    failpoint,
   };
 }
 
@@ -1092,6 +1137,191 @@ function createPlaintextFixture(Database) {
   }
 }
 
+async function useRecoveryStore(Database, { readonly, operation }) {
+  const scope = createSensitiveScope();
+  const canaries = [];
+  let database;
+  try {
+    const { key, markerDigest } = await unwrapKey(scope, canaries);
+    const metadata = pathKind(config.databasePath);
+    if (!metadata) fail("DATABASE_MISSING");
+    if (!metadata.isFile() || metadata.isSymbolicLink()) {
+      fail("DATABASE_OPEN_FAILED");
+    }
+    database = openKeyedDatabase(Database, key, {
+      readonly,
+      fileMustExist: true,
+    });
+    const facts = readEncryptionFacts(database);
+    const marker = readAndVerifyMarker(database, markerDigest);
+    addEncodedCanaries(
+      scope,
+      canaries,
+      scope.keep(Buffer.from(marker, "utf8")),
+    );
+    verifyDatabaseIntegrity(database);
+    scanKnownSecrets(canaries);
+
+    const operationResult = await operation(database);
+    readAndVerifyMarker(database, markerDigest);
+    verifyDatabaseIntegrity(database);
+    scanKnownSecrets(canaries);
+    closeDatabase(database);
+    database = undefined;
+    scanKnownSecrets(canaries);
+    return fixedResult("pass", operationResult.code, {
+      asyncEncryptionAvailable: true,
+      cipherVersion: facts.cipherVersion,
+      provider: facts.provider,
+      providerVersion: facts.providerVersion,
+      rawKeyBinding: true,
+      markerDigest,
+      ...operationResult.evidence,
+    });
+  } finally {
+    closeQuietly(database);
+    try {
+      if (canaries.length > 0) scanKnownSecrets(canaries);
+    } finally {
+      scope.clear();
+    }
+  }
+}
+
+async function runRecoveryMode(Database) {
+  const readonly = new Set([
+    "recovery-verify-empty",
+    "recovery-verify-committed",
+  ]).has(config.mode);
+  return await useRecoveryStore(Database, {
+    readonly,
+    operation: async (database) => {
+      switch (config.mode) {
+        case "recovery-bootstrap": {
+          const bootstrap = bootstrapRecoveryCaptureSchema(database);
+          writeFixedProgress("recovery-schema-bootstrapped");
+          const verification = verifyRecoveryCaptureState(database, {
+            expectedState: "empty",
+          });
+          writeFixedProgress("recovery-state-verified");
+          return {
+            code: "RECOVERY_BOOTSTRAPPED",
+            evidence: {
+              scenario: config.scenario,
+              workspaceVersion: bootstrap.workspaceVersion,
+              rows: verification.rows,
+              stateDigest: verification.stateDigest,
+              integrityVerified: verification.integrityVerified,
+              ftsVerified: verification.ftsVerified,
+            },
+          };
+        }
+        case "recovery-verify-empty": {
+          const verification = verifyRecoveryCaptureState(database, {
+            expectedState: "empty",
+          });
+          writeFixedProgress("recovery-state-verified");
+          return {
+            code: "RECOVERY_EMPTY_VERIFIED",
+            evidence: {
+              scenario: config.scenario,
+              expectedState: verification.expectedState,
+              workspaceVersion: verification.workspaceVersion,
+              rows: verification.rows,
+              stateDigest: verification.stateDigest,
+              integrityVerified: verification.integrityVerified,
+              ftsVerified: verification.ftsVerified,
+            },
+          };
+        }
+        case "recovery-apply": {
+          const execution = executeRecoveryCapture(database);
+          writeFixedProgress("recovery-command-applied");
+          const verification = verifyRecoveryCaptureState(database, {
+            expectedState: "committed",
+          });
+          writeFixedProgress("recovery-state-verified");
+          return {
+            code:
+              execution.kind === "applied"
+                ? "RECOVERY_CAPTURE_APPLIED"
+                : "RECOVERY_CAPTURE_REPLAYED",
+            evidence: {
+              scenario: config.scenario,
+              applicationKind: execution.kind,
+              connectionChanges: execution.connectionChanges,
+              outcomeDigest: execution.outcomeDigest,
+              semanticFingerprint: execution.semanticFingerprint,
+              workspaceVersion: verification.workspaceVersion,
+              rows: verification.rows,
+              stateDigest: verification.stateDigest,
+              integrityVerified: verification.integrityVerified,
+              ftsVerified: verification.ftsVerified,
+            },
+          };
+        }
+        case "recovery-verify-committed": {
+          const verification = verifyRecoveryCaptureState(database, {
+            expectedState: "committed",
+          });
+          writeFixedProgress("recovery-state-verified");
+          return {
+            code: "RECOVERY_COMMITTED_VERIFIED",
+            evidence: {
+              scenario: config.scenario,
+              expectedState: verification.expectedState,
+              workspaceVersion: verification.workspaceVersion,
+              rows: verification.rows,
+              stateDigest: verification.stateDigest,
+              integrityVerified: verification.integrityVerified,
+              ftsVerified: verification.ftsVerified,
+            },
+          };
+        }
+        case "recovery-fault": {
+          const baseline = prepareRecoveryWalFaultBaseline(database, {
+            walPath: `${config.databasePath}-wal`,
+            cacheSizePages: 8,
+          });
+          writeFixedProgress("recovery-fault-baseline-ready");
+          const plaintextWalControlVerified = verifyPlaintextRecoveryWalControl(
+            Database,
+            {
+              databasePath: path.join(
+                config.expectedTemp,
+                `${config.failpoint}-plaintext-control.db`,
+              ),
+              expectedPageSize: baseline.walPageSize,
+              cacheSizePages: baseline.cacheSizePages,
+            },
+          );
+          writeFixedProgress("recovery-plaintext-control-verified");
+          executeRecoveryCapture(database, {
+            failpoint: config.failpoint,
+            reachFailpoint: ({ failpoint, visibleRows }) => {
+              const boundary = createRecoveryFaultBoundaryRecord({
+                database,
+                walPath: `${config.databasePath}-wal`,
+                failpoint,
+                visibleRows,
+                baseline,
+                plaintextWalControlVerified,
+              });
+              writeFixedProgress("recovery-fault-boundary-ready");
+              emitRecoveryFaultBoundaryRecord(boundary);
+              holdForForcedTermination({ timeoutMs: 120_000 });
+            },
+          });
+          fail("PROBE_FAILED");
+          break;
+        }
+        default:
+          fail("CONFIG_INVALID");
+      }
+    },
+  });
+}
+
 function verifyPackagedIdentity() {
   const expectedArchive = path.join(process.resourcesPath, "app.asar");
   const expectedUnpackedRoot = path.join(
@@ -1246,10 +1476,13 @@ if (config) {
         writeFixedProgress("safe-storage-ready");
         const Database = await loadDatabaseConstructor();
         writeFixedProgress("native-addon-ready");
-        result =
-          config.mode === "provision"
-            ? await provisionStore(Database)
-            : await verifyStore(Database);
+        if (config.mode === "provision") {
+          result = await provisionStore(Database);
+        } else if (config.mode === "verify") {
+          result = await verifyStore(Database);
+        } else {
+          result = await runRecoveryMode(Database);
+        }
       }
       exitCode = 0;
     } catch (error) {
