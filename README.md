@@ -95,14 +95,14 @@ both directions, queues an edit while the Hub is stopped, rejoins after restart,
 restores a named revision, and turns the editor read-only after a live access
 downgrade.
 
-The current collaboration candidate adds versioned human membership and Space
-grants without coupling Workspace role to data scope. Every command and query
-reauthorizes against the current policy; direct records, relations, search,
+The delivered collaboration foundation adds versioned human membership and
+Space grants without coupling Workspace role to data scope. Every command and
+query reauthorizes against the current policy; direct records, relations, search,
 counts, activity, scoped exports, and Hub-delivered local projections share the
 same Space filter. Revocation rejects queued offline work and atomically removes
 the affected client's coordinated records, local full-text index, command
-journal, and outbox. The desktop preview now
-includes an accessible access-management surface for adding a member or guest,
+journal, and outbox. The desktop preview includes an accessible
+access-management surface for adding a member or guest,
 choosing view/comment/edit access, and revoking membership.
 
 Shared Tasks now support one versioned responsible member or guest. Editors can
@@ -138,9 +138,10 @@ requiring a Hub.
 
 The resulting ad-hoc macOS and unsigned Windows application folders are
 verification artifacts, not a signed/notarized release. The Hub is an operator
-preview rather than a hosted service. MCP transport, installers, updater,
-richer notification policy, document comments/citations, and automatic routing
-rules beyond the explicit Capture action remain later work.
+preview rather than a hosted service. Local MCP operator parity is the next
+active product outcome; remote MCP transport, installers, updater, richer
+notification policy, document comments/citations, and automatic routing rules
+beyond the explicit Capture action remain later work.
 
 The current kernel boundary and implemented subset are documented in
 [Application kernel](docs/architecture/application-kernel.md) and
