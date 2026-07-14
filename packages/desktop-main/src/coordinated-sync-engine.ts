@@ -35,11 +35,31 @@ export const coordinatedSnapshotDigest = (
 
 export const createHubWorkspaceSnapshot = (
   snapshot: ReferenceStateSnapshot,
-): HubWorkspaceSnapshot =>
-  HubWorkspaceSnapshotSchema.parse({
+): HubWorkspaceSnapshot => {
+  const {
+    agentGrants,
+    agentRuns: _agentRuns,
+    agentCheckpoints: _agentCheckpoints,
+    agentHandoffs: _agentHandoffs,
+    ...hubState
+  } = snapshot;
+  void _agentRuns;
+  void _agentCheckpoints;
+  void _agentHandoffs;
+  const localAgentPrincipals = new Set(
+    (agentGrants ?? []).map((grant) => grant.agentPrincipalId),
+  );
+  return HubWorkspaceSnapshotSchema.parse({
     format: "constellation.workspace-snapshot/v1",
-    ...snapshot,
+    ...hubState,
+    memberships: hubState.memberships.filter(
+      (membership) => !localAgentPrincipals.has(membership.principalId),
+    ),
+    spaceGrants: (hubState.spaceGrants ?? []).filter(
+      (grant) => !localAgentPrincipals.has(grant.principalId),
+    ),
   });
+};
 
 export const parseHubWorkspaceProjection = (
   snapshot: HubWorkspaceSnapshot,
