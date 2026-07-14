@@ -110,6 +110,35 @@ const waitFor = async (client, expression, code) => {
   throw new Error(code);
 };
 
+const reloadAndWait = async (client, selector, code) => {
+  const nonce = crypto.randomUUID();
+  await client.evaluate(`(() => {
+    sessionStorage.setItem("constellation-smoke-reload", ${JSON.stringify(nonce)});
+    window.__constellationSmokeBeforeReload = ${JSON.stringify(nonce)};
+    window.location.reload();
+    return true;
+  })()`);
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    try {
+      const ready = await client.evaluate(`
+        sessionStorage.getItem("constellation-smoke-reload") === ${JSON.stringify(nonce)} &&
+        window.__constellationSmokeBeforeReload !== ${JSON.stringify(nonce)} &&
+        document.querySelector(${JSON.stringify(selector)}) !== null
+      `);
+      if (ready) {
+        await client.evaluate(
+          `sessionStorage.removeItem("constellation-smoke-reload")`,
+        );
+        return;
+      }
+    } catch {
+      // CDP can briefly target the destroyed execution context during reload.
+    }
+    await delay(100);
+  }
+  throw new Error(code);
+};
+
 const waitForTarget = async (port, child) => {
   for (let attempt = 0; attempt < 300; attempt += 1) {
     if (child.exitCode !== null)
@@ -569,10 +598,9 @@ try {
   );
   if (downgraded.syncState !== "current")
     throw new Error(`MEMBER_DOWNGRADE_SYNC_FAILED_${downgraded.syncState}`);
-  await member.client.evaluate(`window.location.reload()`);
-  await waitFor(
+  await reloadAndWait(
     member.client,
-    `document.querySelector(".desktop-shell") !== null`,
+    ".desktop-shell",
     "MEMBER_DOWNGRADE_RELOAD_FAILED",
   );
   const rejectedStillVisible = await member.client.evaluate(
@@ -678,12 +706,9 @@ try {
   );
   if (converged.syncState !== "current")
     throw new Error("SECOND_DEVICE_PULL_FAILED");
-  await second.client.evaluate(
-    `(() => { window.location.reload(); return true; })()`,
-  );
-  await waitFor(
+  await reloadAndWait(
     second.client,
-    `document.querySelector(".desktop-shell") !== null`,
+    ".desktop-shell",
     "SECOND_DEVICE_RELOAD_FAILED",
   );
   await second.client.evaluate(
