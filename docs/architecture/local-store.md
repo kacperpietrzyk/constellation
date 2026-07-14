@@ -94,8 +94,10 @@ and permits exactly one unpacked native module. The packaged test drives the
 real window through the context-isolated preload and IPC, creates a Capture and
 Task, exports a verified backup, adds later work, relaunches, previews and
 confirms restore, and requires the backup state and stable workspace identity
-to return without renderer or load errors. Native macOS arm64, macOS x64, and
-Windows x64 jobs are required. Each macOS binding is compiled and exercised on
+to return without renderer or load errors. The same journey terminates the
+packaged process at both restore activation boundaries and requires startup to
+reopen the retained last-known-good workspace before a successful retry. Native
+macOS arm64, macOS x64, and Windows x64 jobs are required. Each macOS binding is compiled and exercised on
 a matching native runner; Rosetta is not a build or verification dependency.
 Remaining recovery gates include real disk-full and permission faults, signed
 cross-version continuity, and managed attachments. Remaining release gates are

@@ -101,12 +101,32 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
   if (smokeRoot !== undefined) {
     mkdirSync(smokeRoot, { recursive: true, mode: 0o700 });
   }
+  const smokeFailpoint = process.env.CONSTELLATION_ALPHA_RECOVERY_FAILPOINT;
+  if (
+    smokeFailpoint !== undefined &&
+    (smokeRoot === undefined ||
+      (smokeFailpoint !== "after-previous-retained" &&
+        smokeFailpoint !== "after-candidate-activated"))
+  ) {
+    throw new Error(
+      "Recovery failpoints are restricted to packaged smoke tests.",
+    );
+  }
   const recovery = await createWorkspaceRecoveryService({
     appVersion: DESKTOP_PREVIEW_VERSION,
     databaseFactory,
     safeStorage: electronSafeStorage,
     stateRoot,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    ...(smokeFailpoint === undefined
+      ? {}
+      : {
+          failpoint: (boundary) => {
+            if (boundary !== smokeFailpoint) return;
+            process.kill(process.pid, "SIGKILL");
+            throw new Error("Recovery smoke failpoint did not terminate.");
+          },
+        }),
     selectExportPath: async (workspaceName) => {
       if (smokeBackupPath !== undefined) return smokeBackupPath;
       const stamp = new Date().toISOString().slice(0, 10);

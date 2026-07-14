@@ -165,7 +165,7 @@ const stopPackagedApp = async (client, process) => {
   }
 };
 
-const run = async (phase, recoveryCode, expectedWorkspaceId) => {
+const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
   const port = await reservePort();
   let stdout = "";
   let stderr = "";
@@ -182,6 +182,9 @@ const run = async (phase, recoveryCode, expectedWorkspaceId) => {
       env: {
         ...process.env,
         CONSTELLATION_ALPHA_RECOVERY_SMOKE_ROOT: recoverySmokeRoot,
+        ...(failpoint === undefined
+          ? {}
+          : { CONSTELLATION_ALPHA_RECOVERY_FAILPOINT: failpoint }),
       },
     },
   );
@@ -217,7 +220,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId) => {
       boundary.build.channel !== "local-alpha" ||
       boundary.build.persistence !== "encrypted-local" ||
       boundary.build.workspaceAvailability !==
-        (phase === "created" ? "ready" : "recovery_required") ||
+        (phase === "restored" ? "recovery_required" : "ready") ||
       boundary.hasNodeRequire ||
       boundary.bridgeKeys.join(",") !==
         "cancelWorkspaceRestore,confirmWorkspaceRestore,executeCommand,exportWorkspaceBackup,getBuildInfo,prepareWorkspaceRestore,runQuery"
@@ -284,7 +287,42 @@ const run = async (phase, recoveryCode, expectedWorkspaceId) => {
         );
       }
       await submitCapture(mutationTitle);
-    } else {
+    } else if (phase.startsWith("interrupted-")) {
+      restorePreview = await client.evaluate(
+        `window.constellation.prepareWorkspaceRestore({ recoveryCode: ${JSON.stringify(recoveryCode)} })`,
+      );
+      if (
+        restorePreview.outcome !== "preview" ||
+        restorePreview.counts.tasks !== 1
+      ) {
+        throw new Error("PACKAGED_ALPHA_INTERRUPTED_PREVIEW_INVALID");
+      }
+      let connectionClosed = false;
+      try {
+        await client.evaluate(
+          `window.constellation.confirmWorkspaceRestore({ restoreId: ${JSON.stringify(restorePreview.restoreId)} })`,
+        );
+      } catch {
+        connectionClosed = true;
+      }
+      for (
+        let attempt = 0;
+        attempt < 200 && packagedProcess.signalCode === null;
+        attempt += 1
+      ) {
+        await delay(50);
+      }
+      client.close();
+      if (!connectionClosed || packagedProcess.signalCode === null) {
+        throw new Error("PACKAGED_ALPHA_RECOVERY_FAILPOINT_DID_NOT_TERMINATE");
+      }
+      return {
+        phase,
+        failpoint,
+        restorePreview,
+        terminationSignal: packagedProcess.signalCode,
+      };
+    } else if (phase === "restored") {
       restorePreview = await client.evaluate(
         `window.constellation.prepareWorkspaceRestore({ recoveryCode: ${JSON.stringify(recoveryCode)} })`,
       );
@@ -317,6 +355,14 @@ const run = async (phase, recoveryCode, expectedWorkspaceId) => {
         document.querySelector('.nav-item[data-surface="tasks"]').click();
         return true;
       })()`);
+    } else {
+      if (boundary.build.startupRecovery !== "previous_workspace_restored") {
+        throw new Error("PACKAGED_ALPHA_PREVIOUS_WORKSPACE_NOT_RECOVERED");
+      }
+      await client.evaluate(`(() => {
+        document.querySelector('.nav-item[data-surface="tasks"]').click();
+        return true;
+      })()`);
     }
     await waitFor(
       client,
@@ -328,7 +374,8 @@ const run = async (phase, recoveryCode, expectedWorkspaceId) => {
     const taskCount = await client.evaluate(
       `document.querySelectorAll(".task-row").length`,
     );
-    if (taskCount !== (phase === "created" ? 2 : 1)) {
+    const expectedTaskCount = phase === "restored" ? 1 : 2;
+    if (taskCount !== expectedTaskCount) {
       throw new Error("PACKAGED_ALPHA_TASK_COUNT_INVALID");
     }
     if (
@@ -366,6 +413,20 @@ const run = async (phase, recoveryCode, expectedWorkspaceId) => {
 };
 
 const created = await run("created");
+const interruptedAfterRetention = await run(
+  "interrupted-after-retention",
+  created.backup.recoveryCode,
+  created.backup.metadata.workspaceId,
+  "after-previous-retained",
+);
+const recoveredAfterRetention = await run("recovered-after-retention");
+const interruptedAfterActivation = await run(
+  "interrupted-after-activation",
+  created.backup.recoveryCode,
+  created.backup.metadata.workspaceId,
+  "after-candidate-activated",
+);
+const recoveredAfterActivation = await run("recovered-after-activation");
 const destroyedWrapper = path.join(
   userData,
   "local-alpha-workspace",
@@ -384,7 +445,18 @@ process.stdout.write(
   `${JSON.stringify({
     status: "pass",
     platform: process.platform,
-    phases: [created.phase, restored.phase],
+    phases: [
+      created.phase,
+      interruptedAfterRetention.phase,
+      recoveredAfterRetention.phase,
+      interruptedAfterActivation.phase,
+      recoveredAfterActivation.phase,
+      restored.phase,
+    ],
+    interruptionSignals: [
+      interruptedAfterRetention.terminationSignal,
+      interruptedAfterActivation.terminationSignal,
+    ],
     persistence: restored.persistence,
     preload: restored.preload,
     transport: restored.transport,
