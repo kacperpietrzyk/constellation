@@ -58,9 +58,11 @@ store, an in-memory Electron developer preview, and a packaged Alpha candidate.
 The implemented desktop journey covers Quick Capture to Task, Project outcome
 and Task relations, task status/completion, deterministic scoped search,
 explainable weekly focus, Capture History, meaningful activity, and previewed
-undo. It can also export a verified encrypted workspace backup with a separate
-recovery code, preview a restore, retain the previous workspace, and reopen the
-restored logical identity. The production runtime keeps generated workspace
+undo. Destinations and open Task or Project contexts share one bounded tab rail
+with Back/Forward history and a context-preserving inspector. It can also export
+a verified encrypted workspace backup with a separate recovery code, preview a
+restore, retain the previous workspace, and reopen the restored logical
+identity. The production runtime keeps generated workspace
 identity and key custody in the operating-system credential store, has no
 plaintext or in-memory fallback, and stops in recovery instead of silently
 replacing a missing ready database. If an established workspace cannot open,

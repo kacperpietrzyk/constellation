@@ -264,6 +264,11 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         )`,
         "PACKAGED_ALPHA_CAPTURE_RESULT_MISSING",
       );
+      await waitFor(
+        client,
+        `document.querySelector('.shell-tab.active [data-shell-tab^="task:"]') !== null`,
+        "PACKAGED_ALPHA_CAPTURE_CONTEXT_TAB_MISSING",
+      );
     };
 
     let backup;
@@ -287,6 +292,30 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         );
       }
       await submitCapture(mutationTitle);
+      const contextTabs = await client.evaluate(
+        `document.querySelectorAll('.shell-tab').length`,
+      );
+      if (contextTabs !== 3) {
+        throw new Error("PACKAGED_ALPHA_CONTEXT_TAB_COUNT_INVALID");
+      }
+      await client.evaluate(`(() => {
+        document.querySelector('.shell-history-controls [aria-label="Wstecz"]').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.shell-tab.active [role="tab"] span:last-child')?.textContent === ${JSON.stringify(taskTitle)}`,
+        "PACKAGED_ALPHA_CONTEXT_BACK_FAILED",
+      );
+      await client.evaluate(`(() => {
+        document.querySelector('.shell-history-controls [aria-label="Dalej"]').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.shell-tab.active [role="tab"] span:last-child')?.textContent === ${JSON.stringify(mutationTitle)}`,
+        "PACKAGED_ALPHA_CONTEXT_FORWARD_FAILED",
+      );
     } else if (phase.startsWith("interrupted-")) {
       restorePreview = await client.evaluate(
         `window.constellation.prepareWorkspaceRestore({ recoveryCode: ${JSON.stringify(recoveryCode)} })`,
@@ -362,6 +391,11 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         document.querySelector('.nav-item[data-surface="tasks"]').click();
         return true;
       })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.shell-tab.active [data-shell-tab="destination:tasks"]') !== null`,
+        "PACKAGED_ALPHA_TASK_DESTINATION_CONTEXT_MISSING",
+      );
     } else {
       if (boundary.build.startupRecovery !== "previous_workspace_restored") {
         throw new Error("PACKAGED_ALPHA_PREVIOUS_WORKSPACE_NOT_RECOVERED");
