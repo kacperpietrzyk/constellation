@@ -39,6 +39,9 @@ const safeFile = (filename: string): void => {
 };
 
 const syncDirectory = (directory: string): void => {
+  // Windows does not permit opening a directory descriptor for fsync. The
+  // temporary file itself is flushed before the atomic rename on every target.
+  if (process.platform === "win32") return;
   const descriptor = openSync(directory, "r");
   try {
     fsyncSync(descriptor);

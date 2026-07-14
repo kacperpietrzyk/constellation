@@ -32,11 +32,13 @@ export const writeHubAuthorizationFile = (
   }
   try {
     renameSync(temporary, filename);
-    const directoryDescriptor = openSync(directory, "r");
-    try {
-      fsyncSync(directoryDescriptor);
-    } finally {
-      closeSync(directoryDescriptor);
+    if (process.platform !== "win32") {
+      const directoryDescriptor = openSync(directory, "r");
+      try {
+        fsyncSync(directoryDescriptor);
+      } finally {
+        closeSync(directoryDescriptor);
+      }
     }
   } catch (error) {
     rmSync(temporary, { force: true });
