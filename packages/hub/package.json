@@ -23,6 +23,9 @@
   "dependencies": {
     "@constellation/application": "0.0.0",
     "@constellation/contracts": "0.0.0",
+    "@constellation/domain": "0.0.0",
+    "@constellation/mcp": "0.0.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@constellation/realtime-documents": "^0.0.0",
     "@hocuspocus/server": "^4.4.0",
     "crossws": "^0.4.4",

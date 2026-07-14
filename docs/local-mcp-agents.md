@@ -84,9 +84,9 @@ authorized scope without credential material.
 Multiple full-access agents may run concurrently. Their principal, grant,
 external run, idempotency scope, audit receipts, and checkpoints remain distinct.
 
-## Current limit
+## Transport boundary
 
-R5 supports a local-only Data Home and local stdio transport. Enrolling the
-Workspace in a coordinating Hub disables local agent grants. Remote operation
-while desktops sleep belongs to R6 and will require a distinct remote grant,
-gateway authentication, rate/replay controls, and equivalent recovery evidence.
+Local access remains limited to a local-only Data Home and stdio transport.
+Enrolling the Workspace in a coordinating Hub uses a distinct remote grant and
+credential; a local descriptor is never promoted or copied to the Hub. See
+[Remote MCP agent access](remote-mcp-agents.md) for the always-reachable route.

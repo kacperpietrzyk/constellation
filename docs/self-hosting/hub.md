@@ -10,6 +10,12 @@ PostgreSQL is authoritative for bounded Yjs document state and named revision
 checkpoints; live presence is ephemeral. Run one Hub instance for this preview:
 cross-instance realtime fan-out is not claimed.
 
+The same process exposes authenticated Streamable HTTP MCP at
+`/v1/mcp/<workspace-id>`. Remote agent principals, one-way credential digests,
+grants, host runs, receipts, checkpoints, revocations, and independent
+federation authorities are Hub control state in PostgreSQL. They are not copied
+into device projections.
+
 This is an operator preview. Keep it private behind a firewall or authenticated
 reverse proxy and take verified backups before every upgrade.
 
@@ -36,7 +42,14 @@ curl --fail https://hub.example.com:4318/readyz
 ```
 
 `/healthz` proves the process is alive. `/readyz` additionally checks the
-supported database schema. Neither endpoint returns workspace content.
+supported database schema (currently version 2). Neither endpoint returns
+workspace content.
+
+The public MCP route accepts only HTTPS outside explicit loopback development.
+Keep request logs body-free and authorization-header-free. The management routes
+under `/v1/remote-mcp/grants` are for the authenticated desktop main process;
+do not expose them as a general operator API or pass a durable device credential
+to the renderer.
 
 ## Initialize a workspace
 
@@ -107,10 +120,13 @@ digest and a post-backup command receipt before declaring the restore usable.
 Practice this drill after setup and after every storage-layout migration. A
 backup that has not passed restore is not recovery evidence.
 
-The PostgreSQL dump includes native-document state and revisions. After restore,
-open a named revision from a disposable scoped device, add an offline edit,
-restart the Hub, and verify convergence before declaring document recovery
-usable. Presence is intentionally absent after restart.
+The PostgreSQL dump includes native-document state, revisions, and remote MCP
+control state. After restore, open a named revision from a disposable scoped
+device, add an offline edit, restart the Hub, and verify convergence. Then use a
+disposable remote host to prove one known query, an idempotent command replay,
+checkpoint visibility, an already revoked token remaining rejected, and a
+rotation invalidating the pre-rotation token. Presence is intentionally absent
+after restart.
 
 ## Revocation and recovery
 
@@ -118,6 +134,13 @@ Set `CONSTELLATION_HUB_WORKSPACE_ID` and `CONSTELLATION_HUB_DEVICE_ID`, then run
 `revoke-device`. The next client contact is rejected and requests local
 projection purge. The portable encrypted backup remains a separate recovery
 path; revocation never silently rewrites it.
+
+Remote agent revocation and rotation are performed from **Access → External
+agents** on an enrolled administrator device. They take effect against the
+Hub-authoritative credential state immediately; no desktop projection round
+trip is required. If the only administrator device is unavailable, restore its
+encrypted portable workspace and enroll the recovered device before changing
+remote grants. Do not edit credential digests directly in PostgreSQL.
 
 If PostgreSQL is unavailable, desktops continue to queue permitted local work.
 An already open native document continues in encrypted local state and queues
@@ -134,3 +157,6 @@ and attachment-volume free space, staging-upload age, HTTP 4xx/5xx rates, and
 backup age. Treat repeated unknown-effect reconciliation or version conflicts
 as product signals, not as successful sync. Logs must contain IDs and diagnostic
 codes, never credentials, capture text, document content, or attachment bytes.
+Monitor remote MCP 401/403/429 and retryable-error rates separately. A burst of
+authentication failures may indicate a stale or exposed descriptor; rotate or
+revoke before investigating record content.

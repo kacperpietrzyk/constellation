@@ -3,8 +3,8 @@
 Status: pre-alpha reference implementation. No contract is stable yet.
 
 Constellation keeps product behavior in a storage- and transport-neutral
-application kernel. Desktop UI, imports, deterministic rules, and the local MCP
-adapter call this same boundary. Electron, a database, HTTP, and MCP are
+application kernel. Desktop UI, imports, deterministic rules, and local or
+remote MCP adapters call this same boundary. Electron, a database, HTTP, and MCP are
 adapters; none may reimplement domain behavior.
 
 ```text
@@ -77,7 +77,8 @@ Queries:
 - `audit.receipt`
 
 This subset proves the command/query mechanics across the in-memory reference
-adapter, the Electron transport, the versioned local MCP stdio adapter, and a
+adapter, the Electron transport, the versioned local MCP stdio adapter, the
+Hub-owned Streamable HTTP MCP adapter, and a
 restart-safe encrypted relational local store adapter. The packaged production entry point uses that durable store; the
 developer preview remains an explicit in-memory adapter. A local workspace
 starts with one versioned
@@ -96,7 +97,7 @@ processing. A future deterministic rule adapter must invoke the same
 typed Project relations, status/completion, scoped search, explainable cockpit,
 meaningful activity, version-safe undo, contextual comments, and durable
 recipient attention. It does not yet claim generalized Attention rules,
-editable workflow configuration, or remote MCP transport.
+editable workflow configuration, or a federated cross-Workspace copy command.
 
 Task responsibility is a separate versioned collaboration record rather than a
 free-form Task field. An editor can assign one active Workspace member or guest
@@ -141,9 +142,10 @@ and records which immutable revision it came from.
 - Query content returned through MCP is labeled as Space-scoped untrusted
   evidence. Tool descriptions and response labels explicitly forbid treating
   record, import, file, comment, or transcript text as instructions.
-- R5 agent grants are device-local and available only while the local-only Data
-  Home and desktop are available. They are excluded from Hub snapshots; remote
-  operation requires the separate R6 grant and gateway boundary.
+- Local agent grants are device-local and available only while the local-only
+  Data Home and desktop are available. They are excluded from Hub snapshots.
+  Remote grants use a separate Hub-owned credential, principal, rate boundary,
+  receipt/checkpoint state, and three independent federation authorities.
 - Authorization resolves the current credential, grant, policy version,
   capability, Workspace membership, owning Space, and record scope before every
   command, query, and idempotent replay. Revoked grants cannot reuse an earlier

@@ -56,6 +56,9 @@ import {
   createAgentGrant,
   rotateAgentCredential,
   revokeAgentGrant,
+  createRemoteAgentGrant,
+  rotateRemoteAgentCredential,
+  revokeRemoteAgentGrant,
   type AuditReceiptProjection,
   type DesktopSnapshot,
   type MutationFailure,
@@ -674,6 +677,11 @@ export const RealApp = ({
 
   const { bootstrap, build, tasks } = state.snapshot;
   const isPreview = build.channel === "developer-preview";
+  const coordinatedDataHome =
+    state.snapshot.dataHome?.descriptor.providerKind === "coordinated";
+  const dataHomeLabel = coordinatedDataHome
+    ? `${state.snapshot.dataHome?.descriptor.displayName ?? "Hub"} · skoordynowany`
+    : "Local only · dane na tym urządzeniu";
   return (
     <main className="desktop-shell wave2-shell">
       <a className="skip-link" href="#main-content">
@@ -688,12 +696,14 @@ export const RealApp = ({
         <button
           type="button"
           className="workspace-switcher"
-          aria-label={`Workspace ${bootstrap.workspace.name}, Data Home lokalny, dane kanoniczne na tym urządzeniu`}
+          aria-label={`Workspace ${bootstrap.workspace.name}, ${dataHomeLabel}`}
           disabled={isPreview}
           title={
             isPreview
               ? "Backup jest dostępny w szyfrowanym lokalnym workspace."
-              : "Otwórz Data Home i odzyskiwanie workspace"
+              : coordinatedDataHome
+                ? "Otwórz skoordynowany Data Home i odzyskiwanie workspace"
+                : "Otwórz Data Home i odzyskiwanie workspace"
           }
           onClick={() => setRecoveryOpen(true)}
         >
@@ -702,13 +712,17 @@ export const RealApp = ({
             <strong>{bootstrap.workspace.name}</strong>
             <small>
               {state.snapshot.dataHome?.availability === "available"
-                ? "Local only · dane na tym urządzeniu"
+                ? dataHomeLabel
                 : "Data Home wymaga uwagi"}
             </small>
           </span>
           {!isPreview && <span className="workspace-switcher-action">•••</span>}
         </button>
-        <button className="search-control" onClick={() => setSearchOpen(true)}>
+        <button
+          className="search-control"
+          aria-label={`Szukaj · ${modifierLabel}K`}
+          onClick={() => setSearchOpen(true)}
+        >
           <Icon name="search" />
           <span>Szukaj</span>
           <kbd>{modifierLabel}K</kbd>
@@ -720,6 +734,11 @@ export const RealApp = ({
               key={item.id}
               data-surface={item.id}
               className={`nav-item ${surface === item.id ? "active" : ""}`}
+              aria-label={
+                item.id === "tasks"
+                  ? `${item.label} · ${tasks.length}`
+                  : `${item.label} · ${modifierLabel}${item.shortcut}`
+              }
               aria-current={surface === item.id ? "page" : undefined}
               onClick={() =>
                 openContext(destinationContext(item.id, item.label))
@@ -770,6 +789,7 @@ export const RealApp = ({
         )}
         <button
           className="sidebar-capture"
+          aria-label={`Quick Capture · ${modifierLabel}⇧K`}
           onClick={() => setCaptureOpen(true)}
         >
           <span className="capture-plus">
@@ -782,12 +802,18 @@ export const RealApp = ({
           <span className="status-dot" />
           <div>
             <strong>
-              {isPreview ? "Podgląd deweloperski" : "Lokalny workspace"}
+              {isPreview
+                ? "Podgląd deweloperski"
+                : coordinatedDataHome
+                  ? "Skoordynowany workspace"
+                  : "Lokalny workspace"}
             </strong>
             <span>
-              {build.persistence === "encrypted-local"
-                ? "Szyfrowany local store"
-                : "Pamięć sesji"}{" "}
+              {coordinatedDataHome
+                ? "Hub + szyfrowana projekcja"
+                : build.persistence === "encrypted-local"
+                  ? "Szyfrowany local store"
+                  : "Pamięć sesji"}{" "}
               · {build.version}
             </span>
           </div>
@@ -1186,14 +1212,11 @@ export const RealApp = ({
         {surface === "access" && (
           <AccessSurface
             access={state.snapshot.access}
-            agentAccess={
-              state.snapshot.dataHome?.descriptor.providerKind === "local_only"
-                ? state.snapshot.agentAccess
-                : {
-                    kind: "unavailable",
-                    message:
-                      "Lokalny dostęp MCP jest obecnie dostępny dla Workspace z lokalnym Data Home. Zdalne i skoordynowane działanie należy do następnego etapu.",
-                  }
+            agentAccess={state.snapshot.agentAccess}
+            agentTransport={
+              state.snapshot.dataHome?.descriptor.providerKind === "coordinated"
+                ? "remote_hub"
+                : "local"
             }
             spaces={state.snapshot.bootstrap.spaces}
             busy={accessBusy}
@@ -1245,46 +1268,67 @@ export const RealApp = ({
               if (!client) return;
               setAccessBusy(true);
               setNotice(undefined);
-              void createAgentGrant(client, state.snapshot, input).then(
-                async (result) => {
-                  setAccessBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter(
-                      `Dostęp MCP utworzono. Plik dostępu: ${result.data.descriptorPath}. Adapter hosta: ${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
-                    );
-                  else showFailure(result);
-                },
-              );
+              const remote =
+                state.snapshot.dataHome?.descriptor.providerKind ===
+                "coordinated";
+              void (
+                remote
+                  ? createRemoteAgentGrant(client, input)
+                  : createAgentGrant(client, state.snapshot, input)
+              ).then(async (result) => {
+                setAccessBusy(false);
+                if (result.kind === "success")
+                  await refreshAfter(
+                    "endpoint" in result.data
+                      ? `Zdalny dostęp MCP utworzono. Chroniony plik konfiguracji: ${result.data.descriptorPath}. Endpoint: ${result.data.endpoint}`
+                      : `Dostęp MCP utworzono. Plik dostępu: ${result.data.descriptorPath}. Adapter hosta: ${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                  );
+                else showFailure(result);
+              });
             }}
             onAgentRotate={(grant) => {
               if (!client) return;
               setAccessBusy(true);
               setNotice(undefined);
-              void rotateAgentCredential(client, state.snapshot, grant).then(
-                async (result) => {
-                  setAccessBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter(
-                      `Poświadczenie obrócono. Plik dostępu: ${result.data.descriptorPath}. Adapter hosta: ${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
-                    );
-                  else showFailure(result);
-                },
-              );
+              const remote =
+                state.snapshot.dataHome?.descriptor.providerKind ===
+                "coordinated";
+              void (
+                remote
+                  ? rotateRemoteAgentCredential(client, grant)
+                  : rotateAgentCredential(client, state.snapshot, grant)
+              ).then(async (result) => {
+                setAccessBusy(false);
+                if (result.kind === "success")
+                  await refreshAfter(
+                    "endpoint" in result.data
+                      ? `Zdalne poświadczenie obrócono. Chroniony plik konfiguracji: ${result.data.descriptorPath}. Endpoint: ${result.data.endpoint}`
+                      : `Poświadczenie obrócono. Plik dostępu: ${result.data.descriptorPath}. Adapter hosta: ${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                  );
+                else showFailure(result);
+              });
             }}
             onAgentRevoke={(grant) => {
               if (!client) return;
               setAccessBusy(true);
               setNotice(undefined);
-              void revokeAgentGrant(client, state.snapshot, grant).then(
-                async (result) => {
-                  setAccessBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter(
-                      "Dostęp agenta cofnięto, a lokalne poświadczenie usunięto.",
-                    );
-                  else showFailure(result);
-                },
-              );
+              const remote =
+                state.snapshot.dataHome?.descriptor.providerKind ===
+                "coordinated";
+              void (
+                remote
+                  ? revokeRemoteAgentGrant(client, grant)
+                  : revokeAgentGrant(client, state.snapshot, grant)
+              ).then(async (result) => {
+                setAccessBusy(false);
+                if (result.kind === "success")
+                  await refreshAfter(
+                    remote
+                      ? "Zdalny dostęp agenta cofnięto, a chroniony plik konfiguracji usunięto."
+                      : "Dostęp agenta cofnięto, a lokalne poświadczenie usunięto.",
+                  );
+                else showFailure(result);
+              });
             }}
           />
         )}
@@ -1559,14 +1603,21 @@ export const RealApp = ({
             <BrandMark />
             <p className="eyebrow">Aktywny kontekst</p>
             <h2>{bootstrap.workspace.name}</h2>
-            <p>Root Space · lokalne źródło danych</p>
+            <p>
+              Root Space ·{" "}
+              {coordinatedDataHome
+                ? "skoordynowany Data Home"
+                : "lokalne źródło danych"}
+            </p>
             <dl>
               <div>
                 <dt>Tryb</dt>
                 <dd>
-                  {build.persistence === "encrypted-local"
-                    ? "Szyfrowany local store"
-                    : "Podgląd deweloperski"}
+                  {coordinatedDataHome
+                    ? "Hub + szyfrowana projekcja"
+                    : build.persistence === "encrypted-local"
+                      ? "Szyfrowany local store"
+                      : "Podgląd deweloperski"}
                 </dd>
               </div>
               <div>

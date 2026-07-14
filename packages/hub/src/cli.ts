@@ -15,6 +15,7 @@ import { PostgresHubRepository } from "./postgres-repository.js";
 import { RealtimeDocumentGateway } from "./realtime-documents.js";
 import { startHubServer, loadTlsOptions } from "./server.js";
 import { HubService } from "./service.js";
+import { HubRemoteMcpService } from "./remote-mcp.js";
 
 const required = (name: string): string => {
   const value = process.env[name];
@@ -129,6 +130,7 @@ const main = async (): Promise<void> => {
       service,
       attachments: new HubAttachmentService(pool, repository, storageRoot),
       realtimeDocuments,
+      remoteMcp: new HubRemoteMcpService(repository),
       host,
       port: Number(process.env.CONSTELLATION_HUB_PORT ?? "4318"),
       ...(tls === undefined
@@ -141,7 +143,7 @@ const main = async (): Promise<void> => {
         const result = await pool.query(
           "SELECT schema_version FROM constellation_hub_meta WHERE singleton = true",
         );
-        return result.rows[0]?.schema_version === 1;
+        return result.rows[0]?.schema_version === 2;
       },
       logger: (entry) => process.stdout.write(`${JSON.stringify(entry)}\n`),
     });

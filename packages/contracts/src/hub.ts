@@ -1,7 +1,15 @@
 import { z } from "zod";
 
 import { CommandEnvelopeSchema } from "./command.js";
-import { DeviceIdSchema, WorkspaceIdSchema } from "./ids.js";
+import {
+  PrincipalIdSchema,
+  CredentialIdSchema,
+  DeviceIdSchema,
+  GrantIdSchema,
+  SpaceIdSchema,
+  WorkspaceIdSchema,
+} from "./ids.js";
+import { CapabilitySchema } from "./execution-context.js";
 import { CommandOutcomeSchema } from "./outcome.js";
 
 export const HUB_PROTOCOL_VERSION = 1 as const;
@@ -184,4 +192,94 @@ export const HubBootstrapSnapshotRequestSchema = z
   .strict();
 export type HubBootstrapSnapshotRequest = z.infer<
   typeof HubBootstrapSnapshotRequestSchema
+>;
+
+export const RemoteMcpFederationScopeSchema = z
+  .object({
+    crossWorkspaceRead: z.boolean(),
+    derivedResultWrite: z.boolean(),
+    sourceMaterialization: z.boolean(),
+  })
+  .strict();
+export type RemoteMcpFederationScope = z.infer<
+  typeof RemoteMcpFederationScopeSchema
+>;
+
+const RemoteMcpManagementBaseSchema = z
+  .object({
+    protocolVersion: HubProtocolVersionSchema,
+    workspaceId: WorkspaceIdSchema,
+    deviceId: DeviceIdSchema,
+  })
+  .strict();
+
+export const RemoteMcpGrantCreateRequestSchema =
+  RemoteMcpManagementBaseSchema.extend({
+    displayName: z.string().trim().min(1).max(120),
+    preset: z.enum(["observe", "propose", "operate", "full_access", "custom"]),
+    capabilityScope: z.array(CapabilitySchema).min(1).max(100),
+    spaces: z
+      .array(
+        z
+          .object({
+            spaceId: SpaceIdSchema,
+            access: z.enum(["view", "comment", "edit"]),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(100),
+    federationScope: RemoteMcpFederationScopeSchema,
+    expiresAt: z.iso.datetime().optional(),
+  }).strict();
+export type RemoteMcpGrantCreateRequest = z.infer<
+  typeof RemoteMcpGrantCreateRequestSchema
+>;
+
+export const RemoteMcpGrantListRequestSchema = RemoteMcpManagementBaseSchema;
+export type RemoteMcpGrantListRequest = z.infer<
+  typeof RemoteMcpGrantListRequestSchema
+>;
+
+export const RemoteMcpGrantChangeRequestSchema =
+  RemoteMcpManagementBaseSchema.extend({
+    grantId: GrantIdSchema,
+    expectedVersion: z.int().positive(),
+  }).strict();
+export type RemoteMcpGrantChangeRequest = z.infer<
+  typeof RemoteMcpGrantChangeRequestSchema
+>;
+
+export const RemoteMcpGrantProjectionSchema = z
+  .object({
+    grantId: GrantIdSchema,
+    displayName: z.string(),
+    agentPrincipalId: PrincipalIdSchema,
+    preset: z.string(),
+    capabilityScope: z.array(CapabilitySchema),
+    spaceScope: z.array(SpaceIdSchema),
+    federationScope: RemoteMcpFederationScopeSchema,
+    credentialId: CredentialIdSchema,
+    credentialVersion: z.int().positive(),
+    status: z.enum(["active", "expired", "revoked"]),
+    expiresAt: z.iso.datetime().optional(),
+    version: z.int().positive(),
+    membershipId: z.uuid(),
+    membershipVersion: z.int().positive(),
+    spaces: z.array(
+      z
+        .object({
+          spaceId: SpaceIdSchema,
+          spaceName: z.string(),
+          spaceGrantId: z.uuid(),
+          access: z.enum(["view", "comment", "edit"]),
+          version: z.int().positive(),
+        })
+        .strict(),
+    ),
+    lastUsedAt: z.iso.datetime().optional(),
+  })
+  .strict();
+export type RemoteMcpGrantProjection = z.infer<
+  typeof RemoteMcpGrantProjectionSchema
 >;

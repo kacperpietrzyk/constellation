@@ -149,15 +149,25 @@ evidence so imported text never becomes an instruction to the host.
 The packaged Alpha contains a stdio adapter tested with Codex CLI and Claude
 Code. Rotation invalidates the previous credential immediately, revocation
 also removes the descriptor, and concurrent full-access agents remain isolated
-by principal and grant. This R5 surface is intentionally limited to a
-local-only Data Home; remote or coordinated agent operation requires a separate
-Hub grant in the next roadmap outcome. Setup and security details are in
+by principal and grant. This local surface remains intentionally limited to a
+local-only Data Home. Setup and security details are in
 [Local MCP agent access](docs/local-mcp-agents.md).
+
+Coordinated Workspaces now expose the same MCP contract over authenticated
+stateless Streamable HTTP on the self-hosted Hub. Remote principals, credential
+digests, host runs, receipts, checkpoints, revocation, and independent
+cross-Workspace authorities stay in Hub-owned PostgreSQL control state instead
+of device projections. The desktop Access surface creates, rotates, and revokes
+a distinct remote grant, writes its bearer token only to an owner-readable
+descriptor, and keeps the renderer token-free. Every call reauthorizes current
+Workspace, Space, capability, expiry, and provider policy; administrative
+capabilities cannot be delegated. Setup and recovery details are in
+[Remote MCP agent access](docs/remote-mcp-agents.md).
 
 The resulting ad-hoc macOS and unsigned Windows application folders are
 verification artifacts, not a signed/notarized release. The Hub is an operator
-preview rather than a hosted service. Remote MCP transport is the next active
-product outcome; installers, updater, richer
+preview rather than a hosted service. Meetings and calendar context are the
+next active product outcome; installers, updater, richer
 notification policy, document comments/citations, and automatic routing rules
 beyond the explicit Capture action remain later work.
 
@@ -168,7 +178,8 @@ current capability limits are documented in
 [Data Homes](docs/architecture/data-homes.md).
 
 External-host setup is documented in
-[Local MCP agent access](docs/local-mcp-agents.md).
+[Local MCP agent access](docs/local-mcp-agents.md) and
+[Remote MCP agent access](docs/remote-mcp-agents.md).
 
 Operators evaluating multi-device coordination can use the
 [self-hosted Hub runbook](docs/self-hosting/hub.md).

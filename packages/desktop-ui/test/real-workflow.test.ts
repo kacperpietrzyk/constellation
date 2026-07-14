@@ -133,6 +133,18 @@ const createTypedClient = () => {
   const commands: CommandEnvelope[] = [];
   const queries: QueryEnvelope[] = [];
   const client: ConstellationRendererClient = {
+    listRemoteAgentGrants: async () => {
+      throw new Error("Remote MCP is unavailable in this local fixture.");
+    },
+    createRemoteAgentGrant: async () => {
+      throw new Error("Remote MCP is unavailable in this local fixture.");
+    },
+    rotateRemoteAgentGrant: async () => {
+      throw new Error("Remote MCP is unavailable in this local fixture.");
+    },
+    revokeRemoteAgentGrant: async () => {
+      throw new Error("Remote MCP is unavailable in this local fixture.");
+    },
     acknowledgeDocumentUpdates: async () => undefined,
     prepareAgentCredential: async () => ({
       credentialId: "00000000-0000-4000-8000-000000000093" as never,

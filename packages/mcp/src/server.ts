@@ -47,9 +47,15 @@ const objectInput = (
 const unknownObject = { type: "object" as const, additionalProperties: true };
 const uuid = { type: "string" as const, format: "uuid" };
 
-export const createConstellationMcpServer = (port: McpOperatorPort): Server => {
+export const createConstellationMcpServer = (
+  port: McpOperatorPort,
+  identity: {
+    readonly name?: string;
+    readonly capabilityTitle?: string;
+  } = {},
+): Server => {
   const server = new Server(
-    { name: "constellation-local", version: "1.0.0" },
+    { name: identity.name ?? "constellation-local", version: "1.0.0" },
     { capabilities: { tools: {}, resources: {} } },
   );
   server.setRequestHandler(ListToolsRequestSchema, () => ({
@@ -154,7 +160,9 @@ export const createConstellationMcpServer = (port: McpOperatorPort): Server => {
       {
         uri: "constellation://v1/capabilities",
         name: "constellation-capabilities-v1",
-        title: "Constellation local MCP capability contract",
+        title:
+          identity.capabilityTitle ??
+          "Constellation local MCP capability contract",
         description:
           "The active versioned tool/resource contract and authorized grant scope. Contains no credential material.",
         mimeType: "application/json",

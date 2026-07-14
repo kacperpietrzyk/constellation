@@ -17,6 +17,9 @@ import type {
   ProjectId,
   GrantId,
   CredentialId,
+  Capability,
+  RemoteMcpFederationScope,
+  RemoteMcpGrantProjection,
 } from "@constellation/contracts";
 
 export type {
@@ -49,6 +52,10 @@ export const DESKTOP_CHANNELS = {
   listDocumentRevisions: "constellation:document:list-revisions",
   restoreDocumentRevision: "constellation:document:restore-revision",
   prepareAgentCredential: "constellation:agent:prepare-credential",
+  listRemoteAgentGrants: "constellation:agent:remote:list",
+  createRemoteAgentGrant: "constellation:agent:remote:create",
+  rotateRemoteAgentGrant: "constellation:agent:remote:rotate",
+  revokeRemoteAgentGrant: "constellation:agent:remote:revoke",
 } as const;
 
 export interface RendererDocumentRevision {
@@ -100,6 +107,38 @@ export interface DesktopBuildInfo {
 }
 
 export interface ConstellationRendererClient {
+  listRemoteAgentGrants(): Promise<{
+    readonly policyVersion: number;
+    readonly workspaceVersion: number;
+    readonly grants: readonly RemoteMcpGrantProjection[];
+  }>;
+  createRemoteAgentGrant(input: {
+    readonly displayName: string;
+    readonly preset: "observe" | "propose" | "operate" | "full_access";
+    readonly capabilityScope: readonly Capability[];
+    readonly spaces: readonly {
+      readonly spaceId: SpaceId;
+      readonly access: "view" | "comment" | "edit";
+    }[];
+    readonly federationScope: RemoteMcpFederationScope;
+    readonly expiresAt?: string;
+  }): Promise<{
+    readonly grant: RemoteMcpGrantProjection;
+    readonly endpoint: string;
+    readonly descriptorPath: string;
+  }>;
+  rotateRemoteAgentGrant(input: {
+    readonly grantId: GrantId;
+    readonly expectedVersion: number;
+  }): Promise<{
+    readonly grant: RemoteMcpGrantProjection;
+    readonly endpoint: string;
+    readonly descriptorPath: string;
+  }>;
+  revokeRemoteAgentGrant(input: {
+    readonly grantId: GrantId;
+    readonly expectedVersion: number;
+  }): Promise<{ readonly grant: RemoteMcpGrantProjection }>;
   prepareAgentCredential(input: { readonly grantId: GrantId }): Promise<{
     readonly credentialId: CredentialId;
     readonly credentialDigest: string;
@@ -187,6 +226,22 @@ export type DesktopInvoke = (
 export const createRendererClient = (
   invoke: DesktopInvoke,
 ): ConstellationRendererClient => ({
+  listRemoteAgentGrants: () =>
+    invoke(DESKTOP_CHANNELS.listRemoteAgentGrants) as ReturnType<
+      ConstellationRendererClient["listRemoteAgentGrants"]
+    >,
+  createRemoteAgentGrant: (input) =>
+    invoke(DESKTOP_CHANNELS.createRemoteAgentGrant, input) as ReturnType<
+      ConstellationRendererClient["createRemoteAgentGrant"]
+    >,
+  rotateRemoteAgentGrant: (input) =>
+    invoke(DESKTOP_CHANNELS.rotateRemoteAgentGrant, input) as ReturnType<
+      ConstellationRendererClient["rotateRemoteAgentGrant"]
+    >,
+  revokeRemoteAgentGrant: (input) =>
+    invoke(DESKTOP_CHANNELS.revokeRemoteAgentGrant, input) as ReturnType<
+      ConstellationRendererClient["revokeRemoteAgentGrant"]
+    >,
   prepareAgentCredential: (input) =>
     invoke(DESKTOP_CHANNELS.prepareAgentCredential, input) as ReturnType<
       ConstellationRendererClient["prepareAgentCredential"]

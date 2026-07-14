@@ -2,6 +2,7 @@ export * from "./attachments.js";
 export * from "./postgres-repository.js";
 export * from "./repository.js";
 export * from "./realtime-documents.js";
+export * from "./remote-mcp.js";
 export * from "./server.js";
 export * from "./service.js";
 export * from "./snapshot.js";

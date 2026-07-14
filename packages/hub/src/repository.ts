@@ -11,6 +11,86 @@ import type {
   SpaceId,
   CorrelationId,
 } from "@constellation/contracts";
+import type {
+  AgentAccessGrant,
+  AgentCheckpoint,
+  AgentHandoff,
+  AgentRun,
+  SpaceGrant,
+  WorkspaceMembership,
+} from "@constellation/domain";
+
+export interface HubRemoteAgentState {
+  readonly grants: AgentAccessGrant[];
+  readonly memberships: WorkspaceMembership[];
+  readonly spaceGrants: SpaceGrant[];
+  readonly runs: AgentRun[];
+  readonly checkpoints: AgentCheckpoint[];
+  readonly handoffs: AgentHandoff[];
+  readonly federationScopes: Record<
+    string,
+    {
+      readonly crossWorkspaceRead: boolean;
+      readonly derivedResultWrite: boolean;
+      readonly sourceMaterialization: boolean;
+    }
+  >;
+}
+
+export const emptyHubRemoteAgentState = (): HubRemoteAgentState => ({
+  grants: [],
+  memberships: [],
+  spaceGrants: [],
+  runs: [],
+  checkpoints: [],
+  handoffs: [],
+  federationScopes: {},
+});
+
+export const parseHubRemoteAgentState = (
+  value: unknown,
+): HubRemoteAgentState => {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Invalid remote agent state.");
+  const candidate = value as Record<string, unknown>;
+  for (const key of [
+    "grants",
+    "memberships",
+    "spaceGrants",
+    "runs",
+    "checkpoints",
+    "handoffs",
+  ] as const) {
+    if (
+      !Array.isArray(candidate[key]) ||
+      candidate[key].some(
+        (record) =>
+          record === null ||
+          typeof record !== "object" ||
+          Array.isArray(record),
+      )
+    )
+      throw new Error("Invalid remote agent state.");
+  }
+  const scopes = candidate.federationScopes;
+  if (scopes === null || typeof scopes !== "object" || Array.isArray(scopes))
+    throw new Error("Invalid remote agent state.");
+  for (const scope of Object.values(scopes)) {
+    if (
+      scope === null ||
+      typeof scope !== "object" ||
+      Array.isArray(scope) ||
+      typeof (scope as Record<string, unknown>).crossWorkspaceRead !==
+        "boolean" ||
+      typeof (scope as Record<string, unknown>).derivedResultWrite !==
+        "boolean" ||
+      typeof (scope as Record<string, unknown>).sourceMaterialization !==
+        "boolean"
+    )
+      throw new Error("Invalid remote agent state.");
+  }
+  return candidate as unknown as HubRemoteAgentState;
+};
 
 export interface HubStoredReceipt {
   readonly commandId: string;
@@ -24,6 +104,7 @@ export interface HubWorkspaceState {
   snapshot: HubWorkspaceSnapshot;
   snapshotDigest: string;
   readonly receipts: Map<string, HubStoredReceipt>;
+  remoteAgents?: HubRemoteAgentState;
 }
 
 export interface HubDocumentState {

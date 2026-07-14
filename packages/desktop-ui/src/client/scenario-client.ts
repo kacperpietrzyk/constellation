@@ -26,6 +26,18 @@ export interface ScenarioFixtures {
 export const createScenarioClient = (
   fixtures: ScenarioFixtures,
 ): ConstellationRendererClient => ({
+  listRemoteAgentGrants: async () => {
+    throw new Error("Remote MCP is unavailable in scenario fixtures.");
+  },
+  createRemoteAgentGrant: async () => {
+    throw new Error("Remote MCP is unavailable in scenario fixtures.");
+  },
+  rotateRemoteAgentGrant: async () => {
+    throw new Error("Remote MCP is unavailable in scenario fixtures.");
+  },
+  revokeRemoteAgentGrant: async () => {
+    throw new Error("Remote MCP is unavailable in scenario fixtures.");
+  },
   acknowledgeDocumentUpdates: async () => undefined,
   prepareAgentCredential: async () => ({
     credentialId: "00000000-0000-4000-8000-000000000093" as never,
