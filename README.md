@@ -99,7 +99,7 @@ same Space filter. Revocation rejects queued offline work and atomically removes
 the affected client's coordinated records, local full-text index, command
 journal, and outbox. The desktop preview now
 includes an accessible access-management surface for adding a member or guest,
-choosing view/edit access, and revoking membership.
+choosing view/comment/edit access, and revoking membership.
 
 Shared Tasks now support one versioned responsible member or guest. Editors can
 assign, reassign, or clear responsibility from the Task surface; candidates are
@@ -109,11 +109,22 @@ or people who lose Space access remain understandable without leaking their
 principal identity. The same assignment projection survives encrypted SQLite
 restart and is filtered by the Hub before it reaches another device.
 
+Tasks and Projects now keep attributed, versioned comment threads in their own
+context. A Commenter can add replies, mention eligible people, edit their own
+text with retained revision history, and resolve their own root thread without
+receiving permission to mutate work records; an Editor can also resolve or
+reopen a thread. Mentions and assignments create deduplicated, durable in-app
+attention items for the exact recipient and record. The main process owns a
+foreground-suppressing system-notification adapter for urgent scoped signals;
+routine collaboration stays in the in-app Attention surface. Comments,
+recipient-only attention, audit, SQLite restart, scoped Hub delivery, and
+revocation purge share the same authorization boundary.
+
 The resulting ad-hoc macOS and unsigned Windows application folders are
 verification artifacts, not a signed/notarized release. The Hub is an operator
 preview rather than a hosted service. MCP transport, installers, updater,
-comments, notifications, realtime document collaboration, and
-automatic routing rules beyond the explicit Capture action remain later work.
+realtime document collaboration, richer notification policy, and automatic
+routing rules beyond the explicit Capture action remain later work.
 
 The current kernel boundary and implemented subset are documented in
 [Application kernel](docs/architecture/application-kernel.md) and

@@ -61,6 +61,15 @@ const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "recovery.preview",
   "task.list",
   "task.assignmentCandidates",
+  "comment.add",
+  "comment.edit",
+  "comment.resolve",
+  "comment.reopen",
+  "comment.list",
+  "comment.mentionCandidates",
+  "attention.inbox",
+  "attention.markRead",
+  "attention.dismiss",
   "audit.receipt",
 ];
 

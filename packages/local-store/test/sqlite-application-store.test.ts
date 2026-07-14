@@ -74,6 +74,15 @@ const context = (): ExecutionContext =>
       "task.assign",
       "task.unassign",
       "task.assignmentCandidates",
+      "comment.add",
+      "comment.edit",
+      "comment.resolve",
+      "comment.reopen",
+      "comment.list",
+      "comment.mentionCandidates",
+      "attention.inbox",
+      "attention.markRead",
+      "attention.dismiss",
       "record.relate",
       "record.unrelate",
       "search.global",
@@ -365,7 +374,7 @@ describe("SQLite ApplicationStore", () => {
           user_version: number;
         }
       ).user_version,
-      5,
+      6,
     );
     assert.equal(
       (
@@ -436,6 +445,26 @@ describe("SQLite ApplicationStore", () => {
           ),
         ).diagnosticCode,
         "task.assigned",
+      );
+      const commentId = "00000000-0000-4000-8000-00000000008a";
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "comment.add",
+              {
+                commentId,
+                target: { kind: "task", taskId },
+                body: "Persist this attributed review note.",
+                mentionPrincipalIds: [],
+              },
+              "durable-comment-v1",
+              { [taskId]: 1 },
+            ),
+          ),
+        ).diagnosticCode,
+        "comment.added",
       );
 
       const projectCreate = wave2Command(
@@ -532,6 +561,11 @@ describe("SQLite ApplicationStore", () => {
       assert.equal(
         reopened.store.snapshot().taskAssignments?.[0]?.id,
         assignmentId,
+      );
+      assert.equal(reopened.store.snapshot().comments?.[0]?.id, commentId);
+      assert.equal(
+        reopened.store.snapshot().attentionSignals?.[0]?.reason,
+        "task_assignment",
       );
       const projects = reopened.kernel.query(
         context(),

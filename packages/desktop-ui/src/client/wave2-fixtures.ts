@@ -1,7 +1,13 @@
 import type { DesktopSnapshot } from "./workflow.js";
 
 export type SurfaceId =
-  "cockpit" | "tasks" | "projects" | "history" | "activity" | "access";
+  | "cockpit"
+  | "tasks"
+  | "projects"
+  | "history"
+  | "activity"
+  | "attention"
+  | "access";
 
 export type PreviewCondition =
   | "ready"

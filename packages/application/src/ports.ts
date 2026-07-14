@@ -15,6 +15,8 @@ import type {
   SpaceId,
   TaskId,
   TaskAssignmentId,
+  CommentId,
+  AttentionSignalId,
   TaskStatusId,
   WorkspaceId,
 } from "@constellation/contracts";
@@ -33,6 +35,8 @@ import type {
   WorkspaceMembership,
   SpaceGrant,
   UndoDescriptor,
+  RecordComment,
+  AttentionSignal,
 } from "@constellation/domain";
 
 export type GeneratedIdKind =
@@ -43,6 +47,8 @@ export type GeneratedIdKind =
   | "taskStatus"
   | "membership"
   | "spaceGrant"
+  | "comment"
+  | "attentionSignal"
   | "event"
   | "auditReceipt"
   | "outboxEntry";
@@ -143,6 +149,21 @@ export interface ApplicationReadView {
     workspaceId: WorkspaceId,
     spaceId: SpaceId,
   ): readonly TaskAssignment[];
+  getComment(id: CommentId): RecordComment | undefined;
+  listComments(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly RecordComment[];
+  getAttentionSignal(id: AttentionSignalId): AttentionSignal | undefined;
+  findAttentionSignalByDeduplicationKey(
+    workspaceId: WorkspaceId,
+    principalId: PrincipalId,
+    deduplicationKey: string,
+  ): AttentionSignal | undefined;
+  listAttentionSignals(
+    workspaceId: WorkspaceId,
+    principalId: PrincipalId,
+  ): readonly AttentionSignal[];
   getCapture(id: CaptureId): Capture | undefined;
   listCaptures(request: CapturePageRequest): readonly Capture[] | undefined;
   getTask(id: TaskId): Task | undefined;
@@ -186,6 +207,13 @@ export interface ApplicationTransaction extends ApplicationReadView {
   insertTaskAssignment(assignment: TaskAssignment): void;
   updateTaskAssignment(
     assignment: TaskAssignment,
+    expectedVersion: number,
+  ): boolean;
+  insertComment(comment: RecordComment): void;
+  updateComment(comment: RecordComment, expectedVersion: number): boolean;
+  insertAttentionSignal(signal: AttentionSignal): void;
+  updateAttentionSignal(
+    signal: AttentionSignal,
     expectedVersion: number,
   ): boolean;
   insertTaskStatus(status: TaskStatusDefinition): void;
@@ -267,6 +295,8 @@ export interface ReferenceStateSnapshot {
   readonly memberships: readonly WorkspaceMembership[];
   readonly spaceGrants?: readonly SpaceGrant[];
   readonly taskAssignments?: readonly TaskAssignment[];
+  readonly comments?: readonly RecordComment[];
+  readonly attentionSignals?: readonly AttentionSignal[];
   readonly captures: readonly Capture[];
   readonly taskStatuses: readonly TaskStatusDefinition[];
   readonly tasks: readonly Task[];
@@ -286,6 +316,8 @@ export type InternalIds =
   | MembershipId
   | SpaceGrantId
   | TaskAssignmentId
+  | CommentId
+  | AttentionSignalId
   | EventId
   | AuditReceiptId
   | OutboxEntryId;

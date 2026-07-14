@@ -53,6 +53,12 @@ export type SpaceGrantId = z.infer<typeof SpaceGrantIdSchema>;
 export const TaskAssignmentIdSchema = opaqueId<"TaskAssignmentId">();
 export type TaskAssignmentId = z.infer<typeof TaskAssignmentIdSchema>;
 
+export const CommentIdSchema = opaqueId<"CommentId">();
+export type CommentId = z.infer<typeof CommentIdSchema>;
+
+export const AttentionSignalIdSchema = opaqueId<"AttentionSignalId">();
+export type AttentionSignalId = z.infer<typeof AttentionSignalIdSchema>;
+
 export const EventIdSchema = opaqueId<"EventId">();
 export type EventId = z.infer<typeof EventIdSchema>;
 

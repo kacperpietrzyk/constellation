@@ -98,6 +98,12 @@ full-text index, command journal, and outbox. A ready encrypted profile whose
 projection was purged cannot reopen that content after relaunch and enters the
 explicit recovery surface instead.
 
+The same projection boundary includes comments only for visible Spaces and
+Attention signals only for the enrolled principal. Former authors are reduced
+to a safe label, ineligible mention IDs are removed, and audit receipt record
+lists are stripped of another principal's Attention identifiers before the
+snapshot leaves the Hub.
+
 Operational setup and recovery are documented in the
 [self-hosted Hub runbook](../self-hosting/hub.md). Constellation never
 synchronizes an actively opened database through a generic cloud folder.

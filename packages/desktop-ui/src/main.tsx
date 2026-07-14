@@ -23,6 +23,15 @@ const render = async (): Promise<void> => {
     const { AccessHarness } = await import("./dev/AccessHarness.js");
     content = <AccessHarness />;
   }
+  if (
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("surface") ===
+      "collaboration"
+  ) {
+    const { CollaborationHarness } =
+      await import("./dev/CollaborationHarness.js");
+    content = <CollaborationHarness />;
+  }
 
   createRoot(root).render(<StrictMode>{content}</StrictMode>);
 };

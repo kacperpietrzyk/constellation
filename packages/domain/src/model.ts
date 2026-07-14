@@ -15,6 +15,8 @@ import type {
   SpaceGrantId,
   TaskId,
   TaskAssignmentId,
+  CommentId,
+  AttentionSignalId,
   TaskStatusId,
   WorkspaceId,
 } from "@constellation/contracts";
@@ -59,7 +61,7 @@ export interface SpaceGrant {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
   readonly principalId: PrincipalId;
-  readonly access: "view" | "edit";
+  readonly access: "view" | "comment" | "edit";
   readonly status: "active" | "revoked";
   readonly version: number;
   readonly createdAt: string;
@@ -132,6 +134,54 @@ export interface TaskAssignment {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly removedAt?: string;
+}
+
+export type CommentTarget =
+  | { readonly kind: "task"; readonly taskId: TaskId }
+  | { readonly kind: "project"; readonly projectId: ProjectId };
+
+export interface CommentRevision {
+  readonly body: string;
+  readonly mentionPrincipalIds: readonly PrincipalId[];
+  readonly editedBy: PrincipalId;
+  readonly editedAt: string;
+}
+
+export interface RecordComment {
+  readonly id: CommentId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly target: CommentTarget;
+  readonly parentCommentId?: CommentId;
+  readonly rootCommentId: CommentId;
+  readonly body: string;
+  readonly mentionPrincipalIds: readonly PrincipalId[];
+  readonly authorPrincipalId: PrincipalId;
+  readonly threadState: "open" | "resolved";
+  readonly revisions: readonly CommentRevision[];
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly resolvedAt?: string;
+  readonly resolvedBy?: PrincipalId;
+}
+
+export interface AttentionSignal {
+  readonly id: AttentionSignalId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly targetPrincipalId: PrincipalId;
+  readonly reason: "comment_mention" | "task_assignment" | "sync_conflict";
+  readonly destination: CommentTarget;
+  readonly sourceRecordId: string;
+  readonly deduplicationKey: string;
+  readonly urgency: "in_app" | "urgent";
+  readonly state: "unread" | "read" | "dismissed";
+  readonly version: number;
+  readonly occurredAt: string;
+  readonly updatedAt: string;
+  readonly readAt?: string;
+  readonly dismissedAt?: string;
 }
 
 export interface Project {
@@ -297,6 +347,29 @@ export type DomainEvent = { readonly commandId: CommandId } & (
     }
   | {
       readonly id: EventId;
+      readonly type:
+        | "comment.added"
+        | "comment.edited"
+        | "comment.resolved"
+        | "comment.reopened";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: CommentId;
+      readonly aggregateVersion: number;
+      readonly rootCommentId: CommentId;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "attention.read" | "attention.dismissed";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: AttentionSignalId;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
       readonly type: "relation.created" | "relation.removed";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
@@ -343,6 +416,7 @@ export interface OutboxEntry {
   readonly topic:
     | "workspace.projection.requested"
     | "capture.processing.requested"
-    | "work.projection.requested";
+    | "work.projection.requested"
+    | "attention.delivery.requested";
   readonly createdAt: string;
 }

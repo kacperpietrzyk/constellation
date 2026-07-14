@@ -15,6 +15,8 @@ import {
   SpaceGrantIdSchema,
   TaskIdSchema,
   TaskAssignmentIdSchema,
+  CommentIdSchema,
+  AttentionSignalIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
 } from "./ids.js";
@@ -84,7 +86,7 @@ export type WorkspaceRenameCommand = z.infer<
 >;
 
 const MembershipRoleSchema = z.enum(["admin", "member", "guest"]);
-const SpaceAccessLevelSchema = z.enum(["view", "edit"]);
+const SpaceAccessLevelSchema = z.enum(["view", "comment", "edit"]);
 
 export const WorkspaceMemberAddCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("workspace.memberAdd"),
@@ -202,6 +204,55 @@ export const TaskUnassignCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 
+const CommentTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("task"), taskId: TaskIdSchema }).strict(),
+  z.object({ kind: z.literal("project"), projectId: ProjectIdSchema }).strict(),
+]);
+
+export const CommentAddCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("comment.add"),
+  payload: z
+    .object({
+      commentId: CommentIdSchema,
+      target: CommentTargetSchema,
+      parentCommentId: CommentIdSchema.optional(),
+      body: z.string().trim().min(1).max(16_000),
+      mentionPrincipalIds: z.array(PrincipalIdSchema).max(50).default([]),
+    })
+    .strict(),
+}).strict();
+
+export const CommentEditCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("comment.edit"),
+  payload: z
+    .object({
+      commentId: CommentIdSchema,
+      body: z.string().trim().min(1).max(16_000),
+      mentionPrincipalIds: z.array(PrincipalIdSchema).max(50).default([]),
+    })
+    .strict(),
+}).strict();
+
+export const CommentResolveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("comment.resolve"),
+  payload: z.object({ commentId: CommentIdSchema }).strict(),
+}).strict();
+
+export const CommentReopenCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("comment.reopen"),
+  payload: z.object({ commentId: CommentIdSchema }).strict(),
+}).strict();
+
+export const AttentionMarkReadCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("attention.markRead"),
+  payload: z.object({ attentionSignalId: AttentionSignalIdSchema }).strict(),
+}).strict();
+
+export const AttentionDismissCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("attention.dismiss"),
+  payload: z.object({ attentionSignalId: AttentionSignalIdSchema }).strict(),
+}).strict();
+
 export const RecordRelateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("record.relate"),
   payload: z
@@ -243,6 +294,12 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   TaskReopenCommandSchema,
   TaskAssignCommandSchema,
   TaskUnassignCommandSchema,
+  CommentAddCommandSchema,
+  CommentEditCommandSchema,
+  CommentResolveCommandSchema,
+  CommentReopenCommandSchema,
+  AttentionMarkReadCommandSchema,
+  AttentionDismissCommandSchema,
   RecordRelateCommandSchema,
   RecordUnrelateCommandSchema,
   CommandPreviewUndoSchema,

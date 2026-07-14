@@ -36,7 +36,7 @@ export const effectiveSpaceAccess = (
   context: ExecutionContext,
   workspaceId: WorkspaceId,
   spaceId: SpaceId,
-): "view" | "edit" | undefined => {
+): "view" | "comment" | "edit" | undefined => {
   const workspace = view.getWorkspace(workspaceId);
   const membership = activeMembership(view, workspaceId, context.principalId);
   if (
@@ -73,3 +73,13 @@ export const canEditSpace = (
   spaceId: SpaceId,
 ): boolean =>
   effectiveSpaceAccess(view, context, workspaceId, spaceId) === "edit";
+
+export const canCommentInSpace = (
+  view: ApplicationReadView,
+  context: ExecutionContext,
+  workspaceId: WorkspaceId,
+  spaceId: SpaceId,
+): boolean => {
+  const access = effectiveSpaceAccess(view, context, workspaceId, spaceId);
+  return access === "comment" || access === "edit";
+};

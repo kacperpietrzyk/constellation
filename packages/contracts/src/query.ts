@@ -12,6 +12,8 @@ import {
   SpaceIdSchema,
   TaskIdSchema,
   TaskAssignmentIdSchema,
+  CommentIdSchema,
+  AttentionSignalIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
 } from "./ids.js";
@@ -78,6 +80,26 @@ export const TaskAssignmentCandidatesQuerySchema = QueryMetadataSchema.extend({
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
 }).strict();
 
+const CommentQueryTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("task"), taskId: TaskIdSchema }).strict(),
+  z.object({ kind: z.literal("project"), projectId: ProjectIdSchema }).strict(),
+]);
+
+export const CommentListQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("comment.list"),
+  parameters: z.object({ target: CommentQueryTargetSchema }).strict(),
+}).strict();
+
+export const CommentMentionCandidatesQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("comment.mentionCandidates"),
+  parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
+}).strict();
+
+export const AttentionInboxQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("attention.inbox"),
+  parameters: z.object({ limit: z.int().min(1).max(200).optional() }).strict(),
+}).strict();
+
 export const ProjectListQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("project.list"),
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
@@ -138,6 +160,9 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   CaptureHistoryQuerySchema,
   TaskListQuerySchema,
   TaskAssignmentCandidatesQuerySchema,
+  CommentListQuerySchema,
+  CommentMentionCandidatesQuerySchema,
+  AttentionInboxQuerySchema,
   ProjectListQuerySchema,
   ProjectOperationalOverviewQuerySchema,
   GlobalSearchQuerySchema,
@@ -200,7 +225,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
                   spaceGrantId: z.uuid(),
                   spaceId: SpaceIdSchema,
                   spaceName: z.string(),
-                  access: z.enum(["view", "edit"]),
+                  access: z.enum(["view", "comment", "edit"]),
                   status: z.enum(["active", "revoked"]),
                   version: z.int().positive(),
                 })
@@ -227,12 +252,21 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           captures: z.int().nonnegative(),
           activity: z.int().nonnegative(),
           taskAssignments: z.int().nonnegative().default(0),
+          comments: z.int().nonnegative().default(0),
+          attentionSignals: z.int().nonnegative().default(0),
         })
         .strict(),
       records: z.array(
         z
           .object({
-            kind: z.enum(["task", "project", "capture", "task_assignment"]),
+            kind: z.enum([
+              "task",
+              "project",
+              "capture",
+              "task_assignment",
+              "comment",
+              "attention_signal",
+            ]),
             id: z.uuid(),
             spaceId: SpaceIdSchema,
           })
@@ -333,6 +367,84 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             principalId: PrincipalIdSchema,
             displayName: z.string(),
             participantKind: z.enum(["member", "guest"]),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("comment.list"),
+      target: CommentQueryTargetSchema,
+      threads: z.array(
+        z
+          .object({
+            id: CommentIdSchema,
+            parentCommentId: CommentIdSchema.optional(),
+            rootCommentId: CommentIdSchema,
+            body: z.string(),
+            author: z
+              .object({
+                principalId: PrincipalIdSchema.optional(),
+                displayName: z.string(),
+              })
+              .strict(),
+            mentionPrincipalIds: z.array(PrincipalIdSchema),
+            threadState: z.enum(["open", "resolved"]),
+            version: z.int().positive(),
+            createdAt: z.iso.datetime({ offset: true }),
+            updatedAt: z.iso.datetime({ offset: true }),
+            edited: z.boolean(),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("comment.mentionCandidates"),
+      spaceId: SpaceIdSchema,
+      candidates: z.array(
+        z
+          .object({
+            principalId: PrincipalIdSchema,
+            displayName: z.string(),
+            participantKind: z.enum(["member", "guest"]),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("attention.inbox"),
+      unreadCount: z.int().nonnegative(),
+      items: z.array(
+        z
+          .object({
+            id: AttentionSignalIdSchema,
+            reason: z.enum([
+              "comment_mention",
+              "task_assignment",
+              "sync_conflict",
+            ]),
+            destination: z.discriminatedUnion("kind", [
+              z
+                .object({ kind: z.literal("task"), taskId: TaskIdSchema })
+                .strict(),
+              z
+                .object({
+                  kind: z.literal("project"),
+                  projectId: ProjectIdSchema,
+                })
+                .strict(),
+            ]),
+            title: z.string(),
+            detail: z.string(),
+            urgency: z.enum(["in_app", "urgent"]),
+            state: z.enum(["unread", "read", "dismissed"]),
+            version: z.int().positive(),
+            occurredAt: z.iso.datetime({ offset: true }),
           })
           .strict(),
       ),
@@ -476,6 +588,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "task_reopened",
               "task_assigned",
               "task_unassigned",
+              "comment_added",
+              "comment_resolved",
+              "comment_reopened",
               "relation_added",
               "relation_removed",
               "command_undone",

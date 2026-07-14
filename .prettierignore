@@ -1,4 +1,5 @@
 .git/
+.playwright-cli/
 .ui-craft/
 .workbench/
 .workflows/
@@ -10,6 +11,7 @@ dlaczego-notion-zawodzi-i-czego-potrzebuje.md
 docs/plans/
 docs/specs/
 node_modules/
+output/playwright/
 **/dist/
 coverage/
 plans/

@@ -402,6 +402,10 @@ describe("self-hosted Hub core", () => {
     const privateCaptureId = uuid();
     const sharedTaskId = uuid();
     const assignmentId = uuid();
+    const memberAttentionId = uuid();
+    const otherAttentionId = uuid();
+    const attentionReceiptId = uuid();
+    const resolvedCommentId = uuid();
     const snapshot = HubWorkspaceSnapshotSchema.parse({
       ...initial,
       workspaces: [{ ...initial.workspaces[0], policyVersion: 2, version: 2 }],
@@ -495,6 +499,84 @@ describe("self-hosted Hub core", () => {
           state: "active",
         },
       ],
+      comments: [
+        {
+          id: resolvedCommentId,
+          workspaceId: ids.workspace,
+          spaceId: ids.space,
+          target: { kind: "task", taskId: sharedTaskId },
+          rootCommentId: resolvedCommentId,
+          body: "Resolved shared comment",
+          mentionPrincipalIds: [],
+          authorPrincipalId: assigneeId,
+          threadState: "resolved",
+          revisions: [],
+          version: 2,
+          createdAt: "2026-07-14T12:00:00.000Z",
+          updatedAt: "2026-07-14T12:01:00.000Z",
+          resolvedAt: "2026-07-14T12:01:00.000Z",
+          resolvedBy: assigneeId,
+        },
+      ],
+      attentionSignals: [
+        {
+          id: memberAttentionId,
+          workspaceId: ids.workspace,
+          spaceId: ids.space,
+          targetPrincipalId: memberId,
+          reason: "task_assignment",
+          destination: { kind: "task", taskId: sharedTaskId },
+          sourceRecordId: assignmentId,
+          deduplicationKey: `task-assignment:${assignmentId}:${memberId}`,
+          urgency: "in_app",
+          state: "unread",
+          version: 1,
+          occurredAt: "2026-07-14T12:00:00.000Z",
+          updatedAt: "2026-07-14T12:00:00.000Z",
+        },
+        {
+          id: otherAttentionId,
+          workspaceId: ids.workspace,
+          spaceId: ids.space,
+          targetPrincipalId: assigneeId,
+          reason: "task_assignment",
+          destination: { kind: "task", taskId: sharedTaskId },
+          sourceRecordId: assignmentId,
+          deduplicationKey: `task-assignment:${assignmentId}:${assigneeId}`,
+          urgency: "in_app",
+          state: "unread",
+          version: 1,
+          occurredAt: "2026-07-14T12:00:00.000Z",
+          updatedAt: "2026-07-14T12:00:00.000Z",
+        },
+      ],
+      auditReceipts: [
+        ...initial.auditReceipts,
+        {
+          id: attentionReceiptId,
+          workspaceId: ids.workspace,
+          spaceId: ids.space,
+          principalId: assigneeId,
+          grantId: assigneeSpaceGrantId,
+          origin: "desktop",
+          commandId: uuid(),
+          commandName: "task.assign",
+          correlationId: uuid(),
+          affectedRecordIds: [
+            sharedTaskId,
+            memberAttentionId,
+            otherAttentionId,
+          ],
+          recordVersions: {
+            [sharedTaskId]: 1,
+            [memberAttentionId]: 1,
+            [otherAttentionId]: 1,
+          },
+          changedFields: ["assigneePrincipalId"],
+          occurredAt: "2026-07-14T12:00:00.000Z",
+          outcome: "success",
+        },
+      ],
     });
     const memberContext = ExecutionContextSchema.parse({
       ...context(),
@@ -526,6 +608,23 @@ describe("self-hosted Hub core", () => {
       scoped.taskAssignments.map((assignment) => assignment.id),
       [assignmentId],
     );
+    assert.deepEqual(
+      scoped.attentionSignals.map((signal) => signal.id),
+      [memberAttentionId],
+    );
+    const attentionReceipt = scoped.auditReceipts.find(
+      (receipt) => receipt.id === attentionReceiptId,
+    );
+    assert.ok(attentionReceipt);
+    assert.equal(attentionReceipt.principalId, assigneeId);
+    assert.deepEqual(attentionReceipt.affectedRecordIds, [
+      sharedTaskId,
+      memberAttentionId,
+    ]);
+    assert.deepEqual(attentionReceipt.recordVersions, {
+      [sharedTaskId]: 1,
+      [memberAttentionId]: 1,
+    });
     assert.equal(scoped.idempotencyRecords.length, 0);
     const adminWithoutManagementCapability = scopeHubSnapshot(
       HubWorkspaceSnapshotSchema.parse({
@@ -575,6 +674,25 @@ describe("self-hosted Hub core", () => {
         redactedAssigneeState: "former_member",
       },
     ]);
+    assert.equal(
+      formerAssignee.comments[0]?.authorPrincipalId,
+      "00000000-0000-4000-8000-000000000000",
+    );
+    assert.equal(
+      formerAssignee.comments[0]?.resolvedBy,
+      "00000000-0000-4000-8000-000000000000",
+    );
+    const formerReceipt = formerAssignee.auditReceipts.find(
+      (receipt) => receipt.id === attentionReceiptId,
+    );
+    assert.equal(
+      formerReceipt?.principalId,
+      "00000000-0000-4000-8000-000000000000",
+    );
+    assert.equal(
+      formerReceipt?.grantId,
+      "00000000-0000-4000-8000-000000000000",
+    );
     const revoked = HubWorkspaceSnapshotSchema.parse({
       ...snapshot,
       workspaces: [{ ...snapshot.workspaces[0], policyVersion: 3, version: 3 }],

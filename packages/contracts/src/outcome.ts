@@ -12,6 +12,8 @@ import {
   SpaceIdSchema,
   TaskIdSchema,
   TaskAssignmentIdSchema,
+  CommentIdSchema,
+  AttentionSignalIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
 } from "./ids.js";
@@ -32,6 +34,12 @@ export const DiagnosticCodeSchema = z.enum([
   "task.reopened",
   "task.assigned",
   "task.unassigned",
+  "comment.added",
+  "comment.edited",
+  "comment.resolved",
+  "comment.reopened",
+  "attention.read",
+  "attention.dismissed",
   "relation.created",
   "relation.removed",
   "undo.previewed",
@@ -61,6 +69,8 @@ export const RecordKindSchema = z.enum([
   "capture",
   "task",
   "taskAssignment",
+  "comment",
+  "attentionSignal",
   "taskStatus",
   "project",
   "relation",
@@ -110,7 +120,7 @@ export const WorkspaceMemberAddedProjectionSchema = z
     ...MembershipProjectionFields,
     spaceGrantId: SpaceGrantIdSchema,
     spaceId: SpaceIdSchema,
-    access: z.enum(["view", "edit"]),
+    access: z.enum(["view", "comment", "edit"]),
     spaceGrantVersion: z.int().positive(),
   })
   .strict();
@@ -121,7 +131,7 @@ export const WorkspaceMemberAccessChangedProjectionSchema = z
     ...MembershipProjectionFields,
     spaceGrantId: SpaceGrantIdSchema,
     spaceId: SpaceIdSchema,
-    access: z.enum(["view", "edit"]),
+    access: z.enum(["view", "comment", "edit"]),
     spaceGrantVersion: z.int().positive(),
   })
   .strict();
@@ -216,6 +226,49 @@ export const TaskUnassignedProjectionSchema = z
   })
   .strict();
 
+const CommentMutationProjectionFields = {
+  commentId: CommentIdSchema,
+  rootCommentId: CommentIdSchema,
+  version: z.int().positive(),
+} as const;
+export const CommentAddedProjectionSchema = z
+  .object({
+    kind: z.literal("comment.added"),
+    ...CommentMutationProjectionFields,
+  })
+  .strict();
+export const CommentEditedProjectionSchema = z
+  .object({
+    kind: z.literal("comment.edited"),
+    ...CommentMutationProjectionFields,
+  })
+  .strict();
+export const CommentResolvedProjectionSchema = z
+  .object({
+    kind: z.literal("comment.resolved"),
+    ...CommentMutationProjectionFields,
+  })
+  .strict();
+export const CommentReopenedProjectionSchema = z
+  .object({
+    kind: z.literal("comment.reopened"),
+    ...CommentMutationProjectionFields,
+  })
+  .strict();
+const AttentionProjectionFields = {
+  attentionSignalId: AttentionSignalIdSchema,
+  version: z.int().positive(),
+} as const;
+export const AttentionReadProjectionSchema = z
+  .object({ kind: z.literal("attention.read"), ...AttentionProjectionFields })
+  .strict();
+export const AttentionDismissedProjectionSchema = z
+  .object({
+    kind: z.literal("attention.dismissed"),
+    ...AttentionProjectionFields,
+  })
+  .strict();
+
 const RelationProjectionFields = {
   relationId: RelationIdSchema,
   taskId: TaskIdSchema,
@@ -254,6 +307,12 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   TaskReopenedProjectionSchema,
   TaskAssignedProjectionSchema,
   TaskUnassignedProjectionSchema,
+  CommentAddedProjectionSchema,
+  CommentEditedProjectionSchema,
+  CommentResolvedProjectionSchema,
+  CommentReopenedProjectionSchema,
+  AttentionReadProjectionSchema,
+  AttentionDismissedProjectionSchema,
   RelationCreatedProjectionSchema,
   RelationRemovedProjectionSchema,
   UndoAppliedProjectionSchema,
@@ -364,6 +423,43 @@ const TaskUnassignedSuccessOutcomeSchema =
     diagnosticCode: z.literal("task.unassigned"),
     projection: TaskUnassignedProjectionSchema,
   }).strict();
+const CommentAddedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
+  outcome: z.literal("success"),
+  diagnosticCode: z.literal("comment.added"),
+  projection: CommentAddedProjectionSchema,
+}).strict();
+const CommentEditedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend(
+  {
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("comment.edited"),
+    projection: CommentEditedProjectionSchema,
+  },
+).strict();
+const CommentResolvedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("comment.resolved"),
+    projection: CommentResolvedProjectionSchema,
+  }).strict();
+const CommentReopenedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("comment.reopened"),
+    projection: CommentReopenedProjectionSchema,
+  }).strict();
+const AttentionReadSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend(
+  {
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("attention.read"),
+    projection: AttentionReadProjectionSchema,
+  },
+).strict();
+const AttentionDismissedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("attention.dismissed"),
+    projection: AttentionDismissedProjectionSchema,
+  }).strict();
 const RelationCreatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -398,6 +494,12 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   TaskReopenedSuccessOutcomeSchema,
   TaskAssignedSuccessOutcomeSchema,
   TaskUnassignedSuccessOutcomeSchema,
+  CommentAddedSuccessOutcomeSchema,
+  CommentEditedSuccessOutcomeSchema,
+  CommentResolvedSuccessOutcomeSchema,
+  CommentReopenedSuccessOutcomeSchema,
+  AttentionReadSuccessOutcomeSchema,
+  AttentionDismissedSuccessOutcomeSchema,
   RelationCreatedSuccessOutcomeSchema,
   RelationRemovedSuccessOutcomeSchema,
   UndoSuccessOutcomeSchema,

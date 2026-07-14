@@ -79,9 +79,12 @@ proves private-Space exclusion, offline edit acceptance, stale edit rejection
 after a view-only downgrade, and atomic local projection removal after
 revocation. The current desktop and kernel also support one versioned responsible
 member or guest per Task, with scoped candidates, explicit conflicts, audit,
-activity, safe former-member states, and durable local/Hub projections. Broader
-collaboration remains current work until the full leak, notification, comment,
-document-revision, and recovery gates pass.
+activity, safe former-member states, and durable local/Hub projections. Tasks
+and Projects now also have attributed, resolvable comment threads; Commenter is
+a distinct Space access level, mentions and assignments create recipient-only
+durable attention, and system delivery is isolated behind a main-process
+adapter. Broader collaboration remains current work until the packaged
+comment/notification proof plus document-revision and recovery gates pass.
 
 ## Next — external agents through MCP
 

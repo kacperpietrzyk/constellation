@@ -37,7 +37,7 @@ export const grantSpaceAccess = (input: {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
   readonly principalId: PrincipalId;
-  readonly access: "view" | "edit";
+  readonly access: "view" | "comment" | "edit";
   readonly occurredAt: string;
 }): SpaceGrant => ({
   ...input,

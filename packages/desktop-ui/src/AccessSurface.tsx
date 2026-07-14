@@ -16,14 +16,19 @@ export const AccessSurface = ({
   readonly onAdd: (input: {
     readonly displayName: string;
     readonly role: "admin" | "member" | "guest";
-    readonly access: "view" | "edit";
+    readonly access: "view" | "comment" | "edit";
   }) => void;
-  readonly onSetAccess: (member: Member, access: "view" | "edit") => void;
+  readonly onSetAccess: (
+    member: Member,
+    access: "view" | "comment" | "edit",
+  ) => void;
   readonly onRevoke: (member: Member) => void;
 }) => {
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<"admin" | "member" | "guest">("member");
-  const [spaceAccess, setSpaceAccess] = useState<"view" | "edit">("edit");
+  const [spaceAccess, setSpaceAccess] = useState<"view" | "comment" | "edit">(
+    "edit",
+  );
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!busy && displayName.trim()) {
@@ -103,6 +108,16 @@ export const AccessSurface = ({
           </label>
           <fieldset>
             <legend>Dostęp w bieżącym Space</legend>
+            <label>
+              <input
+                type="radio"
+                name="space-access"
+                checked={spaceAccess === "comment"}
+                onChange={() => setSpaceAccess("comment")}
+                disabled={busy}
+              />
+              Może komentować
+            </label>
             <label>
               <input
                 type="radio"
@@ -202,12 +217,13 @@ export const AccessSurface = ({
                         onChange={(event) =>
                           onSetAccess(
                             member,
-                            event.target.value as "view" | "edit",
+                            event.target.value as "view" | "comment" | "edit",
                           )
                         }
                         disabled={busy}
                       >
                         <option value="view">Tylko odczyt</option>
+                        <option value="comment">Może komentować</option>
                         <option value="edit">Może edytować</option>
                       </select>
                     </label>

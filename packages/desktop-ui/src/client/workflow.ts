@@ -12,6 +12,8 @@ import {
   type SpaceId,
   type TaskId,
   type TaskStatusId,
+  type CommentId,
+  type AttentionSignalId,
   type WorkspaceId,
 } from "@constellation/contracts";
 import type {
@@ -39,6 +41,11 @@ export type CockpitProjection = Projection<"cockpit.week">;
 export type ActivityProjection = Projection<"activity.meaningful">;
 export type RecoveryProjection = Projection<"recovery.preview">;
 export type AuditReceiptProjection = Projection<"audit.receipt">["receipt"];
+export type CommentListProjection = Projection<"comment.list">;
+export type MentionCandidatesProjection =
+  Projection<"comment.mentionCandidates">;
+export type AttentionInboxProjection = Projection<"attention.inbox">;
+export type CommentTarget = CommentListProjection["target"];
 
 export type DataSlice<T> =
   | { readonly kind: "ready"; readonly data: T }
@@ -58,6 +65,8 @@ export interface DesktopSnapshot {
   readonly activity: DataSlice<ActivityProjection>;
   readonly access: DataSlice<AccessProjection>;
   readonly assignmentCandidates: DataSlice<TaskAssignmentCandidatesProjection>;
+  readonly mentionCandidates: DataSlice<MentionCandidatesProjection>;
+  readonly attention: DataSlice<AttentionInboxProjection>;
   readonly dataHome?: DataHomeStatus;
 }
 
@@ -176,6 +185,8 @@ export const loadDesktopSnapshot = async (
     tasks,
     captures,
     projects,
+    mentionCandidates,
+    attention,
     access,
     assignmentCandidates,
     cockpit,
@@ -196,6 +207,20 @@ export const loadDesktopSnapshot = async (
         client,
         queryEnvelope("project.list", workspaceId, { spaceId }),
         "project.list",
+      ),
+    ),
+    optionalProjection(
+      queryProjection(
+        client,
+        queryEnvelope("comment.mentionCandidates", workspaceId, { spaceId }),
+        "comment.mentionCandidates",
+      ),
+    ),
+    optionalProjection(
+      queryProjection(
+        client,
+        queryEnvelope("attention.inbox", workspaceId, { limit: 100 }),
+        "attention.inbox",
       ),
     ),
     optionalProjection(
@@ -246,6 +271,8 @@ export const loadDesktopSnapshot = async (
     activity,
     access,
     assignmentCandidates,
+    mentionCandidates,
+    attention,
     ...(dataHome === undefined ? {} : { dataHome }),
   };
 };
@@ -384,7 +411,7 @@ export const addWorkspaceMember = (
   input: {
     readonly displayName: string;
     readonly role: "admin" | "member" | "guest";
-    readonly access: "view" | "edit";
+    readonly access: "view" | "comment" | "edit";
   },
 ) =>
   execute(
@@ -415,7 +442,7 @@ export const setWorkspaceMemberAccess = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
   member: AccessProjection["members"][number],
-  access: "view" | "edit",
+  access: "view" | "comment" | "edit",
 ) => {
   const grant = member.spaces[0];
   if (grant === undefined)
@@ -583,6 +610,119 @@ export const setTaskAssignment = (
         : undefined,
   );
 };
+
+export const loadComments = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  target: CommentTarget,
+) =>
+  queryProjection(
+    client,
+    queryEnvelope("comment.list", snapshot.bootstrap.workspace.id, { target }),
+    "comment.list",
+  );
+
+export const addComment = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  target: CommentTarget,
+  targetVersion: number,
+  body: string,
+  mentionPrincipalIds: readonly PrincipalId[],
+  parent?: CommentListProjection["threads"][number],
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [target.kind === "task" ? target.taskId : target.projectId]:
+          targetVersion,
+        ...(parent === undefined ? {} : { [parent.id]: parent.version }),
+      }),
+      commandName: "comment.add",
+      payload: {
+        commentId: crypto.randomUUID(),
+        target,
+        ...(parent === undefined ? {} : { parentCommentId: parent.id }),
+        body,
+        mentionPrincipalIds,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "comment.added"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const editComment = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  commentId: CommentId,
+  version: number,
+  body: string,
+  mentionPrincipalIds: readonly PrincipalId[],
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, { [commentId]: version }),
+      commandName: "comment.edit",
+      payload: { commentId, body, mentionPrincipalIds },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "comment.edited"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const setCommentResolved = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  comment: CommentListProjection["threads"][number],
+  resolved: boolean,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [comment.id]: comment.version,
+      }),
+      commandName: resolved ? "comment.resolve" : "comment.reopen",
+      payload: { commentId: comment.id },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      (response.outcome.projection.kind === "comment.resolved" ||
+        response.outcome.projection.kind === "comment.reopened")
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const updateAttention = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  signal: AttentionInboxProjection["items"][number],
+  action: "read" | "dismiss",
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [signal.id]: signal.version,
+      }),
+      commandName:
+        action === "read" ? "attention.markRead" : "attention.dismiss",
+      payload: { attentionSignalId: signal.id as AttentionSignalId },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      (response.outcome.projection.kind === "attention.read" ||
+        response.outcome.projection.kind === "attention.dismissed")
+        ? response.outcome.projection
+        : undefined,
+  );
 
 export const relateTask = (
   client: ConstellationRendererClient,

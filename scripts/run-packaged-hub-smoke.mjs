@@ -34,6 +34,8 @@ const offlineTitle = "Offline packaged work reconciled exactly once";
 const rejectedAfterDowngradeTitle = "Must disappear after view downgrade";
 const acceptedMemberOfflineTitle = "Member offline edit accepted after regrant";
 const privateSentinelTitle = "PRIVATE_SCOPE_SENTINEL_MUST_NEVER_APPEAR";
+const packagedCommentBody =
+  "Packaged commenter mentions the owner in exact Task context.";
 fs.rmSync(stateRoot, { recursive: true, force: true });
 fs.mkdirSync(stateRoot, { recursive: true });
 
@@ -631,6 +633,153 @@ try {
   if (rejectedStillVisible)
     throw new Error("REJECTED_MEMBER_EDIT_REMAINED_VISIBLE");
 
+  process.stderr.write(
+    "packaged-hub: prove commenter boundary and scoped mention attention\n",
+  );
+  await executeOwnerPolicy("workspace.memberSetAccess", {
+    membershipId,
+    spaceGrantId: memberSpaceGrantId,
+    access: "comment",
+  });
+  await member.client.evaluate(`window.constellation.syncDataHome()`);
+  await reloadAndWait(
+    member.client,
+    ".desktop-shell",
+    "MEMBER_COMMENTER_RELOAD_FAILED",
+  );
+  await member.client.evaluate(`(() => {
+    document.querySelector('.nav-item[data-surface="tasks"]').click();
+    return true;
+  })()`);
+  await waitFor(
+    member.client,
+    `[...document.querySelectorAll(".task-row")].some((row) => row.textContent.includes(${JSON.stringify(sharedTask.title)}))`,
+    "COMMENT_TARGET_NOT_RENDERED",
+  );
+  await member.client.evaluate(`(() => {
+    const row = [...document.querySelectorAll(".task-row")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
+    row.querySelector(".task-copy").click();
+    return true;
+  })()`);
+  await waitFor(
+    member.client,
+    `document.querySelector(".comment-composer textarea") !== null && [...document.querySelectorAll(".comment-composer select option")].some((option) => option.value === ${JSON.stringify(ownerConnection.context.principalId)})`,
+    "COMMENT_COMPOSER_NOT_RENDERED",
+  );
+  await member.client.evaluate(`(() => {
+    const textarea = document.querySelector(".comment-composer textarea");
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(textarea, ${JSON.stringify(packagedCommentBody)});
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    const mentions = document.querySelector(".comment-composer select");
+    for (const option of mentions.options) option.selected = option.value === ${JSON.stringify(ownerConnection.context.principalId)};
+    mentions.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  })()`);
+  await waitFor(
+    member.client,
+    `document.querySelector(".comment-composer button[type=submit]")?.disabled === false`,
+    "COMMENT_SUBMIT_DISABLED",
+  );
+  await member.client.evaluate(
+    `(() => { document.querySelector(".comment-composer button[type=submit]").click(); return true; })()`,
+  );
+  await waitFor(
+    member.client,
+    `[...document.querySelectorAll(".comment-entry p")].some((node) => node.textContent === ${JSON.stringify(packagedCommentBody)})`,
+    "COMMENT_NOT_RENDERED",
+  );
+  const forbiddenCapture = await member.client.evaluate(
+    `window.constellation.executeCommand(${JSON.stringify({
+      contractVersion: 1,
+      commandName: "capture.submitText",
+      commandId: crypto.randomUUID(),
+      workspaceId,
+      idempotencyKey: `commenter-cannot-edit-${crypto.randomUUID()}`,
+      expectedVersions: {},
+      correlationId: crypto.randomUUID(),
+      payload: {
+        spaceId: rootSpaceId,
+        originalText: "COMMENTER_MUST_NOT_CREATE_WORK",
+        deviceId: "packaged-commenter-boundary",
+        source: "in_app_quick_capture",
+      },
+    })})`,
+  );
+  if (
+    forbiddenCapture.kind !== "command_outcome" ||
+    forbiddenCapture.outcome.outcome !== "rejected" ||
+    forbiddenCapture.outcome.diagnosticCode !== "authorization.denied"
+  ) {
+    throw new Error("COMMENTER_MUTATED_WORK");
+  }
+  const commenterSynced = await member.client.evaluate(
+    `window.constellation.syncDataHome()`,
+  );
+  if (commenterSynced.syncState !== "current")
+    throw new Error("COMMENT_MENTION_NOT_SYNCED");
+
+  first = await launch(firstUserData);
+  const ownerAttentionSynced = await first.client.evaluate(
+    `window.constellation.syncDataHome()`,
+  );
+  if (ownerAttentionSynced.syncState !== "current")
+    throw new Error("OWNER_ATTENTION_NOT_SYNCED");
+  await reloadAndWait(
+    first.client,
+    ".desktop-shell",
+    "OWNER_ATTENTION_RELOAD_FAILED",
+  );
+  await first.client.evaluate(
+    `(() => { document.querySelector('.nav-item[data-surface="attention"]').click(); return true; })()`,
+  );
+  await waitFor(
+    first.client,
+    `[...document.querySelectorAll(".attention-main strong")].some((node) => node.textContent === ${JSON.stringify(sharedTask.title)})`,
+    "OWNER_ATTENTION_NOT_RENDERED",
+  );
+  await first.client.evaluate(`(() => {
+    const item = [...document.querySelectorAll(".attention-main")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
+    item.click();
+    return true;
+  })()`);
+  await waitFor(
+    first.client,
+    `[...document.querySelectorAll(".comment-entry p")].some((node) => node.textContent === ${JSON.stringify(packagedCommentBody)})`,
+    "ATTENTION_DID_NOT_OPEN_EXACT_COMMENT_CONTEXT",
+  );
+  await stop(first);
+  first = undefined;
+
+  await executeOwnerPolicy("workspace.memberSetAccess", {
+    membershipId,
+    spaceGrantId: memberSpaceGrantId,
+    access: "view",
+  });
+  await member.client.evaluate(`window.constellation.syncDataHome()`);
+  await reloadAndWait(
+    member.client,
+    ".desktop-shell",
+    "MEMBER_VIEW_RELOAD_FAILED",
+  );
+  await member.client.evaluate(
+    `(() => { document.querySelector('.nav-item[data-surface="tasks"]').click(); return true; })()`,
+  );
+  await waitFor(
+    member.client,
+    `[...document.querySelectorAll(".task-row")].some((row) => row.textContent.includes(${JSON.stringify(sharedTask.title)}))`,
+    "VIEWER_COMMENT_TARGET_NOT_RENDERED",
+  );
+  await member.client.evaluate(`(() => {
+    const row = [...document.querySelectorAll(".task-row")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
+    row.querySelector(".task-copy").click();
+    return true;
+  })()`);
+  await waitFor(
+    member.client,
+    `document.querySelector(".comment-composer textarea")?.disabled === true`,
+    "VIEWER_COMMENT_COMPOSER_NOT_DISABLED",
+  );
+
   await executeOwnerPolicy("workspace.memberSetAccess", {
     membershipId,
     spaceGrantId: memberSpaceGrantId,
@@ -761,6 +910,7 @@ try {
       privateScopeLeakFree: true,
       staleEditRejectedAfterDowngrade: true,
       memberOfflineEditAccepted: true,
+      commenterMentionAttentionRouted: true,
       membershipRevocationPurged: true,
     })}\n`,
   );

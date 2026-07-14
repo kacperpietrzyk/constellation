@@ -158,6 +158,7 @@ const desktopMainSource = path.join(
   "src",
 );
 const productionDesktopFiles = new Set([
+  "attention-notification.js",
   "better-sqlite3-factory.js",
   "coordinated-data-home-provider.js",
   "coordinated-sync-engine.js",
@@ -342,7 +343,8 @@ if (
     archiveDenylist.some((denied) => entry.includes(denied)),
   ) ||
   !archiveFiles.includes("/bootstrap.cjs") ||
-  !archiveFiles.some((entry) => entry.endsWith("/production-main.js"))
+  !archiveFiles.some((entry) => entry.endsWith("/production-main.js")) ||
+  !archiveFiles.some((entry) => entry.endsWith("/attention-notification.js"))
 ) {
   throw new Error("PRODUCTION_ASAR_CONTENT_INVALID");
 }

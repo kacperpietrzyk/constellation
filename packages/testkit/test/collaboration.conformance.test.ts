@@ -46,6 +46,15 @@ const capabilityScope = [
   "task.assign",
   "task.unassign",
   "task.assignmentCandidates",
+  "comment.add",
+  "comment.edit",
+  "comment.resolve",
+  "comment.reopen",
+  "comment.list",
+  "comment.mentionCandidates",
+  "attention.inbox",
+  "attention.markRead",
+  "attention.dismiss",
   "record.relate",
   "search.global",
   "activity.meaningful",
@@ -230,7 +239,7 @@ describe("collaboration-safe policy kernel", () => {
             displayName: "Ada Nowak",
             role: "member",
             spaceId: ids.shared,
-            access: "edit",
+            access: "comment",
           },
         }),
       ).outcome,
@@ -323,6 +332,87 @@ describe("collaboration-safe policy kernel", () => {
     assert.equal(scopedExport.result.projection.counts.taskAssignments, 1);
     assert.ok(scopedExport.result.projection.counts.activity >= 4);
 
+    const memberCommentId = requestId();
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(memberV2, {
+          ...metadata("commenter-adds-comment", {
+            [sharedTask.id]: sharedTask.version,
+          }),
+          commandName: "comment.add",
+          payload: {
+            commentId: memberCommentId,
+            target: { kind: "task", taskId: sharedTask.id },
+            body: "Owner, please verify the packaged recovery evidence.",
+            mentionPrincipalIds: [ids.owner],
+          },
+        }),
+      ).diagnosticCode,
+      "comment.added",
+    );
+    const mentionSignal = harness.store
+      .snapshot()
+      .attentionSignals?.find(
+        (signal) => signal.targetPrincipalId === ids.owner,
+      );
+    assert.ok(mentionSignal);
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(ownerV2, {
+          ...metadata("owner-dismisses-mention", {
+            [mentionSignal.id]: mentionSignal.version,
+          }),
+          commandName: "attention.dismiss",
+          payload: { attentionSignalId: mentionSignal.id },
+        }),
+      ).diagnosticCode,
+      "attention.dismissed",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(memberV2, {
+          ...metadata("commenter-renews-mention", { [memberCommentId]: 1 }),
+          commandName: "comment.edit",
+          payload: {
+            commentId: memberCommentId,
+            body: "Owner, the packaged recovery evidence is ready.",
+            mentionPrincipalIds: [ids.owner],
+          },
+        }),
+      ).diagnosticCode,
+      "comment.edited",
+    );
+    const renewedSignal = harness.store
+      .snapshot()
+      .attentionSignals?.find((signal) => signal.id === mentionSignal.id);
+    assert.equal(
+      harness.store
+        .snapshot()
+        .attentionSignals?.filter(
+          (signal) => signal.reason === "comment_mention",
+        ).length,
+      1,
+      "one root thread creates one recipient attention signal",
+    );
+    assert.equal(renewedSignal?.state, "unread");
+    assert.equal(renewedSignal?.version, 3);
+    assert.equal(renewedSignal?.dismissedAt, undefined);
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(memberV2, {
+          ...metadata("commenter-cannot-edit-work"),
+          commandName: "capture.submitText",
+          payload: {
+            spaceId: ids.shared,
+            originalText: "Must not commit",
+            deviceId: "member-device",
+            source: "in_app_quick_capture",
+          },
+        }),
+      ).diagnosticCode,
+      "authorization.denied",
+    );
+
     assert.equal(
       unwrap(
         harness.kernel.execute(ownerV2, {
@@ -343,6 +433,23 @@ describe("collaboration-safe policy kernel", () => {
     );
     const memberV3 = context("member", 3, [ids.shared]);
     harness.authorization.register(memberV3);
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(memberV3, {
+          ...metadata("viewer-cannot-comment", {
+            [sharedTask.id]: sharedTask.version,
+          }),
+          commandName: "comment.add",
+          payload: {
+            commentId: requestId(),
+            target: { kind: "task", taskId: sharedTask.id },
+            body: "Must not comment",
+            mentionPrincipalIds: [],
+          },
+        }),
+      ).diagnosticCode,
+      "authorization.denied",
+    );
     assert.equal(
       unwrap(
         harness.kernel.execute(memberV3, {
