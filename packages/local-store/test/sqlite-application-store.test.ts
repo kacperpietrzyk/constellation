@@ -889,4 +889,95 @@ describe("SQLite ApplicationStore", () => {
     assert.equal(store.getCoordinationState()?.syncState, "conflict");
     database.close();
   });
+
+  it("atomically purges coordinated records, FTS, and queued commands after access revocation", () => {
+    const database = new DatabaseSync(":memory:");
+    const { kernel, store } = createKernel(database);
+    assert.equal(
+      unwrap(kernel.execute(context(), workspaceCommand)).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(kernel.execute(context(), captureCommand)).outcome,
+      "success",
+    );
+    store.configureCoordination({
+      workspaceId: context().workspaceId,
+      providerInstanceId: "constellation.hub:purge-test",
+      hubOrigin: "https://hub.example.test",
+      checkpoint: "1",
+      snapshotDigest: "a".repeat(64),
+      configuredAt: "2026-07-14T12:00:00.000Z",
+    });
+    const rename = CommandEnvelopeSchema.parse({
+      contractVersion: 1,
+      commandName: "workspace.rename",
+      commandId: "00000000-0000-4000-8000-000000000097",
+      workspaceId: ids.workspace,
+      idempotencyKey: "queued-before-revocation",
+      expectedVersions: { [ids.workspace]: 1 },
+      correlationId: "00000000-0000-4000-8000-000000000096",
+      payload: { name: "Must be purged" },
+    });
+    assert.equal(unwrap(kernel.execute(context(), rename)).outcome, "success");
+    assert.equal(store.listPendingSyncCommands().length, 1);
+
+    database.exec(`
+      CREATE TRIGGER fail_purge BEFORE DELETE ON captures BEGIN
+        SELECT RAISE(ABORT, 'synthetic purge failure');
+      END;
+    `);
+    assert.throws(() =>
+      store.purgeProjection({
+        checkpoint: "1",
+        snapshotDigest: "a".repeat(64),
+        updatedAt: "2026-07-14T12:01:00.000Z",
+        errorCode: "membership_revoked",
+      }),
+    );
+    assert.equal(store.snapshot().captures.length, 1);
+    assert.equal(store.listPendingSyncCommands().length, 1);
+    assert.equal(store.getCoordinationState()?.syncState, "current");
+
+    database.exec("DROP TRIGGER fail_purge;");
+    store.purgeProjection({
+      checkpoint: "1",
+      snapshotDigest: "a".repeat(64),
+      updatedAt: "2026-07-14T12:02:00.000Z",
+      errorCode: "membership_revoked",
+    });
+    const purged = store.snapshot();
+    assert.equal(purged.workspaces.length, 0);
+    assert.equal(purged.memberships.length, 0);
+    assert.equal(purged.captures.length, 0);
+    assert.equal(purged.tasks.length, 0);
+    assert.equal(store.listPendingSyncCommands().length, 0);
+    assert.equal(
+      (
+        database.prepare("SELECT count(*) AS count FROM work_search").get() as {
+          count: number;
+        }
+      ).count,
+      0,
+    );
+    assert.equal(
+      (
+        database
+          .prepare("SELECT count(*) AS count FROM command_journal")
+          .get() as { count: number }
+      ).count,
+      0,
+    );
+    assert.deepEqual(store.getCoordinationState(), {
+      workspaceId: ids.workspace,
+      providerInstanceId: "constellation.hub:purge-test",
+      hubOrigin: "https://hub.example.test",
+      checkpoint: "1",
+      snapshotDigest: "a".repeat(64),
+      syncState: "revoked",
+      lastSyncedAt: "2026-07-14T12:02:00.000Z",
+      lastErrorCode: "membership_revoked",
+    });
+    database.close();
+  });
 });

@@ -19,6 +19,7 @@ import {
   type EncryptedLocalStoreFacts,
   type EncryptedSqliteDatabaseFactory,
 } from "@constellation/local-store";
+import type { ReferenceStateSnapshot } from "@constellation/application";
 
 import {
   createRuntimeKernelService,
@@ -91,6 +92,11 @@ const generatedIdentity = (): WorkspaceBootstrapIdentity => ({
   grantId: GrantIdSchema.parse(randomUUID()),
 });
 
+export interface DurableBootstrapProjection {
+  readonly identity: WorkspaceBootstrapIdentity;
+  readonly snapshot: ReferenceStateSnapshot;
+}
+
 export const createDurableKernelService = async (input: {
   readonly databaseFactory: EncryptedSqliteDatabaseFactory;
   readonly safeStorage: AsyncSafeStorage;
@@ -98,6 +104,7 @@ export const createDurableKernelService = async (input: {
   readonly timezone: string;
   readonly workspaceName?: string;
   readonly platform?: NodeJS.Platform;
+  readonly bootstrapProjection?: DurableBootstrapProjection;
 }): Promise<DurableKernelService> => {
   const workspaceRoot = path.join(input.stateRoot, "local-alpha-workspace");
   const wrapperPath = path.join(workspaceRoot, "key-wrapper.json");
@@ -105,6 +112,12 @@ export const createDurableKernelService = async (input: {
   mkdirSync(workspaceRoot, { recursive: true, mode: 0o700 });
   const wrapperExists = existsSync(wrapperPath);
   const databaseExists = existsSync(databasePath);
+  if (
+    input.bootstrapProjection !== undefined &&
+    (wrapperExists || databaseExists)
+  ) {
+    throw new DurableWorkspaceOpenError("workspace_open_failed");
+  }
   if (!wrapperExists && databaseExists) {
     throw new DurableWorkspaceOpenError("database_without_key");
   }
@@ -114,7 +127,9 @@ export const createDurableKernelService = async (input: {
   try {
     bundle = wrapperExists
       ? await custody.load(custody.discoverWorkspaceId())
-      : await custody.create(generatedIdentity());
+      : await custody.create(
+          input.bootstrapProjection?.identity ?? generatedIdentity(),
+        );
   } catch (error) {
     if (error instanceof WorkspaceKeyCustodyError) throw error;
     throw new DurableWorkspaceOpenError("workspace_open_failed");
@@ -144,14 +159,46 @@ export const createDurableKernelService = async (input: {
   }
 
   try {
+    if (input.bootstrapProjection !== undefined) {
+      opened.store.initializeProjection(input.bootstrapProjection.snapshot);
+    }
+    const projected = opened.store.snapshot();
+    const projectedWorkspace = projected.workspaces.find(
+      (workspace) => workspace.id === bundle.identity.workspaceId,
+    );
+    const projectedMembership = projected.memberships.find(
+      (membership) =>
+        membership.workspaceId === bundle.identity.workspaceId &&
+        membership.principalId === bundle.identity.principalId &&
+        membership.status !== "revoked",
+    );
+    const projectedSpaceScope = new Set(
+      projected.spaceGrants
+        ?.filter(
+          (grant) =>
+            grant.workspaceId === bundle.identity.workspaceId &&
+            grant.principalId === bundle.identity.principalId &&
+            grant.status === "active",
+        )
+        .map((grant) => grant.spaceId) ?? [],
+    );
+    if (
+      projectedMembership?.role === "owner" &&
+      projectedWorkspace !== undefined
+    ) {
+      projectedSpaceScope.add(projectedWorkspace.rootSpaceId);
+    }
     const context = ExecutionContextSchema.parse({
       principalId: bundle.identity.principalId,
       principalKind: "human",
       credentialId: bundle.identity.credentialId,
       grantId: bundle.identity.grantId,
-      policyVersion: 1,
+      policyVersion: projectedWorkspace?.policyVersion ?? 1,
       workspaceId: bundle.identity.workspaceId,
-      spaceScope: [bundle.identity.rootSpaceId],
+      spaceScope:
+        projectedWorkspace === undefined
+          ? [bundle.identity.rootSpaceId]
+          : [...projectedSpaceScope].sort(),
       capabilityScope: LOCAL_ALPHA_CAPABILITIES,
       origin: "desktop",
     });
@@ -222,6 +269,13 @@ export const createDurableKernelService = async (input: {
     };
   } catch (error) {
     opened.close();
+    if (input.bootstrapProjection !== undefined && !databaseExists) {
+      for (const filename of [wrapperPath, databasePath]) {
+        for (const suffix of ["", "-shm", "-wal"]) {
+          rmSync(`${filename}${suffix}`, { force: true });
+        }
+      }
+    }
     throw error;
   }
 };

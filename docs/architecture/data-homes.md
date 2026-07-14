@@ -91,6 +91,13 @@ projection replacement testable. Provider quota reporting and incremental
 tombstone compaction remain future optimizations; they must not weaken current
 recovery behavior.
 
+Every delivered snapshot is filtered for the enrolled human's current Space
+scope before it reaches the device. If a Workspace membership or device grant
+is revoked, the next sync requests an atomic local purge of the projection,
+full-text index, command journal, and outbox. A ready encrypted profile whose
+projection was purged cannot reopen that content after relaunch and enters the
+explicit recovery surface instead.
+
 Operational setup and recovery are documented in the
 [self-hosted Hub runbook](../self-hosting/hub.md). Constellation never
 synchronizes an actively opened database through a generic cloud folder.

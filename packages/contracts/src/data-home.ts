@@ -182,6 +182,7 @@ export const DataHomeStatusSchema = z
         "provider_unknown_reconcile",
         "hub_unreachable",
         "device_revoked",
+        "membership_revoked",
         "sync_conflict",
         "sync_unknown_reconcile",
       ])

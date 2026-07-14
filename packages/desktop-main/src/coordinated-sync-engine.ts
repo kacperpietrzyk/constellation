@@ -41,7 +41,7 @@ export const createHubWorkspaceSnapshot = (
     ...snapshot,
   });
 
-const projection = (
+export const parseHubWorkspaceProjection = (
   snapshot: HubWorkspaceSnapshot,
   workspaceId: WorkspaceId,
 ): ReferenceStateSnapshot => {
@@ -55,6 +55,7 @@ const projection = (
   const scoped = [
     ...parsed.spaces,
     ...parsed.memberships,
+    ...parsed.spaceGrants,
     ...parsed.taskStatuses,
     ...parsed.captures,
     ...parsed.tasks,
@@ -91,6 +92,12 @@ export interface CoordinatedProjectionStore {
       readonly updatedAt: string;
     },
   ): void;
+  purgeProjection(input: {
+    readonly checkpoint: string;
+    readonly snapshotDigest: string;
+    readonly updatedAt: string;
+    readonly errorCode: "device_revoked" | "membership_revoked";
+  }): void;
   retrySyncCommand(commandId: string): void;
   updateCoordinationState(input: {
     readonly checkpoint: string;
@@ -323,6 +330,23 @@ export class CoordinatedSyncEngine {
         commands: pending.map((item) => item.command),
       });
       if (result.outcome === "rejected") {
+        if (result.purgeLocalProjection) {
+          this.input.store.purgeProjection({
+            checkpoint: state.checkpoint,
+            snapshotDigest: state.snapshotDigest,
+            updatedAt: now(),
+            errorCode:
+              result.code === "membership_revoked"
+                ? "membership_revoked"
+                : "device_revoked",
+          });
+          return {
+            state: "revoked",
+            checkpoint: state.checkpoint,
+            accepted: 0,
+            conflicts: 0,
+          };
+        }
         const syncState =
           result.code === "device_revoked" ? "revoked" : "offline";
         this.input.store.updateCoordinationState({
@@ -365,7 +389,10 @@ export class CoordinatedSyncEngine {
           throw new Error("Hub snapshot digest mismatch.");
         }
         this.input.store.replaceProjection(
-          projection(result.change.snapshot, this.input.workspaceId),
+          parseHubWorkspaceProjection(
+            result.change.snapshot,
+            this.input.workspaceId,
+          ),
           {
             checkpoint: result.change.checkpoint,
             snapshotDigest: result.change.digest,

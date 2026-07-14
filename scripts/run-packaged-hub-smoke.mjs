@@ -13,6 +13,8 @@ import {
 import {
   HubService,
   InMemoryHubRepository,
+  scopeHubSnapshot,
+  snapshotDigest,
   startHubServer,
 } from "@constellation/hub";
 
@@ -26,8 +28,12 @@ const manifest = JSON.parse(
 const stateRoot = path.join(root, "build", "packaged-hub-smoke-state");
 const firstUserData = path.join(stateRoot, "device-a");
 const secondUserData = path.join(stateRoot, "device-b");
+const memberUserData = path.join(stateRoot, "member-c");
 const baselineTitle = "Hub baseline from packaged device A";
 const offlineTitle = "Offline packaged work reconciled exactly once";
+const rejectedAfterDowngradeTitle = "Must disappear after view downgrade";
+const acceptedMemberOfflineTitle = "Member offline edit accepted after regrant";
+const privateSentinelTitle = "PRIVATE_SCOPE_SENTINEL_MUST_NEVER_APPEAR";
 fs.rmSync(stateRoot, { recursive: true, force: true });
 fs.mkdirSync(stateRoot, { recursive: true });
 
@@ -123,10 +129,17 @@ const waitForTarget = async (port, child) => {
   throw new Error("PACKAGED_APP_CDP_TIMEOUT");
 };
 
-const launch = async (userData, registrationUrl) => {
+const launch = async (userData, registrationUrl, bootstrap) => {
   const port = await reservePort();
   const recoveryRoot = path.join(userData, "recovery-smoke");
   fs.mkdirSync(recoveryRoot, { recursive: true });
+  if (bootstrap !== undefined) {
+    fs.writeFileSync(
+      path.join(recoveryRoot, "hub-bootstrap.json"),
+      `${JSON.stringify(bootstrap)}\n`,
+      { mode: 0o600 },
+    );
+  }
   let stderr = "";
   const child = spawn(
     manifest.executable,
@@ -236,6 +249,7 @@ const submitCapture = async (client, title) => {
 const repository = new InMemoryHubRepository();
 const service = new HubService(repository);
 const initialized = new Set();
+const connections = new Map();
 let hubPort = await reservePort();
 let dropNextSyncResponse = false;
 let hub = await startHubServer({
@@ -280,6 +294,11 @@ const registrationServer = http.createServer((request, response) => {
     });
     if (enrolled.outcome !== "success")
       throw new Error(`ENROLLMENT_${enrolled.code}`);
+    connections.set(context.principalId, {
+      context,
+      credential: enrolled.deviceCredential,
+      deviceId: enrolled.deviceId,
+    });
     response.writeHead(200, {
       "content-type": "application/json",
       "cache-control": "no-store",
@@ -313,6 +332,7 @@ const registrationUrl = `http://127.0.0.1:${registrationAddress.port}/register`;
 
 let first;
 let second;
+let member;
 try {
   process.stderr.write("packaged-hub: enroll device A\n");
   first = await launch(firstUserData, registrationUrl);
@@ -330,6 +350,155 @@ try {
   );
   if (firstSynced.syncState !== "current")
     throw new Error("FIRST_CHECKPOINT_NOT_CURRENT");
+
+  const workspaceId = WorkspaceIdSchema.parse(firstBuild.initialWorkspaceId);
+  const ownerConnection = [...connections.values()].find(
+    (value) => value.context.workspaceId === workspaceId,
+  );
+  if (ownerConnection === undefined)
+    throw new Error("OWNER_CONNECTION_NOT_CAPTURED");
+  const memberPrincipalId = crypto.randomUUID();
+  const membershipId = crypto.randomUUID();
+  const memberSpaceGrantId = crypto.randomUUID();
+  const memberCredentialId = crypto.randomUUID();
+  const memberGrantId = crypto.randomUUID();
+
+  const executeOwnerPolicy = async (commandName, payload) => {
+    const current = await repository.withWorkspaceLock(
+      workspaceId,
+      (state) => ({
+        checkpoint: state.checkpoint.toString(),
+        workspace: state.snapshot.workspaces[0],
+        membership: state.snapshot.memberships.find(
+          (value) => value.id === membershipId,
+        ),
+        grant: state.snapshot.spaceGrants.find(
+          (value) => value.id === memberSpaceGrantId,
+        ),
+      }),
+    );
+    if (current.workspace === undefined)
+      throw new Error("AUTHORITATIVE_WORKSPACE_MISSING");
+    const expectedVersions = { [workspaceId]: current.workspace.version };
+    if (commandName === "workspace.memberSetAccess") {
+      expectedVersions[membershipId] = current.membership?.version;
+      expectedVersions[memberSpaceGrantId] = current.grant?.version;
+    }
+    if (commandName === "workspace.memberRevoke") {
+      expectedVersions[membershipId] = current.membership?.version;
+    }
+    const command = {
+      contractVersion: 1,
+      commandName,
+      commandId: crypto.randomUUID(),
+      workspaceId,
+      idempotencyKey: `packaged-r4-${commandName}-${crypto.randomUUID()}`,
+      expectedVersions,
+      correlationId: crypto.randomUUID(),
+      payload,
+    };
+    const result = await service.sync(ownerConnection.credential, {
+      protocolVersion: 1,
+      workspaceId,
+      deviceId: ownerConnection.deviceId,
+      checkpoint: current.checkpoint,
+      commands: [command],
+    });
+    if (
+      result.outcome !== "success" ||
+      result.receipts[0]?.outcome.outcome !== "success"
+    ) {
+      throw new Error(`OWNER_POLICY_${commandName}_FAILED`);
+    }
+  };
+
+  const authoritative = await repository.withWorkspaceLock(
+    workspaceId,
+    (state) => state.snapshot,
+  );
+  const rootSpaceId = authoritative.workspaces[0]?.rootSpaceId;
+  if (rootSpaceId === undefined) throw new Error("ROOT_SPACE_MISSING");
+  await executeOwnerPolicy("workspace.memberAdd", {
+    membershipId,
+    spaceGrantId: memberSpaceGrantId,
+    principalId: memberPrincipalId,
+    displayName: "Packaged R4 member",
+    role: "member",
+    spaceId: rootSpaceId,
+    access: "edit",
+  });
+
+  const privateSpaceId = crypto.randomUUID();
+  await repository.withWorkspaceLock(workspaceId, (state) => {
+    const rootSpace = state.snapshot.spaces[0];
+    const sourceTask = state.snapshot.tasks[0];
+    const sourceCapture = state.snapshot.captures[0];
+    if (
+      rootSpace === undefined ||
+      sourceTask === undefined ||
+      sourceCapture === undefined
+    )
+      throw new Error("PRIVATE_SENTINEL_SOURCE_MISSING");
+    const privateCaptureId = crypto.randomUUID();
+    state.snapshot = HubWorkspaceSnapshotSchema.parse({
+      ...state.snapshot,
+      spaces: [
+        ...state.snapshot.spaces,
+        { ...rootSpace, id: privateSpaceId, name: "Owner private" },
+      ],
+      captures: [
+        ...state.snapshot.captures,
+        {
+          ...sourceCapture,
+          id: privateCaptureId,
+          spaceId: privateSpaceId,
+          originalText: privateSentinelTitle,
+        },
+      ],
+      tasks: [
+        ...state.snapshot.tasks,
+        {
+          ...sourceTask,
+          id: crypto.randomUUID(),
+          spaceId: privateSpaceId,
+          sourceCaptureId: privateCaptureId,
+          title: privateSentinelTitle,
+        },
+      ],
+    });
+    state.checkpoint += 1n;
+    state.snapshotDigest = snapshotDigest(state.snapshot);
+  });
+
+  const memberContext = {
+    ...ownerConnection.context,
+    principalId: memberPrincipalId,
+    credentialId: memberCredentialId,
+    grantId: memberGrantId,
+    spaceScope: [rootSpaceId],
+  };
+  const memberSnapshot = await repository.withWorkspaceLock(
+    workspaceId,
+    (state) => scopeHubSnapshot(state.snapshot, workspaceId, memberContext),
+  );
+  if (memberSnapshot === undefined)
+    throw new Error("MEMBER_SCOPED_SNAPSHOT_MISSING");
+  if (
+    JSON.stringify(memberSnapshot).includes(privateSentinelTitle) ||
+    memberSnapshot.spaces.some((space) => space.id === privateSpaceId)
+  ) {
+    throw new Error("MEMBER_BOOTSTRAP_LEAKED_PRIVATE_SCOPE");
+  }
+  const memberBootstrap = {
+    identity: {
+      workspaceId,
+      rootSpaceId,
+      principalId: memberPrincipalId,
+      credentialId: memberCredentialId,
+      grantId: memberGrantId,
+    },
+    snapshot: memberSnapshot,
+  };
   const backup = await first.client.evaluate(
     `window.constellation.exportWorkspaceBackup()`,
   );
@@ -366,6 +535,93 @@ try {
     throw new Error("SECOND_DEVICE_RESTORE_FAILED");
   await stop(second);
   second = undefined;
+
+  process.stderr.write("packaged-hub: bootstrap scoped member profile\n");
+  member = await launch(memberUserData, registrationUrl, memberBootstrap);
+  const memberStatus = await member.client.evaluate(
+    `window.constellation.getDataHomeStatus()`,
+  );
+  if (memberStatus.descriptor.providerKind !== "coordinated")
+    throw new Error("MEMBER_NOT_COORDINATED");
+  const leakedPrivateText = await member.client.evaluate(
+    `document.body.innerText.includes(${JSON.stringify(privateSentinelTitle)})`,
+  );
+  if (leakedPrivateText) throw new Error("MEMBER_UI_LEAKED_PRIVATE_SCOPE");
+
+  process.stderr.write(
+    "packaged-hub: reject queued member edit after view downgrade\n",
+  );
+  await hub.close();
+  await submitCapture(member.client, rejectedAfterDowngradeTitle);
+  await executeOwnerPolicy("workspace.memberSetAccess", {
+    membershipId,
+    spaceGrantId: memberSpaceGrantId,
+    access: "view",
+  });
+  hub = await startHubServer({
+    service,
+    host: "127.0.0.1",
+    port: hubPort,
+    allowInsecureLoopback: true,
+  });
+  const downgraded = await member.client.evaluate(
+    `window.constellation.syncDataHome()`,
+  );
+  if (downgraded.syncState !== "current")
+    throw new Error(`MEMBER_DOWNGRADE_SYNC_FAILED_${downgraded.syncState}`);
+  await member.client.evaluate(`window.location.reload()`);
+  await waitFor(
+    member.client,
+    `document.querySelector(".desktop-shell") !== null`,
+    "MEMBER_DOWNGRADE_RELOAD_FAILED",
+  );
+  const rejectedStillVisible = await member.client.evaluate(
+    `document.body.innerText.includes(${JSON.stringify(rejectedAfterDowngradeTitle)})`,
+  );
+  if (rejectedStillVisible)
+    throw new Error("REJECTED_MEMBER_EDIT_REMAINED_VISIBLE");
+
+  await executeOwnerPolicy("workspace.memberSetAccess", {
+    membershipId,
+    spaceGrantId: memberSpaceGrantId,
+    access: "edit",
+  });
+  await member.client.evaluate(`window.constellation.syncDataHome()`);
+  await hub.close();
+  await submitCapture(member.client, acceptedMemberOfflineTitle);
+  hub = await startHubServer({
+    service,
+    host: "127.0.0.1",
+    port: hubPort,
+    allowInsecureLoopback: true,
+  });
+  const memberAccepted = await member.client.evaluate(
+    `window.constellation.syncDataHome()`,
+  );
+  if (memberAccepted.syncState !== "current")
+    throw new Error("MEMBER_OFFLINE_EDIT_NOT_ACCEPTED");
+
+  process.stderr.write("packaged-hub: revoke member and purge projection\n");
+  await executeOwnerPolicy("workspace.memberRevoke", { membershipId });
+  const revoked = await member.client.evaluate(
+    `window.constellation.syncDataHome()`,
+  );
+  if (
+    revoked.availability !== "unavailable" ||
+    revoked.detailCode !== "membership_revoked"
+  ) {
+    throw new Error(`MEMBER_REVOCATION_NOT_ENFORCED_${revoked.detailCode}`);
+  }
+  await stop(member);
+  member = undefined;
+  member = await launch(memberUserData);
+  const recoveryVisible = await member.client.evaluate(
+    `document.querySelector(".recovery-required-state") !== null`,
+  );
+  if (!recoveryVisible)
+    throw new Error("REVOKED_MEMBER_REOPENED_PURGED_PROJECTION");
+  await stop(member);
+  member = undefined;
 
   process.stderr.write("packaged-hub: enroll device B\n");
   second = await launch(secondUserData, registrationUrl);
@@ -448,16 +704,23 @@ try {
       status: "pass",
       platform: process.platform,
       provider: "constellation.self-hosted-hub/v1",
-      packagedProfiles: 2,
+      packagedProfiles: 3,
+      distinctHumanPrincipals: 2,
       distinctDevices: true,
       offlineQueued: true,
       lostResponseReconciled: true,
       convergedTask: offlineTitle,
+      scopedBootstrap: true,
+      privateScopeLeakFree: true,
+      staleEditRejectedAfterDowngrade: true,
+      memberOfflineEditAccepted: true,
+      membershipRevocationPurged: true,
     })}\n`,
   );
 } finally {
   if (first !== undefined) await stop(first).catch(() => undefined);
   if (second !== undefined) await stop(second).catch(() => undefined);
+  if (member !== undefined) await stop(member).catch(() => undefined);
   await hub.close().catch(() => undefined);
   await new Promise((resolve) => registrationServer.close(resolve));
 }
