@@ -5,4 +5,5 @@ export * from "./collaboration.js";
 export * from "./agent-access.js";
 export * from "./kernel.js";
 export * from "./memory-store.js";
+export * from "./meeting-loop.js";
 export * from "./ports.js";

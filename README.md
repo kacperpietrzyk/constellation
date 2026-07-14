@@ -164,10 +164,23 @@ Workspace, Space, capability, expiry, and provider policy; administrative
 capabilities cannot be delegated. Setup and recovery details are in
 [Remote MCP agent access](docs/remote-mcp-agents.md).
 
+The desktop now also contains the first meeting-to-work loop. On macOS, a
+narrow EventKit helper requests full calendar access and returns normalized
+upcoming events; Windows and unsupported environments show an explicit provider
+state instead of pretending that calendar data is current. The Meetings
+surface builds factual preparation only from authorized graph evidence. It can
+store a personal or workspace Jamie API key in operating-system credential
+protection, import the last 90 days with stable meeting and task identity, and
+preserve local edits when Jamie later corrects a result. Each imported action
+has its own version and lifecycle. Creating or changing a Constellation-owned
+calendar block always requires an exact, five-minute, single-use preview. The
+boundary and current limitations are documented in
+[Meetings and calendar](docs/architecture/meetings-and-calendar.md).
+
 The resulting ad-hoc macOS and unsigned Windows application folders are
 verification artifacts, not a signed/notarized release. The Hub is an operator
-preview rather than a hosted service. Meetings and calendar context are the
-next active product outcome; installers, updater, richer
+preview rather than a hosted service. Cross-device meeting-loop replication,
+installers, updater, richer
 notification policy, document comments/citations, and automatic routing rules
 beyond the explicit Capture action remain later work.
 
