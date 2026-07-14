@@ -406,6 +406,15 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         `document.querySelector('.inspector-header small')?.textContent === 'Projekt' && document.querySelector('.inspector-body h2')?.textContent === ${JSON.stringify(projectTitle)} && document.querySelector('.provenance-block blockquote')?.textContent === ${JSON.stringify(projectOutcome)}`,
         "PACKAGED_ALPHA_PROJECT_CONTEXT_MISSING",
       );
+      await client.evaluate(`(() => {
+        document.querySelector('.nav-item[data-surface="tasks"]').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.shell-tab.active [data-shell-tab="destination:tasks"]') !== null`,
+        "PACKAGED_ALPHA_TASK_CONTEXT_RETURN_FAILED",
+      );
     } else if (phase.startsWith("interrupted-")) {
       restorePreview = await client.evaluate(
         `window.constellation.prepareWorkspaceRestore({ recoveryCode: ${JSON.stringify(recoveryCode)} })`,
