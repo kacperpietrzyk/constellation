@@ -20,6 +20,7 @@ import type {
 } from "@constellation/desktop-preload/client";
 
 import { AccessSurface } from "./AccessSurface.js";
+import { AttentionSurface, CommentsPanel } from "./CollaborationSurfaces.js";
 
 import {
   ActivitySurface,
@@ -32,9 +33,12 @@ import {
 } from "./Wave2Surfaces.js";
 import {
   addWorkspaceMember,
+  addComment,
+  editComment,
   createProject,
   loadDesktopSnapshot,
   loadProjectOverview,
+  loadComments,
   previewUndo,
   revokeWorkspaceMember,
   relateTask,
@@ -42,14 +46,18 @@ import {
   setTaskAssignment,
   setTaskStatus,
   setWorkspaceMemberAccess,
+  setCommentResolved,
   submitCaptureAsTask,
   undoCommand,
   unrelateTask,
   updateProjectOutcome,
+  updateAttention,
   type AuditReceiptProjection,
   type DesktopSnapshot,
   type MutationFailure,
   type ProjectOverviewProjection,
+  type CommentListProjection,
+  type DataSlice,
   type UndoPreview,
 } from "./client/workflow.js";
 import {
@@ -87,6 +95,7 @@ type IconName =
   | "project"
   | "cockpit"
   | "activity"
+  | "attention"
   | "access";
 const Icon = ({ name }: { readonly name: IconName }) => {
   const paths = {
@@ -100,6 +109,9 @@ const Icon = ({ name }: { readonly name: IconName }) => {
     project: <path d="M4 5h6l2 2h8v12H4z" />,
     cockpit: <path d="M4 5h7v6H4zM13 5h7v10h-7zM4 13h7v6H4zM13 17h7v2h-7z" />,
     activity: <path d="M5 6h14M5 12h14M5 18h9M3 6h.01M3 12h.01M3 18h.01" />,
+    attention: (
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM9.5 20h5" />
+    ),
     access: (
       <path d="M16 19c0-3-2.2-5-5-5s-5 2-5 5M11 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM17 8h4M19 6v4" />
     ),
@@ -242,7 +254,8 @@ const navItems: readonly {
   { id: "projects", label: "Projekty", icon: "project", shortcut: "3" },
   { id: "history", label: "Historia Capture", icon: "history", shortcut: "4" },
   { id: "activity", label: "Aktywność", icon: "activity", shortcut: "5" },
-  { id: "access", label: "Dostęp", icon: "access", shortcut: "6" },
+  { id: "attention", label: "Do uwagi", icon: "attention", shortcut: "6" },
+  { id: "access", label: "Dostęp", icon: "access", shortcut: "7" },
 ];
 
 export const RealApp = ({
@@ -265,6 +278,12 @@ export const RealApp = ({
   const [busyTaskId, setBusyTaskId] = useState<TaskId>();
   const [projectBusy, setProjectBusy] = useState(false);
   const [accessBusy, setAccessBusy] = useState(false);
+  const [commentBusy, setCommentBusy] = useState(false);
+  const [attentionBusy, setAttentionBusy] = useState(false);
+  const [comments, setComments] = useState<DataSlice<CommentListProjection>>({
+    kind: "unavailable",
+    message: "Wybierz Task albo Project.",
+  });
   const [sessionRelation, setSessionRelation] = useState<{
     id: RelationId;
     version: number;
@@ -297,6 +316,17 @@ export const RealApp = ({
   }, [activeContext.projectId, activeContext.taskId]);
 
   const snapshot = state.kind === "ready" ? state.snapshot : undefined;
+  useEffect(() => {
+    if (!client) return;
+    return client.onAttentionActivated((destination) => {
+      if (destination.kind === "task") {
+        openContext(taskContext(destination.taskId, "Zadanie"));
+      } else {
+        openContext(projectContext(destination.projectId, "Projekt"));
+      }
+    });
+  }, [client, openContext]);
+
   const reload = async () => {
     if (!client) return;
     const next = await loadDesktopSnapshot(client, snapshot?.build);
@@ -371,6 +401,36 @@ export const RealApp = ({
   }, [client, selectedProjectId, snapshot]);
 
   useEffect(() => {
+    if (!client || !snapshot || (!selectedTaskId && !selectedProjectId)) {
+      setComments({
+        kind: "unavailable",
+        message: "Wybierz Task albo Project.",
+      });
+      return;
+    }
+    let active = true;
+    const target = selectedTaskId
+      ? { kind: "task" as const, taskId: selectedTaskId }
+      : { kind: "project" as const, projectId: selectedProjectId! };
+    void loadComments(client, snapshot, target)
+      .then((data) => active && setComments({ kind: "ready", data }))
+      .catch(
+        (error: unknown) =>
+          active &&
+          setComments({
+            kind: "unavailable",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Komentarze są niedostępne.",
+          }),
+      );
+    return () => {
+      active = false;
+    };
+  }, [client, selectedProjectId, selectedTaskId, snapshot]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const modalOpen = document.querySelector("dialog[open]") !== null;
       if (modalOpen && event.key !== "Escape") return;
@@ -386,7 +446,7 @@ export const RealApp = ({
         setSearchOpen(true);
       } else if (
         (event.metaKey || event.ctrlKey) &&
-        /^Digit[1-6]$/.test(event.code)
+        /^Digit[1-7]$/.test(event.code)
       ) {
         event.preventDefault();
         const item = navItems[Number(event.code.slice(-1)) - 1];
@@ -458,6 +518,20 @@ export const RealApp = ({
   const receipt =
     selectedTask === undefined ? undefined : receipts[selectedTask.id];
   const showFailure = (result: MutationFailure) => setNotice(result);
+  const currentPrincipalId =
+    snapshot?.access.kind === "ready"
+      ? snapshot.access.data.currentPrincipalId
+      : undefined;
+  const currentMember =
+    snapshot?.access.kind === "ready"
+      ? snapshot.access.data.members.find(
+          (member) => member.principalId === currentPrincipalId,
+        )
+      : undefined;
+  const currentGrant = currentMember?.spaces[0];
+  const canResolveComments =
+    currentMember?.role === "owner" || currentGrant?.access === "edit";
+  const canComment = canResolveComments || currentGrant?.access === "comment";
   const refreshAfter = async (message: string) => {
     await reload();
     setToast(message);
@@ -646,6 +720,15 @@ export const RealApp = ({
               <span>{item.label}</span>
               {item.id === "tasks" ? (
                 <span className="nav-count">{tasks.length}</span>
+              ) : item.id === "attention" &&
+                state.snapshot.attention.kind === "ready" &&
+                state.snapshot.attention.data.unreadCount > 0 ? (
+                <span
+                  className="nav-count"
+                  aria-label={`${state.snapshot.attention.data.unreadCount} nieprzeczytanych`}
+                >
+                  {state.snapshot.attention.data.unreadCount}
+                </span>
               ) : (
                 <kbd>
                   {modifierLabel}
@@ -1016,6 +1099,73 @@ export const RealApp = ({
             onUndo={(id) => void openUndo(id)}
           />
         )}
+        {surface === "attention" && (
+          <AttentionSurface
+            attention={state.snapshot.attention}
+            busy={attentionBusy}
+            onOpen={(item) => {
+              const destination = item.destination;
+              if (destination.kind === "task") {
+                const task = tasks.find(
+                  (candidate) => candidate.id === destination.taskId,
+                );
+                openContext(
+                  taskContext(destination.taskId, task?.title ?? item.title),
+                );
+              } else {
+                const project =
+                  state.snapshot.projects.kind === "ready"
+                    ? state.snapshot.projects.data.items.find(
+                        (candidate) => candidate.id === destination.projectId,
+                      )
+                    : undefined;
+                openContext(
+                  projectContext(
+                    destination.projectId,
+                    project?.title ?? item.title,
+                  ),
+                );
+              }
+              if (client && item.state === "unread") {
+                setAttentionBusy(true);
+                void updateAttention(client, state.snapshot, item, "read").then(
+                  async (result) => {
+                    setAttentionBusy(false);
+                    if (result.kind === "success") await reload();
+                    else showFailure(result);
+                  },
+                );
+              }
+            }}
+            onRead={(item) => {
+              if (!client) return;
+              setAttentionBusy(true);
+              void updateAttention(client, state.snapshot, item, "read").then(
+                async (result) => {
+                  setAttentionBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter("Sygnał oznaczono jako przeczytany.");
+                  else showFailure(result);
+                },
+              );
+            }}
+            onDismiss={(item) => {
+              if (!client) return;
+              setAttentionBusy(true);
+              void updateAttention(
+                client,
+                state.snapshot,
+                item,
+                "dismiss",
+              ).then(async (result) => {
+                setAttentionBusy(false);
+                if (result.kind === "success")
+                  await refreshAfter("Sygnał usunięto z uwagi.");
+                else showFailure(result);
+              });
+            }}
+          />
+        )}
         {surface === "access" && (
           <AccessSurface
             access={state.snapshot.access}
@@ -1155,6 +1305,77 @@ export const RealApp = ({
                 <p>Pełny receipt pozostaje w Kernelu.</p>
               )}
             </section>
+            <CommentsPanel
+              comments={comments}
+              candidates={state.snapshot.mentionCandidates}
+              currentPrincipalId={currentPrincipalId}
+              canComment={Boolean(canComment)}
+              canResolve={Boolean(canResolveComments)}
+              busy={commentBusy}
+              onAdd={(body, mentions, parent) => {
+                if (!client) return;
+                setCommentBusy(true);
+                void addComment(
+                  client,
+                  state.snapshot,
+                  { kind: "task", taskId: selectedTask.id },
+                  selectedTask.version,
+                  body,
+                  mentions,
+                  parent,
+                ).then(async (result) => {
+                  setCommentBusy(false);
+                  if (result.kind === "success") {
+                    const data = await loadComments(client, state.snapshot, {
+                      kind: "task",
+                      taskId: selectedTask.id,
+                    });
+                    setComments({ kind: "ready", data });
+                    setToast("Komentarz zapisano.");
+                  } else showFailure(result);
+                });
+              }}
+              onEdit={(comment, body) => {
+                if (!client) return;
+                setCommentBusy(true);
+                void editComment(
+                  client,
+                  state.snapshot,
+                  comment.id,
+                  comment.version,
+                  body,
+                  comment.mentionPrincipalIds,
+                ).then(async (result) => {
+                  setCommentBusy(false);
+                  if (result.kind === "success") {
+                    const data = await loadComments(client, state.snapshot, {
+                      kind: "task",
+                      taskId: selectedTask.id,
+                    });
+                    setComments({ kind: "ready", data });
+                  } else showFailure(result);
+                });
+              }}
+              onResolve={(comment, resolved) => {
+                if (!client) return;
+                setCommentBusy(true);
+                void setCommentResolved(
+                  client,
+                  state.snapshot,
+                  comment,
+                  resolved,
+                ).then(async (result) => {
+                  setCommentBusy(false);
+                  if (result.kind === "success") {
+                    const data = await loadComments(client, state.snapshot, {
+                      kind: "task",
+                      taskId: selectedTask.id,
+                    });
+                    setComments({ kind: "ready", data });
+                  } else showFailure(result);
+                });
+              }}
+            />
           </div>
         ) : selectedProject ? (
           <div className="inspector-body">
@@ -1189,6 +1410,77 @@ export const RealApp = ({
                 </div>
               </dl>
             </section>
+            <CommentsPanel
+              comments={comments}
+              candidates={state.snapshot.mentionCandidates}
+              currentPrincipalId={currentPrincipalId}
+              canComment={Boolean(canComment)}
+              canResolve={Boolean(canResolveComments)}
+              busy={commentBusy}
+              onAdd={(body, mentions, parent) => {
+                if (!client) return;
+                setCommentBusy(true);
+                void addComment(
+                  client,
+                  state.snapshot,
+                  { kind: "project", projectId: selectedProject.id },
+                  projectOverview?.project.version ?? selectedProject.version,
+                  body,
+                  mentions,
+                  parent,
+                ).then(async (result) => {
+                  setCommentBusy(false);
+                  if (result.kind === "success") {
+                    const data = await loadComments(client, state.snapshot, {
+                      kind: "project",
+                      projectId: selectedProject.id,
+                    });
+                    setComments({ kind: "ready", data });
+                    setToast("Komentarz zapisano.");
+                  } else showFailure(result);
+                });
+              }}
+              onEdit={(comment, body) => {
+                if (!client) return;
+                setCommentBusy(true);
+                void editComment(
+                  client,
+                  state.snapshot,
+                  comment.id,
+                  comment.version,
+                  body,
+                  comment.mentionPrincipalIds,
+                ).then(async (result) => {
+                  setCommentBusy(false);
+                  if (result.kind === "success") {
+                    const data = await loadComments(client, state.snapshot, {
+                      kind: "project",
+                      projectId: selectedProject.id,
+                    });
+                    setComments({ kind: "ready", data });
+                  } else showFailure(result);
+                });
+              }}
+              onResolve={(comment, resolved) => {
+                if (!client) return;
+                setCommentBusy(true);
+                void setCommentResolved(
+                  client,
+                  state.snapshot,
+                  comment,
+                  resolved,
+                ).then(async (result) => {
+                  setCommentBusy(false);
+                  if (result.kind === "success") {
+                    const data = await loadComments(client, state.snapshot, {
+                      kind: "project",
+                      projectId: selectedProject.id,
+                    });
+                    setComments({ kind: "ready", data });
+                  } else showFailure(result);
+                });
+              }}
+            />
           </div>
         ) : (
           <div className="inspector-empty workspace-context">

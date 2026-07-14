@@ -25,6 +25,7 @@ export interface ScenarioFixtures {
 export const createScenarioClient = (
   fixtures: ScenarioFixtures,
 ): ConstellationRendererClient => ({
+  onAttentionActivated: () => () => undefined,
   cancelWorkspaceRestore: async () => undefined,
   confirmWorkspaceRestore: async () => ({
     outcome: "failure",

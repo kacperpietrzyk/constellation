@@ -250,6 +250,12 @@ const isCurrentlyAuthorized = (
     case "task.reopen":
     case "task.assign":
     case "task.unassign":
+    case "comment.add":
+    case "comment.edit":
+    case "comment.resolve":
+    case "comment.reopen":
+    case "attention.markRead":
+    case "attention.dismiss":
     case "record.relate":
     case "record.unrelate":
     case "command.previewUndo":
@@ -428,6 +434,12 @@ export class ApplicationKernel {
       case "task.setStatus":
       case "task.complete":
       case "task.reopen":
+      case "comment.add":
+      case "comment.edit":
+      case "comment.resolve":
+      case "comment.reopen":
+      case "attention.markRead":
+      case "attention.dismiss":
       case "task.assign":
       case "task.unassign":
       case "record.relate":
@@ -1059,6 +1071,9 @@ export class ApplicationKernel {
         case "cockpit.week":
         case "activity.meaningful":
         case "recovery.preview":
+        case "comment.list":
+        case "comment.mentionCandidates":
+        case "attention.inbox":
           return executeWave2Query(
             this.dependencies,
             view,

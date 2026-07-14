@@ -60,6 +60,15 @@ const context = (): ExecutionContext =>
       "task.reopen",
       "task.assign",
       "task.unassign",
+      "comment.add",
+      "comment.edit",
+      "comment.resolve",
+      "comment.reopen",
+      "comment.list",
+      "comment.mentionCandidates",
+      "attention.inbox",
+      "attention.markRead",
+      "attention.dismiss",
       "record.relate",
       "record.unrelate",
       "task.list",
@@ -175,6 +184,100 @@ const createProjectRecord = (
 };
 
 describe("Wave 2 reference semantics", () => {
+  it("keeps attributed comment threads, edit history, and durable attention distinct from activity", () => {
+    const harness = setup();
+    const taskId = createTask(harness, "Review the scoped comment");
+    const task = harness.store
+      .snapshot()
+      .tasks.find((item) => item.id === taskId);
+    assert.ok(task);
+    const rootId = requestId();
+    const added = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("comment-root", { [taskId]: task.version }),
+        commandName: "comment.add",
+        payload: {
+          commentId: rootId,
+          target: { kind: "task", taskId },
+          body: "Please verify the recovery evidence.",
+          mentionPrincipalIds: [ids.principal],
+        },
+      }),
+    );
+    assert.equal(added.diagnosticCode, "comment.added");
+    const replyId = requestId();
+    const replied = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("comment-reply", { [taskId]: task.version, [rootId]: 1 }),
+        commandName: "comment.add",
+        payload: {
+          commentId: replyId,
+          target: { kind: "task", taskId },
+          parentCommentId: rootId,
+          body: "Recovery evidence is attached.",
+          mentionPrincipalIds: [],
+        },
+      }),
+    );
+    assert.equal(replied.diagnosticCode, "comment.added");
+    const edited = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("comment-edit", { [replyId]: 1 }),
+        commandName: "comment.edit",
+        payload: {
+          commentId: replyId,
+          body: "Packaged recovery evidence is attached.",
+          mentionPrincipalIds: [],
+        },
+      }),
+    );
+    assert.equal(edited.diagnosticCode, "comment.edited");
+    const resolved = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("comment-resolve", { [rootId]: 1 }),
+        commandName: "comment.resolve",
+        payload: { commentId: rootId },
+      }),
+    );
+    assert.equal(resolved.diagnosticCode, "comment.resolved");
+    const snapshot = harness.store.snapshot();
+    assert.equal(snapshot.comments?.length, 2);
+    assert.equal(
+      snapshot.comments?.find((item) => item.id === replyId)?.revisions.length,
+      1,
+    );
+    assert.equal(
+      snapshot.comments?.find((item) => item.id === rootId)?.threadState,
+      "resolved",
+    );
+    const comments = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "comment.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { target: { kind: "task", taskId } },
+    });
+    assert.equal(comments.kind, "query_result");
+    if (
+      comments.kind !== "query_result" ||
+      comments.result.outcome !== "success" ||
+      comments.result.projection.kind !== "comment.list"
+    )
+      assert.fail("Expected comment projection.");
+    assert.equal(comments.result.projection.threads.length, 2);
+    assert.equal(comments.result.projection.threads[1]?.edited, true);
+    assert.equal(
+      comments.result.projection.threads[1]?.threadState,
+      "resolved",
+    );
+    assert.equal(
+      snapshot.attentionSignals?.length,
+      0,
+      "self mention does not create attention debt",
+    );
+  });
+
   it("assigns and unassigns one versioned Task responsibility", () => {
     const harness = setup();
     const taskId = createTask(harness, "Own the collaboration gate");
@@ -220,6 +323,26 @@ describe("Wave 2 reference semantics", () => {
       taskList.result.projection.items[0]?.assignment?.availability,
       "active",
     );
+    const attention = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "attention.inbox",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: {},
+    });
+    assert.equal(attention.kind, "query_result");
+    if (
+      attention.kind !== "query_result" ||
+      attention.result.outcome !== "success" ||
+      attention.result.projection.kind !== "attention.inbox"
+    )
+      assert.fail("Expected assignment attention.");
+    assert.equal(attention.result.projection.unreadCount, 1);
+    assert.equal(
+      attention.result.projection.items[0]?.reason,
+      "task_assignment",
+    );
     const unassigned = unwrap(
       harness.kernel.execute(context(), {
         ...metadata("unassign-owner", {
@@ -241,6 +364,7 @@ describe("Wave 2 reference semantics", () => {
   it("rolls back Task assignment at every journal boundary", () => {
     const boundaries: readonly FailureBoundary[] = [
       "task-assignment",
+      "attention-signal",
       "event",
       "audit",
       "idempotency",
@@ -272,6 +396,11 @@ describe("Wave 2 reference semantics", () => {
       assert.equal(result.outcome, "retryable", boundary);
       const after = harness.store.snapshot();
       assert.deepEqual(after.taskAssignments, before.taskAssignments, boundary);
+      assert.deepEqual(
+        after.attentionSignals,
+        before.attentionSignals,
+        boundary,
+      );
       assert.equal(after.events.length, before.events.length, boundary);
       assert.equal(
         after.auditReceipts.length,

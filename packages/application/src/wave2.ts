@@ -1,4 +1,9 @@
-import { canEditSpace, canViewSpace } from "./collaboration-policy.js";
+import {
+  canCommentInSpace,
+  canEditSpace,
+  canViewSpace,
+  effectiveSpaceAccess,
+} from "./collaboration-policy.js";
 import {
   AuditReceiptIdSchema,
   CommandOutcomeSchema,
@@ -8,12 +13,14 @@ import {
   QueryResultSchema,
   RelationIdSchema,
   TaskAssignmentIdSchema,
+  AttentionSignalIdSchema,
   type CommandEnvelope,
   type CommandOutcome,
   type ExecutionContext,
   type QueryEnvelope,
   type QueryResult,
   type SpaceId,
+  type WorkspaceId,
 } from "@constellation/contracts";
 import {
   completeTask,
@@ -23,6 +30,9 @@ import {
   removeTaskProjectRelation,
   reopenTask,
   removeTaskAssignment,
+  editComment,
+  setCommentThreadState,
+  setAttentionState,
   restoreTaskProjectRelation,
   setTaskStatus,
   undoCaptureTaskRoute,
@@ -35,6 +45,9 @@ import {
   type TaskAssignment,
   type TaskProjectRelation,
   type UndoDescriptor,
+  type RecordComment,
+  type AttentionSignal,
+  type CommentTarget,
 } from "@constellation/domain";
 
 import type {
@@ -49,6 +62,7 @@ import type {
 import {
   isApplicationWave2ReadView,
   isApplicationWave2Transaction,
+  RetryableUnitOfWorkError,
 } from "./ports.js";
 
 type DomainEventBody = DomainEvent extends infer Event
@@ -68,6 +82,12 @@ export type Wave2Command = Extract<
       | "task.reopen"
       | "task.assign"
       | "task.unassign"
+      | "comment.add"
+      | "comment.edit"
+      | "comment.resolve"
+      | "comment.reopen"
+      | "attention.markRead"
+      | "attention.dismiss"
       | "record.relate"
       | "record.unrelate"
       | "command.previewUndo"
@@ -84,7 +104,10 @@ export type Wave2Query = Extract<
       | "search.global"
       | "cockpit.week"
       | "activity.meaningful"
-      | "recovery.preview";
+      | "recovery.preview"
+      | "comment.list"
+      | "comment.mentionCandidates"
+      | "attention.inbox";
   }
 >;
 
@@ -147,6 +170,65 @@ export const isWave2CommandAuthorized = (
         context,
         command,
         task?.workspaceId === command.workspaceId ? task.spaceId : undefined,
+      );
+    }
+    case "comment.add": {
+      const target = command.payload.target;
+      const record =
+        target.kind === "task"
+          ? view.getTask(target.taskId)
+          : view.getProject(target.projectId);
+      const spaceId =
+        record?.workspaceId === command.workspaceId
+          ? record.spaceId
+          : undefined;
+      return (
+        spaceId !== undefined &&
+        canCommentInSpace(view, context, command.workspaceId, spaceId) &&
+        dependencies.authorization.authorize({
+          context,
+          capability: command.commandName,
+          workspaceId: command.workspaceId,
+          spaceId,
+        })
+      );
+    }
+    case "comment.edit":
+    case "comment.resolve":
+    case "comment.reopen": {
+      const comment = view.getComment(command.payload.commentId);
+      const spaceId =
+        comment?.workspaceId === command.workspaceId
+          ? comment.spaceId
+          : undefined;
+      return (
+        spaceId !== undefined &&
+        canCommentInSpace(view, context, command.workspaceId, spaceId) &&
+        dependencies.authorization.authorize({
+          context,
+          capability:
+            command.commandName === "comment.resolve" ||
+            command.commandName === "comment.reopen"
+              ? "comment.resolve"
+              : "comment.edit",
+          workspaceId: command.workspaceId,
+          spaceId,
+        })
+      );
+    }
+    case "attention.markRead":
+    case "attention.dismiss": {
+      const signal = view.getAttentionSignal(command.payload.attentionSignalId);
+      return (
+        signal?.workspaceId === command.workspaceId &&
+        signal.targetPrincipalId === context.principalId &&
+        canViewSpace(view, context, command.workspaceId, signal.spaceId) &&
+        dependencies.authorization.authorize({
+          context,
+          capability: command.commandName,
+          workspaceId: command.workspaceId,
+          spaceId: signal.spaceId,
+        })
       );
     }
     case "record.relate": {
@@ -259,7 +341,13 @@ const appendJournal = (
   affectedKinds?: Readonly<
     Record<
       string,
-      "capture" | "task" | "taskAssignment" | "project" | "relation"
+      | "capture"
+      | "task"
+      | "taskAssignment"
+      | "project"
+      | "relation"
+      | "comment"
+      | "attentionSignal"
     >
   >,
 ): CommandOutcome => {
@@ -346,6 +434,75 @@ const taskProjection = (kind: string, task: Task): Record<string, unknown> => ({
   ...(task.completedAt === undefined ? {} : { completedAt: task.completedAt }),
   version: task.version,
 });
+
+const targetRecord = (
+  view: ApplicationWave2ReadView,
+  target: CommentTarget,
+): Task | Project | undefined =>
+  target.kind === "task"
+    ? view.getTask(target.taskId)
+    : view.getProject(target.projectId);
+
+const targetId = (target: CommentTarget): string =>
+  target.kind === "task" ? target.taskId : target.projectId;
+
+const eligibleMention = (
+  view: ApplicationWave2ReadView,
+  workspaceId: WorkspaceId,
+  spaceId: SpaceId,
+  principalId: ExecutionContext["principalId"],
+): boolean => {
+  const membership = view.getMembership(workspaceId, principalId);
+  if (membership === undefined || membership.status === "revoked") return false;
+  const workspace = view.getWorkspace(workspaceId);
+  return (
+    (membership.role === "owner" && workspace?.rootSpaceId === spaceId) ||
+    view.getSpaceGrantForPrincipal(workspaceId, spaceId, principalId)
+      ?.status === "active"
+  );
+};
+
+const upsertAttention = (
+  dependencies: ApplicationKernelDependencies,
+  transaction: ApplicationWave2Transaction,
+  input: Omit<
+    AttentionSignal,
+    "id" | "version" | "state" | "occurredAt" | "updatedAt"
+  >,
+  occurredAt: string,
+): AttentionSignal => {
+  const current = transaction.findAttentionSignalByDeduplicationKey(
+    input.workspaceId,
+    input.targetPrincipalId,
+    input.deduplicationKey,
+  );
+  if (current !== undefined) {
+    const reopened = { ...current };
+    delete reopened.readAt;
+    delete reopened.dismissedAt;
+    const updated: AttentionSignal = {
+      ...reopened,
+      ...input,
+      state: "unread",
+      version: current.version + 1,
+      occurredAt,
+      updatedAt: occurredAt,
+    };
+    if (!transaction.updateAttentionSignal(updated, current.version))
+      throw new RetryableUnitOfWorkError();
+    return updated;
+  }
+  const created: AttentionSignal = {
+    id: AttentionSignalIdSchema.parse(dependencies.ids.next("attentionSignal")),
+    ...input,
+    state: "unread",
+    version: 1,
+    occurredAt,
+    updatedAt: occurredAt,
+  };
+  transaction.insertAttentionSignal(created);
+  return created;
+};
 
 export const executeWave2Command = (
   dependencies: ApplicationKernelDependencies,
@@ -598,9 +755,25 @@ export const executeWave2Command = (
         occurredAt,
       });
       transaction.insertTaskAssignment(assignment);
+      const attention = upsertAttention(
+        dependencies,
+        transaction,
+        {
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          targetPrincipalId: assignment.assigneePrincipalId,
+          reason: "task_assignment",
+          destination: { kind: "task", taskId: task.id },
+          sourceRecordId: assignment.id,
+          deduplicationKey: `task_assignment:${task.id}:${assignment.assigneePrincipalId}`,
+          urgency: "in_app",
+        },
+        occurredAt,
+      );
       const versions = {
         ...(removed === undefined ? {} : { [removed.id]: removed.version }),
         [assignment.id]: assignment.version,
+        [attention.id]: attention.version,
       };
       return appendJournal(
         dependencies,
@@ -633,7 +806,10 @@ export const executeWave2Command = (
         },
         undefined,
         Object.fromEntries(
-          Object.keys(versions).map((id) => [id, "taskAssignment"]),
+          Object.keys(versions).map((id) => [
+            id,
+            id === attention.id ? "attentionSignal" : "taskAssignment",
+          ]),
         ),
       );
     }
@@ -694,6 +870,323 @@ export const executeWave2Command = (
         },
         undefined,
         { [removed.id]: "taskAssignment" },
+      );
+    }
+    case "comment.add": {
+      const record = targetRecord(transaction, command.payload.target);
+      const parent =
+        command.payload.parentCommentId === undefined
+          ? undefined
+          : transaction.getComment(command.payload.parentCommentId);
+      const mentions = [...new Set(command.payload.mentionPrincipalIds)];
+      if (
+        record === undefined ||
+        transaction.getComment(command.payload.commentId) !== undefined ||
+        (parent !== undefined &&
+          (parent.workspaceId !== record.workspaceId ||
+            parent.spaceId !== record.spaceId ||
+            targetId(parent.target) !== targetId(command.payload.target))) ||
+        (command.payload.parentCommentId !== undefined &&
+          parent === undefined) ||
+        mentions.some(
+          (principalId) =>
+            !eligibleMention(
+              transaction,
+              command.workspaceId,
+              record.spaceId,
+              principalId,
+            ),
+        )
+      )
+        return precondition(command, occurredAt);
+      const expected = {
+        [record.id]: record.version,
+        ...(parent === undefined ? {} : { [parent.id]: parent.version }),
+      };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const comment: RecordComment = {
+        id: command.payload.commentId,
+        workspaceId: record.workspaceId,
+        spaceId: record.spaceId,
+        target: command.payload.target,
+        ...(parent === undefined ? {} : { parentCommentId: parent.id }),
+        rootCommentId: parent?.rootCommentId ?? command.payload.commentId,
+        body: command.payload.body,
+        mentionPrincipalIds: mentions,
+        authorPrincipalId: context.principalId,
+        threadState: parent?.threadState ?? "open",
+        revisions: [],
+        version: 1,
+        createdAt: occurredAt,
+        updatedAt: occurredAt,
+      };
+      transaction.insertComment(comment);
+      const signals = mentions
+        .filter((principalId) => principalId !== context.principalId)
+        .map((principalId) =>
+          upsertAttention(
+            dependencies,
+            transaction,
+            {
+              workspaceId: comment.workspaceId,
+              spaceId: comment.spaceId,
+              targetPrincipalId: principalId,
+              reason: "comment_mention",
+              destination: comment.target,
+              sourceRecordId: comment.id,
+              deduplicationKey: `comment_mention:${comment.rootCommentId}:${principalId}`,
+              urgency: "in_app",
+            },
+            occurredAt,
+          ),
+        );
+      const versions = {
+        [comment.id]: comment.version,
+        ...Object.fromEntries(
+          signals.map((signal) => [signal.id, signal.version]),
+        ),
+      };
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "comment.added",
+          workspaceId: comment.workspaceId,
+          spaceId: comment.spaceId,
+          aggregateId: comment.id,
+          aggregateVersion: comment.version,
+          rootCommentId: comment.rootCommentId,
+          occurredAt,
+        },
+        versions,
+        ["body", "mentionPrincipalIds", "threadState"],
+        {
+          diagnosticCode: "comment.added",
+          projection: {
+            kind: "comment.added",
+            commentId: comment.id,
+            rootCommentId: comment.rootCommentId,
+            version: comment.version,
+          },
+        },
+        undefined,
+        {
+          [comment.id]: "comment",
+          ...Object.fromEntries(
+            signals.map((signal) => [signal.id, "attentionSignal" as const]),
+          ),
+        },
+      );
+    }
+    case "comment.edit": {
+      const comment = transaction.getComment(command.payload.commentId);
+      const mentions = [...new Set(command.payload.mentionPrincipalIds)];
+      if (
+        comment === undefined ||
+        comment.authorPrincipalId !== context.principalId ||
+        mentions.some(
+          (principalId) =>
+            !eligibleMention(
+              transaction,
+              command.workspaceId,
+              comment.spaceId,
+              principalId,
+            ),
+        )
+      )
+        return precondition(command, occurredAt);
+      const expected = { [comment.id]: comment.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const updated = editComment(
+        comment,
+        command.payload.body,
+        mentions,
+        context.principalId,
+        occurredAt,
+      );
+      if (!transaction.updateComment(updated, comment.version))
+        return versionConflict(command, occurredAt, expected);
+      const signals = mentions
+        .filter((principalId) => principalId !== context.principalId)
+        .map((principalId) =>
+          upsertAttention(
+            dependencies,
+            transaction,
+            {
+              workspaceId: updated.workspaceId,
+              spaceId: updated.spaceId,
+              targetPrincipalId: principalId,
+              reason: "comment_mention",
+              destination: updated.target,
+              sourceRecordId: updated.id,
+              deduplicationKey: `comment_mention:${updated.rootCommentId}:${principalId}`,
+              urgency: "in_app",
+            },
+            occurredAt,
+          ),
+        );
+      const versions = {
+        [updated.id]: updated.version,
+        ...Object.fromEntries(
+          signals.map((signal) => [signal.id, signal.version]),
+        ),
+      };
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "comment.edited",
+          workspaceId: updated.workspaceId,
+          spaceId: updated.spaceId,
+          aggregateId: updated.id,
+          aggregateVersion: updated.version,
+          rootCommentId: updated.rootCommentId,
+          occurredAt,
+        },
+        versions,
+        ["body", "mentionPrincipalIds", "revisions"],
+        {
+          diagnosticCode: "comment.edited",
+          projection: {
+            kind: "comment.edited",
+            commentId: updated.id,
+            rootCommentId: updated.rootCommentId,
+            version: updated.version,
+          },
+        },
+        undefined,
+        {
+          [updated.id]: "comment",
+          ...Object.fromEntries(
+            signals.map((signal) => [signal.id, "attentionSignal" as const]),
+          ),
+        },
+      );
+    }
+    case "comment.resolve":
+    case "comment.reopen": {
+      const comment = transaction.getComment(command.payload.commentId);
+      if (
+        comment === undefined ||
+        comment.parentCommentId !== undefined ||
+        (comment.authorPrincipalId !== context.principalId &&
+          effectiveSpaceAccess(
+            transaction,
+            context,
+            command.workspaceId,
+            comment.spaceId,
+          ) !== "edit")
+      )
+        return precondition(command, occurredAt);
+      const expected = { [comment.id]: comment.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const state =
+        command.commandName === "comment.resolve" ? "resolved" : "open";
+      if (comment.threadState === state)
+        return precondition(command, occurredAt);
+      const updated = setCommentThreadState(
+        comment,
+        state,
+        context.principalId,
+        occurredAt,
+      );
+      if (!transaction.updateComment(updated, comment.version))
+        return versionConflict(command, occurredAt, expected);
+      const diagnosticCode =
+        command.commandName === "comment.resolve"
+          ? "comment.resolved"
+          : "comment.reopened";
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: diagnosticCode,
+          workspaceId: updated.workspaceId,
+          spaceId: updated.spaceId,
+          aggregateId: updated.id,
+          aggregateVersion: updated.version,
+          rootCommentId: updated.rootCommentId,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        ["threadState", "resolvedAt", "resolvedBy"],
+        {
+          diagnosticCode,
+          projection: {
+            kind: diagnosticCode,
+            commentId: updated.id,
+            rootCommentId: updated.rootCommentId,
+            version: updated.version,
+          },
+        },
+        undefined,
+        { [updated.id]: "comment" },
+      );
+    }
+    case "attention.markRead":
+    case "attention.dismiss": {
+      const signal = transaction.getAttentionSignal(
+        command.payload.attentionSignalId,
+      );
+      if (
+        signal === undefined ||
+        signal.targetPrincipalId !== context.principalId
+      )
+        return precondition(command, occurredAt);
+      const expected = { [signal.id]: signal.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const state =
+        command.commandName === "attention.markRead" ? "read" : "dismissed";
+      const updated = setAttentionState(signal, state, occurredAt);
+      if (!transaction.updateAttentionSignal(updated, signal.version))
+        return versionConflict(command, occurredAt, expected);
+      const diagnosticCode =
+        command.commandName === "attention.markRead"
+          ? "attention.read"
+          : "attention.dismissed";
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: diagnosticCode,
+          workspaceId: updated.workspaceId,
+          spaceId: updated.spaceId,
+          aggregateId: updated.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        ["state", state === "read" ? "readAt" : "dismissedAt"],
+        {
+          diagnosticCode,
+          projection: {
+            kind: diagnosticCode,
+            attentionSignalId: updated.id,
+            version: updated.version,
+          },
+        },
+        undefined,
+        { [updated.id]: "attentionSignal" },
       );
     }
     case "record.relate": {
@@ -1229,6 +1722,167 @@ export const executeWave2Query = (
         : "query.consistency_unavailable",
     );
   }
+  if (query.queryName === "comment.mentionCandidates") {
+    const space = view.getSpace(query.parameters.spaceId);
+    if (
+      space?.workspaceId !== query.workspaceId ||
+      !canViewSpace(view, context, query.workspaceId, space.id) ||
+      !dependencies.authorization.authorize({
+        context,
+        capability: query.queryName,
+        workspaceId: query.workspaceId,
+        spaceId: space.id,
+      })
+    )
+      return queryRejected(query, kernelTime, "authorization.denied");
+    const workspace = view.getWorkspace(query.workspaceId);
+    const candidates = view
+      .listMemberships(query.workspaceId)
+      .filter(
+        (membership) =>
+          membership.status !== "revoked" &&
+          ((membership.role === "owner" &&
+            workspace?.rootSpaceId === space.id) ||
+            view.getSpaceGrantForPrincipal(
+              query.workspaceId,
+              space.id,
+              membership.principalId,
+            )?.status === "active"),
+      )
+      .map((membership) => ({
+        principalId: membership.principalId,
+        displayName: membership.displayName ?? "Workspace member",
+        participantKind:
+          membership.role === "guest"
+            ? ("guest" as const)
+            : ("member" as const),
+      }))
+      .sort(
+        (left, right) =>
+          left.displayName.localeCompare(right.displayName) ||
+          left.principalId.localeCompare(right.principalId),
+      );
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "comment.mentionCandidates",
+      spaceId: space.id,
+      candidates,
+    });
+  }
+  if (query.queryName === "comment.list") {
+    const record = targetRecord(view, query.parameters.target);
+    if (
+      record?.workspaceId !== query.workspaceId ||
+      !canViewSpace(view, context, query.workspaceId, record.spaceId) ||
+      !dependencies.authorization.authorize({
+        context,
+        capability: query.queryName,
+        workspaceId: query.workspaceId,
+        spaceId: record.spaceId,
+      })
+    )
+      return queryRejected(query, kernelTime, "authorization.denied");
+    const comments = view
+      .listComments(query.workspaceId, record.spaceId)
+      .filter((comment) => targetId(comment.target) === record.id);
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "comment.list",
+      target: query.parameters.target,
+      threads: comments.map((comment) => {
+        const author = view.getMembership(
+          query.workspaceId,
+          comment.authorPrincipalId,
+        );
+        const visibleAuthor =
+          author !== undefined &&
+          author.status !== "revoked" &&
+          eligibleMention(
+            view,
+            query.workspaceId,
+            comment.spaceId,
+            author.principalId,
+          );
+        const root =
+          comment.rootCommentId === comment.id
+            ? comment
+            : view.getComment(comment.rootCommentId);
+        return {
+          id: comment.id,
+          ...(comment.parentCommentId === undefined
+            ? {}
+            : { parentCommentId: comment.parentCommentId }),
+          rootCommentId: comment.rootCommentId,
+          body: comment.body,
+          author: {
+            ...(visibleAuthor
+              ? { principalId: comment.authorPrincipalId }
+              : {}),
+            displayName: visibleAuthor
+              ? (author.displayName ?? "Workspace member")
+              : "Former member",
+          },
+          mentionPrincipalIds: comment.mentionPrincipalIds.filter(
+            (principalId) =>
+              eligibleMention(
+                view,
+                query.workspaceId,
+                comment.spaceId,
+                principalId,
+              ),
+          ),
+          threadState: root?.threadState ?? "open",
+          version: comment.version,
+          createdAt: comment.createdAt,
+          updatedAt: comment.updatedAt,
+          edited: comment.revisions.length > 0,
+        };
+      }),
+    });
+  }
+  if (query.queryName === "attention.inbox") {
+    if (
+      !dependencies.authorization.authorize({
+        context,
+        capability: query.queryName,
+        workspaceId: query.workspaceId,
+      })
+    )
+      return queryRejected(query, kernelTime, "authorization.denied");
+    const items = view
+      .listAttentionSignals(query.workspaceId, context.principalId)
+      .filter(
+        (signal) =>
+          signal.state !== "dismissed" &&
+          canViewSpace(view, context, query.workspaceId, signal.spaceId),
+      )
+      .slice(0, query.parameters.limit ?? 50)
+      .flatMap((signal) => {
+        const record = targetRecord(view, signal.destination);
+        if (record === undefined) return [];
+        return [
+          {
+            id: signal.id,
+            reason: signal.reason,
+            destination: signal.destination,
+            title: record.title,
+            detail:
+              signal.reason === "comment_mention"
+                ? "You were mentioned in a comment."
+                : signal.reason === "task_assignment"
+                  ? "You are responsible for this Task."
+                  : "An offline change needs reconciliation.",
+            urgency: signal.urgency,
+            state: signal.state,
+            version: signal.version,
+            occurredAt: signal.occurredAt,
+          },
+        ];
+      });
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "attention.inbox",
+      unreadCount: items.filter((item) => item.state === "unread").length,
+      items,
+    });
+  }
   const spaceIds =
     query.queryName === "search.global"
       ? query.parameters.spaceIds
@@ -1560,6 +2214,9 @@ export const executeWave2Query = (
     "task.reopened": "task_reopened",
     "task.assigned": "task_assigned",
     "task.unassigned": "task_unassigned",
+    "comment.added": "comment_added",
+    "comment.resolved": "comment_resolved",
+    "comment.reopened": "comment_reopened",
     "relation.created": "relation_added",
     "relation.removed": "relation_removed",
     "command.undone": "command_undone",

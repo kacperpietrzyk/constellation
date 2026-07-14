@@ -27,6 +27,8 @@ export const HubWorkspaceSnapshotSchema = z
     memberships: z.array(JsonObjectSchema),
     spaceGrants: z.array(JsonObjectSchema).default([]),
     taskAssignments: z.array(JsonObjectSchema).default([]),
+    comments: z.array(JsonObjectSchema).default([]),
+    attentionSignals: z.array(JsonObjectSchema).default([]),
     taskStatuses: z.array(JsonObjectSchema),
     captures: z.array(JsonObjectSchema),
     tasks: z.array(JsonObjectSchema),

@@ -540,13 +540,39 @@ export const executeCollaborationQuery = (
   );
   if (spaces.length === 0) return denied(query, kernelTime);
   const records: Array<{
-    kind: "task" | "project" | "capture" | "task_assignment";
+    kind:
+      | "task"
+      | "project"
+      | "capture"
+      | "task_assignment"
+      | "comment"
+      | "attention_signal";
     id: string;
     spaceId: string;
   }> = [];
   let activity = 0;
   let relations = 0;
   for (const space of spaces) {
+    records.push(
+      ...view.listComments(workspace.id, space.id).map((record) => ({
+        kind: "comment" as const,
+        id: record.id,
+        spaceId: record.spaceId,
+      })),
+    );
+    records.push(
+      ...view
+        .listAttentionSignals(workspace.id, context.principalId)
+        .filter(
+          (record) =>
+            record.spaceId === space.id && record.state !== "dismissed",
+        )
+        .map((record) => ({
+          kind: "attention_signal" as const,
+          id: record.id,
+          spaceId: record.spaceId,
+        })),
+    );
     records.push(
       ...view.listTasksInSpace(workspace.id, space.id).map((record) => ({
         kind: "task" as const,
@@ -600,6 +626,10 @@ export const executeCollaborationQuery = (
       captures: records.filter((item) => item.kind === "capture").length,
       taskAssignments: records.filter((item) => item.kind === "task_assignment")
         .length,
+      comments: records.filter((item) => item.kind === "comment").length,
+      attentionSignals: records.filter(
+        (item) => item.kind === "attention_signal",
+      ).length,
       relations,
       activity,
     },

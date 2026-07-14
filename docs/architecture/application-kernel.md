@@ -37,6 +37,12 @@ Commands:
 - `task.reopen`
 - `task.assign`
 - `task.unassign`
+- `comment.add`
+- `comment.edit`
+- `comment.resolve`
+- `comment.reopen`
+- `attention.markRead`
+- `attention.dismiss`
 - `record.relate`
 - `record.unrelate`
 - `command.previewUndo`
@@ -50,6 +56,9 @@ Queries:
 - `capture.history`
 - `task.list`
 - `task.assignmentCandidates`
+- `comment.list`
+- `comment.mentionCandidates`
+- `attention.inbox`
 - `project.list`
 - `project.operationalOverview`
 - `search.global`
@@ -76,16 +85,25 @@ The implementation deliberately does not parse task syntax or start automatic
 processing. A future deterministic rule adapter must invoke the same
 `capture.routeAsTask` command. The current slice has a runnable desktop flow,
 typed Project relations, status/completion, scoped search, explainable cockpit,
-meaningful activity, and version-safe undo. It does not yet claim Attention
-processing, synchronization, editable workflow configuration, or an MCP server.
+meaningful activity, version-safe undo, contextual comments, and durable
+recipient attention. It does not yet claim generalized Attention rules,
+editable workflow configuration, or an MCP server.
 
 Task responsibility is a separate versioned collaboration record rather than a
 free-form Task field. An editor can assign one active Workspace member or guest
 who can view the Task's Space, reassign atomically, or remove responsibility.
 The Task list and Project overview show a safe label; a revoked member or a
 member who lost Space access is retained for audit without exposing a principal
-identifier. Assignment events are available to meaningful activity and a later
-notification adapter, but this slice does not deliver notifications.
+identifier. Assignments and explicit comment mentions create deduplicated
+recipient-only Attention records that open the exact Task or Project.
+
+Comments are versioned records attached to a Task or Project, not a chat
+transport. They retain edit revisions, explicit eligible mention IDs, reply
+roots, and resolve/reopen state. Space access is ordered `view < comment < edit`:
+a Commenter can discuss work without mutating it, while an Editor can also
+resolve any visible root thread. Routine collaboration remains in-app. Electron
+main owns the optional foreground-suppressing system delivery adapter and only
+receives already scoped urgent Attention projections.
 
 ## Boundary rules
 
@@ -111,6 +129,10 @@ notification adapter, but this slice does not deliver notifications.
 - Assignment mutations require exact Task and current-assignment versions. The
   assignee is reauthorized against active membership and Space access when the
   command executes; assignment candidates never include unrelated members.
+- Comment mutations require exact target/comment versions, author-only edits,
+  and current Space eligibility for every explicit mention. Attention queries
+  are always restricted to the current principal and reauthorize the target
+  Space before returning its title or destination.
 - Capture routing requires the exact current Capture version. Repeating a
   committed route with the same idempotency input returns its original result;
   a distinct attempt cannot create a second Task.
@@ -140,7 +162,8 @@ contracts -> Zod
 - `contracts` owns schemas, branded IDs, result taxonomy, and safe validation
   issues.
 - `domain` owns framework-independent workspace, Space, membership, Capture,
-  Task, Task assignment, Task status, event, audit, and outbox records.
+  Task, Task assignment, comment, Attention signal, Task status, event, audit,
+  and outbox records.
 - `application` owns authorization orchestration, command/query handlers, and
   storage ports.
 - `testkit` owns deterministic clocks/IDs, hashing/cursor fixtures, the in-memory
@@ -185,8 +208,14 @@ removal, former/unavailable-member presentation, scoped exports and Hub
 projections, SQLite restart and purge behavior, and rollback at every journal
 boundary.
 
+Comment and Attention coverage proves Viewer/Commenter/Editor separation,
+author-only revision history, thread resolution, eligible mentions,
+deduplication, recipient-only Hub projections and audit fields, encrypted
+SQLite restart, exact destination routing, foreground suppression, and atomic
+rollback with assignment/comment journal boundaries.
+
 Production signing/notarization, installer/updater continuity, MCP mapping,
-deterministic syntax parsing, Attention processing, checkpoint revert, editable
+deterministic syntax parsing, generalized Attention rules, checkpoint revert, editable
 configuration, synchronized Data Homes, and the exhaustive cross-workspace leak
 matrix remain later capability gates.
 

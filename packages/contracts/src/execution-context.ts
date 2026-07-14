@@ -55,6 +55,15 @@ export const CapabilitySchema = z.enum([
   "recovery.preview",
   "task.list",
   "task.assignmentCandidates",
+  "comment.add",
+  "comment.edit",
+  "comment.resolve",
+  "comment.reopen",
+  "comment.list",
+  "comment.mentionCandidates",
+  "attention.inbox",
+  "attention.markRead",
+  "attention.dismiss",
   "audit.receipt",
 ]);
 export type Capability = z.infer<typeof CapabilitySchema>;

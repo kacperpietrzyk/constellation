@@ -13,26 +13,30 @@ preload bridge.
 
 - one kernel unit of work maps to `BEGIN IMMEDIATE` and commits or rolls back as
   one database transaction;
-- Workspace, Space, membership, Task status, Capture, Task, Task assignment, Project,
-  Task-to-Project relation, undo descriptor, event, audit, idempotency, and
-  outbox records have separate relational tables;
+- Workspace, Space, membership, Task status, Capture, Task, Task assignment,
+  comment, Attention signal, Project, Task-to-Project relation, undo descriptor,
+  event, audit, idempotency, and outbox records have separate relational tables;
 - lookup, Workspace/Space filtering, ordering, pagination, uniqueness, and
   optimistic versions use explicit columns;
 - complete typed records are retained as JSON payloads and checked against
   their row identity when loaded;
 - malformed JSON, mismatched identity, and unsupported schema versions fail
   closed;
-- the versioned migration chain through schema v5 runs exclusively and backfills event/audit
-  lookup columns plus the local full-text index in the same transaction;
+- the versioned migration chain through schema v6 runs exclusively and
+  backfills event/audit lookup columns plus the local full-text index in the
+  same transaction;
 - the FTS5 index carries Workspace and Space scope on every Capture, Task, and
   Project entry; application search still authorizes scopes before reading and
   keeps deterministic ranking in the shared query layer;
-- close/reopen tests prove Project/status/relation/assignment/search/cockpit/activity/undo
-  state and idempotent replay survive a database restart;
+- close/reopen tests prove Project/status/relation/assignment/comment/Attention/
+  search/cockpit/activity/undo state and idempotent replay survive a database
+  restart;
 - injected exceptions roll back both the original Capture slice and Wave 2
   records, while indexed-scope corruption fails closed.
 - Task assignments have their own optimistic version and a partial unique index
   allowing at most one active assignment per Task.
+- Comments and per-principal Attention signals use separate scoped indexes;
+  deduplication keys prevent repeated assignment or mention delivery.
 
 The tests use Node's built-in plaintext SQLite as an explicitly test-only
 driver. Plain SQLite is not a production fallback and cannot open a product

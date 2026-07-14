@@ -9,6 +9,8 @@ import type {
   WorkspaceRestorePreviewResult,
   WorkspaceRestoreResult,
   WorkspaceId,
+  TaskId,
+  ProjectId,
 } from "@constellation/contracts";
 
 export type {
@@ -33,6 +35,7 @@ export const DESKTOP_CHANNELS = {
   prepareWorkspaceRestore: "constellation:workspace-backup:prepare-restore",
   confirmWorkspaceRestore: "constellation:workspace-backup:confirm-restore",
   cancelWorkspaceRestore: "constellation:workspace-backup:cancel-restore",
+  attentionActivated: "constellation:attention:activated",
 } as const;
 
 export interface ContractRejection {
@@ -63,6 +66,13 @@ export interface DesktopBuildInfo {
 }
 
 export interface ConstellationRendererClient {
+  onAttentionActivated(
+    listener: (
+      destination:
+        | { readonly kind: "task"; readonly taskId: TaskId }
+        | { readonly kind: "project"; readonly projectId: ProjectId },
+    ) => void,
+  ): () => void;
   cancelWorkspaceRestore(input: { readonly restoreId: string }): Promise<void>;
   confirmWorkspaceRestore(input: {
     readonly restoreId: string;
@@ -110,6 +120,7 @@ export type DesktopInvoke = (
 export const createRendererClient = (
   invoke: DesktopInvoke,
 ): ConstellationRendererClient => ({
+  onAttentionActivated: () => () => undefined,
   cancelWorkspaceRestore: (input) =>
     invoke(DESKTOP_CHANNELS.cancelWorkspaceRestore, input) as Promise<void>,
   confirmWorkspaceRestore: (input) =>

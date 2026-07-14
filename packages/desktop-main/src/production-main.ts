@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import type {
   App,
@@ -9,6 +9,7 @@ import type {
   Dialog,
   GlobalShortcut,
   IpcMain,
+  Notification as NotificationType,
   SafeStorage,
   Session,
   Shell,
@@ -31,6 +32,7 @@ import {
 import { EncryptedStoreCapabilityError } from "@constellation/local-store";
 
 import { createBetterSqlite3Factory } from "./better-sqlite3-factory.js";
+import { AttentionNotificationCoordinator } from "./attention-notification.js";
 import { CoordinatedDataHomeProvider } from "./coordinated-data-home-provider.js";
 import {
   CoordinatedSyncEngine,
@@ -71,6 +73,7 @@ interface ElectronRuntime {
   readonly dialog: Dialog;
   readonly globalShortcut: GlobalShortcut;
   readonly ipcMain: IpcMain;
+  readonly Notification: typeof NotificationType;
   readonly safeStorage: SafeStorage;
   readonly session: { readonly defaultSession: Session };
   readonly shell: Shell;
@@ -97,6 +100,49 @@ let hubSyncFailures = 0;
 const manualHubSyncForPackagedSmoke =
   process.env.CONSTELLATION_ALPHA_HUB_SMOKE_MANUAL_SYNC === "1";
 
+const attentionNotifications = new AttentionNotificationCoordinator({
+  show: ({ title, body, onActivate }) => {
+    if (!electron.Notification.isSupported()) return;
+    const notification = new electron.Notification({
+      title,
+      body,
+      silent: true,
+    });
+    notification.once("click", onActivate);
+    notification.show();
+  },
+});
+
+const deliverUrgentAttention = (service: DesktopKernelService): void => {
+  const workspaceId = workspaceRecovery?.kernel?.identity.workspaceId;
+  if (workspaceId === undefined) return;
+  const response = service.query({
+    contractVersion: 1,
+    queryName: "attention.inbox",
+    queryId: randomUUID(),
+    workspaceId,
+    consistency: "local_projection",
+    parameters: { limit: 100 },
+  });
+  if (
+    response.kind !== "query_result" ||
+    response.result.outcome !== "success" ||
+    response.result.projection.kind !== "attention.inbox"
+  )
+    return;
+  attentionNotifications.deliver({
+    items: response.result.projection.items,
+    appIsFocused: mainWindow?.isFocused() ?? false,
+    onActivate: (destination) => {
+      const window = mainWindow;
+      if (window === undefined || window.isDestroyed()) return;
+      window.show();
+      window.focus();
+      window.webContents.send(DESKTOP_CHANNELS.attentionActivated, destination);
+    },
+  });
+};
+
 const scheduleHubSync = (delay = 0): void => {
   if (manualHubSyncForPackagedSmoke) return;
   if (hubSyncTimer !== undefined) clearTimeout(hubSyncTimer);
@@ -110,6 +156,9 @@ const scheduleHubSync = (delay = 0): void => {
       const nextDelay = healthy
         ? 30_000
         : Math.min(5_000 * 2 ** hubSyncFailures, 300_000);
+      if (workspaceRecovery?.kernel !== undefined) {
+        deliverUrgentAttention(workspaceRecovery.kernel.service);
+      }
       scheduleHubSync(nextDelay);
     });
   }, delay);
@@ -495,6 +544,12 @@ const startProductionDesktop = async (): Promise<void> => {
     ) {
       scheduleHubSync(0);
     }
+    if (
+      result.kind === "command_outcome" &&
+      result.outcome.outcome === "success"
+    ) {
+      deliverUrgentAttention(runtime.service);
+    }
     return result;
   });
   ipcMain.handle(DESKTOP_CHANNELS.runQuery, (event, query: unknown) => {
@@ -526,6 +581,7 @@ const startProductionDesktop = async (): Promise<void> => {
     assertTrustedSender(event);
     if (coordinatedDataHomeProvider !== undefined) {
       await coordinatedDataHomeProvider.syncNow();
+      deliverUrgentAttention(runtime.service);
       scheduleHubSync(30_000);
     }
     if (dataHomeProvider === undefined) {

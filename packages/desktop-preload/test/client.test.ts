@@ -19,6 +19,7 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "exportWorkspaceBackup",
     "getBuildInfo",
     "getDataHomeStatus",
+    "onAttentionActivated",
     "prepareWorkspaceRestore",
     "runQuery",
     "syncDataHome",

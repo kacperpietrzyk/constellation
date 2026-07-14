@@ -20,6 +20,8 @@ import type {
   SpaceGrantId,
   TaskId,
   TaskAssignmentId,
+  CommentId,
+  AttentionSignalId,
   TaskStatusId,
   WorkspaceId,
 } from "@constellation/contracts";
@@ -38,6 +40,8 @@ import type {
   Workspace,
   WorkspaceMembership,
   UndoDescriptor,
+  RecordComment,
+  AttentionSignal,
 } from "@constellation/domain";
 
 export type FailureBoundary =
@@ -50,6 +54,10 @@ export type FailureBoundary =
   | "space-grant-update"
   | "task-assignment"
   | "task-assignment-update"
+  | "comment"
+  | "comment-update"
+  | "attention-signal"
+  | "attention-signal-update"
   | "task-status"
   | "capture"
   | "capture-update"
@@ -92,6 +100,8 @@ interface MutableState {
   readonly memberships: Map<string, WorkspaceMembership>;
   readonly spaceGrants: Map<SpaceGrantId, SpaceGrant>;
   readonly taskAssignments: Map<TaskAssignmentId, TaskAssignment>;
+  readonly comments: Map<CommentId, RecordComment>;
+  readonly attentionSignals: Map<AttentionSignalId, AttentionSignal>;
   readonly taskStatuses: Map<TaskStatusId, TaskStatusDefinition>;
   readonly captures: Map<CaptureId, Capture>;
   readonly tasks: Map<TaskId, Task>;
@@ -111,6 +121,8 @@ const emptyState = (): MutableState => ({
   memberships: new Map(),
   spaceGrants: new Map(),
   taskAssignments: new Map(),
+  comments: new Map(),
+  attentionSignals: new Map(),
   taskStatuses: new Map(),
   captures: new Map(),
   tasks: new Map(),
@@ -130,6 +142,8 @@ const cloneState = (state: MutableState): MutableState => ({
   memberships: new Map(state.memberships),
   spaceGrants: new Map(state.spaceGrants),
   taskAssignments: new Map(state.taskAssignments),
+  comments: new Map(state.comments),
+  attentionSignals: new Map(state.attentionSignals),
   taskStatuses: new Map(state.taskStatuses),
   captures: new Map(state.captures),
   tasks: new Map(state.tasks),
@@ -270,6 +284,62 @@ class ReadView implements ApplicationReadView {
           assignment.spaceId === spaceId,
       )
       .sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  public getComment(id: CommentId): RecordComment | undefined {
+    return this.state.comments.get(id);
+  }
+
+  public listComments(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly RecordComment[] {
+    return [...this.state.comments.values()]
+      .filter(
+        (comment) =>
+          comment.workspaceId === workspaceId && comment.spaceId === spaceId,
+      )
+      .sort(
+        (left, right) =>
+          left.createdAt.localeCompare(right.createdAt) ||
+          left.id.localeCompare(right.id),
+      );
+  }
+
+  public getAttentionSignal(
+    id: AttentionSignalId,
+  ): AttentionSignal | undefined {
+    return this.state.attentionSignals.get(id);
+  }
+
+  public findAttentionSignalByDeduplicationKey(
+    workspaceId: WorkspaceId,
+    principalId: PrincipalId,
+    deduplicationKey: string,
+  ): AttentionSignal | undefined {
+    return [...this.state.attentionSignals.values()].find(
+      (signal) =>
+        signal.workspaceId === workspaceId &&
+        signal.targetPrincipalId === principalId &&
+        signal.deduplicationKey === deduplicationKey,
+    );
+  }
+
+  public listAttentionSignals(
+    workspaceId: WorkspaceId,
+    principalId: PrincipalId,
+  ): readonly AttentionSignal[] {
+    return [...this.state.attentionSignals.values()]
+      .filter(
+        (signal) =>
+          signal.workspaceId === workspaceId &&
+          signal.targetPrincipalId === principalId,
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          right.id.localeCompare(left.id),
+      );
   }
 
   public getCapture(id: CaptureId): Capture | undefined {
@@ -530,6 +600,49 @@ class Transaction extends ReadView implements ApplicationTransaction {
     return true;
   }
 
+  public insertComment(comment: RecordComment): void {
+    if (this.state.comments.has(comment.id))
+      throw new Error(`Duplicate comment ID: ${comment.id}`);
+    this.state.comments.set(comment.id, comment);
+    this.failures.reached("comment");
+  }
+
+  public updateComment(
+    comment: RecordComment,
+    expectedVersion: number,
+  ): boolean {
+    const current = this.state.comments.get(comment.id);
+    if (current?.version !== expectedVersion) return false;
+    this.state.comments.set(comment.id, comment);
+    this.failures.reached("comment-update");
+    return true;
+  }
+
+  public insertAttentionSignal(signal: AttentionSignal): void {
+    if (
+      this.state.attentionSignals.has(signal.id) ||
+      this.findAttentionSignalByDeduplicationKey(
+        signal.workspaceId,
+        signal.targetPrincipalId,
+        signal.deduplicationKey,
+      ) !== undefined
+    )
+      throw new Error(`Duplicate attention signal: ${signal.id}`);
+    this.state.attentionSignals.set(signal.id, signal);
+    this.failures.reached("attention-signal");
+  }
+
+  public updateAttentionSignal(
+    signal: AttentionSignal,
+    expectedVersion: number,
+  ): boolean {
+    const current = this.state.attentionSignals.get(signal.id);
+    if (current?.version !== expectedVersion) return false;
+    this.state.attentionSignals.set(signal.id, signal);
+    this.failures.reached("attention-signal-update");
+    return true;
+  }
+
   public insertTaskStatus(status: TaskStatusDefinition): void {
     if (this.state.taskStatuses.has(status.id)) {
       throw new Error(`Duplicate task status ID: ${status.id}`);
@@ -679,6 +792,12 @@ const stateFromSnapshot = (snapshot: ReferenceStateSnapshot): MutableState => ({
   taskAssignments: new Map(
     (snapshot.taskAssignments ?? []).map((value) => [value.id, value]),
   ),
+  comments: new Map(
+    (snapshot.comments ?? []).map((value) => [value.id, value]),
+  ),
+  attentionSignals: new Map(
+    (snapshot.attentionSignals ?? []).map((value) => [value.id, value]),
+  ),
   taskStatuses: new Map(
     snapshot.taskStatuses.map((value) => [value.id, value]),
   ),
@@ -740,6 +859,8 @@ export class InMemoryReferenceStore implements ApplicationStore {
       memberships: [...this.state.memberships.values()],
       spaceGrants: [...this.state.spaceGrants.values()],
       taskAssignments: [...this.state.taskAssignments.values()],
+      comments: [...this.state.comments.values()],
+      attentionSignals: [...this.state.attentionSignals.values()],
       taskStatuses: [...this.state.taskStatuses.values()],
       captures: [...this.state.captures.values()],
       tasks: [...this.state.tasks.values()],

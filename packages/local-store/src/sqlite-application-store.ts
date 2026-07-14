@@ -25,6 +25,8 @@ import {
   type SpaceId,
   type TaskId,
   type TaskAssignmentId,
+  type CommentId,
+  type AttentionSignalId,
   type TaskStatusId,
   type WorkspaceId,
 } from "@constellation/contracts";
@@ -43,6 +45,8 @@ import type {
   Workspace,
   WorkspaceMembership,
   UndoDescriptor,
+  RecordComment,
+  AttentionSignal,
 } from "@constellation/domain";
 
 import type {
@@ -51,7 +55,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
   checkpoint: null,
@@ -63,6 +67,8 @@ const COORDINATED_PROJECTION_TABLES = [
   "idempotency_records",
   "audit_receipts",
   "events",
+  "attention_signals",
+  "comments",
   "undo_descriptors",
   "task_project_relations",
   "task_assignments",
@@ -348,6 +354,35 @@ const schemaV5 = `
     WHERE state = 'active';
 `;
 
+const schemaV6 = `
+  CREATE TABLE comments (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    root_comment_id TEXT NOT NULL,
+    author_principal_id TEXT NOT NULL,
+    version INTEGER NOT NULL CHECK (version > 0),
+    created_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX comments_scope
+    ON comments(workspace_id, space_id, root_comment_id, created_at, id);
+  CREATE TABLE attention_signals (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    target_principal_id TEXT NOT NULL,
+    deduplication_key TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('unread', 'read', 'dismissed')),
+    version INTEGER NOT NULL CHECK (version > 0),
+    updated_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    UNIQUE(workspace_id, target_principal_id, deduplication_key)
+  ) STRICT;
+  CREATE INDEX attention_signals_inbox
+    ON attention_signals(workspace_id, target_principal_id, state, updated_at DESC, id);
+`;
+
 export interface LocalCoordinationState {
   readonly workspaceId: WorkspaceId;
   readonly providerInstanceId: string;
@@ -460,6 +495,7 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
     if (currentVersion < 3) database.exec(schemaV3);
     if (currentVersion < 4) database.exec(schemaV4);
     if (currentVersion < 5) database.exec(schemaV5);
+    if (currentVersion < 6) database.exec(schemaV6);
     database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
     database.exec("COMMIT;");
   } catch (error) {
@@ -715,6 +751,103 @@ class SqliteReadView implements ApplicationWave2ReadView {
             "Task assignment",
           ),
         });
+      });
+  }
+
+  public getComment(id: CommentId): RecordComment | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, space_id, payload_json FROM comments WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<RecordComment>(row, "id", id, "comment", {
+          workspaceId: stringValue(row, "workspace_id", "comment"),
+          spaceId: stringValue(row, "space_id", "comment"),
+        });
+  }
+
+  public listComments(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly RecordComment[] {
+    return this.database
+      .prepare(
+        "SELECT id, payload_json FROM comments WHERE workspace_id = ? AND space_id = ? ORDER BY created_at, id",
+      )
+      .all(workspaceId, spaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "comment");
+        return parsePayload<RecordComment>(row, "id", id, "comment", {
+          workspaceId,
+          spaceId,
+        });
+      });
+  }
+
+  public getAttentionSignal(
+    id: AttentionSignalId,
+  ): AttentionSignal | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, space_id, target_principal_id, payload_json FROM attention_signals WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<AttentionSignal>(row, "id", id, "attention signal", {
+          workspaceId: stringValue(row, "workspace_id", "attention signal"),
+          spaceId: stringValue(row, "space_id", "attention signal"),
+          targetPrincipalId: stringValue(
+            row,
+            "target_principal_id",
+            "attention signal",
+          ),
+        });
+  }
+
+  public findAttentionSignalByDeduplicationKey(
+    workspaceId: WorkspaceId,
+    principalId: PrincipalId,
+    deduplicationKey: string,
+  ): AttentionSignal | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT id, space_id, payload_json FROM attention_signals WHERE workspace_id = ? AND target_principal_id = ? AND deduplication_key = ?",
+      )
+      .get(workspaceId, principalId, deduplicationKey);
+    if (row === undefined) return undefined;
+    const id = stringValue(row, "id", "attention signal");
+    return parsePayload<AttentionSignal>(row, "id", id, "attention signal", {
+      workspaceId,
+      spaceId: stringValue(row, "space_id", "attention signal"),
+      targetPrincipalId: principalId,
+    });
+  }
+
+  public listAttentionSignals(
+    workspaceId: WorkspaceId,
+    principalId: PrincipalId,
+  ): readonly AttentionSignal[] {
+    return this.database
+      .prepare(
+        "SELECT id, space_id, payload_json FROM attention_signals WHERE workspace_id = ? AND target_principal_id = ? ORDER BY updated_at DESC, id DESC",
+      )
+      .all(workspaceId, principalId)
+      .map((row) => {
+        const id = stringValue(row, "id", "attention signal");
+        return parsePayload<AttentionSignal>(
+          row,
+          "id",
+          id,
+          "attention signal",
+          {
+            workspaceId,
+            spaceId: stringValue(row, "space_id", "attention signal"),
+            targetPrincipalId: principalId,
+          },
+        );
       });
   }
 
@@ -1133,6 +1266,89 @@ class SqliteTransaction
         ),
     );
   }
+  public insertComment(record: RecordComment): void {
+    this.insert(
+      "comments",
+      [
+        "id",
+        "workspace_id",
+        "space_id",
+        "root_comment_id",
+        "author_principal_id",
+        "version",
+        "created_at",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.spaceId,
+        record.rootCommentId,
+        record.authorPrincipalId,
+        record.version,
+        record.createdAt,
+        payload(record),
+      ],
+    );
+  }
+  public updateComment(
+    record: RecordComment,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE comments SET version = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(record.version, payload(record), record.id, expectedVersion),
+    );
+  }
+  public insertAttentionSignal(record: AttentionSignal): void {
+    this.insert(
+      "attention_signals",
+      [
+        "id",
+        "workspace_id",
+        "space_id",
+        "target_principal_id",
+        "deduplication_key",
+        "state",
+        "version",
+        "updated_at",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.spaceId,
+        record.targetPrincipalId,
+        record.deduplicationKey,
+        record.state,
+        record.version,
+        record.updatedAt,
+        payload(record),
+      ],
+    );
+  }
+  public updateAttentionSignal(
+    record: AttentionSignal,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE attention_signals SET state = ?, version = ?, updated_at = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(
+          record.state,
+          record.version,
+          record.updatedAt,
+          payload(record),
+          record.id,
+          expectedVersion,
+        ),
+    );
+  }
   public insertTaskStatus(record: TaskStatusDefinition): void {
     this.insert(
       "task_statuses",
@@ -1498,6 +1714,13 @@ export class SqliteApplicationStore implements ApplicationStore {
         "id",
         "Task assignment",
       ),
+      comments: records("comments", "id", "id", "comment"),
+      attentionSignals: records(
+        "attention_signals",
+        "id",
+        "id",
+        "attention signal",
+      ),
       taskStatuses: records("task_statuses", "id", "id", "task status"),
       captures: records("captures", "id", "id", "capture"),
       tasks: records("tasks", "id", "id", "task"),
@@ -1784,6 +2007,12 @@ export class SqliteApplicationStore implements ApplicationStore {
       transaction.insertTaskAssignment(value),
     );
     snapshot.projects.forEach((value) => transaction.insertProject(value));
+    (snapshot.comments ?? []).forEach((value) =>
+      transaction.insertComment(value),
+    );
+    (snapshot.attentionSignals ?? []).forEach((value) =>
+      transaction.insertAttentionSignal(value),
+    );
     snapshot.relations.forEach((value) => transaction.insertRelation(value));
     snapshot.undoDescriptors.forEach((value) =>
       transaction.insertUndoDescriptor(value),

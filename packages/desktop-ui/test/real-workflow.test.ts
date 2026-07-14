@@ -133,6 +133,7 @@ const createTypedClient = () => {
   const commands: CommandEnvelope[] = [];
   const queries: QueryEnvelope[] = [];
   const client: ConstellationRendererClient = {
+    onAttentionActivated: () => () => undefined,
     cancelWorkspaceRestore: async () => undefined,
     confirmWorkspaceRestore: async () => ({
       outcome: "success",
@@ -417,8 +418,10 @@ describe("real Wave 2 renderer workflow", () => {
       queries.map((query) => query.queryName).sort(),
       [
         "activity.meaningful",
+        "attention.inbox",
         "capture.history",
         "cockpit.week",
+        "comment.mentionCandidates",
         "project.list",
         "task.list",
         "task.assignmentCandidates",

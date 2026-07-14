@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { ReferenceStateSnapshot } from "@constellation/application";
 import {
+  GrantIdSchema,
   HubWorkspaceSnapshotSchema,
   PrincipalIdSchema,
   type ExecutionContext,
@@ -10,6 +11,9 @@ import {
 } from "@constellation/contracts";
 
 const REDACTED_ASSIGNEE_PRINCIPAL_ID = PrincipalIdSchema.parse(
+  "00000000-0000-4000-8000-000000000000",
+);
+const REDACTED_GRANT_ID = GrantIdSchema.parse(
   "00000000-0000-4000-8000-000000000000",
 );
 
@@ -47,6 +51,10 @@ export const fromHubSnapshot = (
     parsed.memberships.some((value) => value.workspaceId !== workspaceId) ||
     parsed.spaceGrants.some((value) => value.workspaceId !== workspaceId) ||
     parsed.taskAssignments.some((value) => value.workspaceId !== workspaceId) ||
+    parsed.comments.some((value) => value.workspaceId !== workspaceId) ||
+    parsed.attentionSignals.some(
+      (value) => value.workspaceId !== workspaceId,
+    ) ||
     parsed.taskStatuses.some((value) => value.workspaceId !== workspaceId) ||
     parsed.captures.some((value) => value.workspaceId !== workspaceId) ||
     parsed.tasks.some((value) => value.workspaceId !== workspaceId) ||
@@ -136,7 +144,7 @@ export const scopeHubSnapshot = (
   const relations = state.relations.filter(inScope);
   const undoDescriptors = state.undoDescriptors.filter(inScope);
   const visibleEvents = state.events.filter(inScope);
-  const auditReceipts = state.auditReceipts.filter(inScope);
+  const scopedAuditReceipts = state.auditReceipts.filter(inScope);
   const outboxEntries = state.outboxEntries.filter(inScope);
   const candidateGrants = (state.spaceGrants ?? []).filter(
     (grant) => spaces.has(grant.spaceId) && grant.status === "active",
@@ -186,12 +194,53 @@ export const scopeHubSnapshot = (
           : ("unavailable_member" as const),
     };
   });
-  const events = visibleEvents.map((event) =>
-    (event.type === "task.assigned" || event.type === "task.unassigned") &&
-    !isEligibleInSpace(event.assigneePrincipalId, event.spaceId)
-      ? { ...event, assigneePrincipalId: REDACTED_ASSIGNEE_PRINCIPAL_ID }
-      : event,
+  const comments = (state.comments ?? []).filter(inScope).map((comment) => ({
+    ...comment,
+    authorPrincipalId: isEligibleInSpace(
+      comment.authorPrincipalId,
+      comment.spaceId,
+    )
+      ? comment.authorPrincipalId
+      : REDACTED_ASSIGNEE_PRINCIPAL_ID,
+    mentionPrincipalIds: comment.mentionPrincipalIds.filter((principalId) =>
+      isEligibleInSpace(principalId, comment.spaceId),
+    ),
+    revisions: comment.revisions.map((revision) => ({
+      ...revision,
+      editedBy: isEligibleInSpace(revision.editedBy, comment.spaceId)
+        ? revision.editedBy
+        : REDACTED_ASSIGNEE_PRINCIPAL_ID,
+      mentionPrincipalIds: revision.mentionPrincipalIds.filter((principalId) =>
+        isEligibleInSpace(principalId, comment.spaceId),
+      ),
+    })),
+    ...(comment.resolvedBy === undefined
+      ? {}
+      : {
+          resolvedBy: isEligibleInSpace(comment.resolvedBy, comment.spaceId)
+            ? comment.resolvedBy
+            : REDACTED_ASSIGNEE_PRINCIPAL_ID,
+        }),
+  }));
+  const attentionSignals = (state.attentionSignals ?? []).filter(
+    (signal) =>
+      inScope(signal) && signal.targetPrincipalId === current.principalId,
   );
+  const visibleAttentionIds = new Set(
+    attentionSignals.map((signal) => signal.id),
+  );
+  const events = visibleEvents
+    .map((event) =>
+      (event.type === "task.assigned" || event.type === "task.unassigned") &&
+      !isEligibleInSpace(event.assigneePrincipalId, event.spaceId)
+        ? { ...event, assigneePrincipalId: REDACTED_ASSIGNEE_PRINCIPAL_ID }
+        : event,
+    )
+    .filter((event) =>
+      event.type === "attention.read" || event.type === "attention.dismissed"
+        ? visibleAttentionIds.has(event.aggregateId)
+        : true,
+    );
   const memberships = canManagePolicy
     ? state.memberships
     : state.memberships.filter(
@@ -220,6 +269,8 @@ export const scopeHubSnapshot = (
     ...memberships.map((value) => value.id),
     ...spaceGrants.map((value) => value.id),
     ...taskAssignments.map((value) => value.id),
+    ...comments.map((value) => value.id),
+    ...attentionSignals.map((value) => value.id),
     ...taskStatuses.map((value) => value.id),
     ...captures.map((value) => value.id),
     ...tasks.map((value) => value.id),
@@ -227,6 +278,23 @@ export const scopeHubSnapshot = (
     ...relations.map((value) => value.id),
     ...undoDescriptors.map((value) => value.targetCommandId),
   ]);
+  const auditReceipts = scopedAuditReceipts.map((receipt) => ({
+    ...receipt,
+    ...(isEligibleInSpace(receipt.principalId, receipt.spaceId)
+      ? {}
+      : {
+          principalId: REDACTED_ASSIGNEE_PRINCIPAL_ID,
+          grantId: REDACTED_GRANT_ID,
+        }),
+    affectedRecordIds: receipt.affectedRecordIds.filter((recordId) =>
+      allowedRecordIds.has(recordId),
+    ),
+    recordVersions: Object.fromEntries(
+      Object.entries(receipt.recordVersions).filter(([recordId]) =>
+        allowedRecordIds.has(recordId),
+      ),
+    ),
+  }));
   const idempotencyPrefix = `${workspaceId}:${current.principalId}:`;
   return toHubSnapshot({
     workspaces: state.workspaces,
@@ -234,6 +302,8 @@ export const scopeHubSnapshot = (
     memberships,
     spaceGrants,
     taskAssignments,
+    comments,
+    attentionSignals,
     taskStatuses,
     captures,
     tasks,
