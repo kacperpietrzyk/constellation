@@ -102,7 +102,7 @@ jobs:
             --exit-on-error < "$RUNNER_TEMP/hub.pgdump"
           test "$(docker run --rm --network host -e PGPASSWORD postgres:18.1-alpine \
             psql -h 127.0.0.1 -U constellation -d constellation_restore -At \
-            -c 'SELECT schema_version FROM constellation_hub_meta WHERE singleton = true')" = "1"
+            -c 'SELECT schema_version FROM constellation_hub_meta WHERE singleton = true')" = "2"
 
       - name: Build the operator Hub image from a clean context
         run: docker build -f deploy/hub/Dockerfile -t constellation-hub:ci .

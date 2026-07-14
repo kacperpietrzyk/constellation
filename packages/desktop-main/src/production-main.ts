@@ -28,9 +28,14 @@ import {
   SpaceIdSchema,
   WorkspaceIdSchema,
   CommandEnvelopeSchema,
+  RemoteMcpGrantChangeRequestSchema,
+  RemoteMcpGrantCreateRequestSchema,
+  RemoteMcpGrantListRequestSchema,
+  RemoteMcpGrantProjectionSchema,
   type DeviceId,
 } from "@constellation/contracts";
 import { EncryptedStoreCapabilityError } from "@constellation/local-store";
+import { RemoteMcpCredentialSchema } from "@constellation/mcp/protocol";
 
 import { createBetterSqlite3Factory } from "./better-sqlite3-factory.js";
 import { AttentionNotificationCoordinator } from "./attention-notification.js";
@@ -57,6 +62,7 @@ import { DESKTOP_PREVIEW_VERSION } from "./index.js";
 import { LocalOnlyDataHomeProvider } from "./local-data-home-provider.js";
 import { LocalMcpRuntime } from "./local-mcp-runtime.js";
 import type { PreparedLocalMcpCredential } from "./local-mcp-credential-custody.js";
+import { RemoteMcpCredentialCustody } from "./remote-mcp-credential-custody.js";
 import type { DesktopKernelService } from "./runtime-kernel-service.js";
 import { assertTrustedSender, isTrustedRendererUrl } from "./security.js";
 import {
@@ -608,6 +614,155 @@ const startProductionDesktop = async (): Promise<void> => {
             localMcpRuntime.credentialCustody.descriptorPath(grantId),
         },
       };
+    },
+  );
+  const remoteAgentRequest = async (
+    method: "POST" | "PUT" | "DELETE",
+    pathName: "/v1/remote-mcp/grants" | "/v1/remote-mcp/grants/list",
+    body: unknown,
+  ): Promise<Record<string, unknown>> => {
+    const connection = activeHubConnection;
+    if (connection === undefined)
+      throw new Error("Remote MCP requires an active Hub Data Home.");
+    const result = await fetch(`${connection.origin}${pathName}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${connection.deviceCredential}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const value = (await result.json()) as unknown;
+    if (
+      !result.ok ||
+      value === null ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      (value as { outcome?: unknown }).outcome !== "success"
+    )
+      throw new Error(
+        result.status === 409
+          ? "Remote MCP policy changed. Refresh and retry."
+          : "Remote MCP management is unavailable.",
+      );
+    return value as Record<string, unknown>;
+  };
+  const remoteMcpCredentialCustody = new RemoteMcpCredentialCustody(
+    app.getPath("userData"),
+  );
+  ipcMain.handle(DESKTOP_CHANNELS.listRemoteAgentGrants, async (event) => {
+    assertTrustedSender(event);
+    const connection = activeHubConnection;
+    if (connection === undefined)
+      throw new Error("Remote MCP requires an active Hub Data Home.");
+    const request = RemoteMcpGrantListRequestSchema.parse({
+      protocolVersion: 1,
+      workspaceId: connection.workspaceId,
+      deviceId: connection.deviceId,
+    });
+    const result = await remoteAgentRequest(
+      "POST",
+      "/v1/remote-mcp/grants/list",
+      request,
+    );
+    if (
+      typeof result.policyVersion !== "number" ||
+      !Number.isSafeInteger(result.policyVersion) ||
+      result.policyVersion < 1 ||
+      typeof result.workspaceVersion !== "number" ||
+      !Number.isSafeInteger(result.workspaceVersion) ||
+      result.workspaceVersion < 1 ||
+      !Array.isArray(result.grants)
+    )
+      throw new Error("Remote MCP management returned an invalid response.");
+    return {
+      policyVersion: result.policyVersion,
+      workspaceVersion: result.workspaceVersion,
+      grants: result.grants.map((grant) =>
+        RemoteMcpGrantProjectionSchema.parse(grant),
+      ),
+    };
+  });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.createRemoteAgentGrant,
+    async (event, raw: unknown) => {
+      assertTrustedSender(event);
+      const connection = activeHubConnection;
+      if (connection === undefined)
+        throw new Error("Remote MCP requires an active Hub Data Home.");
+      const input =
+        raw !== null && typeof raw === "object" && !Array.isArray(raw)
+          ? (raw as Record<string, unknown>)
+          : {};
+      const request = RemoteMcpGrantCreateRequestSchema.parse({
+        ...input,
+        protocolVersion: 1,
+        workspaceId: connection.workspaceId,
+        deviceId: connection.deviceId,
+      });
+      const result = await remoteAgentRequest(
+        "POST",
+        "/v1/remote-mcp/grants",
+        request,
+      );
+      const grant = RemoteMcpGrantProjectionSchema.parse(result.grant);
+      const endpoint = `${connection.origin}/v1/mcp/${connection.workspaceId}`;
+      const descriptorPath = remoteMcpCredentialCustody.publish({
+        grantId: grant.grantId,
+        endpoint,
+        bearerToken: RemoteMcpCredentialSchema.parse(result.bearerToken),
+      });
+      return { grant, endpoint, descriptorPath };
+    },
+  );
+  const changeRemoteAgentGrant = async (
+    raw: unknown,
+    method: "PUT" | "DELETE",
+  ) => {
+    const connection = activeHubConnection;
+    if (connection === undefined)
+      throw new Error("Remote MCP requires an active Hub Data Home.");
+    const input =
+      raw !== null && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : {};
+    const request = RemoteMcpGrantChangeRequestSchema.parse({
+      ...input,
+      protocolVersion: 1,
+      workspaceId: connection.workspaceId,
+      deviceId: connection.deviceId,
+    });
+    const result = await remoteAgentRequest(
+      method,
+      "/v1/remote-mcp/grants",
+      request,
+    );
+    const grant = RemoteMcpGrantProjectionSchema.parse(result.grant);
+    if (method === "DELETE") {
+      remoteMcpCredentialCustody.revoke(grant.grantId);
+      return { grant };
+    }
+    const endpoint = `${connection.origin}/v1/mcp/${connection.workspaceId}`;
+    const descriptorPath = remoteMcpCredentialCustody.publish({
+      grantId: grant.grantId,
+      endpoint,
+      bearerToken: RemoteMcpCredentialSchema.parse(result.bearerToken),
+    });
+    return { grant, endpoint, descriptorPath };
+  };
+  ipcMain.handle(
+    DESKTOP_CHANNELS.rotateRemoteAgentGrant,
+    (event, raw: unknown) => {
+      assertTrustedSender(event);
+      return changeRemoteAgentGrant(raw, "PUT");
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.revokeRemoteAgentGrant,
+    (event, raw: unknown) => {
+      assertTrustedSender(event);
+      return changeRemoteAgentGrant(raw, "DELETE");
     },
   );
   const documentCollaboration =

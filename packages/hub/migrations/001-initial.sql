@@ -15,9 +15,18 @@ CREATE TABLE IF NOT EXISTS constellation_hub_workspaces (
   checkpoint bigint NOT NULL DEFAULT 0 CHECK (checkpoint >= 0),
   snapshot jsonb NOT NULL,
   snapshot_digest char(64) NOT NULL CHECK (snapshot_digest ~ '^[0-9a-f]{64}$'),
+  remote_agent_state jsonb NOT NULL DEFAULT '{"grants":[],"memberships":[],"spaceGrants":[],"runs":[],"checkpoints":[],"handoffs":[],"federationScopes":{}}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE constellation_hub_workspaces
+  ADD COLUMN IF NOT EXISTS remote_agent_state jsonb NOT NULL
+  DEFAULT '{"grants":[],"memberships":[],"spaceGrants":[],"runs":[],"checkpoints":[],"handoffs":[],"federationScopes":{}}'::jsonb;
+
+UPDATE constellation_hub_meta
+SET schema_version = 2, updated_at = now()
+WHERE singleton = true AND schema_version < 2;
 
 CREATE TABLE IF NOT EXISTS constellation_hub_enrollments (
   enrollment_id uuid PRIMARY KEY,

@@ -2044,6 +2044,15 @@ kbd {
   align-items: center;
 }
 
+.agent-federation-scope {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.agent-federation-scope legend {
+  grid-column: 1 / -1;
+}
+
 .agent-expiry legend {
   grid-column: 1 / -1;
 }
@@ -2200,6 +2209,11 @@ kbd {
   .agent-trust-boundary,
   .agent-expiry {
     grid-column: 1;
+  }
+
+  .agent-federation-scope {
+    grid-column: 1;
+    grid-template-columns: 1fr;
   }
 
   .agent-grant-row {

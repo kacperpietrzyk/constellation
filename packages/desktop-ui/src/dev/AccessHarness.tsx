@@ -1,7 +1,12 @@
 import type {
+  ConstellationRendererClient,
   RendererCommandResponse,
   RendererQueryResponse,
 } from "@constellation/desktop-preload/client";
+import {
+  DataHomeStatusSchema,
+  RemoteMcpGrantProjectionSchema,
+} from "@constellation/contracts";
 
 import { RealApp } from "../RealApp.js";
 import { createScenarioClient } from "../client/scenario-client.js";
@@ -45,7 +50,7 @@ const commandResult = (
     },
   }) as unknown as RendererCommandResponse;
 
-const client = createScenarioClient({
+const localClient = createScenarioClient({
   executeCommand: (command) => {
     if (command.commandName === "workspace.memberAdd")
       return commandResult(command.commandId, {
@@ -265,4 +270,101 @@ const client = createScenarioClient({
   },
 });
 
-export const AccessHarness = () => <RealApp client={client} />;
+const remoteGrant = RemoteMcpGrantProjectionSchema.parse({
+  grantId: "00000000-0000-4000-8000-000000000210",
+  agentPrincipalId: "00000000-0000-4000-8000-000000000211",
+  displayName: "Codex — operator przez Hub",
+  preset: "operate",
+  capabilityScope: ["task.list", "capture.submitText", "audit.receipt"],
+  spaceScope: [spaceId],
+  federationScope: {
+    crossWorkspaceRead: true,
+    derivedResultWrite: false,
+    sourceMaterialization: false,
+  },
+  credentialId: "00000000-0000-4000-8000-000000000218",
+  credentialVersion: 2,
+  status: "active",
+  expiresAt: "2026-08-13T12:00:00.000Z",
+  version: 2,
+  membershipId: "00000000-0000-4000-8000-000000000212",
+  membershipVersion: 1,
+  spaces: [
+    {
+      spaceId,
+      spaceName: "Praca",
+      spaceGrantId: "00000000-0000-4000-8000-000000000213",
+      access: "edit",
+      version: 1,
+    },
+  ],
+  lastUsedAt: "2026-07-14T11:48:00.000Z",
+});
+
+const remoteClient: ConstellationRendererClient = {
+  ...localClient,
+  getBuildInfo: async () => ({
+    ...(await localClient.getBuildInfo()),
+    channel: "local-alpha",
+    persistence: "encrypted-local",
+  }),
+  getDataHomeStatus: async () => {
+    const local = await localClient.getDataHomeStatus();
+    const candidate = DataHomeStatusSchema.safeParse({
+      ...local,
+      descriptor: {
+        ...local.descriptor,
+        providerId: "constellation.self-hosted-hub/v1",
+        providerInstanceId: "constellation.self-hosted-hub/v1:demo",
+        providerKind: "coordinated",
+        storageRole: "projection_with_outbox",
+        displayName: "Własny Hub",
+        location: "provider_managed",
+        capabilities: Object.fromEntries(
+          Object.keys(local.descriptor.capabilities).map((key) => [
+            key,
+            { support: "supported" },
+          ]),
+        ),
+        encryption: {
+          atRest: "provider_managed",
+          keyCustody: "provider_managed",
+          portableRecovery: "provider_managed",
+        },
+      },
+      syncState: "current",
+    });
+    if (!candidate.success) throw candidate.error;
+    return candidate.data;
+  },
+  listRemoteAgentGrants: async () => ({
+    policyVersion: 4,
+    workspaceVersion: 4,
+    grants: [remoteGrant],
+  }),
+  createRemoteAgentGrant: async () => ({
+    grant: remoteGrant,
+    endpoint: `https://hub.example.test/v1/mcp/${workspaceId}`,
+    descriptorPath:
+      "/Users/demo/Library/Application Support/Constellation/remote-mcp.json",
+  }),
+  rotateRemoteAgentGrant: async () => ({
+    grant: { ...remoteGrant, credentialVersion: 3, version: 3 },
+    endpoint: `https://hub.example.test/v1/mcp/${workspaceId}`,
+    descriptorPath:
+      "/Users/demo/Library/Application Support/Constellation/remote-mcp.json",
+  }),
+  revokeRemoteAgentGrant: async () => ({
+    grant: { ...remoteGrant, status: "revoked", version: 3 },
+  }),
+};
+
+export const AccessHarness = () => (
+  <RealApp
+    client={
+      new URLSearchParams(window.location.search).get("transport") === "remote"
+        ? remoteClient
+        : localClient
+    }
+  />
+);

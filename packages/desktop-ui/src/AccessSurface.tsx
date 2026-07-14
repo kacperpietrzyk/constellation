@@ -14,6 +14,7 @@ export const AccessSurface = ({
   access,
   agentAccess,
   spaces,
+  agentTransport,
   busy,
   onAdd,
   onSetAccess,
@@ -25,6 +26,7 @@ export const AccessSurface = ({
   readonly access: DataSlice<AccessProjection>;
   readonly agentAccess: DataSlice<AgentAccessProjection>;
   readonly spaces: readonly { readonly id: SpaceId; readonly name: string }[];
+  readonly agentTransport: "local" | "remote_hub";
   readonly busy: boolean;
   readonly onAdd: (input: {
     readonly displayName: string;
@@ -41,6 +43,11 @@ export const AccessSurface = ({
     readonly preset: "observe" | "propose" | "operate" | "full_access";
     readonly spaceIds: readonly SpaceId[];
     readonly expiresAt?: string;
+    readonly federationScope: {
+      readonly crossWorkspaceRead: boolean;
+      readonly derivedResultWrite: boolean;
+      readonly sourceMaterialization: boolean;
+    };
   }) => void;
   readonly onAgentRotate: (grant: AgentGrant) => void;
   readonly onAgentRevoke: (grant: AgentGrant) => void;
@@ -60,6 +67,11 @@ export const AccessSurface = ({
   const [agentExpiry, setAgentExpiry] = useState<"30_days" | "never">(
     "30_days",
   );
+  const [federationScope, setFederationScope] = useState({
+    crossWorkspaceRead: false,
+    derivedResultWrite: false,
+    sourceMaterialization: false,
+  });
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!busy && displayName.trim()) {
@@ -78,6 +90,7 @@ export const AccessSurface = ({
       displayName: agentName.trim(),
       preset: agentPreset,
       spaceIds: agentSpaces,
+      federationScope,
       ...(expiresAt === undefined ? {} : { expiresAt }),
     });
     setAgentName("");
@@ -294,7 +307,12 @@ export const AccessSurface = ({
       >
         <header className="agent-access-heading">
           <div>
-            <p className="eyebrow">MCP · lokalnie</p>
+            <p className="eyebrow">
+              MCP ·{" "}
+              {agentTransport === "remote_hub"
+                ? "zdalnie przez Hub"
+                : "lokalnie"}
+            </p>
             <h2 id="agent-access-title">Agenci zewnętrzni</h2>
             <p>
               Możliwości i dane to dwie osobne granice. Pełny dostęp działa
@@ -316,7 +334,11 @@ export const AccessSurface = ({
 
         {agentAccess.kind === "unavailable" ? (
           <div className="access-unavailable" role="alert">
-            <strong>Lokalny MCP jest niedostępny</strong>
+            <strong>
+              {agentTransport === "remote_hub"
+                ? "Zdalny MCP jest niedostępny"
+                : "Lokalny MCP jest niedostępny"}
+            </strong>
             <span>{agentAccess.message}</span>
           </div>
         ) : (
@@ -418,6 +440,45 @@ export const AccessSurface = ({
                     Bez terminu
                   </label>
                 </fieldset>
+                {agentTransport === "remote_hub" && (
+                  <fieldset className="agent-federation-scope">
+                    <legend>Granice między workspace</legend>
+                    {(
+                      [
+                        [
+                          "crossWorkspaceRead",
+                          "Odczyt z innych przyznanych workspace",
+                        ],
+                        [
+                          "derivedResultWrite",
+                          "Zapis wyniku pochodnego do celu",
+                        ],
+                        [
+                          "sourceMaterialization",
+                          "Materializacja treści źródłowej",
+                        ],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <label key={key} className="agent-option">
+                        <input
+                          type="checkbox"
+                          checked={federationScope[key]}
+                          onChange={() =>
+                            setFederationScope((current) => ({
+                              ...current,
+                              [key]: !current[key],
+                            }))
+                          }
+                          disabled={busy}
+                        />
+                        <span>
+                          <strong>{label}</strong>
+                          <small>Osobny grant. Domyślnie wyłączony.</small>
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
                 <button
                   className="primary-button"
                   type="submit"
@@ -425,7 +486,11 @@ export const AccessSurface = ({
                     busy || !agentName.trim() || agentSpaces.length === 0
                   }
                 >
-                  {busy ? "Zapisuję…" : "Utwórz lokalny dostęp MCP"}
+                  {busy
+                    ? "Zapisuję…"
+                    : agentTransport === "remote_hub"
+                      ? "Utwórz zdalny dostęp MCP"
+                      : "Utwórz lokalny dostęp MCP"}
                 </button>
                 {agentSpaces.length === 0 && (
                   <p className="field-error" role="alert">
@@ -443,7 +508,8 @@ export const AccessSurface = ({
                     <strong>Żaden host nie ma dostępu</strong>
                     <p>
                       Utwórz jawny grant, aby Codex, Claude lub inny host mógł
-                      połączyć się przez lokalny MCP.
+                      połączyć się przez{" "}
+                      {agentTransport === "remote_hub" ? "Hub" : "lokalny MCP"}.
                     </p>
                   </div>
                 </div>

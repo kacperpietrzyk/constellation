@@ -196,7 +196,7 @@ export const loadDesktopSnapshot = async (
     mentionCandidates,
     attention,
     access,
-    agentAccess,
+    localAgentAccess,
     assignmentCandidates,
     cockpit,
     activity,
@@ -285,6 +285,47 @@ export const loadDesktopSnapshot = async (
       ),
     ),
   ]);
+  let agentAccess = localAgentAccess;
+  if (dataHome?.descriptor.providerKind === "coordinated") {
+    try {
+      const remote = await client.listRemoteAgentGrants();
+      agentAccess = {
+        kind: "ready",
+        data: {
+          kind: "agent.access",
+          policyVersion: remote.policyVersion,
+          workspaceVersion: remote.workspaceVersion,
+          canManage: true,
+          grants: remote.grants.map((grant) => ({
+            grantId: grant.grantId,
+            agentPrincipalId: grant.agentPrincipalId,
+            displayName: grant.displayName,
+            preset:
+              grant.preset as AgentAccessProjection["grants"][number]["preset"],
+            capabilityScope: grant.capabilityScope,
+            status: grant.status,
+            ...(grant.expiresAt === undefined
+              ? {}
+              : { expiresAt: grant.expiresAt }),
+            credentialVersion: grant.credentialVersion,
+            version: grant.version,
+            membershipId: grant.membershipId,
+            membershipVersion: grant.membershipVersion,
+            spaces: grant.spaces,
+            ...(grant.lastUsedAt === undefined
+              ? {}
+              : { lastUsedAt: grant.lastUsedAt }),
+          })),
+        },
+      };
+    } catch {
+      agentAccess = {
+        kind: "unavailable",
+        message:
+          "Zdalna brama MCP nie odpowiada. Workspace pozostaje dostępny lokalnie; spróbuj ponownie po przywróceniu Hubu.",
+      };
+    }
+  }
   return {
     build,
     bootstrap,
@@ -559,6 +600,110 @@ export const revokeAgentGrant = async (
     return { kind: "success", data: undefined };
   } catch {
     return { kind: "error", message: "Nie udało się cofnąć dostępu agenta." };
+  }
+};
+
+export const createRemoteAgentGrant = async (
+  client: ConstellationRendererClient,
+  input: {
+    readonly displayName: string;
+    readonly preset: "observe" | "propose" | "operate" | "full_access";
+    readonly spaceIds: readonly SpaceId[];
+    readonly expiresAt?: string;
+    readonly federationScope: {
+      readonly crossWorkspaceRead: boolean;
+      readonly derivedResultWrite: boolean;
+      readonly sourceMaterialization: boolean;
+    };
+  },
+): Promise<
+  MutationResult<{
+    readonly endpoint: string;
+    readonly descriptorPath: string;
+  }>
+> => {
+  try {
+    const result = await client.createRemoteAgentGrant({
+      displayName: input.displayName,
+      preset: input.preset,
+      capabilityScope: agentCapabilities(input.preset),
+      spaces: input.spaceIds.map((spaceId) => ({
+        spaceId,
+        access:
+          input.preset === "observe"
+            ? "view"
+            : input.preset === "propose"
+              ? "comment"
+              : "edit",
+      })),
+      federationScope: input.federationScope,
+      ...(input.expiresAt === undefined ? {} : { expiresAt: input.expiresAt }),
+    });
+    return {
+      kind: "success",
+      data: {
+        endpoint: result.endpoint,
+        descriptorPath: result.descriptorPath,
+      },
+    };
+  } catch (error) {
+    return {
+      kind: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Nie udało się utworzyć zdalnego dostępu MCP.",
+    };
+  }
+};
+
+export const rotateRemoteAgentCredential = async (
+  client: ConstellationRendererClient,
+  grant: AgentAccessProjection["grants"][number],
+): Promise<
+  MutationResult<{ readonly endpoint: string; readonly descriptorPath: string }>
+> => {
+  try {
+    const result = await client.rotateRemoteAgentGrant({
+      grantId: grant.grantId,
+      expectedVersion: grant.version,
+    });
+    return {
+      kind: "success",
+      data: {
+        endpoint: result.endpoint,
+        descriptorPath: result.descriptorPath,
+      },
+    };
+  } catch (error) {
+    return {
+      kind: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Nie udało się obrócić zdalnego poświadczenia.",
+    };
+  }
+};
+
+export const revokeRemoteAgentGrant = async (
+  client: ConstellationRendererClient,
+  grant: AgentAccessProjection["grants"][number],
+): Promise<MutationResult<undefined>> => {
+  try {
+    await client.revokeRemoteAgentGrant({
+      grantId: grant.grantId,
+      expectedVersion: grant.version,
+    });
+    return { kind: "success", data: undefined };
+  } catch (error) {
+    return {
+      kind: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Nie udało się cofnąć zdalnego dostępu.",
+    };
   }
 };
 

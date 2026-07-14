@@ -72,6 +72,7 @@ export const EvidenceLabelSchema = z
     provenance: z.enum([
       "constellation_local_authoritative",
       "constellation_local_projection",
+      "constellation_hub_authoritative",
     ]),
     sensitivity: z.enum(["workspace_scoped", "space_scoped"]),
     instructionBoundary: z.literal("untrusted_data"),
@@ -120,3 +121,8 @@ export const AuthenticatedIpcRequestSchema = z
     invocation: McpOperatorInvocationSchema,
   })
   .strict();
+
+export const RemoteMcpCredentialSchema = z
+  .string()
+  .regex(/^[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/u)
+  .max(80);

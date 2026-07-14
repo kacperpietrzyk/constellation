@@ -197,6 +197,7 @@ const productionDesktopFiles = new Set([
   "local-mcp-credential-custody.js",
   "local-mcp-runtime.js",
   "production-main.js",
+  "remote-mcp-credential-custody.js",
   "runtime-kernel-service.js",
   "security.js",
   "workspace-key-custody.js",
@@ -384,6 +385,9 @@ if (
   ) ||
   !archiveFiles.includes("/bootstrap.cjs") ||
   !archiveFiles.some((entry) => entry.endsWith("/production-main.js")) ||
+  !archiveFiles.some((entry) =>
+    entry.endsWith("/remote-mcp-credential-custody.js"),
+  ) ||
   !archiveFiles.some((entry) => entry.endsWith("/attention-notification.js")) ||
   !archiveFiles.some((entry) => entry.endsWith("/document-collaboration.js"))
 ) {

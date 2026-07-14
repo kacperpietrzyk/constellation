@@ -28,6 +28,10 @@ import type {
   HubDocumentState,
   HubDocumentRevision,
 } from "./repository.js";
+import {
+  emptyHubRemoteAgentState,
+  parseHubRemoteAgentState,
+} from "./repository.js";
 
 const object = (value: unknown, context: string): Record<string, unknown> => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -156,7 +160,7 @@ export class PostgresHubRepository implements HubRepository {
       const result = await client.query(
         "SELECT schema_version FROM constellation_hub_meta WHERE singleton = true",
       );
-      if (result.rowCount !== 1 || result.rows[0]?.schema_version !== 1) {
+      if (result.rowCount !== 1 || result.rows[0]?.schema_version !== 2) {
         throw new Error("Unsupported Constellation Hub schema version.");
       }
     } finally {
@@ -170,12 +174,13 @@ export class PostgresHubRepository implements HubRepository {
 
   public async createWorkspace(input: HubWorkspaceState): Promise<void> {
     await this.pool.query(
-      "INSERT INTO constellation_hub_workspaces (workspace_id, checkpoint, snapshot, snapshot_digest) VALUES ($1, $2, $3::jsonb, $4)",
+      "INSERT INTO constellation_hub_workspaces (workspace_id, checkpoint, snapshot, snapshot_digest, remote_agent_state) VALUES ($1, $2, $3::jsonb, $4, $5::jsonb)",
       [
         input.workspaceId,
         input.checkpoint.toString(),
         JSON.stringify(input.snapshot),
         input.snapshotDigest,
+        JSON.stringify(input.remoteAgents ?? emptyHubRemoteAgentState()),
       ],
     );
   }
@@ -310,7 +315,7 @@ export class PostgresHubRepository implements HubRepository {
     try {
       await client.query("BEGIN");
       const result = await client.query(
-        "SELECT workspace_id::text, checkpoint::text, snapshot, snapshot_digest FROM constellation_hub_workspaces WHERE workspace_id = $1 FOR UPDATE",
+        "SELECT workspace_id::text, checkpoint::text, snapshot, snapshot_digest, remote_agent_state FROM constellation_hub_workspaces WHERE workspace_id = $1 FOR UPDATE",
         [workspaceId],
       );
       if (result.rowCount !== 1)
@@ -322,16 +327,20 @@ export class PostgresHubRepository implements HubRepository {
         snapshot: HubWorkspaceSnapshotSchema.parse(row.snapshot),
         snapshotDigest: text(row, "snapshot_digest").trim(),
         receipts: await loadReceipts(client, workspaceId),
+        remoteAgents: parseHubRemoteAgentState(
+          row.remote_agent_state ?? emptyHubRemoteAgentState(),
+        ),
       };
       const before = new Set(state.receipts.keys());
       const output = await work(state);
       await client.query(
-        "UPDATE constellation_hub_workspaces SET checkpoint = $2, snapshot = $3::jsonb, snapshot_digest = $4, updated_at = now() WHERE workspace_id = $1",
+        "UPDATE constellation_hub_workspaces SET checkpoint = $2, snapshot = $3::jsonb, snapshot_digest = $4, remote_agent_state = $5::jsonb, updated_at = now() WHERE workspace_id = $1",
         [
           workspaceId,
           state.checkpoint.toString(),
           JSON.stringify(state.snapshot),
           state.snapshotDigest,
+          JSON.stringify(state.remoteAgents ?? emptyHubRemoteAgentState()),
         ],
       );
       for (const receipt of state.receipts.values()) {

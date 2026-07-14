@@ -23,6 +23,7 @@ import { Pool } from "pg";
 
 import {
   HubService,
+  HubRemoteMcpService,
   HubAttachmentError,
   HubAttachmentService,
   PostgresHubRepository,
@@ -70,6 +71,8 @@ it(
         "document.list",
         "task.list",
         "audit.receipt",
+        "workspace.manageAccess",
+        "agent.manageAccess",
       ],
       origin: "desktop",
     });
@@ -164,6 +167,30 @@ it(
       commands: [command],
     });
     assert.equal(pushed.outcome, "success");
+    const remoteGateway = new HubRemoteMcpService(repository, {
+      now: () => "2026-07-14T12:00:00.000Z",
+      randomSecret: () => "z".repeat(43),
+    });
+    const remoteGrant = await remoteGateway.createGrant(
+      enrolled.deviceCredential,
+      {
+        protocolVersion: 1,
+        workspaceId,
+        deviceId,
+        displayName: "Restart-safe remote operator",
+        preset: "observe",
+        capabilityScope: ["task.list", "audit.receipt"],
+        spaces: [{ spaceId, access: "view" }],
+        federationScope: {
+          crossWorkspaceRead: false,
+          derivedResultWrite: false,
+          sourceMaterialization: false,
+        },
+      },
+    );
+    assert.equal(remoteGrant.outcome, "success");
+    if (remoteGrant.outcome !== "success")
+      throw new Error("Remote grant creation failed.");
     const realtimeDocument = new YjsRealtimeDocumentAdapter();
     realtimeDocument.replaceText("Binary document survives restart", {
       kind: "human",
@@ -403,7 +430,7 @@ it(
     });
     assert.equal(replay.outcome, "success");
     if (replay.outcome !== "success") throw new Error("Restart pull failed.");
-    assert.equal(replay.currentCheckpoint, "1");
+    assert.equal(replay.currentCheckpoint, "2");
     assert.equal(replay.receipts[0]?.commandId, command.commandId);
     assert.equal(replay.change?.snapshot.captures.length, 1);
     const restartedDocument = await restartedRepository.loadDocumentState({
@@ -428,6 +455,21 @@ it(
       restartedRevision?.correlationId,
       "00000000-0000-4000-8000-000000000915",
     );
+    const restartedRemote = new HubRemoteMcpService(restartedRepository);
+    assert.equal(
+      await restartedRemote.isAuthorized(workspaceId, remoteGrant.bearerToken),
+      true,
+    );
+    const remoteList = await restartedRemote.listGrants(
+      enrolled.deviceCredential,
+      { protocolVersion: 1, workspaceId, deviceId },
+    );
+    assert.equal(remoteList.outcome, "success");
+    if (remoteList.outcome === "success")
+      assert.equal(
+        remoteList.grants[0]?.displayName,
+        "Restart-safe remote operator",
+      );
     await restartedRepository.close();
   },
 );

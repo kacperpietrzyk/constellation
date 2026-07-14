@@ -9,6 +9,7 @@ import {
   type ServerOptions as HttpsServerOptions,
 } from "node:https";
 import type { AddressInfo } from "node:net";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 import {
   CorrelationIdSchema,
@@ -21,11 +22,13 @@ import {
   HubSyncRequestSchema,
   WorkspaceIdSchema,
 } from "@constellation/contracts";
+import { createConstellationMcpServer } from "@constellation/mcp";
 import { z } from "zod";
 
 import type { HubService } from "./service.js";
 import type { HubAttachmentService } from "./attachments.js";
 import type { RealtimeDocumentGateway } from "./realtime-documents.js";
+import type { HubRemoteMcpService } from "./remote-mcp.js";
 
 const MAX_BODY_BYTES = 1_048_576;
 const MAX_ATTACHMENT_CHUNK_BYTES = 8 * 1024 * 1024;
@@ -109,6 +112,7 @@ export interface HubServerOptions {
   readonly readiness?: () => Promise<boolean>;
   readonly attachments?: HubAttachmentService;
   readonly realtimeDocuments?: RealtimeDocumentGateway;
+  readonly remoteMcp?: HubRemoteMcpService;
   /** Test-only failure injection after the authoritative transaction commits. */
   readonly dropSyncResponseAfterCommit?: () => boolean;
   readonly logger?: (entry: {
@@ -162,6 +166,111 @@ export const startHubServer = async (
         json(response, ready ? 200 : 503, {
           status: ready ? "ready" : "unavailable",
         });
+        return;
+      }
+      const remoteMcpPath = requestUrl.pathname.match(
+        /^\/v1\/mcp\/([0-9a-f-]{36})$/u,
+      );
+      if (remoteMcpPath !== null && options.remoteMcp !== undefined) {
+        const workspace = WorkspaceIdSchema.safeParse(remoteMcpPath[1]);
+        const credential = bearer(request);
+        if (
+          !workspace.success ||
+          credential === undefined ||
+          !(await options.remoteMcp.isAuthorized(workspace.data, credential))
+        ) {
+          json(response, 401, { code: "authorization_denied" });
+          return;
+        }
+        if (request.method !== "POST") {
+          json(response, 405, { code: "method_not_allowed" });
+          return;
+        }
+        const host = request.headers.host;
+        const origin = request.headers.origin;
+        if (
+          host === undefined ||
+          (origin !== undefined &&
+            origin !== `https://${host}` &&
+            !(options.allowInsecureLoopback && origin === `http://${host}`))
+        ) {
+          json(response, 403, { code: "origin_denied" });
+          return;
+        }
+        const body = await readJson(request);
+        const transport = new StreamableHTTPServerTransport({
+          enableJsonResponse: true,
+        });
+        const mcp = createConstellationMcpServer(
+          {
+            invoke: (invocation) =>
+              options.remoteMcp!.invoke(workspace.data, credential, invocation),
+          },
+          {
+            name: "constellation-hub",
+            capabilityTitle: "Constellation remote MCP capability contract",
+          },
+        );
+        // SDK 1.29's Node transport setter declarations are not structurally
+        // assignable under exactOptionalPropertyTypes, although it implements
+        // the same runtime Transport contract.
+        await mcp.connect(transport as never);
+        try {
+          await transport.handleRequest(request, response, body);
+        } finally {
+          await transport.close();
+          await mcp.close();
+        }
+        return;
+      }
+      if (
+        requestUrl.pathname === "/v1/remote-mcp/grants" &&
+        options.remoteMcp !== undefined
+      ) {
+        const credential = bearer(request);
+        if (credential === undefined) {
+          json(response, 401, { outcome: "rejected" });
+          return;
+        }
+        const body = await readJson(request);
+        const result =
+          request.method === "POST"
+            ? await options.remoteMcp.createGrant(credential, body as never)
+            : request.method === "PUT"
+              ? await options.remoteMcp.rotateGrant(credential, body as never)
+              : request.method === "DELETE"
+                ? await options.remoteMcp.revokeGrant(credential, body as never)
+                : undefined;
+        if (result === undefined) {
+          json(response, 405, { outcome: "rejected" });
+          return;
+        }
+        json(
+          response,
+          result.outcome === "success"
+            ? 200
+            : result.outcome === "conflict"
+              ? 409
+              : 401,
+          result,
+        );
+        return;
+      }
+      if (
+        requestUrl.pathname === "/v1/remote-mcp/grants/list" &&
+        request.method === "POST" &&
+        options.remoteMcp !== undefined
+      ) {
+        const credential = bearer(request);
+        if (credential === undefined) {
+          json(response, 401, { outcome: "rejected" });
+          return;
+        }
+        const result = await options.remoteMcp.listGrants(
+          credential,
+          (await readJson(request)) as never,
+        );
+        json(response, result.outcome === "success" ? 200 : 401, result);
         return;
       }
       const attachmentDownload = requestUrl.pathname.match(

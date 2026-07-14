@@ -105,7 +105,7 @@ Expose the application commands and queries as the only agent interface:
 Constellation will not embed a chat interface, model runtime, AI orchestrator,
 or bespoke retrieval stack.
 
-## Current — remote MCP through the self-hosted Hub
+## Delivered foundation — remote MCP through the self-hosted Hub
 
 Carry the same MCP contract across an explicitly configured, always-reachable
 Hub endpoint without making a desktop the coordinator:
@@ -116,7 +116,15 @@ Hub endpoint without making a desktop the coordinator:
 - keep local-only agent credentials device-local and require a distinct remote
   grant.
 
-## Later — meetings, calendar, and connected work
+The self-hosted Hub now exposes the same versioned MCP tools over authenticated
+stateless Streamable HTTP. Remote grants, credential digests, host runs,
+receipts, checkpoints, revocations, and three independent cross-Workspace
+authorities remain Hub-owned control state and never enter device projections.
+The desktop creates, rotates, and revokes a remote grant without exposing its
+bearer token to the renderer. Bounded request, rate, concurrency, replay,
+PostgreSQL restart, and restore procedures complete the first operational gate.
+
+## Current — meetings, calendar, and connected work
 
 - read calendar context through platform-neutral adapters, beginning with
   EventKit on macOS;

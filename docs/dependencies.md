@@ -5,19 +5,19 @@ with `npm ci --ignore-scripts` and runs `npm audit` as part of lockfile review.
 
 ## Runtime
 
-| Dependency                 | Purpose                                                                                       | License      | Boundary                   |
-| -------------------------- | --------------------------------------------------------------------------------------------- | ------------ | -------------------------- |
-| `zod` 4.4.3                | Strict runtime command, query, context, and outcome validation with inferred TypeScript types | MIT          | `contracts` only           |
-| React 19.2.7               | Render the shared desktop product surface                                                     | MIT          | `desktop-ui` only          |
-| React DOM 19.2.7           | Mount the React renderer into the Electron document                                           | MIT          | `desktop-ui` only          |
-| Electron 43.1.0            | Secure desktop main/preload boundary for the preview and local Alpha                          | MIT          | `desktop-main` and preload |
-| `better-sqlite3` 12.11.1   | Native driver rebuilt against the pinned SQLCipher source                                     | MIT          | `desktop-main` only        |
-| SQLCipher Community 4.16.0 | Encrypted local SQLite compiled into the native driver                                        | BSD-3-Clause | packaged native module     |
-| PostgreSQL client 8.22.0   | Hub persistence, migrations, locking, and bounded binary document state                       | MIT          | `hub` only                 |
-| Yjs 13.6.31                | Replaceable convergent native-document state and named checkpoints                            | MIT          | document adapter           |
-| Hocuspocus 4.4.0           | Self-hosted authenticated Yjs WebSocket gateway and persistence hooks                         | MIT          | `hub` and document UI      |
-| `crossws` 0.4.4            | Mount the single bounded realtime WebSocket route on the existing Hub server                  | MIT          | `hub` only                 |
-| MCP TypeScript SDK 1.29.0  | Stable v1 stdio framing, tool/resource negotiation, and external-host compatibility           | MIT          | bundled MCP adapter        |
+| Dependency                 | Purpose                                                                                        | License      | Boundary                   |
+| -------------------------- | ---------------------------------------------------------------------------------------------- | ------------ | -------------------------- |
+| `zod` 4.4.3                | Strict runtime command, query, context, and outcome validation with inferred TypeScript types  | MIT          | `contracts` only           |
+| React 19.2.7               | Render the shared desktop product surface                                                      | MIT          | `desktop-ui` only          |
+| React DOM 19.2.7           | Mount the React renderer into the Electron document                                            | MIT          | `desktop-ui` only          |
+| Electron 43.1.0            | Secure desktop main/preload boundary for the preview and local Alpha                           | MIT          | `desktop-main` and preload |
+| `better-sqlite3` 12.11.1   | Native driver rebuilt against the pinned SQLCipher source                                      | MIT          | `desktop-main` only        |
+| SQLCipher Community 4.16.0 | Encrypted local SQLite compiled into the native driver                                         | BSD-3-Clause | packaged native module     |
+| PostgreSQL client 8.22.0   | Hub persistence, migrations, locking, and bounded binary document state                        | MIT          | `hub` only                 |
+| Yjs 13.6.31                | Replaceable convergent native-document state and named checkpoints                             | MIT          | document adapter           |
+| Hocuspocus 4.4.0           | Self-hosted authenticated Yjs WebSocket gateway and persistence hooks                          | MIT          | `hub` and document UI      |
+| `crossws` 0.4.4            | Mount the single bounded realtime WebSocket route on the existing Hub server                   | MIT          | `hub` only                 |
+| MCP TypeScript SDK 1.29.0  | Stable v1 stdio and Streamable HTTP framing, tool/resource negotiation, and host compatibility | MIT          | MCP adapter and Hub        |
 
 Zod replaces hand-written boundary parsing; it does not execute product logic,
 access storage, or receive secrets outside the values being validated. Validation
