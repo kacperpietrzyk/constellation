@@ -24,6 +24,9 @@ if [[ $# -ge 2 ]]; then
 fi
 ELECTRON_VERSION="43.1.0"
 TARGET_ARCH="${CONSTELLATION_ALPHA_ARCH:-$HOST_ARCH}"
+if [[ "$TARGET_ARCH" == "x64" ]]; then
+  TARGET_ARCH="x86_64"
+fi
 if [[ "$TARGET_ARCH" != "x86_64" && "$TARGET_ARCH" != "arm64" ]]; then
   echo "Unsupported macOS target architecture: $TARGET_ARCH" >&2
   exit 2
