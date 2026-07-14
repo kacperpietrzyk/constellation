@@ -16,6 +16,8 @@ const userData = path.join(stateRoot, "user-data");
 const recoverySmokeRoot = path.join(userData, "recovery-smoke");
 const taskTitle = "Verify packaged UI, preload, IPC, and persistence";
 const mutationTitle = "This mutation must disappear after restore";
+const projectTitle = "Verify packaged Project context";
+const projectOutcome = "Project inspector preserves the intended outcome";
 fs.rmSync(stateRoot, { recursive: true, force: true });
 fs.mkdirSync(stateRoot, { recursive: true });
 
@@ -353,6 +355,53 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         client,
         `document.querySelector('.shell-tab.active [role="tab"] span:last-child')?.textContent === ${JSON.stringify(taskTitle)} && document.querySelectorAll('.shell-tab').length === 3`,
         "PACKAGED_ALPHA_SEARCH_CONTEXT_NAVIGATION_FAILED",
+      );
+      await client.evaluate(`(() => {
+        document.querySelector('.nav-item[data-surface="projects"]').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.project-surface .surface-header .secondary-button') !== null`,
+        "PACKAGED_ALPHA_PROJECT_SURFACE_MISSING",
+      );
+      await client.evaluate(`(() => {
+        document.querySelector('.project-surface .surface-header .secondary-button').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('#project-title') !== null && document.querySelector('#project-outcome') !== null`,
+        "PACKAGED_ALPHA_PROJECT_FORM_MISSING",
+      );
+      await client.evaluate(`(() => {
+        const title = document.querySelector('#project-title');
+        const outcome = document.querySelector('#project-outcome');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(
+          title,
+          ${JSON.stringify(projectTitle)}
+        );
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(
+          outcome,
+          ${JSON.stringify(projectOutcome)}
+        );
+        title.dispatchEvent(new Event("input", { bubbles: true }));
+        outcome.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.project-surface form .primary-button')?.disabled === false`,
+        "PACKAGED_ALPHA_PROJECT_SUBMIT_DISABLED",
+      );
+      await client.evaluate(`(() => {
+        document.querySelector('.project-surface form .primary-button').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.inspector-header small')?.textContent === 'Projekt' && document.querySelector('.inspector-body h2')?.textContent === ${JSON.stringify(projectTitle)} && document.querySelector('.provenance-block blockquote')?.textContent === ${JSON.stringify(projectOutcome)}`,
+        "PACKAGED_ALPHA_PROJECT_CONTEXT_MISSING",
       );
     } else if (phase.startsWith("interrupted-")) {
       restorePreview = await client.evaluate(

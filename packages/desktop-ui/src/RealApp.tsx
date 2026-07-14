@@ -423,6 +423,15 @@ export const RealApp = ({
     () => snapshot?.tasks.find((task) => task.id === selectedTaskId),
     [selectedTaskId, snapshot],
   );
+  const selectedProject = useMemo(
+    () =>
+      snapshot?.projects.kind === "ready"
+        ? snapshot.projects.data.items.find(
+            (project) => project.id === selectedProjectId,
+          )
+        : undefined,
+    [selectedProjectId, snapshot],
+  );
   const sourceCapture =
     selectedTask?.sourceCaptureId === undefined
       ? undefined
@@ -966,15 +975,21 @@ export const RealApp = ({
       </section>
 
       <aside
-        className={`inspector ${selectedTask ? "open" : ""}`}
+        className={`inspector ${selectedTask || selectedProject ? "open" : ""}`}
         aria-label="Podgląd kontekstu"
       >
         <header className="inspector-header">
           <div>
             <span>Podgląd kontekstu</span>
-            <small>{selectedTask ? "Zadanie" : "Workspace"}</small>
+            <small>
+              {selectedTask
+                ? "Zadanie"
+                : selectedProject
+                  ? "Projekt"
+                  : "Workspace"}
+            </small>
           </div>
-          {selectedTask && (
+          {(selectedTask || selectedProject) && (
             <button
               className="icon-button"
               aria-label="Zamknij inspector"
@@ -1031,6 +1046,40 @@ export const RealApp = ({
               )}
             </section>
           </div>
+        ) : selectedProject ? (
+          <div className="inspector-body">
+            <span className="record-status">
+              <i />
+              {selectedProject.lifecycle === "active"
+                ? "Aktywny"
+                : selectedProject.lifecycle}
+            </span>
+            <h2>{selectedProject.title}</h2>
+            <p className="record-summary">
+              Projekt w aktywnym workspace i bieżącym zakresie Space.
+            </p>
+            <section className="inspector-section provenance-block">
+              <p className="section-label">Zamierzony wynik</p>
+              <blockquote>{selectedProject.intendedOutcome}</blockquote>
+              <p>Wynik pozostaje częścią wersjonowanego rekordu Projektu.</p>
+            </section>
+            <section className="inspector-section">
+              <p className="section-label">Kontekst pracy</p>
+              <dl className="record-fields">
+                <div>
+                  <dt>Otwarte</dt>
+                  <dd>{selectedProject.relatedOpenTaskCount} zadań</dd>
+                </div>
+                <div>
+                  <dt>Wersja</dt>
+                  <dd>
+                    {projectOverview?.project.version ??
+                      selectedProject.version}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+          </div>
         ) : (
           <div className="inspector-empty workspace-context">
             <BrandMark />
@@ -1055,7 +1104,9 @@ export const RealApp = ({
         )}
       </aside>
 
-      {selectedTask && <span className="context-thread" aria-hidden="true" />}
+      {(selectedTask || selectedProject) && (
+        <span className="context-thread" aria-hidden="true" />
+      )}
       {captureOpen && (
         <CaptureDialog
           busy={capturing}
