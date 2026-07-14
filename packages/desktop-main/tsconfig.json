@@ -11,6 +11,7 @@
     { "path": "../contracts" },
     { "path": "../application" },
     { "path": "../local-store" },
+    { "path": "../hub" },
     { "path": "../testkit" },
     { "path": "../desktop-preload" }
   ]

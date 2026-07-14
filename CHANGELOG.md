@@ -10,6 +10,18 @@ releases begin.
 
 ### Added
 
+- Self-hosted multi-device Hub preview with PostgreSQL coordination, one-use
+  device enrollment, ordered checkpoints, command receipts, revocation, and the
+  same application kernel used by the desktop.
+- Encrypted coordinated desktop projections with a durable command journal,
+  automatic retry/backoff, explicit queued/offline/conflict/unknown-effect
+  states, and receipt-first reconciliation after response loss.
+- Resumable content-addressed attachment transfer with bounded chunks, atomic
+  SHA-256 publication, byte ranges, and interrupted-publication recovery.
+- Self-hosted container, schema migration, health/readiness, metadata-only
+  request logs, operator backup/restore/upgrade guidance, and automated
+  PostgreSQL plus packaged two-device gates.
+
 - Initial open-source repository foundation and community files.
 - Storage-neutral TypeScript application-kernel scaffold with strict runtime
   contracts for local workspace bootstrap, rename, text capture, capture history,

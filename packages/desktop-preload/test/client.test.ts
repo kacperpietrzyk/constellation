@@ -13,15 +13,22 @@ test("renderer client exposes only semantic application and recovery routes", ()
   assert.deepEqual(Object.keys(client).sort(), [
     "cancelWorkspaceRestore",
     "confirmWorkspaceRestore",
+    "enrollHub",
     "executeCommand",
+    "exportHubAuthorization",
     "exportWorkspaceBackup",
     "getBuildInfo",
     "getDataHomeStatus",
     "prepareWorkspaceRestore",
     "runQuery",
+    "syncDataHome",
   ]);
   void client.getBuildInfo();
   assert.equal(calls[0]?.channel, DESKTOP_CHANNELS.getBuildInfo);
   void client.getDataHomeStatus();
   assert.equal(calls[1]?.channel, DESKTOP_CHANNELS.getDataHomeStatus);
+  void client.syncDataHome();
+  assert.equal(calls[2]?.channel, DESKTOP_CHANNELS.syncDataHome);
+  void client.exportHubAuthorization();
+  assert.equal(calls[3]?.channel, DESKTOP_CHANNELS.exportHubAuthorization);
 });

@@ -116,7 +116,9 @@ const queryEnvelope = (
     queryName,
     queryId: crypto.randomUUID(),
     workspaceId,
-    consistency: "local_authoritative",
+    // The same surface accepts an authoritative local store or a permission-
+    // safe coordinated projection and renders the returned freshness facts.
+    consistency: "local_projection",
     parameters,
   });
 

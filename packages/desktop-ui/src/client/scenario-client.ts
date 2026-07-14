@@ -35,6 +35,8 @@ export const createScenarioClient = (
       },
     ],
   }),
+  enrollHub: async () => ({ outcome: "rejected", code: "hub_unreachable" }),
+  exportHubAuthorization: async () => ({ outcome: "cancelled" }),
   exportWorkspaceBackup: async () => ({ outcome: "cancelled" }),
   getBuildInfo: async () => ({
     channel: "developer-preview",
@@ -115,4 +117,5 @@ export const createScenarioClient = (
       },
     };
   },
+  syncDataHome: async () => createScenarioClient(fixtures).getDataHomeStatus(),
 });

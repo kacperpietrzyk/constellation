@@ -138,6 +138,8 @@ const createTypedClient = () => {
       outcome: "success",
       workspaceId,
     }),
+    enrollHub: async () => ({ outcome: "rejected", code: "hub_unreachable" }),
+    exportHubAuthorization: async () => ({ outcome: "cancelled" }),
     exportWorkspaceBackup: async () => ({ outcome: "cancelled" }),
     getBuildInfo: async () => ({
       channel: "local-alpha",
@@ -201,6 +203,7 @@ const createTypedClient = () => {
         recoveryActions: ["export_checkpoint", "restore_checkpoint"],
         detailCode: "ready",
       }),
+    syncDataHome: async () => client.getDataHomeStatus(),
     prepareWorkspaceRestore: async () => ({ outcome: "cancelled" }),
     runQuery: async (query) => {
       queries.push(query);

@@ -179,6 +179,7 @@ describe("Wave 2 reference semantics", () => {
       "event",
       "audit",
       "idempotency",
+      "sync-command",
       "outbox",
     ];
     for (const boundary of boundaries) {
@@ -224,6 +225,7 @@ describe("Wave 2 reference semantics", () => {
       "event",
       "audit",
       "idempotency",
+      "sync-command",
       "outbox",
       "undo",
     ];

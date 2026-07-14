@@ -514,6 +514,7 @@ export class ApplicationKernel {
     transaction.insertEvent(event);
     transaction.insertAuditReceipt(audit);
     transaction.insertIdempotency({ scope, fingerprint, outcome });
+    transaction.insertSyncCommand(command);
     transaction.insertOutbox(outbox);
     return outcome;
   }
@@ -635,6 +636,7 @@ export class ApplicationKernel {
     transaction.insertEvent(event);
     transaction.insertAuditReceipt(audit);
     transaction.insertIdempotency({ scope, fingerprint, outcome });
+    transaction.insertSyncCommand(command);
     transaction.insertOutbox(outbox);
     return outcome;
   }
@@ -743,6 +745,7 @@ export class ApplicationKernel {
     transaction.insertEvent(event);
     transaction.insertAuditReceipt(audit);
     transaction.insertIdempotency({ scope, fingerprint, outcome });
+    transaction.insertSyncCommand(command);
     transaction.insertOutbox(outbox);
     return outcome;
   }
@@ -903,6 +906,7 @@ export class ApplicationKernel {
     transaction.insertEvent(event);
     transaction.insertAuditReceipt(audit);
     transaction.insertIdempotency({ scope, fingerprint, outcome });
+    transaction.insertSyncCommand(command);
     transaction.insertOutbox(outbox);
     if (isApplicationWave2Transaction(transaction)) {
       transaction.insertUndoDescriptor({

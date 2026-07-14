@@ -180,6 +180,10 @@ export const DataHomeStatusSchema = z
         "provider_partial",
         "provider_conflict",
         "provider_unknown_reconcile",
+        "hub_unreachable",
+        "device_revoked",
+        "sync_conflict",
+        "sync_unknown_reconcile",
       ])
       .optional(),
   })

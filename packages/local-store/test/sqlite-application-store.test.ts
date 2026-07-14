@@ -362,7 +362,7 @@ describe("SQLite ApplicationStore", () => {
           user_version: number;
         }
       ).user_version,
-      2,
+      3,
     );
     assert.deepEqual(
       (
@@ -814,6 +814,79 @@ describe("SQLite ApplicationStore", () => {
       () => store.read((view) => view.getCapture(captureId)),
       LocalStoreCorruptionError,
     );
+    database.close();
+  });
+
+  it("keeps a recoverable command outbox and atomically replaces a coordinated projection", () => {
+    const database = new DatabaseSync(":memory:");
+    const { kernel, store } = createKernel(database);
+    assert.equal(
+      unwrap(kernel.execute(context(), workspaceCommand)).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(kernel.execute(context(), captureCommand)).outcome,
+      "success",
+    );
+    const authoritative = store.snapshot();
+    store.configureCoordination({
+      workspaceId: context().workspaceId,
+      providerInstanceId: "constellation.hub:test",
+      hubOrigin: "https://hub.example.test",
+      checkpoint: "1",
+      snapshotDigest: "a".repeat(64),
+      configuredAt: "2026-07-14T12:00:00.000Z",
+    });
+    assert.equal(store.listPendingSyncCommands().length, 0);
+
+    const rename = CommandEnvelopeSchema.parse({
+      contractVersion: 1,
+      commandName: "workspace.rename",
+      commandId: "00000000-0000-4000-8000-000000000099",
+      workspaceId: ids.workspace,
+      idempotencyKey: "offline-rename",
+      expectedVersions: { [ids.workspace]: 1 },
+      correlationId: "00000000-0000-4000-8000-000000000098",
+      payload: { name: "Optimistic offline name" },
+    });
+    assert.equal(unwrap(kernel.execute(context(), rename)).outcome, "success");
+    const pending = store.listPendingSyncCommands();
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0]?.command.commandId, rename.commandId);
+    store.recordSyncResult({
+      commandId: rename.commandId,
+      state: "conflict",
+      outcome: {
+        contractVersion: 1,
+        commandId: rename.commandId,
+        correlationId: rename.correlationId,
+        kernelTime: "2026-07-14T12:01:00.000Z",
+        outcome: "conflict",
+        diagnosticCode: "record.version_conflict",
+        currentVersions: { [ids.workspace]: 2 },
+      },
+      updatedAt: "2026-07-14T12:01:00.000Z",
+    });
+    assert.equal(store.listPendingSyncCommands().length, 0);
+    store.replaceProjection(authoritative, {
+      checkpoint: "2",
+      snapshotDigest: "b".repeat(64),
+      syncState: "conflict",
+      updatedAt: "2026-07-14T12:01:00.000Z",
+    });
+    assert.equal(
+      store.read((view) => view.getWorkspace(context().workspaceId)?.name),
+      "Durable synthetic workspace",
+    );
+    assert.deepEqual(
+      store.read((view) => view.getFreshness()),
+      {
+        mode: "local_projection",
+        checkpoint: "2",
+        missingCapabilities: ["hub.conflict"],
+      },
+    );
+    assert.equal(store.getCoordinationState()?.syncState, "conflict");
     database.close();
   });
 });

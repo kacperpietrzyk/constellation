@@ -29,6 +29,40 @@ type RecoveryState =
   | { readonly kind: "restoring"; readonly restoreId: string }
   | { readonly kind: "failure"; readonly code: WorkspaceBackupFailureCode };
 
+type HubEnrollmentState =
+  | { readonly kind: "idle" }
+  | { readonly kind: "connecting" }
+  | { readonly kind: "success" }
+  | { readonly kind: "failure"; readonly message: string };
+
+const syncCopy: Record<
+  DataHomeStatus["syncState"],
+  { readonly label: string; readonly detail: string }
+> = {
+  not_configured: {
+    label: "Tylko lokalnie",
+    detail: "Bez sieci; backup pozostaje oddzielną operacją.",
+  },
+  current: { label: "Aktualne", detail: "Zmiany dotarły do własnego Huba." },
+  queued: {
+    label: "W kolejce",
+    detail: "Zmiany są bezpieczne lokalnie i czekają na wysłanie.",
+  },
+  syncing: { label: "Synchronizacja", detail: "Wymieniam zmiany z Hubem." },
+  offline: {
+    label: "Offline",
+    detail: "Hub jest niedostępny; możesz nadal pracować lokalnie.",
+  },
+  conflict: {
+    label: "Konflikt",
+    detail: "Hub ma nowszą wersję. Żadna zmiana nie została nadpisana.",
+  },
+  unknown_reconcile: {
+    label: "Sprawdzam wynik",
+    detail: "Połączenie przerwano po wysłaniu. Najpierw potwierdzę receipt.",
+  },
+};
+
 const failureCopy: Record<WorkspaceBackupFailureCode, string> = {
   secure_storage_unavailable:
     "Bezpieczny magazyn systemu jest chwilowo niedostępny. Odblokuj pęk kluczy lub magazyn poświadczeń i spróbuj ponownie.",
@@ -93,6 +127,16 @@ export const WorkspaceRecovery = ({
 }) => {
   const [state, setState] = useState<RecoveryState>({ kind: "ready" });
   const [recoveryCode, setRecoveryCode] = useState("");
+  const [hubOrigin, setHubOrigin] = useState("");
+  const [enrollmentSecret, setEnrollmentSecret] = useState("");
+  const [deviceLabel, setDeviceLabel] = useState("");
+  const [hubEnrollment, setHubEnrollment] = useState<HubEnrollmentState>({
+    kind: "idle",
+  });
+  const [hubAuthorizationExport, setHubAuthorizationExport] = useState<
+    | { readonly kind: "idle" | "exporting" | "cancelled" | "failure" }
+    | { readonly kind: "success"; readonly fileLabel: string }
+  >({ kind: "idle" });
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
@@ -174,6 +218,56 @@ export const WorkspaceRecovery = ({
     } else setState({ kind: "failure", code: result.code });
   };
 
+  const enrollHub = async (event: FormEvent) => {
+    event.preventDefault();
+    setHubEnrollment({ kind: "connecting" });
+    const result = await client.enrollHub({
+      hubOrigin: hubOrigin.trim(),
+      enrollmentSecret: enrollmentSecret.trim(),
+      deviceLabel: deviceLabel.trim(),
+    });
+    setEnrollmentSecret("");
+    if (result.outcome === "success") {
+      setDataHome({ kind: "ready", status: result.status });
+      setHubEnrollment({ kind: "success" });
+      return;
+    }
+    const messages = {
+      input_invalid:
+        "Sprawdź adres Huba, nazwę urządzenia i pełny kod dołączenia.",
+      workspace_unavailable: "Najpierw otwórz albo przywróć ten workspace.",
+      enrollment_invalid:
+        "Kod nie należy do tego workspace’u albo został zmieniony.",
+      enrollment_expired: "Kod wygasł. Utwórz nowy jednorazowy kod w Hubie.",
+      enrollment_used: "Ten kod został już wykorzystany. Utwórz nowy.",
+      device_already_enrolled: "To urządzenie jest już połączone z tym Hubem.",
+      hub_unreachable:
+        "Nie udało się bezpiecznie połączyć z Hubem. Sprawdź adres i TLS.",
+      credential_storage_failed:
+        "Hub przyjął urządzenie, ale system nie zapisał poświadczenia. Uruchom ponownie i sprawdź stan przed utworzeniem nowego kodu.",
+    } as const;
+    setHubEnrollment({ kind: "failure", message: messages[result.code] });
+  };
+
+  const exportHubAuthorization = async () => {
+    setHubAuthorizationExport({ kind: "exporting" });
+    const result = await client.exportHubAuthorization();
+    setHubAuthorizationExport(
+      result.outcome === "success"
+        ? { kind: "success", fileLabel: result.fileLabel }
+        : { kind: result.outcome },
+    );
+  };
+
+  const syncNow = async () => {
+    setDataHome({ kind: "loading" });
+    try {
+      setDataHome({ kind: "ready", status: await client.syncDataHome() });
+    } catch {
+      setDataHome({ kind: "error" });
+    }
+  };
+
   return (
     <dialog
       ref={dialogRef}
@@ -246,11 +340,38 @@ export const WorkspaceRecovery = ({
           )}
           {dataHome.kind === "ready" && (
             <>
+              {(() => {
+                const copy = syncCopy[dataHome.status.syncState];
+                return (
+                  <div
+                    className={`data-home-sync-state data-home-sync-state--${dataHome.status.syncState}`}
+                  >
+                    <span aria-hidden="true" />
+                    <div>
+                      <strong>{copy.label}</strong>
+                      <small>{copy.detail}</small>
+                    </div>
+                    {dataHome.status.descriptor.providerKind ===
+                      "coordinated" && (
+                      <button
+                        className="secondary-button compact"
+                        onClick={syncNow}
+                      >
+                        Synchronizuj teraz
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               <dl className="data-home-facts">
                 <div>
                   <dt>Provider</dt>
                   <dd>{dataHome.status.descriptor.displayName}</dd>
-                  <span>Dane kanoniczne na tym urządzeniu</span>
+                  <span>
+                    {dataHome.status.descriptor.storageRole === "canonical"
+                      ? "Dane kanoniczne na tym urządzeniu"
+                      : "Lokalna projekcja + trwała kolejka zmian"}
+                  </span>
                 </div>
                 <div>
                   <dt>Ochrona</dt>
@@ -269,14 +390,108 @@ export const WorkspaceRecovery = ({
               </dl>
               <div className="data-home-boundary-note">
                 <span>
-                  Synchronizacja nie jest skonfigurowana. Workspace działa
-                  lokalnie bez sieci; backup pozostaje oddzielną operacją.
+                  {dataHome.status.descriptor.providerKind === "local_only"
+                    ? "Synchronizacja nie jest skonfigurowana. Workspace działa lokalnie bez sieci; backup pozostaje oddzielną operacją."
+                    : "Własny Hub koordynuje urządzenia. Otwarty plik bazy nigdy nie jest synchronizowany przez folder chmurowy."}
                 </span>
                 <small>
                   Urządzenie …{dataHome.status.descriptor.deviceId.slice(-8)} ·
                   limit lokalnego dysku nie jest udawany jako limit providera
                 </small>
               </div>
+              {dataHome.status.descriptor.providerKind === "local_only" &&
+                !restoreOnly && (
+                  <form className="hub-enrollment" onSubmit={enrollHub}>
+                    <div>
+                      <p className="eyebrow">Własny Data Home</p>
+                      <h4>Połącz ten workspace z własnym Hubem</h4>
+                      <p>
+                        Przy pierwszej instalacji wyeksportuj plik autoryzacji
+                        dla operatora Huba. Na drugim urządzeniu najpierw
+                        przywróć przenośny backup. Każde urządzenie używa nowego
+                        jednorazowego kodu.
+                      </p>
+                    </div>
+                    <div className="hub-authorization-export">
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        disabled={hubAuthorizationExport.kind === "exporting"}
+                        onClick={() => void exportHubAuthorization()}
+                      >
+                        {hubAuthorizationExport.kind === "exporting"
+                          ? "Zapisuję…"
+                          : "Eksportuj plik autoryzacji"}
+                      </button>
+                      {hubAuthorizationExport.kind === "success" && (
+                        <small role="status">
+                          Zapisano {hubAuthorizationExport.fileLabel}. Przekaż
+                          plik wyłącznie operatorowi własnego Huba.
+                        </small>
+                      )}
+                      {hubAuthorizationExport.kind === "failure" && (
+                        <small className="is-error" role="alert">
+                          Nie udało się zapisać pliku. Sprawdź miejsce i
+                          uprawnienia.
+                        </small>
+                      )}
+                    </div>
+                    <label>
+                      Adres Huba
+                      <input
+                        type="url"
+                        required
+                        value={hubOrigin}
+                        onChange={(event) => setHubOrigin(event.target.value)}
+                        placeholder="https://hub.example.com"
+                      />
+                    </label>
+                    <label>
+                      Nazwa urządzenia
+                      <input
+                        required
+                        maxLength={80}
+                        value={deviceLabel}
+                        onChange={(event) => setDeviceLabel(event.target.value)}
+                        placeholder="MacBook podróżny"
+                      />
+                    </label>
+                    <label>
+                      Kod dołączenia
+                      <input
+                        type="password"
+                        required
+                        minLength={32}
+                        autoComplete="off"
+                        spellCheck={false}
+                        value={enrollmentSecret}
+                        onChange={(event) =>
+                          setEnrollmentSecret(event.target.value)
+                        }
+                        placeholder="Jednorazowy kod z Huba"
+                      />
+                    </label>
+                    {hubEnrollment.kind === "failure" && (
+                      <p
+                        className="hub-enrollment-feedback is-error"
+                        role="alert"
+                      >
+                        {hubEnrollment.message}
+                      </p>
+                    )}
+                    {hubEnrollment.kind === "success" && (
+                      <p className="hub-enrollment-feedback" role="status">
+                        Urządzenie połączone. Pierwszy checkpoint został
+                        sprawdzony.
+                      </p>
+                    )}
+                    <button className="secondary-button" type="submit">
+                      {hubEnrollment.kind === "connecting"
+                        ? "Łączę i sprawdzam…"
+                        : "Połącz z Hubem"}
+                    </button>
+                  </form>
+                )}
             </>
           )}
         </section>

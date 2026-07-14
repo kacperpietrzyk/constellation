@@ -1,4 +1,5 @@
 import type {
+  CommandEnvelope,
   AuditReceiptId,
   Capability,
   CaptureId,
@@ -162,6 +163,7 @@ export interface ApplicationTransaction extends ApplicationReadView {
   insertAuditReceipt(receipt: AuditReceipt): void;
   insertIdempotency(record: IdempotencyRecord): void;
   insertOutbox(entry: OutboxEntry): void;
+  insertSyncCommand(command: CommandEnvelope): void;
 }
 
 export interface ApplicationWave2Transaction

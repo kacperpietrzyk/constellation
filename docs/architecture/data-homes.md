@@ -1,7 +1,7 @@
 # Data Homes
 
-Status: versioned contract and certified local-only provider implemented;
-coordinated providers remain unimplemented.
+Status: versioned contract, certified local-only provider, and self-hosted Hub
+coordination preview implemented.
 
 A Data Home is the explicit storage and coordination boundary for one
 workspace. It tells the application where canonical data lives, which
@@ -66,10 +66,31 @@ loss, restores the portable checkpoint, and reopens the same workspace. It also
 requires one stable device identity across every phase. Native macOS arm64,
 macOS x64, and Windows x64 are required CI targets.
 
-## Not yet implemented
+## Self-hosted coordinated provider
 
-The contract does not make a provider exist. A self-hosted coordinating Hub,
-device enrollment and remote revocation, attachment transfer, ordered change
-feeds, tombstone convergence, real provider quotas, and multi-device conflict
-drills remain later work. Constellation will not synchronize an actively opened
-database through a generic cloud folder.
+`constellation.self-hosted-hub/v1` keeps a SQLCipher projection and durable
+command journal on every device while PostgreSQL coordinates authoritative
+ordering, receipts, checkpoints, and device grants. The Hub executes the same
+application kernel as the desktop; HTTP is a transport, not another domain API.
+
+Enrollment uses a short-lived one-use secret. The resulting per-device
+credential is held by the operating-system credential service. The first device
+may publish the initial logical snapshot exactly once while the Hub workspace is
+empty. Later updates are commands with expected versions and deterministic IDs,
+so replay is idempotent and stale work becomes an explicit conflict. A lost
+response is reconciled by command receipt before retry.
+
+Attachments use resumable, bounded chunks and content-addressed SHA-256 objects.
+The Hub publishes an object only after its complete length and digest match.
+Record synchronization remains available when attachment transfer fails.
+
+The correctness-first v1 change feed sends a validated logical snapshot after a
+new checkpoint. This is intentionally less bandwidth-efficient than a mature
+incremental feed, but it preserves workspace boundaries and makes atomic local
+projection replacement testable. Provider quota reporting and incremental
+tombstone compaction remain future optimizations; they must not weaken current
+recovery behavior.
+
+Operational setup and recovery are documented in the
+[self-hosted Hub runbook](../self-hosting/hub.md). Constellation never
+synchronizes an actively opened database through a generic cloud folder.

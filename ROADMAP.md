@@ -70,6 +70,13 @@ offline work while preserving user ownership:
 Core use and cross-device synchronization will not require a paid
 Constellation-hosted backend.
 
+The current candidate implements the shared-kernel Hub, PostgreSQL persistence,
+encrypted local projections with durable command queues, one-use enrollment,
+revocation, resumable content-addressed attachments, second-device recovery UI,
+and an operator-owned container/runbook. Its release gate drives two isolated
+packaged profiles through portable restore, offline work, post-commit response
+loss, receipt reconciliation, and convergence on macOS and Windows CI.
+
 ## Next — collaboration-safe workspaces
 
 Build collaboration on the same identity and authorization boundaries rather

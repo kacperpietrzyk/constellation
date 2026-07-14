@@ -11,9 +11,11 @@ import {
   SpaceIdSchema,
   WorkspaceIdSchema,
   type Capability,
+  type ExecutionContext,
 } from "@constellation/contracts";
 import {
   openEncryptedLocalStore,
+  type SqliteApplicationStore,
   type EncryptedLocalStoreFacts,
   type EncryptedSqliteDatabaseFactory,
 } from "@constellation/local-store";
@@ -56,9 +58,11 @@ const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
 ];
 
 export interface DurableKernelService {
+  readonly context: ExecutionContext;
   readonly facts: EncryptedLocalStoreFacts;
   readonly identity: WorkspaceBootstrapIdentity;
   readonly service: DesktopKernelService;
+  readonly store: SqliteApplicationStore;
   readonly workspaceName: string;
   close(): void;
 }
@@ -205,9 +209,11 @@ export const createDurableKernelService = async (input: {
       throw new DurableWorkspaceOpenError("workspace_open_failed");
     }
     return {
+      context,
       facts: opened.facts,
       identity: bundle.identity,
       service,
+      store: opened.store,
       workspaceName: verifiedWorkspace.name,
       close: opened.close,
     };

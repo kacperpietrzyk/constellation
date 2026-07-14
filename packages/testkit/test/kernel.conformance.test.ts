@@ -642,6 +642,7 @@ describe("reference kernel conformance", () => {
       "event",
       "audit",
       "idempotency",
+      "sync-command",
       "outbox",
     ];
     for (const boundary of boundaries) {
@@ -869,6 +870,7 @@ describe("reference kernel conformance", () => {
       "event",
       "audit",
       "idempotency",
+      "sync-command",
       "outbox",
       "undo",
     ];
