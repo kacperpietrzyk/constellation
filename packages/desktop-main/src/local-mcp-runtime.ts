@@ -1,4 +1,4 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -35,6 +35,25 @@ import {
 } from "./local-mcp-credential-custody.js";
 
 const MAX_CONNECTIONS = 32;
+const MAX_PORTABLE_UNIX_SOCKET_BYTES = 96;
+
+export const localMcpEndpoint = (
+  stateRoot: string,
+  workspaceId: WorkspaceId,
+  platform = process.platform,
+): string => {
+  if (platform === "win32")
+    return `\\\\.\\pipe\\constellation-mcp-${workspaceId}`;
+  const localEndpoint = path.join(stateRoot, "mcp", "application.sock");
+  if (Buffer.byteLength(localEndpoint) <= MAX_PORTABLE_UNIX_SOCKET_BYTES)
+    return localEndpoint;
+  const identity = createHash("sha256")
+    .update(`${stateRoot}:${workspaceId}`, "utf8")
+    .digest("hex")
+    .slice(0, 24);
+  const user = process.getuid?.() ?? "portable";
+  return path.join("/tmp", `constellation-mcp-${user}-${identity}.sock`);
+};
 
 const serializeResponse = (response: McpOperatorResponse): string => {
   const encoded = `${JSON.stringify(response)}\n`;
@@ -119,10 +138,10 @@ export class LocalMcpRuntime {
     if (this.server !== undefined) return this.endpoint;
     const socketRoot = path.join(this.input.stateRoot, "mcp");
     mkdirSync(socketRoot, { recursive: true, mode: 0o700 });
-    const endpoint =
-      process.platform === "win32"
-        ? `\\\\.\\pipe\\constellation-mcp-${this.input.workspaceId}`
-        : path.join(socketRoot, "application.sock");
+    const endpoint = localMcpEndpoint(
+      this.input.stateRoot,
+      this.input.workspaceId,
+    );
     if (process.platform !== "win32" && existsSync(endpoint))
       rmSync(endpoint, { force: true });
     const server = net.createServer((socket) => this.accept(socket));

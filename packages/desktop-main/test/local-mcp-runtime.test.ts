@@ -16,7 +16,7 @@ import {
 import { HostRunMetadataSchema, invokeDesktopMcp } from "@constellation/mcp";
 import { InMemoryReferenceStore } from "@constellation/testkit";
 
-import { LocalMcpRuntime } from "../src/local-mcp-runtime.js";
+import { LocalMcpRuntime, localMcpEndpoint } from "../src/local-mcp-runtime.js";
 import { createRuntimeKernelService } from "../src/runtime-kernel-service.js";
 
 const ids = {
@@ -101,6 +101,25 @@ const successful = (
   assert.equal(response.outcome.outcome, "success");
   return response.outcome;
 };
+
+test("local MCP keeps Unix socket endpoints below the portable platform limit", () => {
+  const shortRoot = "/tmp/constellation-profile";
+  assert.equal(
+    localMcpEndpoint(shortRoot, ownerContext.workspaceId, "darwin"),
+    path.join(shortRoot, "mcp", "application.sock"),
+  );
+  const longEndpoint = localMcpEndpoint(
+    `/Users/runner/work/${"constellation/".repeat(8)}user-data`,
+    ownerContext.workspaceId,
+    "darwin",
+  );
+  assert.equal(longEndpoint.startsWith("/tmp/constellation-mcp-"), true);
+  assert.equal(Buffer.byteLength(longEndpoint) <= 96, true);
+  assert.equal(
+    localMcpEndpoint(shortRoot, ownerContext.workspaceId, "win32"),
+    `\\\\.\\pipe\\constellation-mcp-${ids.workspace}`,
+  );
+});
 
 test("local MCP enforces credential custody, attribution, evidence labels and immediate revocation", async () => {
   const stateRoot = mkdtempSync(path.join(tmpdir(), "constellation-mcp-"));
