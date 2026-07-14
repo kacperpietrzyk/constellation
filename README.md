@@ -69,29 +69,39 @@ replacing a missing ready database. If an established workspace cannot open,
 the same packaged application presents a recovery-only restore path rather than
 requiring a developer tool.
 
-Each durable workspace now also reports a versioned Data Home descriptor. The
+Each durable workspace reports a versioned Data Home descriptor. The
 local-only provider says explicitly that its encrypted database is canonical on
 this device, identifies the installation without using a hardware fingerprint,
 and distinguishes supported portable checkpoints from unsupported remote sync,
 attachment transfer, provider quota, and device revocation. The same provider
-boundary will be used by future coordinated Data Homes; the current Alpha does
-not imply that backup is synchronization.
+boundary now also has a self-hosted Hub preview: PostgreSQL coordinates ordered
+commands, receipts, checkpoints, revocation, and content-addressed attachments,
+while every desktop keeps an encrypted local projection and recoverable command
+queue. Backup remains a separate recovery mechanism; neither provider
+synchronizes an open database file through a generic cloud folder.
 
 The packaged gate builds the pinned SQLCipher binding as the only unpacked
 native module and drives the real window, context-isolated preload, IPC,
 Capture-to-Task interaction, encrypted backup/restore, and relaunch on native
 macOS arm64, native macOS x64, and Windows x64 runners. No macOS result depends
-on Rosetta.
+on Rosetta. The coordinated gate uses two isolated packaged profiles, restores
+the same portable workspace on the second device, queues offline work, drops a
+response after Hub commit, reconciles by receipt, and verifies the resulting
+Task on the other device.
 The resulting ad-hoc macOS and unsigned Windows application folders are
-verification artifacts, not a signed/notarized release. MCP transport,
-installers, updater, synchronized Data Homes, and automatic routing rules beyond
-the explicit Capture action remain later work.
+verification artifacts, not a signed/notarized release. The Hub is an operator
+preview rather than a hosted service. MCP transport, installers, updater,
+collaboration-safe sharing, and automatic routing rules beyond the explicit
+Capture action remain later work.
 
 The current kernel boundary and implemented subset are documented in
 [Application kernel](docs/architecture/application-kernel.md) and
 [Local store](docs/architecture/local-store.md). The provider contract and its
 current capability limits are documented in
 [Data Homes](docs/architecture/data-homes.md).
+
+Operators evaluating multi-device coordination can use the
+[self-hosted Hub runbook](docs/self-hosting/hub.md).
 
 The [public roadmap](ROADMAP.md) describes the intended product direction and
 the order in which the major outcomes build on one another. It is directional,

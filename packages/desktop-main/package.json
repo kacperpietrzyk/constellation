@@ -14,5 +14,8 @@
     "@constellation/testkit": "0.0.0",
     "better-sqlite3": "12.11.1",
     "electron": "43.1.0"
+  },
+  "devDependencies": {
+    "@constellation/hub": "0.0.0"
   }
 }

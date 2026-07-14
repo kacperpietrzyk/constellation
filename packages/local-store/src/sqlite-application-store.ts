@@ -7,11 +7,15 @@ import {
   type ApplicationWave2Transaction,
   type CapturePageRequest,
   type IdempotencyRecord,
+  type ReferenceStateSnapshot,
   type StoreFreshness,
   type TaskPageRequest,
 } from "@constellation/application";
 import {
+  CommandEnvelopeSchema,
+  CommandOutcomeSchema,
   PrincipalIdSchema,
+  type CommandEnvelope,
   type AuditReceiptId,
   type CaptureId,
   type PrincipalId,
@@ -43,7 +47,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
   checkpoint: null,
@@ -264,6 +268,54 @@ const schemaV2 = `
     WHERE record_state = 'active';
 `;
 
+const schemaV3 = `
+  CREATE TABLE coordination_state (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    workspace_id TEXT NOT NULL,
+    provider_instance_id TEXT NOT NULL,
+    hub_origin TEXT NOT NULL,
+    checkpoint TEXT NOT NULL,
+    snapshot_digest TEXT NOT NULL,
+    sync_state TEXT NOT NULL CHECK (sync_state IN ('current', 'queued', 'syncing', 'offline', 'conflict', 'unknown_reconcile', 'revoked')),
+    last_synced_at TEXT,
+    last_error_code TEXT
+  ) STRICT;
+  CREATE TABLE sync_delivery (
+    command_id TEXT PRIMARY KEY,
+    state TEXT NOT NULL CHECK (state IN ('accepted', 'conflict', 'rejected', 'unknown_reconcile', 'seeded')),
+    outcome_json TEXT,
+    updated_at TEXT NOT NULL
+  ) STRICT;
+  CREATE TABLE command_journal (
+    command_id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+  ) STRICT;
+`;
+
+export interface LocalCoordinationState {
+  readonly workspaceId: WorkspaceId;
+  readonly providerInstanceId: string;
+  readonly hubOrigin: string;
+  readonly checkpoint: string;
+  readonly snapshotDigest: string;
+  readonly syncState:
+    | "current"
+    | "queued"
+    | "syncing"
+    | "offline"
+    | "conflict"
+    | "unknown_reconcile"
+    | "revoked";
+  readonly lastSyncedAt?: string;
+  readonly lastErrorCode?: string;
+}
+
+export interface PendingSyncCommand {
+  readonly command: CommandEnvelope;
+  readonly outboxEntryId: string;
+}
+
 const objectValue = (
   value: unknown,
   context: string,
@@ -350,6 +402,7 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
   try {
     if (currentVersion === 0) database.exec(schemaV1);
     if (currentVersion < 2) database.exec(schemaV2);
+    if (currentVersion < 3) database.exec(schemaV3);
     database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
     database.exec("COMMIT;");
   } catch (error) {
@@ -366,7 +419,23 @@ class SqliteReadView implements ApplicationWave2ReadView {
   public constructor(protected readonly database: SqliteDatabase) {}
 
   public getFreshness(): StoreFreshness {
-    return FRESHNESS;
+    const row = this.database
+      .prepare(
+        "SELECT checkpoint, sync_state FROM coordination_state WHERE singleton = 1",
+      )
+      .get();
+    if (row === undefined) return FRESHNESS;
+    const syncState = stringValue(row, "sync_state", "coordination state");
+    return {
+      mode: "local_projection",
+      checkpoint: stringValue(row, "checkpoint", "coordination state"),
+      missingCapabilities:
+        syncState === "current" ||
+        syncState === "queued" ||
+        syncState === "syncing"
+          ? []
+          : [`hub.${syncState}`],
+    };
   }
 
   public getWorkspace(id: WorkspaceId): Workspace | undefined {
@@ -1011,6 +1080,13 @@ class SqliteTransaction
       ],
     );
   }
+  public insertSyncCommand(command: CommandEnvelope): void {
+    this.insert(
+      "command_journal",
+      ["command_id", "workspace_id", "payload_json"],
+      [command.commandId, command.workspaceId, payload(command)],
+    );
+  }
 
   private insert(
     table: string,
@@ -1095,6 +1171,313 @@ export class SqliteApplicationStore implements ApplicationStore {
         auditReceipts: count("audit_receipts"),
       },
     };
+  }
+
+  public snapshot(): ReferenceStateSnapshot {
+    const records = <RecordType extends object>(
+      table: string,
+      storageKey: string,
+      payloadKey: "id" | "scope" | "targetCommandId",
+      context: string,
+    ): readonly RecordType[] =>
+      this.database
+        .prepare(
+          `SELECT ${storageKey} AS storage_identity, payload_json FROM ${table} ORDER BY ${storageKey}`,
+        )
+        .all()
+        .map((row) =>
+          parsePayload<RecordType>(
+            row,
+            payloadKey,
+            stringValue(row, "storage_identity", context),
+            context,
+          ),
+        );
+    return {
+      workspaces: records("workspaces", "id", "id", "workspace"),
+      spaces: records("spaces", "id", "id", "space"),
+      memberships: records("memberships", "id", "id", "membership"),
+      taskStatuses: records("task_statuses", "id", "id", "task status"),
+      captures: records("captures", "id", "id", "capture"),
+      tasks: records("tasks", "id", "id", "task"),
+      projects: records("projects", "id", "id", "project"),
+      relations: records("task_project_relations", "id", "id", "relation"),
+      undoDescriptors: records(
+        "undo_descriptors",
+        "target_command_id",
+        "targetCommandId",
+        "undo descriptor",
+      ),
+      events: records("events", "id", "id", "event"),
+      auditReceipts: records("audit_receipts", "id", "id", "audit receipt"),
+      idempotencyRecords: records(
+        "idempotency_records",
+        "scope",
+        "scope",
+        "idempotency record",
+      ),
+      outboxEntries: records("outbox_entries", "id", "id", "outbox entry"),
+    };
+  }
+
+  public getCoordinationState(): LocalCoordinationState | undefined {
+    const raw = this.database
+      .prepare("SELECT * FROM coordination_state WHERE singleton = 1")
+      .get();
+    if (raw === undefined) return undefined;
+    const row = objectValue(raw, "coordination state");
+    const syncState = stringValue(row, "sync_state", "coordination state");
+    if (
+      ![
+        "current",
+        "queued",
+        "syncing",
+        "offline",
+        "conflict",
+        "unknown_reconcile",
+        "revoked",
+      ].includes(syncState)
+    ) {
+      throw new LocalStoreCorruptionError("Invalid coordination sync state.");
+    }
+    const lastSyncedAt = row.last_synced_at;
+    const lastErrorCode = row.last_error_code;
+    if (lastSyncedAt !== null && typeof lastSyncedAt !== "string") {
+      throw new LocalStoreCorruptionError("Invalid coordination timestamp.");
+    }
+    if (lastErrorCode !== null && typeof lastErrorCode !== "string") {
+      throw new LocalStoreCorruptionError("Invalid coordination error code.");
+    }
+    return {
+      workspaceId: row.workspace_id as WorkspaceId,
+      providerInstanceId: stringValue(
+        row,
+        "provider_instance_id",
+        "coordination state",
+      ),
+      hubOrigin: stringValue(row, "hub_origin", "coordination state"),
+      checkpoint: stringValue(row, "checkpoint", "coordination state"),
+      snapshotDigest: stringValue(row, "snapshot_digest", "coordination state"),
+      syncState: syncState as LocalCoordinationState["syncState"],
+      ...(lastSyncedAt === null ? {} : { lastSyncedAt }),
+      ...(lastErrorCode === null ? {} : { lastErrorCode }),
+    };
+  }
+
+  public configureCoordination(input: {
+    readonly workspaceId: WorkspaceId;
+    readonly providerInstanceId: string;
+    readonly hubOrigin: string;
+    readonly checkpoint: string;
+    readonly snapshotDigest: string;
+    readonly configuredAt: string;
+  }): void {
+    this.transact(() => {
+      this.database
+        .prepare(
+          "INSERT INTO coordination_state (singleton, workspace_id, provider_instance_id, hub_origin, checkpoint, snapshot_digest, sync_state, last_synced_at) VALUES (1, ?, ?, ?, ?, ?, 'current', ?)",
+        )
+        .run(
+          input.workspaceId,
+          input.providerInstanceId,
+          input.hubOrigin,
+          input.checkpoint,
+          input.snapshotDigest,
+          input.configuredAt,
+        );
+      const delivery = this.database.prepare(
+        "INSERT OR IGNORE INTO sync_delivery (command_id, state, updated_at) VALUES (?, 'seeded', ?)",
+      );
+      for (const row of this.database
+        .prepare("SELECT command_id FROM command_journal")
+        .all()) {
+        delivery.run(
+          stringValue(row, "command_id", "command journal"),
+          input.configuredAt,
+        );
+      }
+    });
+  }
+
+  public listPendingSyncCommands(limit = 50): readonly PendingSyncCommand[] {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
+      throw new Error("Sync command limit must be between 1 and 50.");
+    }
+    const delivered = this.database.prepare(
+      "SELECT state FROM sync_delivery WHERE command_id = ?",
+    );
+    const pending: PendingSyncCommand[] = [];
+    const entries = this.database
+      .prepare(
+        "SELECT command_id, payload_json FROM command_journal ORDER BY rowid",
+      )
+      .all();
+    for (const row of entries) {
+      const commandId = stringValue(row, "command_id", "command journal");
+      let raw: unknown;
+      try {
+        raw = JSON.parse(stringValue(row, "payload_json", "command journal"));
+      } catch {
+        throw new LocalStoreCorruptionError(
+          "Command journal contains invalid JSON.",
+        );
+      }
+      const command = CommandEnvelopeSchema.safeParse(raw);
+      if (
+        !command.success ||
+        delivered.get(command.data.commandId) !== undefined
+      ) {
+        continue;
+      }
+      pending.push({ command: command.data, outboxEntryId: commandId });
+      if (pending.length === limit) break;
+    }
+    return pending;
+  }
+
+  public listUnknownSyncCommands(): readonly PendingSyncCommand[] {
+    return this.database
+      .prepare(
+        "SELECT j.command_id, j.payload_json FROM command_journal j JOIN sync_delivery d ON d.command_id = j.command_id WHERE d.state = 'unknown_reconcile' ORDER BY j.rowid LIMIT 50",
+      )
+      .all()
+      .map((row) => {
+        const commandId = stringValue(row, "command_id", "command journal");
+        let raw: unknown;
+        try {
+          raw = JSON.parse(stringValue(row, "payload_json", "command journal"));
+        } catch {
+          throw new LocalStoreCorruptionError(
+            "Command journal contains invalid JSON.",
+          );
+        }
+        return {
+          command: CommandEnvelopeSchema.parse(raw),
+          outboxEntryId: commandId,
+        };
+      });
+  }
+
+  public retrySyncCommand(commandId: string): void {
+    this.database
+      .prepare(
+        "DELETE FROM sync_delivery WHERE command_id = ? AND state = 'unknown_reconcile'",
+      )
+      .run(commandId);
+  }
+
+  public recordSyncResult(input: {
+    readonly commandId: string;
+    readonly state: "accepted" | "conflict" | "rejected" | "unknown_reconcile";
+    readonly outcome?: unknown;
+    readonly updatedAt: string;
+  }): void {
+    const outcome =
+      input.outcome === undefined
+        ? undefined
+        : CommandOutcomeSchema.parse(input.outcome);
+    this.database
+      .prepare(
+        "INSERT INTO sync_delivery (command_id, state, outcome_json, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(command_id) DO UPDATE SET state = excluded.state, outcome_json = excluded.outcome_json, updated_at = excluded.updated_at",
+      )
+      .run(
+        input.commandId,
+        input.state,
+        outcome === undefined ? null : payload(outcome),
+        input.updatedAt,
+      );
+  }
+
+  public updateCoordinationState(input: {
+    readonly checkpoint: string;
+    readonly snapshotDigest: string;
+    readonly syncState: LocalCoordinationState["syncState"];
+    readonly updatedAt?: string;
+    readonly errorCode?: string;
+  }): void {
+    const result = this.database
+      .prepare(
+        "UPDATE coordination_state SET checkpoint = ?, snapshot_digest = ?, sync_state = ?, last_synced_at = ?, last_error_code = ? WHERE singleton = 1",
+      )
+      .run(
+        input.checkpoint,
+        input.snapshotDigest,
+        input.syncState,
+        input.updatedAt ?? null,
+        input.errorCode ?? null,
+      );
+    if (!changed(result)) {
+      throw new LocalStoreCorruptionError(
+        "Coordination state is not configured.",
+      );
+    }
+  }
+
+  public replaceProjection(
+    snapshot: ReferenceStateSnapshot,
+    coordination: {
+      readonly checkpoint: string;
+      readonly snapshotDigest: string;
+      readonly syncState: LocalCoordinationState["syncState"];
+      readonly updatedAt: string;
+    },
+  ): void {
+    if (
+      snapshot.workspaces.length !== 1 ||
+      snapshot.workspaces[0] === undefined
+    ) {
+      throw new LocalStoreCorruptionError(
+        "A coordinated projection must contain exactly one workspace.",
+      );
+    }
+    this.transact(() => {
+      for (const table of [
+        "outbox_entries",
+        "idempotency_records",
+        "audit_receipts",
+        "events",
+        "undo_descriptors",
+        "task_project_relations",
+        "projects",
+        "tasks",
+        "captures",
+        "task_statuses",
+        "memberships",
+        "spaces",
+        "workspaces",
+      ]) {
+        this.database.exec(`DELETE FROM ${table};`);
+      }
+      const transaction = new SqliteTransaction(this.database);
+      snapshot.workspaces.forEach((value) =>
+        transaction.insertWorkspace(value),
+      );
+      snapshot.spaces.forEach((value) => transaction.insertSpace(value));
+      snapshot.memberships.forEach((value) =>
+        transaction.insertMembership(value),
+      );
+      snapshot.taskStatuses.forEach((value) =>
+        transaction.insertTaskStatus(value),
+      );
+      snapshot.captures.forEach((value) => transaction.insertCapture(value));
+      snapshot.tasks.forEach((value) => transaction.insertTask(value));
+      snapshot.projects.forEach((value) => transaction.insertProject(value));
+      snapshot.relations.forEach((value) => transaction.insertRelation(value));
+      snapshot.undoDescriptors.forEach((value) =>
+        transaction.insertUndoDescriptor(value),
+      );
+      snapshot.events.forEach((value) => transaction.insertEvent(value));
+      snapshot.auditReceipts.forEach((value) =>
+        transaction.insertAuditReceipt(value),
+      );
+      snapshot.idempotencyRecords.forEach((value) =>
+        transaction.insertIdempotency(value),
+      );
+      snapshot.outboxEntries.forEach((value) =>
+        transaction.insertOutbox(value),
+      );
+      this.updateCoordinationState(coordination);
+    });
   }
 
   public transact<Result>(

@@ -1,20 +1,21 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import {
   ApplicationKernel,
+  CommandScopedIdGenerator,
   type ApplicationCommandResponse,
   type ApplicationQueryResponse,
   type ApplicationStore,
   type AuthorizationRequest,
   type Clock,
   type CurrentAuthorizationPolicy,
-  type IdGenerator,
   type PaginationCursor,
   type PaginationCursorCodec,
   type SemanticHasher,
 } from "@constellation/application";
 import {
   CaptureIdSchema,
+  CommandEnvelopeSchema,
   TaskIdSchema,
   type ExecutionContext,
 } from "@constellation/contracts";
@@ -38,12 +39,6 @@ const canonicalJson = (value: unknown): string => {
 class SystemClock implements Clock {
   public now(): string {
     return new Date().toISOString();
-  }
-}
-
-class RandomIdGenerator implements IdGenerator {
-  public next(): string {
-    return randomUUID();
   }
 }
 
@@ -134,16 +129,22 @@ export const createRuntimeKernelService = (input: {
   readonly context: ExecutionContext;
   readonly store: ApplicationStore;
 }): DesktopKernelService => {
+  const hasher = new Sha256SemanticHasher();
+  const ids = new CommandScopedIdGenerator(hasher);
   const kernel = new ApplicationKernel({
     authorization: new FixedDesktopGrant(input.context),
     clock: new SystemClock(),
     cursorCodec: new Base64JsonCursorCodec(),
-    hasher: new Sha256SemanticHasher(),
-    ids: new RandomIdGenerator(),
+    hasher,
+    ids,
     store: input.store,
   });
   return {
-    execute: (rawCommand) => kernel.execute(input.context, rawCommand),
+    execute: (rawCommand) => {
+      const command = CommandEnvelopeSchema.safeParse(rawCommand);
+      if (command.success) ids.begin(command.data.commandId);
+      return kernel.execute(input.context, rawCommand);
+    },
     query: (rawQuery) => kernel.query(input.context, rawQuery),
   };
 };

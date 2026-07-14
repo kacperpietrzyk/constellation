@@ -25,6 +25,9 @@ export const DESKTOP_CHANNELS = {
   executeCommand: "constellation:command:execute",
   getBuildInfo: "constellation:build:info",
   getDataHomeStatus: "constellation:data-home:status",
+  exportHubAuthorization: "constellation:data-home:export-hub-authorization",
+  enrollHub: "constellation:data-home:enroll-hub",
+  syncDataHome: "constellation:data-home:sync-now",
   runQuery: "constellation:query:run",
   exportWorkspaceBackup: "constellation:workspace-backup:export",
   prepareWorkspaceRestore: "constellation:workspace-backup:prepare-restore",
@@ -66,8 +69,33 @@ export interface ConstellationRendererClient {
   }): Promise<WorkspaceRestoreResult>;
   executeCommand(command: CommandEnvelope): Promise<RendererCommandResponse>;
   exportWorkspaceBackup(): Promise<WorkspaceBackupExportResult>;
+  exportHubAuthorization(): Promise<
+    | { readonly outcome: "success"; readonly fileLabel: string }
+    | { readonly outcome: "cancelled" }
+    | { readonly outcome: "failure" }
+  >;
   getBuildInfo(): Promise<DesktopBuildInfo>;
   getDataHomeStatus(): Promise<DataHomeStatus>;
+  enrollHub(input: {
+    readonly hubOrigin: string;
+    readonly enrollmentSecret: string;
+    readonly deviceLabel: string;
+  }): Promise<
+    | { readonly outcome: "success"; readonly status: DataHomeStatus }
+    | {
+        readonly outcome: "rejected";
+        readonly code:
+          | "input_invalid"
+          | "workspace_unavailable"
+          | "enrollment_invalid"
+          | "enrollment_expired"
+          | "enrollment_used"
+          | "device_already_enrolled"
+          | "hub_unreachable"
+          | "credential_storage_failed";
+      }
+  >;
+  syncDataHome(): Promise<DataHomeStatus>;
   prepareWorkspaceRestore(input: {
     readonly recoveryCode: string;
   }): Promise<WorkspaceRestorePreviewResult>;
@@ -98,6 +126,16 @@ export const createRendererClient = (
     invoke(DESKTOP_CHANNELS.getBuildInfo) as Promise<DesktopBuildInfo>,
   getDataHomeStatus: () =>
     invoke(DESKTOP_CHANNELS.getDataHomeStatus) as Promise<DataHomeStatus>,
+  exportHubAuthorization: () =>
+    invoke(DESKTOP_CHANNELS.exportHubAuthorization) as ReturnType<
+      ConstellationRendererClient["exportHubAuthorization"]
+    >,
+  enrollHub: (input) =>
+    invoke(DESKTOP_CHANNELS.enrollHub, input) as ReturnType<
+      ConstellationRendererClient["enrollHub"]
+    >,
+  syncDataHome: () =>
+    invoke(DESKTOP_CHANNELS.syncDataHome) as Promise<DataHomeStatus>,
   exportWorkspaceBackup: () =>
     invoke(
       DESKTOP_CHANNELS.exportWorkspaceBackup,

@@ -14,8 +14,10 @@ on:
       - packages/desktop-ui/**
       - packages/domain/**
       - packages/local-store/**
+      - packages/hub/**
       - scripts/package-alpha.mjs
       - scripts/run-packaged-alpha-smoke.mjs
+      - scripts/run-packaged-hub-smoke.mjs
       - scripts/desktop/**
       - scripts/native/**
   workflow_dispatch:
@@ -120,6 +122,9 @@ jobs:
 
       - name: Verify encrypted Capture to Task across relaunch
         run: npm run test:alpha:packaged
+
+      - name: Verify two packaged devices through an unattended Hub
+        run: npm run test:hub:packaged
 
       - name: Restore the macOS Keychain configuration
         if: always() && runner.os == 'macOS'

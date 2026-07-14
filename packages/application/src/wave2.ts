@@ -307,6 +307,7 @@ const appendJournal = (
   transaction.insertEvent(storedEvent);
   transaction.insertAuditReceipt(audit);
   transaction.insertIdempotency({ ...idempotency, outcome: committed });
+  transaction.insertSyncCommand(command);
   transaction.insertOutbox(outbox);
   if (undoDescriptor !== undefined)
     transaction.insertUndoDescriptor(undoDescriptor);

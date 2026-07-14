@@ -8,7 +8,11 @@ export {
   exportEncryptedLocalStore,
   openEncryptedLocalStore,
 } from "./encrypted-local-store.js";
-export type { LocalWorkspaceRecoverySummary } from "./sqlite-application-store.js";
+export type {
+  LocalCoordinationState,
+  LocalWorkspaceRecoverySummary,
+  PendingSyncCommand,
+} from "./sqlite-application-store.js";
 export type {
   EncryptedLocalStoreExportFacts,
   EncryptedLocalStoreFacts,
