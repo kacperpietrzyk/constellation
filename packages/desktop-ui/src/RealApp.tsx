@@ -67,6 +67,7 @@ import {
   canMoveShellHistory,
   closeShellContext,
   createShellNavigation,
+  destinationShortcutIndex,
   destinationContext,
   moveShellHistory,
   openShellContext,
@@ -437,6 +438,7 @@ export const RealApp = ({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const modalOpen = document.querySelector("dialog[open]") !== null;
+      const shortcutIndex = destinationShortcutIndex(event.code);
       if (modalOpen && event.key !== "Escape") return;
       if (
         (event.metaKey || event.ctrlKey) &&
@@ -450,10 +452,10 @@ export const RealApp = ({
         setSearchOpen(true);
       } else if (
         (event.metaKey || event.ctrlKey) &&
-        /^Digit[1-7]$/.test(event.code)
+        shortcutIndex !== undefined
       ) {
         event.preventDefault();
-        const item = navItems[Number(event.code.slice(-1)) - 1];
+        const item = navItems[shortcutIndex];
         if (item) openContext(destinationContext(item.id, item.label));
       } else if (event.altKey && event.key === "ArrowLeft") {
         event.preventDefault();

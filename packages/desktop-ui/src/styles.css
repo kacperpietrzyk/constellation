@@ -3136,7 +3136,7 @@ kbd {
   display: grid;
   grid-template-columns: minmax(13rem, 17rem) minmax(0, 1fr);
   min-height: calc(100vh - 7.5rem);
-  margin: calc(-1 * var(--space-6));
+  margin: 0;
   background: var(--surface-window);
 }
 .documents-list {
@@ -3344,16 +3344,18 @@ kbd {
 .document-blocked p {
   line-height: 1.55;
 }
-@media (max-width: 940px) {
-  .documents-layout {
-    grid-template-columns: 11.5rem minmax(0, 1fr);
-  }
+@media (max-width: 92rem) {
   .document-editor {
     grid-template-columns: minmax(0, 1fr);
   }
   .document-revisions {
     border-top: 1px solid var(--border-subtle);
     border-left: 0;
+  }
+}
+@media (max-width: 940px) {
+  .documents-layout {
+    grid-template-columns: 11.5rem minmax(0, 1fr);
   }
 }
 @media (max-width: 680px) {
