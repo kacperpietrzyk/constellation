@@ -9,6 +9,7 @@ import {
   ApplicationKernel,
   isApplicationWave2ReadView,
   isApplicationWave2Transaction,
+  RetryableUnitOfWorkError,
   type ApplicationCommandResponse,
 } from "@constellation/application";
 import {
@@ -209,6 +210,54 @@ const wave2Command = (
   });
 
 describe("SQLite ApplicationStore", () => {
+  it("maps only SQLite busy failures to a retryable unit of work", () => {
+    for (const code of ["SQLITE_BUSY", "SQLITE_BUSY_SNAPSHOT"] as const) {
+      const database = new DatabaseSync(":memory:");
+      const delegated: SqliteDatabase = {
+        exec(sql) {
+          if (sql === "BEGIN IMMEDIATE;") {
+            throw Object.assign(new Error(code), { code });
+          }
+          database.exec(sql);
+        },
+        prepare: (sql) => sqlitePort(database).prepare(sql),
+      };
+      const store = new SqliteApplicationStore(delegated);
+      assert.throws(
+        () => store.transact(() => undefined),
+        RetryableUnitOfWorkError,
+      );
+      database.close();
+    }
+
+    for (const code of [
+      "SQLITE_LOCKED",
+      "SQLITE_FULL",
+      "SQLITE_IOERR",
+      "SQLITE_CANTOPEN",
+    ] as const) {
+      const database = new DatabaseSync(":memory:");
+      const failure = Object.assign(new Error(code), { code });
+      const delegated: SqliteDatabase = {
+        exec(sql) {
+          if (sql === "BEGIN IMMEDIATE;") throw failure;
+          database.exec(sql);
+        },
+        prepare: (sql) => sqlitePort(database).prepare(sql),
+      };
+      const store = new SqliteApplicationStore(delegated);
+      assert.throws(
+        () => store.transact(() => undefined),
+        (error) => {
+          assert.equal(error, failure);
+          assert.equal(error instanceof RetryableUnitOfWorkError, false);
+          return true;
+        },
+      );
+      database.close();
+    }
+  });
+
   it("preserves event command attribution across restart", () => {
     withDatabase((filename) => {
       const eventId = "00000000-0000-4000-8000-000000000089" as EventId;

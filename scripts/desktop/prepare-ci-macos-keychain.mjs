@@ -3,24 +3,31 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-if (
-  process.platform !== "darwin" ||
-  process.env.GITHUB_ACTIONS !== "true" ||
-  process.env.RUNNER_ENVIRONMENT !== "github-hosted" ||
-  !process.env.RUNNER_TEMP ||
-  !path.isAbsolute(process.env.RUNNER_TEMP)
-) {
-  throw new Error("CI_MACOS_KEYCHAIN_REQUIRED");
+const hostedRunner =
+  process.env.GITHUB_ACTIONS === "true" &&
+  process.env.RUNNER_ENVIRONMENT === "github-hosted" &&
+  typeof process.env.RUNNER_TEMP === "string" &&
+  path.isAbsolute(process.env.RUNNER_TEMP);
+const explicitLocalRoot = process.env.CONSTELLATION_KEYCHAIN_TEST_ROOT;
+const explicitLocalTest =
+  process.env.CONSTELLATION_ALLOW_LOCAL_KEYCHAIN_TEST === "true" &&
+  typeof explicitLocalRoot === "string" &&
+  path.isAbsolute(explicitLocalRoot);
+if (process.platform !== "darwin" || (!hostedRunner && !explicitLocalTest)) {
+  throw new Error("ISOLATED_MACOS_KEYCHAIN_REQUIRED");
 }
 
-const temporaryRoot = process.env.RUNNER_TEMP;
+const temporaryRoot = hostedRunner
+  ? process.env.RUNNER_TEMP
+  : explicitLocalRoot;
+fs.mkdirSync(temporaryRoot, { recursive: true, mode: 0o700 });
 const keychainPath = path.join(
   temporaryRoot,
-  "constellation-packaged-store-probe.keychain-db",
+  "constellation-local-alpha.keychain-db",
 );
 const restorePath = path.join(
   temporaryRoot,
-  "constellation-packaged-store-keychain-restore.json",
+  "constellation-local-alpha-keychain-restore.json",
 );
 
 function security(args, capture = false) {

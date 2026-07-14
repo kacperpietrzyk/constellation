@@ -16,7 +16,8 @@ on:
       - packages/local-store/**
       - scripts/package-alpha.mjs
       - scripts/run-packaged-alpha-smoke.mjs
-      - tools/sqlcipher-native-probe/scripts/**
+      - scripts/desktop/**
+      - scripts/native/**
   workflow_dispatch:
 
 permissions:
@@ -44,7 +45,7 @@ jobs:
           sudo apt-get install --no-install-recommends -y libssl-dev tcl-dev
 
       - name: Generate and identify the amalgamation
-        run: bash tools/sqlcipher-native-probe/scripts/generate-amalgamation.sh "$RUNNER_TEMP/sqlcipher-amalgamation"
+        run: bash scripts/native/generate-sqlcipher-amalgamation.sh "$RUNNER_TEMP/sqlcipher-amalgamation"
 
       - name: Upload the licensed source artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
@@ -65,9 +66,15 @@ jobs:
         include:
           - label: macOS x64
             os: macos-15-intel
+            architecture: x64
+            timeout: 35
+          - label: macOS arm64
+            os: macos-15
+            architecture: arm64
             timeout: 35
           - label: Windows x64
             os: windows-2022
+            architecture: x64
             timeout: 55
 
     steps:
@@ -91,28 +98,32 @@ jobs:
       - name: Install dependencies without lifecycle scripts
         run: npm ci --ignore-scripts
 
-      - name: Build the macOS x64 Electron binding
+      - name: Build the native macOS Electron binding
         if: runner.os == 'macOS'
-        run: bash tools/sqlcipher-native-probe/scripts/build-macos.sh "$RUNNER_TEMP/sqlcipher-amalgamation" "$PWD"
+        env:
+          CONSTELLATION_ALPHA_ARCH: ${{ matrix.architecture }}
+        run: bash scripts/native/build-sqlcipher-macos.sh "$RUNNER_TEMP/sqlcipher-amalgamation" "$PWD"
 
       - name: Build OpenSSL and the Windows x64 Electron binding
         if: runner.os == 'Windows'
         shell: pwsh
-        run: ./tools/sqlcipher-native-probe/scripts/build-windows.ps1 -Amalgamation "$env:RUNNER_TEMP\sqlcipher-amalgamation" -TargetProbeRoot (Resolve-Path ".").Path
+        run: ./scripts/native/build-sqlcipher-windows.ps1 -Amalgamation "$env:RUNNER_TEMP\sqlcipher-amalgamation" -TargetRoot (Resolve-Path ".").Path
 
       - name: Package the real local Alpha application
+        env:
+          CONSTELLATION_ALPHA_ARCH: ${{ matrix.architecture }}
         run: npm run package:alpha
 
       - name: Prepare a disposable macOS Keychain
         if: runner.os == 'macOS'
-        run: node tools/packaged-encrypted-store-probe/scripts/prepare-macos-keychain.mjs
+        run: node scripts/desktop/prepare-ci-macos-keychain.mjs
 
       - name: Verify encrypted Capture to Task across relaunch
-        run: npm run probe:alpha:packaged
+        run: npm run test:alpha:packaged
 
       - name: Restore the macOS Keychain configuration
         if: always() && runner.os == 'macOS'
-        run: node tools/packaged-encrypted-store-probe/scripts/restore-macos-keychain.mjs
+        run: node scripts/desktop/restore-ci-macos-keychain.mjs
 
       - name: Audit the locked dependency graph
         run: npm run audit:dependencies

@@ -3,7 +3,7 @@ set -euo pipefail
 
 SQLCIPHER_TAG="v4.16.0"
 SQLCIPHER_COMMIT="e2a6040f2ae5cfff2b3e08eb3320007d93cdf3fc"
-OUTPUT_DIR="${1:?usage: generate-amalgamation.sh OUTPUT_DIR}"
+OUTPUT_DIR="${1:?usage: generate-sqlcipher-amalgamation.sh OUTPUT_DIR}"
 WORK_DIR="$(mktemp -d)"
 SOURCE_DIR="$WORK_DIR/sqlcipher"
 BUILD_DIR="$WORK_DIR/build"

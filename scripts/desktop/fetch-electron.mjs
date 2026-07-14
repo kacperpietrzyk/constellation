@@ -1,21 +1,37 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { pipeline } from "node:stream/promises";
 import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+);
+const architecture = process.env.CONSTELLATION_ALPHA_ARCH ?? process.arch;
 const release = {
   darwin: {
-    filename: "electron-v43.1.0-darwin-x64.zip",
-    sha256: "c84cd358a6c58ee9d6ce26ced694ab3b750109e9f29145ff5a639db64037f1de",
+    arm64: {
+      filename: "electron-v43.1.0-darwin-arm64.zip",
+      sha256:
+        "2ee24f768c41bc2ed9bd580d7797b185dffb550dafca59c2cd08b51965bcda3a",
+    },
+    x64: {
+      filename: "electron-v43.1.0-darwin-x64.zip",
+      sha256:
+        "c84cd358a6c58ee9d6ce26ced694ab3b750109e9f29145ff5a639db64037f1de",
+    },
   },
   win32: {
-    filename: "electron-v43.1.0-win32-x64.zip",
-    sha256: "a07dc1e3d5e589593d37e3b19d1b373e02bb58270e2eb0d6633eee0198ad09f0",
+    x64: {
+      filename: "electron-v43.1.0-win32-x64.zip",
+      sha256:
+        "a07dc1e3d5e589593d37e3b19d1b373e02bb58270e2eb0d6633eee0198ad09f0",
+    },
   },
-}[process.platform];
+}[process.platform]?.[architecture];
 
 if (!release) throw new Error("ELECTRON_PLATFORM_UNSUPPORTED");
 
@@ -41,7 +57,7 @@ if (fs.existsSync(target)) {
     {
       redirect: "follow",
       signal: AbortSignal.timeout(120_000),
-      headers: { "user-agent": "constellation-safe-storage-probe" },
+      headers: { "user-agent": "constellation-alpha-packager" },
     },
   );
   if (!response.ok || !response.body) {
@@ -76,7 +92,7 @@ process.stdout.write(
     status: "pass",
     electron: "43.1.0",
     platform: process.platform,
-    architecture: "x64",
+    architecture,
     sha256: release.sha256,
   })}\n`,
 );

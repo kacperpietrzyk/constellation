@@ -1,14 +1,14 @@
 import { fileURLToPath } from "node:url";
-
-import {
-  app,
-  BrowserWindow,
-  dialog,
-  globalShortcut,
-  ipcMain,
-  safeStorage,
-  session,
-  shell,
+import { createRequire } from "node:module";
+import type {
+  App,
+  BrowserWindow as BrowserWindowType,
+  Dialog,
+  GlobalShortcut,
+  IpcMain,
+  SafeStorage,
+  Session,
+  Shell,
 } from "electron";
 import {
   DESKTOP_CHANNELS,
@@ -30,13 +30,31 @@ import {
   type AsyncSafeStorage,
 } from "./workspace-key-custody.js";
 
+// Electron's ESM namespace materializes lazy exports before the application is
+// ready. On macOS that can initialize safeStorage early and block on Keychain.
+// Keep the CommonJS proxy and access safeStorage only after app.whenReady().
+interface ElectronRuntime {
+  readonly app: App;
+  readonly BrowserWindow: typeof BrowserWindowType;
+  readonly dialog: Dialog;
+  readonly globalShortcut: GlobalShortcut;
+  readonly ipcMain: IpcMain;
+  readonly safeStorage: SafeStorage;
+  readonly session: { readonly defaultSession: Session };
+  readonly shell: Shell;
+}
+
+const electron = createRequire(import.meta.url)("electron") as ElectronRuntime;
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, session, shell } =
+  electron;
+
 const preloadPath = fileURLToPath(
   new URL("../../../desktop-preload/build/preload.cjs", import.meta.url),
 );
 const rendererPath = fileURLToPath(
   new URL("../../../desktop-ui/dist/index.html", import.meta.url),
 );
-let mainWindow: BrowserWindow | undefined;
+let mainWindow: BrowserWindowType | undefined;
 let durableKernel: DurableKernelService | undefined;
 
 interface DesktopRuntime {
@@ -45,9 +63,21 @@ interface DesktopRuntime {
 }
 
 const electronSafeStorage: AsyncSafeStorage = {
-  isAsyncEncryptionAvailable: () => safeStorage.isAsyncEncryptionAvailable(),
-  encryptStringAsync: (value) => safeStorage.encryptStringAsync(value),
-  decryptStringAsync: (value) => safeStorage.decryptStringAsync(value),
+  isAsyncEncryptionAvailable: async () =>
+    process.platform === "darwin"
+      ? electron.safeStorage.isEncryptionAvailable()
+      : electron.safeStorage.isAsyncEncryptionAvailable(),
+  encryptStringAsync: async (value) =>
+    process.platform === "darwin"
+      ? electron.safeStorage.encryptString(value)
+      : electron.safeStorage.encryptStringAsync(value),
+  decryptStringAsync: async (value) =>
+    process.platform === "darwin"
+      ? {
+          result: electron.safeStorage.decryptString(value),
+          shouldReEncrypt: false,
+        }
+      : electron.safeStorage.decryptStringAsync(value),
 };
 
 const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
@@ -68,7 +98,7 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
   };
 };
 
-const createWindow = async (): Promise<BrowserWindow> => {
+const createWindow = async (): Promise<BrowserWindowType> => {
   const window = new BrowserWindow({
     width: 1380,
     height: 860,

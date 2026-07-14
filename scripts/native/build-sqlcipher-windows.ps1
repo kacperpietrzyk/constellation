@@ -3,7 +3,7 @@ param(
   [string] $Amalgamation,
 
   [Parameter(Mandatory = $false)]
-  [string] $TargetProbeRoot
+  [string] $TargetRoot
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,9 +12,9 @@ Set-StrictMode -Version Latest
 $OpenSslVersion = "3.5.7"
 $OpenSslSha256 = "a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8"
 $ElectronVersion = "43.1.0"
-$ScriptRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$Root = if ($PSBoundParameters.ContainsKey("TargetProbeRoot")) {
-  (Resolve-Path $TargetProbeRoot).Path
+$ScriptRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$Root = if ($PSBoundParameters.ContainsKey("TargetRoot")) {
+  (Resolve-Path $TargetRoot).Path
 }
 else {
   $ScriptRoot
@@ -24,7 +24,7 @@ $Archive = Join-Path $RunnerTemp "openssl-$OpenSslVersion.tar.gz"
 $SourceRoot = Join-Path $RunnerTemp "openssl-$OpenSslVersion"
 
 if (-not [Environment]::Is64BitOperatingSystem) {
-  throw "This probe requires a 64-bit Windows runner."
+  throw "The Windows x64 application build requires a 64-bit runner."
 }
 
 foreach ($RequiredFile in @("sqlite3.c", "sqlite3.h")) {
@@ -63,12 +63,7 @@ Invoke-DeveloperCommand $Configure
 $LibCrypto = Join-Path $SourceRoot "libcrypto.lib"
 if (-not (Test-Path $LibCrypto)) { throw "Static libcrypto.lib was not produced." }
 
-if ($PSBoundParameters.ContainsKey("TargetProbeRoot")) {
-  node (Join-Path $ScriptRoot "scripts\patch-binding.mjs") $Root
-}
-else {
-  node (Join-Path $ScriptRoot "scripts\patch-binding.mjs")
-}
+node (Join-Path $ScriptRoot "scripts\native\patch-better-sqlite3.mjs") $Root
 if ($LASTEXITCODE -ne 0) { throw "Binding patch failed." }
 
 $ModuleRoot = Join-Path $Root "node_modules\better-sqlite3"
@@ -113,4 +108,4 @@ if ($DumpText -notmatch "machine \(x64\)") {
 if ($DumpText -match "(?i)lib(?:crypto|ssl).*\.dll") {
   throw "The native binding unexpectedly depends on a shared OpenSSL DLL."
 }
-Write-Host "Native binding is x64 and has no shared OpenSSL dependency."
+Write-Host "Application binding is x64 and has no shared OpenSSL dependency."

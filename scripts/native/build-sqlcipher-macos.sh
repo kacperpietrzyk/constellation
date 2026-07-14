@@ -2,40 +2,43 @@
 set -euo pipefail
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "This probe requires macOS." >&2
+  echo "This build requires macOS." >&2
   exit 2
 fi
 HOST_ARCH="$(uname -m)"
 if [[ "$HOST_ARCH" != "x86_64" && "$HOST_ARCH" != "arm64" ]]; then
-  echo "This probe requires an x64 or arm64 macOS host." >&2
+  echo "This build requires an x64 or arm64 macOS host." >&2
   exit 2
 fi
 
 if [[ $# -gt 2 ]]; then
-  echo "usage: build-macos.sh AMALGAMATION_DIR [TARGET_PROBE_ROOT]" >&2
+  echo "usage: build-sqlcipher-macos.sh AMALGAMATION_DIR [TARGET_ROOT]" >&2
   exit 2
 fi
 
-AMALGAMATION_DIR="${1:?usage: build-macos.sh AMALGAMATION_DIR [TARGET_PROBE_ROOT]}"
-SCRIPT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+AMALGAMATION_DIR="${1:?usage: build-sqlcipher-macos.sh AMALGAMATION_DIR [TARGET_ROOT]}"
+SCRIPT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ROOT="$SCRIPT_ROOT"
 if [[ $# -ge 2 ]]; then
   ROOT="$(cd "$2" && pwd)"
 fi
 ELECTRON_VERSION="43.1.0"
-ARCH_FLAGS=""
-if [[ "$HOST_ARCH" == "arm64" ]]; then
-  ARCH_FLAGS="-arch x86_64"
+TARGET_ARCH="${CONSTELLATION_ALPHA_ARCH:-$HOST_ARCH}"
+if [[ "$TARGET_ARCH" != "x86_64" && "$TARGET_ARCH" != "arm64" ]]; then
+  echo "Unsupported macOS target architecture: $TARGET_ARCH" >&2
+  exit 2
 fi
+if [[ "$TARGET_ARCH" != "$HOST_ARCH" ]]; then
+  echo "Cross-architecture macOS builds are not supported; use a native runner." >&2
+  exit 2
+fi
+NODE_GYP_ARCH="${TARGET_ARCH/x86_64/x64}"
+ARCH_FLAGS="-arch $TARGET_ARCH"
 
 test -f "$AMALGAMATION_DIR/sqlite3.c"
 test -f "$AMALGAMATION_DIR/sqlite3.h"
 
-if [[ $# -ge 2 ]]; then
-  node "$SCRIPT_ROOT/scripts/patch-binding.mjs" "$ROOT"
-else
-  node "$SCRIPT_ROOT/scripts/patch-binding.mjs"
-fi
+node "$SCRIPT_ROOT/scripts/native/patch-better-sqlite3.mjs" "$ROOT"
 
 (
   cd "$ROOT/node_modules/better-sqlite3"
@@ -47,9 +50,10 @@ fi
     "$ROOT/node_modules/.bin/node-gyp" rebuild \
       --release \
       --target="$ELECTRON_VERSION" \
-      --arch=x64 \
+      --arch="$NODE_GYP_ARCH" \
       --dist-url=https://electronjs.org/headers \
       --sqlite3="$AMALGAMATION_DIR"
 )
 
 test -f "$ROOT/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+file "$ROOT/node_modules/better-sqlite3/build/Release/better_sqlite3.node" | grep -q "$TARGET_ARCH"

@@ -11,31 +11,40 @@ import { packager } from "@electron/packager";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const stage = path.join(root, "build", "local-alpha-stage");
 const output = path.join(root, "release");
-const electronZipDir = path.join(
-  root,
-  "tools",
-  "packaged-encrypted-store-probe",
-  "build",
-  "electron-zips",
-);
+const electronZipDir = path.join(root, "build", "electron-zips");
 const appName = "Constellation Local Alpha";
 const bundleId = "io.constellation.local-alpha";
-const architecture = process.env.CONSTELLATION_ALPHA_ARCH ?? "x64";
+const architecture = process.env.CONSTELLATION_ALPHA_ARCH ?? process.arch;
 const electronArchive = {
   darwin: {
-    filename: "electron-v43.1.0-darwin-x64.zip",
-    sha256: "c84cd358a6c58ee9d6ce26ced694ab3b750109e9f29145ff5a639db64037f1de",
+    arm64: {
+      filename: "electron-v43.1.0-darwin-arm64.zip",
+      sha256:
+        "2ee24f768c41bc2ed9bd580d7797b185dffb550dafca59c2cd08b51965bcda3a",
+    },
+    x64: {
+      filename: "electron-v43.1.0-darwin-x64.zip",
+      sha256:
+        "c84cd358a6c58ee9d6ce26ced694ab3b750109e9f29145ff5a639db64037f1de",
+    },
   },
   win32: {
-    filename: "electron-v43.1.0-win32-x64.zip",
-    sha256: "a07dc1e3d5e589593d37e3b19d1b373e02bb58270e2eb0d6633eee0198ad09f0",
+    x64: {
+      filename: "electron-v43.1.0-win32-x64.zip",
+      sha256:
+        "a07dc1e3d5e589593d37e3b19d1b373e02bb58270e2eb0d6633eee0198ad09f0",
+    },
   },
-}[process.platform];
+}[process.platform]?.[architecture];
 
 if (!new Set(["darwin", "win32"]).has(process.platform)) {
   throw new Error("LOCAL_ALPHA_PACKAGING_PLATFORM_UNSUPPORTED");
 }
-if (architecture !== "x64") {
+if (
+  (process.platform === "darwin" &&
+    !new Set(["arm64", "x64"]).has(architecture)) ||
+  (process.platform === "win32" && architecture !== "x64")
+) {
   throw new Error("LOCAL_ALPHA_PACKAGING_ARCHITECTURE_UNSUPPORTED");
 }
 if (electronArchive === undefined) {
@@ -85,12 +94,21 @@ fs.writeFileSync(
       version: "0.0.1",
       private: true,
       type: "module",
-      main: "node_modules/@constellation/desktop-main/dist/src/production-main.js",
+      main: "bootstrap.cjs",
       dependencies: { "@constellation/desktop-main": "0.0.1" },
     },
     null,
     2,
   )}\n`,
+);
+fs.writeFileSync(
+  path.join(stage, "bootstrap.cjs"),
+  `void import("./node_modules/@constellation/desktop-main/dist/src/production-main.js").catch((error) => {
+  console.error("Constellation production bootstrap failed.", error);
+  process.exitCode = 1;
+  setImmediate(() => process.exit(1));
+});
+`,
 );
 
 for (const name of ["contracts", "domain", "application", "local-store"]) {
@@ -315,6 +333,7 @@ if (
   archiveFiles.some((entry) =>
     archiveDenylist.some((denied) => entry.includes(denied)),
   ) ||
+  !archiveFiles.includes("/bootstrap.cjs") ||
   !archiveFiles.some((entry) => entry.endsWith("/production-main.js"))
 ) {
   throw new Error("PRODUCTION_ASAR_CONTENT_INVALID");
@@ -355,7 +374,7 @@ const manifest = {
   executable,
   packagedNativeModules: 1,
   productionEntrypoint:
-    "@constellation/desktop-main/dist/src/production-main.js",
+    "bootstrap.cjs -> @constellation/desktop-main/dist/src/production-main.js",
   runtimePackages: [...expectedRuntimePackages].sort(),
   nativeBindingSha256: digest,
   signatureTier,

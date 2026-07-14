@@ -65,8 +65,9 @@ database.
 
 The packaged gate builds the pinned SQLCipher binding as the only unpacked
 native module and drives the real window, context-isolated preload, IPC,
-Capture-to-Task interaction, and encrypted relaunch on macOS x64 and Windows
-x64. The resulting ad-hoc macOS and unsigned Windows application folders are
+Capture-to-Task interaction, and encrypted relaunch on native macOS arm64,
+native macOS x64, and Windows x64 runners. No macOS result depends on Rosetta.
+The resulting ad-hoc macOS and unsigned Windows application folders are
 verification artifacts, not a signed/notarized release. MCP transport,
 installers, updater, synchronized Data Homes, and automatic routing rules beyond
 the explicit Capture action remain later work.

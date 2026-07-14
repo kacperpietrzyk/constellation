@@ -1,5 +1,6 @@
 # Local agent and product workbench (never publish)
 /AGENTS.md
+/CLAUDE.md
 /.workbench/
 /.ui-craft/
 /.workflows/

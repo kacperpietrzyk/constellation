@@ -46,9 +46,13 @@ proves all of the following:
 - disabled native and SQL extension-loading paths;
 - WAL mode, full synchronization, cipher/database/foreign-key integrity.
 
-The key buffer is wiped after it is applied. Electron main owns asynchronous
-Keychain/DPAPI custody through `safeStorage`, workspace-context binding,
-authenticated wrapper metadata, and atomic `0600` wrapper publication. The
+The key buffer is wiped after it is applied. Electron main owns Keychain/DPAPI
+custody through `safeStorage`, workspace-context binding, authenticated wrapper
+metadata, and atomic `0600` wrapper publication. Windows uses Electron's
+asynchronous DPAPI provider. The macOS Alpha accesses the synchronous Keychain
+provider only after `app.whenReady()` because the asynchronous provider can
+block indefinitely for an ad-hoc application identity; it never runs in the
+renderer. The
 wrapped payload also retains generated workspace, root Space, principal,
 credential, and grant identifiers so desktop bootstrap never relies on a
 hard-coded privileged identity. Its authenticated `prepared`/`ready` state
@@ -76,6 +80,8 @@ It excludes preview/testkit/smoke artifacts, verifies a pinned Electron archive,
 and permits exactly one unpacked native module. The packaged test drives the
 real window through the context-isolated preload and IPC, creates a Capture and
 Task, closes the browser, relaunches the same encrypted workspace, and requires
-the Task to return without renderer or load errors. Native macOS x64 and Windows
-x64 jobs are required. Remaining release gates are production code signing,
-notarization, installer/updater behavior, and distribution continuity.
+the Task to return without renderer or load errors. Native macOS arm64, macOS
+x64, and Windows x64 jobs are required. Each macOS binding is compiled and
+exercised on a matching native runner; Rosetta is not a build or verification
+dependency. Remaining release gates are production code signing, notarization,
+installer/updater behavior, and distribution continuity.
