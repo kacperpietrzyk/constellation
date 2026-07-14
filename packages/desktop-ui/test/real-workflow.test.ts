@@ -134,6 +134,11 @@ const createTypedClient = () => {
   const queries: QueryEnvelope[] = [];
   const client: ConstellationRendererClient = {
     acknowledgeDocumentUpdates: async () => undefined,
+    prepareAgentCredential: async () => ({
+      credentialId: "00000000-0000-4000-8000-000000000093" as never,
+      credentialDigest: "0".repeat(64),
+      descriptorPath: "/tmp/constellation-agent.json",
+    }),
     onAttentionActivated: () => () => undefined,
     cancelWorkspaceRestore: async () => undefined,
     confirmWorkspaceRestore: async () => ({
@@ -425,6 +430,7 @@ describe("real Wave 2 renderer workflow", () => {
       queries.map((query) => query.queryName).sort(),
       [
         "activity.meaningful",
+        "agent.access",
         "attention.inbox",
         "capture.history",
         "cockpit.week",

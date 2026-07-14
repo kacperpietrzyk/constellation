@@ -20,7 +20,12 @@ import {
   AttentionSignalIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
+  AgentRunIdSchema,
+  AgentHandoffIdSchema,
+  CredentialIdSchema,
+  GrantIdSchema,
 } from "./ids.js";
+import { CapabilitySchema } from "./execution-context.js";
 
 export const ContractVersionSchema = z.literal(1);
 export type ContractVersion = z.infer<typeof ContractVersionSchema>;
@@ -119,6 +124,86 @@ export const WorkspaceMemberSetAccessCommandSchema =
 export const WorkspaceMemberRevokeCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("workspace.memberRevoke"),
   payload: z.object({ membershipId: MembershipIdSchema }).strict(),
+}).strict();
+
+const AgentAccessPresetSchema = z.enum([
+  "observe",
+  "propose",
+  "operate",
+  "full_access",
+  "custom",
+]);
+
+export const AgentGrantCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("agent.grantCreate"),
+  payload: z
+    .object({
+      grantId: GrantIdSchema,
+      membershipId: MembershipIdSchema,
+      agentPrincipalId: PrincipalIdSchema,
+      displayName: z.string().trim().min(1).max(120),
+      preset: AgentAccessPresetSchema,
+      capabilityScope: z.array(CapabilitySchema).min(1).max(100),
+      spaces: z
+        .array(
+          z
+            .object({
+              spaceGrantId: SpaceGrantIdSchema,
+              spaceId: SpaceIdSchema,
+              access: SpaceAccessLevelSchema,
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(50),
+      credentialId: CredentialIdSchema,
+      credentialDigest: z.string().regex(/^[a-f0-9]{64}$/),
+      expiresAt: z.iso.datetime({ offset: true }).optional(),
+    })
+    .strict(),
+}).strict();
+
+export const AgentGrantRotateCredentialCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("agent.grantRotateCredential"),
+    payload: z
+      .object({
+        grantId: GrantIdSchema,
+        credentialId: CredentialIdSchema,
+        credentialDigest: z.string().regex(/^[a-f0-9]{64}$/),
+      })
+      .strict(),
+  }).strict();
+
+export const AgentGrantRevokeCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("agent.grantRevoke"),
+  payload: z.object({ grantId: GrantIdSchema }).strict(),
+}).strict();
+
+export const AgentCheckpointCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("agent.checkpointCreate"),
+  payload: z
+    .object({
+      checkpointId: CheckpointIdSchema,
+      runId: AgentRunIdSchema,
+      label: z.string().trim().min(1).max(200),
+    })
+    .strict(),
+}).strict();
+
+export const AgentHandoffSubmitCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("agent.handoffSubmit"),
+  payload: z
+    .object({
+      handoffId: AgentHandoffIdSchema,
+      runId: AgentRunIdSchema,
+      evidence: z.array(z.string().trim().min(1).max(500)).max(100),
+      changes: z.array(z.string().trim().min(1).max(500)).max(100),
+      decisions: z.array(z.string().trim().min(1).max(500)).max(100),
+      remainingWork: z.array(z.string().trim().min(1).max(500)).max(100),
+      nextAction: z.string().trim().min(1).max(500),
+    })
+    .strict(),
 }).strict();
 
 export const CaptureSubmitTextCommandSchema = CommandMetadataSchema.extend({
@@ -297,6 +382,11 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   WorkspaceMemberAddCommandSchema,
   WorkspaceMemberSetAccessCommandSchema,
   WorkspaceMemberRevokeCommandSchema,
+  AgentGrantCreateCommandSchema,
+  AgentGrantRotateCredentialCommandSchema,
+  AgentGrantRevokeCommandSchema,
+  AgentCheckpointCreateCommandSchema,
+  AgentHandoffSubmitCommandSchema,
   CaptureSubmitTextCommandSchema,
   CaptureRouteAsTaskCommandSchema,
   ProjectCreateCommandSchema,

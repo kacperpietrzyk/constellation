@@ -505,7 +505,7 @@ describe("SQLite ApplicationStore", () => {
           user_version: number;
         }
       ).user_version,
-      7,
+      8,
     );
     assert.equal(
       (

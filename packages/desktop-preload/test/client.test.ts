@@ -25,6 +25,7 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "onAttentionActivated",
     "openDocument",
     "persistDocumentUpdate",
+    "prepareAgentCredential",
     "prepareWorkspaceRestore",
     "restoreDocumentRevision",
     "runQuery",

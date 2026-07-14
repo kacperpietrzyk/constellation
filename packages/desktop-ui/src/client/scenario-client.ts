@@ -27,6 +27,11 @@ export const createScenarioClient = (
   fixtures: ScenarioFixtures,
 ): ConstellationRendererClient => ({
   acknowledgeDocumentUpdates: async () => undefined,
+  prepareAgentCredential: async () => ({
+    credentialId: "00000000-0000-4000-8000-000000000093" as never,
+    credentialDigest: "0".repeat(64),
+    descriptorPath: "/tmp/constellation-agent.json",
+  }),
   onAttentionActivated: () => () => undefined,
   cancelWorkspaceRestore: async () => undefined,
   confirmWorkspaceRestore: async () => ({

@@ -15,6 +15,8 @@ import type {
   SpaceId,
   TaskId,
   ProjectId,
+  GrantId,
+  CredentialId,
 } from "@constellation/contracts";
 
 export type {
@@ -46,6 +48,7 @@ export const DESKTOP_CHANNELS = {
   createDocumentRevision: "constellation:document:create-revision",
   listDocumentRevisions: "constellation:document:list-revisions",
   restoreDocumentRevision: "constellation:document:restore-revision",
+  prepareAgentCredential: "constellation:agent:prepare-credential",
 } as const;
 
 export interface RendererDocumentRevision {
@@ -97,6 +100,11 @@ export interface DesktopBuildInfo {
 }
 
 export interface ConstellationRendererClient {
+  prepareAgentCredential(input: { readonly grantId: GrantId }): Promise<{
+    readonly credentialId: CredentialId;
+    readonly credentialDigest: string;
+    readonly descriptorPath: string;
+  }>;
   acknowledgeDocumentUpdates(input: {
     readonly documentId: DocumentId;
     readonly spaceId: SpaceId;
@@ -176,6 +184,10 @@ export type DesktopInvoke = (
 export const createRendererClient = (
   invoke: DesktopInvoke,
 ): ConstellationRendererClient => ({
+  prepareAgentCredential: (input) =>
+    invoke(DESKTOP_CHANNELS.prepareAgentCredential, input) as ReturnType<
+      ConstellationRendererClient["prepareAgentCredential"]
+    >,
   acknowledgeDocumentUpdates: (input) =>
     invoke(DESKTOP_CHANNELS.acknowledgeDocumentUpdates, input) as Promise<void>,
   onAttentionActivated: () => () => undefined,

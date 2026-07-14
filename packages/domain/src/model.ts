@@ -6,6 +6,8 @@ import type {
   DocumentId,
   EventId,
   GrantId,
+  CredentialId,
+  CheckpointId,
   MembershipId,
   OutboxEntryId,
   PrincipalId,
@@ -20,6 +22,9 @@ import type {
   AttentionSignalId,
   TaskStatusId,
   WorkspaceId,
+  Capability,
+  AgentRunId,
+  AgentHandoffId,
 } from "@constellation/contracts";
 
 export interface Workspace {
@@ -68,6 +73,77 @@ export interface SpaceGrant {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly revokedAt?: string;
+}
+
+export type AgentAccessPreset =
+  "observe" | "propose" | "operate" | "full_access" | "custom";
+
+export interface AgentAccessGrant {
+  readonly id: GrantId;
+  readonly workspaceId: WorkspaceId;
+  readonly agentPrincipalId: PrincipalId;
+  readonly delegatingUserId: PrincipalId;
+  readonly displayName: string;
+  readonly preset: AgentAccessPreset;
+  readonly capabilityScope: readonly Capability[];
+  readonly spaceScope: readonly SpaceId[];
+  readonly credentialId: CredentialId;
+  readonly credentialDigest: string;
+  readonly credentialVersion: number;
+  readonly status: "active" | "revoked";
+  readonly expiresAt?: string;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly revokedAt?: string;
+  readonly lastUsedAt?: string;
+}
+
+export interface AgentRun {
+  readonly id: AgentRunId;
+  readonly workspaceId: WorkspaceId;
+  readonly agentPrincipalId: PrincipalId;
+  readonly grantId: GrantId;
+  readonly hostRunId: string;
+  readonly parentHostRunId?: string;
+  readonly intent?: string;
+  readonly hostName: string;
+  readonly hostVersion?: string;
+  readonly modelProvider?: string;
+  readonly modelName?: string;
+  readonly attributionTrust: "host_asserted";
+  readonly status: "active" | "completed";
+  readonly startedAt: string;
+  readonly updatedAt: string;
+  readonly completedAt?: string;
+}
+
+export interface AgentHandoff {
+  readonly id: AgentHandoffId;
+  readonly workspaceId: WorkspaceId;
+  readonly agentPrincipalId: PrincipalId;
+  readonly grantId: GrantId;
+  readonly runId: AgentRunId;
+  readonly evidence: readonly string[];
+  readonly changes: readonly string[];
+  readonly decisions: readonly string[];
+  readonly remainingWork: readonly string[];
+  readonly nextAction: string;
+  readonly createdAt: string;
+}
+
+export interface AgentCheckpoint {
+  readonly id: CheckpointId;
+  readonly workspaceId: WorkspaceId;
+  readonly agentPrincipalId: PrincipalId;
+  readonly grantId: GrantId;
+  readonly runId: AgentRunId;
+  readonly label: string;
+  readonly commandIds: readonly CommandId[];
+  readonly status: "open" | "reverted";
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly revertedAt?: string;
 }
 
 interface CaptureBase {
@@ -298,6 +374,20 @@ export type DomainEvent = { readonly commandId: CommandId } & (
   | {
       readonly id: EventId;
       readonly type:
+        | "agent.grant_created"
+        | "agent.credential_rotated"
+        | "agent.grant_revoked"
+        | "agent.checkpoint_created"
+        | "agent.handoff_submitted";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: string;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type:
         | "workspace.member_added"
         | "workspace.member_access_changed"
         | "workspace.member_revoked";
@@ -427,6 +517,9 @@ export interface AuditReceipt {
   readonly changedFields: readonly string[];
   readonly occurredAt: string;
   readonly outcome: "success";
+  readonly checkpointId?: CheckpointId;
+  readonly agentRunId?: AgentRunId;
+  readonly hostRunId?: string;
 }
 
 export interface OutboxEntry {

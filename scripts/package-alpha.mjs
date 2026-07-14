@@ -116,10 +116,15 @@ for (const name of [
   "domain",
   "application",
   "local-store",
+  "mcp",
   "realtime-documents",
 ]) {
   copyPackage(name);
 }
+copy(
+  path.join(root, "packages", "mcp", "dist", "bin"),
+  path.join(stage, "node_modules", "@constellation", "mcp", "dist", "bin"),
+);
 copyPackage("desktop-main", [], "package.production.json");
 copyPackage("desktop-preload", ["build"]);
 copy(
@@ -189,6 +194,8 @@ const productionDesktopFiles = new Set([
   "hub-connection-custody.js",
   "index.js",
   "local-data-home-provider.js",
+  "local-mcp-credential-custody.js",
+  "local-mcp-runtime.js",
   "production-main.js",
   "runtime-kernel-service.js",
   "security.js",
@@ -213,6 +220,7 @@ const expectedRuntimePackages = new Set([
   "@constellation/desktop-ui",
   "@constellation/domain",
   "@constellation/local-store",
+  "@constellation/mcp",
   "@constellation/realtime-documents",
   "better-sqlite3",
   "bindings",

@@ -7,6 +7,7 @@
     { "path": "./packages/testkit" },
     { "path": "./packages/local-store" },
     { "path": "./packages/realtime-documents" },
+    { "path": "./packages/mcp" },
     { "path": "./packages/hub" },
     { "path": "./packages/desktop-preload" },
     { "path": "./packages/desktop-main" },

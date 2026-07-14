@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 
 import type { ApplicationCommandResponse } from "@constellation/application";
 import {
+  AgentRunIdSchema,
+  CheckpointIdSchema,
   ExecutionContextSchema,
   type CaptureId,
   type CommandOutcome,
@@ -615,9 +617,28 @@ describe("reference kernel conformance", () => {
 
   it("treats checkpoint membership as idempotency-significant", () => {
     const harness = bootstrappedHarness();
+    const firstCheckpointId = CheckpointIdSchema.parse(requestId());
+    const secondCheckpointId = CheckpointIdSchema.parse(requestId());
+    const now = "2026-07-14T10:00:00.000+00:00";
+    for (const checkpointId of [firstCheckpointId, secondCheckpointId]) {
+      harness.store.transact((transaction) =>
+        transaction.insertAgentCheckpoint({
+          id: checkpointId,
+          workspaceId: context().workspaceId,
+          agentPrincipalId: context().principalId,
+          grantId: context().grantId,
+          runId: AgentRunIdSchema.parse(requestId()),
+          label: "Idempotency checkpoint",
+          commandIds: [],
+          status: "open",
+          createdAt: now,
+          updatedAt: now,
+        }),
+      );
+    }
     const command = {
       ...captureCommand("capture-checkpoint", "Checkpointed synthetic body"),
-      checkpointId: requestId(),
+      checkpointId: firstCheckpointId,
     };
     assert.equal(
       unwrapOutcome(harness.kernel.execute(context(), command)).outcome,
@@ -629,7 +650,7 @@ describe("reference kernel conformance", () => {
         ...command,
         commandId: requestId(),
         correlationId: requestId(),
-        checkpointId: requestId(),
+        checkpointId: secondCheckpointId,
       }),
     );
     assert.equal(conflict.outcome, "conflict");

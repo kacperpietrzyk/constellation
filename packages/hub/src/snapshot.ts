@@ -33,11 +33,23 @@ export const snapshotDigest = (snapshot: HubWorkspaceSnapshot): string =>
 
 export const toHubSnapshot = (
   snapshot: ReferenceStateSnapshot,
-): HubWorkspaceSnapshot =>
-  HubWorkspaceSnapshotSchema.parse({
+): HubWorkspaceSnapshot => {
+  const {
+    agentGrants: _agentGrants,
+    agentRuns: _agentRuns,
+    agentCheckpoints: _agentCheckpoints,
+    agentHandoffs: _agentHandoffs,
+    ...hubState
+  } = snapshot;
+  void _agentGrants;
+  void _agentRuns;
+  void _agentCheckpoints;
+  void _agentHandoffs;
+  return HubWorkspaceSnapshotSchema.parse({
     format: "constellation.workspace-snapshot/v1",
-    ...snapshot,
+    ...hubState,
   });
+};
 
 export const fromHubSnapshot = (
   snapshot: HubWorkspaceSnapshot,

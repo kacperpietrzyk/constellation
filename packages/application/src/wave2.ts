@@ -338,6 +338,15 @@ const auditReceipt = (
   changedFields,
   occurredAt,
   outcome: "success",
+  ...(command.checkpointId === undefined
+    ? {}
+    : { checkpointId: command.checkpointId }),
+  ...(context.hostRun?.agentRunId === undefined
+    ? {}
+    : { agentRunId: context.hostRun.agentRunId }),
+  ...(context.hostRun?.runId === undefined
+    ? {}
+    : { hostRunId: context.hostRun.runId }),
 });
 
 const appendJournal = (

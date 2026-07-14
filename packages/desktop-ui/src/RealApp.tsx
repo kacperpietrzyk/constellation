@@ -53,6 +53,9 @@ import {
   unrelateTask,
   updateProjectOutcome,
   updateAttention,
+  createAgentGrant,
+  rotateAgentCredential,
+  revokeAgentGrant,
   type AuditReceiptProjection,
   type DesktopSnapshot,
   type MutationFailure,
@@ -1183,6 +1186,8 @@ export const RealApp = ({
         {surface === "access" && (
           <AccessSurface
             access={state.snapshot.access}
+            agentAccess={state.snapshot.agentAccess}
+            spaces={state.snapshot.bootstrap.spaces}
             busy={accessBusy}
             onAdd={(input) => {
               if (!client) return;
@@ -1223,6 +1228,51 @@ export const RealApp = ({
                   if (result.kind === "success")
                     await refreshAfter(
                       "Dostęp cofnięto. Urządzenia usuną projekcję po synchronizacji.",
+                    );
+                  else showFailure(result);
+                },
+              );
+            }}
+            onAgentAdd={(input) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              void createAgentGrant(client, state.snapshot, input).then(
+                async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter(
+                      `Dostęp MCP utworzono. Plik konfiguracji: ${result.data.descriptorPath}`,
+                    );
+                  else showFailure(result);
+                },
+              );
+            }}
+            onAgentRotate={(grant) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              void rotateAgentCredential(client, state.snapshot, grant).then(
+                async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter(
+                      `Poświadczenie obrócono. Plik konfiguracji: ${result.data.descriptorPath}`,
+                    );
+                  else showFailure(result);
+                },
+              );
+            }}
+            onAgentRevoke={(grant) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              void revokeAgentGrant(client, state.snapshot, grant).then(
+                async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter(
+                      "Dostęp agenta cofnięto, a lokalne poświadczenie usunięto.",
                     );
                   else showFailure(result);
                 },

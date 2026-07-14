@@ -17,6 +17,7 @@ import {
   AttentionSignalIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
+  CheckpointIdSchema,
 } from "./ids.js";
 import { ContractVersionSchema } from "./command.js";
 import { RequestOriginSchema } from "./execution-context.js";
@@ -44,6 +45,17 @@ export const WorkspaceExportScopedQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("workspace.exportScoped"),
   parameters: z.object({}).strict(),
 }).strict();
+
+export const AgentAccessQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("agent.access"),
+  parameters: z.object({}).strict(),
+}).strict();
+
+export const AgentCheckpointPreviewRevertQuerySchema =
+  QueryMetadataSchema.extend({
+    queryName: z.literal("agent.checkpointPreviewRevert"),
+    parameters: z.object({ checkpointId: CheckpointIdSchema }).strict(),
+  }).strict();
 
 export const CaptureHistoryQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("capture.history"),
@@ -163,6 +175,8 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   WorkspaceBootstrapContextQuerySchema,
   WorkspaceAccessQuerySchema,
   WorkspaceExportScopedQuerySchema,
+  AgentAccessQuerySchema,
+  AgentCheckpointPreviewRevertQuerySchema,
   CaptureHistoryQuerySchema,
   TaskListQuerySchema,
   TaskAssignmentCandidatesQuerySchema,
@@ -211,6 +225,61 @@ const CaptureHistoryItemSchema = z.discriminatedUnion("processingState", [
 ]);
 
 export const QueryProjectionSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("agent.access"),
+      policyVersion: z.int().positive(),
+      workspaceVersion: z.int().positive(),
+      canManage: z.boolean(),
+      grants: z.array(
+        z
+          .object({
+            grantId: GrantIdSchema,
+            agentPrincipalId: PrincipalIdSchema,
+            displayName: z.string(),
+            preset: z.enum([
+              "observe",
+              "propose",
+              "operate",
+              "full_access",
+              "custom",
+            ]),
+            capabilityScope: z.array(z.string()),
+            status: z.enum(["active", "expired", "revoked"]),
+            expiresAt: z.iso.datetime({ offset: true }).optional(),
+            credentialVersion: z.int().positive(),
+            version: z.int().positive(),
+            membershipId: z.uuid(),
+            membershipVersion: z.int().positive(),
+            spaces: z.array(
+              z
+                .object({
+                  spaceId: SpaceIdSchema,
+                  spaceName: z.string(),
+                  spaceGrantId: z.uuid(),
+                  access: z.enum(["view", "comment", "edit"]),
+                  version: z.int().positive(),
+                })
+                .strict(),
+            ),
+            lastUsedAt: z.iso.datetime({ offset: true }).optional(),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("agent.checkpoint_revert_preview"),
+      checkpointId: CheckpointIdSchema,
+      available: z.boolean(),
+      commandIds: z.array(CommandIdSchema),
+      affectedRecordIds: z.array(z.uuid()),
+      unavailableReason: z
+        .enum(["missing", "already_reverted", "unsupported", "later_change"])
+        .optional(),
+    })
+    .strict(),
   z
     .object({
       kind: z.literal("workspace.access"),
@@ -665,6 +734,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           changedFields: z.array(z.string()),
           occurredAt: z.iso.datetime({ offset: true }),
           outcome: z.literal("success"),
+          checkpointId: CheckpointIdSchema.optional(),
+          agentRunId: z.uuid().optional(),
+          hostRunId: z.string().optional(),
         })
         .strict(),
     })

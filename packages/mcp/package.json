@@ -1,0 +1,34 @@
+{
+  "name": "@constellation/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "constellation-mcp": "./dist/bin/stdio.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/src/protocol.d.ts",
+      "default": "./dist/src/protocol.js"
+    }
+  },
+  "types": "./dist/src/index.d.ts",
+  "dependencies": {
+    "@constellation/contracts": "0.0.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "6.0.3"
+  },
+  "scripts": {
+    "build": "tsc -b && npm run bundle",
+    "bundle": "vite build",
+    "typecheck": "tsc -b --pretty false"
+  }
+}

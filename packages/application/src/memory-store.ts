@@ -25,6 +25,9 @@ import type {
   AttentionSignalId,
   TaskStatusId,
   WorkspaceId,
+  GrantId,
+  AgentRunId,
+  CheckpointId,
 } from "@constellation/contracts";
 import type {
   AuditReceipt,
@@ -44,6 +47,10 @@ import type {
   RecordComment,
   AttentionSignal,
   NativeDocument,
+  AgentAccessGrant,
+  AgentRun,
+  AgentHandoff,
+  AgentCheckpoint,
 } from "@constellation/domain";
 
 export type FailureBoundary =
@@ -75,7 +82,12 @@ export type FailureBoundary =
   | "audit"
   | "idempotency"
   | "sync-command"
-  | "outbox";
+  | "outbox"
+  | "agent-grant"
+  | "agent-grant-update"
+  | "agent-run"
+  | "agent-checkpoint"
+  | "agent-handoff";
 
 export class FailureInjector {
   private boundary: FailureBoundary | undefined;
@@ -117,6 +129,10 @@ interface MutableState {
   readonly idempotencyRecords: Map<string, IdempotencyRecord>;
   readonly outboxEntries: Map<string, OutboxEntry>;
   readonly syncCommands: Map<string, CommandEnvelope>;
+  readonly agentGrants: Map<GrantId, AgentAccessGrant>;
+  readonly agentRuns: Map<AgentRunId, AgentRun>;
+  readonly agentCheckpoints: Map<CheckpointId, AgentCheckpoint>;
+  readonly agentHandoffs: Map<string, AgentHandoff>;
 }
 
 const emptyState = (): MutableState => ({
@@ -139,6 +155,10 @@ const emptyState = (): MutableState => ({
   idempotencyRecords: new Map(),
   outboxEntries: new Map(),
   syncCommands: new Map(),
+  agentGrants: new Map(),
+  agentRuns: new Map(),
+  agentCheckpoints: new Map(),
+  agentHandoffs: new Map(),
 });
 
 const cloneState = (state: MutableState): MutableState => ({
@@ -161,6 +181,10 @@ const cloneState = (state: MutableState): MutableState => ({
   idempotencyRecords: new Map(state.idempotencyRecords),
   outboxEntries: new Map(state.outboxEntries),
   syncCommands: new Map(state.syncCommands),
+  agentGrants: new Map(state.agentGrants),
+  agentRuns: new Map(state.agentRuns),
+  agentCheckpoints: new Map(state.agentCheckpoints),
+  agentHandoffs: new Map(state.agentHandoffs),
 });
 
 const membershipKey = (
@@ -518,6 +542,32 @@ class ReadView implements ApplicationReadView {
   public getIdempotency(scope: string): IdempotencyRecord | undefined {
     return this.state.idempotencyRecords.get(scope);
   }
+
+  public getAgentGrant(id: GrantId): AgentAccessGrant | undefined {
+    return this.state.agentGrants.get(id);
+  }
+
+  public listAgentGrants(
+    workspaceId: WorkspaceId,
+  ): readonly AgentAccessGrant[] {
+    return [...this.state.agentGrants.values()]
+      .filter((grant) => grant.workspaceId === workspaceId)
+      .sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  public getAgentRun(id: AgentRunId): AgentRun | undefined {
+    return this.state.agentRuns.get(id);
+  }
+
+  public getAgentCheckpoint(id: CheckpointId): AgentCheckpoint | undefined {
+    return this.state.agentCheckpoints.get(id);
+  }
+
+  public listAgentHandoffs(runId: AgentRunId): readonly AgentHandoff[] {
+    return [...this.state.agentHandoffs.values()]
+      .filter((handoff) => handoff.runId === runId)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  }
 }
 
 class Transaction extends ReadView implements ApplicationTransaction {
@@ -809,6 +859,59 @@ class Transaction extends ReadView implements ApplicationTransaction {
     this.state.syncCommands.set(command.commandId, command);
     this.failures.reached("sync-command");
   }
+
+  public insertAgentGrant(grant: AgentAccessGrant): void {
+    if (this.state.agentGrants.has(grant.id))
+      throw new Error(`Duplicate agent grant: ${grant.id}`);
+    this.state.agentGrants.set(grant.id, grant);
+    this.failures.reached("agent-grant");
+  }
+
+  public updateAgentGrant(
+    grant: AgentAccessGrant,
+    expectedVersion: number,
+  ): boolean {
+    if (this.state.agentGrants.get(grant.id)?.version !== expectedVersion)
+      return false;
+    this.state.agentGrants.set(grant.id, grant);
+    this.failures.reached("agent-grant-update");
+    return true;
+  }
+
+  public insertAgentRun(run: AgentRun): void {
+    if (this.state.agentRuns.has(run.id))
+      throw new Error(`Duplicate agent run: ${run.id}`);
+    this.state.agentRuns.set(run.id, run);
+    this.failures.reached("agent-run");
+  }
+
+  public updateAgentRun(run: AgentRun): void {
+    if (!this.state.agentRuns.has(run.id))
+      throw new Error(`Missing agent run: ${run.id}`);
+    this.state.agentRuns.set(run.id, run);
+    this.failures.reached("agent-run");
+  }
+
+  public insertAgentCheckpoint(checkpoint: AgentCheckpoint): void {
+    if (this.state.agentCheckpoints.has(checkpoint.id))
+      throw new Error(`Duplicate agent checkpoint: ${checkpoint.id}`);
+    this.state.agentCheckpoints.set(checkpoint.id, checkpoint);
+    this.failures.reached("agent-checkpoint");
+  }
+
+  public updateAgentCheckpoint(checkpoint: AgentCheckpoint): void {
+    if (!this.state.agentCheckpoints.has(checkpoint.id))
+      throw new Error(`Missing agent checkpoint: ${checkpoint.id}`);
+    this.state.agentCheckpoints.set(checkpoint.id, checkpoint);
+    this.failures.reached("agent-checkpoint");
+  }
+
+  public insertAgentHandoff(handoff: AgentHandoff): void {
+    if (this.state.agentHandoffs.has(handoff.id))
+      throw new Error(`Duplicate agent handoff: ${handoff.id}`);
+    this.state.agentHandoffs.set(handoff.id, handoff);
+    this.failures.reached("agent-handoff");
+  }
 }
 
 const stateFromSnapshot = (snapshot: ReferenceStateSnapshot): MutableState => ({
@@ -856,6 +959,18 @@ const stateFromSnapshot = (snapshot: ReferenceStateSnapshot): MutableState => ({
     snapshot.outboxEntries.map((value) => [value.id, value]),
   ),
   syncCommands: new Map(),
+  agentGrants: new Map(
+    (snapshot.agentGrants ?? []).map((value) => [value.id, value]),
+  ),
+  agentRuns: new Map(
+    (snapshot.agentRuns ?? []).map((value) => [value.id, value]),
+  ),
+  agentCheckpoints: new Map(
+    (snapshot.agentCheckpoints ?? []).map((value) => [value.id, value]),
+  ),
+  agentHandoffs: new Map(
+    (snapshot.agentHandoffs ?? []).map((value) => [value.id, value]),
+  ),
 });
 
 export class InMemoryReferenceStore implements ApplicationStore {
@@ -909,6 +1024,10 @@ export class InMemoryReferenceStore implements ApplicationStore {
       auditReceipts: [...this.state.auditReceipts.values()],
       idempotencyRecords: [...this.state.idempotencyRecords.values()],
       outboxEntries: [...this.state.outboxEntries.values()],
+      agentGrants: [...this.state.agentGrants.values()],
+      agentRuns: [...this.state.agentRuns.values()],
+      agentCheckpoints: [...this.state.agentCheckpoints.values()],
+      agentHandoffs: [...this.state.agentHandoffs.values()],
     };
   }
 

@@ -1,4 +1,11 @@
 import {
+  executeAgentAccessCommand,
+  executeAgentAccessQuery,
+  isAgentAccessCommandAuthorized,
+  type AgentAccessCommand,
+  type AgentAccessQuery,
+} from "./agent-access.js";
+import {
   executeCollaborationCommand,
   executeCollaborationQuery,
   type CollaborationCommand,
@@ -200,6 +207,17 @@ const isCurrentlyAuthorized = (
       }
       return true;
     }
+    case "agent.grantCreate":
+    case "agent.grantRotateCredential":
+    case "agent.grantRevoke":
+    case "agent.checkpointCreate":
+    case "agent.handoffSubmit":
+      return isAgentAccessCommandAuthorized(
+        { authorization },
+        view,
+        context,
+        command as AgentAccessCommand,
+      );
     case "capture.submitText": {
       const workspace = view.getWorkspace(command.workspaceId);
       const space = view.getSpace(command.payload.spaceId);
@@ -354,7 +372,24 @@ export class ApplicationKernel {
               });
         }
 
-        return this.handleCommand(
+        const checkpoint =
+          command.checkpointId === undefined
+            ? undefined
+            : transaction.getAgentCheckpoint(command.checkpointId);
+        if (
+          command.checkpointId !== undefined &&
+          (checkpoint === undefined ||
+            checkpoint.status !== "open" ||
+            checkpoint.workspaceId !== command.workspaceId ||
+            checkpoint.agentPrincipalId !== context.principalId ||
+            checkpoint.grantId !== context.grantId)
+        ) {
+          return this.outcome(command, occurredAt, {
+            outcome: "rejected",
+            diagnosticCode: "command.precondition_failed",
+          });
+        }
+        const outcome = this.handleCommand(
           transaction,
           context,
           command,
@@ -362,6 +397,18 @@ export class ApplicationKernel {
           fingerprint,
           occurredAt,
         );
+        if (
+          outcome.outcome === "success" &&
+          checkpoint !== undefined &&
+          !checkpoint.commandIds.includes(command.commandId)
+        ) {
+          transaction.updateAgentCheckpoint({
+            ...checkpoint,
+            commandIds: [...checkpoint.commandIds, command.commandId],
+            updatedAt: occurredAt,
+          });
+        }
+        return outcome;
       });
     } catch (error) {
       if (!(error instanceof RetryableUnitOfWorkError)) {
@@ -409,6 +456,19 @@ export class ApplicationKernel {
           transaction,
           context,
           command as CollaborationCommand,
+          { scope, fingerprint },
+          occurredAt,
+        );
+      case "agent.grantCreate":
+      case "agent.grantRotateCredential":
+      case "agent.grantRevoke":
+      case "agent.checkpointCreate":
+      case "agent.handoffSubmit":
+        return executeAgentAccessCommand(
+          this.dependencies,
+          transaction,
+          context,
+          command as AgentAccessCommand,
           { scope, fingerprint },
           occurredAt,
         );
@@ -1041,6 +1101,15 @@ export class ApplicationKernel {
             query as CollaborationQuery,
             kernelTime,
           );
+        case "agent.access":
+        case "agent.checkpointPreviewRevert":
+          return executeAgentAccessQuery(
+            this.dependencies,
+            view,
+            context,
+            query as AgentAccessQuery,
+            kernelTime,
+          );
         case "capture.history":
           return this.captureHistory(
             view,
@@ -1558,6 +1627,15 @@ export class ApplicationKernel {
           changedFields: receipt.changedFields,
           occurredAt: receipt.occurredAt,
           outcome: receipt.outcome,
+          ...(receipt.checkpointId === undefined
+            ? {}
+            : { checkpointId: receipt.checkpointId }),
+          ...(receipt.agentRunId === undefined
+            ? {}
+            : { agentRunId: receipt.agentRunId }),
+          ...(receipt.hostRunId === undefined
+            ? {}
+            : { hostRunId: receipt.hostRunId }),
         },
       },
     });
@@ -1588,6 +1666,15 @@ export class ApplicationKernel {
       changedFields,
       occurredAt,
       outcome: "success",
+      ...(command.checkpointId === undefined
+        ? {}
+        : { checkpointId: command.checkpointId }),
+      ...(context.hostRun?.agentRunId === undefined
+        ? {}
+        : { agentRunId: context.hostRun.agentRunId }),
+      ...(context.hostRun?.runId === undefined
+        ? {}
+        : { hostRunId: context.hostRun.runId }),
     };
   }
 

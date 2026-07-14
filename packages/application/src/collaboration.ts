@@ -164,6 +164,15 @@ const commit = (
     changedFields: input.changedFields,
     occurredAt,
     outcome: "success",
+    ...(command.checkpointId === undefined
+      ? {}
+      : { checkpointId: command.checkpointId }),
+    ...(context.hostRun?.agentRunId === undefined
+      ? {}
+      : { agentRunId: context.hostRun.agentRunId }),
+    ...(context.hostRun?.runId === undefined
+      ? {}
+      : { hostRunId: context.hostRun.runId }),
   };
   const outbox: OutboxEntry = {
     id: outboxEntryId,
