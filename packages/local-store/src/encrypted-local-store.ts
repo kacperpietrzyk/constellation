@@ -3,8 +3,13 @@ import type { SqliteDatabase } from "./sqlite-driver.js";
 
 export interface EncryptedSqliteDatabase extends SqliteDatabase {
   close(): void;
-  key(key: Uint8Array): unknown;
+  key(key: Uint8Array, schema?: string): unknown;
   loadExtension(filename: string): unknown;
+}
+
+export interface EncryptedLocalStoreExportFacts {
+  readonly applicationId: number;
+  readonly userVersion: number;
 }
 
 export interface EncryptedSqliteDatabaseFactory {
@@ -168,6 +173,99 @@ const configureAndVerify = (database: EncryptedSqliteDatabase): void => {
     throw new EncryptedStoreCapabilityError(
       "The encrypted workspace failed integrity checks.",
     );
+  }
+};
+
+const pragmaInteger = (
+  database: EncryptedSqliteDatabase,
+  pragma: string,
+  column: string,
+): number => {
+  const value = objectValue(database.prepare(`PRAGMA ${pragma}`).get(), pragma)[
+    column
+  ];
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new EncryptedStoreCapabilityError(`${pragma} is invalid.`);
+  }
+  return value;
+};
+
+/**
+ * Creates a closed, independently encrypted SQLCipher copy of the complete
+ * logical store. Both key buffers are consumed and zeroed before returning.
+ */
+export const exportEncryptedLocalStore = (input: {
+  readonly databaseFactory: EncryptedSqliteDatabaseFactory;
+  readonly sourcePath: string;
+  readonly sourceKey: Uint8Array;
+  readonly destinationPath: string;
+  readonly destinationKey: Uint8Array;
+  readonly platform?: NodeJS.Platform;
+}): EncryptedLocalStoreExportFacts => {
+  if (
+    input.sourceKey.byteLength !== 32 ||
+    input.destinationKey.byteLength !== 32
+  ) {
+    input.sourceKey.fill(0);
+    input.destinationKey.fill(0);
+    throw new EncryptedStoreCapabilityError(
+      "The export key material is invalid.",
+    );
+  }
+  let source: EncryptedSqliteDatabase | undefined;
+  let attached = false;
+  try {
+    source = input.databaseFactory.open(input.sourcePath, {
+      fileMustExist: true,
+    });
+    try {
+      source.key(input.sourceKey);
+    } finally {
+      input.sourceKey.fill(0);
+    }
+    source.prepare("SELECT count(*) AS count FROM sqlite_master").get();
+    validateCapabilities(source, input.platform ?? process.platform);
+    configureAndVerify(source);
+    const applicationId = pragmaInteger(
+      source,
+      "application_id",
+      "application_id",
+    );
+    const userVersion = pragmaInteger(source, "user_version", "user_version");
+    source
+      .prepare("ATTACH DATABASE ? AS encrypted_export")
+      .run(input.destinationPath);
+    attached = true;
+    try {
+      source.key(input.destinationKey, "encrypted_export");
+    } finally {
+      input.destinationKey.fill(0);
+    }
+    source.prepare("SELECT sqlcipher_export('encrypted_export')").get();
+    source.exec(
+      `PRAGMA encrypted_export.application_id = ${applicationId};` +
+        ` PRAGMA encrypted_export.user_version = ${userVersion};`,
+    );
+    source.exec("DETACH DATABASE encrypted_export");
+    attached = false;
+    return { applicationId, userVersion };
+  } catch (error) {
+    input.sourceKey.fill(0);
+    input.destinationKey.fill(0);
+    if (attached) {
+      try {
+        source?.exec("DETACH DATABASE encrypted_export");
+      } catch {
+        // Preserve the original export failure.
+      }
+    }
+    throw error;
+  } finally {
+    try {
+      source?.close();
+    } catch {
+      // A closed export is verified independently before publication.
+    }
   }
 };
 

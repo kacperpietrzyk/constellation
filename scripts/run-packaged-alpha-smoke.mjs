@@ -13,7 +13,9 @@ const manifest = JSON.parse(
 );
 const stateRoot = path.join(root, "build", "packaged-alpha-ui-smoke-state");
 const userData = path.join(stateRoot, "user-data");
+const recoverySmokeRoot = path.join(userData, "recovery-smoke");
 const taskTitle = "Verify packaged UI, preload, IPC, and persistence";
+const mutationTitle = "This mutation must disappear after restore";
 fs.rmSync(stateRoot, { recursive: true, force: true });
 fs.mkdirSync(stateRoot, { recursive: true });
 
@@ -163,7 +165,7 @@ const stopPackagedApp = async (client, process) => {
   }
 };
 
-const run = async (phase) => {
+const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
   const port = await reservePort();
   let stdout = "";
   let stderr = "";
@@ -174,7 +176,17 @@ const run = async (phase) => {
       "--remote-debugging-address=127.0.0.1",
       `--remote-debugging-port=${port}`,
     ],
-    { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
+    {
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        CONSTELLATION_ALPHA_RECOVERY_SMOKE_ROOT: recoverySmokeRoot,
+        ...(failpoint === undefined
+          ? {}
+          : { CONSTELLATION_ALPHA_RECOVERY_FAILPOINT: failpoint }),
+      },
+    },
   );
   packagedProcess.stdout.setEncoding("utf8");
   packagedProcess.stderr.setEncoding("utf8");
@@ -193,7 +205,7 @@ const run = async (phase) => {
     await client.send("Log.enable");
     await waitFor(
       client,
-      `document.querySelector(".desktop-shell") !== null`,
+      `document.querySelector(".desktop-shell, .recovery-required-state") !== null`,
       "PACKAGED_ALPHA_UI_NOT_READY",
     );
     const boundary = await client.evaluate(`(async () => {
@@ -207,17 +219,16 @@ const run = async (phase) => {
     if (
       boundary.build.channel !== "local-alpha" ||
       boundary.build.persistence !== "encrypted-local" ||
+      boundary.build.workspaceAvailability !==
+        (phase === "restored" ? "recovery_required" : "ready") ||
       boundary.hasNodeRequire ||
-      boundary.bridgeKeys.join(",") !== "executeCommand,getBuildInfo,runQuery"
+      boundary.bridgeKeys.join(",") !==
+        "cancelWorkspaceRestore,confirmWorkspaceRestore,executeCommand,exportWorkspaceBackup,getBuildInfo,prepareWorkspaceRestore,runQuery"
     ) {
       throw new Error("PACKAGED_ALPHA_PRELOAD_OR_IPC_INVALID");
     }
 
-    if (phase === "created") {
-      const initialCount = await client.evaluate(
-        `document.querySelectorAll(".task-row").length`,
-      );
-      if (initialCount !== 0) throw new Error("PACKAGED_ALPHA_NOT_EMPTY");
+    const submitCapture = async (title) => {
       await client.evaluate(`(() => {
         document.querySelector(".sidebar-capture").click();
         return true;
@@ -233,7 +244,7 @@ const run = async (phase) => {
           HTMLTextAreaElement.prototype,
           "value"
         ).set;
-        setter.call(input, ${JSON.stringify(taskTitle)});
+        setter.call(input, ${JSON.stringify(title)});
         input.dispatchEvent(new Event("input", { bubbles: true }));
         return true;
       })()`);
@@ -246,7 +257,115 @@ const run = async (phase) => {
         document.querySelector(".capture-footer .primary-button").click();
         return true;
       })()`);
+      await waitFor(
+        client,
+        `[...document.querySelectorAll(".task-row strong")].some(
+          (node) => node.textContent === ${JSON.stringify(title)}
+        )`,
+        "PACKAGED_ALPHA_CAPTURE_RESULT_MISSING",
+      );
+    };
+
+    let backup;
+    let restorePreview;
+    if (phase === "created") {
+      const initialCount = await client.evaluate(
+        `document.querySelectorAll(".task-row").length`,
+      );
+      if (initialCount !== 0) throw new Error("PACKAGED_ALPHA_NOT_EMPTY");
+      await submitCapture(taskTitle);
+      backup = await client.evaluate(
+        `window.constellation.exportWorkspaceBackup()`,
+      );
+      if (
+        backup.outcome !== "success" ||
+        typeof backup.recoveryCode !== "string" ||
+        backup.metadata.workspaceId !== boundary.build.initialWorkspaceId
+      ) {
+        throw new Error(
+          `PACKAGED_ALPHA_BACKUP_EXPORT_FAILED_${backup.outcome}_${backup.code ?? "no-code"}_${backup.metadata?.workspaceId ?? "no-workspace"}_${boundary.build.initialWorkspaceId}`,
+        );
+      }
+      await submitCapture(mutationTitle);
+    } else if (phase.startsWith("interrupted-")) {
+      restorePreview = await client.evaluate(
+        `window.constellation.prepareWorkspaceRestore({ recoveryCode: ${JSON.stringify(recoveryCode)} })`,
+      );
+      if (
+        restorePreview.outcome !== "preview" ||
+        restorePreview.counts.tasks !== 1
+      ) {
+        throw new Error("PACKAGED_ALPHA_INTERRUPTED_PREVIEW_INVALID");
+      }
+      let connectionClosed = false;
+      try {
+        await client.evaluate(
+          `window.constellation.confirmWorkspaceRestore({ restoreId: ${JSON.stringify(restorePreview.restoreId)} })`,
+        );
+      } catch {
+        connectionClosed = true;
+      }
+      for (
+        let attempt = 0;
+        attempt < 200 &&
+        packagedProcess.signalCode === null &&
+        packagedProcess.exitCode === null;
+        attempt += 1
+      ) {
+        await delay(50);
+      }
+      client.close();
+      if (
+        !connectionClosed ||
+        (packagedProcess.signalCode === null &&
+          packagedProcess.exitCode === null)
+      ) {
+        throw new Error("PACKAGED_ALPHA_RECOVERY_FAILPOINT_DID_NOT_TERMINATE");
+      }
+      return {
+        phase,
+        failpoint,
+        restorePreview,
+        termination:
+          packagedProcess.signalCode ?? `exit-${packagedProcess.exitCode}`,
+      };
+    } else if (phase === "restored") {
+      restorePreview = await client.evaluate(
+        `window.constellation.prepareWorkspaceRestore({ recoveryCode: ${JSON.stringify(recoveryCode)} })`,
+      );
+      if (
+        restorePreview.outcome !== "preview" ||
+        restorePreview.counts.tasks !== 1 ||
+        restorePreview.counts.captures !== 1 ||
+        restorePreview.counts.auditReceipts < 3
+      ) {
+        throw new Error("PACKAGED_ALPHA_RESTORE_PREVIEW_INVALID");
+      }
+      const restored = await client.evaluate(
+        `window.constellation.confirmWorkspaceRestore({ restoreId: ${JSON.stringify(restorePreview.restoreId)} })`,
+      );
+      if (
+        restored.outcome !== "success" ||
+        restored.workspaceId !== expectedWorkspaceId
+      ) {
+        throw new Error("PACKAGED_ALPHA_RESTORE_CONFIRM_FAILED");
+      }
+      await client.evaluate(
+        `(() => { window.location.reload(); return true; })()`,
+      );
+      await waitFor(
+        client,
+        `document.querySelector(".desktop-shell") !== null`,
+        "PACKAGED_ALPHA_RESTORED_UI_NOT_READY",
+      );
+      await client.evaluate(`(() => {
+        document.querySelector('.nav-item[data-surface="tasks"]').click();
+        return true;
+      })()`);
     } else {
+      if (boundary.build.startupRecovery !== "previous_workspace_restored") {
+        throw new Error("PACKAGED_ALPHA_PREVIOUS_WORKSPACE_NOT_RECOVERED");
+      }
       await client.evaluate(`(() => {
         document.querySelector('.nav-item[data-surface="tasks"]').click();
         return true;
@@ -262,7 +381,20 @@ const run = async (phase) => {
     const taskCount = await client.evaluate(
       `document.querySelectorAll(".task-row").length`,
     );
-    if (taskCount !== 1) throw new Error("PACKAGED_ALPHA_TASK_COUNT_INVALID");
+    const expectedTaskCount = phase === "restored" ? 1 : 2;
+    if (taskCount !== expectedTaskCount) {
+      throw new Error("PACKAGED_ALPHA_TASK_COUNT_INVALID");
+    }
+    if (
+      phase === "restored" &&
+      (await client.evaluate(
+        `[...document.querySelectorAll(".task-row strong")].some(
+          (node) => node.textContent === ${JSON.stringify(mutationTitle)}
+        )`,
+      ))
+    ) {
+      throw new Error("PACKAGED_ALPHA_MUTATION_SURVIVED_RESTORE");
+    }
     if (client.issues().length > 0) {
       throw new Error(
         `PACKAGED_ALPHA_RENDERER_ERRORS_${client.issues().join("_")}`,
@@ -272,6 +404,8 @@ const run = async (phase) => {
     return {
       phase,
       taskCount,
+      backup,
+      restorePreview,
       persistence: boundary.build.persistence,
       preload: "context-isolated",
       transport: "renderer-preload-ipc",
@@ -286,15 +420,55 @@ const run = async (phase) => {
 };
 
 const created = await run("created");
-const restored = await run("restored");
+const interruptedAfterRetention = await run(
+  "interrupted-after-retention",
+  created.backup.recoveryCode,
+  created.backup.metadata.workspaceId,
+  "after-previous-retained",
+);
+const recoveredAfterRetention = await run("recovered-after-retention");
+const interruptedAfterActivation = await run(
+  "interrupted-after-activation",
+  created.backup.recoveryCode,
+  created.backup.metadata.workspaceId,
+  "after-candidate-activated",
+);
+const recoveredAfterActivation = await run("recovered-after-activation");
+const destroyedWrapper = path.join(
+  userData,
+  "local-alpha-workspace",
+  "key-wrapper.json",
+);
+fs.rmSync(destroyedWrapper, { force: true });
+if (fs.existsSync(destroyedWrapper)) {
+  throw new Error("PACKAGED_ALPHA_DESTRUCTIVE_FIXTURE_FAILED");
+}
+const restored = await run(
+  "restored",
+  created.backup.recoveryCode,
+  created.backup.metadata.workspaceId,
+);
 process.stdout.write(
   `${JSON.stringify({
     status: "pass",
     platform: process.platform,
-    phases: [created.phase, restored.phase],
+    phases: [
+      created.phase,
+      interruptedAfterRetention.phase,
+      recoveredAfterRetention.phase,
+      interruptedAfterActivation.phase,
+      recoveredAfterActivation.phase,
+      restored.phase,
+    ],
+    interruptionTerminations: [
+      interruptedAfterRetention.termination,
+      interruptedAfterActivation.termination,
+    ],
     persistence: restored.persistence,
     preload: restored.preload,
     transport: restored.transport,
     taskCount: restored.taskCount,
+    backupWorkspaceId: created.backup.metadata.workspaceId,
+    restoreCounts: restored.restorePreview.counts,
   })}\n`,
 );

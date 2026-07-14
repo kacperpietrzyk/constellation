@@ -59,6 +59,8 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
       service: createPreviewKernelService(),
       buildInfo: {
         channel: "developer-preview",
+        startupRecovery: "none",
+        workspaceAvailability: "ready",
         initialWorkspaceId: PREVIEW_IDENTITY.workspaceId,
         persistence: "in-memory",
         version: DESKTOP_PREVIEW_VERSION,
@@ -75,6 +77,8 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
     service: durableKernel.service,
     buildInfo: {
       channel: "local-alpha",
+      startupRecovery: "none",
+      workspaceAvailability: "ready",
       initialWorkspaceId: durableKernel.identity.workspaceId,
       persistence: "encrypted-local",
       version: DESKTOP_PREVIEW_VERSION,

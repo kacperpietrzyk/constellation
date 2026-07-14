@@ -8,7 +8,10 @@ import {
 } from "react";
 
 import type { ProjectId, RelationId, TaskId } from "@constellation/contracts";
-import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
+import type {
+  ConstellationRendererClient,
+  DesktopBuildInfo,
+} from "@constellation/desktop-preload/client";
 
 import {
   ActivitySurface,
@@ -42,9 +45,11 @@ import {
   type PreviewCondition,
   type SurfaceId,
 } from "./client/wave2-fixtures.js";
+import { WorkspaceRecovery } from "./WorkspaceRecovery.js";
 
 type LoadState =
   | { readonly kind: "loading" }
+  | { readonly kind: "recovery"; readonly build: DesktopBuildInfo }
   | { readonly kind: "unavailable" | "error"; readonly message: string }
   | { readonly kind: "ready"; readonly snapshot: DesktopSnapshot };
 
@@ -219,6 +224,7 @@ export const RealApp = ({
   const [surface, setSurface] = useState<SurfaceId>("cockpit");
   const [captureOpen, setCaptureOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<TaskId>();
   const [selectedProjectId, setSelectedProjectId] = useState<ProjectId>();
@@ -265,9 +271,20 @@ export const RealApp = ({
       return;
     }
     let active = true;
-    void loadDesktopSnapshot(client)
+    void client
+      .getBuildInfo()
+      .then((build) => {
+        if (build.workspaceAvailability === "recovery_required") {
+          if (active) {
+            setState({ kind: "recovery", build });
+            setRecoveryOpen(true);
+          }
+          return undefined;
+        }
+        return loadDesktopSnapshot(client, build);
+      })
       .then((next) => {
-        if (!active) return;
+        if (!active || next === undefined) return;
         setState({ kind: "ready", snapshot: next });
         setSelectedTaskId(next.tasks[0]?.id);
         if (next.projects.kind === "ready")
@@ -397,6 +414,46 @@ export const RealApp = ({
         <p>Otwieram workspace…</p>
       </main>
     );
+  if (state.kind === "recovery") {
+    const reason =
+      state.build.recoveryReason === "secure_storage_unavailable"
+        ? "Bezpieczny magazyn systemu jest niedostępny. Możesz spróbować ponownie po odblokowaniu systemu albo przywrócić zweryfikowany backup."
+        : state.build.recoveryReason === "protected_key_unavailable"
+          ? "Chroniony klucz workspace’u jest niedostępny lub uszkodzony. Istniejące dane nie zostały zastąpione."
+          : "Lokalny workspace nie przeszedł bezpiecznego otwarcia. Constellation zatrzymał się przed zapisem.";
+    return (
+      <main className="center-state recovery-required-state">
+        <BrandMark />
+        <p className="eyebrow">Odzyskiwanie workspace</p>
+        <h1>Dane wymagają bezpiecznego restore</h1>
+        <p>{reason}</p>
+        <div>
+          <button
+            className="primary-button"
+            onClick={() => setRecoveryOpen(true)}
+          >
+            Otwórz odzyskiwanie
+          </button>
+          <button
+            className="secondary-button"
+            onClick={() => window.location.reload()}
+          >
+            Spróbuj otworzyć ponownie
+          </button>
+        </div>
+        {recoveryOpen && client && (
+          <WorkspaceRecovery
+            client={client}
+            workspaceName="Lokalny workspace"
+            recoveredPrevious={false}
+            restoreOnly
+            onClose={() => setRecoveryOpen(false)}
+            onRestored={async () => window.location.reload()}
+          />
+        )}
+      </main>
+    );
+  }
   if (state.kind !== "ready")
     return (
       <main className="center-state">
@@ -430,16 +487,25 @@ export const RealApp = ({
           <BrandMark />
           <strong>Constellation</strong>
         </div>
-        <div
+        <button
+          type="button"
           className="workspace-switcher"
           aria-label={`Workspace ${bootstrap.workspace.name}, lokalny`}
+          disabled={isPreview}
+          title={
+            isPreview
+              ? "Backup jest dostępny w szyfrowanym lokalnym workspace."
+              : "Otwórz backup i odzyskiwanie workspace"
+          }
+          onClick={() => setRecoveryOpen(true)}
         >
           <span className="workspace-avatar">I</span>
           <span>
             <strong>{bootstrap.workspace.name}</strong>
             <small>Local-only workspace</small>
           </span>
-        </div>
+          {!isPreview && <span className="workspace-switcher-action">•••</span>}
+        </button>
         <button className="search-control" onClick={() => setSearchOpen(true)}>
           <Icon name="search" />
           <span>Szukaj</span>
@@ -859,6 +925,23 @@ export const RealApp = ({
                 } else showFailure(result);
               },
             );
+          }}
+        />
+      )}
+      {recoveryOpen && client && (
+        <WorkspaceRecovery
+          client={client}
+          workspaceName={bootstrap.workspace.name}
+          recoveredPrevious={
+            build.startupRecovery === "previous_workspace_restored"
+          }
+          onClose={() => setRecoveryOpen(false)}
+          onRestored={async () => {
+            await reload();
+            setSelectedTaskId(undefined);
+            setSelectedProjectId(undefined);
+            setSurface("cockpit");
+            setToast("Workspace przywrócono i otwarto ponownie.");
           }}
         />
       )}

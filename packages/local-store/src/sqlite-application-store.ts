@@ -10,16 +10,17 @@ import {
   type StoreFreshness,
   type TaskPageRequest,
 } from "@constellation/application";
-import type {
-  AuditReceiptId,
-  CaptureId,
-  PrincipalId,
-  ProjectId,
-  RelationId,
-  SpaceId,
-  TaskId,
-  TaskStatusId,
-  WorkspaceId,
+import {
+  PrincipalIdSchema,
+  type AuditReceiptId,
+  type CaptureId,
+  type PrincipalId,
+  type ProjectId,
+  type RelationId,
+  type SpaceId,
+  type TaskId,
+  type TaskStatusId,
+  type WorkspaceId,
 } from "@constellation/contracts";
 import type {
   AuditReceipt,
@@ -54,6 +55,18 @@ export class LocalStoreCorruptionError extends Error {
     super(message);
     this.name = "LocalStoreCorruptionError";
   }
+}
+
+export interface LocalWorkspaceRecoverySummary {
+  readonly principalId: PrincipalId;
+  readonly workspace: Workspace;
+  readonly counts: {
+    readonly captures: number;
+    readonly tasks: number;
+    readonly projects: number;
+    readonly relations: number;
+    readonly auditReceipts: number;
+  };
 }
 
 const schemaV1 = `
@@ -1020,6 +1033,68 @@ export class SqliteApplicationStore implements ApplicationStore {
 
   public read<Result>(read: (view: ApplicationReadView) => Result): Result {
     return read(new SqliteReadView(this.database));
+  }
+
+  public recoverySummary(
+    workspaceId: WorkspaceId,
+  ): LocalWorkspaceRecoverySummary {
+    const view = new SqliteReadView(this.database);
+    const workspace = view.getWorkspace(workspaceId);
+    if (
+      workspace === undefined ||
+      view.getSpace(workspace.rootSpaceId) === undefined
+    ) {
+      throw new LocalStoreCorruptionError(
+        "The recovery workspace identity is incomplete.",
+      );
+    }
+    const owners = this.database
+      .prepare(
+        "SELECT id, principal_id, payload_json FROM memberships WHERE workspace_id = ? ORDER BY id",
+      )
+      .all(workspaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "membership");
+        const principal = PrincipalIdSchema.safeParse(
+          stringValue(row, "principal_id", "membership"),
+        );
+        if (!principal.success) {
+          throw new LocalStoreCorruptionError(
+            "The recovery workspace principal is invalid.",
+          );
+        }
+        return parsePayload<WorkspaceMembership>(row, "id", id, "membership", {
+          workspaceId,
+          principalId: principal.data,
+        });
+      })
+      .filter((membership) => membership.role === "owner");
+    if (owners.length !== 1 || owners[0] === undefined) {
+      throw new LocalStoreCorruptionError(
+        "The recovery workspace must have exactly one owner.",
+      );
+    }
+    const count = (table: string): number =>
+      numberValue(
+        this.database
+          .prepare(
+            `SELECT count(*) AS count FROM ${table} WHERE workspace_id = ?`,
+          )
+          .get(workspaceId),
+        "count",
+        `${table} recovery count`,
+      );
+    return {
+      principalId: owners[0].principalId,
+      workspace,
+      counts: {
+        captures: count("captures"),
+        tasks: count("tasks"),
+        projects: count("projects"),
+        relations: count("task_project_relations"),
+        auditReceipts: count("audit_receipts"),
+      },
+    };
   }
 
   public transact<Result>(

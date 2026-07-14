@@ -1,5 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 import type {
   App,
   BrowserWindow as BrowserWindowType,
@@ -17,11 +19,7 @@ import {
 import { EncryptedStoreCapabilityError } from "@constellation/local-store";
 
 import { createBetterSqlite3Factory } from "./better-sqlite3-factory.js";
-import {
-  createDurableKernelService,
-  DurableWorkspaceOpenError,
-  type DurableKernelService,
-} from "./durable-kernel-service.js";
+import { DurableWorkspaceOpenError } from "./durable-kernel-service.js";
 import { DESKTOP_PREVIEW_VERSION } from "./index.js";
 import type { DesktopKernelService } from "./runtime-kernel-service.js";
 import { assertTrustedSender, isTrustedRendererUrl } from "./security.js";
@@ -29,6 +27,10 @@ import {
   WorkspaceKeyCustodyError,
   type AsyncSafeStorage,
 } from "./workspace-key-custody.js";
+import {
+  createWorkspaceRecoveryService,
+  type WorkspaceRecoveryService,
+} from "./workspace-recovery-service.js";
 
 // Electron's ESM namespace materializes lazy exports before the application is
 // ready. On macOS that can initialize safeStorage early and block on Keychain.
@@ -55,7 +57,7 @@ const rendererPath = fileURLToPath(
   new URL("../../../desktop-ui/dist/index.html", import.meta.url),
 );
 let mainWindow: BrowserWindowType | undefined;
-let durableKernel: DurableKernelService | undefined;
+let workspaceRecovery: WorkspaceRecoveryService | undefined;
 
 interface DesktopRuntime {
   readonly buildInfo: DesktopBuildInfo;
@@ -81,21 +83,134 @@ const electronSafeStorage: AsyncSafeStorage = {
 };
 
 const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
-  durableKernel = await createDurableKernelService({
-    databaseFactory: createBetterSqlite3Factory(),
+  const databaseFactory = createBetterSqlite3Factory();
+  const stateRoot = app.getPath("userData");
+  const smokeRootValue = process.env.CONSTELLATION_ALPHA_RECOVERY_SMOKE_ROOT;
+  const smokeRoot =
+    smokeRootValue === undefined ? undefined : path.resolve(smokeRootValue);
+  if (
+    smokeRoot !== undefined &&
+    !smokeRoot.startsWith(`${path.resolve(stateRoot)}${path.sep}`)
+  ) {
+    throw new Error("Recovery smoke path must remain inside user data.");
+  }
+  const smokeBackupPath =
+    smokeRoot === undefined
+      ? undefined
+      : path.join(smokeRoot, "workspace.constellation-backup");
+  if (smokeRoot !== undefined) {
+    mkdirSync(smokeRoot, { recursive: true, mode: 0o700 });
+  }
+  const smokeFailpoint = process.env.CONSTELLATION_ALPHA_RECOVERY_FAILPOINT;
+  if (
+    smokeFailpoint !== undefined &&
+    (smokeRoot === undefined ||
+      (smokeFailpoint !== "after-previous-retained" &&
+        smokeFailpoint !== "after-candidate-activated"))
+  ) {
+    throw new Error(
+      "Recovery failpoints are restricted to packaged smoke tests.",
+    );
+  }
+  const recovery = await createWorkspaceRecoveryService({
+    appVersion: DESKTOP_PREVIEW_VERSION,
+    databaseFactory,
     safeStorage: electronSafeStorage,
-    stateRoot: app.getPath("userData"),
+    stateRoot,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    ...(smokeFailpoint === undefined
+      ? {}
+      : {
+          failpoint: (boundary) => {
+            if (boundary !== smokeFailpoint) return;
+            process.kill(process.pid, "SIGKILL");
+            throw new Error("Recovery smoke failpoint did not terminate.");
+          },
+        }),
+    selectExportPath: async (workspaceName) => {
+      if (smokeBackupPath !== undefined) return smokeBackupPath;
+      const stamp = new Date().toISOString().slice(0, 10);
+      const safeName =
+        workspaceName
+          .normalize("NFKD")
+          .replace(/[^a-zA-Z0-9_-]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 48) || "workspace";
+      const result = await dialog.showSaveDialog({
+        title: "Export encrypted workspace backup",
+        defaultPath: `${safeName}-${stamp}.constellation-backup`,
+        filters: [
+          {
+            name: "Constellation workspace backup",
+            extensions: ["constellation-backup"],
+          },
+        ],
+        properties: ["createDirectory", "showOverwriteConfirmation"],
+      });
+      return result.canceled ? undefined : result.filePath;
+    },
+    selectBackupPath: async () => {
+      if (smokeBackupPath !== undefined) return smokeBackupPath;
+      const result = await dialog.showOpenDialog({
+        title: "Choose a Constellation workspace backup",
+        filters: [
+          {
+            name: "Constellation workspace backup",
+            extensions: ["constellation-backup"],
+          },
+        ],
+        properties: ["openFile"],
+      });
+      return result.canceled ? undefined : result.filePaths[0];
+    },
   });
+  workspaceRecovery = recovery;
   return {
-    service: durableKernel.service,
+    service: {
+      execute: (command) => {
+        if (recovery.kernel === undefined)
+          throw new Error("Workspace recovery is required.");
+        return recovery.kernel.service.execute(command);
+      },
+      query: (query) => {
+        if (recovery.kernel === undefined)
+          throw new Error("Workspace recovery is required.");
+        return recovery.kernel.service.query(query);
+      },
+    },
     buildInfo: {
       channel: "local-alpha",
-      initialWorkspaceId: durableKernel.identity.workspaceId,
+      startupRecovery: recovery.startupRecovery,
+      workspaceAvailability:
+        recovery.kernel === undefined ? "recovery_required" : "ready",
+      ...(recovery.kernel === undefined
+        ? {
+            recoveryReason:
+              recovery.recoveryReason === "none"
+                ? ("workspace_unavailable" as const)
+                : recovery.recoveryReason,
+          }
+        : { initialWorkspaceId: recovery.kernel.identity.workspaceId }),
       persistence: "encrypted-local",
       version: DESKTOP_PREVIEW_VERSION,
     },
   };
+};
+
+const parseRestoreId = (input: unknown): string | undefined => {
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    Array.isArray(input) ||
+    Object.keys(input).join(",") !== "restoreId"
+  ) {
+    return undefined;
+  }
+  const restoreId = (input as { restoreId?: unknown }).restoreId;
+  return typeof restoreId === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(restoreId)
+    ? restoreId
+    : undefined;
 };
 
 const createWindow = async (): Promise<BrowserWindowType> => {
@@ -155,8 +270,60 @@ const startProductionDesktop = async (): Promise<void> => {
   });
   ipcMain.handle(DESKTOP_CHANNELS.getBuildInfo, (event) => {
     assertTrustedSender(event);
-    return runtime.buildInfo;
+    return {
+      ...runtime.buildInfo,
+      workspaceAvailability:
+        workspaceRecovery?.kernel === undefined ? "recovery_required" : "ready",
+      ...(workspaceRecovery?.kernel === undefined
+        ? { recoveryReason: workspaceRecovery?.recoveryReason }
+        : {
+            initialWorkspaceId: workspaceRecovery.kernel.identity.workspaceId,
+            recoveryReason: undefined,
+          }),
+    };
   });
+  ipcMain.handle(DESKTOP_CHANNELS.exportWorkspaceBackup, (event) => {
+    assertTrustedSender(event);
+    return workspaceRecovery?.exportBackup();
+  });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.prepareWorkspaceRestore,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      if (
+        typeof input !== "object" ||
+        input === null ||
+        Array.isArray(input) ||
+        Object.keys(input).join(",") !== "recoveryCode" ||
+        typeof (input as { recoveryCode?: unknown }).recoveryCode !==
+          "string" ||
+        (input as { recoveryCode: string }).recoveryCode.length > 128
+      ) {
+        return { outcome: "failure", code: "recovery_code_invalid" };
+      }
+      return workspaceRecovery?.prepareRestore(
+        (input as { recoveryCode: string }).recoveryCode,
+      );
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.confirmWorkspaceRestore,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      const restoreId = parseRestoreId(input);
+      return restoreId === undefined
+        ? { outcome: "failure", code: "workspace_identity_invalid" }
+        : workspaceRecovery?.confirmRestore(restoreId);
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.cancelWorkspaceRestore,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      const restoreId = parseRestoreId(input);
+      if (restoreId !== undefined) workspaceRecovery?.cancelRestore(restoreId);
+    },
+  );
 
   await createWindow();
   const shortcutRegistered = globalShortcut.register(
@@ -227,8 +394,8 @@ const startupFailureCopy = (
 };
 
 const reportStartupFailure = async (error: unknown): Promise<void> => {
-  durableKernel?.close();
-  durableKernel = undefined;
+  workspaceRecovery?.close();
+  workspaceRecovery = undefined;
   const failure = startupFailureCopy(error);
   console.error(`Constellation startup stopped safely (${failure.code}).`);
   try {
@@ -259,6 +426,6 @@ app.on("window-all-closed", () => {
 });
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
-  durableKernel?.close();
-  durableKernel = undefined;
+  workspaceRecovery?.close();
+  workspaceRecovery = undefined;
 });

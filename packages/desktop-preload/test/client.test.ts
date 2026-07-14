@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { DESKTOP_CHANNELS, createRendererClient } from "../src/client.js";
 
-test("renderer client exposes only the frozen M0 allow-list", () => {
+test("renderer client exposes only semantic application and recovery routes", () => {
   const calls: { channel: string; payload: unknown }[] = [];
   const client = createRendererClient((channel, payload) => {
     calls.push({ channel, payload });
@@ -11,8 +11,12 @@ test("renderer client exposes only the frozen M0 allow-list", () => {
   });
 
   assert.deepEqual(Object.keys(client).sort(), [
+    "cancelWorkspaceRestore",
+    "confirmWorkspaceRestore",
     "executeCommand",
+    "exportWorkspaceBackup",
     "getBuildInfo",
+    "prepareWorkspaceRestore",
     "runQuery",
   ]);
   void client.getBuildInfo();

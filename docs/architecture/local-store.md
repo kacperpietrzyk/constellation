@@ -64,8 +64,21 @@ rotation requests rewrap the validated payload atomically.
 The production desktop lifecycle creates or opens a fixed local workspace,
 verifies the stored root Space and membership, and exposes the same
 command/query service used by the in-memory preview. Restart tests cover
-workspace identity, Capture, Task, provenance, and the interrupted state where
-the wrapped identity exists but database creation did not finish.
+workspace identity, Capture, Task, provenance, the interrupted state where the
+wrapped identity exists but database creation did not finish, and a
+recovery-only launch when an established database cannot recover its protected
+wrapper.
+
+The local Alpha also exposes semantic backup and restore operations without
+giving the renderer database paths, handles, or keys. Export uses
+`sqlcipher_export` under a fresh random key, verifies the closed encrypted copy,
+and publishes one bounded `.constellation-backup` archive. A separate random
+256-bit recovery code authenticates and unwraps the archive key; Constellation
+does not persist or embed that code. Restore verifies the archive in isolation,
+re-encrypts it under a fresh local key, shows logical record counts, and only
+activates the candidate after explicit confirmation. The previous workspace is
+retained, and startup rolls back either interruption boundary before an
+unverified candidate can replace it.
 
 ## Packaged application gate
 
@@ -79,9 +92,14 @@ The production package uses a dedicated entry point and dependency manifest.
 It excludes preview/testkit/smoke artifacts, verifies a pinned Electron archive,
 and permits exactly one unpacked native module. The packaged test drives the
 real window through the context-isolated preload and IPC, creates a Capture and
-Task, closes the browser, relaunches the same encrypted workspace, and requires
-the Task to return without renderer or load errors. Native macOS arm64, macOS
-x64, and Windows x64 jobs are required. Each macOS binding is compiled and
-exercised on a matching native runner; Rosetta is not a build or verification
-dependency. Remaining release gates are production code signing, notarization,
-installer/updater behavior, and distribution continuity.
+Task, exports a verified backup, adds later work, relaunches, previews and
+confirms restore, and requires the backup state and stable workspace identity
+to return without renderer or load errors. The same journey terminates the
+packaged process at both restore activation boundaries and requires startup to
+reopen the retained last-known-good workspace before a successful retry. Native
+macOS arm64, macOS x64, and Windows x64 jobs are required. Each macOS binding is compiled and exercised on
+a matching native runner; Rosetta is not a build or verification dependency.
+Remaining recovery gates include real disk-full and permission faults, signed
+cross-version continuity, and managed attachments. Remaining release gates are
+production code signing, notarization, installer/updater behavior, and
+distribution continuity.

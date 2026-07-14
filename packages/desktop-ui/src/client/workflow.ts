@@ -138,6 +138,9 @@ export const loadDesktopSnapshot = async (
 ): Promise<DesktopSnapshot> => {
   const build = knownBuild ?? (await client.getBuildInfo());
   const workspaceId = build.initialWorkspaceId;
+  if (build.workspaceAvailability !== "ready" || workspaceId === undefined) {
+    throw new Error("Workspace recovery is required before opening data.");
+  }
   const bootstrap = await queryProjection(
     client,
     queryEnvelope("workspace.bootstrapContext", workspaceId, {}),

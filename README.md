@@ -58,15 +58,20 @@ store, an in-memory Electron developer preview, and a packaged Alpha candidate.
 The implemented desktop journey covers Quick Capture to Task, Project outcome
 and Task relations, task status/completion, deterministic scoped search,
 explainable weekly focus, Capture History, meaningful activity, and previewed
-undo. The production runtime keeps generated workspace identity and key custody
-in the operating-system credential store, has no plaintext or in-memory
-fallback, and stops in recovery instead of silently replacing a missing ready
-database.
+undo. It can also export a verified encrypted workspace backup with a separate
+recovery code, preview a restore, retain the previous workspace, and reopen the
+restored logical identity. The production runtime keeps generated workspace
+identity and key custody in the operating-system credential store, has no
+plaintext or in-memory fallback, and stops in recovery instead of silently
+replacing a missing ready database. If an established workspace cannot open,
+the same packaged application presents a recovery-only restore path rather than
+requiring a developer tool.
 
 The packaged gate builds the pinned SQLCipher binding as the only unpacked
 native module and drives the real window, context-isolated preload, IPC,
-Capture-to-Task interaction, and encrypted relaunch on native macOS arm64,
-native macOS x64, and Windows x64 runners. No macOS result depends on Rosetta.
+Capture-to-Task interaction, encrypted backup/restore, and relaunch on native
+macOS arm64, native macOS x64, and Windows x64 runners. No macOS result depends
+on Rosetta.
 The resulting ad-hoc macOS and unsigned Windows application folders are
 verification artifacts, not a signed/notarized release. MCP transport,
 installers, updater, synchronized Data Homes, and automatic routing rules beyond

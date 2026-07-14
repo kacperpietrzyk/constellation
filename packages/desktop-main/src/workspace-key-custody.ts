@@ -280,6 +280,33 @@ export class WorkspaceKeyCustody {
     }
   }
 
+  /** Publishes caller-provided key material for a verified restored workspace. */
+  public async createWithKey(
+    identity: WorkspaceBootstrapIdentity,
+    key: Buffer,
+    state: WorkspaceLifecycleState = "ready",
+  ): Promise<void> {
+    if (!(await this.safeStorage.isAsyncEncryptionAvailable())) {
+      key.fill(0);
+      throw new WorkspaceKeyCustodyError("encryption_unavailable");
+    }
+    if (key.byteLength !== 32) {
+      key.fill(0);
+      throw new WorkspaceKeyCustodyError("wrapper_invalid");
+    }
+    let wrapperContents: Buffer | undefined;
+    try {
+      wrapperContents = await this.wrap(identity, key, state);
+      publishAtomically(this.wrapperPath, wrapperContents);
+    } catch (error) {
+      if (error instanceof WorkspaceKeyCustodyError) throw error;
+      throw new WorkspaceKeyCustodyError("wrapper_io_failed");
+    } finally {
+      key.fill(0);
+      wrapperContents?.fill(0);
+    }
+  }
+
   public async load(workspaceId: WorkspaceId): Promise<WorkspaceKeyBundle> {
     if (!(await this.safeStorage.isAsyncEncryptionAvailable())) {
       throw new WorkspaceKeyCustodyError("encryption_unavailable");
