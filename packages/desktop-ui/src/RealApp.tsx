@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -40,6 +41,19 @@ import {
   type ProjectOverviewProjection,
   type UndoPreview,
 } from "./client/workflow.js";
+import {
+  activateShellContext,
+  activeShellContext,
+  canMoveShellHistory,
+  closeShellContext,
+  createShellNavigation,
+  destinationContext,
+  moveShellHistory,
+  openShellContext,
+  projectContext,
+  taskContext,
+  type ShellContext,
+} from "./client/shell-navigation.js";
 import {
   conditionCopy,
   type PreviewCondition,
@@ -221,7 +235,9 @@ export const RealApp = ({
   readonly client: ConstellationRendererClient | undefined;
 }) => {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
-  const [surface, setSurface] = useState<SurfaceId>("cockpit");
+  const [navigation, setNavigation] = useState(() =>
+    createShellNavigation(destinationContext("cockpit", "Tydzień")),
+  );
   const [captureOpen, setCaptureOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
@@ -247,18 +263,27 @@ export const RealApp = ({
   const [previewCondition, setPreviewCondition] =
     useState<PreviewCondition>("ready");
   const navRef = useRef<HTMLElement>(null);
+  const tabRef = useRef<HTMLDivElement>(null);
   const modifierLabel = /Mac|iPhone|iPad/.test(navigator.platform)
     ? "⌘"
     : "Ctrl";
+  const activeContext = activeShellContext(navigation);
+  const surface = activeContext.surface;
+
+  const openContext = useCallback((context: ShellContext) => {
+    setNavigation((current) => openShellContext(current, context));
+  }, []);
+
+  useEffect(() => {
+    setSelectedTaskId(activeContext.taskId);
+    setSelectedProjectId(activeContext.projectId);
+  }, [activeContext.projectId, activeContext.taskId]);
 
   const snapshot = state.kind === "ready" ? state.snapshot : undefined;
   const reload = async () => {
     if (!client) return;
     const next = await loadDesktopSnapshot(client, snapshot?.build);
     setState({ kind: "ready", snapshot: next });
-    setSelectedTaskId((current) => current ?? next.tasks[0]?.id);
-    if (selectedProjectId === undefined && next.projects.kind === "ready")
-      setSelectedProjectId(next.projects.data.items[0]?.id);
   };
 
   useEffect(() => {
@@ -286,9 +311,6 @@ export const RealApp = ({
       .then((next) => {
         if (!active || next === undefined) return;
         setState({ kind: "ready", snapshot: next });
-        setSelectedTaskId(next.tasks[0]?.id);
-        if (next.projects.kind === "ready")
-          setSelectedProjectId(next.projects.data.items[0]?.id);
       })
       .catch(
         (error: unknown) =>
@@ -333,6 +355,8 @@ export const RealApp = ({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const modalOpen = document.querySelector("dialog[open]") !== null;
+      if (modalOpen && event.key !== "Escape") return;
       if (
         (event.metaKey || event.ctrlKey) &&
         event.shiftKey &&
@@ -349,7 +373,38 @@ export const RealApp = ({
       ) {
         event.preventDefault();
         const item = navItems[Number(event.code.slice(-1)) - 1];
-        if (item) setSurface(item.id);
+        if (item) openContext(destinationContext(item.id, item.label));
+      } else if (event.altKey && event.key === "ArrowLeft") {
+        event.preventDefault();
+        setNavigation((current) => moveShellHistory(current, -1));
+      } else if (event.altKey && event.key === "ArrowRight") {
+        event.preventDefault();
+        setNavigation((current) => moveShellHistory(current, 1));
+      } else if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key === "Tab" &&
+        navigation.tabs.length > 1
+      ) {
+        event.preventDefault();
+        const current = navigation.tabs.findIndex(
+          (tab) => tab.key === navigation.activeKey,
+        );
+        const delta = event.shiftKey ? -1 : 1;
+        const next =
+          navigation.tabs[
+            (current + delta + navigation.tabs.length) % navigation.tabs.length
+          ];
+        if (next)
+          setNavigation((value) => activateShellContext(value, next.key));
+      } else if (
+        (event.metaKey || event.ctrlKey) &&
+        event.code === "KeyW" &&
+        navigation.tabs.length > 1
+      ) {
+        event.preventDefault();
+        setNavigation((current) =>
+          closeShellContext(current, current.activeKey),
+        );
       } else if (event.key === "Escape") {
         setSearchOpen(false);
         setUndoPreview(undefined);
@@ -357,7 +412,7 @@ export const RealApp = ({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [navigation.activeKey, navigation.tabs, openContext]);
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(undefined), 5000);
@@ -367,6 +422,15 @@ export const RealApp = ({
   const selectedTask = useMemo(
     () => snapshot?.tasks.find((task) => task.id === selectedTaskId),
     [selectedTaskId, snapshot],
+  );
+  const selectedProject = useMemo(
+    () =>
+      snapshot?.projects.kind === "ready"
+        ? snapshot.projects.data.items.find(
+            (project) => project.id === selectedProjectId,
+          )
+        : undefined,
+    [selectedProjectId, snapshot],
   );
   const sourceCapture =
     selectedTask?.sourceCaptureId === undefined
@@ -404,6 +468,40 @@ export const RealApp = ({
     );
     const delta = event.key === "ArrowDown" ? 1 : -1;
     buttons[(current + delta + buttons.length) % buttons.length]?.focus();
+  };
+
+  const tabKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    key: string,
+  ) => {
+    if (
+      event.key !== "ArrowLeft" &&
+      event.key !== "ArrowRight" &&
+      event.key !== "Home" &&
+      event.key !== "End"
+    )
+      return;
+    event.preventDefault();
+    const current = navigation.tabs.findIndex((tab) => tab.key === key);
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? navigation.tabs.length - 1
+          : (current +
+              (event.key === "ArrowRight" ? 1 : -1) +
+              navigation.tabs.length) %
+            navigation.tabs.length;
+    const next = navigation.tabs[nextIndex];
+    if (!next) return;
+    setNavigation((value) => activateShellContext(value, next.key));
+    window.requestAnimationFrame(() => {
+      tabRef.current
+        ?.querySelector<HTMLButtonElement>(
+          `[data-shell-tab="${CSS.escape(next.key)}"]`,
+        )
+        ?.focus();
+    });
   };
 
   if (state.kind === "loading")
@@ -458,7 +556,7 @@ export const RealApp = ({
     return (
       <main className="center-state">
         <span className="state-symbol">!</span>
-        <p className="eyebrow">Interactive alpha</p>
+        <p className="eyebrow">Constellation</p>
         <h1>
           {state.kind === "unavailable"
             ? "Most desktopowy jest niedostępny"
@@ -519,7 +617,9 @@ export const RealApp = ({
               data-surface={item.id}
               className={`nav-item ${surface === item.id ? "active" : ""}`}
               aria-current={surface === item.id ? "page" : undefined}
-              onClick={() => setSurface(item.id)}
+              onClick={() =>
+                openContext(destinationContext(item.id, item.label))
+              }
             >
               <Icon name={item.icon} />
               <span>{item.label}</span>
@@ -586,6 +686,83 @@ export const RealApp = ({
         id="main-content"
         aria-labelledby="surface-title"
       >
+        <div className="shell-tabbar" aria-label="Otwarte konteksty">
+          <div
+            className="shell-history-controls"
+            aria-label="Historia kontekstu"
+          >
+            <button
+              className="icon-button"
+              aria-label="Wstecz"
+              title="Wstecz · Alt+←"
+              disabled={!canMoveShellHistory(navigation, -1)}
+              onClick={() =>
+                setNavigation((current) => moveShellHistory(current, -1))
+              }
+            >
+              <span aria-hidden="true">←</span>
+            </button>
+            <button
+              className="icon-button"
+              aria-label="Dalej"
+              title="Dalej · Alt+→"
+              disabled={!canMoveShellHistory(navigation, 1)}
+              onClick={() =>
+                setNavigation((current) => moveShellHistory(current, 1))
+              }
+            >
+              <span aria-hidden="true">→</span>
+            </button>
+          </div>
+          <div
+            ref={tabRef}
+            className="shell-tabs"
+            role="tablist"
+            aria-label="Konteksty"
+          >
+            {navigation.tabs.map((tab) => {
+              const active = tab.key === navigation.activeKey;
+              return (
+                <div
+                  className={`shell-tab ${active ? "active" : ""}`}
+                  key={tab.key}
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    tabIndex={active ? 0 : -1}
+                    data-shell-tab={tab.key}
+                    onKeyDown={(event) => tabKeyDown(event, tab.key)}
+                    onClick={() =>
+                      setNavigation((current) =>
+                        activateShellContext(current, tab.key),
+                      )
+                    }
+                  >
+                    <span className="shell-tab-kind" aria-hidden="true" />
+                    <span>{tab.label}</span>
+                  </button>
+                  {navigation.tabs.length > 1 && (
+                    <button
+                      type="button"
+                      className="shell-tab-close"
+                      aria-label={`Zamknij kontekst ${tab.label}`}
+                      title={`Zamknij · ${modifierLabel}W`}
+                      onClick={() =>
+                        setNavigation((current) =>
+                          closeShellContext(current, tab.key),
+                        )
+                      }
+                    >
+                      <Icon name="close" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
         {notice && (
           <div
             className={`notice notice-${notice.kind}`}
@@ -625,12 +802,17 @@ export const RealApp = ({
           <CockpitSurface
             snapshot={state.snapshot}
             onOpenProject={(id) => {
-              setSelectedProjectId(id);
-              setSurface("projects");
+              const project =
+                state.snapshot.projects.kind === "ready"
+                  ? state.snapshot.projects.data.items.find(
+                      (item) => item.id === id,
+                    )
+                  : undefined;
+              openContext(projectContext(id, project?.title ?? "Projekt"));
             }}
             onSelectTask={(id) => {
-              setSelectedTaskId(id);
-              setSurface("tasks");
+              const task = tasks.find((item) => item.id === id);
+              openContext(taskContext(id, task?.title ?? "Zadanie"));
             }}
           />
         )}
@@ -639,7 +821,10 @@ export const RealApp = ({
             snapshot={state.snapshot}
             selectedTaskId={selectedTaskId}
             busyTaskId={busyTaskId}
-            onSelectTask={setSelectedTaskId}
+            onSelectTask={(id) => {
+              const task = tasks.find((item) => item.id === id);
+              openContext(taskContext(id, task?.title ?? "Zadanie"));
+            }}
             onCapture={() => setCaptureOpen(true)}
             onSetStatus={(id, statusId) => {
               const task = tasks.find((item) => item.id === id);
@@ -688,19 +873,34 @@ export const RealApp = ({
             overview={projectOverview}
             relation={sessionRelation}
             busy={projectBusy}
-            onSelectProject={setSelectedProjectId}
-            onCreate={(title, outcome) => {
-              if (!client) return;
+            onSelectProject={(id) => {
+              const project =
+                state.snapshot.projects.kind === "ready"
+                  ? state.snapshot.projects.data.items.find(
+                      (item) => item.id === id,
+                    )
+                  : undefined;
+              openContext(projectContext(id, project?.title ?? "Projekt"));
+            }}
+            onCreate={async (title, outcome) => {
+              if (!client) return false;
               setProjectBusy(true);
-              void createProject(client, state.snapshot, title, outcome).then(
-                async (result) => {
-                  setProjectBusy(false);
-                  if (result.kind === "success") {
-                    setSelectedProjectId(result.data.projectId);
-                    await refreshAfter("Projekt utworzono.");
-                  } else showFailure(result);
-                },
+              const result = await createProject(
+                client,
+                state.snapshot,
+                title,
+                outcome,
               );
+              setProjectBusy(false);
+              if (result.kind === "success") {
+                openContext(
+                  projectContext(result.data.projectId, title.trim()),
+                );
+                await refreshAfter("Projekt utworzono.");
+                return true;
+              }
+              showFailure(result);
+              return false;
             }}
             onUpdateOutcome={(outcome) => {
               if (!client || !projectOverview) return;
@@ -780,19 +980,29 @@ export const RealApp = ({
       </section>
 
       <aside
-        className={`inspector ${selectedTask ? "open" : ""}`}
+        className={`inspector ${selectedTask || selectedProject ? "open" : ""}`}
         aria-label="Podgląd kontekstu"
       >
         <header className="inspector-header">
           <div>
             <span>Podgląd kontekstu</span>
-            <small>{selectedTask ? "Zadanie" : "Workspace"}</small>
+            <small>
+              {selectedTask
+                ? "Zadanie"
+                : selectedProject
+                  ? "Projekt"
+                  : "Workspace"}
+            </small>
           </div>
-          {selectedTask && (
+          {(selectedTask || selectedProject) && (
             <button
               className="icon-button"
               aria-label="Zamknij inspector"
-              onClick={() => setSelectedTaskId(undefined)}
+              onClick={() =>
+                setNavigation((current) =>
+                  closeShellContext(current, current.activeKey),
+                )
+              }
             >
               <Icon name="close" />
             </button>
@@ -841,6 +1051,40 @@ export const RealApp = ({
               )}
             </section>
           </div>
+        ) : selectedProject ? (
+          <div className="inspector-body">
+            <span className="record-status">
+              <i />
+              {selectedProject.lifecycle === "active"
+                ? "Aktywny"
+                : selectedProject.lifecycle}
+            </span>
+            <h2>{selectedProject.title}</h2>
+            <p className="record-summary">
+              Projekt w aktywnym workspace i bieżącym zakresie Space.
+            </p>
+            <section className="inspector-section provenance-block">
+              <p className="section-label">Zamierzony wynik</p>
+              <blockquote>{selectedProject.intendedOutcome}</blockquote>
+              <p>Wynik pozostaje częścią wersjonowanego rekordu Projektu.</p>
+            </section>
+            <section className="inspector-section">
+              <p className="section-label">Kontekst pracy</p>
+              <dl className="record-fields">
+                <div>
+                  <dt>Otwarte</dt>
+                  <dd>{selectedProject.relatedOpenTaskCount} zadań</dd>
+                </div>
+                <div>
+                  <dt>Wersja</dt>
+                  <dd>
+                    {projectOverview?.project.version ??
+                      selectedProject.version}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+          </div>
         ) : (
           <div className="inspector-empty workspace-context">
             <BrandMark />
@@ -865,7 +1109,9 @@ export const RealApp = ({
         )}
       </aside>
 
-      {selectedTask && <span className="context-thread" aria-hidden="true" />}
+      {(selectedTask || selectedProject) && (
+        <span className="context-thread" aria-hidden="true" />
+      )}
       {captureOpen && (
         <CaptureDialog
           busy={capturing}
@@ -880,13 +1126,20 @@ export const RealApp = ({
                 setCapturing(false);
                 if (result.kind === "success") {
                   setState({ kind: "ready", snapshot: result.snapshot });
-                  setSelectedTaskId(result.selectedTaskId);
+                  const task = result.snapshot.tasks.find(
+                    (item) => item.id === result.selectedTaskId,
+                  );
+                  openContext(
+                    taskContext(
+                      result.selectedTaskId,
+                      task?.title ?? "Nowe zadanie",
+                    ),
+                  );
                   setReceipts((current) => ({
                     ...current,
                     [result.selectedTaskId]: result.receipt,
                   }));
                   setCaptureOpen(false);
-                  setSurface("tasks");
                   setToast("Capture zapisano i utworzono zadanie.");
                 } else showFailure(result);
               },
@@ -900,10 +1153,25 @@ export const RealApp = ({
           snapshot={state.snapshot}
           onClose={() => setSearchOpen(false)}
           onNavigate={(nextSurface, recordId) => {
-            setSurface(nextSurface);
-            if (nextSurface === "tasks") setSelectedTaskId(recordId as TaskId);
-            if (nextSurface === "projects")
-              setSelectedProjectId(recordId as ProjectId);
+            if (nextSurface === "tasks") {
+              const id = recordId as TaskId;
+              const task = tasks.find((item) => item.id === id);
+              openContext(taskContext(id, task?.title ?? "Zadanie"));
+            } else if (nextSurface === "projects") {
+              const id = recordId as ProjectId;
+              const project =
+                state.snapshot.projects.kind === "ready"
+                  ? state.snapshot.projects.data.items.find(
+                      (item) => item.id === id,
+                    )
+                  : undefined;
+              openContext(projectContext(id, project?.title ?? "Projekt"));
+            } else {
+              const item = navItems.find((entry) => entry.id === nextSurface);
+              openContext(
+                destinationContext(nextSurface, item?.label ?? "Widok"),
+              );
+            }
           }}
         />
       )}
@@ -921,7 +1189,7 @@ export const RealApp = ({
                 if (result.kind === "success") {
                   setUndoPreview(undefined);
                   await refreshAfter("Zmianę cofnięto i zapisano w audycie.");
-                  setSurface("activity");
+                  openContext(destinationContext("activity", "Aktywność"));
                 } else showFailure(result);
               },
             );
@@ -938,9 +1206,7 @@ export const RealApp = ({
           onClose={() => setRecoveryOpen(false)}
           onRestored={async () => {
             await reload();
-            setSelectedTaskId(undefined);
-            setSelectedProjectId(undefined);
-            setSurface("cockpit");
+            openContext(destinationContext("cockpit", "Tydzień"));
             setToast("Workspace przywrócono i otwarto ponownie.");
           }}
         />

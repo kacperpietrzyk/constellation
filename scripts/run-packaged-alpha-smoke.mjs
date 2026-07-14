@@ -16,6 +16,8 @@ const userData = path.join(stateRoot, "user-data");
 const recoverySmokeRoot = path.join(userData, "recovery-smoke");
 const taskTitle = "Verify packaged UI, preload, IPC, and persistence";
 const mutationTitle = "This mutation must disappear after restore";
+const projectTitle = "Verify packaged Project context";
+const projectOutcome = "Project inspector preserves the intended outcome";
 fs.rmSync(stateRoot, { recursive: true, force: true });
 fs.mkdirSync(stateRoot, { recursive: true });
 
@@ -264,6 +266,11 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         )`,
         "PACKAGED_ALPHA_CAPTURE_RESULT_MISSING",
       );
+      await waitFor(
+        client,
+        `document.querySelector('.shell-tab.active [data-shell-tab^="task:"]') !== null`,
+        "PACKAGED_ALPHA_CAPTURE_CONTEXT_TAB_MISSING",
+      );
     };
 
     let backup;
@@ -287,6 +294,127 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         );
       }
       await submitCapture(mutationTitle);
+      const contextTabs = await client.evaluate(
+        `document.querySelectorAll('.shell-tab').length`,
+      );
+      if (contextTabs !== 3) {
+        throw new Error("PACKAGED_ALPHA_CONTEXT_TAB_COUNT_INVALID");
+      }
+      await client.evaluate(`(() => {
+        document.querySelector('.shell-history-controls [aria-label="Wstecz"]').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.shell-tab.active [role="tab"] span:last-child')?.textContent === ${JSON.stringify(taskTitle)}`,
+        "PACKAGED_ALPHA_CONTEXT_BACK_FAILED",
+      );
+      await client.evaluate(`(() => {
+        document.querySelector('.shell-history-controls [aria-label="Dalej"]').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.shell-tab.active [role="tab"] span:last-child')?.textContent === ${JSON.stringify(mutationTitle)}`,
+        "PACKAGED_ALPHA_CONTEXT_FORWARD_FAILED",
+      );
+      await client.evaluate(`(() => {
+        document.querySelector('.search-control').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('#global-search') !== null`,
+        "PACKAGED_ALPHA_SEARCH_MISSING",
+      );
+      await client.evaluate(`(() => {
+        const input = document.querySelector('#global-search');
+        const setter = Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value"
+        ).set;
+        setter.call(input, ${JSON.stringify(taskTitle)});
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `[...document.querySelectorAll('.search-results button')].some(
+          (button) => button.querySelector('small')?.textContent?.startsWith('task ·')
+        )`,
+        "PACKAGED_ALPHA_LOCAL_SEARCH_RESULT_MISSING",
+      );
+      await client.evaluate(`(() => {
+        const result = [...document.querySelectorAll('.search-results button')].find(
+          (button) => button.querySelector('small')?.textContent?.startsWith('task ·')
+        );
+        result.click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.shell-tab.active [role="tab"] span:last-child')?.textContent === ${JSON.stringify(taskTitle)} && document.querySelectorAll('.shell-tab').length === 3`,
+        "PACKAGED_ALPHA_SEARCH_CONTEXT_NAVIGATION_FAILED",
+      );
+      await client.evaluate(`(() => {
+        document.querySelector('.nav-item[data-surface="projects"]').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.project-surface .surface-header .secondary-button') !== null`,
+        "PACKAGED_ALPHA_PROJECT_SURFACE_MISSING",
+      );
+      await client.evaluate(`(() => {
+        document.querySelector('.project-surface .surface-header .secondary-button').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('#project-title') !== null && document.querySelector('#project-outcome') !== null`,
+        "PACKAGED_ALPHA_PROJECT_FORM_MISSING",
+      );
+      await client.evaluate(`(() => {
+        const title = document.querySelector('#project-title');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(
+          title,
+          ${JSON.stringify(projectTitle)}
+        );
+        title.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      })()`);
+      await client.evaluate(`(() => {
+        const outcome = document.querySelector('#project-outcome');
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(
+          outcome,
+          ${JSON.stringify(projectOutcome)}
+        );
+        outcome.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.project-surface form .primary-button')?.disabled === false`,
+        "PACKAGED_ALPHA_PROJECT_SUBMIT_DISABLED",
+      );
+      await client.evaluate(`(() => {
+        document.querySelector('.project-surface form .primary-button').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.inspector-header small')?.textContent === 'Projekt' && document.querySelector('.inspector-body h2')?.textContent === ${JSON.stringify(projectTitle)} && document.querySelector('.provenance-block blockquote')?.textContent === ${JSON.stringify(projectOutcome)}`,
+        "PACKAGED_ALPHA_PROJECT_CONTEXT_MISSING",
+      );
+      await client.evaluate(`(() => {
+        document.querySelector('.nav-item[data-surface="tasks"]').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.shell-tab.active [data-shell-tab="destination:tasks"]') !== null`,
+        "PACKAGED_ALPHA_TASK_CONTEXT_RETURN_FAILED",
+      );
     } else if (phase.startsWith("interrupted-")) {
       restorePreview = await client.evaluate(
         `window.constellation.prepareWorkspaceRestore({ recoveryCode: ${JSON.stringify(recoveryCode)} })`,
@@ -362,6 +490,11 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         document.querySelector('.nav-item[data-surface="tasks"]').click();
         return true;
       })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.shell-tab.active [data-shell-tab="destination:tasks"]') !== null`,
+        "PACKAGED_ALPHA_TASK_DESTINATION_CONTEXT_MISSING",
+      );
     } else {
       if (boundary.build.startupRecovery !== "previous_workspace_restored") {
         throw new Error("PACKAGED_ALPHA_PREVIOUS_WORKSPACE_NOT_RECOVERED");

@@ -407,8 +407,7 @@ kbd {
   position: relative;
   min-width: 0;
   overflow: auto;
-  padding: calc(var(--titlebar-height) + var(--space-8))
-    clamp(var(--space-5), 4vw, var(--space-10)) 6.5rem;
+  padding: 0 clamp(var(--space-5), 4vw, var(--space-10)) 6.5rem;
   background: var(--surface-canvas);
   scrollbar-color: var(--border-default) transparent;
 }
@@ -425,6 +424,119 @@ kbd {
     transparent 68%
   );
   opacity: 0.7;
+}
+.shell-tabbar {
+  position: sticky;
+  z-index: var(--z-raised);
+  top: 0;
+  min-width: 0;
+  height: calc(var(--titlebar-height) + 2.55rem);
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin: 0 calc(-1 * clamp(var(--space-5), 4vw, var(--space-10)))
+    var(--space-8);
+  padding: var(--titlebar-height) var(--space-3) 0;
+  border-bottom: 1px solid var(--shell-border);
+  background: var(--shell-sidebar-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturation));
+}
+.shell-history-controls {
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+.shell-history-controls .icon-button {
+  width: 1.85rem;
+  height: 1.85rem;
+  color: var(--text-tertiary);
+}
+.shell-history-controls .icon-button:disabled {
+  color: var(--text-disabled);
+  opacity: 0.45;
+}
+.shell-tabs {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  gap: 1px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.shell-tabs::-webkit-scrollbar {
+  display: none;
+}
+.shell-tab {
+  position: relative;
+  min-width: 7rem;
+  max-width: 13rem;
+  height: 2.25rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1.75rem;
+  align-items: center;
+  flex: 1 1 10rem;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  color: var(--text-quaternary);
+}
+.shell-tab:hover {
+  color: var(--text-secondary);
+  background: var(--surface-hover);
+}
+.shell-tab.active {
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+  background: var(--surface-canvas);
+}
+.shell-tab > [role="tab"] {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 0 0 var(--space-3);
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+.shell-tab > [role="tab"] > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shell-tab-kind {
+  width: 0.38rem;
+  height: 0.38rem;
+  flex: none;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.7;
+}
+.shell-tab-close {
+  width: 1.65rem;
+  height: 1.65rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  color: var(--text-quaternary);
+  background: transparent;
+  opacity: 0;
+}
+.shell-tab:hover .shell-tab-close,
+.shell-tab.active .shell-tab-close,
+.shell-tab-close:focus-visible {
+  opacity: 1;
+}
+.shell-tab-close:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+.shell-tab-close svg {
+  width: 0.8rem;
 }
 .surface-header {
   max-width: 58rem;
@@ -1214,6 +1326,13 @@ kbd {
   .work-surface {
     padding-inline: var(--space-4);
   }
+  .shell-tabbar {
+    margin-inline: calc(-1 * var(--space-4));
+    padding-inline: var(--space-2);
+  }
+  .shell-history-controls {
+    display: none;
+  }
   .work-surface::before {
     left: 4rem;
   }
@@ -1261,6 +1380,7 @@ kbd {
 @media (prefers-reduced-transparency: reduce) {
   .sidebar,
   .inspector,
+  .shell-tabbar,
   .capture-dock,
   .capture-dialog {
     backdrop-filter: none;
@@ -1281,6 +1401,9 @@ kbd {
 }
 
 @media (forced-colors: active) {
+  .shell-tab.active {
+    border-color: Highlight;
+  }
   .task-row.selected {
     outline: 1px solid Highlight;
   }

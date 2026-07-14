@@ -338,7 +338,7 @@ export const ProjectsSurface = ({
     | undefined;
   readonly busy: boolean;
   readonly onSelectProject: (id: ProjectId) => void;
-  readonly onCreate: (title: string, outcome: string) => void;
+  readonly onCreate: (title: string, outcome: string) => Promise<boolean>;
   readonly onUpdateOutcome: (outcome: string) => void;
   readonly onRelate: (taskId: TaskId) => void;
   readonly onUnrelate: () => void;
@@ -377,7 +377,14 @@ export const ProjectsSurface = ({
           className="project-overview"
           onSubmit={(event: FormEvent) => {
             event.preventDefault();
-            if (title.trim() && outcome.trim()) onCreate(title, outcome);
+            if (title.trim() && outcome.trim()) {
+              void onCreate(title, outcome).then((created) => {
+                if (!created) return;
+                setCreating(false);
+                setTitle("");
+                setOutcome("");
+              });
+            }
           }}
         >
           <div className="overview-intent">
