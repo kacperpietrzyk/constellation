@@ -11,6 +11,7 @@ import {
   SpaceGrantIdSchema,
   SpaceIdSchema,
   TaskIdSchema,
+  TaskAssignmentIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
 } from "./ids.js";
@@ -29,6 +30,8 @@ export const DiagnosticCodeSchema = z.enum([
   "task.status_changed",
   "task.completed",
   "task.reopened",
+  "task.assigned",
+  "task.unassigned",
   "relation.created",
   "relation.removed",
   "undo.previewed",
@@ -57,6 +60,7 @@ export const RecordKindSchema = z.enum([
   "spaceGrant",
   "capture",
   "task",
+  "taskAssignment",
   "taskStatus",
   "project",
   "relation",
@@ -192,6 +196,26 @@ export const TaskReopenedProjectionSchema = z
   .object({ kind: z.literal("task.reopened"), ...TaskMutationProjectionFields })
   .strict();
 
+const TaskAssignmentProjectionFields = {
+  assignmentId: TaskAssignmentIdSchema,
+  taskId: TaskIdSchema,
+  assignmentVersion: z.int().positive(),
+} as const;
+
+export const TaskAssignedProjectionSchema = z
+  .object({
+    kind: z.literal("task.assigned"),
+    ...TaskAssignmentProjectionFields,
+    assigneePrincipalId: z.uuid(),
+  })
+  .strict();
+export const TaskUnassignedProjectionSchema = z
+  .object({
+    kind: z.literal("task.unassigned"),
+    ...TaskAssignmentProjectionFields,
+  })
+  .strict();
+
 const RelationProjectionFields = {
   relationId: RelationIdSchema,
   taskId: TaskIdSchema,
@@ -228,6 +252,8 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   TaskStatusChangedProjectionSchema,
   TaskCompletedProjectionSchema,
   TaskReopenedProjectionSchema,
+  TaskAssignedProjectionSchema,
+  TaskUnassignedProjectionSchema,
   RelationCreatedProjectionSchema,
   RelationRemovedProjectionSchema,
   UndoAppliedProjectionSchema,
@@ -327,6 +353,17 @@ const TaskReopenedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
   diagnosticCode: z.literal("task.reopened"),
   projection: TaskReopenedProjectionSchema,
 }).strict();
+const TaskAssignedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
+  outcome: z.literal("success"),
+  diagnosticCode: z.literal("task.assigned"),
+  projection: TaskAssignedProjectionSchema,
+}).strict();
+const TaskUnassignedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("task.unassigned"),
+    projection: TaskUnassignedProjectionSchema,
+  }).strict();
 const RelationCreatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -359,6 +396,8 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   TaskStatusChangedSuccessOutcomeSchema,
   TaskCompletedSuccessOutcomeSchema,
   TaskReopenedSuccessOutcomeSchema,
+  TaskAssignedSuccessOutcomeSchema,
+  TaskUnassignedSuccessOutcomeSchema,
   RelationCreatedSuccessOutcomeSchema,
   RelationRemovedSuccessOutcomeSchema,
   UndoSuccessOutcomeSchema,

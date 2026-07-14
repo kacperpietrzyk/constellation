@@ -250,6 +250,18 @@ const createTypedClient = () => {
             ],
             nextCursor: null,
           }) as Awaited<ReturnType<ConstellationRendererClient["runQuery"]>>;
+        case "task.assignmentCandidates":
+          return successQuery(query, {
+            kind: "task.assignmentCandidates",
+            spaceId,
+            candidates: [
+              {
+                principalId: "20000000-0000-4000-8000-000000000003",
+                displayName: "Workspace member",
+                participantKind: "member",
+              },
+            ],
+          }) as Awaited<ReturnType<ConstellationRendererClient["runQuery"]>>;
         case "capture.history":
           return successQuery(query, {
             kind: "capture.history",
@@ -409,6 +421,7 @@ describe("real Wave 2 renderer workflow", () => {
         "cockpit.week",
         "project.list",
         "task.list",
+        "task.assignmentCandidates",
         "workspace.access",
         "workspace.bootstrapContext",
       ].sort(),

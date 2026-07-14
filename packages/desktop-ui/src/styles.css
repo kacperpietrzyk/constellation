@@ -692,7 +692,7 @@ kbd {
   width: 100%;
   min-height: 3.35rem;
   display: grid;
-  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-3);
   padding: 0.55rem var(--space-3);
@@ -762,6 +762,15 @@ kbd {
   max-width: 10rem;
   padding: 0.2rem 0.45rem;
   color: var(--text-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  font-size: var(--text-2xs);
+}
+.task-assignee {
+  max-width: 11rem;
+  padding: 0.2rem 0.45rem;
+  color: var(--text-secondary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-full);
   background: var(--surface-raised);
@@ -1351,8 +1360,13 @@ kbd {
     display: none;
   }
   .task-row {
-    grid-template-columns: 1.25rem minmax(0, 1fr) 0.8rem;
+    grid-template-columns: 1.25rem minmax(0, 1fr);
     gap: var(--space-2);
+  }
+  .task-assignee {
+    width: 100%;
+    max-width: none;
+    grid-column: 2;
   }
   .empty-state {
     grid-template-columns: 2.25rem minmax(0, 1fr);

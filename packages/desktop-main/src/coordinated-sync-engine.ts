@@ -56,6 +56,7 @@ export const parseHubWorkspaceProjection = (
     ...parsed.spaces,
     ...parsed.memberships,
     ...parsed.spaceGrants,
+    ...parsed.taskAssignments,
     ...parsed.taskStatuses,
     ...parsed.captures,
     ...parsed.tasks,

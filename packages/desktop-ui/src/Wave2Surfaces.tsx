@@ -8,6 +8,7 @@ import {
 
 import type {
   CommandId,
+  PrincipalId,
   ProjectId,
   RelationId,
   TaskId,
@@ -220,6 +221,7 @@ export const TasksSurface = ({
   onCapture,
   onSetStatus,
   onSetCompleted,
+  onSetAssignment,
 }: {
   readonly snapshot: DesktopSnapshot;
   readonly selectedTaskId: TaskId | undefined;
@@ -228,6 +230,10 @@ export const TasksSurface = ({
   readonly onCapture: () => void;
   readonly onSetStatus: (id: TaskId, statusId: TaskStatusId) => void;
   readonly onSetCompleted: (id: TaskId, completed: boolean) => void;
+  readonly onSetAssignment: (
+    id: TaskId,
+    principalId: PrincipalId | undefined,
+  ) => void;
 }) => (
   <div className="surface-scroll">
     <SurfaceHeader
@@ -305,6 +311,53 @@ export const TasksSurface = ({
                     {status.label}
                   </option>
                 ))}
+              </select>
+              <label className="sr-only" htmlFor={`assignee-${task.id}`}>
+                Osoba odpowiedzialna za {task.title}
+              </label>
+              <select
+                id={`assignee-${task.id}`}
+                className="task-assignee"
+                aria-label={`Osoba odpowiedzialna za ${task.title}`}
+                value={
+                  task.assignment?.availability !== "active" && task.assignment
+                    ? "unavailable-member"
+                    : (task.assignment?.assigneePrincipalId ?? "")
+                }
+                disabled={
+                  busyTaskId === task.id ||
+                  snapshot.assignmentCandidates.kind !== "ready"
+                }
+                onChange={(event) =>
+                  onSetAssignment(
+                    task.id,
+                    event.target.value === ""
+                      ? undefined
+                      : (event.target.value as PrincipalId),
+                  )
+                }
+              >
+                <option value="">Nieprzypisane</option>
+                {task.assignment?.availability !== "active" &&
+                  task.assignment !== undefined && (
+                    <option value="unavailable-member" disabled>
+                      {task.assignment.availability === "former_member"
+                        ? "Były członek"
+                        : "Brak dostępu do Space"}
+                    </option>
+                  )}
+                {snapshot.assignmentCandidates.kind === "ready" &&
+                  snapshot.assignmentCandidates.data.candidates.map(
+                    (candidate) => (
+                      <option
+                        key={candidate.principalId}
+                        value={candidate.principalId}
+                      >
+                        {candidate.displayName}
+                        {candidate.participantKind === "guest" ? " · gość" : ""}
+                      </option>
+                    ),
+                  )}
               </select>
             </div>
           ))}
@@ -648,6 +701,8 @@ const activityLabels: Record<
   project_outcome_changed: "Zmieniono zamierzony wynik projektu",
   task_completed: "Ukończono zadanie",
   task_reopened: "Ponownie otwarto zadanie",
+  task_assigned: "Przypisano odpowiedzialność za zadanie",
+  task_unassigned: "Usunięto odpowiedzialność za zadanie",
   relation_added: "Powiązano zadanie z projektem",
   relation_removed: "Usunięto powiązanie",
   command_undone: "Cofnięto polecenie",

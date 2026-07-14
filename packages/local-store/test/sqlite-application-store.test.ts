@@ -71,6 +71,9 @@ const context = (): ExecutionContext =>
       "task.setStatus",
       "task.complete",
       "task.reopen",
+      "task.assign",
+      "task.unassign",
+      "task.assignmentCandidates",
       "record.relate",
       "record.unrelate",
       "search.global",
@@ -362,7 +365,17 @@ describe("SQLite ApplicationStore", () => {
           user_version: number;
         }
       ).user_version,
-      4,
+      5,
+    );
+    assert.equal(
+      (
+        database
+          .prepare(
+            "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'task_assignments'",
+          )
+          .get() as { count: number }
+      ).count,
+      1,
     );
     assert.deepEqual(
       (
@@ -405,6 +418,25 @@ describe("SQLite ApplicationStore", () => {
         throw new Error("Expected Capture routing.");
       }
       const taskId = routed.projection.taskId as TaskId;
+      const assignmentId = "00000000-0000-4000-8000-000000000089";
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "task.assign",
+              {
+                assignmentId,
+                taskId,
+                assigneePrincipalId: ids.principal,
+              },
+              "durable-assignment-v5",
+              { [taskId]: 1 },
+            ),
+          ),
+        ).diagnosticCode,
+        "task.assigned",
+      );
 
       const projectCreate = wave2Command(
         "project.create",
@@ -497,6 +529,10 @@ describe("SQLite ApplicationStore", () => {
 
       const reopenedDatabase = new DatabaseSync(filename);
       const reopened = createKernel(reopenedDatabase);
+      assert.equal(
+        reopened.store.snapshot().taskAssignments?.[0]?.id,
+        assignmentId,
+      );
       const projects = reopened.kernel.query(
         context(),
         QueryEnvelopeSchema.parse({

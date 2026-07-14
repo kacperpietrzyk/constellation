@@ -58,6 +58,8 @@ const context = (): ExecutionContext =>
       "task.setStatus",
       "task.complete",
       "task.reopen",
+      "task.assign",
+      "task.unassign",
       "record.relate",
       "record.unrelate",
       "task.list",
@@ -173,6 +175,122 @@ const createProjectRecord = (
 };
 
 describe("Wave 2 reference semantics", () => {
+  it("assigns and unassigns one versioned Task responsibility", () => {
+    const harness = setup();
+    const taskId = createTask(harness, "Own the collaboration gate");
+    const task = harness.store
+      .snapshot()
+      .tasks.find((item) => item.id === taskId);
+    assert.ok(task);
+    const assignmentId = requestId();
+    const assigned = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("assign-owner", { [taskId]: task.version }),
+        commandName: "task.assign",
+        payload: {
+          assignmentId,
+          taskId,
+          assigneePrincipalId: ids.principal,
+        },
+      }),
+    );
+    assert.equal(assigned.outcome, "success");
+    assert.equal(assigned.diagnosticCode, "task.assigned");
+    const taskList = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    assert.equal(taskList.kind, "query_result");
+    if (
+      taskList.kind !== "query_result" ||
+      taskList.result.outcome !== "success" ||
+      taskList.result.projection.kind !== "task.list"
+    ) {
+      assert.fail("Task list should expose responsibility.");
+    }
+    assert.equal(
+      taskList.result.projection.items[0]?.assignment?.id,
+      assignmentId,
+    );
+    assert.equal(
+      taskList.result.projection.items[0]?.assignment?.availability,
+      "active",
+    );
+    const unassigned = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("unassign-owner", {
+          [taskId]: task.version,
+          [assignmentId]: 1,
+        }),
+        commandName: "task.unassign",
+        payload: { assignmentId, taskId },
+      }),
+    );
+    assert.equal(unassigned.outcome, "success");
+    assert.equal(unassigned.diagnosticCode, "task.unassigned");
+    assert.equal(
+      harness.store.snapshot().taskAssignments?.[0]?.state,
+      "removed",
+    );
+  });
+
+  it("rolls back Task assignment at every journal boundary", () => {
+    const boundaries: readonly FailureBoundary[] = [
+      "task-assignment",
+      "event",
+      "audit",
+      "idempotency",
+      "sync-command",
+      "outbox",
+    ];
+    for (const boundary of boundaries) {
+      const harness = setup();
+      const taskId = createTask(harness, `Atomic assignment ${boundary}`);
+      const task = harness.store
+        .snapshot()
+        .tasks.find((item) => item.id === taskId);
+      assert.ok(task);
+      const before = harness.store.snapshot();
+      harness.store.failures.failAfter(boundary);
+      const result = unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`atomic-assignment-${boundary}`, {
+            [taskId]: task.version,
+          }),
+          commandName: "task.assign",
+          payload: {
+            assignmentId: requestId(),
+            taskId,
+            assigneePrincipalId: ids.principal,
+          },
+        }),
+      );
+      assert.equal(result.outcome, "retryable", boundary);
+      const after = harness.store.snapshot();
+      assert.deepEqual(after.taskAssignments, before.taskAssignments, boundary);
+      assert.equal(after.events.length, before.events.length, boundary);
+      assert.equal(
+        after.auditReceipts.length,
+        before.auditReceipts.length,
+        boundary,
+      );
+      assert.equal(
+        after.idempotencyRecords.length,
+        before.idempotencyRecords.length,
+        boundary,
+      );
+      assert.equal(
+        after.outboxEntries.length,
+        before.outboxEntries.length,
+        boundary,
+      );
+    }
+  });
+
   it("rolls back Project creation at every journal boundary", () => {
     const boundaries: readonly FailureBoundary[] = [
       "project",

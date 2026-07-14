@@ -7,6 +7,7 @@ import {
   ProjectIdSchema,
   QueryResultSchema,
   RelationIdSchema,
+  TaskAssignmentIdSchema,
   type CommandEnvelope,
   type CommandOutcome,
   type ExecutionContext,
@@ -16,10 +17,12 @@ import {
 } from "@constellation/contracts";
 import {
   completeTask,
+  assignTask,
   createProject,
   relateTaskToProject,
   removeTaskProjectRelation,
   reopenTask,
+  removeTaskAssignment,
   restoreTaskProjectRelation,
   setTaskStatus,
   undoCaptureTaskRoute,
@@ -29,6 +32,7 @@ import {
   type OutboxEntry,
   type Project,
   type Task,
+  type TaskAssignment,
   type TaskProjectRelation,
   type UndoDescriptor,
 } from "@constellation/domain";
@@ -62,6 +66,8 @@ export type Wave2Command = Extract<
       | "task.setStatus"
       | "task.complete"
       | "task.reopen"
+      | "task.assign"
+      | "task.unassign"
       | "record.relate"
       | "record.unrelate"
       | "command.previewUndo"
@@ -131,7 +137,9 @@ export const isWave2CommandAuthorized = (
     }
     case "task.setStatus":
     case "task.complete":
-    case "task.reopen": {
+    case "task.reopen":
+    case "task.assign":
+    case "task.unassign": {
       const task = view.getTask(command.payload.taskId);
       return authorized(
         dependencies,
@@ -249,7 +257,10 @@ const appendJournal = (
   result: Record<string, unknown>,
   undoDescriptor?: UndoDescriptor,
   affectedKinds?: Readonly<
-    Record<string, "capture" | "task" | "project" | "relation">
+    Record<
+      string,
+      "capture" | "task" | "taskAssignment" | "project" | "relation"
+    >
   >,
 ): CommandOutcome => {
   const eventId = EventIdSchema.parse(dependencies.ids.next("event"));
@@ -533,6 +544,156 @@ export const executeWave2Command = (
             : { priorCompletedAt: task.completedAt }),
           resultingVersion: updated.version,
         },
+      );
+    }
+    case "task.assign": {
+      const task = transaction.getTask(command.payload.taskId);
+      if (task === undefined) return precondition(command, occurredAt);
+      const membership = transaction.getMembership(
+        command.workspaceId,
+        command.payload.assigneePrincipalId,
+      );
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      const grant = transaction.getSpaceGrantForPrincipal(
+        command.workspaceId,
+        task.spaceId,
+        command.payload.assigneePrincipalId,
+      );
+      const assigneeCanView =
+        membership !== undefined &&
+        membership.status !== "revoked" &&
+        ((membership.role === "owner" &&
+          workspace?.rootSpaceId === task.spaceId) ||
+          grant?.status === "active");
+      const current = transaction.getActiveTaskAssignment(task.id);
+      if (
+        !assigneeCanView ||
+        transaction.getTaskAssignment(command.payload.assignmentId) !==
+          undefined ||
+        current?.assigneePrincipalId === command.payload.assigneePrincipalId
+      ) {
+        return precondition(command, occurredAt);
+      }
+      const expected = {
+        [task.id]: task.version,
+        ...(current === undefined ? {} : { [current.id]: current.version }),
+      };
+      if (!exactExpected(command, expected)) {
+        return versionConflict(command, occurredAt, expected);
+      }
+      let removed: TaskAssignment | undefined;
+      if (current !== undefined) {
+        removed = removeTaskAssignment(current, occurredAt);
+        if (!transaction.updateTaskAssignment(removed, current.version)) {
+          return versionConflict(command, occurredAt, {
+            [current.id]: current.version,
+          });
+        }
+      }
+      const assignment = assignTask({
+        id: TaskAssignmentIdSchema.parse(command.payload.assignmentId),
+        task,
+        assigneePrincipalId: command.payload.assigneePrincipalId,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertTaskAssignment(assignment);
+      const versions = {
+        ...(removed === undefined ? {} : { [removed.id]: removed.version }),
+        [assignment.id]: assignment.version,
+      };
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "task.assigned",
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          aggregateId: assignment.id,
+          aggregateVersion: assignment.version,
+          taskId: task.id,
+          assigneePrincipalId: assignment.assigneePrincipalId,
+          occurredAt,
+        },
+        versions,
+        ["assigneePrincipalId", "state"],
+        {
+          diagnosticCode: "task.assigned",
+          projection: {
+            kind: "task.assigned",
+            assignmentId: assignment.id,
+            taskId: task.id,
+            assigneePrincipalId: assignment.assigneePrincipalId,
+            assignmentVersion: assignment.version,
+          },
+        },
+        undefined,
+        Object.fromEntries(
+          Object.keys(versions).map((id) => [id, "taskAssignment"]),
+        ),
+      );
+    }
+    case "task.unassign": {
+      const task = transaction.getTask(command.payload.taskId);
+      const assignment = transaction.getTaskAssignment(
+        command.payload.assignmentId,
+      );
+      if (
+        task === undefined ||
+        assignment?.taskId !== task.id ||
+        assignment.workspaceId !== command.workspaceId ||
+        assignment.spaceId !== task.spaceId ||
+        assignment.state !== "active"
+      ) {
+        return precondition(command, occurredAt);
+      }
+      const expected = {
+        [task.id]: task.version,
+        [assignment.id]: assignment.version,
+      };
+      if (!exactExpected(command, expected)) {
+        return versionConflict(command, occurredAt, expected);
+      }
+      const removed = removeTaskAssignment(assignment, occurredAt);
+      if (!transaction.updateTaskAssignment(removed, assignment.version)) {
+        return versionConflict(command, occurredAt, {
+          [assignment.id]: assignment.version,
+        });
+      }
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "task.unassigned",
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          aggregateId: removed.id,
+          aggregateVersion: removed.version,
+          taskId: task.id,
+          assigneePrincipalId: removed.assigneePrincipalId,
+          occurredAt,
+        },
+        { [removed.id]: removed.version },
+        ["state", "removedAt"],
+        {
+          diagnosticCode: "task.unassigned",
+          projection: {
+            kind: "task.unassigned",
+            assignmentId: removed.id,
+            taskId: task.id,
+            assignmentVersion: removed.version,
+          },
+        },
+        undefined,
+        { [removed.id]: "taskAssignment" },
       );
     }
     case "record.relate": {
@@ -1150,12 +1311,65 @@ export const executeWave2Query = (
       relatedTasks: view
         .listTasksInSpace(query.workspaceId, project.spaceId)
         .filter((task) => taskIds.has(task.id))
-        .map((task) => ({
-          id: task.id,
-          title: task.title,
-          completionState: task.completionState,
-          version: task.version,
-        })),
+        .map((task) => {
+          const assignment = view.getActiveTaskAssignment(task.id);
+          const assignee =
+            assignment === undefined
+              ? undefined
+              : view.getMembership(
+                  query.workspaceId,
+                  assignment.assigneePrincipalId,
+                );
+          const assigneeGrant =
+            assignee === undefined
+              ? undefined
+              : view.getSpaceGrantForPrincipal(
+                  query.workspaceId,
+                  task.spaceId,
+                  assignee.principalId,
+                );
+          const assigneeIsActive =
+            assignment?.redactedAssigneeState === undefined &&
+            assignee !== undefined &&
+            assignee.status !== "revoked" &&
+            ((assignee.role === "owner" &&
+              view.getWorkspace(query.workspaceId)?.rootSpaceId ===
+                task.spaceId) ||
+              assigneeGrant?.status === "active");
+          return {
+            id: task.id,
+            title: task.title,
+            completionState: task.completionState,
+            version: task.version,
+            ...(assignment === undefined
+              ? {}
+              : {
+                  assignment: {
+                    id: assignment.id,
+                    ...(assigneeIsActive
+                      ? { assigneePrincipalId: assignment.assigneePrincipalId }
+                      : {}),
+                    displayName: assigneeIsActive
+                      ? (assignee.displayName ?? "Workspace member")
+                      : assignment.redactedAssigneeState ===
+                          "unavailable_member"
+                        ? "No Space access"
+                        : assignee?.status === "revoked" ||
+                            assignee === undefined
+                          ? "Former member"
+                          : "No Space access",
+                    availability: assigneeIsActive
+                      ? "active"
+                      : (assignment.redactedAssigneeState ??
+                        (assignee?.status === "revoked" ||
+                        assignee === undefined
+                          ? "former_member"
+                          : "unavailable_member")),
+                    version: assignment.version,
+                  },
+                }),
+          };
+        }),
     });
   }
   if (query.queryName === "recovery.preview") {
@@ -1344,6 +1558,8 @@ export const executeWave2Query = (
     "project.outcome_updated": "project_outcome_changed",
     "task.completed": "task_completed",
     "task.reopened": "task_reopened",
+    "task.assigned": "task_assigned",
+    "task.unassigned": "task_unassigned",
     "relation.created": "relation_added",
     "relation.removed": "relation_removed",
     "command.undone": "command_undone",

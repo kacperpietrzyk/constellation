@@ -14,6 +14,7 @@ import type {
   SpaceId,
   SpaceGrantId,
   TaskId,
+  TaskAssignmentId,
   TaskStatusId,
   WorkspaceId,
 } from "@constellation/contracts";
@@ -116,6 +117,21 @@ export interface Task {
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export interface TaskAssignment {
+  readonly id: TaskAssignmentId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly taskId: TaskId;
+  readonly assigneePrincipalId: PrincipalId;
+  readonly redactedAssigneeState?: "unavailable_member" | "former_member";
+  readonly state: "active" | "removed";
+  readonly createdBy: PrincipalId;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly removedAt?: string;
 }
 
 export interface Project {
@@ -266,6 +282,17 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly spaceId: SpaceId;
       readonly aggregateId: TaskId;
       readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "task.assigned" | "task.unassigned";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: TaskAssignmentId;
+      readonly aggregateVersion: number;
+      readonly taskId: TaskId;
+      readonly assigneePrincipalId: PrincipalId;
       readonly occurredAt: string;
     }
   | {

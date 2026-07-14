@@ -391,6 +391,7 @@ try {
   const memberSpaceGrantId = crypto.randomUUID();
   const memberCredentialId = crypto.randomUUID();
   const memberGrantId = crypto.randomUUID();
+  const assignmentId = crypto.randomUUID();
 
   const executeOwnerPolicy = async (commandName, payload) => {
     const current = await repository.withWorkspaceLock(
@@ -404,11 +405,15 @@ try {
         grant: state.snapshot.spaceGrants.find(
           (value) => value.id === memberSpaceGrantId,
         ),
+        task: state.snapshot.tasks.find((value) => value.id === payload.taskId),
       }),
     );
     if (current.workspace === undefined)
       throw new Error("AUTHORITATIVE_WORKSPACE_MISSING");
-    const expectedVersions = { [workspaceId]: current.workspace.version };
+    const expectedVersions =
+      commandName === "task.assign"
+        ? { [payload.taskId]: current.task?.version }
+        : { [workspaceId]: current.workspace.version };
     if (commandName === "workspace.memberSetAccess") {
       expectedVersions[membershipId] = current.membership?.version;
       expectedVersions[memberSpaceGrantId] = current.grant?.version;
@@ -498,6 +503,15 @@ try {
     state.checkpoint += 1n;
     state.snapshotDigest = snapshotDigest(state.snapshot);
   });
+  const sharedTask = await repository.withWorkspaceLock(workspaceId, (state) =>
+    state.snapshot.tasks.find((task) => task.spaceId === rootSpaceId),
+  );
+  if (sharedTask === undefined) throw new Error("SHARED_TASK_MISSING");
+  await executeOwnerPolicy("task.assign", {
+    assignmentId,
+    taskId: sharedTask.id,
+    assigneePrincipalId: memberPrincipalId,
+  });
 
   const memberContext = {
     ...ownerConnection.context,
@@ -576,6 +590,14 @@ try {
     `document.body.innerText.includes(${JSON.stringify(privateSentinelTitle)})`,
   );
   if (leakedPrivateText) throw new Error("MEMBER_UI_LEAKED_PRIVATE_SCOPE");
+  await member.client.evaluate(
+    `(() => { document.querySelector('.nav-item[data-surface="tasks"]').click(); return true; })()`,
+  );
+  await waitFor(
+    member.client,
+    `[...document.querySelectorAll(".task-assignee")].some((select) => select.value === ${JSON.stringify(memberPrincipalId)})`,
+    "MEMBER_ASSIGNMENT_NOT_RENDERED",
+  );
 
   process.stderr.write(
     "packaged-hub: reject queued member edit after view downgrade\n",

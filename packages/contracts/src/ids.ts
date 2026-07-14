@@ -50,6 +50,9 @@ export type MembershipId = z.infer<typeof MembershipIdSchema>;
 export const SpaceGrantIdSchema = opaqueId<"SpaceGrantId">();
 export type SpaceGrantId = z.infer<typeof SpaceGrantIdSchema>;
 
+export const TaskAssignmentIdSchema = opaqueId<"TaskAssignmentId">();
+export type TaskAssignmentId = z.infer<typeof TaskAssignmentIdSchema>;
+
 export const EventIdSchema = opaqueId<"EventId">();
 export type EventId = z.infer<typeof EventIdSchema>;
 

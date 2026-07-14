@@ -540,7 +540,7 @@ export const executeCollaborationQuery = (
   );
   if (spaces.length === 0) return denied(query, kernelTime);
   const records: Array<{
-    kind: "task" | "project" | "capture";
+    kind: "task" | "project" | "capture" | "task_assignment";
     id: string;
     spaceId: string;
   }> = [];
@@ -553,6 +553,16 @@ export const executeCollaborationQuery = (
         id: record.id,
         spaceId: record.spaceId,
       })),
+    );
+    records.push(
+      ...view
+        .listTaskAssignments(workspace.id, space.id)
+        .filter((record) => record.state === "active")
+        .map((record) => ({
+          kind: "task_assignment" as const,
+          id: record.id,
+          spaceId: record.spaceId,
+        })),
     );
     records.push(
       ...view.listProjects(workspace.id, space.id).map((record) => ({
@@ -588,6 +598,8 @@ export const executeCollaborationQuery = (
       tasks: records.filter((item) => item.kind === "task").length,
       projects: records.filter((item) => item.kind === "project").length,
       captures: records.filter((item) => item.kind === "capture").length,
+      taskAssignments: records.filter((item) => item.kind === "task_assignment")
+        .length,
       relations,
       activity,
     },

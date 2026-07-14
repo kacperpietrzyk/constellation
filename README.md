@@ -101,10 +101,18 @@ journal, and outbox. The desktop preview now
 includes an accessible access-management surface for adding a member or guest,
 choosing view/edit access, and revoking membership.
 
+Shared Tasks now support one versioned responsible member or guest. Editors can
+assign, reassign, or clear responsibility from the Task surface; candidates are
+limited to active people who can view that Space. Exact versions reject stale
+offline changes, every mutation is attributed and audited, and revoked people
+or people who lose Space access remain understandable without leaking their
+principal identity. The same assignment projection survives encrypted SQLite
+restart and is filtered by the Hub before it reaches another device.
+
 The resulting ad-hoc macOS and unsigned Windows application folders are
 verification artifacts, not a signed/notarized release. The Hub is an operator
 preview rather than a hosted service. MCP transport, installers, updater,
-assignments, comments, notifications, realtime document collaboration, and
+comments, notifications, realtime document collaboration, and
 automatic routing rules beyond the explicit Capture action remain later work.
 
 The current kernel boundary and implemented subset are documented in

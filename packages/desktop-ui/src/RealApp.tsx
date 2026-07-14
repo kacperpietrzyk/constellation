@@ -8,7 +8,12 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
-import type { ProjectId, RelationId, TaskId } from "@constellation/contracts";
+import type {
+  PrincipalId,
+  ProjectId,
+  RelationId,
+  TaskId,
+} from "@constellation/contracts";
 import type {
   ConstellationRendererClient,
   DesktopBuildInfo,
@@ -34,6 +39,7 @@ import {
   revokeWorkspaceMember,
   relateTask,
   setTaskCompletion,
+  setTaskAssignment,
   setTaskStatus,
   setWorkspaceMemberAccess,
   submitCaptureAsTask,
@@ -879,6 +885,31 @@ export const RealApp = ({
                 else showFailure(result);
               });
             }}
+            onSetAssignment={(
+              id: TaskId,
+              principalId: PrincipalId | undefined,
+            ) => {
+              const task = tasks.find((item) => item.id === id);
+              if (!client || !task) return;
+              if (principalId === undefined && task.assignment === undefined)
+                return;
+              setBusyTaskId(id);
+              void setTaskAssignment(
+                client,
+                state.snapshot,
+                task,
+                principalId,
+              ).then(async (result) => {
+                setBusyTaskId(undefined);
+                if (result.kind === "success")
+                  await refreshAfter(
+                    principalId === undefined
+                      ? "Odpowiedzialność usunięto."
+                      : "Odpowiedzialność przypisano.",
+                  );
+                else showFailure(result);
+              });
+            }}
           />
         )}
         {surface === "projects" && (
@@ -1087,6 +1118,15 @@ export const RealApp = ({
                 ? "Utworzone z zachowanego Capture."
                 : "Zadanie w aktywnym workspace."}
             </p>
+            <section className="inspector-section assignment-block">
+              <p className="section-label">Odpowiedzialność</p>
+              <p>
+                {selectedTask.assignment?.displayName ?? "Nieprzypisane"}
+                {selectedTask.assignment?.availability === "former_member"
+                  ? " · dostęp cofnięty"
+                  : ""}
+              </p>
+            </section>
             <section className="inspector-section provenance-block">
               <p className="section-label">Capture provenance</p>
               {sourceCapture ? (

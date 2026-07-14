@@ -395,8 +395,13 @@ describe("self-hosted Hub core", () => {
     const memberId = uuid();
     const membershipId = uuid();
     const spaceGrantId = uuid();
+    const assigneeId = uuid();
+    const assigneeMembershipId = uuid();
+    const assigneeSpaceGrantId = uuid();
     const sharedCaptureId = uuid();
     const privateCaptureId = uuid();
+    const sharedTaskId = uuid();
+    const assignmentId = uuid();
     const snapshot = HubWorkspaceSnapshotSchema.parse({
       ...initial,
       workspaces: [{ ...initial.workspaces[0], policyVersion: 2, version: 2 }],
@@ -423,6 +428,17 @@ describe("self-hosted Hub core", () => {
           createdAt: "2026-07-14T12:00:00.000Z",
           updatedAt: "2026-07-14T12:00:00.000Z",
         },
+        {
+          id: assigneeMembershipId,
+          workspaceId: ids.workspace,
+          principalId: assigneeId,
+          role: "member",
+          displayName: "Visible assignee",
+          status: "active",
+          version: 1,
+          createdAt: "2026-07-14T12:00:00.000Z",
+          updatedAt: "2026-07-14T12:00:00.000Z",
+        },
       ],
       spaceGrants: [
         {
@@ -431,6 +447,17 @@ describe("self-hosted Hub core", () => {
           spaceId: ids.space,
           principalId: memberId,
           access: "view",
+          status: "active",
+          version: 1,
+          createdAt: "2026-07-14T12:00:00.000Z",
+          updatedAt: "2026-07-14T12:00:00.000Z",
+        },
+        {
+          id: assigneeSpaceGrantId,
+          workspaceId: ids.workspace,
+          spaceId: ids.space,
+          principalId: assigneeId,
+          access: "edit",
           status: "active",
           version: 1,
           createdAt: "2026-07-14T12:00:00.000Z",
@@ -449,6 +476,23 @@ describe("self-hosted Hub core", () => {
           workspaceId: ids.workspace,
           spaceId: privateSpace,
           originalText: "PRIVATE-SENTINEL",
+        },
+      ],
+      tasks: [
+        {
+          id: sharedTaskId,
+          workspaceId: ids.workspace,
+          spaceId: ids.space,
+        },
+      ],
+      taskAssignments: [
+        {
+          id: assignmentId,
+          workspaceId: ids.workspace,
+          spaceId: ids.space,
+          taskId: sharedTaskId,
+          assigneePrincipalId: assigneeId,
+          state: "active",
         },
       ],
     });
@@ -472,7 +516,15 @@ describe("self-hosted Hub core", () => {
     );
     assert.deepEqual(
       scoped.memberships.map((member) => member.principalId),
-      [memberId],
+      [ids.principal, memberId, assigneeId],
+    );
+    assert.deepEqual(
+      scoped.spaceGrants.map((grant) => grant.principalId),
+      [memberId, assigneeId],
+    );
+    assert.deepEqual(
+      scoped.taskAssignments.map((assignment) => assignment.id),
+      [assignmentId],
     );
     assert.equal(scoped.idempotencyRecords.length, 0);
     const adminWithoutManagementCapability = scopeHubSnapshot(
@@ -492,8 +544,37 @@ describe("self-hosted Hub core", () => {
       adminWithoutManagementCapability.memberships.map(
         (member) => member.principalId,
       ),
-      [memberId],
+      [ids.principal, memberId, assigneeId],
     );
+    const formerAssignee = scopeHubSnapshot(
+      HubWorkspaceSnapshotSchema.parse({
+        ...snapshot,
+        memberships: snapshot.memberships.map((candidate) =>
+          candidate.id === assigneeMembershipId
+            ? { ...candidate, status: "revoked", version: 2 }
+            : candidate,
+        ),
+        spaceGrants: snapshot.spaceGrants.map((grant) =>
+          grant.id === assigneeSpaceGrantId
+            ? { ...grant, status: "revoked", version: 2 }
+            : grant,
+        ),
+      }),
+      ids.workspace,
+      memberContext,
+    );
+    assert.ok(formerAssignee);
+    assert.deepEqual(
+      formerAssignee.memberships.map((candidate) => candidate.principalId),
+      [ids.principal, memberId],
+    );
+    assert.deepEqual(formerAssignee.taskAssignments, [
+      {
+        ...snapshot.taskAssignments[0],
+        assigneePrincipalId: "00000000-0000-4000-8000-000000000000",
+        redactedAssigneeState: "former_member",
+      },
+    ]);
     const revoked = HubWorkspaceSnapshotSchema.parse({
       ...snapshot,
       workspaces: [{ ...snapshot.workspaces[0], policyVersion: 3, version: 3 }],

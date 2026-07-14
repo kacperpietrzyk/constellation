@@ -43,6 +43,8 @@ export const CapabilitySchema = z.enum([
   "task.setStatus",
   "task.complete",
   "task.reopen",
+  "task.assign",
+  "task.unassign",
   "record.relate",
   "record.unrelate",
   "search.global",
@@ -52,6 +54,7 @@ export const CapabilitySchema = z.enum([
   "command.undo",
   "recovery.preview",
   "task.list",
+  "task.assignmentCandidates",
   "audit.receipt",
 ]);
 export type Capability = z.infer<typeof CapabilitySchema>;
