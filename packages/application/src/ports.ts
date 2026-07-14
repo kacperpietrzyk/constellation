@@ -7,6 +7,7 @@ import type {
   EventId,
   ExecutionContext,
   MembershipId,
+  SpaceGrantId,
   OutboxEntryId,
   PrincipalId,
   ProjectId,
@@ -28,6 +29,7 @@ import type {
   TaskStatusDefinition,
   Workspace,
   WorkspaceMembership,
+  SpaceGrant,
   UndoDescriptor,
 } from "@constellation/domain";
 
@@ -38,6 +40,7 @@ export type GeneratedIdKind =
   | "relation"
   | "taskStatus"
   | "membership"
+  | "spaceGrant"
   | "event"
   | "auditReceipt"
   | "outboxEntry";
@@ -121,6 +124,17 @@ export interface ApplicationReadView {
     workspaceId: WorkspaceId,
     principalId: PrincipalId,
   ): WorkspaceMembership | undefined;
+  listMemberships(workspaceId: WorkspaceId): readonly WorkspaceMembership[];
+  getSpaceGrant(id: SpaceGrantId): SpaceGrant | undefined;
+  getSpaceGrantForPrincipal(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    principalId: PrincipalId,
+  ): SpaceGrant | undefined;
+  listSpaceGrants(
+    workspaceId: WorkspaceId,
+    principalId?: PrincipalId,
+  ): readonly SpaceGrant[];
   getCapture(id: CaptureId): Capture | undefined;
   listCaptures(request: CapturePageRequest): readonly Capture[] | undefined;
   getTask(id: TaskId): Task | undefined;
@@ -155,6 +169,12 @@ export interface ApplicationTransaction extends ApplicationReadView {
   updateWorkspace(workspace: Workspace, expectedVersion: number): boolean;
   insertSpace(space: Space): void;
   insertMembership(membership: WorkspaceMembership): void;
+  updateMembership(
+    membership: WorkspaceMembership,
+    expectedVersion: number,
+  ): boolean;
+  insertSpaceGrant(grant: SpaceGrant): void;
+  updateSpaceGrant(grant: SpaceGrant, expectedVersion: number): boolean;
   insertTaskStatus(status: TaskStatusDefinition): void;
   insertCapture(capture: Capture): void;
   updateCapture(capture: Capture, expectedVersion: number): boolean;
@@ -232,6 +252,7 @@ export interface ReferenceStateSnapshot {
   readonly workspaces: readonly Workspace[];
   readonly spaces: readonly Space[];
   readonly memberships: readonly WorkspaceMembership[];
+  readonly spaceGrants?: readonly SpaceGrant[];
   readonly captures: readonly Capture[];
   readonly taskStatuses: readonly TaskStatusDefinition[];
   readonly tasks: readonly Task[];
@@ -249,6 +270,7 @@ export type InternalIds =
   | TaskId
   | TaskStatusId
   | MembershipId
+  | SpaceGrantId
   | EventId
   | AuditReceiptId
   | OutboxEntryId;

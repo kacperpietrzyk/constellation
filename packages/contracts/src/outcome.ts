@@ -5,8 +5,10 @@ import {
   CaptureIdSchema,
   CommandIdSchema,
   CorrelationIdSchema,
+  MembershipIdSchema,
   ProjectIdSchema,
   RelationIdSchema,
+  SpaceGrantIdSchema,
   SpaceIdSchema,
   TaskIdSchema,
   TaskStatusIdSchema,
@@ -17,6 +19,9 @@ import { ContractVersionSchema } from "./command.js";
 export const DiagnosticCodeSchema = z.enum([
   "workspace.created",
   "workspace.renamed",
+  "workspace.member_added",
+  "workspace.member_access_changed",
+  "workspace.member_revoked",
   "capture.stored",
   "capture.routed_as_task",
   "project.created",
@@ -49,6 +54,7 @@ export const RecordKindSchema = z.enum([
   "workspace",
   "space",
   "membership",
+  "spaceGrant",
   "capture",
   "task",
   "taskStatus",
@@ -82,6 +88,45 @@ export const WorkspaceRenamedProjectionSchema = z
     workspaceId: WorkspaceIdSchema,
     name: z.string(),
     version: z.int().positive(),
+  })
+  .strict();
+
+const MembershipProjectionFields = {
+  membershipId: MembershipIdSchema,
+  principalId: z.uuid(),
+  role: z.enum(["admin", "member", "guest"]),
+  status: z.enum(["active", "revoked"]),
+  membershipVersion: z.int().positive(),
+  policyVersion: z.int().positive(),
+} as const;
+
+export const WorkspaceMemberAddedProjectionSchema = z
+  .object({
+    kind: z.literal("workspace.member_added"),
+    ...MembershipProjectionFields,
+    spaceGrantId: SpaceGrantIdSchema,
+    spaceId: SpaceIdSchema,
+    access: z.enum(["view", "edit"]),
+    spaceGrantVersion: z.int().positive(),
+  })
+  .strict();
+
+export const WorkspaceMemberAccessChangedProjectionSchema = z
+  .object({
+    kind: z.literal("workspace.member_access_changed"),
+    ...MembershipProjectionFields,
+    spaceGrantId: SpaceGrantIdSchema,
+    spaceId: SpaceIdSchema,
+    access: z.enum(["view", "edit"]),
+    spaceGrantVersion: z.int().positive(),
+  })
+  .strict();
+
+export const WorkspaceMemberRevokedProjectionSchema = z
+  .object({
+    kind: z.literal("workspace.member_revoked"),
+    ...MembershipProjectionFields,
+    revokedSpaceGrantIds: z.array(SpaceGrantIdSchema),
   })
   .strict();
 
@@ -173,6 +218,9 @@ export const UndoAppliedProjectionSchema = z
 export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   WorkspaceCreatedProjectionSchema,
   WorkspaceRenamedProjectionSchema,
+  WorkspaceMemberAddedProjectionSchema,
+  WorkspaceMemberAccessChangedProjectionSchema,
+  WorkspaceMemberRevokedProjectionSchema,
   CaptureStoredProjectionSchema,
   CaptureRoutedAsTaskProjectionSchema,
   ProjectCreatedProjectionSchema,
@@ -213,6 +261,25 @@ const WorkspaceRenamedSuccessOutcomeSchema =
     outcome: z.literal("success"),
     diagnosticCode: z.literal("workspace.renamed"),
     projection: WorkspaceRenamedProjectionSchema,
+  }).strict();
+
+const WorkspaceMemberAddedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("workspace.member_added"),
+    projection: WorkspaceMemberAddedProjectionSchema,
+  }).strict();
+const WorkspaceMemberAccessChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("workspace.member_access_changed"),
+    projection: WorkspaceMemberAccessChangedProjectionSchema,
+  }).strict();
+const WorkspaceMemberRevokedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("workspace.member_revoked"),
+    projection: WorkspaceMemberRevokedProjectionSchema,
   }).strict();
 
 const CaptureStoredSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend(
@@ -282,6 +349,9 @@ const UndoSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
 export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   WorkspaceCreatedSuccessOutcomeSchema,
   WorkspaceRenamedSuccessOutcomeSchema,
+  WorkspaceMemberAddedSuccessOutcomeSchema,
+  WorkspaceMemberAccessChangedSuccessOutcomeSchema,
+  WorkspaceMemberRevokedSuccessOutcomeSchema,
   CaptureStoredSuccessOutcomeSchema,
   CaptureRoutedAsTaskSuccessOutcomeSchema,
   ProjectCreatedSuccessOutcomeSchema,

@@ -1414,6 +1414,310 @@ kbd {
   }
 }
 
+/* R4 access management instantiates Atlas contract PAT-21 plus accepted
+   OBJ-11, OVR-12 and STA-18 inside the real shell. */
+.access-surface {
+  display: grid;
+  align-content: start;
+  gap: var(--space-6);
+  width: min(100%, 58rem);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6) 8rem;
+}
+
+.access-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-6);
+}
+
+.access-heading > div {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 42rem;
+}
+
+.policy-version {
+  flex: none;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  background: var(--surface-sunken);
+  font: 500 0.69rem var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.access-composer {
+  display: grid;
+  grid-template-columns:
+    minmax(12rem, 1.4fr) minmax(9rem, 0.8fr) minmax(13rem, 1fr)
+    auto;
+  align-items: end;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--panel-reading-bg);
+  box-shadow: var(--elevation-raised);
+}
+
+.access-composer-title {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.access-composer-title > div,
+.member-identity {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.access-composer-title small,
+.member-identity span,
+.member-list-heading span,
+.access-unavailable span {
+  color: var(--text-tertiary);
+  font-size: 0.76rem;
+}
+
+.access-avatar {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.access-composer > label,
+.access-composer fieldset {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.access-composer label > span,
+.access-composer legend {
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+  font-weight: 550;
+}
+
+.access-composer input[type="text"],
+.access-composer input:not([type]),
+.access-composer select,
+.member-actions select {
+  min-height: 2.5rem;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--input-bg);
+}
+
+.access-composer input:not([type]),
+.access-composer input[type="text"] {
+  padding: 0 var(--space-3);
+}
+
+.access-composer select,
+.member-actions select {
+  padding: 0 2rem 0 var(--space-3);
+}
+
+.access-composer fieldset {
+  grid-template-columns: 1fr 1fr;
+  padding-bottom: 0.15rem;
+}
+
+.access-composer fieldset legend {
+  grid-column: 1 / -1;
+  margin-bottom: var(--space-2);
+}
+
+.access-composer fieldset label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2rem;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.access-composer input[type="radio"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--text-primary);
+}
+
+.access-boundary-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+}
+
+.member-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.member-list-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+.member-list-heading h2 {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 590;
+}
+
+.member-row {
+  display: grid;
+  grid-template-columns: auto minmax(10rem, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 4.5rem;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.member-row.revoked {
+  opacity: 0.62;
+}
+
+.member-identity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+}
+
+.access-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+.access-state::before {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--status-success);
+  content: "";
+}
+
+.access-state.revoked::before {
+  background: var(--text-quaternary);
+}
+
+.member-actions {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  gap: var(--space-2);
+}
+
+.quiet-danger-button {
+  min-height: 2.5rem;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--status-error);
+  background: transparent;
+}
+
+.quiet-danger-button:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--status-error) 28%, transparent);
+  background: color-mix(in oklch, var(--status-error) 9%, transparent);
+}
+
+.access-unavailable {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+@media (max-width: 900px) {
+  .access-composer {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .access-composer .primary-button {
+    justify-self: start;
+  }
+
+  .member-row {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .member-actions {
+    grid-column: 2 / -1;
+    justify-content: start;
+  }
+}
+
+@media (max-width: 620px) {
+  .access-surface {
+    padding-inline: var(--space-4);
+  }
+
+  .access-heading {
+    display: grid;
+  }
+
+  .policy-version {
+    justify-self: start;
+  }
+
+  .access-composer {
+    grid-template-columns: 1fr;
+  }
+
+  .access-composer-title,
+  .access-boundary-note {
+    grid-column: 1;
+  }
+
+  .member-row {
+    grid-template-columns: auto 1fr;
+  }
+
+  .access-state,
+  .member-actions {
+    grid-column: 2;
+  }
+
+  .member-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 /* Wave 2 surfaces instantiate accepted Atlas contracts without introducing a
    parallel palette or component language. */
 .skip-link {

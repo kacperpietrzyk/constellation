@@ -14,6 +14,8 @@ import type {
   DesktopBuildInfo,
 } from "@constellation/desktop-preload/client";
 
+import { AccessSurface } from "./AccessSurface.js";
+
 import {
   ActivitySurface,
   CockpitSurface,
@@ -24,13 +26,16 @@ import {
   UndoDialog,
 } from "./Wave2Surfaces.js";
 import {
+  addWorkspaceMember,
   createProject,
   loadDesktopSnapshot,
   loadProjectOverview,
   previewUndo,
+  revokeWorkspaceMember,
   relateTask,
   setTaskCompletion,
   setTaskStatus,
+  setWorkspaceMemberAccess,
   submitCaptureAsTask,
   undoCommand,
   unrelateTask,
@@ -75,7 +80,8 @@ type IconName =
   | "close"
   | "project"
   | "cockpit"
-  | "activity";
+  | "activity"
+  | "access";
 const Icon = ({ name }: { readonly name: IconName }) => {
   const paths = {
     capture: <path d="M12 5v14M5 12h14" />,
@@ -88,6 +94,9 @@ const Icon = ({ name }: { readonly name: IconName }) => {
     project: <path d="M4 5h6l2 2h8v12H4z" />,
     cockpit: <path d="M4 5h7v6H4zM13 5h7v10h-7zM4 13h7v6H4zM13 17h7v2h-7z" />,
     activity: <path d="M5 6h14M5 12h14M5 18h9M3 6h.01M3 12h.01M3 18h.01" />,
+    access: (
+      <path d="M16 19c0-3-2.2-5-5-5s-5 2-5 5M11 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM17 8h4M19 6v4" />
+    ),
   } as const;
   return (
     <svg
@@ -227,6 +236,7 @@ const navItems: readonly {
   { id: "projects", label: "Projekty", icon: "project", shortcut: "3" },
   { id: "history", label: "Historia Capture", icon: "history", shortcut: "4" },
   { id: "activity", label: "Aktywność", icon: "activity", shortcut: "5" },
+  { id: "access", label: "Dostęp", icon: "access", shortcut: "6" },
 ];
 
 export const RealApp = ({
@@ -248,6 +258,7 @@ export const RealApp = ({
     useState<ProjectOverviewProjection>();
   const [busyTaskId, setBusyTaskId] = useState<TaskId>();
   const [projectBusy, setProjectBusy] = useState(false);
+  const [accessBusy, setAccessBusy] = useState(false);
   const [sessionRelation, setSessionRelation] = useState<{
     id: RelationId;
     version: number;
@@ -369,7 +380,7 @@ export const RealApp = ({
         setSearchOpen(true);
       } else if (
         (event.metaKey || event.ctrlKey) &&
-        /^Digit[1-5]$/.test(event.code)
+        /^Digit[1-6]$/.test(event.code)
       ) {
         event.preventDefault();
         const item = navItems[Number(event.code.slice(-1)) - 1];
@@ -972,6 +983,56 @@ export const RealApp = ({
           <ActivitySurface
             activity={state.snapshot.activity}
             onUndo={(id) => void openUndo(id)}
+          />
+        )}
+        {surface === "access" && (
+          <AccessSurface
+            access={state.snapshot.access}
+            busy={accessBusy}
+            onAdd={(input) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              void addWorkspaceMember(client, state.snapshot, input).then(
+                async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter("Dostęp utworzono.");
+                  else showFailure(result);
+                },
+              );
+            }}
+            onSetAccess={(member, access) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              void setWorkspaceMemberAccess(
+                client,
+                state.snapshot,
+                member,
+                access,
+              ).then(async (result) => {
+                setAccessBusy(false);
+                if (result.kind === "success")
+                  await refreshAfter("Zakres dostępu zaktualizowano.");
+                else showFailure(result);
+              });
+            }}
+            onRevoke={(member) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              void revokeWorkspaceMember(client, state.snapshot, member).then(
+                async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter(
+                      "Dostęp cofnięto. Urządzenia usuną projekcję po synchronizacji.",
+                    );
+                  else showFailure(result);
+                },
+              );
+            }}
           />
         )}
         <button className="capture-dock" onClick={() => setCaptureOpen(true)}>

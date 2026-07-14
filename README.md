@@ -88,11 +88,21 @@ on Rosetta. The coordinated gate uses two isolated packaged profiles, restores
 the same portable workspace on the second device, queues offline work, drops a
 response after Hub commit, reconciles by receipt, and verifies the resulting
 Task on the other device.
+
+The current collaboration candidate adds versioned human membership and Space
+grants without coupling Workspace role to data scope. Every command and query
+reauthorizes against the current policy; direct records, relations, search,
+counts, activity, scoped exports, and Hub-delivered local projections share the
+same Space filter. Revocation rejects queued offline work and directs the
+affected client to remove its coordinated projection. The desktop preview now
+includes an accessible access-management surface for adding a member or guest,
+choosing view/edit access, and revoking membership.
+
 The resulting ad-hoc macOS and unsigned Windows application folders are
 verification artifacts, not a signed/notarized release. The Hub is an operator
 preview rather than a hosted service. MCP transport, installers, updater,
-collaboration-safe sharing, and automatic routing rules beyond the explicit
-Capture action remain later work.
+assignments, comments, notifications, realtime document collaboration, and
+automatic routing rules beyond the explicit Capture action remain later work.
 
 The current kernel boundary and implemented subset are documented in
 [Application kernel](docs/architecture/application-kernel.md) and

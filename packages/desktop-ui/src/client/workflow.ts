@@ -27,6 +27,7 @@ type Projection<Kind extends QueryProjection["kind"]> = Extract<
 type BootstrapProjection = Projection<"workspace.bootstrapContext">;
 type TaskListProjection = Projection<"task.list">;
 type CaptureHistoryProjection = Projection<"capture.history">;
+export type AccessProjection = Projection<"workspace.access">;
 export type ProjectListProjection = Projection<"project.list">;
 export type ProjectOverviewProjection =
   Projection<"project.operationalOverview">;
@@ -52,6 +53,7 @@ export interface DesktopSnapshot {
   readonly projects: DataSlice<ProjectListProjection>;
   readonly cockpit: DataSlice<CockpitProjection>;
   readonly activity: DataSlice<ActivityProjection>;
+  readonly access: DataSlice<AccessProjection>;
   readonly dataHome?: DataHomeStatus;
 }
 
@@ -166,46 +168,54 @@ export const loadDesktopSnapshot = async (
     throw new Error("Data Home identity does not match the open workspace.");
   }
   const spaceId = firstSpace({ bootstrap });
-  const [tasks, captures, projects, cockpit, activity] = await Promise.all([
-    queryProjection(
-      client,
-      queryEnvelope("task.list", workspaceId, { spaceId, limit: 100 }),
-      "task.list",
-    ),
-    queryProjection(
-      client,
-      queryEnvelope("capture.history", workspaceId, { spaceId, limit: 100 }),
-      "capture.history",
-    ),
-    optionalProjection(
+  const [tasks, captures, projects, access, cockpit, activity] =
+    await Promise.all([
       queryProjection(
         client,
-        queryEnvelope("project.list", workspaceId, { spaceId }),
-        "project.list",
+        queryEnvelope("task.list", workspaceId, { spaceId, limit: 100 }),
+        "task.list",
       ),
-    ),
-    optionalProjection(
       queryProjection(
         client,
-        queryEnvelope("cockpit.week", workspaceId, {
-          spaceId,
-          weekStart: currentWeekStart(),
-          limit: 20,
-        }),
-        "cockpit.week",
+        queryEnvelope("capture.history", workspaceId, { spaceId, limit: 100 }),
+        "capture.history",
       ),
-    ),
-    optionalProjection(
-      queryProjection(
-        client,
-        queryEnvelope("activity.meaningful", workspaceId, {
-          spaceId,
-          limit: 100,
-        }),
-        "activity.meaningful",
+      optionalProjection(
+        queryProjection(
+          client,
+          queryEnvelope("project.list", workspaceId, { spaceId }),
+          "project.list",
+        ),
       ),
-    ),
-  ]);
+      optionalProjection(
+        queryProjection(
+          client,
+          queryEnvelope("workspace.access", workspaceId, {}),
+          "workspace.access",
+        ),
+      ),
+      optionalProjection(
+        queryProjection(
+          client,
+          queryEnvelope("cockpit.week", workspaceId, {
+            spaceId,
+            weekStart: currentWeekStart(),
+            limit: 20,
+          }),
+          "cockpit.week",
+        ),
+      ),
+      optionalProjection(
+        queryProjection(
+          client,
+          queryEnvelope("activity.meaningful", workspaceId, {
+            spaceId,
+            limit: 100,
+          }),
+          "activity.meaningful",
+        ),
+      ),
+    ]);
   return {
     build,
     bootstrap,
@@ -214,6 +224,7 @@ export const loadDesktopSnapshot = async (
     projects,
     cockpit,
     activity,
+    access,
     ...(dataHome === undefined ? {} : { dataHome }),
   };
 };
@@ -342,6 +353,96 @@ export const createProject = (
     (response) =>
       response.outcome.outcome === "success" &&
       response.outcome.projection.kind === "project.created"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const addWorkspaceMember = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly displayName: string;
+    readonly role: "admin" | "member" | "guest";
+    readonly access: "view" | "edit";
+  },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [snapshot.bootstrap.workspace.id]: snapshot.bootstrap.workspace.version,
+      }),
+      commandName: "workspace.memberAdd",
+      payload: {
+        membershipId: crypto.randomUUID(),
+        spaceGrantId: crypto.randomUUID(),
+        principalId: crypto.randomUUID(),
+        displayName: input.displayName,
+        role: input.role,
+        spaceId: firstSpace(snapshot),
+        access: input.access,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "workspace.member_added"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const setWorkspaceMemberAccess = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  member: AccessProjection["members"][number],
+  access: "view" | "edit",
+) => {
+  const grant = member.spaces[0];
+  if (grant === undefined)
+    return Promise.resolve<MutationResult<never>>({
+      kind: "unavailable",
+      message: "Członek nie ma aktywnego zakresu Space.",
+    });
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [snapshot.bootstrap.workspace.id]: snapshot.bootstrap.workspace.version,
+        [member.membershipId]: member.version,
+        [grant.spaceGrantId]: grant.version,
+      }),
+      commandName: "workspace.memberSetAccess",
+      payload: {
+        membershipId: member.membershipId,
+        spaceGrantId: grant.spaceGrantId,
+        access,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "workspace.member_access_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+};
+
+export const revokeWorkspaceMember = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  member: AccessProjection["members"][number],
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [snapshot.bootstrap.workspace.id]: snapshot.bootstrap.workspace.version,
+        [member.membershipId]: member.version,
+      }),
+      commandName: "workspace.memberRevoke",
+      payload: { membershipId: member.membershipId },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "workspace.member_revoked"
         ? response.outcome.projection
         : undefined,
   );

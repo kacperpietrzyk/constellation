@@ -8,9 +8,11 @@ import {
   CorrelationIdSchema,
   DeviceIdSchema,
   PrincipalIdSchema,
+  MembershipIdSchema,
   ProjectIdSchema,
   RelationIdSchema,
   SpaceIdSchema,
+  SpaceGrantIdSchema,
   TaskIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
@@ -79,6 +81,41 @@ export const WorkspaceRenameCommandSchema = CommandMetadataSchema.extend({
 export type WorkspaceRenameCommand = z.infer<
   typeof WorkspaceRenameCommandSchema
 >;
+
+const MembershipRoleSchema = z.enum(["admin", "member", "guest"]);
+const SpaceAccessLevelSchema = z.enum(["view", "edit"]);
+
+export const WorkspaceMemberAddCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("workspace.memberAdd"),
+  payload: z
+    .object({
+      membershipId: MembershipIdSchema,
+      spaceGrantId: SpaceGrantIdSchema,
+      principalId: PrincipalIdSchema,
+      displayName: z.string().trim().min(1).max(120),
+      role: MembershipRoleSchema,
+      spaceId: SpaceIdSchema,
+      access: SpaceAccessLevelSchema,
+    })
+    .strict(),
+}).strict();
+
+export const WorkspaceMemberSetAccessCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("workspace.memberSetAccess"),
+    payload: z
+      .object({
+        membershipId: MembershipIdSchema,
+        spaceGrantId: SpaceGrantIdSchema,
+        access: SpaceAccessLevelSchema,
+      })
+      .strict(),
+  }).strict();
+
+export const WorkspaceMemberRevokeCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("workspace.memberRevoke"),
+  payload: z.object({ membershipId: MembershipIdSchema }).strict(),
+}).strict();
 
 export const CaptureSubmitTextCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("capture.submitText"),
@@ -175,6 +212,9 @@ export const CommandUndoSchema = CommandMetadataSchema.extend({
 export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   WorkspaceCreateLocalCommandSchema,
   WorkspaceRenameCommandSchema,
+  WorkspaceMemberAddCommandSchema,
+  WorkspaceMemberSetAccessCommandSchema,
+  WorkspaceMemberRevokeCommandSchema,
   CaptureSubmitTextCommandSchema,
   CaptureRouteAsTaskCommandSchema,
   ProjectCreateCommandSchema,

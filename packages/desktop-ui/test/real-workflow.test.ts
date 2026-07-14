@@ -299,6 +299,24 @@ const createTypedClient = () => {
               },
             ],
           }) as Awaited<ReturnType<ConstellationRendererClient["runQuery"]>>;
+        case "workspace.access":
+          return successQuery(query, {
+            kind: "workspace.access",
+            policyVersion: 1,
+            currentPrincipalId: "00000000-0000-4000-8000-000000000003",
+            canManage: true,
+            members: [
+              {
+                membershipId: "00000000-0000-4000-8000-000000000010",
+                principalId: "00000000-0000-4000-8000-000000000003",
+                displayName: "Workspace owner",
+                role: "owner",
+                status: "active",
+                version: 1,
+                spaces: [],
+              },
+            ],
+          }) as Awaited<ReturnType<ConstellationRendererClient["runQuery"]>>;
         case "search.global":
           return successQuery(query, {
             kind: "search.global",
@@ -380,6 +398,7 @@ describe("real Wave 2 renderer workflow", () => {
     assert.equal(snapshot.projects.kind, "ready");
     assert.equal(snapshot.cockpit.kind, "ready");
     assert.equal(snapshot.activity.kind, "ready");
+    assert.equal(snapshot.access.kind, "ready");
     assert.equal(snapshot.dataHome?.descriptor.storageRole, "canonical");
     assert.equal(snapshot.dataHome?.syncState, "not_configured");
     assert.deepEqual(
@@ -390,6 +409,7 @@ describe("real Wave 2 renderer workflow", () => {
         "cockpit.week",
         "project.list",
         "task.list",
+        "workspace.access",
         "workspace.bootstrapContext",
       ].sort(),
     );

@@ -114,7 +114,6 @@ class FixedDesktopGrant implements CurrentAuthorizationPolicy {
       context.credentialId === this.trustedContext.credentialId &&
       context.grantId === this.trustedContext.grantId &&
       context.workspaceId === this.trustedContext.workspaceId &&
-      context.policyVersion === this.trustedContext.policyVersion &&
       request.workspaceId === this.trustedContext.workspaceId &&
       context.capabilityScope.includes(request.capability) &&
       this.trustedContext.capabilityScope.includes(request.capability) &&
@@ -139,12 +138,40 @@ export const createRuntimeKernelService = (input: {
     ids,
     store: input.store,
   });
+  const currentContext = (): ExecutionContext =>
+    input.store.read((view) => {
+      const workspace = view.getWorkspace(input.context.workspaceId);
+      const membership = view.getMembership(
+        input.context.workspaceId,
+        input.context.principalId,
+      );
+      const spaceScope =
+        workspace === undefined
+          ? input.context.spaceScope
+          : membership !== undefined && membership.status !== "revoked"
+            ? input.context.spaceScope.filter(
+                (spaceId) =>
+                  (membership.role === "owner" &&
+                    spaceId === workspace?.rootSpaceId) ||
+                  view.getSpaceGrantForPrincipal(
+                    input.context.workspaceId,
+                    spaceId,
+                    input.context.principalId,
+                  )?.status === "active",
+              )
+            : [];
+      return {
+        ...input.context,
+        policyVersion: workspace?.policyVersion ?? input.context.policyVersion,
+        spaceScope,
+      };
+    });
   return {
     execute: (rawCommand) => {
       const command = CommandEnvelopeSchema.safeParse(rawCommand);
       if (command.success) ids.begin(command.data.commandId);
-      return kernel.execute(input.context, rawCommand);
+      return kernel.execute(currentContext(), rawCommand);
     },
-    query: (rawQuery) => kernel.query(input.context, rawQuery),
+    query: (rawQuery) => kernel.query(currentContext(), rawQuery),
   };
 };

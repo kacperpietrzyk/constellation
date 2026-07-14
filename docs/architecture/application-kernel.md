@@ -25,6 +25,9 @@ Commands:
 
 - `workspace.createLocal`
 - `workspace.rename`
+- `workspace.memberAdd`
+- `workspace.memberSetAccess`
+- `workspace.memberRevoke`
 - `capture.submitText`
 - `capture.routeAsTask`
 - `project.create`
@@ -40,6 +43,8 @@ Commands:
 Queries:
 
 - `workspace.bootstrapContext`
+- `workspace.access`
+- `workspace.exportScoped`
 - `capture.history`
 - `task.list`
 - `project.list`
@@ -80,6 +85,13 @@ processing, synchronization, editable workflow configuration, or an MCP server.
   capability, Workspace membership, owning Space, and record scope before every
   command, query, and idempotent replay. Revoked grants cannot reuse an earlier
   durable outcome.
+- Workspace role and Space data scope are independent. Owner membership covers
+  only the bootstrap root Space implicitly; every additional Space, including
+  one used by an owner or administrator, requires an active durable grant that
+  also intersects the caller's declared scope.
+- Membership and Space-grant changes are versioned, idempotent, audited policy
+  mutations. Revocation invalidates older policy contexts, rejects queued Hub
+  work, and removes the affected coordinated local projection.
 - Commands carry a caller-scoped idempotency key and semantic fingerprint.
   Identical replay returns the original durable outcome without new audit or
   version churn; different input under the same key conflicts.
@@ -97,6 +109,10 @@ processing, synchronization, editable workflow configuration, or an MCP server.
   consistency. The current local reference reports an authoritative local view;
   a projection reports its checkpoint and missing capabilities, and rejects an
   unavailable authoritative read.
+- Permission-filtered records, relations, search, counts, meaningful activity,
+  exports, and Hub snapshots derive from the same effective Space-access
+  evaluator. A coordinating Hub never sends its authoritative raw snapshot to
+  a partially scoped human principal.
 
 ## Package direction
 
@@ -141,6 +157,13 @@ double-route conflict, grant revocation and credential rotation, Workspace/Space
 denial without target disclosure, typed opaque pagination, actual freshness,
 and rollback after every Capture update, Task, event, audit, idempotency, and
 outbox boundary.
+
+Collaboration coverage uses two human principals and two Spaces, including a
+private sentinel. It proves that role does not imply scope, hidden content does
+not appear through direct search or scoped export counts, view-only access
+cannot mutate, policy changes invalidate older contexts, Hub projections omit
+out-of-scope data, and membership revocation removes access and coordinated
+cache state.
 
 Production signing/notarization, installer/updater continuity, MCP mapping,
 deterministic syntax parsing, Attention processing, checkpoint revert, editable

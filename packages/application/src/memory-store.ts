@@ -17,6 +17,7 @@ import type {
   ProjectId,
   RelationId,
   SpaceId,
+  SpaceGrantId,
   TaskId,
   TaskStatusId,
   WorkspaceId,
@@ -28,6 +29,7 @@ import type {
   OutboxEntry,
   Project,
   Space,
+  SpaceGrant,
   Task,
   TaskProjectRelation,
   TaskStatusDefinition,
@@ -41,6 +43,9 @@ export type FailureBoundary =
   | "workspace-update"
   | "space"
   | "membership"
+  | "membership-update"
+  | "space-grant"
+  | "space-grant-update"
   | "task-status"
   | "capture"
   | "capture-update"
@@ -81,6 +86,7 @@ interface MutableState {
   readonly workspaces: Map<WorkspaceId, Workspace>;
   readonly spaces: Map<SpaceId, Space>;
   readonly memberships: Map<string, WorkspaceMembership>;
+  readonly spaceGrants: Map<SpaceGrantId, SpaceGrant>;
   readonly taskStatuses: Map<TaskStatusId, TaskStatusDefinition>;
   readonly captures: Map<CaptureId, Capture>;
   readonly tasks: Map<TaskId, Task>;
@@ -98,6 +104,7 @@ const emptyState = (): MutableState => ({
   workspaces: new Map(),
   spaces: new Map(),
   memberships: new Map(),
+  spaceGrants: new Map(),
   taskStatuses: new Map(),
   captures: new Map(),
   tasks: new Map(),
@@ -115,6 +122,7 @@ const cloneState = (state: MutableState): MutableState => ({
   workspaces: new Map(state.workspaces),
   spaces: new Map(state.spaces),
   memberships: new Map(state.memberships),
+  spaceGrants: new Map(state.spaceGrants),
   taskStatuses: new Map(state.taskStatuses),
   captures: new Map(state.captures),
   tasks: new Map(state.tasks),
@@ -132,6 +140,12 @@ const membershipKey = (
   workspaceId: WorkspaceId,
   principalId: PrincipalId,
 ): string => `${workspaceId}:${principalId}`;
+
+const grantScopeKey = (
+  workspaceId: WorkspaceId,
+  spaceId: SpaceId,
+  principalId: PrincipalId,
+): string => `${workspaceId}:${spaceId}:${principalId}`;
 
 const compareCaptureDescending = (left: Capture, right: Capture): number => {
   const time = right.capturedAt.localeCompare(left.capturedAt);
@@ -187,6 +201,44 @@ class ReadView implements ApplicationReadView {
     principalId: PrincipalId,
   ): WorkspaceMembership | undefined {
     return this.state.memberships.get(membershipKey(workspaceId, principalId));
+  }
+
+  public listMemberships(
+    workspaceId: WorkspaceId,
+  ): readonly WorkspaceMembership[] {
+    return [...this.state.memberships.values()]
+      .filter((membership) => membership.workspaceId === workspaceId)
+      .sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  public getSpaceGrant(id: SpaceGrantId): SpaceGrant | undefined {
+    return this.state.spaceGrants.get(id);
+  }
+
+  public getSpaceGrantForPrincipal(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    principalId: PrincipalId,
+  ): SpaceGrant | undefined {
+    const key = grantScopeKey(workspaceId, spaceId, principalId);
+    return [...this.state.spaceGrants.values()].find(
+      (grant) =>
+        grantScopeKey(grant.workspaceId, grant.spaceId, grant.principalId) ===
+        key,
+    );
+  }
+
+  public listSpaceGrants(
+    workspaceId: WorkspaceId,
+    principalId?: PrincipalId,
+  ): readonly SpaceGrant[] {
+    return [...this.state.spaceGrants.values()]
+      .filter(
+        (grant) =>
+          grant.workspaceId === workspaceId &&
+          (principalId === undefined || grant.principalId === principalId),
+      )
+      .sort((left, right) => left.id.localeCompare(right.id));
   }
 
   public getCapture(id: CaptureId): Capture | undefined {
@@ -388,6 +440,42 @@ class Transaction extends ReadView implements ApplicationTransaction {
     this.failures.reached("membership");
   }
 
+  public updateMembership(
+    membership: WorkspaceMembership,
+    expectedVersion: number,
+  ): boolean {
+    const key = membershipKey(membership.workspaceId, membership.principalId);
+    const current = this.state.memberships.get(key);
+    if (current?.id !== membership.id || current.version !== expectedVersion)
+      return false;
+    this.state.memberships.set(key, membership);
+    this.failures.reached("membership-update");
+    return true;
+  }
+
+  public insertSpaceGrant(grant: SpaceGrant): void {
+    if (
+      this.state.spaceGrants.has(grant.id) ||
+      this.getSpaceGrantForPrincipal(
+        grant.workspaceId,
+        grant.spaceId,
+        grant.principalId,
+      ) !== undefined
+    ) {
+      throw new Error(`Duplicate Space grant scope: ${grant.id}`);
+    }
+    this.state.spaceGrants.set(grant.id, grant);
+    this.failures.reached("space-grant");
+  }
+
+  public updateSpaceGrant(grant: SpaceGrant, expectedVersion: number): boolean {
+    const current = this.state.spaceGrants.get(grant.id);
+    if (current?.version !== expectedVersion) return false;
+    this.state.spaceGrants.set(grant.id, grant);
+    this.failures.reached("space-grant-update");
+    return true;
+  }
+
   public insertTaskStatus(status: TaskStatusDefinition): void {
     if (this.state.taskStatuses.has(status.id)) {
       throw new Error(`Duplicate task status ID: ${status.id}`);
@@ -531,6 +619,9 @@ const stateFromSnapshot = (snapshot: ReferenceStateSnapshot): MutableState => ({
       value,
     ]),
   ),
+  spaceGrants: new Map(
+    (snapshot.spaceGrants ?? []).map((value) => [value.id, value]),
+  ),
   taskStatuses: new Map(
     snapshot.taskStatuses.map((value) => [value.id, value]),
   ),
@@ -590,6 +681,7 @@ export class InMemoryReferenceStore implements ApplicationStore {
       workspaces: [...this.state.workspaces.values()],
       spaces: [...this.state.spaces.values()],
       memberships: [...this.state.memberships.values()],
+      spaceGrants: [...this.state.spaceGrants.values()],
       taskStatuses: [...this.state.taskStatuses.values()],
       captures: [...this.state.captures.values()],
       tasks: [...this.state.tasks.values()],
