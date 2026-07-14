@@ -147,13 +147,30 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
   workspaceRecovery = recovery;
   return {
     service: {
-      execute: (command) => recovery.kernel.service.execute(command),
-      query: (query) => recovery.kernel.service.query(query),
+      execute: (command) => {
+        if (recovery.kernel === undefined)
+          throw new Error("Workspace recovery is required.");
+        return recovery.kernel.service.execute(command);
+      },
+      query: (query) => {
+        if (recovery.kernel === undefined)
+          throw new Error("Workspace recovery is required.");
+        return recovery.kernel.service.query(query);
+      },
     },
     buildInfo: {
       channel: "local-alpha",
       startupRecovery: recovery.startupRecovery,
-      initialWorkspaceId: recovery.kernel.identity.workspaceId,
+      workspaceAvailability:
+        recovery.kernel === undefined ? "recovery_required" : "ready",
+      ...(recovery.kernel === undefined
+        ? {
+            recoveryReason:
+              recovery.recoveryReason === "none"
+                ? ("workspace_unavailable" as const)
+                : recovery.recoveryReason,
+          }
+        : { initialWorkspaceId: recovery.kernel.identity.workspaceId }),
       persistence: "encrypted-local",
       version: DESKTOP_PREVIEW_VERSION,
     },
@@ -235,9 +252,14 @@ const startProductionDesktop = async (): Promise<void> => {
     assertTrustedSender(event);
     return {
       ...runtime.buildInfo,
-      initialWorkspaceId:
-        workspaceRecovery?.kernel.identity.workspaceId ??
-        runtime.buildInfo.initialWorkspaceId,
+      workspaceAvailability:
+        workspaceRecovery?.kernel === undefined ? "recovery_required" : "ready",
+      ...(workspaceRecovery?.kernel === undefined
+        ? { recoveryReason: workspaceRecovery?.recoveryReason }
+        : {
+            initialWorkspaceId: workspaceRecovery.kernel.identity.workspaceId,
+            recoveryReason: undefined,
+          }),
     };
   });
   ipcMain.handle(DESKTOP_CHANNELS.exportWorkspaceBackup, (event) => {

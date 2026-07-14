@@ -36,6 +36,7 @@ export const createScenarioClient = (
   getBuildInfo: async () => ({
     channel: "developer-preview",
     startupRecovery: "none",
+    workspaceAvailability: "ready",
     initialWorkspaceId: WorkspaceIdSchema.parse(
       "00000000-0000-4000-8000-000000000001",
     ),

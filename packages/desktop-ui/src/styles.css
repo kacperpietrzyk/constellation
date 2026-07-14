@@ -1065,6 +1065,10 @@ kbd {
   color: var(--text-tertiary);
   line-height: var(--leading-normal);
 }
+.recovery-required-state > div:not(.recovery-backdrop) {
+  display: flex;
+  gap: var(--space-2);
+}
 .state-symbol {
   display: grid;
   width: 2.5rem;

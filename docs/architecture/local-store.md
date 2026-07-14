@@ -64,8 +64,10 @@ rotation requests rewrap the validated payload atomically.
 The production desktop lifecycle creates or opens a fixed local workspace,
 verifies the stored root Space and membership, and exposes the same
 command/query service used by the in-memory preview. Restart tests cover
-workspace identity, Capture, Task, provenance, and the interrupted state where
-the wrapped identity exists but database creation did not finish.
+workspace identity, Capture, Task, provenance, the interrupted state where the
+wrapped identity exists but database creation did not finish, and a
+recovery-only launch when an established database cannot recover its protected
+wrapper.
 
 The local Alpha also exposes semantic backup and restore operations without
 giving the renderer database paths, handles, or keys. Export uses
@@ -95,8 +97,7 @@ confirms restore, and requires the backup state and stable workspace identity
 to return without renderer or load errors. Native macOS arm64, macOS x64, and
 Windows x64 jobs are required. Each macOS binding is compiled and exercised on
 a matching native runner; Rosetta is not a build or verification dependency.
-Remaining recovery gates include recovery-only launch when the active workspace
-cannot open, real disk-full and permission faults, signed cross-version
-continuity, and managed attachments. Remaining release gates are production
-code signing, notarization, installer/updater behavior, and distribution
-continuity.
+Remaining recovery gates include real disk-full and permission faults, signed
+cross-version continuity, and managed attachments. Remaining release gates are
+production code signing, notarization, installer/updater behavior, and
+distribution continuity.

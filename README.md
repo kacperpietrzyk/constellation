@@ -63,7 +63,9 @@ recovery code, preview a restore, retain the previous workspace, and reopen the
 restored logical identity. The production runtime keeps generated workspace
 identity and key custody in the operating-system credential store, has no
 plaintext or in-memory fallback, and stops in recovery instead of silently
-replacing a missing ready database.
+replacing a missing ready database. If an established workspace cannot open,
+the same packaged application presents a recovery-only restore path rather than
+requiring a developer tool.
 
 The packaged gate builds the pinned SQLCipher binding as the only unpacked
 native module and drives the real window, context-isolated preload, IPC,

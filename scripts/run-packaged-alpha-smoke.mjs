@@ -165,7 +165,7 @@ const stopPackagedApp = async (client, process) => {
   }
 };
 
-const run = async (phase, recoveryCode) => {
+const run = async (phase, recoveryCode, expectedWorkspaceId) => {
   const port = await reservePort();
   let stdout = "";
   let stderr = "";
@@ -202,7 +202,7 @@ const run = async (phase, recoveryCode) => {
     await client.send("Log.enable");
     await waitFor(
       client,
-      `document.querySelector(".desktop-shell") !== null`,
+      `document.querySelector(".desktop-shell, .recovery-required-state") !== null`,
       "PACKAGED_ALPHA_UI_NOT_READY",
     );
     const boundary = await client.evaluate(`(async () => {
@@ -216,6 +216,8 @@ const run = async (phase, recoveryCode) => {
     if (
       boundary.build.channel !== "local-alpha" ||
       boundary.build.persistence !== "encrypted-local" ||
+      boundary.build.workspaceAvailability !==
+        (phase === "created" ? "ready" : "recovery_required") ||
       boundary.hasNodeRequire ||
       boundary.bridgeKeys.join(",") !==
         "cancelWorkspaceRestore,confirmWorkspaceRestore,executeCommand,exportWorkspaceBackup,getBuildInfo,prepareWorkspaceRestore,runQuery"
@@ -283,17 +285,6 @@ const run = async (phase, recoveryCode) => {
       }
       await submitCapture(mutationTitle);
     } else {
-      await client.evaluate(`(() => {
-        document.querySelector('.nav-item[data-surface="tasks"]').click();
-        return true;
-      })()`);
-      await waitFor(
-        client,
-        `[...document.querySelectorAll(".task-row strong")].some(
-          (node) => node.textContent === ${JSON.stringify(mutationTitle)}
-        )`,
-        "PACKAGED_ALPHA_MUTATION_MISSING_BEFORE_RESTORE",
-      );
       restorePreview = await client.evaluate(
         `window.constellation.prepareWorkspaceRestore({ recoveryCode: ${JSON.stringify(recoveryCode)} })`,
       );
@@ -310,7 +301,7 @@ const run = async (phase, recoveryCode) => {
       );
       if (
         restored.outcome !== "success" ||
-        restored.workspaceId !== boundary.build.initialWorkspaceId
+        restored.workspaceId !== expectedWorkspaceId
       ) {
         throw new Error("PACKAGED_ALPHA_RESTORE_CONFIRM_FAILED");
       }
@@ -375,7 +366,20 @@ const run = async (phase, recoveryCode) => {
 };
 
 const created = await run("created");
-const restored = await run("restored", created.backup.recoveryCode);
+const destroyedWrapper = path.join(
+  userData,
+  "local-alpha-workspace",
+  "key-wrapper.json",
+);
+fs.rmSync(destroyedWrapper, { force: true });
+if (fs.existsSync(destroyedWrapper)) {
+  throw new Error("PACKAGED_ALPHA_DESTRUCTIVE_FIXTURE_FAILED");
+}
+const restored = await run(
+  "restored",
+  created.backup.recoveryCode,
+  created.backup.metadata.workspaceId,
+);
 process.stdout.write(
   `${JSON.stringify({
     status: "pass",

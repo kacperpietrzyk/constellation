@@ -8,7 +8,10 @@ import {
 } from "react";
 
 import type { ProjectId, RelationId, TaskId } from "@constellation/contracts";
-import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
+import type {
+  ConstellationRendererClient,
+  DesktopBuildInfo,
+} from "@constellation/desktop-preload/client";
 
 import {
   ActivitySurface,
@@ -46,6 +49,7 @@ import { WorkspaceRecovery } from "./WorkspaceRecovery.js";
 
 type LoadState =
   | { readonly kind: "loading" }
+  | { readonly kind: "recovery"; readonly build: DesktopBuildInfo }
   | { readonly kind: "unavailable" | "error"; readonly message: string }
   | { readonly kind: "ready"; readonly snapshot: DesktopSnapshot };
 
@@ -267,9 +271,20 @@ export const RealApp = ({
       return;
     }
     let active = true;
-    void loadDesktopSnapshot(client)
+    void client
+      .getBuildInfo()
+      .then((build) => {
+        if (build.workspaceAvailability === "recovery_required") {
+          if (active) {
+            setState({ kind: "recovery", build });
+            setRecoveryOpen(true);
+          }
+          return undefined;
+        }
+        return loadDesktopSnapshot(client, build);
+      })
       .then((next) => {
-        if (!active) return;
+        if (!active || next === undefined) return;
         setState({ kind: "ready", snapshot: next });
         setSelectedTaskId(next.tasks[0]?.id);
         if (next.projects.kind === "ready")
@@ -399,6 +414,46 @@ export const RealApp = ({
         <p>Otwieram workspace…</p>
       </main>
     );
+  if (state.kind === "recovery") {
+    const reason =
+      state.build.recoveryReason === "secure_storage_unavailable"
+        ? "Bezpieczny magazyn systemu jest niedostępny. Możesz spróbować ponownie po odblokowaniu systemu albo przywrócić zweryfikowany backup."
+        : state.build.recoveryReason === "protected_key_unavailable"
+          ? "Chroniony klucz workspace’u jest niedostępny lub uszkodzony. Istniejące dane nie zostały zastąpione."
+          : "Lokalny workspace nie przeszedł bezpiecznego otwarcia. Constellation zatrzymał się przed zapisem.";
+    return (
+      <main className="center-state recovery-required-state">
+        <BrandMark />
+        <p className="eyebrow">Odzyskiwanie workspace</p>
+        <h1>Dane wymagają bezpiecznego restore</h1>
+        <p>{reason}</p>
+        <div>
+          <button
+            className="primary-button"
+            onClick={() => setRecoveryOpen(true)}
+          >
+            Otwórz odzyskiwanie
+          </button>
+          <button
+            className="secondary-button"
+            onClick={() => window.location.reload()}
+          >
+            Spróbuj otworzyć ponownie
+          </button>
+        </div>
+        {recoveryOpen && client && (
+          <WorkspaceRecovery
+            client={client}
+            workspaceName="Lokalny workspace"
+            recoveredPrevious={false}
+            restoreOnly
+            onClose={() => setRecoveryOpen(false)}
+            onRestored={async () => window.location.reload()}
+          />
+        )}
+      </main>
+    );
+  }
   if (state.kind !== "ready")
     return (
       <main className="center-state">

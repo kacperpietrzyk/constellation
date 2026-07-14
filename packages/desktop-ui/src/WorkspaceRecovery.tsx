@@ -77,12 +77,14 @@ export const WorkspaceRecovery = ({
   client,
   workspaceName,
   recoveredPrevious,
+  restoreOnly = false,
   onClose,
   onRestored,
 }: {
   readonly client: ConstellationRendererClient;
   readonly workspaceName: string;
   readonly recoveredPrevious: boolean;
+  readonly restoreOnly?: boolean;
   readonly onClose: () => void;
   readonly onRestored: () => Promise<void>;
 }) => {
@@ -201,18 +203,20 @@ export const WorkspaceRecovery = ({
                   <span>{failureCopy[state.code]}</span>
                 </div>
               )}
-              <section className="recovery-section">
-                <div>
-                  <h3>Utwórz przenośny backup</h3>
-                  <p>
-                    Constellation zapisze zweryfikowaną, zaszyfrowaną kopię i
-                    pokaże osobny kod odzyskiwania.
-                  </p>
-                </div>
-                <button className="secondary-button" onClick={exportBackup}>
-                  Eksportuj backup
-                </button>
-              </section>
+              {!restoreOnly && (
+                <section className="recovery-section">
+                  <div>
+                    <h3>Utwórz przenośny backup</h3>
+                    <p>
+                      Constellation zapisze zweryfikowaną, zaszyfrowaną kopię i
+                      pokaże osobny kod odzyskiwania.
+                    </p>
+                  </div>
+                  <button className="secondary-button" onClick={exportBackup}>
+                    Eksportuj backup
+                  </button>
+                </section>
+              )}
               <section className="recovery-section recovery-restore-section">
                 <div>
                   <h3>Przywróć z backupu</h3>

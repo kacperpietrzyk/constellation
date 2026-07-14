@@ -93,10 +93,15 @@ export type RendererQueryResponse =
 
 export interface DesktopBuildInfo {
   readonly channel: "developer-preview" | "local-alpha";
-  readonly initialWorkspaceId: WorkspaceId;
+  readonly initialWorkspaceId?: WorkspaceId;
   readonly persistence: "in-memory" | "encrypted-local";
   readonly version: string;
   readonly startupRecovery: "none" | "previous_workspace_restored";
+  readonly workspaceAvailability: "ready" | "recovery_required";
+  readonly recoveryReason?:
+    | "secure_storage_unavailable"
+    | "protected_key_unavailable"
+    | "workspace_unavailable";
 }
 
 export interface ConstellationRendererClient {

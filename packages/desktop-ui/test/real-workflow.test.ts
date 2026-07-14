@@ -139,6 +139,7 @@ const createTypedClient = () => {
     getBuildInfo: async () => ({
       channel: "local-alpha",
       startupRecovery: "none",
+      workspaceAvailability: "ready",
       initialWorkspaceId: workspaceId,
       persistence: "encrypted-local",
       version: "test",

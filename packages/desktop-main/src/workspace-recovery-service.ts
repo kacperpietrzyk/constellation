@@ -67,7 +67,12 @@ interface PreparedRestore {
 }
 
 export interface WorkspaceRecoveryService {
-  readonly kernel: DurableKernelService;
+  readonly kernel: DurableKernelService | undefined;
+  readonly recoveryReason:
+    | "none"
+    | "secure_storage_unavailable"
+    | "protected_key_unavailable"
+    | "workspace_unavailable";
   readonly startupRecovery: "none" | "previous_workspace_restored";
   cancelRestore(restoreId: string): void;
   close(): void;
@@ -231,13 +236,14 @@ const createEmptyFile = (filename: string): void => {
 };
 
 class DefaultWorkspaceRecoveryService implements WorkspaceRecoveryService {
-  private current: DurableKernelService;
+  private current: DurableKernelService | undefined;
   private readonly prepared = new Map<string, PreparedRestore>();
   private busy = false;
 
   public constructor(
-    initial: DurableKernelService,
+    initial: DurableKernelService | undefined,
     public readonly startupRecovery: "none" | "previous_workspace_restored",
+    public readonly recoveryReason: WorkspaceRecoveryService["recoveryReason"],
     private readonly input: {
       readonly appVersion: string;
       readonly databaseFactory: EncryptedSqliteDatabaseFactory;
@@ -255,16 +261,19 @@ class DefaultWorkspaceRecoveryService implements WorkspaceRecoveryService {
     this.current = initial;
   }
 
-  public get kernel(): DurableKernelService {
+  public get kernel(): DurableKernelService | undefined {
     return this.current;
   }
 
   public close(): void {
-    this.current.close();
+    this.current?.close();
   }
 
   public async exportBackup(): Promise<WorkspaceBackupExportResult> {
     if (this.busy) return { outcome: "failure", code: "operation_busy" };
+    if (this.current === undefined) {
+      return { outcome: "failure", code: "workspace_identity_invalid" };
+    }
     this.busy = true;
     const operationRoot = path.join(
       this.input.stateRoot,
@@ -521,7 +530,7 @@ class DefaultWorkspaceRecoveryService implements WorkspaceRecoveryService {
         restoreId,
         state: "prepared",
       });
-      this.current.close();
+      this.current?.close();
       renameSync(activeRoot, retainedRoot);
       writeCanonicalFile(journalPath, {
         format: JOURNAL_FORMAT,
@@ -593,14 +602,32 @@ export const createWorkspaceRecoveryService = async (input: {
   readonly timezone: string;
 }): Promise<WorkspaceRecoveryService> => {
   const startupRecovery = recoverInterruptedRestore(input.stateRoot);
-  const kernel = await createDurableKernelService({
-    databaseFactory: input.databaseFactory,
-    safeStorage: input.safeStorage,
-    stateRoot: input.stateRoot,
-    timezone: input.timezone,
-    ...(input.platform === undefined ? {} : { platform: input.platform }),
-  });
-  return new DefaultWorkspaceRecoveryService(kernel, startupRecovery, input);
+  let kernel: DurableKernelService | undefined;
+  let recoveryReason: WorkspaceRecoveryService["recoveryReason"] = "none";
+  try {
+    kernel = await createDurableKernelService({
+      databaseFactory: input.databaseFactory,
+      safeStorage: input.safeStorage,
+      stateRoot: input.stateRoot,
+      timezone: input.timezone,
+      ...(input.platform === undefined ? {} : { platform: input.platform }),
+    });
+  } catch (error) {
+    if (error instanceof WorkspaceKeyCustodyError) {
+      recoveryReason =
+        error.code === "encryption_unavailable"
+          ? "secure_storage_unavailable"
+          : "protected_key_unavailable";
+    } else {
+      recoveryReason = "workspace_unavailable";
+    }
+  }
+  return new DefaultWorkspaceRecoveryService(
+    kernel,
+    startupRecovery,
+    recoveryReason,
+    input,
+  );
 };
 
 export const recoverInterruptedWorkspaceRestore = recoverInterruptedRestore;
