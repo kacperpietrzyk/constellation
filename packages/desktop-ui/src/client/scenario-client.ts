@@ -2,6 +2,7 @@ import {
   type CommandEnvelope,
   DataHomeStatusSchema,
   DeviceIdSchema,
+  DocumentRevisionIdSchema,
   LOCAL_ONLY_PROVIDER_ID,
   WorkspaceIdSchema,
   type QueryEnvelope,
@@ -25,6 +26,7 @@ export interface ScenarioFixtures {
 export const createScenarioClient = (
   fixtures: ScenarioFixtures,
 ): ConstellationRendererClient => ({
+  acknowledgeDocumentUpdates: async () => undefined,
   onAttentionActivated: () => () => undefined,
   cancelWorkspaceRestore: async () => undefined,
   confirmWorkspaceRestore: async () => ({
@@ -42,6 +44,8 @@ export const createScenarioClient = (
         },
       ],
     },
+  createDocumentRevision: async () =>
+    DocumentRevisionIdSchema.parse("00000000-0000-4000-8000-000000000091"),
   enrollHub: async () => ({ outcome: "rejected", code: "hub_unreachable" }),
   exportHubAuthorization: async () => ({ outcome: "cancelled" }),
   exportWorkspaceBackup: async () => ({ outcome: "cancelled" }),
@@ -109,6 +113,9 @@ export const createScenarioClient = (
       recoveryActions: ["export_checkpoint", "restore_checkpoint"],
       detailCode: "ready",
     }),
+  listDocumentRevisions: async () => [],
+  openDocument: async () => ({ mode: "local", pendingUpdateCount: 0 }),
+  persistDocumentUpdate: async () => undefined,
   prepareWorkspaceRestore: async () => ({ outcome: "cancelled" }),
   runQuery: async (query) => {
     const response = fixtures.queries[query.queryName];
@@ -124,5 +131,6 @@ export const createScenarioClient = (
       },
     };
   },
+  restoreDocumentRevision: async () => undefined,
   syncDataHome: async () => createScenarioClient(fixtures).getDataHomeStatus(),
 });

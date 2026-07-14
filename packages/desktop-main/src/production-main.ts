@@ -34,6 +34,7 @@ import { EncryptedStoreCapabilityError } from "@constellation/local-store";
 import { createBetterSqlite3Factory } from "./better-sqlite3-factory.js";
 import { AttentionNotificationCoordinator } from "./attention-notification.js";
 import { CoordinatedDataHomeProvider } from "./coordinated-data-home-provider.js";
+import { DocumentCollaborationBridge } from "./document-collaboration.js";
 import {
   CoordinatedSyncEngine,
   HttpHubTransport,
@@ -95,6 +96,7 @@ let dataHomeProvider: DataHomeProvider | undefined;
 let coordinatedDataHomeProvider: CoordinatedDataHomeProvider | undefined;
 let hubConnectionCustody: HubConnectionCustody | undefined;
 let installationDeviceId: DeviceId | undefined;
+let activeHubConnection: HubConnection | undefined;
 let hubSyncTimer: NodeJS.Timeout | undefined;
 let hubSyncFailures = 0;
 const manualHubSyncForPackagedSmoke =
@@ -370,6 +372,7 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
       sync,
     });
     dataHomeProvider = coordinatedDataHomeProvider;
+    activeHubConnection = connection;
     scheduleHubSync(0);
   };
   let existingHubConnection = await hubConnectionCustody.load();
@@ -534,6 +537,16 @@ const startProductionDesktop = async (): Promise<void> => {
   );
 
   const runtime = await createDesktopRuntime();
+  const documentCollaboration =
+    workspaceRecovery?.kernel === undefined ||
+    installationDeviceId === undefined
+      ? undefined
+      : new DocumentCollaborationBridge({
+          workspaceId: workspaceRecovery.kernel.identity.workspaceId,
+          deviceId: installationDeviceId,
+          store: workspaceRecovery.kernel.store,
+          connection: () => activeHubConnection,
+        });
   ipcMain.handle(DESKTOP_CHANNELS.executeCommand, (event, command: unknown) => {
     assertTrustedSender(event);
     const result = runtime.service.execute(command);
@@ -556,6 +569,57 @@ const startProductionDesktop = async (): Promise<void> => {
     assertTrustedSender(event);
     return runtime.service.query(query);
   });
+  ipcMain.handle(DESKTOP_CHANNELS.openDocument, (event, input: unknown) => {
+    assertTrustedSender(event);
+    if (documentCollaboration === undefined)
+      throw new Error("Workspace documents are unavailable.");
+    return documentCollaboration.open(input as never);
+  });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.persistDocumentUpdate,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      if (documentCollaboration === undefined)
+        throw new Error("Workspace documents are unavailable.");
+      documentCollaboration.persist(input as never);
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.acknowledgeDocumentUpdates,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      if (documentCollaboration === undefined)
+        throw new Error("Workspace documents are unavailable.");
+      documentCollaboration.acknowledge(input as never);
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.createDocumentRevision,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      if (documentCollaboration === undefined)
+        throw new Error("Workspace documents are unavailable.");
+      return documentCollaboration.createRevision(input as never);
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.listDocumentRevisions,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      if (documentCollaboration === undefined)
+        throw new Error("Workspace documents are unavailable.");
+      return documentCollaboration.listRevisions(input as never);
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.restoreDocumentRevision,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      if (documentCollaboration === undefined)
+        throw new Error("Workspace documents are unavailable.");
+      return documentCollaboration.restoreRevision(input as never);
+    },
+  );
   ipcMain.handle(DESKTOP_CHANNELS.getBuildInfo, (event) => {
     assertTrustedSender(event);
     return {
@@ -708,6 +772,7 @@ const startProductionDesktop = async (): Promise<void> => {
     }
     try {
       await hubConnectionCustody.create(connection);
+      activeHubConnection = connection;
     } catch {
       await abandonEnrollment();
       return { outcome: "rejected", code: "credential_storage_failed" };

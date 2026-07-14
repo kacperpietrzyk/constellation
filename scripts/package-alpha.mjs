@@ -111,7 +111,13 @@ fs.writeFileSync(
 `,
 );
 
-for (const name of ["contracts", "domain", "application", "local-store"]) {
+for (const name of [
+  "contracts",
+  "domain",
+  "application",
+  "local-store",
+  "realtime-documents",
+]) {
   copyPackage(name);
 }
 copyPackage("desktop-main", [], "package.production.json");
@@ -120,13 +126,27 @@ copy(
   path.join(root, "packages", "desktop-ui", "dist"),
   path.join(stage, "node_modules", "@constellation", "desktop-ui", "dist"),
 );
-for (const name of ["zod", "bindings", "file-uri-to-path", "better-sqlite3"]) {
+for (const name of [
+  "zod",
+  "bindings",
+  "file-uri-to-path",
+  "better-sqlite3",
+  "yjs",
+  "lib0",
+]) {
   copy(
     path.join(root, "node_modules", name),
     path.join(stage, "node_modules", name),
   );
 }
-for (const name of ["zod", "bindings", "file-uri-to-path", "better-sqlite3"]) {
+for (const name of [
+  "zod",
+  "bindings",
+  "file-uri-to-path",
+  "better-sqlite3",
+  "yjs",
+  "lib0",
+]) {
   for (const directory of ["test", "tests"]) {
     fs.rmSync(path.join(stage, "node_modules", name, directory), {
       recursive: true,
@@ -163,6 +183,7 @@ const productionDesktopFiles = new Set([
   "coordinated-data-home-provider.js",
   "coordinated-sync-engine.js",
   "device-identity.js",
+  "document-collaboration.js",
   "durable-kernel-service.js",
   "hub-authorization-export.js",
   "hub-connection-custody.js",
@@ -192,9 +213,12 @@ const expectedRuntimePackages = new Set([
   "@constellation/desktop-ui",
   "@constellation/domain",
   "@constellation/local-store",
+  "@constellation/realtime-documents",
   "better-sqlite3",
   "bindings",
   "file-uri-to-path",
+  "lib0",
+  "yjs",
   "zod",
 ]);
 const stagedRuntimePackages = new Set();
@@ -243,6 +267,7 @@ const expectedDesktopDependencies = [
   "@constellation/contracts",
   "@constellation/desktop-preload",
   "@constellation/local-store",
+  "@constellation/realtime-documents",
   "better-sqlite3",
 ];
 if (
@@ -344,7 +369,8 @@ if (
   ) ||
   !archiveFiles.includes("/bootstrap.cjs") ||
   !archiveFiles.some((entry) => entry.endsWith("/production-main.js")) ||
-  !archiveFiles.some((entry) => entry.endsWith("/attention-notification.js"))
+  !archiveFiles.some((entry) => entry.endsWith("/attention-notification.js")) ||
+  !archiveFiles.some((entry) => entry.endsWith("/document-collaboration.js"))
 ) {
   throw new Error("PRODUCTION_ASAR_CONTENT_INVALID");
 }

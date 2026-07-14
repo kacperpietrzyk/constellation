@@ -13,8 +13,11 @@
   "dependencies": {
     "@constellation/contracts": "0.0.0",
     "@constellation/desktop-preload": "0.0.0",
+    "@constellation/realtime-documents": "^0.0.0",
+    "@hocuspocus/provider": "^4.4.0",
     "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react-dom": "19.2.7",
+    "yjs": "^13.6.31"
   },
   "devDependencies": {
     "@types/react": "19.2.17",

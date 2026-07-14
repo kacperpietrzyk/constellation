@@ -14,6 +14,13 @@ import {
 import {
   CommandEnvelopeSchema,
   CommandOutcomeSchema,
+  DocumentRevisionIdSchema,
+  CorrelationIdSchema,
+  DeviceIdSchema,
+  type DocumentId,
+  type DocumentRevisionId,
+  type CorrelationId,
+  type DeviceId,
   PrincipalIdSchema,
   type CommandEnvelope,
   type AuditReceiptId,
@@ -47,6 +54,7 @@ import type {
   UndoDescriptor,
   RecordComment,
   AttentionSignal,
+  NativeDocument,
 } from "@constellation/domain";
 
 import type {
@@ -55,7 +63,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
   checkpoint: null,
@@ -69,6 +77,10 @@ const COORDINATED_PROJECTION_TABLES = [
   "events",
   "attention_signals",
   "comments",
+  "document_pending_updates",
+  "document_revisions",
+  "document_collaboration_state",
+  "documents",
   "undo_descriptors",
   "task_project_relations",
   "task_assignments",
@@ -96,6 +108,7 @@ export interface LocalWorkspaceRecoverySummary {
     readonly captures: number;
     readonly tasks: number;
     readonly projects: number;
+    readonly documents: number;
     readonly relations: number;
     readonly auditReceipts: number;
   };
@@ -383,6 +396,54 @@ const schemaV6 = `
     ON attention_signals(workspace_id, target_principal_id, state, updated_at DESC, id);
 `;
 
+const schemaV7 = `
+  CREATE TABLE documents (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    updated_at TEXT NOT NULL,
+    version INTEGER NOT NULL CHECK (version > 0),
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX documents_page
+    ON documents(workspace_id, space_id, updated_at DESC, id DESC);
+  CREATE TABLE document_collaboration_state (
+    document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    engine TEXT NOT NULL CHECK (engine = 'yjs-13'),
+    state_blob BLOB NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT;
+  CREATE TABLE document_pending_updates (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    update_blob BLOB NOT NULL,
+    created_at TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX document_pending_updates_queue
+    ON document_pending_updates(document_id, created_at, id);
+  CREATE TABLE document_revisions (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    engine TEXT NOT NULL CHECK (engine = 'yjs-13'),
+    state_blob BLOB NOT NULL,
+    state_vector_blob BLOB NOT NULL,
+    created_by TEXT NOT NULL,
+    created_by_device_id TEXT NOT NULL,
+    correlation_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    restored_from_revision_id TEXT
+  ) STRICT;
+  CREATE INDEX document_revisions_history
+    ON document_revisions(document_id, created_at DESC, id DESC);
+`;
+
 export interface LocalCoordinationState {
   readonly workspaceId: WorkspaceId;
   readonly providerInstanceId: string;
@@ -406,6 +467,38 @@ export interface PendingSyncCommand {
   readonly outboxEntryId: string;
 }
 
+export interface LocalDocumentCollaborationState {
+  readonly documentId: DocumentId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly engine: "yjs-13";
+  readonly state: Uint8Array;
+  readonly updatedAt: string;
+}
+
+export interface LocalPendingDocumentUpdate {
+  readonly id: string;
+  readonly documentId: DocumentId;
+  readonly update: Uint8Array;
+  readonly createdAt: string;
+}
+
+export interface LocalDocumentRevision {
+  readonly id: DocumentRevisionId;
+  readonly documentId: DocumentId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly name: string;
+  readonly engine: "yjs-13";
+  readonly state: Uint8Array;
+  readonly stateVector: Uint8Array;
+  readonly createdBy: PrincipalId;
+  readonly createdByDeviceId: DeviceId;
+  readonly correlationId: CorrelationId;
+  readonly createdAt: string;
+  readonly restoredFromRevisionId?: DocumentRevisionId;
+}
+
 const objectValue = (
   value: unknown,
   context: string,
@@ -424,12 +517,33 @@ const stringValue = (row: unknown, key: string, context: string): string => {
   return value;
 };
 
+const nullableStringValue = (
+  row: unknown,
+  key: string,
+  context: string,
+): string | undefined => {
+  const value = objectValue(row, context)[key];
+  if (value === null) return undefined;
+  if (typeof value !== "string") {
+    throw new LocalStoreCorruptionError(`${context}.${key} is not a string.`);
+  }
+  return value;
+};
+
 const numberValue = (row: unknown, key: string, context: string): number => {
   const value = objectValue(row, context)[key];
   if (typeof value !== "number" || !Number.isSafeInteger(value)) {
     throw new LocalStoreCorruptionError(`${context}.${key} is not an integer.`);
   }
   return value;
+};
+
+const bytesValue = (row: unknown, key: string, context: string): Uint8Array => {
+  const value = objectValue(row, context)[key];
+  if (!(value instanceof Uint8Array) || value.byteLength === 0) {
+    throw new LocalStoreCorruptionError(`${context}.${key} is not binary.`);
+  }
+  return value.slice();
 };
 
 const parsePayload = <RecordType extends object>(
@@ -496,6 +610,7 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
     if (currentVersion < 4) database.exec(schemaV4);
     if (currentVersion < 5) database.exec(schemaV5);
     if (currentVersion < 6) database.exec(schemaV6);
+    if (currentVersion < 7) database.exec(schemaV7);
     database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
     database.exec("COMMIT;");
   } catch (error) {
@@ -934,6 +1049,38 @@ class SqliteReadView implements ApplicationWave2ReadView {
       .map((row) => {
         const id = stringValue(row, "id", "project");
         return parsePayload<Project>(row, "id", id, "project", {
+          workspaceId,
+          spaceId,
+        });
+      });
+  }
+
+  public getDocument(id: DocumentId): NativeDocument | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, space_id, payload_json FROM documents WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<NativeDocument>(row, "id", id, "document", {
+          workspaceId: stringValue(row, "workspace_id", "document"),
+          spaceId: stringValue(row, "space_id", "document"),
+        });
+  }
+
+  public listDocuments(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly NativeDocument[] {
+    return this.database
+      .prepare(
+        "SELECT id, payload_json FROM documents WHERE workspace_id = ? AND space_id = ? ORDER BY updated_at DESC, id DESC",
+      )
+      .all(workspaceId, spaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "document");
+        return parsePayload<NativeDocument>(row, "id", id, "document", {
           workspaceId,
           spaceId,
         });
@@ -1472,6 +1619,27 @@ class SqliteTransaction
         ),
     );
   }
+  public insertDocument(record: NativeDocument): void {
+    this.insert(
+      "documents",
+      [
+        "id",
+        "workspace_id",
+        "space_id",
+        "updated_at",
+        "version",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.spaceId,
+        record.updatedAt,
+        record.version,
+        payload(record),
+      ],
+    );
+  }
   public insertRelation(record: TaskProjectRelation): void {
     this.insert(
       "task_project_relations",
@@ -1617,8 +1785,303 @@ export class SqliteApplicationStore implements ApplicationStore {
     initializeLocalStoreSchema(database);
   }
 
+  private requireDocumentScope(
+    documentId: DocumentId,
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): NativeDocument {
+    const document = new SqliteReadView(this.database).getDocument(documentId);
+    if (
+      document === undefined ||
+      document.workspaceId !== workspaceId ||
+      document.spaceId !== spaceId
+    ) {
+      throw new LocalStoreCorruptionError(
+        "Document collaboration scope does not match its metadata.",
+      );
+    }
+    return document;
+  }
+
   public read<Result>(read: (view: ApplicationReadView) => Result): Result {
     return read(new SqliteReadView(this.database));
+  }
+
+  public loadDocumentCollaborationState(input: {
+    readonly documentId: DocumentId;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+  }): LocalDocumentCollaborationState | undefined {
+    this.requireDocumentScope(
+      input.documentId,
+      input.workspaceId,
+      input.spaceId,
+    );
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, space_id, engine, state_blob, updated_at FROM document_collaboration_state WHERE document_id = ?",
+      )
+      .get(input.documentId);
+    if (row === undefined) return undefined;
+    if (
+      stringValue(row, "workspace_id", "document state") !==
+        input.workspaceId ||
+      stringValue(row, "space_id", "document state") !== input.spaceId ||
+      stringValue(row, "engine", "document state") !== "yjs-13"
+    ) {
+      throw new LocalStoreCorruptionError(
+        "Document collaboration state violates its scope.",
+      );
+    }
+    return {
+      ...input,
+      engine: "yjs-13",
+      state: bytesValue(row, "state_blob", "document state"),
+      updatedAt: stringValue(row, "updated_at", "document state"),
+    };
+  }
+
+  public commitDocumentUpdate(input: {
+    readonly id: string;
+    readonly documentId: DocumentId;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+    readonly state: Uint8Array;
+    readonly update: Uint8Array;
+    readonly createdAt: string;
+  }): void {
+    if (
+      input.state.byteLength < 1 ||
+      input.state.byteLength > 1_048_576 ||
+      input.update.byteLength < 1 ||
+      input.update.byteLength > 1_048_576
+    ) {
+      throw new Error("Document collaboration binary size is invalid.");
+    }
+    this.transact(() => {
+      this.requireDocumentScope(
+        input.documentId,
+        input.workspaceId,
+        input.spaceId,
+      );
+      this.database
+        .prepare(
+          "INSERT INTO document_collaboration_state (document_id, workspace_id, space_id, engine, state_blob, updated_at) VALUES (?, ?, ?, 'yjs-13', ?, ?) ON CONFLICT(document_id) DO UPDATE SET workspace_id = excluded.workspace_id, space_id = excluded.space_id, engine = excluded.engine, state_blob = excluded.state_blob, updated_at = excluded.updated_at",
+        )
+        .run(
+          input.documentId,
+          input.workspaceId,
+          input.spaceId,
+          input.state,
+          input.createdAt,
+        );
+      this.database
+        .prepare(
+          "INSERT INTO document_pending_updates (id, document_id, workspace_id, space_id, update_blob, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          input.id,
+          input.documentId,
+          input.workspaceId,
+          input.spaceId,
+          input.update,
+          input.createdAt,
+        );
+    });
+  }
+
+  public storeDocumentCollaborationState(input: {
+    readonly documentId: DocumentId;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+    readonly state: Uint8Array;
+    readonly updatedAt: string;
+  }): void {
+    if (input.state.byteLength < 1 || input.state.byteLength > 1_048_576) {
+      throw new Error("Document collaboration binary size is invalid.");
+    }
+    this.transact(() => {
+      this.requireDocumentScope(
+        input.documentId,
+        input.workspaceId,
+        input.spaceId,
+      );
+      this.database
+        .prepare(
+          "INSERT INTO document_collaboration_state (document_id, workspace_id, space_id, engine, state_blob, updated_at) VALUES (?, ?, ?, 'yjs-13', ?, ?) ON CONFLICT(document_id) DO UPDATE SET workspace_id = excluded.workspace_id, space_id = excluded.space_id, engine = excluded.engine, state_blob = excluded.state_blob, updated_at = excluded.updated_at",
+        )
+        .run(
+          input.documentId,
+          input.workspaceId,
+          input.spaceId,
+          input.state,
+          input.updatedAt,
+        );
+    });
+  }
+
+  public listPendingDocumentUpdates(input: {
+    readonly documentId: DocumentId;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+  }): readonly LocalPendingDocumentUpdate[] {
+    this.requireDocumentScope(
+      input.documentId,
+      input.workspaceId,
+      input.spaceId,
+    );
+    return this.database
+      .prepare(
+        "SELECT id, workspace_id, space_id, update_blob, created_at FROM document_pending_updates WHERE document_id = ? ORDER BY created_at, id",
+      )
+      .all(input.documentId)
+      .map((row) => {
+        if (
+          stringValue(row, "workspace_id", "document update") !==
+            input.workspaceId ||
+          stringValue(row, "space_id", "document update") !== input.spaceId
+        ) {
+          throw new LocalStoreCorruptionError(
+            "Pending document update violates its scope.",
+          );
+        }
+        return {
+          id: stringValue(row, "id", "document update"),
+          documentId: input.documentId,
+          update: bytesValue(row, "update_blob", "document update"),
+          createdAt: stringValue(row, "created_at", "document update"),
+        };
+      });
+  }
+
+  public acknowledgeDocumentUpdates(input: {
+    readonly documentId: DocumentId;
+    readonly updateIds: readonly string[];
+  }): void {
+    this.transact(() => {
+      const remove = this.database.prepare(
+        "DELETE FROM document_pending_updates WHERE document_id = ? AND id = ?",
+      );
+      for (const id of input.updateIds) remove.run(input.documentId, id);
+    });
+  }
+
+  public storeDocumentRevision(revision: LocalDocumentRevision): void {
+    if (
+      revision.state.byteLength < 1 ||
+      revision.state.byteLength > 1_048_576 ||
+      revision.stateVector.byteLength < 1 ||
+      revision.stateVector.byteLength > 1_048_576
+    ) {
+      throw new Error("Document revision binary size is invalid.");
+    }
+    this.transact(() => {
+      this.requireDocumentScope(
+        revision.documentId,
+        revision.workspaceId,
+        revision.spaceId,
+      );
+      this.database
+        .prepare(
+          "INSERT INTO document_revisions (id, document_id, workspace_id, space_id, name, engine, state_blob, state_vector_blob, created_by, created_by_device_id, correlation_id, created_at, restored_from_revision_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          revision.id,
+          revision.documentId,
+          revision.workspaceId,
+          revision.spaceId,
+          revision.name,
+          revision.engine,
+          revision.state,
+          revision.stateVector,
+          revision.createdBy,
+          revision.createdByDeviceId,
+          revision.correlationId,
+          revision.createdAt,
+          revision.restoredFromRevisionId ?? null,
+        );
+    });
+  }
+
+  public listDocumentRevisions(input: {
+    readonly documentId: DocumentId;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+  }): readonly LocalDocumentRevision[] {
+    this.requireDocumentScope(
+      input.documentId,
+      input.workspaceId,
+      input.spaceId,
+    );
+    return this.database
+      .prepare(
+        "SELECT id, workspace_id, space_id, name, engine, state_blob, state_vector_blob, created_by, created_by_device_id, correlation_id, created_at, restored_from_revision_id FROM document_revisions WHERE document_id = ? ORDER BY created_at DESC, id DESC",
+      )
+      .all(input.documentId)
+      .map((row) => {
+        if (
+          stringValue(row, "workspace_id", "document revision") !==
+            input.workspaceId ||
+          stringValue(row, "space_id", "document revision") !== input.spaceId ||
+          stringValue(row, "engine", "document revision") !== "yjs-13"
+        ) {
+          throw new LocalStoreCorruptionError(
+            "Document revision violates its scope.",
+          );
+        }
+        const restoredFromRevisionId = nullableStringValue(
+          row,
+          "restored_from_revision_id",
+          "document revision",
+        );
+        return {
+          id: DocumentRevisionIdSchema.parse(
+            stringValue(row, "id", "document revision"),
+          ),
+          ...input,
+          name: stringValue(row, "name", "document revision"),
+          engine: "yjs-13" as const,
+          state: bytesValue(row, "state_blob", "document revision"),
+          stateVector: bytesValue(
+            row,
+            "state_vector_blob",
+            "document revision",
+          ),
+          createdBy: PrincipalIdSchema.parse(
+            stringValue(row, "created_by", "document revision"),
+          ),
+          createdByDeviceId: DeviceIdSchema.parse(
+            stringValue(row, "created_by_device_id", "document revision"),
+          ),
+          correlationId: CorrelationIdSchema.parse(
+            stringValue(row, "correlation_id", "document revision"),
+          ),
+          createdAt: stringValue(row, "created_at", "document revision"),
+          ...(restoredFromRevisionId === undefined
+            ? {}
+            : {
+                restoredFromRevisionId: DocumentRevisionIdSchema.parse(
+                  restoredFromRevisionId,
+                ),
+              }),
+        };
+      });
+  }
+
+  public purgeDocumentCollaboration(documentId: DocumentId): void {
+    this.transact(() => {
+      this.database
+        .prepare("DELETE FROM document_pending_updates WHERE document_id = ?")
+        .run(documentId);
+      this.database
+        .prepare("DELETE FROM document_revisions WHERE document_id = ?")
+        .run(documentId);
+      this.database
+        .prepare(
+          "DELETE FROM document_collaboration_state WHERE document_id = ?",
+        )
+        .run(documentId);
+    });
   }
 
   public recoverySummary(
@@ -1677,6 +2140,7 @@ export class SqliteApplicationStore implements ApplicationStore {
         captures: count("captures"),
         tasks: count("tasks"),
         projects: count("projects"),
+        documents: count("documents"),
         relations: count("task_project_relations"),
         auditReceipts: count("audit_receipts"),
       },
@@ -1725,6 +2189,7 @@ export class SqliteApplicationStore implements ApplicationStore {
       captures: records("captures", "id", "id", "capture"),
       tasks: records("tasks", "id", "id", "task"),
       projects: records("projects", "id", "id", "project"),
+      documents: records("documents", "id", "id", "document"),
       relations: records("task_project_relations", "id", "id", "relation"),
       undoDescriptors: records(
         "undo_descriptors",
@@ -2007,6 +2472,9 @@ export class SqliteApplicationStore implements ApplicationStore {
       transaction.insertTaskAssignment(value),
     );
     snapshot.projects.forEach((value) => transaction.insertProject(value));
+    (snapshot.documents ?? []).forEach((value) =>
+      transaction.insertDocument(value),
+    );
     (snapshot.comments ?? []).forEach((value) =>
       transaction.insertComment(value),
     );

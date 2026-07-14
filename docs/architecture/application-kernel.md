@@ -32,6 +32,7 @@ Commands:
 - `capture.routeAsTask`
 - `project.create`
 - `project.updateOutcome`
+- `document.create`
 - `task.setStatus`
 - `task.complete`
 - `task.reopen`
@@ -61,6 +62,7 @@ Queries:
 - `attention.inbox`
 - `project.list`
 - `project.operationalOverview`
+- `document.list`
 - `search.global`
 - `cockpit.week`
 - `activity.meaningful`
@@ -105,6 +107,15 @@ resolve any visible root thread. Routine collaboration remains in-app. Electron
 main owns the optional foreground-suppressing system delivery adapter and only
 receives already scoped urgent Attention projections.
 
+Native document metadata is an ordinary typed, versioned domain record handled
+by `document.create` and `document.list`. Collaborative body state is deliberately
+not folded into record synchronization. A replaceable document adapter owns the
+opaque Yjs state, updates, state vectors, and named revisions. Local SQLCipher
+is authoritative for local-only workspaces and retains encrypted state plus an
+outbox for coordinated workspaces; the Hub persists bounded binary state and
+revision checkpoints in PostgreSQL. Revision restore applies a new Yjs change
+and records which immutable revision it came from.
+
 ## Boundary rules
 
 - Zod schemas validate untrusted envelopes at runtime and reject unknown fields.
@@ -133,6 +144,14 @@ receives already scoped urgent Attention projections.
   and current Space eligibility for every explicit mention. Attention queries
   are always restricted to the current principal and reauthorize the target
   Space before returning its title or destination.
+- Document rooms derive from validated Workspace and document IDs. Electron
+  main exchanges its protected device credential for a short-lived room token;
+  current membership, Space scope, and view/comment/edit access are checked at
+  authentication, before every inbound update, after policy synchronization,
+  and for revision operations. Downgrades invalidate the old session and force
+  a newly authorized read-only session; revocation closes the room and local
+  coordinated purge removes document metadata, state, queued updates, and
+  revisions.
 - Capture routing requires the exact current Capture version. Repeating a
   committed route with the same idempotency input returns its original result;
   a distinct attempt cannot create a second Task.
@@ -173,6 +192,8 @@ contracts -> Zod
 - `application` also owns the privileged Data Home provider port. Its versioned
   descriptor, capabilities, status, and closed outcome vocabulary live in
   `contracts`; React receives only safe status and portability operations.
+- `realtime-documents` owns the replaceable Yjs adapter. Hocuspocus is a Hub
+  transport/presence adapter and never becomes a second domain implementation.
 
 ## Verification
 
@@ -214,9 +235,15 @@ deduplication, recipient-only Hub projections and audit fields, encrypted
 SQLite restart, exact destination routing, foreground suppression, and atomic
 rollback with assignment/comment journal boundaries.
 
+Document coverage proves two-human online and offline convergence, encrypted
+local state and queued updates, bounded binary persistence across PostgreSQL
+restart, five-minute renderer sessions without credential exposure, named
+revision restore, view downgrade, revoked-session closure, coordinated purge,
+and the real packaged editor on macOS and Windows gates.
+
 Production signing/notarization, installer/updater continuity, MCP mapping,
 deterministic syntax parsing, generalized Attention rules, checkpoint revert, editable
-configuration, synchronized Data Homes, and the exhaustive cross-workspace leak
+configuration, document comments/citations, and the exhaustive cross-workspace leak
 matrix remain later capability gates.
 
 The current adapters and their remaining runtime boundaries are documented in

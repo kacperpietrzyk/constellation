@@ -12,6 +12,7 @@ import { Pool } from "pg";
 
 import { HubAttachmentService } from "./attachments.js";
 import { PostgresHubRepository } from "./postgres-repository.js";
+import { RealtimeDocumentGateway } from "./realtime-documents.js";
 import { startHubServer, loadTlsOptions } from "./server.js";
 import { HubService } from "./service.js";
 
@@ -116,6 +117,7 @@ const main = async (): Promise<void> => {
     await mkdir(storageRoot, { recursive: true, mode: 0o700 });
     const pool = new Pool({ connectionString: databaseUrl, max: 10 });
     const service = new HubService(repository);
+    const realtimeDocuments = new RealtimeDocumentGateway(service, repository);
     const certificatePath = process.env.CONSTELLATION_HUB_TLS_CERT;
     const privateKeyPath = process.env.CONSTELLATION_HUB_TLS_KEY;
     const tls =
@@ -126,6 +128,7 @@ const main = async (): Promise<void> => {
     const server = await startHubServer({
       service,
       attachments: new HubAttachmentService(pool, repository, storageRoot),
+      realtimeDocuments,
       host,
       port: Number(process.env.CONSTELLATION_HUB_PORT ?? "4318"),
       ...(tls === undefined

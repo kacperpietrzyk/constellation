@@ -5,10 +5,15 @@ import { fileURLToPath } from "node:url";
 
 import {
   CommandOutcomeSchema,
+  CorrelationIdSchema,
+  DocumentIdSchema,
+  DocumentRevisionIdSchema,
   DeviceIdSchema,
   ExecutionContextSchema,
   HubWorkspaceSnapshotSchema,
   WorkspaceIdSchema,
+  PrincipalIdSchema,
+  SpaceIdSchema,
 } from "@constellation/contracts";
 import { Pool, type PoolClient } from "pg";
 
@@ -20,6 +25,8 @@ import type {
   HubRepository,
   HubStoredReceipt,
   HubWorkspaceState,
+  HubDocumentState,
+  HubDocumentRevision,
 } from "./repository.js";
 
 const object = (value: unknown, context: string): Record<string, unknown> => {
@@ -53,6 +60,14 @@ const bigint = (row: Record<string, unknown>, key: string): bigint => {
     throw new Error(`PostgreSQL ${key} is invalid.`);
   }
   return BigInt(value);
+};
+
+const bytes = (row: Record<string, unknown>, key: string): Uint8Array => {
+  const value = row[key];
+  if (!(value instanceof Uint8Array) || value.byteLength === 0) {
+    throw new Error(`PostgreSQL ${key} is invalid.`);
+  }
+  return value.slice();
 };
 
 const sameDigest = (left: string, right: string): boolean => {
@@ -362,5 +377,96 @@ export class PostgresHubRepository implements HubRepository {
       [input.workspaceId, input.deviceId, input.revokedAt],
     );
     return result.rowCount === 1;
+  }
+
+  public async loadDocumentState(input: {
+    readonly workspaceId: HubDocumentState["workspaceId"];
+    readonly documentId: HubDocumentState["documentId"];
+  }): Promise<HubDocumentState | undefined> {
+    const result = await this.pool.query(
+      "SELECT workspace_id::text, document_id::text, space_id::text, engine, state, updated_at::text FROM constellation_hub_documents WHERE workspace_id = $1 AND document_id = $2",
+      [input.workspaceId, input.documentId],
+    );
+    if (result.rowCount !== 1) return undefined;
+    const row = object(result.rows[0], "document state row");
+    return {
+      workspaceId: WorkspaceIdSchema.parse(row.workspace_id),
+      documentId: DocumentIdSchema.parse(row.document_id),
+      spaceId: SpaceIdSchema.parse(row.space_id),
+      engine: "yjs-13",
+      state: bytes(row, "state"),
+      updatedAt: text(row, "updated_at"),
+    };
+  }
+
+  public async storeDocumentState(state: HubDocumentState): Promise<void> {
+    await this.pool.query(
+      "INSERT INTO constellation_hub_documents (workspace_id, document_id, space_id, engine, state, updated_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (workspace_id, document_id) DO UPDATE SET space_id = EXCLUDED.space_id, engine = EXCLUDED.engine, state = EXCLUDED.state, updated_at = EXCLUDED.updated_at",
+      [
+        state.workspaceId,
+        state.documentId,
+        state.spaceId,
+        state.engine,
+        Buffer.from(state.state),
+        state.updatedAt,
+      ],
+    );
+  }
+
+  public async createDocumentRevision(
+    revision: HubDocumentRevision,
+  ): Promise<void> {
+    await this.pool.query(
+      "INSERT INTO constellation_hub_document_revisions (revision_id, workspace_id, document_id, space_id, name, engine, state, state_vector, created_by, created_by_device_id, correlation_id, created_at, restored_from_revision_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+      [
+        revision.id,
+        revision.workspaceId,
+        revision.documentId,
+        revision.spaceId,
+        revision.name,
+        revision.engine,
+        Buffer.from(revision.state),
+        Buffer.from(revision.stateVector),
+        revision.createdBy,
+        revision.createdByDeviceId,
+        revision.correlationId,
+        revision.createdAt,
+        revision.restoredFromRevisionId ?? null,
+      ],
+    );
+  }
+
+  public async listDocumentRevisions(input: {
+    readonly workspaceId: HubDocumentRevision["workspaceId"];
+    readonly documentId: HubDocumentRevision["documentId"];
+  }): Promise<readonly HubDocumentRevision[]> {
+    const result = await this.pool.query(
+      "SELECT revision_id::text, workspace_id::text, document_id::text, space_id::text, name, engine, state, state_vector, created_by::text, created_by_device_id, correlation_id::text, created_at::text, restored_from_revision_id::text FROM constellation_hub_document_revisions WHERE workspace_id = $1 AND document_id = $2 ORDER BY created_at DESC, revision_id DESC",
+      [input.workspaceId, input.documentId],
+    );
+    return result.rows.map((raw) => {
+      const row = object(raw, "document revision row");
+      const restoredFrom = optionalText(row, "restored_from_revision_id");
+      return {
+        id: DocumentRevisionIdSchema.parse(row.revision_id),
+        workspaceId: WorkspaceIdSchema.parse(row.workspace_id),
+        documentId: DocumentIdSchema.parse(row.document_id),
+        spaceId: SpaceIdSchema.parse(row.space_id),
+        name: text(row, "name"),
+        engine: "yjs-13" as const,
+        state: bytes(row, "state"),
+        stateVector: bytes(row, "state_vector"),
+        createdBy: PrincipalIdSchema.parse(row.created_by),
+        createdByDeviceId: DeviceIdSchema.parse(row.created_by_device_id),
+        correlationId: CorrelationIdSchema.parse(row.correlation_id),
+        createdAt: text(row, "created_at"),
+        ...(restoredFrom === undefined
+          ? {}
+          : {
+              restoredFromRevisionId:
+                DocumentRevisionIdSchema.parse(restoredFrom),
+            }),
+      };
+    });
   }
 }

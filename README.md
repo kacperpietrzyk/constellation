@@ -89,7 +89,11 @@ devices for one owner plus a separately scoped second human. It restores the
 owner's portable workspace on another device, proves that the second human
 never receives a private-Space sentinel, exercises offline work and a view-only
 downgrade, drops a response after Hub commit, reconciles by receipt, and verifies
-revocation-driven local projection removal across relaunch.
+revocation-driven local projection removal across relaunch. The same native
+package opens a document for the owner and scoped member, converges edits in
+both directions, queues an edit while the Hub is stopped, rejoins after restart,
+restores a named revision, and turns the editor read-only after a live access
+downgrade.
 
 The current collaboration candidate adds versioned human membership and Space
 grants without coupling Workspace role to data scope. Every command and query
@@ -120,11 +124,23 @@ routine collaboration stays in the in-app Attention surface. Comments,
 recipient-only attention, audit, SQLite restart, scoped Hub delivery, and
 revocation purge share the same authorization boundary.
 
+Native documents now use a replaceable Yjs collaboration adapter with a
+self-hosted Hocuspocus gateway. The editor preserves encrypted local Yjs state
+before network delivery, queues coordinated updates while offline, and rejoins
+the same document after Hub recovery. PostgreSQL stores bounded opaque document
+state and named revisions; restoring a revision is a new attributed
+collaborative change rather than a destructive history rewrite. The renderer
+receives only a five-minute room token. The durable device credential remains
+in Electron main, and every connection, reconnect, inbound update, downgrade,
+and revision operation reauthorizes current Workspace membership and Space
+access. Local-only workspaces use the same editor and encrypted store without
+requiring a Hub.
+
 The resulting ad-hoc macOS and unsigned Windows application folders are
 verification artifacts, not a signed/notarized release. The Hub is an operator
 preview rather than a hosted service. MCP transport, installers, updater,
-realtime document collaboration, richer notification policy, and automatic
-routing rules beyond the explicit Capture action remain later work.
+richer notification policy, document comments/citations, and automatic routing
+rules beyond the explicit Capture action remain later work.
 
 The current kernel boundary and implemented subset are documented in
 [Application kernel](docs/architecture/application-kernel.md) and

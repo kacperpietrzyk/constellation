@@ -13,10 +13,17 @@ import {
 import {
   HubService,
   InMemoryHubRepository,
+  RealtimeDocumentGateway,
   scopeHubSnapshot,
   snapshotDigest,
   startHubServer,
 } from "@constellation/hub";
+import {
+  HocuspocusProvider,
+  HocuspocusProviderWebsocket,
+} from "@hocuspocus/provider";
+import WebSocket from "ws";
+import * as Y from "yjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const manifest = JSON.parse(
@@ -283,8 +290,10 @@ const initialized = new Set();
 const connections = new Map();
 let hubPort = await reservePort();
 let dropNextSyncResponse = false;
+let realtimeDocuments = new RealtimeDocumentGateway(service, repository);
 let hub = await startHubServer({
   service,
+  realtimeDocuments,
   host: "127.0.0.1",
   port: hubPort,
   allowInsecureLoopback: true,
@@ -364,6 +373,8 @@ const registrationUrl = `http://127.0.0.1:${registrationAddress.port}/register`;
 let first;
 let second;
 let member;
+let ownerDocumentProvider;
+let ownerDocumentSocket;
 try {
   process.stderr.write("packaged-hub: enroll device A\n");
   first = await launch(firstUserData, registrationUrl);
@@ -394,6 +405,7 @@ try {
   const memberCredentialId = crypto.randomUUID();
   const memberGrantId = crypto.randomUUID();
   const assignmentId = crypto.randomUUID();
+  const collaborativeDocumentId = crypto.randomUUID();
 
   const executeOwnerPolicy = async (commandName, payload) => {
     const current = await repository.withWorkspaceLock(
@@ -413,9 +425,11 @@ try {
     if (current.workspace === undefined)
       throw new Error("AUTHORITATIVE_WORKSPACE_MISSING");
     const expectedVersions =
-      commandName === "task.assign"
-        ? { [payload.taskId]: current.task?.version }
-        : { [workspaceId]: current.workspace.version };
+      commandName === "document.create"
+        ? {}
+        : commandName === "task.assign"
+          ? { [payload.taskId]: current.task?.version }
+          : { [workspaceId]: current.workspace.version };
     if (commandName === "workspace.memberSetAccess") {
       expectedVersions[membershipId] = current.membership?.version;
       expectedVersions[memberSpaceGrantId] = current.grant?.version;
@@ -462,6 +476,11 @@ try {
     role: "member",
     spaceId: rootSpaceId,
     access: "edit",
+  });
+  await executeOwnerPolicy("document.create", {
+    documentId: collaborativeDocumentId,
+    spaceId: rootSpaceId,
+    title: "Packaged collaboration notes",
   });
 
   const privateSpaceId = crypto.randomUUID();
@@ -611,8 +630,10 @@ try {
     spaceGrantId: memberSpaceGrantId,
     access: "view",
   });
+  realtimeDocuments = new RealtimeDocumentGateway(service, repository);
   hub = await startHubServer({
     service,
+    realtimeDocuments,
     host: "127.0.0.1",
     port: hubPort,
     allowInsecureLoopback: true,
@@ -788,8 +809,10 @@ try {
   await member.client.evaluate(`window.constellation.syncDataHome()`);
   await hub.close();
   await submitCapture(member.client, acceptedMemberOfflineTitle);
+  realtimeDocuments = new RealtimeDocumentGateway(service, repository);
   hub = await startHubServer({
     service,
+    realtimeDocuments,
     host: "127.0.0.1",
     port: hubPort,
     allowInsecureLoopback: true,
@@ -799,6 +822,225 @@ try {
   );
   if (memberAccepted.syncState !== "current")
     throw new Error("MEMBER_OFFLINE_EDIT_NOT_ACCEPTED");
+
+  process.stderr.write(
+    "packaged-hub: converge native document, restore revision, and enforce downgrade\n",
+  );
+  await member.client.evaluate(`(() => {
+    document.querySelector('.nav-item[data-surface="documents"]').click();
+    return true;
+  })()`);
+  await waitFor(
+    member.client,
+    `document.querySelector(".document-canvas") !== null`,
+    "PACKAGED_DOCUMENT_EDITOR_MISSING",
+  );
+  const ownerSessionResponse = await fetch(
+    `${hub.origin}/v1/documents/session`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${ownerConnection.credential}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId,
+        deviceId: ownerConnection.deviceId,
+        documentId: collaborativeDocumentId,
+      }),
+    },
+  );
+  if (!ownerSessionResponse.ok)
+    throw new Error("PACKAGED_OWNER_DOCUMENT_SESSION_REJECTED");
+  const ownerSession = await ownerSessionResponse.json();
+  let ownerDocument = new Y.Doc();
+  ownerDocumentSocket = new HocuspocusProviderWebsocket({
+    url: `${hub.origin.replace(/^http/u, "ws")}/v1/realtime`,
+    WebSocketPolyfill: WebSocket,
+  });
+  ownerDocumentProvider = new HocuspocusProvider({
+    websocketProvider: ownerDocumentSocket,
+    name: ownerSession.room,
+    token: ownerSession.token,
+    document: ownerDocument,
+  });
+  ownerDocumentProvider.attach();
+  for (
+    let attempt = 0;
+    attempt < 300 && !ownerDocumentProvider.synced;
+    attempt += 1
+  )
+    await delay(100);
+  if (!ownerDocumentProvider.synced)
+    throw new Error("PACKAGED_OWNER_DOCUMENT_NOT_SYNCED");
+  const packagedDocumentText =
+    "Wspólny zakres pilotażu z aplikacji pakietowej.";
+  await member.client.evaluate(`(() => {
+    const input = document.querySelector(".document-canvas");
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(
+      input,
+      ${JSON.stringify(packagedDocumentText)},
+    );
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  })()`);
+  for (
+    let attempt = 0;
+    attempt < 300 &&
+    ownerDocument.getText("content").toString() !== packagedDocumentText;
+    attempt += 1
+  )
+    await delay(100);
+  if (ownerDocument.getText("content").toString() !== packagedDocumentText)
+    throw new Error("PACKAGED_DOCUMENT_MEMBER_EDIT_NOT_CONVERGED");
+  ownerDocument
+    .getText("content")
+    .insert(
+      ownerDocument.getText("content").length,
+      " Potwierdzone przez właściciela.",
+    );
+  const ownerCompletedText = `${packagedDocumentText} Potwierdzone przez właściciela.`;
+  await waitFor(
+    member.client,
+    `document.querySelector(".document-canvas")?.value === ${JSON.stringify(ownerCompletedText)}`,
+    "PACKAGED_DOCUMENT_OWNER_EDIT_NOT_CONVERGED",
+  );
+  ownerDocumentProvider.destroy();
+  ownerDocumentProvider = undefined;
+  ownerDocumentSocket.destroy();
+  ownerDocumentSocket = undefined;
+  ownerDocument.destroy();
+  await hub.close();
+  await waitFor(
+    member.client,
+    `document.querySelector(".document-presence.offline") !== null`,
+    "PACKAGED_DOCUMENT_OFFLINE_STATE_MISSING",
+  );
+  const offlineCompletedText = `${ownerCompletedText} Dopisek offline.`;
+  await member.client.evaluate(`(() => {
+    const input = document.querySelector(".document-canvas");
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(
+      input,
+      ${JSON.stringify(offlineCompletedText)},
+    );
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  })()`);
+  await waitFor(
+    member.client,
+    `document.querySelector(".document-presence")?.textContent.includes("zmian oczekuje") === true`,
+    "PACKAGED_DOCUMENT_OFFLINE_UPDATE_NOT_QUEUED",
+  );
+  realtimeDocuments = new RealtimeDocumentGateway(service, repository);
+  hub = await startHubServer({
+    service,
+    realtimeDocuments,
+    host: "127.0.0.1",
+    port: hubPort,
+    allowInsecureLoopback: true,
+  });
+  const resumedOwnerSessionResponse = await fetch(
+    `${hub.origin}/v1/documents/session`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${ownerConnection.credential}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId,
+        deviceId: ownerConnection.deviceId,
+        documentId: collaborativeDocumentId,
+      }),
+    },
+  );
+  if (!resumedOwnerSessionResponse.ok)
+    throw new Error("PACKAGED_OWNER_DOCUMENT_RESUME_REJECTED");
+  const resumedOwnerSession = await resumedOwnerSessionResponse.json();
+  ownerDocument = new Y.Doc();
+  ownerDocumentSocket = new HocuspocusProviderWebsocket({
+    url: `${hub.origin.replace(/^http/u, "ws")}/v1/realtime`,
+    WebSocketPolyfill: WebSocket,
+  });
+  ownerDocumentProvider = new HocuspocusProvider({
+    websocketProvider: ownerDocumentSocket,
+    name: resumedOwnerSession.room,
+    token: resumedOwnerSession.token,
+    document: ownerDocument,
+  });
+  ownerDocumentProvider.attach();
+  for (
+    let attempt = 0;
+    attempt < 300 &&
+    ownerDocument.getText("content").toString() !== offlineCompletedText;
+    attempt += 1
+  )
+    await delay(100);
+  if (ownerDocument.getText("content").toString() !== offlineCompletedText)
+    throw new Error("PACKAGED_DOCUMENT_OFFLINE_EDIT_NOT_CONVERGED");
+  await waitFor(
+    member.client,
+    `document.querySelector(".document-presence.current") !== null`,
+    "PACKAGED_DOCUMENT_DID_NOT_RECONNECT",
+  );
+  await member.client.evaluate(`(() => {
+    const input = document.querySelector("#revision-name");
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(
+      input,
+      "Review packaged",
+    );
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  })()`);
+  await waitFor(
+    member.client,
+    `document.querySelector(".document-revisions form button")?.disabled === false`,
+    "PACKAGED_DOCUMENT_REVISION_DISABLED",
+  );
+  await member.client.evaluate(
+    `(() => { document.querySelector(".document-revisions form button").click(); return true; })()`,
+  );
+  await waitFor(
+    member.client,
+    `[...document.querySelectorAll(".document-revisions li strong")].some((node) => node.textContent === "Review packaged")`,
+    "PACKAGED_DOCUMENT_REVISION_MISSING",
+  );
+  ownerDocument.getText("content").insert(0, "TYMCZASOWE ");
+  await waitFor(
+    member.client,
+    `document.querySelector(".document-canvas")?.value.startsWith("TYMCZASOWE") === true`,
+    "PACKAGED_DOCUMENT_TEMP_EDIT_NOT_CONVERGED",
+  );
+  await member.client.evaluate(`(() => {
+    window.confirm = () => true;
+    document.querySelector(".document-revisions li .text-button").click();
+    return true;
+  })()`);
+  for (
+    let attempt = 0;
+    attempt < 300 &&
+    ownerDocument.getText("content").toString() !== offlineCompletedText;
+    attempt += 1
+  )
+    await delay(100);
+  if (ownerDocument.getText("content").toString() !== offlineCompletedText)
+    throw new Error("PACKAGED_DOCUMENT_RESTORE_NOT_CONVERGED");
+  await executeOwnerPolicy("workspace.memberSetAccess", {
+    membershipId,
+    spaceGrantId: memberSpaceGrantId,
+    access: "view",
+  });
+  await realtimeDocuments.reauthorizeSessions();
+  await waitFor(
+    member.client,
+    `document.querySelector(".document-canvas")?.readOnly === true`,
+    "PACKAGED_DOCUMENT_DOWNGRADE_NOT_READ_ONLY",
+  );
+  ownerDocumentProvider.destroy();
+  ownerDocumentProvider = undefined;
+  ownerDocumentSocket.destroy();
+  ownerDocumentSocket = undefined;
+  ownerDocument.destroy();
 
   process.stderr.write("packaged-hub: revoke member and purge projection\n");
   await executeOwnerPolicy("workspace.memberRevoke", { membershipId });
@@ -847,6 +1089,10 @@ try {
 
   hub = await startHubServer({
     service,
+    realtimeDocuments: (realtimeDocuments = new RealtimeDocumentGateway(
+      service,
+      repository,
+    )),
     host: "127.0.0.1",
     port: hubPort,
     allowInsecureLoopback: true,
@@ -911,10 +1157,15 @@ try {
       staleEditRejectedAfterDowngrade: true,
       memberOfflineEditAccepted: true,
       commenterMentionAttentionRouted: true,
+      realtimeDocumentConverged: true,
+      namedRevisionRestored: true,
+      documentDowngradeReadOnly: true,
       membershipRevocationPurged: true,
     })}\n`,
   );
 } finally {
+  ownerDocumentProvider?.destroy();
+  ownerDocumentSocket?.destroy();
   if (first !== undefined) await stop(first).catch(() => undefined);
   if (second !== undefined) await stop(second).catch(() => undefined);
   if (member !== undefined) await stop(member).catch(() => undefined);

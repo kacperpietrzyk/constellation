@@ -227,7 +227,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         (phase === "restored" ? "recovery_required" : "ready") ||
       boundary.hasNodeRequire ||
       boundary.bridgeKeys.join(",") !==
-        "cancelWorkspaceRestore,confirmWorkspaceRestore,enrollHub,executeCommand,exportHubAuthorization,exportWorkspaceBackup,getBuildInfo,getDataHomeStatus,onAttentionActivated,prepareWorkspaceRestore,runQuery,syncDataHome"
+        "acknowledgeDocumentUpdates,cancelWorkspaceRestore,confirmWorkspaceRestore,createDocumentRevision,enrollHub,executeCommand,exportHubAuthorization,exportWorkspaceBackup,getBuildInfo,getDataHomeStatus,listDocumentRevisions,onAttentionActivated,openDocument,persistDocumentUpdate,prepareWorkspaceRestore,restoreDocumentRevision,runQuery,syncDataHome"
     ) {
       throw new Error(
         `PACKAGED_ALPHA_PRELOAD_OR_IPC_INVALID:${JSON.stringify(boundary)}`,

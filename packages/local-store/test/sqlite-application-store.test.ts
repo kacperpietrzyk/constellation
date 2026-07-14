@@ -14,11 +14,15 @@ import {
 } from "@constellation/application";
 import {
   CommandEnvelopeSchema,
+  CorrelationIdSchema,
+  DeviceIdSchema,
   ExecutionContextSchema,
   QueryEnvelopeSchema,
   type CaptureId,
   type CommandEnvelope,
   type CommandOutcome,
+  type DocumentId,
+  type DocumentRevisionId,
   type EventId,
   type ExecutionContext,
   type ProjectId,
@@ -93,6 +97,8 @@ const context = (): ExecutionContext =>
       "recovery.preview",
       "task.list",
       "audit.receipt",
+      "document.create",
+      "document.list",
     ],
     origin: "desktop",
   });
@@ -222,6 +228,131 @@ const wave2Command = (
   });
 
 describe("SQLite ApplicationStore", () => {
+  it("persists document state and its outbox atomically across restart, then purges collaboration data", () => {
+    withDatabase((filename) => {
+      const documentId = "00000000-0000-4000-8000-000000000120" as DocumentId;
+      const revisionId =
+        "00000000-0000-4000-8000-000000000121" as DocumentRevisionId;
+      const scope = {
+        documentId,
+        workspaceId: context().workspaceId,
+        spaceId: context().spaceScope[0]!,
+      };
+      const firstDatabase = new DatabaseSync(filename);
+      const first = createKernel(firstDatabase);
+      assert.equal(
+        unwrap(first.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "document.create",
+              { documentId, spaceId: scope.spaceId, title: "Shared notes" },
+              "document-create",
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      first.store.commitDocumentUpdate({
+        id: "update-1",
+        ...scope,
+        state: Uint8Array.of(1, 2, 3),
+        update: Uint8Array.of(2, 3),
+        createdAt: "2026-07-14T14:00:00.000Z",
+      });
+      first.store.storeDocumentRevision({
+        id: revisionId,
+        ...scope,
+        name: "Before review",
+        engine: "yjs-13",
+        state: Uint8Array.of(1, 2, 3),
+        stateVector: Uint8Array.of(4),
+        createdBy: context().principalId,
+        createdByDeviceId: DeviceIdSchema.parse("local-store-test-device"),
+        correlationId: CorrelationIdSchema.parse(
+          "00000000-0000-4000-8000-000000000122",
+        ),
+        createdAt: "2026-07-14T14:01:00.000Z",
+      });
+
+      firstDatabase.exec(`
+        CREATE TRIGGER fail_document_update BEFORE INSERT ON document_pending_updates BEGIN
+          SELECT RAISE(ABORT, 'synthetic document outbox failure');
+        END;
+      `);
+      assert.throws(() =>
+        first.store.commitDocumentUpdate({
+          id: "update-2",
+          ...scope,
+          state: Uint8Array.of(9),
+          update: Uint8Array.of(9),
+          createdAt: "2026-07-14T14:02:00.000Z",
+        }),
+      );
+      assert.deepEqual(
+        [...(first.store.loadDocumentCollaborationState(scope)?.state ?? [])],
+        [1, 2, 3],
+      );
+      firstDatabase.exec("DROP TRIGGER fail_document_update;");
+      firstDatabase.close();
+
+      const reopenedDatabase = new DatabaseSync(filename);
+      const reopened = createKernel(reopenedDatabase);
+      assert.deepEqual(
+        [
+          ...(reopened.store.loadDocumentCollaborationState(scope)?.state ??
+            []),
+        ],
+        [1, 2, 3],
+      );
+      assert.deepEqual(
+        reopened.store
+          .listPendingDocumentUpdates(scope)
+          .map((update) => [update.id, [...update.update]]),
+        [["update-1", [2, 3]]],
+      );
+      const restoredRevision = reopened.store.listDocumentRevisions(scope)[0];
+      assert.equal(restoredRevision?.id, revisionId);
+      assert.equal(
+        restoredRevision?.createdByDeviceId,
+        "local-store-test-device",
+      );
+      assert.equal(
+        restoredRevision?.correlationId,
+        "00000000-0000-4000-8000-000000000122",
+      );
+      reopened.store.acknowledgeDocumentUpdates({
+        documentId,
+        updateIds: ["update-1"],
+      });
+      assert.equal(reopened.store.listPendingDocumentUpdates(scope).length, 0);
+      reopened.store.purgeDocumentCollaboration(documentId);
+      assert.equal(
+        reopened.store.loadDocumentCollaborationState(scope),
+        undefined,
+      );
+      for (const table of [
+        "document_pending_updates",
+        "document_collaboration_state",
+        "document_revisions",
+      ]) {
+        assert.equal(
+          (
+            reopenedDatabase
+              .prepare(`SELECT count(*) AS count FROM ${table}`)
+              .get() as { count: number }
+          ).count,
+          0,
+        );
+      }
+      reopenedDatabase.close();
+    });
+  });
+
   it("maps only SQLite busy failures to a retryable unit of work", () => {
     for (const code of ["SQLITE_BUSY", "SQLITE_BUSY_SNAPSHOT"] as const) {
       const database = new DatabaseSync(":memory:");
@@ -374,7 +505,7 @@ describe("SQLite ApplicationStore", () => {
           user_version: number;
         }
       ).user_version,
-      6,
+      7,
     );
     assert.equal(
       (

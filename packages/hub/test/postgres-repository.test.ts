@@ -7,12 +7,18 @@ import { it } from "node:test";
 
 import {
   CommandEnvelopeSchema,
+  CorrelationIdSchema,
   DeviceIdSchema,
+  DocumentIdSchema,
+  DocumentRevisionIdSchema,
   ExecutionContextSchema,
+  PrincipalIdSchema,
+  SpaceIdSchema,
   WorkspaceIdSchema,
   type ExecutionContext,
 } from "@constellation/contracts";
 import { createReferenceHarness } from "@constellation/testkit";
+import { YjsRealtimeDocumentAdapter } from "@constellation/realtime-documents";
 import { Pool } from "pg";
 
 import {
@@ -34,10 +40,18 @@ it(
     const workspaceId = WorkspaceIdSchema.parse(
       "00000000-0000-4000-8000-000000000901",
     );
-    const spaceId = "00000000-0000-4000-8000-000000000902";
-    const principalId = "00000000-0000-4000-8000-000000000903";
+    const spaceId = SpaceIdSchema.parse("00000000-0000-4000-8000-000000000902");
+    const principalId = PrincipalIdSchema.parse(
+      "00000000-0000-4000-8000-000000000903",
+    );
     const deviceId = DeviceIdSchema.parse(
       "00000000-0000-4000-8000-000000000904",
+    );
+    const documentId = DocumentIdSchema.parse(
+      "00000000-0000-4000-8000-000000000911",
+    );
+    const revisionId = DocumentRevisionIdSchema.parse(
+      "00000000-0000-4000-8000-000000000912",
     );
     const context: ExecutionContext = ExecutionContextSchema.parse({
       principalId,
@@ -52,6 +66,8 @@ it(
         "workspace.bootstrapContext",
         "capture.submitText",
         "capture.history",
+        "document.create",
+        "document.list",
         "task.list",
         "audit.receipt",
       ],
@@ -59,6 +75,8 @@ it(
     });
     const pool = new Pool({ connectionString: databaseUrl });
     await pool.query(`
+      DROP TABLE IF EXISTS constellation_hub_document_revisions CASCADE;
+      DROP TABLE IF EXISTS constellation_hub_documents CASCADE;
       DROP TABLE IF EXISTS constellation_hub_attachments CASCADE;
       DROP TABLE IF EXISTS constellation_hub_attachment_uploads CASCADE;
       DROP TABLE IF EXISTS constellation_hub_command_receipts CASCADE;
@@ -89,6 +107,17 @@ it(
       },
     });
     assert.equal(bootstrap.kind, "command_outcome");
+    const createdDocument = harness.kernel.execute(context, {
+      contractVersion: 1,
+      commandName: "document.create",
+      commandId: "00000000-0000-4000-8000-000000000913",
+      workspaceId,
+      idempotencyKey: "postgres-document",
+      expectedVersions: {},
+      correlationId: "00000000-0000-4000-8000-000000000914",
+      payload: { documentId, spaceId, title: "Restart-safe document" },
+    });
+    assert.equal(createdDocument.kind, "command_outcome");
     const secrets = ["p".repeat(43), "q".repeat(43)];
     const service = new HubService(repository, {
       now: () => "2026-07-14T12:00:00.000Z",
@@ -135,6 +164,37 @@ it(
       commands: [command],
     });
     assert.equal(pushed.outcome, "success");
+    const realtimeDocument = new YjsRealtimeDocumentAdapter();
+    realtimeDocument.replaceText("Binary document survives restart", {
+      kind: "human",
+      principalId,
+    });
+    const checkpoint = realtimeDocument.checkpoint();
+    realtimeDocument.destroy();
+    await repository.storeDocumentState({
+      workspaceId,
+      spaceId,
+      documentId,
+      engine: "yjs-13",
+      state: checkpoint.state,
+      updatedAt: "2026-07-14T12:01:00.000Z",
+    });
+    await repository.createDocumentRevision({
+      id: revisionId,
+      workspaceId,
+      spaceId,
+      documentId,
+      name: "Before restart",
+      engine: "yjs-13",
+      state: checkpoint.state,
+      stateVector: checkpoint.stateVector,
+      createdBy: principalId,
+      createdByDeviceId: deviceId,
+      correlationId: CorrelationIdSchema.parse(
+        "00000000-0000-4000-8000-000000000915",
+      ),
+      createdAt: "2026-07-14T12:01:00.000Z",
+    });
 
     const attachmentRoot = await mkdtemp(
       path.join(os.tmpdir(), "constellation-hub-attachments-"),
@@ -346,6 +406,28 @@ it(
     assert.equal(replay.currentCheckpoint, "1");
     assert.equal(replay.receipts[0]?.commandId, command.commandId);
     assert.equal(replay.change?.snapshot.captures.length, 1);
+    const restartedDocument = await restartedRepository.loadDocumentState({
+      workspaceId,
+      documentId,
+    });
+    assert.ok(restartedDocument);
+    const decodedDocument = new YjsRealtimeDocumentAdapter(
+      restartedDocument.state,
+    );
+    assert.equal(decodedDocument.getText(), "Binary document survives restart");
+    decodedDocument.destroy();
+    const restartedRevision = (
+      await restartedRepository.listDocumentRevisions({
+        workspaceId,
+        documentId,
+      })
+    ).at(0);
+    assert.equal(restartedRevision?.id, revisionId);
+    assert.equal(restartedRevision?.createdByDeviceId, deviceId);
+    assert.equal(
+      restartedRevision?.correlationId,
+      "00000000-0000-4000-8000-000000000915",
+    );
     await restartedRepository.close();
   },
 );

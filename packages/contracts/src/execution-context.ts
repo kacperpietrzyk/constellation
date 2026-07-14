@@ -40,6 +40,8 @@ export const CapabilitySchema = z.enum([
   "project.updateOutcome",
   "project.list",
   "project.operationalOverview",
+  "document.create",
+  "document.list",
   "task.setStatus",
   "task.complete",
   "task.reopen",

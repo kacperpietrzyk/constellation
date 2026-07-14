@@ -4,6 +4,7 @@ import type {
   Capability,
   CaptureId,
   CommandOutcome,
+  DocumentId,
   EventId,
   ExecutionContext,
   MembershipId,
@@ -37,12 +38,14 @@ import type {
   UndoDescriptor,
   RecordComment,
   AttentionSignal,
+  NativeDocument,
 } from "@constellation/domain";
 
 export type GeneratedIdKind =
   | "capture"
   | "task"
   | "project"
+  | "document"
   | "relation"
   | "taskStatus"
   | "membership"
@@ -176,6 +179,11 @@ export interface ApplicationWave2ReadView extends ApplicationReadView {
   listTasksInSpace(workspaceId: WorkspaceId, spaceId: SpaceId): readonly Task[];
   getProject(id: ProjectId): Project | undefined;
   listProjects(workspaceId: WorkspaceId, spaceId: SpaceId): readonly Project[];
+  getDocument(id: DocumentId): NativeDocument | undefined;
+  listDocuments(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly NativeDocument[];
   getRelation(id: RelationId): TaskProjectRelation | undefined;
   findTaskProjectRelation(
     taskId: TaskId,
@@ -232,6 +240,7 @@ export interface ApplicationWave2Transaction
   updateTask(task: Task, expectedVersion: number): boolean;
   insertProject(project: Project): void;
   updateProject(project: Project, expectedVersion: number): boolean;
+  insertDocument(document: NativeDocument): void;
   insertRelation(relation: TaskProjectRelation): void;
   updateRelation(
     relation: TaskProjectRelation,
@@ -247,6 +256,8 @@ export const isApplicationWave2ReadView = (
   "listTasksInSpace" in view &&
   "getProject" in view &&
   "listProjects" in view &&
+  "getDocument" in view &&
+  "listDocuments" in view &&
   "getRelation" in view &&
   "findTaskProjectRelation" in view &&
   "listRelations" in view &&
@@ -261,6 +272,7 @@ export const isApplicationWave2Transaction = (
   "updateTask" in transaction &&
   "insertProject" in transaction &&
   "updateProject" in transaction &&
+  "insertDocument" in transaction &&
   "insertRelation" in transaction &&
   "updateRelation" in transaction &&
   "insertUndoDescriptor" in transaction &&
@@ -301,6 +313,7 @@ export interface ReferenceStateSnapshot {
   readonly taskStatuses: readonly TaskStatusDefinition[];
   readonly tasks: readonly Task[];
   readonly projects: readonly Project[];
+  readonly documents?: readonly NativeDocument[];
   readonly relations: readonly TaskProjectRelation[];
   readonly undoDescriptors: readonly UndoDescriptor[];
   readonly events: readonly DomainEvent[];

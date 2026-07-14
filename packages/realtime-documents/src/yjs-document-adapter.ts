@@ -1,7 +1,7 @@
 import * as Y from "yjs";
 
 export const MAX_DOCUMENT_UPDATE_BYTES = 1_048_576;
-export const MAX_DOCUMENT_TEXT_LENGTH = 2_000_000;
+export const MAX_DOCUMENT_TEXT_LENGTH = 200_000;
 
 export type DocumentChangeOrigin =
   | { readonly kind: "human"; readonly principalId: string }

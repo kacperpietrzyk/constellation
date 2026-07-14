@@ -5,6 +5,7 @@ import {
   CaptureIdSchema,
   CommandIdSchema,
   CorrelationIdSchema,
+  DocumentIdSchema,
   GrantIdSchema,
   PrincipalIdSchema,
   ProjectIdSchema,
@@ -105,6 +106,11 @@ export const ProjectListQuerySchema = QueryMetadataSchema.extend({
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
 }).strict();
 
+export const DocumentListQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("document.list"),
+  parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
+}).strict();
+
 export const ProjectOperationalOverviewQuerySchema = QueryMetadataSchema.extend(
   {
     queryName: z.literal("project.operationalOverview"),
@@ -164,6 +170,7 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   CommentMentionCandidatesQuerySchema,
   AttentionInboxQuerySchema,
   ProjectListQuerySchema,
+  DocumentListQuerySchema,
   ProjectOperationalOverviewQuerySchema,
   GlobalSearchQuerySchema,
   CockpitWeekQuerySchema,
@@ -248,6 +255,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
         .object({
           tasks: z.int().nonnegative(),
           projects: z.int().nonnegative(),
+          documents: z.int().nonnegative().default(0),
           relations: z.int().nonnegative(),
           captures: z.int().nonnegative(),
           activity: z.int().nonnegative(),
@@ -262,6 +270,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             kind: z.enum([
               "task",
               "project",
+              "document",
               "capture",
               "task_assignment",
               "comment",
@@ -462,6 +471,22 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             intendedOutcome: z.string(),
             lifecycle: z.literal("active"),
             relatedOpenTaskCount: z.int().nonnegative(),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("document.list"),
+      items: z.array(
+        z
+          .object({
+            id: DocumentIdSchema,
+            spaceId: SpaceIdSchema,
+            title: z.string(),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
           })

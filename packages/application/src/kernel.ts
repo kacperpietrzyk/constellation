@@ -244,6 +244,7 @@ const isCurrentlyAuthorized = (
       );
     }
     case "project.create":
+    case "document.create":
     case "project.updateOutcome":
     case "task.setStatus":
     case "task.complete":
@@ -430,6 +431,7 @@ export class ApplicationKernel {
           occurredAt,
         );
       case "project.create":
+      case "document.create":
       case "project.updateOutcome":
       case "task.setStatus":
       case "task.complete":
@@ -1066,6 +1068,7 @@ export class ApplicationKernel {
             freshness,
           );
         case "project.list":
+        case "document.list":
         case "project.operationalOverview":
         case "search.global":
         case "cockpit.week":

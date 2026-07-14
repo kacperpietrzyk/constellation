@@ -13,6 +13,10 @@ with `npm ci --ignore-scripts` and runs `npm audit` as part of lockfile review.
 | Electron 43.1.0            | Secure desktop main/preload boundary for the preview and local Alpha                          | MIT          | `desktop-main` and preload |
 | `better-sqlite3` 12.11.1   | Native driver rebuilt against the pinned SQLCipher source                                     | MIT          | `desktop-main` only        |
 | SQLCipher Community 4.16.0 | Encrypted local SQLite compiled into the native driver                                        | BSD-3-Clause | packaged native module     |
+| PostgreSQL client 8.22.0   | Hub persistence, migrations, locking, and bounded binary document state                       | MIT          | `hub` only                 |
+| Yjs 13.6.31                | Replaceable convergent native-document state and named checkpoints                            | MIT          | document adapter           |
+| Hocuspocus 4.4.0           | Self-hosted authenticated Yjs WebSocket gateway and persistence hooks                         | MIT          | `hub` and document UI      |
+| `crossws` 0.4.4            | Mount the single bounded realtime WebSocket route on the existing Hub server                  | MIT          | `hub` only                 |
 
 Zod replaces hand-written boundary parsing; it does not execute product logic,
 access storage, or receive secrets outside the values being validated. Validation
@@ -32,8 +36,11 @@ errors are converted to content-safe code/path pairs and never echo input values
 | `@electron/packager` 20.0.2              | Assemble the native Alpha candidate       | BSD-2-Clause |
 | `node-gyp` 13.0.1                        | Build the pinned Electron native ABI      | MIT          |
 
-Electron exposes no generic renderer bridge. The sandboxed preload bundles a
-three-method command/query-shaped allow-list, while main denies permission
+Electron exposes no generic renderer bridge. The sandboxed preload bundles an
+explicit semantic allow-list for application commands, queries, recovery, Data
+Home, Attention routing, and document sessions/revisions. Document routes accept
+bounded IDs and binary updates; they never expose a database handle, path, key,
+Hub authorization context, or durable device credential. Main denies permission
 requests, untrusted navigation, new windows, and untrusted IPC senders. The
 production entry point has a dependency-closed manifest and excludes the
 in-memory preview, testkit, fixtures, and test-only smoke code.
@@ -51,7 +58,9 @@ scripts live under `scripts/native`; they are application packaging
 infrastructure, not technology-selection probes. The Windows binding uses the
 pinned static OpenSSL provider, while macOS uses CommonCrypto. Key custody uses
 the asynchronous DPAPI provider on Windows and the Keychain provider after app
-readiness on macOS. There is still no telemetry SDK, network client,
+readiness on macOS. Yjs and `lib0` are packed inside the ASAR and add no native
+module. Hocuspocus, `crossws`, and the PostgreSQL client run in the self-hosted
+Hub and are not shipped as privileged renderer code. There is still no telemetry SDK, network client,
 model-provider client, or post-install build step. Ad-hoc macOS and unsigned
 Windows folders are Alpha evidence, not production signing, notarization,
 installer, updater, or distribution continuity.

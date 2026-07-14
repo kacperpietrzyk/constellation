@@ -5,6 +5,11 @@ encrypted local projection and durable command queue. It synchronizes commands,
 snapshots, checkpoints, receipts, and content-addressed attachments. It never
 synchronizes an open SQLite database file.
 
+Native document collaboration uses the same Hub process at `/v1/realtime`.
+PostgreSQL is authoritative for bounded Yjs document state and named revision
+checkpoints; live presence is ephemeral. Run one Hub instance for this preview:
+cross-instance realtime fan-out is not claimed.
+
 This is an operator preview. Keep it private behind a firewall or authenticated
 reverse proxy and take verified backups before every upgrade.
 
@@ -102,6 +107,11 @@ digest and a post-backup command receipt before declaring the restore usable.
 Practice this drill after setup and after every storage-layout migration. A
 backup that has not passed restore is not recovery evidence.
 
+The PostgreSQL dump includes native-document state and revisions. After restore,
+open a named revision from a disposable scoped device, add an offline edit,
+restart the Hub, and verify convergence before declaring document recovery
+usable. Presence is intentionally absent after restart.
+
 ## Revocation and recovery
 
 Set `CONSTELLATION_HUB_WORKSPACE_ID` and `CONSTELLATION_HUB_DEVICE_ID`, then run
@@ -110,6 +120,9 @@ projection purge. The portable encrypted backup remains a separate recovery
 path; revocation never silently rewrites it.
 
 If PostgreSQL is unavailable, desktops continue to queue permitted local work.
+An already open native document continues in encrypted local state and queues
+bounded updates. After PostgreSQL and the Hub return, the desktop mints a fresh
+short-lived room session and converges; do not copy its active SQLite file.
 If attachment storage is unavailable, record synchronization remains separate;
 the failed transfer resumes from its confirmed byte offset. Digest mismatch
 quarantines the staging upload instead of publishing corrupt content.

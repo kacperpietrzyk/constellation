@@ -7,6 +7,7 @@ import {
   CommandIdSchema,
   CorrelationIdSchema,
   DeviceIdSchema,
+  DocumentIdSchema,
   PrincipalIdSchema,
   MembershipIdSchema,
   ProjectIdSchema,
@@ -159,6 +160,17 @@ export const ProjectCreateCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 
+export const DocumentCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("document.create"),
+  payload: z
+    .object({
+      documentId: DocumentIdSchema,
+      spaceId: SpaceIdSchema,
+      title: z.string().trim().min(1).max(500),
+    })
+    .strict(),
+}).strict();
+
 export const ProjectUpdateOutcomeCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("project.updateOutcome"),
   payload: z
@@ -288,6 +300,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   CaptureSubmitTextCommandSchema,
   CaptureRouteAsTaskCommandSchema,
   ProjectCreateCommandSchema,
+  DocumentCreateCommandSchema,
   ProjectUpdateOutcomeCommandSchema,
   TaskSetStatusCommandSchema,
   TaskCompleteCommandSchema,

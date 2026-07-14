@@ -38,6 +38,12 @@ export type TaskId = z.infer<typeof TaskIdSchema>;
 export const ProjectIdSchema = opaqueId<"ProjectId">();
 export type ProjectId = z.infer<typeof ProjectIdSchema>;
 
+export const DocumentIdSchema = opaqueId<"DocumentId">();
+export type DocumentId = z.infer<typeof DocumentIdSchema>;
+
+export const DocumentRevisionIdSchema = opaqueId<"DocumentRevisionId">();
+export type DocumentRevisionId = z.infer<typeof DocumentRevisionIdSchema>;
+
 export const RelationIdSchema = opaqueId<"RelationId">();
 export type RelationId = z.infer<typeof RelationIdSchema>;
 

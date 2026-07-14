@@ -5,6 +5,7 @@ import {
   CaptureIdSchema,
   CommandIdSchema,
   CorrelationIdSchema,
+  DocumentIdSchema,
   MembershipIdSchema,
   ProjectIdSchema,
   RelationIdSchema,
@@ -28,6 +29,7 @@ export const DiagnosticCodeSchema = z.enum([
   "capture.stored",
   "capture.routed_as_task",
   "project.created",
+  "document.created",
   "project.outcome_updated",
   "task.status_changed",
   "task.completed",
@@ -73,6 +75,7 @@ export const RecordKindSchema = z.enum([
   "attentionSignal",
   "taskStatus",
   "project",
+  "document",
   "relation",
 ]);
 export type RecordKind = z.infer<typeof RecordKindSchema>;
@@ -174,6 +177,15 @@ const ProjectProjectionFields = {
 
 export const ProjectCreatedProjectionSchema = z
   .object({ kind: z.literal("project.created"), ...ProjectProjectionFields })
+  .strict();
+
+export const DocumentCreatedProjectionSchema = z
+  .object({
+    kind: z.literal("document.created"),
+    documentId: DocumentIdSchema,
+    title: z.string(),
+    version: z.int().positive(),
+  })
   .strict();
 export const ProjectOutcomeUpdatedProjectionSchema = z
   .object({
@@ -301,6 +313,7 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   CaptureStoredProjectionSchema,
   CaptureRoutedAsTaskProjectionSchema,
   ProjectCreatedProjectionSchema,
+  DocumentCreatedProjectionSchema,
   ProjectOutcomeUpdatedProjectionSchema,
   TaskStatusChangedProjectionSchema,
   TaskCompletedProjectionSchema,
@@ -387,6 +400,12 @@ const ProjectCreatedSuccessOutcomeSchema =
     outcome: z.literal("success"),
     diagnosticCode: z.literal("project.created"),
     projection: ProjectCreatedProjectionSchema,
+  }).strict();
+const DocumentCreatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("document.created"),
+    projection: DocumentCreatedProjectionSchema,
   }).strict();
 const ProjectOutcomeUpdatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
@@ -488,6 +507,7 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   CaptureStoredSuccessOutcomeSchema,
   CaptureRoutedAsTaskSuccessOutcomeSchema,
   ProjectCreatedSuccessOutcomeSchema,
+  DocumentCreatedSuccessOutcomeSchema,
   ProjectOutcomeUpdatedSuccessOutcomeSchema,
   TaskStatusChangedSuccessOutcomeSchema,
   TaskCompletedSuccessOutcomeSchema,

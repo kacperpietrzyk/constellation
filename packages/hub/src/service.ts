@@ -35,6 +35,10 @@ import {
   type HubSyncResult,
   type HubWorkspaceSnapshot,
   type WorkspaceId,
+  type DocumentId,
+  type DeviceId,
+  type PrincipalId,
+  type SpaceId,
 } from "@constellation/contracts";
 
 import type { HubRepository, HubStoredReceipt } from "./repository.js";
@@ -234,6 +238,72 @@ export class HubService {
       deviceId: input.deviceId,
       deviceCredential,
       checkpoint,
+    });
+  }
+
+  public async authorizeDocument(input: {
+    readonly credential: string;
+    readonly workspaceId: WorkspaceId;
+    readonly deviceId: DeviceId;
+    readonly documentId: DocumentId;
+  }): Promise<
+    | {
+        readonly outcome: "success";
+        readonly principalId: PrincipalId;
+        readonly spaceId: SpaceId;
+        readonly access: "view" | "comment" | "edit";
+      }
+    | { readonly outcome: "rejected" }
+  > {
+    const authentication = await this.repository.authenticate({
+      workspaceId: input.workspaceId,
+      deviceId: input.deviceId,
+      credentialDigest: digest(input.credential),
+    });
+    if (authentication.outcome === "rejected") return { outcome: "rejected" };
+    return this.repository.withWorkspaceLock(input.workspaceId, (state) => {
+      const authorization = authorizationForSnapshot(
+        state.snapshot,
+        input.workspaceId,
+        authentication.device.authorization,
+      );
+      if (authorization === undefined) return { outcome: "rejected" } as const;
+      const snapshot = fromHubSnapshot(state.snapshot, input.workspaceId);
+      const document = (snapshot.documents ?? []).find(
+        (candidate) => candidate.id === input.documentId,
+      );
+      if (
+        document === undefined ||
+        !authorization.spaceScope.includes(document.spaceId)
+      ) {
+        return { outcome: "rejected" } as const;
+      }
+      const membership = snapshot.memberships.find(
+        (candidate) => candidate.principalId === authorization.principalId,
+      );
+      if (membership === undefined || membership.status === "revoked") {
+        return { outcome: "rejected" } as const;
+      }
+      const workspace = snapshot.workspaces[0];
+      const grant = (snapshot.spaceGrants ?? []).find(
+        (candidate) =>
+          candidate.principalId === authorization.principalId &&
+          candidate.spaceId === document.spaceId &&
+          candidate.status === "active",
+      );
+      const access =
+        membership.role === "owner" &&
+        workspace?.rootSpaceId === document.spaceId
+          ? "edit"
+          : grant?.access;
+      return access === undefined
+        ? ({ outcome: "rejected" } as const)
+        : {
+            outcome: "success" as const,
+            principalId: authorization.principalId,
+            spaceId: document.spaceId,
+            access,
+          };
     });
   }
 

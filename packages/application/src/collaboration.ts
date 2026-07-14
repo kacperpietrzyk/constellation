@@ -543,6 +543,7 @@ export const executeCollaborationQuery = (
     kind:
       | "task"
       | "project"
+      | "document"
       | "capture"
       | "task_assignment"
       | "comment"
@@ -598,6 +599,13 @@ export const executeCollaborationQuery = (
       })),
     );
     records.push(
+      ...view.listDocuments(workspace.id, space.id).map((record) => ({
+        kind: "document" as const,
+        id: record.id,
+        spaceId: record.spaceId,
+      })),
+    );
+    records.push(
       ...(
         view.listCaptures({
           workspaceId: workspace.id,
@@ -623,6 +631,7 @@ export const executeCollaborationQuery = (
     counts: {
       tasks: records.filter((item) => item.kind === "task").length,
       projects: records.filter((item) => item.kind === "project").length,
+      documents: records.filter((item) => item.kind === "document").length,
       captures: records.filter((item) => item.kind === "capture").length,
       taskAssignments: records.filter((item) => item.kind === "task_assignment")
         .length,

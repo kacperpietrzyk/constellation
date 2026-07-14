@@ -13,6 +13,7 @@ import type {
   AuditReceiptId,
   CaptureId,
   CommandEnvelope,
+  DocumentId,
   PrincipalId,
   ProjectId,
   RelationId,
@@ -42,6 +43,7 @@ import type {
   UndoDescriptor,
   RecordComment,
   AttentionSignal,
+  NativeDocument,
 } from "@constellation/domain";
 
 export type FailureBoundary =
@@ -65,6 +67,7 @@ export type FailureBoundary =
   | "task-update"
   | "project"
   | "project-update"
+  | "document"
   | "relation"
   | "relation-update"
   | "undo"
@@ -106,6 +109,7 @@ interface MutableState {
   readonly captures: Map<CaptureId, Capture>;
   readonly tasks: Map<TaskId, Task>;
   readonly projects: Map<ProjectId, Project>;
+  readonly documents: Map<DocumentId, NativeDocument>;
   readonly relations: Map<RelationId, TaskProjectRelation>;
   readonly undoDescriptors: Map<string, UndoDescriptor>;
   readonly events: Map<string, DomainEvent>;
@@ -127,6 +131,7 @@ const emptyState = (): MutableState => ({
   captures: new Map(),
   tasks: new Map(),
   projects: new Map(),
+  documents: new Map(),
   relations: new Map(),
   undoDescriptors: new Map(),
   events: new Map(),
@@ -148,6 +153,7 @@ const cloneState = (state: MutableState): MutableState => ({
   captures: new Map(state.captures),
   tasks: new Map(state.tasks),
   projects: new Map(state.projects),
+  documents: new Map(state.documents),
   relations: new Map(state.relations),
   undoDescriptors: new Map(state.undoDescriptors),
   events: new Map(state.events),
@@ -399,6 +405,26 @@ class ReadView implements ApplicationReadView {
       .filter(
         (project) =>
           project.workspaceId === workspaceId && project.spaceId === spaceId,
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          right.id.localeCompare(left.id),
+      );
+  }
+
+  public getDocument(id: DocumentId): NativeDocument | undefined {
+    return this.state.documents.get(id);
+  }
+
+  public listDocuments(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly NativeDocument[] {
+    return [...this.state.documents.values()]
+      .filter(
+        (document) =>
+          document.workspaceId === workspaceId && document.spaceId === spaceId,
       )
       .sort(
         (left, right) =>
@@ -700,6 +726,14 @@ class Transaction extends ReadView implements ApplicationTransaction {
     return true;
   }
 
+  public insertDocument(document: NativeDocument): void {
+    if (this.state.documents.has(document.id)) {
+      throw new Error(`Duplicate document ID: ${document.id}`);
+    }
+    this.state.documents.set(document.id, document);
+    this.failures.reached("document");
+  }
+
   public insertRelation(relation: TaskProjectRelation): void {
     if (this.state.relations.has(relation.id))
       throw new Error(`Duplicate relation ID: ${relation.id}`);
@@ -804,6 +838,9 @@ const stateFromSnapshot = (snapshot: ReferenceStateSnapshot): MutableState => ({
   captures: new Map(snapshot.captures.map((value) => [value.id, value])),
   tasks: new Map(snapshot.tasks.map((value) => [value.id, value])),
   projects: new Map(snapshot.projects.map((value) => [value.id, value])),
+  documents: new Map(
+    (snapshot.documents ?? []).map((value) => [value.id, value]),
+  ),
   relations: new Map(snapshot.relations.map((value) => [value.id, value])),
   undoDescriptors: new Map(
     snapshot.undoDescriptors.map((value) => [value.targetCommandId, value]),
@@ -865,6 +902,7 @@ export class InMemoryReferenceStore implements ApplicationStore {
       captures: [...this.state.captures.values()],
       tasks: [...this.state.tasks.values()],
       projects: [...this.state.projects.values()],
+      documents: [...this.state.documents.values()],
       relations: [...this.state.relations.values()],
       undoDescriptors: [...this.state.undoDescriptors.values()],
       events: [...this.state.events.values()],
