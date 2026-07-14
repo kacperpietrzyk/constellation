@@ -1,0 +1,18 @@
+{
+  "name": "@constellation/desktop-main",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Secure Electron lifecycle and Application Kernel transport.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/src/main.js",
+  "dependencies": {
+    "@constellation/application": "0.0.0",
+    "@constellation/contracts": "0.0.0",
+    "@constellation/desktop-preload": "0.0.0",
+    "@constellation/local-store": "0.0.0",
+    "@constellation/testkit": "0.0.0",
+    "better-sqlite3": "12.11.1",
+    "electron": "43.1.0"
+  }
+}

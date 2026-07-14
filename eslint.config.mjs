@@ -10,6 +10,7 @@ export default tseslint.config(
       "docs/specs/**",
       "node_modules/**",
       "**/dist/**",
+      "**/build/**",
       "coverage/**",
       "plans/**",
       "specs/**",
@@ -17,7 +18,7 @@ export default tseslint.config(
   },
   ...tseslint.configs.recommended,
   {
-    files: ["packages/**/*.ts"],
+    files: ["packages/**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/consistent-type-imports": [
         "error",

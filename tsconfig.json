@@ -4,6 +4,10 @@
     { "path": "./packages/contracts" },
     { "path": "./packages/domain" },
     { "path": "./packages/application" },
-    { "path": "./packages/testkit" }
+    { "path": "./packages/testkit" },
+    { "path": "./packages/local-store" },
+    { "path": "./packages/desktop-preload" },
+    { "path": "./packages/desktop-main" },
+    { "path": "./packages/desktop-ui" }
   ]
 }

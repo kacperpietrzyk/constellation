@@ -1,0 +1,129 @@
+name: Local Alpha packaged application
+
+on:
+  pull_request:
+    paths:
+      - .nvmrc
+      - .github/workflows/local-alpha-packaged.yml
+      - package.json
+      - package-lock.json
+      - packages/application/**
+      - packages/contracts/**
+      - packages/desktop-main/**
+      - packages/desktop-preload/**
+      - packages/desktop-ui/**
+      - packages/domain/**
+      - packages/local-store/**
+      - scripts/package-alpha.mjs
+      - scripts/run-packaged-alpha-smoke.mjs
+      - scripts/desktop/**
+      - scripts/native/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  amalgamation:
+    name: Generate pinned SQLCipher source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install source-generation prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libssl-dev tcl-dev
+
+      - name: Generate and identify the amalgamation
+        run: bash scripts/native/generate-sqlcipher-amalgamation.sh "$RUNNER_TEMP/sqlcipher-amalgamation"
+
+      - name: Upload the licensed source artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: local-alpha-sqlcipher-4.16.0-amalgamation
+          path: ${{ runner.temp }}/sqlcipher-amalgamation
+          if-no-files-found: error
+          retention-days: 1
+
+  packaged:
+    name: Packaged local Alpha (${{ matrix.label }})
+    needs: amalgamation
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS x64
+            os: macos-15-intel
+            architecture: x64
+            timeout: 35
+          - label: macOS arm64
+            os: macos-15
+            architecture: arm64
+            timeout: 35
+          - label: Windows x64
+            os: windows-2022
+            architecture: x64
+            timeout: 55
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Download SQLCipher source
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: local-alpha-sqlcipher-4.16.0-amalgamation
+          path: ${{ runner.temp }}/sqlcipher-amalgamation
+
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Build the native macOS Electron binding
+        if: runner.os == 'macOS'
+        env:
+          CONSTELLATION_ALPHA_ARCH: ${{ matrix.architecture }}
+        run: bash scripts/native/build-sqlcipher-macos.sh "$RUNNER_TEMP/sqlcipher-amalgamation" "$PWD"
+
+      - name: Build OpenSSL and the Windows x64 Electron binding
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/native/build-sqlcipher-windows.ps1 -Amalgamation "$env:RUNNER_TEMP\sqlcipher-amalgamation" -TargetRoot (Resolve-Path ".").Path
+
+      - name: Package the real local Alpha application
+        env:
+          CONSTELLATION_ALPHA_ARCH: ${{ matrix.architecture }}
+        run: npm run package:alpha
+
+      - name: Prepare a disposable macOS Keychain
+        if: runner.os == 'macOS'
+        run: node scripts/desktop/prepare-ci-macos-keychain.mjs
+
+      - name: Verify encrypted Capture to Task across relaunch
+        run: npm run test:alpha:packaged
+
+      - name: Restore the macOS Keychain configuration
+        if: always() && runner.os == 'macOS'
+        run: node scripts/desktop/restore-ci-macos-keychain.mjs
+
+      - name: Audit the locked dependency graph
+        run: npm run audit:dependencies

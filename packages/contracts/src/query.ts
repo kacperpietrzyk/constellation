@@ -7,6 +7,7 @@ import {
   CorrelationIdSchema,
   GrantIdSchema,
   PrincipalIdSchema,
+  ProjectIdSchema,
   QueryIdSchema,
   SpaceIdSchema,
   TaskIdSchema,
@@ -61,10 +62,69 @@ export const TaskListQuerySchema = QueryMetadataSchema.extend({
     .strict(),
 }).strict();
 
+export const ProjectListQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("project.list"),
+  parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
+}).strict();
+
+export const ProjectOperationalOverviewQuerySchema = QueryMetadataSchema.extend(
+  {
+    queryName: z.literal("project.operationalOverview"),
+    parameters: z.object({ projectId: ProjectIdSchema }).strict(),
+  },
+).strict();
+
+export const GlobalSearchQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("search.global"),
+  parameters: z
+    .object({
+      spaceIds: z.array(SpaceIdSchema).min(1).max(50),
+      text: z.string().trim().min(1).max(500),
+      kinds: z
+        .array(z.enum(["task", "project", "capture"]))
+        .min(1)
+        .optional(),
+      limit: z.int().min(1).max(100).optional(),
+    })
+    .strict(),
+}).strict();
+
+export const CockpitWeekQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("cockpit.week"),
+  parameters: z
+    .object({
+      spaceId: SpaceIdSchema,
+      weekStart: z.iso.date(),
+      limit: z.int().min(1).max(100).optional(),
+    })
+    .strict(),
+}).strict();
+
+export const MeaningfulActivityQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("activity.meaningful"),
+  parameters: z
+    .object({
+      spaceId: SpaceIdSchema,
+      limit: z.int().min(1).max(200).optional(),
+    })
+    .strict(),
+}).strict();
+
+export const RecoveryPreviewQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("recovery.preview"),
+  parameters: z.object({ targetCommandId: CommandIdSchema }).strict(),
+}).strict();
+
 export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   WorkspaceBootstrapContextQuerySchema,
   CaptureHistoryQuerySchema,
   TaskListQuerySchema,
+  ProjectListQuerySchema,
+  ProjectOperationalOverviewQuerySchema,
+  GlobalSearchQuerySchema,
+  CockpitWeekQuerySchema,
+  MeaningfulActivityQuerySchema,
+  RecoveryPreviewQuerySchema,
   AuditReceiptQuerySchema,
 ]);
 export type QueryEnvelope = z.infer<typeof QueryEnvelopeSchema>;
@@ -157,6 +217,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
                 operationalSemantics: z.literal("actionable"),
               })
               .strict(),
+            completionState: z.enum(["open", "completed"]),
+            completedAt: z.iso.datetime({ offset: true }).optional(),
             sourceCaptureId: CaptureIdSchema.optional(),
             createdAt: z.iso.datetime({ offset: true }),
             updatedAt: z.iso.datetime({ offset: true }),
@@ -165,6 +227,160 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           .strict(),
       ),
       nextCursor: z.string().nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("project.list"),
+      items: z.array(
+        z
+          .object({
+            id: ProjectIdSchema,
+            spaceId: SpaceIdSchema,
+            title: z.string(),
+            intendedOutcome: z.string(),
+            lifecycle: z.literal("active"),
+            relatedOpenTaskCount: z.int().nonnegative(),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("project.operationalOverview"),
+      project: z
+        .object({
+          id: ProjectIdSchema,
+          spaceId: SpaceIdSchema,
+          title: z.string(),
+          intendedOutcome: z.string(),
+          lifecycle: z.literal("active"),
+          version: z.int().positive(),
+          updatedAt: z.iso.datetime({ offset: true }),
+        })
+        .strict(),
+      relatedTasks: z.array(
+        z
+          .object({
+            id: TaskIdSchema,
+            title: z.string(),
+            completionState: z.enum(["open", "completed"]),
+            version: z.int().positive(),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("search.global"),
+      normalizedQuery: z.string(),
+      items: z.array(
+        z
+          .object({
+            recordKind: z.enum(["task", "project", "capture"]),
+            recordId: z.uuid(),
+            spaceId: SpaceIdSchema,
+            title: z.string(),
+            snippet: z.string(),
+            matchedFields: z.array(
+              z.enum(["title", "intendedOutcome", "originalText"]),
+            ),
+            score: z.int().nonnegative(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("cockpit.week"),
+      weekStart: z.iso.date(),
+      weekEnd: z.iso.date(),
+      focus: z.array(
+        z
+          .object({
+            taskId: TaskIdSchema,
+            title: z.string(),
+            score: z.int().nonnegative(),
+            reasons: z.array(
+              z.discriminatedUnion("code", [
+                z
+                  .object({
+                    code: z.literal("task_open"),
+                    weight: z.literal(100),
+                  })
+                  .strict(),
+                z
+                  .object({
+                    code: z.literal("created_this_week"),
+                    weight: z.literal(20),
+                  })
+                  .strict(),
+                z
+                  .object({
+                    code: z.literal("active_project"),
+                    weight: z.literal(10),
+                    projectId: ProjectIdSchema,
+                    projectTitle: z.string(),
+                  })
+                  .strict(),
+              ]),
+            ),
+            relatedProjectId: ProjectIdSchema.optional(),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("activity.meaningful"),
+      items: z.array(
+        z
+          .object({
+            eventId: z.uuid(),
+            targetCommandId: CommandIdSchema,
+            activityType: z.enum([
+              "capture_routed",
+              "project_created",
+              "project_outcome_changed",
+              "task_completed",
+              "task_reopened",
+              "relation_added",
+              "relation_removed",
+              "command_undone",
+            ]),
+            recordId: z.uuid(),
+            occurredAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("recovery.preview"),
+      targetCommandId: CommandIdSchema,
+      available: z.boolean(),
+      compensationKind: z
+        .enum([
+          "project.restore_outcome",
+          "task.restore_state",
+          "relation.remove",
+          "relation.restore",
+          "capture.undo_route",
+        ])
+        .optional(),
+      affectedRecordIds: z.array(z.uuid()),
+      requiredVersions: z.record(z.uuid(), z.int().positive()),
+      unavailableReason: z
+        .enum(["unsupported", "already_undone", "later_change"])
+        .optional(),
     })
     .strict(),
   z

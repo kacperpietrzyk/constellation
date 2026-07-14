@@ -51,18 +51,30 @@ already solve well:
 
 ## Project status
 
-Constellation is in **pre-alpha foundation work**. There is no installable
-release yet, and no contract should be considered stable. The repository now
-contains the first storage-neutral reference kernel: strict runtime contracts,
-workspace/Space bootstrap, text capture, capture history, audit receipts,
-capture-to-Task routing, a minimal versioned Task status, Task listing,
-idempotency, expected-version conflicts, and atomic failure-injection tests. The
-reference adapter preserves the original Capture while creating one canonical
-standalone Task. Encrypted persistence, automatic routing rules, Electron
-integration, MCP transport, and product UI are not implemented yet.
+Constellation is in **pre-alpha local Alpha work**. There is no distributed
+installer yet, and no contract should be considered stable. The repository now
+contains a storage-neutral Application Kernel, a restart-safe encrypted local
+store, an in-memory Electron developer preview, and a packaged Alpha candidate.
+The implemented desktop journey covers Quick Capture to Task, Project outcome
+and Task relations, task status/completion, deterministic scoped search,
+explainable weekly focus, Capture History, meaningful activity, and previewed
+undo. The production runtime keeps generated workspace identity and key custody
+in the operating-system credential store, has no plaintext or in-memory
+fallback, and stops in recovery instead of silently replacing a missing ready
+database.
+
+The packaged gate builds the pinned SQLCipher binding as the only unpacked
+native module and drives the real window, context-isolated preload, IPC,
+Capture-to-Task interaction, and encrypted relaunch on native macOS arm64,
+native macOS x64, and Windows x64 runners. No macOS result depends on Rosetta.
+The resulting ad-hoc macOS and unsigned Windows application folders are
+verification artifacts, not a signed/notarized release. MCP transport,
+installers, updater, synchronized Data Homes, and automatic routing rules beyond
+the explicit Capture action remain later work.
 
 The current kernel boundary and implemented subset are documented in
-[Application kernel](docs/architecture/application-kernel.md).
+[Application kernel](docs/architecture/application-kernel.md) and
+[Local store](docs/architecture/local-store.md).
 
 ## Development
 
@@ -78,6 +90,18 @@ npm run check
 Markdown, and the contract/conformance tests. The same command runs in CI on
 Linux, macOS, and Windows. CI additionally runs `npm run audit:dependencies`
 against the complete locked runtime and development dependency graph.
+
+To launch the interactive in-memory preview, install the pinned Electron binary
+and start the desktop development surface:
+
+```sh
+npm install
+npm run dev:desktop
+```
+
+Use the Quick Capture button or `Command/Ctrl+Shift+K`. The preview is
+development infrastructure, not a durable local Alpha; closing it clears its
+synthetic workspace.
 
 Questions and early product discussion belong in
 [GitHub Discussions](https://github.com/kacperpietrzyk/constellation/discussions).

@@ -1,0 +1,20 @@
+{
+  "name": "@constellation/local-store",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Production local persistence boundary for Constellation workspaces.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "types": "./dist/src/index.d.ts",
+  "dependencies": {
+    "@constellation/application": "0.0.0",
+    "@constellation/contracts": "0.0.0",
+    "@constellation/domain": "0.0.0"
+  }
+}

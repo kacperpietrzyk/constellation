@@ -8,6 +8,8 @@ import type {
   MembershipId,
   OutboxEntryId,
   PrincipalId,
+  ProjectId,
+  RelationId,
   SpaceId,
   TaskId,
   TaskStatusId,
@@ -19,15 +21,20 @@ import type {
   DomainEvent,
   OutboxEntry,
   Space,
+  Project,
   Task,
+  TaskProjectRelation,
   TaskStatusDefinition,
   Workspace,
   WorkspaceMembership,
+  UndoDescriptor,
 } from "@constellation/domain";
 
 export type GeneratedIdKind =
   | "capture"
   | "task"
+  | "project"
+  | "relation"
   | "taskStatus"
   | "membership"
   | "event"
@@ -121,6 +128,27 @@ export interface ApplicationReadView {
   getIdempotency(scope: string): IdempotencyRecord | undefined;
 }
 
+export interface ApplicationWave2ReadView extends ApplicationReadView {
+  listTasksInSpace(workspaceId: WorkspaceId, spaceId: SpaceId): readonly Task[];
+  getProject(id: ProjectId): Project | undefined;
+  listProjects(workspaceId: WorkspaceId, spaceId: SpaceId): readonly Project[];
+  getRelation(id: RelationId): TaskProjectRelation | undefined;
+  findTaskProjectRelation(
+    taskId: TaskId,
+    projectId: ProjectId,
+  ): TaskProjectRelation | undefined;
+  listRelations(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly TaskProjectRelation[];
+  listEvents(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly DomainEvent[];
+  getAuditReceiptByCommand(commandId: string): AuditReceipt | undefined;
+  getUndoDescriptor(commandId: string): UndoDescriptor | undefined;
+}
+
 export interface ApplicationTransaction extends ApplicationReadView {
   insertWorkspace(workspace: Workspace): void;
   updateWorkspace(workspace: Workspace, expectedVersion: number): boolean;
@@ -135,6 +163,45 @@ export interface ApplicationTransaction extends ApplicationReadView {
   insertIdempotency(record: IdempotencyRecord): void;
   insertOutbox(entry: OutboxEntry): void;
 }
+
+export interface ApplicationWave2Transaction
+  extends ApplicationTransaction, ApplicationWave2ReadView {
+  updateTask(task: Task, expectedVersion: number): boolean;
+  insertProject(project: Project): void;
+  updateProject(project: Project, expectedVersion: number): boolean;
+  insertRelation(relation: TaskProjectRelation): void;
+  updateRelation(
+    relation: TaskProjectRelation,
+    expectedVersion: number,
+  ): boolean;
+  insertUndoDescriptor(descriptor: UndoDescriptor): void;
+  updateUndoDescriptor(descriptor: UndoDescriptor): void;
+}
+
+export const isApplicationWave2ReadView = (
+  view: ApplicationReadView,
+): view is ApplicationWave2ReadView =>
+  "listTasksInSpace" in view &&
+  "getProject" in view &&
+  "listProjects" in view &&
+  "getRelation" in view &&
+  "findTaskProjectRelation" in view &&
+  "listRelations" in view &&
+  "listEvents" in view &&
+  "getAuditReceiptByCommand" in view &&
+  "getUndoDescriptor" in view;
+
+export const isApplicationWave2Transaction = (
+  transaction: ApplicationTransaction,
+): transaction is ApplicationWave2Transaction =>
+  isApplicationWave2ReadView(transaction) &&
+  "updateTask" in transaction &&
+  "insertProject" in transaction &&
+  "updateProject" in transaction &&
+  "insertRelation" in transaction &&
+  "updateRelation" in transaction &&
+  "insertUndoDescriptor" in transaction &&
+  "updateUndoDescriptor" in transaction;
 
 export interface ApplicationStore {
   read<Result>(read: (view: ApplicationReadView) => Result): Result;
@@ -166,6 +233,9 @@ export interface ReferenceStateSnapshot {
   readonly captures: readonly Capture[];
   readonly taskStatuses: readonly TaskStatusDefinition[];
   readonly tasks: readonly Task[];
+  readonly projects: readonly Project[];
+  readonly relations: readonly TaskProjectRelation[];
+  readonly undoDescriptors: readonly UndoDescriptor[];
   readonly events: readonly DomainEvent[];
   readonly auditReceipts: readonly AuditReceipt[];
   readonly idempotencyRecords: readonly IdempotencyRecord[];

@@ -31,6 +31,7 @@ import {
 } from "@constellation/domain";
 
 import {
+  isApplicationWave2Transaction,
   RetryableUnitOfWorkError,
   type ApplicationKernelDependencies,
   type ApplicationReadView,
@@ -40,6 +41,13 @@ import {
   type StoreFreshness,
   type TaskPaginationCursor,
 } from "./ports.js";
+import {
+  executeWave2Command,
+  executeWave2Query,
+  isWave2CommandAuthorized,
+  type Wave2Command,
+  type Wave2Query,
+} from "./wave2.js";
 
 export interface ContractBoundaryRejection {
   readonly kind: "contract_rejected";
@@ -184,6 +192,21 @@ const isCurrentlyAuthorized = (
         canUseSpace(context, command.workspaceId, capture.spaceId)
       );
     }
+    case "project.create":
+    case "project.updateOutcome":
+    case "task.setStatus":
+    case "task.complete":
+    case "task.reopen":
+    case "record.relate":
+    case "record.unrelate":
+    case "command.previewUndo":
+    case "command.undo":
+      return isWave2CommandAuthorized(
+        { authorization },
+        view,
+        context,
+        command,
+      );
   }
 };
 
@@ -336,6 +359,23 @@ export class ApplicationKernel {
           fingerprint,
           occurredAt,
         );
+      case "project.create":
+      case "project.updateOutcome":
+      case "task.setStatus":
+      case "task.complete":
+      case "task.reopen":
+      case "record.relate":
+      case "record.unrelate":
+      case "command.previewUndo":
+      case "command.undo":
+        return executeWave2Command(
+          this.dependencies,
+          transaction,
+          context,
+          command as Wave2Command,
+          { scope, fingerprint },
+          occurredAt,
+        );
     }
   }
 
@@ -390,6 +430,7 @@ export class ApplicationKernel {
     });
     const event: DomainEvent = {
       id: eventId,
+      commandId: command.commandId,
       type: "workspace.created",
       workspaceId: created.workspace.id,
       spaceId: created.rootSpace.id,
@@ -535,6 +576,7 @@ export class ApplicationKernel {
     );
     const event: DomainEvent = {
       id: eventId,
+      commandId: command.commandId,
       type: "workspace.renamed",
       workspaceId: workspace.id,
       spaceId: workspace.rootSpaceId,
@@ -651,6 +693,7 @@ export class ApplicationKernel {
     });
     const event: DomainEvent = {
       id: eventId,
+      commandId: command.commandId,
       type: "capture.submitted",
       workspaceId: capture.workspaceId,
       spaceId: capture.spaceId,
@@ -782,6 +825,7 @@ export class ApplicationKernel {
     });
     const event: DomainEvent = {
       id: eventId,
+      commandId: command.commandId,
       type: "capture.routed_as_task",
       workspaceId: capture.workspaceId,
       spaceId: capture.spaceId,
@@ -860,6 +904,18 @@ export class ApplicationKernel {
     transaction.insertAuditReceipt(audit);
     transaction.insertIdempotency({ scope, fingerprint, outcome });
     transaction.insertOutbox(outbox);
+    if (isApplicationWave2Transaction(transaction)) {
+      transaction.insertUndoDescriptor({
+        targetCommandId: command.commandId,
+        workspaceId: capture.workspaceId,
+        spaceId: capture.spaceId,
+        kind: "capture.undo_route",
+        captureId: routed.capture.id,
+        taskId: routed.task.id,
+        resultingCaptureVersion: routed.capture.version,
+        resultingTaskVersion: routed.task.version,
+      });
+    }
     return outcome;
   }
 
@@ -899,6 +955,19 @@ export class ApplicationKernel {
             query,
             kernelTime,
             freshness,
+          );
+        case "project.list":
+        case "project.operationalOverview":
+        case "search.global":
+        case "cockpit.week":
+        case "activity.meaningful":
+        case "recovery.preview":
+          return executeWave2Query(
+            this.dependencies,
+            view,
+            context,
+            query as Wave2Query,
+            kernelTime,
           );
       }
     });
@@ -1151,6 +1220,10 @@ export class ApplicationKernel {
               label: status.label,
               operationalSemantics: status.operationalSemantics,
             },
+            completionState: task.completionState,
+            ...(task.completedAt === undefined
+              ? {}
+              : { completedAt: task.completedAt }),
             ...(task.sourceCaptureId === undefined
               ? {}
               : { sourceCaptureId: task.sourceCaptureId }),

@@ -1,4 +1,6 @@
 export * from "./capture.js";
 export * from "./model.js";
+export * from "./project.js";
 export * from "./task.js";
+export * from "./work.js";
 export * from "./workspace.js";
