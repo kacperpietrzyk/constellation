@@ -106,7 +106,7 @@ test("local MCP keeps Unix socket endpoints below the portable platform limit", 
   const shortRoot = "/tmp/constellation-profile";
   assert.equal(
     localMcpEndpoint(shortRoot, ownerContext.workspaceId, "darwin"),
-    path.join(shortRoot, "mcp", "application.sock"),
+    path.posix.join(shortRoot, "mcp", "application.sock"),
   );
   const longEndpoint = localMcpEndpoint(
     `/Users/runner/work/${"constellation/".repeat(8)}user-data`,

@@ -44,7 +44,7 @@ export const localMcpEndpoint = (
 ): string => {
   if (platform === "win32")
     return `\\\\.\\pipe\\constellation-mcp-${workspaceId}`;
-  const localEndpoint = path.join(stateRoot, "mcp", "application.sock");
+  const localEndpoint = path.posix.join(stateRoot, "mcp", "application.sock");
   if (Buffer.byteLength(localEndpoint) <= MAX_PORTABLE_UNIX_SOCKET_BYTES)
     return localEndpoint;
   const identity = createHash("sha256")
@@ -52,7 +52,7 @@ export const localMcpEndpoint = (
     .digest("hex")
     .slice(0, 24);
   const user = process.getuid?.() ?? "portable";
-  return path.join("/tmp", `constellation-mcp-${user}-${identity}.sock`);
+  return path.posix.join("/tmp", `constellation-mcp-${user}-${identity}.sock`);
 };
 
 const serializeResponse = (response: McpOperatorResponse): string => {
