@@ -76,6 +76,10 @@ The current kernel boundary and implemented subset are documented in
 [Application kernel](docs/architecture/application-kernel.md) and
 [Local store](docs/architecture/local-store.md).
 
+The [public roadmap](ROADMAP.md) describes the intended product direction and
+the order in which the major outcomes build on one another. It is directional,
+not a release-date commitment.
+
 ## Development
 
 Use the Node.js version in [`.nvmrc`](.nvmrc), then install the pinned dependency
