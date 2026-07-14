@@ -11,7 +11,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 
-import { recoverInterruptedWorkspaceRestore } from "../src/workspace-recovery-service.js";
+import {
+  createWorkspaceRecoveryService,
+  recoverInterruptedWorkspaceRestore,
+} from "../src/workspace-recovery-service.js";
 
 const restoreId = "00000000-0000-4000-8000-000000000001";
 
@@ -47,6 +50,39 @@ const writeJournal = (
 };
 
 describe("interrupted workspace restore recovery", () => {
+  it("does not disguise an unexpected storage failure as a restore journey", async () => {
+    const stateRoot = mkdtempSync(
+      path.join(tmpdir(), "constellation-restore-startup-"),
+    );
+    try {
+      await assert.rejects(
+        createWorkspaceRecoveryService({
+          appVersion: "test",
+          databaseFactory: {
+            open: () => {
+              throw new Error("native driver exploded");
+            },
+          },
+          safeStorage: {
+            isAsyncEncryptionAvailable: async () => true,
+            encryptStringAsync: async (value) => Buffer.from(value),
+            decryptStringAsync: async (value) => ({
+              result: value.toString("utf8"),
+              shouldReEncrypt: false,
+            }),
+          },
+          selectBackupPath: async () => undefined,
+          selectExportPath: async () => undefined,
+          stateRoot,
+          timezone: "UTC",
+        }),
+        /native driver exploded/,
+      );
+    } finally {
+      rmSync(stateRoot, { recursive: true, force: true });
+    }
+  });
+
   it("restores the retained workspace when interruption happens before activation", () => {
     withStateRoot((stateRoot) => {
       const retained = path.join(

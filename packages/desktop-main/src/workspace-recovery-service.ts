@@ -29,6 +29,7 @@ import {
 
 import {
   createDurableKernelService,
+  DurableWorkspaceOpenError,
   type DurableKernelService,
 } from "./durable-kernel-service.js";
 import {
@@ -618,8 +619,10 @@ export const createWorkspaceRecoveryService = async (input: {
         error.code === "encryption_unavailable"
           ? "secure_storage_unavailable"
           : "protected_key_unavailable";
-    } else {
+    } else if (error instanceof DurableWorkspaceOpenError) {
       recoveryReason = "workspace_unavailable";
+    } else {
+      throw error;
     }
   }
   return new DefaultWorkspaceRecoveryService(
