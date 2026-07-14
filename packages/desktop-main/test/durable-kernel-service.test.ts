@@ -271,6 +271,127 @@ describe("durable desktop kernel lifecycle", () => {
     });
   });
 
+  it("opens and restarts a fresh encrypted profile from a principal-scoped projection", async () => {
+    await withStateRoot(async (ownerRoot) => {
+      const databaseFactory = new SyntheticEncryptedFactory();
+      const safeStorage = new SyntheticSafeStorage();
+      const owner = await createDurableKernelService({
+        databaseFactory,
+        safeStorage,
+        stateRoot: ownerRoot,
+        timezone: "Europe/Warsaw",
+        platform: "darwin",
+      });
+      const memberIdentity = {
+        workspaceId: owner.identity.workspaceId,
+        rootSpaceId: owner.identity.rootSpaceId,
+        principalId: PrincipalIdSchema.parse(crypto.randomUUID()),
+        credentialId: CredentialIdSchema.parse(crypto.randomUUID()),
+        grantId: GrantIdSchema.parse(crypto.randomUUID()),
+      };
+      const membershipId = crypto.randomUUID();
+      const spaceGrantId = crypto.randomUUID();
+      const workspaceVersion = owner.store.snapshot().workspaces[0]?.version;
+      assert.equal(typeof workspaceVersion, "number");
+      const added = owner.service.execute(
+        CommandEnvelopeSchema.parse({
+          contractVersion: 1,
+          commandName: "workspace.memberAdd",
+          commandId: crypto.randomUUID(),
+          workspaceId: owner.identity.workspaceId,
+          idempotencyKey: "scoped-bootstrap-member-add-v1",
+          expectedVersions: {
+            [owner.identity.workspaceId]: workspaceVersion,
+          },
+          correlationId: crypto.randomUUID(),
+          payload: {
+            membershipId,
+            spaceGrantId,
+            principalId: memberIdentity.principalId,
+            displayName: "Scoped member",
+            role: "member",
+            spaceId: owner.identity.rootSpaceId,
+            access: "edit",
+          },
+        }),
+      );
+      assert.equal(added.kind, "command_outcome");
+      if (added.kind !== "command_outcome") assert.fail();
+      assert.equal(added.outcome.outcome, "success");
+      const full = owner.store.snapshot();
+      const scoped = {
+        ...full,
+        memberships: full.memberships.filter(
+          (membership) => membership.principalId === memberIdentity.principalId,
+        ),
+        spaceGrants: (full.spaceGrants ?? []).filter(
+          (grant) => grant.principalId === memberIdentity.principalId,
+        ),
+        auditReceipts: [],
+        events: [],
+        idempotencyRecords: [],
+        outboxEntries: [],
+      };
+      owner.close();
+
+      await withStateRoot(async (memberRoot) => {
+        await assert.rejects(
+          createDurableKernelService({
+            databaseFactory,
+            safeStorage,
+            stateRoot: memberRoot,
+            timezone: "Europe/Warsaw",
+            platform: "darwin",
+            bootstrapProjection: {
+              identity: memberIdentity,
+              snapshot: { ...scoped, memberships: [] },
+            },
+          }),
+          /workspace_open_failed/,
+        );
+        assert.equal(
+          existsSync(
+            path.join(memberRoot, "local-alpha-workspace", "key-wrapper.json"),
+          ),
+          false,
+        );
+        assert.equal(
+          existsSync(
+            path.join(memberRoot, "local-alpha-workspace", "workspace.db"),
+          ),
+          false,
+        );
+        const member = await createDurableKernelService({
+          databaseFactory,
+          safeStorage,
+          stateRoot: memberRoot,
+          timezone: "Europe/Warsaw",
+          platform: "darwin",
+          bootstrapProjection: { identity: memberIdentity, snapshot: scoped },
+        });
+        assert.equal(member.context.principalId, memberIdentity.principalId);
+        assert.deepEqual(member.context.spaceScope, [
+          owner.identity.rootSpaceId,
+        ]);
+        assert.equal(member.store.snapshot().memberships.length, 1);
+        member.close();
+
+        const restarted = await createDurableKernelService({
+          databaseFactory,
+          safeStorage,
+          stateRoot: memberRoot,
+          timezone: "Europe/Warsaw",
+          platform: "darwin",
+        });
+        assert.equal(restarted.context.principalId, memberIdentity.principalId);
+        assert.deepEqual(restarted.context.spaceScope, [
+          owner.identity.rootSpaceId,
+        ]);
+        restarted.close();
+      });
+    });
+  });
+
   it("recovers a prepared identity when database creation was interrupted", async () => {
     await withStateRoot(async (stateRoot) => {
       const safeStorage = new SyntheticSafeStorage();

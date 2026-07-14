@@ -118,6 +118,51 @@ class ServiceTransport implements HubTransport {
 }
 
 describe("coordinated desktop projection", () => {
+  it("purges the local projection when Hub membership is revoked", async () => {
+    const device = createDevice();
+    const initial = toHubSnapshot(device.store.snapshot());
+    device.store.configureCoordination({
+      workspaceId: ids.workspace,
+      providerInstanceId: "constellation.hub:revocation-test",
+      hubOrigin: "https://hub.example.test",
+      checkpoint: "2",
+      snapshotDigest: snapshotDigest(initial),
+      configuredAt: "2026-07-14T12:00:00.000Z",
+    });
+    const transport: HubTransport = {
+      reconcileCommand: () =>
+        Promise.resolve({ outcome: "not_found" as const }),
+      sync: () =>
+        Promise.resolve({
+          outcome: "rejected" as const,
+          code: "membership_revoked" as const,
+          purgeLocalProjection: true,
+        }),
+    };
+    const engine = new CoordinatedSyncEngine({
+      workspaceId: ids.workspace,
+      deviceId: ids.deviceA,
+      credential: "r".repeat(43),
+      store: device.store,
+      transport,
+      now: () => "2026-07-14T12:01:00.000Z",
+    });
+    assert.deepEqual(await engine.syncNow(), {
+      state: "revoked",
+      checkpoint: "2",
+      accepted: 0,
+      conflicts: 0,
+    });
+    assert.equal(device.store.snapshot().workspaces.length, 0);
+    assert.equal(device.store.snapshot().captures.length, 0);
+    assert.equal(device.store.getCoordinationState()?.syncState, "revoked");
+    assert.equal(
+      device.store.getCoordinationState()?.lastErrorCode,
+      "membership_revoked",
+    );
+    device.database.close();
+  });
+
   it("converges two devices and reconciles a response lost after commit", async () => {
     const deviceA = createDevice();
     const deviceB = createDevice();

@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
-import { mkdirSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import type {
@@ -19,7 +19,13 @@ import {
 } from "@constellation/desktop-preload/client";
 import type { DataHomeProvider } from "@constellation/application";
 import {
+  CredentialIdSchema,
+  GrantIdSchema,
   HubEnrollmentResultSchema,
+  HubWorkspaceSnapshotSchema,
+  PrincipalIdSchema,
+  SpaceIdSchema,
+  WorkspaceIdSchema,
   type DeviceId,
 } from "@constellation/contracts";
 import { EncryptedStoreCapabilityError } from "@constellation/local-store";
@@ -31,8 +37,12 @@ import {
   HttpHubTransport,
   coordinatedSnapshotDigest,
   createHubWorkspaceSnapshot,
+  parseHubWorkspaceProjection,
 } from "./coordinated-sync-engine.js";
-import { DurableWorkspaceOpenError } from "./durable-kernel-service.js";
+import {
+  DurableWorkspaceOpenError,
+  type DurableBootstrapProjection,
+} from "./durable-kernel-service.js";
 import { writeHubAuthorizationFile } from "./hub-authorization-export.js";
 import { loadOrCreateDeviceIdentity } from "./device-identity.js";
 import {
@@ -154,6 +164,55 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
   if (smokeRoot !== undefined) {
     mkdirSync(smokeRoot, { recursive: true, mode: 0o700 });
   }
+  let smokeBootstrap: DurableBootstrapProjection | undefined;
+  if (smokeRoot !== undefined) {
+    const bootstrapPath = path.join(smokeRoot, "hub-bootstrap.json");
+    try {
+      const facts = lstatSync(bootstrapPath);
+      if (
+        !facts.isFile() ||
+        facts.isSymbolicLink() ||
+        facts.size > 2 * 1024 * 1024
+      ) {
+        throw new Error("Hub smoke bootstrap must be a bounded regular file.");
+      }
+      const raw = JSON.parse(readFileSync(bootstrapPath, "utf8")) as unknown;
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        throw new Error("Hub smoke bootstrap is invalid.");
+      }
+      const record = raw as Record<string, unknown>;
+      if (Object.keys(record).sort().join(",") !== "identity,snapshot") {
+        throw new Error("Hub smoke bootstrap is invalid.");
+      }
+      const identity = record.identity as Record<string, unknown>;
+      if (
+        typeof identity !== "object" ||
+        identity === null ||
+        Array.isArray(identity) ||
+        Object.keys(identity).sort().join(",") !==
+          "credentialId,grantId,principalId,rootSpaceId,workspaceId"
+      ) {
+        throw new Error("Hub smoke bootstrap identity is invalid.");
+      }
+      const workspaceId = WorkspaceIdSchema.parse(identity.workspaceId);
+      smokeBootstrap = {
+        identity: {
+          workspaceId,
+          rootSpaceId: SpaceIdSchema.parse(identity.rootSpaceId),
+          principalId: PrincipalIdSchema.parse(identity.principalId),
+          credentialId: CredentialIdSchema.parse(identity.credentialId),
+          grantId: GrantIdSchema.parse(identity.grantId),
+        },
+        snapshot: parseHubWorkspaceProjection(
+          HubWorkspaceSnapshotSchema.parse(record.snapshot),
+          workspaceId,
+        ),
+      };
+      rmSync(bootstrapPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
   const smokeFailpoint = process.env.CONSTELLATION_ALPHA_RECOVERY_FAILPOINT;
   if (manualHubSyncForPackagedSmoke && smokeRoot === undefined) {
     throw new Error("Manual Hub sync is restricted to packaged smoke tests.");
@@ -174,6 +233,9 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
     safeStorage: electronSafeStorage,
     stateRoot,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    ...(smokeBootstrap === undefined
+      ? {}
+      : { bootstrapProjection: smokeBootstrap }),
     ...(smokeFailpoint === undefined
       ? {}
       : {

@@ -72,11 +72,13 @@ boundaries rather than adding it as a separate product:
 - assignments, comments, notifications, and simultaneous native-document
   editing through a dedicated, proven collaboration adapter.
 
-The first candidate slice introduces versioned membership and Space grants,
+The delivered foundation introduces versioned membership and Space grants,
 fresh-policy authorization, scoped Hub projections, revocation-driven cache
-removal, and a desktop access-management surface. Broader collaboration remains
-current work until the full leak, offline, notification, comment, assignment,
-document-revision, and recovery gates pass.
+removal, and a desktop access-management surface. A packaged two-human gate now
+proves private-Space exclusion, offline edit acceptance, stale edit rejection
+after a view-only downgrade, and atomic local projection removal after
+revocation. Broader collaboration remains current work until the full leak,
+notification, comment, assignment, document-revision, and recovery gates pass.
 
 ## Next — external agents through MCP
 

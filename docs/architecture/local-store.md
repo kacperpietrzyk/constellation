@@ -72,9 +72,12 @@ wrapper.
 
 The local SQLCipher database is the canonical store for a local-only Data Home.
 It is not a synchronized file and is never placed behind an arbitrary-folder
-sync claim. A future coordinated Data Home may use this adapter only as a
-device-local projection plus outbox; that role change must preserve the same
-application command/query semantics.
+sync claim. In a coordinated Data Home the same adapter acts as a device-local,
+principal-scoped projection plus outbox while preserving the application
+command/query semantics. Hub snapshot replacement and revocation purge are
+single SQLite transactions; the latter removes projected records, FTS rows,
+queued commands, receipts, and local policy metadata before recording the
+revoked coordination state.
 
 The local Alpha also exposes semantic backup and restore operations without
 giving the renderer database paths, handles, or keys. Export uses

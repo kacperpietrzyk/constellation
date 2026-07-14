@@ -56,6 +56,23 @@ const FRESHNESS: StoreFreshness = {
   missingCapabilities: [],
 };
 
+const COORDINATED_PROJECTION_TABLES = [
+  "outbox_entries",
+  "idempotency_records",
+  "audit_receipts",
+  "events",
+  "undo_descriptors",
+  "task_project_relations",
+  "projects",
+  "tasks",
+  "captures",
+  "task_statuses",
+  "space_grants",
+  "memberships",
+  "spaces",
+  "workspaces",
+] as const;
+
 export class LocalStoreCorruptionError extends Error {
   public constructor(message: string) {
     super(message);
@@ -1580,56 +1597,88 @@ export class SqliteApplicationStore implements ApplicationStore {
       );
     }
     this.transact(() => {
-      for (const table of [
-        "outbox_entries",
-        "idempotency_records",
-        "audit_receipts",
-        "events",
-        "undo_descriptors",
-        "task_project_relations",
-        "projects",
-        "tasks",
-        "captures",
-        "task_statuses",
-        "space_grants",
-        "memberships",
-        "spaces",
-        "workspaces",
-      ]) {
+      for (const table of COORDINATED_PROJECTION_TABLES) {
         this.database.exec(`DELETE FROM ${table};`);
       }
-      const transaction = new SqliteTransaction(this.database);
-      snapshot.workspaces.forEach((value) =>
-        transaction.insertWorkspace(value),
-      );
-      snapshot.spaces.forEach((value) => transaction.insertSpace(value));
-      snapshot.memberships.forEach((value) =>
-        transaction.insertMembership(value),
-      );
-      (snapshot.spaceGrants ?? []).forEach((value) =>
-        transaction.insertSpaceGrant(value),
-      );
-      snapshot.taskStatuses.forEach((value) =>
-        transaction.insertTaskStatus(value),
-      );
-      snapshot.captures.forEach((value) => transaction.insertCapture(value));
-      snapshot.tasks.forEach((value) => transaction.insertTask(value));
-      snapshot.projects.forEach((value) => transaction.insertProject(value));
-      snapshot.relations.forEach((value) => transaction.insertRelation(value));
-      snapshot.undoDescriptors.forEach((value) =>
-        transaction.insertUndoDescriptor(value),
-      );
-      snapshot.events.forEach((value) => transaction.insertEvent(value));
-      snapshot.auditReceipts.forEach((value) =>
-        transaction.insertAuditReceipt(value),
-      );
-      snapshot.idempotencyRecords.forEach((value) =>
-        transaction.insertIdempotency(value),
-      );
-      snapshot.outboxEntries.forEach((value) =>
-        transaction.insertOutbox(value),
-      );
+      this.insertProjection(snapshot);
       this.updateCoordinationState(coordination);
+    });
+  }
+
+  /** Seeds a newly-created encrypted store from an already scoped projection. */
+  public initializeProjection(snapshot: ReferenceStateSnapshot): void {
+    if (
+      snapshot.workspaces.length !== 1 ||
+      snapshot.workspaces[0] === undefined
+    ) {
+      throw new LocalStoreCorruptionError(
+        "An initial projection must contain exactly one workspace.",
+      );
+    }
+    this.transact(() => {
+      const occupied = COORDINATED_PROJECTION_TABLES.some(
+        (table) =>
+          this.database.prepare(`SELECT 1 FROM ${table} LIMIT 1`).get() !==
+          undefined,
+      );
+      if (occupied || this.getCoordinationState() !== undefined) {
+        throw new LocalStoreCorruptionError(
+          "An initial projection can only seed an empty store.",
+        );
+      }
+      this.insertProjection(snapshot);
+    });
+  }
+
+  private insertProjection(snapshot: ReferenceStateSnapshot): void {
+    const transaction = new SqliteTransaction(this.database);
+    snapshot.workspaces.forEach((value) => transaction.insertWorkspace(value));
+    snapshot.spaces.forEach((value) => transaction.insertSpace(value));
+    snapshot.memberships.forEach((value) =>
+      transaction.insertMembership(value),
+    );
+    (snapshot.spaceGrants ?? []).forEach((value) =>
+      transaction.insertSpaceGrant(value),
+    );
+    snapshot.taskStatuses.forEach((value) =>
+      transaction.insertTaskStatus(value),
+    );
+    snapshot.captures.forEach((value) => transaction.insertCapture(value));
+    snapshot.tasks.forEach((value) => transaction.insertTask(value));
+    snapshot.projects.forEach((value) => transaction.insertProject(value));
+    snapshot.relations.forEach((value) => transaction.insertRelation(value));
+    snapshot.undoDescriptors.forEach((value) =>
+      transaction.insertUndoDescriptor(value),
+    );
+    snapshot.events.forEach((value) => transaction.insertEvent(value));
+    snapshot.auditReceipts.forEach((value) =>
+      transaction.insertAuditReceipt(value),
+    );
+    snapshot.idempotencyRecords.forEach((value) =>
+      transaction.insertIdempotency(value),
+    );
+    snapshot.outboxEntries.forEach((value) => transaction.insertOutbox(value));
+  }
+
+  public purgeProjection(input: {
+    readonly checkpoint: string;
+    readonly snapshotDigest: string;
+    readonly updatedAt: string;
+    readonly errorCode: "device_revoked" | "membership_revoked";
+  }): void {
+    this.transact(() => {
+      this.database.exec("DELETE FROM sync_delivery;");
+      this.database.exec("DELETE FROM command_journal;");
+      for (const table of COORDINATED_PROJECTION_TABLES) {
+        this.database.exec(`DELETE FROM ${table};`);
+      }
+      this.updateCoordinationState({
+        checkpoint: input.checkpoint,
+        snapshotDigest: input.snapshotDigest,
+        syncState: "revoked",
+        updatedAt: input.updatedAt,
+        errorCode: input.errorCode,
+      });
     });
   }
 

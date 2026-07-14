@@ -84,17 +84,20 @@ The packaged gate builds the pinned SQLCipher binding as the only unpacked
 native module and drives the real window, context-isolated preload, IPC,
 Capture-to-Task interaction, encrypted backup/restore, and relaunch on native
 macOS arm64, native macOS x64, and Windows x64 runners. No macOS result depends
-on Rosetta. The coordinated gate uses two isolated packaged profiles, restores
-the same portable workspace on the second device, queues offline work, drops a
-response after Hub commit, reconciles by receipt, and verifies the resulting
-Task on the other device.
+on Rosetta. The coordinated gate uses three isolated packaged profiles: two
+devices for one owner plus a separately scoped second human. It restores the
+owner's portable workspace on another device, proves that the second human
+never receives a private-Space sentinel, exercises offline work and a view-only
+downgrade, drops a response after Hub commit, reconciles by receipt, and verifies
+revocation-driven local projection removal across relaunch.
 
 The current collaboration candidate adds versioned human membership and Space
 grants without coupling Workspace role to data scope. Every command and query
 reauthorizes against the current policy; direct records, relations, search,
 counts, activity, scoped exports, and Hub-delivered local projections share the
-same Space filter. Revocation rejects queued offline work and directs the
-affected client to remove its coordinated projection. The desktop preview now
+same Space filter. Revocation rejects queued offline work and atomically removes
+the affected client's coordinated records, local full-text index, command
+journal, and outbox. The desktop preview now
 includes an accessible access-management surface for adding a member or guest,
 choosing view/edit access, and revoking membership.
 

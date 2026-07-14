@@ -31,6 +31,7 @@ import {
 import {
   createDurableKernelService,
   DurableWorkspaceOpenError,
+  type DurableBootstrapProjection,
   type DurableKernelService,
 } from "./durable-kernel-service.js";
 import {
@@ -602,6 +603,7 @@ export const createWorkspaceRecoveryService = async (input: {
   ) => Promise<string | undefined>;
   readonly stateRoot: string;
   readonly timezone: string;
+  readonly bootstrapProjection?: DurableBootstrapProjection;
 }): Promise<WorkspaceRecoveryService> => {
   const startupRecovery = recoverInterruptedRestore(input.stateRoot);
   let kernel: DurableKernelService | undefined;
@@ -612,6 +614,9 @@ export const createWorkspaceRecoveryService = async (input: {
       safeStorage: input.safeStorage,
       stateRoot: input.stateRoot,
       timezone: input.timezone,
+      ...(input.bootstrapProjection === undefined
+        ? {}
+        : { bootstrapProjection: input.bootstrapProjection }),
       ...(input.platform === undefined ? {} : { platform: input.platform }),
     });
   } catch (error) {
