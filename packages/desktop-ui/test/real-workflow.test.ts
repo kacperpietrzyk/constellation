@@ -130,12 +130,20 @@ const createTypedClient = () => {
   const commands: CommandEnvelope[] = [];
   const queries: QueryEnvelope[] = [];
   const client: ConstellationRendererClient = {
+    cancelWorkspaceRestore: async () => undefined,
+    confirmWorkspaceRestore: async () => ({
+      outcome: "success",
+      workspaceId,
+    }),
+    exportWorkspaceBackup: async () => ({ outcome: "cancelled" }),
     getBuildInfo: async () => ({
       channel: "local-alpha",
+      startupRecovery: "none",
       initialWorkspaceId: workspaceId,
       persistence: "encrypted-local",
       version: "test",
     }),
+    prepareWorkspaceRestore: async () => ({ outcome: "cancelled" }),
     runQuery: async (query) => {
       queries.push(query);
       switch (query.queryName) {

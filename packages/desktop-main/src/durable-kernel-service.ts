@@ -59,6 +59,7 @@ export interface DurableKernelService {
   readonly facts: EncryptedLocalStoreFacts;
   readonly identity: WorkspaceBootstrapIdentity;
   readonly service: DesktopKernelService;
+  readonly workspaceName: string;
   close(): void;
 }
 
@@ -197,10 +198,17 @@ export const createDurableKernelService = async (input: {
       await custody.markReady(bundle.identity.workspaceId);
     }
 
+    const verifiedWorkspace = opened.store.read((view) =>
+      view.getWorkspace(bundle.identity.workspaceId),
+    );
+    if (verifiedWorkspace === undefined) {
+      throw new DurableWorkspaceOpenError("workspace_open_failed");
+    }
     return {
       facts: opened.facts,
       identity: bundle.identity,
       service,
+      workspaceName: verifiedWorkspace.name,
       close: opened.close,
     };
   } catch (error) {

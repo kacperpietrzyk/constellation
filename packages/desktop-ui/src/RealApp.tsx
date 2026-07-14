@@ -42,6 +42,7 @@ import {
   type PreviewCondition,
   type SurfaceId,
 } from "./client/wave2-fixtures.js";
+import { WorkspaceRecovery } from "./WorkspaceRecovery.js";
 
 type LoadState =
   | { readonly kind: "loading" }
@@ -219,6 +220,7 @@ export const RealApp = ({
   const [surface, setSurface] = useState<SurfaceId>("cockpit");
   const [captureOpen, setCaptureOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<TaskId>();
   const [selectedProjectId, setSelectedProjectId] = useState<ProjectId>();
@@ -430,16 +432,25 @@ export const RealApp = ({
           <BrandMark />
           <strong>Constellation</strong>
         </div>
-        <div
+        <button
+          type="button"
           className="workspace-switcher"
           aria-label={`Workspace ${bootstrap.workspace.name}, lokalny`}
+          disabled={isPreview}
+          title={
+            isPreview
+              ? "Backup jest dostępny w szyfrowanym lokalnym workspace."
+              : "Otwórz backup i odzyskiwanie workspace"
+          }
+          onClick={() => setRecoveryOpen(true)}
         >
           <span className="workspace-avatar">I</span>
           <span>
             <strong>{bootstrap.workspace.name}</strong>
             <small>Local-only workspace</small>
           </span>
-        </div>
+          {!isPreview && <span className="workspace-switcher-action">•••</span>}
+        </button>
         <button className="search-control" onClick={() => setSearchOpen(true)}>
           <Icon name="search" />
           <span>Szukaj</span>
@@ -859,6 +870,23 @@ export const RealApp = ({
                 } else showFailure(result);
               },
             );
+          }}
+        />
+      )}
+      {recoveryOpen && client && (
+        <WorkspaceRecovery
+          client={client}
+          workspaceName={bootstrap.workspace.name}
+          recoveredPrevious={
+            build.startupRecovery === "previous_workspace_restored"
+          }
+          onClose={() => setRecoveryOpen(false)}
+          onRestored={async () => {
+            await reload();
+            setSelectedTaskId(undefined);
+            setSelectedProjectId(undefined);
+            setSurface("cockpit");
+            setToast("Workspace przywrócono i otwarto ponownie.");
           }}
         />
       )}

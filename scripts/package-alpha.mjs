@@ -165,6 +165,8 @@ const productionDesktopFiles = new Set([
   "runtime-kernel-service.js",
   "security.js",
   "workspace-key-custody.js",
+  "workspace-backup-archive.js",
+  "workspace-recovery-service.js",
 ]);
 for (const entry of fs.readdirSync(desktopMainSource)) {
   if (!productionDesktopFiles.has(entry)) {

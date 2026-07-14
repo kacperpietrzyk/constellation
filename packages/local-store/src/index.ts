@@ -5,9 +5,12 @@ export {
 } from "./sqlite-application-store.js";
 export {
   EncryptedStoreCapabilityError,
+  exportEncryptedLocalStore,
   openEncryptedLocalStore,
 } from "./encrypted-local-store.js";
+export type { LocalWorkspaceRecoverySummary } from "./sqlite-application-store.js";
 export type {
+  EncryptedLocalStoreExportFacts,
   EncryptedLocalStoreFacts,
   EncryptedSqliteDatabase,
   EncryptedSqliteDatabaseFactory,

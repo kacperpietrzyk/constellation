@@ -17,6 +17,11 @@ export interface ScenarioFixtures {
 export const createScenarioClient = (
   fixtures: ScenarioFixtures,
 ): ConstellationRendererClient => ({
+  cancelWorkspaceRestore: async () => undefined,
+  confirmWorkspaceRestore: async () => ({
+    outcome: "failure",
+    code: "io_failed",
+  }),
   executeCommand: async () => ({
     kind: "contract_rejected",
     diagnosticCode: "contract.invalid",
@@ -27,14 +32,17 @@ export const createScenarioClient = (
       },
     ],
   }),
+  exportWorkspaceBackup: async () => ({ outcome: "cancelled" }),
   getBuildInfo: async () => ({
     channel: "developer-preview",
+    startupRecovery: "none",
     initialWorkspaceId: WorkspaceIdSchema.parse(
       "00000000-0000-4000-8000-000000000001",
     ),
     persistence: "in-memory",
     version: "scenario",
   }),
+  prepareWorkspaceRestore: async () => ({ outcome: "cancelled" }),
   runQuery: async (query) => {
     const response = fixtures.queries[query.queryName];
     if (response !== undefined) return response;
