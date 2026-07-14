@@ -77,8 +77,11 @@ fresh-policy authorization, scoped Hub projections, revocation-driven cache
 removal, and a desktop access-management surface. A packaged two-human gate now
 proves private-Space exclusion, offline edit acceptance, stale edit rejection
 after a view-only downgrade, and atomic local projection removal after
-revocation. Broader collaboration remains current work until the full leak,
-notification, comment, assignment, document-revision, and recovery gates pass.
+revocation. The current desktop and kernel also support one versioned responsible
+member or guest per Task, with scoped candidates, explicit conflicts, audit,
+activity, safe former-member states, and durable local/Hub projections. Broader
+collaboration remains current work until the full leak, notification, comment,
+document-revision, and recovery gates pass.
 
 ## Next — external agents through MCP
 

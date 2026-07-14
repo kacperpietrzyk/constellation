@@ -3,10 +3,15 @@ import { createHash } from "node:crypto";
 import type { ReferenceStateSnapshot } from "@constellation/application";
 import {
   HubWorkspaceSnapshotSchema,
+  PrincipalIdSchema,
   type ExecutionContext,
   type HubWorkspaceSnapshot,
   type WorkspaceId,
 } from "@constellation/contracts";
+
+const REDACTED_ASSIGNEE_PRINCIPAL_ID = PrincipalIdSchema.parse(
+  "00000000-0000-4000-8000-000000000000",
+);
 
 const canonicalJson = (value: unknown): string => {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -41,6 +46,7 @@ export const fromHubSnapshot = (
     parsed.spaces.some((value) => value.workspaceId !== workspaceId) ||
     parsed.memberships.some((value) => value.workspaceId !== workspaceId) ||
     parsed.spaceGrants.some((value) => value.workspaceId !== workspaceId) ||
+    parsed.taskAssignments.some((value) => value.workspaceId !== workspaceId) ||
     parsed.taskStatuses.some((value) => value.workspaceId !== workspaceId) ||
     parsed.captures.some((value) => value.workspaceId !== workspaceId) ||
     parsed.tasks.some((value) => value.workspaceId !== workspaceId) ||
@@ -120,22 +126,87 @@ export const scopeHubSnapshot = (
     record: Record,
   ) => spaces.has(record.spaceId as never);
   const tasks = state.tasks.filter(inScope);
+  const visibleTaskIds = new Set(tasks.map((task) => task.id));
+  const authoritativeAssignments = (state.taskAssignments ?? []).filter(
+    (assignment) =>
+      inScope(assignment) && visibleTaskIds.has(assignment.taskId),
+  );
   const captures = state.captures.filter(inScope);
   const projects = state.projects.filter(inScope);
   const relations = state.relations.filter(inScope);
   const undoDescriptors = state.undoDescriptors.filter(inScope);
-  const events = state.events.filter(inScope);
+  const visibleEvents = state.events.filter(inScope);
   const auditReceipts = state.auditReceipts.filter(inScope);
   const outboxEntries = state.outboxEntries.filter(inScope);
+  const candidateGrants = (state.spaceGrants ?? []).filter(
+    (grant) => spaces.has(grant.spaceId) && grant.status === "active",
+  );
+  const rootSpaceId = state.workspaces[0]?.rootSpaceId;
+  const candidatePrincipals = new Set<string>(
+    state.memberships
+      .filter(
+        (value) =>
+          value.status === "active" &&
+          (candidateGrants.some(
+            (grant) => grant.principalId === value.principalId,
+          ) ||
+            (value.role === "owner" &&
+              rootSpaceId !== undefined &&
+              spaces.has(rootSpaceId))),
+      )
+      .map((value) => value.principalId),
+  );
+  const isEligibleInSpace = (principalId: string, spaceId: string): boolean => {
+    const candidate = state.memberships.find(
+      (value) => value.principalId === principalId,
+    );
+    return (
+      candidate?.status === "active" &&
+      ((candidate.role === "owner" &&
+        state.workspaces[0]?.rootSpaceId === spaceId) ||
+        candidateGrants.some(
+          (grant) =>
+            grant.principalId === principalId && grant.spaceId === spaceId,
+        ))
+    );
+  };
+  const taskAssignments = authoritativeAssignments.map((assignment) => {
+    if (isEligibleInSpace(assignment.assigneePrincipalId, assignment.spaceId)) {
+      return assignment;
+    }
+    const assignee = state.memberships.find(
+      (value) => value.principalId === assignment.assigneePrincipalId,
+    );
+    return {
+      ...assignment,
+      assigneePrincipalId: REDACTED_ASSIGNEE_PRINCIPAL_ID,
+      redactedAssigneeState:
+        assignee === undefined || assignee.status === "revoked"
+          ? ("former_member" as const)
+          : ("unavailable_member" as const),
+    };
+  });
+  const events = visibleEvents.map((event) =>
+    (event.type === "task.assigned" || event.type === "task.unassigned") &&
+    !isEligibleInSpace(event.assigneePrincipalId, event.spaceId)
+      ? { ...event, assigneePrincipalId: REDACTED_ASSIGNEE_PRINCIPAL_ID }
+      : event,
+  );
   const memberships = canManagePolicy
     ? state.memberships
     : state.memberships.filter(
-        (value) => value.principalId === current.principalId,
+        (value) =>
+          value.principalId === current.principalId ||
+          (value.status === "active" &&
+            candidatePrincipals.has(value.principalId)),
       );
   const spaceGrants = (state.spaceGrants ?? []).filter(
     (value) =>
       spaces.has(value.spaceId) &&
-      (canManagePolicy || value.principalId === current.principalId),
+      (canManagePolicy ||
+        value.principalId === current.principalId ||
+        (value.status === "active" &&
+          candidatePrincipals.has(value.principalId))),
   );
   const taskStatusIds = new Set([
     state.workspaces[0]?.defaultTaskStatusId,
@@ -148,6 +219,7 @@ export const scopeHubSnapshot = (
     ...state.workspaces.map((value) => value.id),
     ...memberships.map((value) => value.id),
     ...spaceGrants.map((value) => value.id),
+    ...taskAssignments.map((value) => value.id),
     ...taskStatuses.map((value) => value.id),
     ...captures.map((value) => value.id),
     ...tasks.map((value) => value.id),
@@ -161,6 +233,7 @@ export const scopeHubSnapshot = (
     spaces: state.spaces.filter((value) => spaces.has(value.id)),
     memberships,
     spaceGrants,
+    taskAssignments,
     taskStatuses,
     captures,
     tasks,

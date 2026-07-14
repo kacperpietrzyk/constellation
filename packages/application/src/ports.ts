@@ -14,6 +14,7 @@ import type {
   RelationId,
   SpaceId,
   TaskId,
+  TaskAssignmentId,
   TaskStatusId,
   WorkspaceId,
 } from "@constellation/contracts";
@@ -25,6 +26,7 @@ import type {
   Space,
   Project,
   Task,
+  TaskAssignment,
   TaskProjectRelation,
   TaskStatusDefinition,
   Workspace,
@@ -135,6 +137,12 @@ export interface ApplicationReadView {
     workspaceId: WorkspaceId,
     principalId?: PrincipalId,
   ): readonly SpaceGrant[];
+  getTaskAssignment(id: TaskAssignmentId): TaskAssignment | undefined;
+  getActiveTaskAssignment(taskId: TaskId): TaskAssignment | undefined;
+  listTaskAssignments(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly TaskAssignment[];
   getCapture(id: CaptureId): Capture | undefined;
   listCaptures(request: CapturePageRequest): readonly Capture[] | undefined;
   getTask(id: TaskId): Task | undefined;
@@ -175,6 +183,11 @@ export interface ApplicationTransaction extends ApplicationReadView {
   ): boolean;
   insertSpaceGrant(grant: SpaceGrant): void;
   updateSpaceGrant(grant: SpaceGrant, expectedVersion: number): boolean;
+  insertTaskAssignment(assignment: TaskAssignment): void;
+  updateTaskAssignment(
+    assignment: TaskAssignment,
+    expectedVersion: number,
+  ): boolean;
   insertTaskStatus(status: TaskStatusDefinition): void;
   insertCapture(capture: Capture): void;
   updateCapture(capture: Capture, expectedVersion: number): boolean;
@@ -253,6 +266,7 @@ export interface ReferenceStateSnapshot {
   readonly spaces: readonly Space[];
   readonly memberships: readonly WorkspaceMembership[];
   readonly spaceGrants?: readonly SpaceGrant[];
+  readonly taskAssignments?: readonly TaskAssignment[];
   readonly captures: readonly Capture[];
   readonly taskStatuses: readonly TaskStatusDefinition[];
   readonly tasks: readonly Task[];
@@ -271,6 +285,7 @@ export type InternalIds =
   | TaskStatusId
   | MembershipId
   | SpaceGrantId
+  | TaskAssignmentId
   | EventId
   | AuditReceiptId
   | OutboxEntryId;

@@ -14,6 +14,7 @@ import {
   SpaceIdSchema,
   SpaceGrantIdSchema,
   TaskIdSchema,
+  TaskAssignmentIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
 } from "./ids.js";
@@ -183,6 +184,24 @@ export const TaskReopenCommandSchema = CommandMetadataSchema.extend({
   payload: z.object({ taskId: TaskIdSchema }).strict(),
 }).strict();
 
+export const TaskAssignCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("task.assign"),
+  payload: z
+    .object({
+      assignmentId: TaskAssignmentIdSchema,
+      taskId: TaskIdSchema,
+      assigneePrincipalId: PrincipalIdSchema,
+    })
+    .strict(),
+}).strict();
+
+export const TaskUnassignCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("task.unassign"),
+  payload: z
+    .object({ assignmentId: TaskAssignmentIdSchema, taskId: TaskIdSchema })
+    .strict(),
+}).strict();
+
 export const RecordRelateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("record.relate"),
   payload: z
@@ -222,6 +241,8 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   TaskSetStatusCommandSchema,
   TaskCompleteCommandSchema,
   TaskReopenCommandSchema,
+  TaskAssignCommandSchema,
+  TaskUnassignCommandSchema,
   RecordRelateCommandSchema,
   RecordUnrelateCommandSchema,
   CommandPreviewUndoSchema,

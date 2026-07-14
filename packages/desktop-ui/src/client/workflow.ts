@@ -5,6 +5,7 @@ import {
   type CommandId,
   type DataHomeStatus,
   type ProjectId,
+  type PrincipalId,
   type QueryName,
   type QueryProjection,
   type RelationId,
@@ -26,6 +27,8 @@ type Projection<Kind extends QueryProjection["kind"]> = Extract<
 >;
 type BootstrapProjection = Projection<"workspace.bootstrapContext">;
 type TaskListProjection = Projection<"task.list">;
+export type TaskAssignmentCandidatesProjection =
+  Projection<"task.assignmentCandidates">;
 type CaptureHistoryProjection = Projection<"capture.history">;
 export type AccessProjection = Projection<"workspace.access">;
 export type ProjectListProjection = Projection<"project.list">;
@@ -54,6 +57,7 @@ export interface DesktopSnapshot {
   readonly cockpit: DataSlice<CockpitProjection>;
   readonly activity: DataSlice<ActivityProjection>;
   readonly access: DataSlice<AccessProjection>;
+  readonly assignmentCandidates: DataSlice<TaskAssignmentCandidatesProjection>;
   readonly dataHome?: DataHomeStatus;
 }
 
@@ -168,54 +172,70 @@ export const loadDesktopSnapshot = async (
     throw new Error("Data Home identity does not match the open workspace.");
   }
   const spaceId = firstSpace({ bootstrap });
-  const [tasks, captures, projects, access, cockpit, activity] =
-    await Promise.all([
+  const [
+    tasks,
+    captures,
+    projects,
+    access,
+    assignmentCandidates,
+    cockpit,
+    activity,
+  ] = await Promise.all([
+    queryProjection(
+      client,
+      queryEnvelope("task.list", workspaceId, { spaceId, limit: 100 }),
+      "task.list",
+    ),
+    queryProjection(
+      client,
+      queryEnvelope("capture.history", workspaceId, { spaceId, limit: 100 }),
+      "capture.history",
+    ),
+    optionalProjection(
       queryProjection(
         client,
-        queryEnvelope("task.list", workspaceId, { spaceId, limit: 100 }),
-        "task.list",
+        queryEnvelope("project.list", workspaceId, { spaceId }),
+        "project.list",
       ),
+    ),
+    optionalProjection(
       queryProjection(
         client,
-        queryEnvelope("capture.history", workspaceId, { spaceId, limit: 100 }),
-        "capture.history",
+        queryEnvelope("workspace.access", workspaceId, {}),
+        "workspace.access",
       ),
-      optionalProjection(
-        queryProjection(
-          client,
-          queryEnvelope("project.list", workspaceId, { spaceId }),
-          "project.list",
-        ),
+    ),
+    optionalProjection(
+      queryProjection(
+        client,
+        queryEnvelope("task.assignmentCandidates", workspaceId, {
+          spaceId,
+        }),
+        "task.assignmentCandidates",
       ),
-      optionalProjection(
-        queryProjection(
-          client,
-          queryEnvelope("workspace.access", workspaceId, {}),
-          "workspace.access",
-        ),
+    ),
+    optionalProjection(
+      queryProjection(
+        client,
+        queryEnvelope("cockpit.week", workspaceId, {
+          spaceId,
+          weekStart: currentWeekStart(),
+          limit: 20,
+        }),
+        "cockpit.week",
       ),
-      optionalProjection(
-        queryProjection(
-          client,
-          queryEnvelope("cockpit.week", workspaceId, {
-            spaceId,
-            weekStart: currentWeekStart(),
-            limit: 20,
-          }),
-          "cockpit.week",
-        ),
+    ),
+    optionalProjection(
+      queryProjection(
+        client,
+        queryEnvelope("activity.meaningful", workspaceId, {
+          spaceId,
+          limit: 100,
+        }),
+        "activity.meaningful",
       ),
-      optionalProjection(
-        queryProjection(
-          client,
-          queryEnvelope("activity.meaningful", workspaceId, {
-            spaceId,
-            limit: 100,
-          }),
-          "activity.meaningful",
-        ),
-      ),
-    ]);
+    ),
+  ]);
   return {
     build,
     bootstrap,
@@ -225,6 +245,7 @@ export const loadDesktopSnapshot = async (
     cockpit,
     activity,
     access,
+    assignmentCandidates,
     ...(dataHome === undefined ? {} : { dataHome }),
   };
 };
@@ -515,6 +536,53 @@ export const setTaskCompletion = (
         ? response.outcome.projection
         : undefined,
   );
+
+export const setTaskAssignment = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  task: TaskListProjection["items"][number],
+  assigneePrincipalId: PrincipalId | undefined,
+) => {
+  if (assigneePrincipalId === undefined && task.assignment === undefined) {
+    return Promise.resolve<MutationResult<never>>({
+      kind: "unavailable",
+      message: "Zadanie nie ma przypisanej osoby.",
+    });
+  }
+  const expectedVersions = {
+    [task.id]: task.version,
+    ...(task.assignment === undefined
+      ? {}
+      : { [task.assignment.id]: task.assignment.version }),
+  };
+  return execute(
+    client,
+    assigneePrincipalId === undefined
+      ? {
+          ...commandBase(snapshot.bootstrap.workspace.id, expectedVersions),
+          commandName: "task.unassign",
+          payload: {
+            taskId: task.id,
+            assignmentId: task.assignment!.id,
+          },
+        }
+      : {
+          ...commandBase(snapshot.bootstrap.workspace.id, expectedVersions),
+          commandName: "task.assign",
+          payload: {
+            taskId: task.id,
+            assignmentId: crypto.randomUUID(),
+            assigneePrincipalId,
+          },
+        },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      (response.outcome.projection.kind === "task.assigned" ||
+        response.outcome.projection.kind === "task.unassigned")
+        ? response.outcome.projection
+        : undefined,
+  );
+};
 
 export const relateTask = (
   client: ConstellationRendererClient,

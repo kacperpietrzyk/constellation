@@ -35,6 +35,8 @@ Commands:
 - `task.setStatus`
 - `task.complete`
 - `task.reopen`
+- `task.assign`
+- `task.unassign`
 - `record.relate`
 - `record.unrelate`
 - `command.previewUndo`
@@ -47,6 +49,7 @@ Queries:
 - `workspace.exportScoped`
 - `capture.history`
 - `task.list`
+- `task.assignmentCandidates`
 - `project.list`
 - `project.operationalOverview`
 - `search.global`
@@ -76,6 +79,14 @@ typed Project relations, status/completion, scoped search, explainable cockpit,
 meaningful activity, and version-safe undo. It does not yet claim Attention
 processing, synchronization, editable workflow configuration, or an MCP server.
 
+Task responsibility is a separate versioned collaboration record rather than a
+free-form Task field. An editor can assign one active Workspace member or guest
+who can view the Task's Space, reassign atomically, or remove responsibility.
+The Task list and Project overview show a safe label; a revoked member or a
+member who lost Space access is retained for audit without exposing a principal
+identifier. Assignment events are available to meaningful activity and a later
+notification adapter, but this slice does not deliver notifications.
+
 ## Boundary rules
 
 - Zod schemas validate untrusted envelopes at runtime and reject unknown fields.
@@ -97,6 +108,9 @@ processing, synchronization, editable workflow configuration, or an MCP server.
   version churn; different input under the same key conflicts.
 - Existing-record mutations require expected versions. Stale writes return an
   explicit conflict and never apply last-write-wins.
+- Assignment mutations require exact Task and current-assignment versions. The
+  assignee is reauthorized against active membership and Space access when the
+  command executes; assignment candidates never include unrelated members.
 - Capture routing requires the exact current Capture version. Repeating a
   committed route with the same idempotency input returns its original result;
   a distinct attempt cannot create a second Task.
@@ -126,7 +140,7 @@ contracts -> Zod
 - `contracts` owns schemas, branded IDs, result taxonomy, and safe validation
   issues.
 - `domain` owns framework-independent workspace, Space, membership, Capture,
-  Task, Task status, event, audit, and outbox records.
+  Task, Task assignment, Task status, event, audit, and outbox records.
 - `application` owns authorization orchestration, command/query handlers, and
   storage ports.
 - `testkit` owns deterministic clocks/IDs, hashing/cursor fixtures, the in-memory
@@ -164,6 +178,12 @@ not appear through direct search or scoped export counts, view-only access
 cannot mutate, policy changes invalidate older contexts, Hub projections omit
 out-of-scope data, and membership revocation removes access and coordinated
 cache state.
+
+Assignment coverage additionally proves member and guest eligibility,
+view-only assignee support, exact-version conflicts, atomic reassignment and
+removal, former/unavailable-member presentation, scoped exports and Hub
+projections, SQLite restart and purge behavior, and rollback at every journal
+boundary.
 
 Production signing/notarization, installer/updater continuity, MCP mapping,
 deterministic syntax parsing, Attention processing, checkpoint revert, editable

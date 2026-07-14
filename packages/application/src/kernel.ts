@@ -248,6 +248,8 @@ const isCurrentlyAuthorized = (
     case "task.setStatus":
     case "task.complete":
     case "task.reopen":
+    case "task.assign":
+    case "task.unassign":
     case "record.relate":
     case "record.unrelate":
     case "command.previewUndo":
@@ -426,6 +428,8 @@ export class ApplicationKernel {
       case "task.setStatus":
       case "task.complete":
       case "task.reopen":
+      case "task.assign":
+      case "task.unassign":
       case "record.relate":
       case "record.unrelate":
       case "command.previewUndo":
@@ -1033,6 +1037,14 @@ export class ApplicationKernel {
           );
         case "task.list":
           return this.taskList(view, context, query, kernelTime, freshness);
+        case "task.assignmentCandidates":
+          return this.taskAssignmentCandidates(
+            view,
+            context,
+            query,
+            kernelTime,
+            freshness,
+          );
         case "audit.receipt":
           return this.auditReceiptQuery(
             view,
@@ -1296,6 +1308,29 @@ export class ApplicationKernel {
     const visibleItems = items.slice(0, limit);
     const projections = visibleItems.map((task) => {
       const status = view.getTaskStatus(task.statusId);
+      const assignment = view.getActiveTaskAssignment(task.id);
+      const assignee =
+        assignment === undefined
+          ? undefined
+          : view.getMembership(
+              query.workspaceId,
+              assignment.assigneePrincipalId,
+            );
+      const assigneeGrant =
+        assignee === undefined
+          ? undefined
+          : view.getSpaceGrantForPrincipal(
+              query.workspaceId,
+              task.spaceId,
+              assignee.principalId,
+            );
+      const assigneeIsActive =
+        assignment?.redactedAssigneeState === undefined &&
+        assignee !== undefined &&
+        assignee.status !== "revoked" &&
+        ((assignee.role === "owner" &&
+          view.getWorkspace(query.workspaceId)?.rootSpaceId === task.spaceId) ||
+          assigneeGrant?.status === "active");
       return status?.workspaceId === query.workspaceId
         ? {
             id: task.id,
@@ -1316,6 +1351,33 @@ export class ApplicationKernel {
             createdAt: task.createdAt,
             updatedAt: task.updatedAt,
             version: task.version,
+            ...(assignment === undefined
+              ? {}
+              : {
+                  assignment: {
+                    id: assignment.id,
+                    ...(assigneeIsActive
+                      ? { assigneePrincipalId: assignment.assigneePrincipalId }
+                      : {}),
+                    displayName: assigneeIsActive
+                      ? (assignee.displayName ?? "Workspace member")
+                      : assignment.redactedAssigneeState ===
+                          "unavailable_member"
+                        ? "No Space access"
+                        : assignee?.status === "revoked" ||
+                            assignee === undefined
+                          ? "Former member"
+                          : "No Space access",
+                    availability: assigneeIsActive
+                      ? "active"
+                      : (assignment.redactedAssigneeState ??
+                        (assignee?.status === "revoked" ||
+                        assignee === undefined
+                          ? "former_member"
+                          : "unavailable_member")),
+                    version: assignment.version,
+                  },
+                }),
           }
         : undefined;
     });
@@ -1346,6 +1408,76 @@ export class ApplicationKernel {
         kind: "task.list",
         items: projections,
         nextCursor,
+      },
+    });
+  }
+
+  private taskAssignmentCandidates(
+    view: ApplicationReadView,
+    context: ExecutionContext,
+    query: Extract<QueryEnvelope, { queryName: "task.assignmentCandidates" }>,
+    kernelTime: string,
+    freshness: StoreFreshness,
+  ): QueryResult {
+    const space = view.getSpace(query.parameters.spaceId);
+    if (
+      space?.workspaceId !== query.workspaceId ||
+      !canViewSpace(view, context, query.workspaceId, space.id) ||
+      !this.dependencies.authorization.authorize({
+        context,
+        capability: query.queryName,
+        workspaceId: query.workspaceId,
+        spaceId: space.id,
+      })
+    ) {
+      return this.queryRejected(query, kernelTime, "authorization.denied");
+    }
+    if (this.consistencyUnavailable(query, freshness)) {
+      return this.queryRejected(
+        query,
+        kernelTime,
+        "query.consistency_unavailable",
+      );
+    }
+    const workspace = view.getWorkspace(query.workspaceId);
+    const candidates = view
+      .listMemberships(query.workspaceId)
+      .filter((membership) => {
+        if (membership.status === "revoked") return false;
+        if (
+          membership.role === "owner" &&
+          workspace?.rootSpaceId === space.id
+        ) {
+          return true;
+        }
+        return (
+          view.getSpaceGrantForPrincipal(
+            query.workspaceId,
+            space.id,
+            membership.principalId,
+          )?.status === "active"
+        );
+      })
+      .map((membership) => ({
+        principalId: membership.principalId,
+        displayName: membership.displayName ?? "Workspace member",
+        participantKind: membership.role === "guest" ? "guest" : "member",
+      }))
+      .sort(
+        (left, right) =>
+          left.displayName.localeCompare(right.displayName) ||
+          left.principalId.localeCompare(right.principalId),
+      );
+    return QueryResultSchema.parse({
+      outcome: "success",
+      contractVersion: 1,
+      queryId: query.queryId,
+      kernelTime,
+      freshness,
+      projection: {
+        kind: "task.assignmentCandidates",
+        spaceId: space.id,
+        candidates,
       },
     });
   }

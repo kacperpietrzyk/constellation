@@ -19,6 +19,7 @@ import type {
   SpaceId,
   SpaceGrantId,
   TaskId,
+  TaskAssignmentId,
   TaskStatusId,
   WorkspaceId,
 } from "@constellation/contracts";
@@ -31,6 +32,7 @@ import type {
   Space,
   SpaceGrant,
   Task,
+  TaskAssignment,
   TaskProjectRelation,
   TaskStatusDefinition,
   Workspace,
@@ -46,6 +48,8 @@ export type FailureBoundary =
   | "membership-update"
   | "space-grant"
   | "space-grant-update"
+  | "task-assignment"
+  | "task-assignment-update"
   | "task-status"
   | "capture"
   | "capture-update"
@@ -87,6 +91,7 @@ interface MutableState {
   readonly spaces: Map<SpaceId, Space>;
   readonly memberships: Map<string, WorkspaceMembership>;
   readonly spaceGrants: Map<SpaceGrantId, SpaceGrant>;
+  readonly taskAssignments: Map<TaskAssignmentId, TaskAssignment>;
   readonly taskStatuses: Map<TaskStatusId, TaskStatusDefinition>;
   readonly captures: Map<CaptureId, Capture>;
   readonly tasks: Map<TaskId, Task>;
@@ -105,6 +110,7 @@ const emptyState = (): MutableState => ({
   spaces: new Map(),
   memberships: new Map(),
   spaceGrants: new Map(),
+  taskAssignments: new Map(),
   taskStatuses: new Map(),
   captures: new Map(),
   tasks: new Map(),
@@ -123,6 +129,7 @@ const cloneState = (state: MutableState): MutableState => ({
   spaces: new Map(state.spaces),
   memberships: new Map(state.memberships),
   spaceGrants: new Map(state.spaceGrants),
+  taskAssignments: new Map(state.taskAssignments),
   taskStatuses: new Map(state.taskStatuses),
   captures: new Map(state.captures),
   tasks: new Map(state.tasks),
@@ -237,6 +244,30 @@ class ReadView implements ApplicationReadView {
         (grant) =>
           grant.workspaceId === workspaceId &&
           (principalId === undefined || grant.principalId === principalId),
+      )
+      .sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  public getTaskAssignment(id: TaskAssignmentId): TaskAssignment | undefined {
+    return this.state.taskAssignments.get(id);
+  }
+
+  public getActiveTaskAssignment(taskId: TaskId): TaskAssignment | undefined {
+    return [...this.state.taskAssignments.values()].find(
+      (assignment) =>
+        assignment.taskId === taskId && assignment.state === "active",
+    );
+  }
+
+  public listTaskAssignments(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly TaskAssignment[] {
+    return [...this.state.taskAssignments.values()]
+      .filter(
+        (assignment) =>
+          assignment.workspaceId === workspaceId &&
+          assignment.spaceId === spaceId,
       )
       .sort((left, right) => left.id.localeCompare(right.id));
   }
@@ -476,6 +507,29 @@ class Transaction extends ReadView implements ApplicationTransaction {
     return true;
   }
 
+  public insertTaskAssignment(assignment: TaskAssignment): void {
+    if (
+      this.state.taskAssignments.has(assignment.id) ||
+      (assignment.state === "active" &&
+        this.getActiveTaskAssignment(assignment.taskId) !== undefined)
+    ) {
+      throw new Error(`Duplicate active Task assignment: ${assignment.taskId}`);
+    }
+    this.state.taskAssignments.set(assignment.id, assignment);
+    this.failures.reached("task-assignment");
+  }
+
+  public updateTaskAssignment(
+    assignment: TaskAssignment,
+    expectedVersion: number,
+  ): boolean {
+    const current = this.state.taskAssignments.get(assignment.id);
+    if (current?.version !== expectedVersion) return false;
+    this.state.taskAssignments.set(assignment.id, assignment);
+    this.failures.reached("task-assignment-update");
+    return true;
+  }
+
   public insertTaskStatus(status: TaskStatusDefinition): void {
     if (this.state.taskStatuses.has(status.id)) {
       throw new Error(`Duplicate task status ID: ${status.id}`);
@@ -622,6 +676,9 @@ const stateFromSnapshot = (snapshot: ReferenceStateSnapshot): MutableState => ({
   spaceGrants: new Map(
     (snapshot.spaceGrants ?? []).map((value) => [value.id, value]),
   ),
+  taskAssignments: new Map(
+    (snapshot.taskAssignments ?? []).map((value) => [value.id, value]),
+  ),
   taskStatuses: new Map(
     snapshot.taskStatuses.map((value) => [value.id, value]),
   ),
@@ -682,6 +739,7 @@ export class InMemoryReferenceStore implements ApplicationStore {
       spaces: [...this.state.spaces.values()],
       memberships: [...this.state.memberships.values()],
       spaceGrants: [...this.state.spaceGrants.values()],
+      taskAssignments: [...this.state.taskAssignments.values()],
       taskStatuses: [...this.state.taskStatuses.values()],
       captures: [...this.state.captures.values()],
       tasks: [...this.state.tasks.values()],

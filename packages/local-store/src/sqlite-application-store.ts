@@ -24,6 +24,7 @@ import {
   type SpaceGrantId,
   type SpaceId,
   type TaskId,
+  type TaskAssignmentId,
   type TaskStatusId,
   type WorkspaceId,
 } from "@constellation/contracts";
@@ -36,6 +37,7 @@ import type {
   Space,
   SpaceGrant,
   Task,
+  TaskAssignment,
   TaskProjectRelation,
   TaskStatusDefinition,
   Workspace,
@@ -49,7 +51,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
   checkpoint: null,
@@ -63,6 +65,7 @@ const COORDINATED_PROJECTION_TABLES = [
   "events",
   "undo_descriptors",
   "task_project_relations",
+  "task_assignments",
   "projects",
   "tasks",
   "captures",
@@ -327,6 +330,24 @@ const schemaV4 = `
     ON space_grants(workspace_id, principal_id, status, space_id);
 `;
 
+const schemaV5 = `
+  CREATE TABLE task_assignments (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    task_id TEXT NOT NULL REFERENCES tasks(id),
+    assignee_principal_id TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('active', 'removed')),
+    version INTEGER NOT NULL CHECK (version > 0),
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX task_assignments_scope
+    ON task_assignments(workspace_id, space_id, assignee_principal_id, state, id);
+  CREATE UNIQUE INDEX task_assignments_one_active
+    ON task_assignments(task_id)
+    WHERE state = 'active';
+`;
+
 export interface LocalCoordinationState {
   readonly workspaceId: WorkspaceId;
   readonly providerInstanceId: string;
@@ -438,6 +459,7 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
     if (currentVersion < 2) database.exec(schemaV2);
     if (currentVersion < 3) database.exec(schemaV3);
     if (currentVersion < 4) database.exec(schemaV4);
+    if (currentVersion < 5) database.exec(schemaV5);
     database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
     database.exec("COMMIT;");
   } catch (error) {
@@ -630,6 +652,70 @@ class SqliteReadView implements ApplicationWave2ReadView {
         principalId: stringValue(row, "principal_id", "Space grant"),
       });
     });
+  }
+
+  public getTaskAssignment(id: TaskAssignmentId): TaskAssignment | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, space_id, task_id, assignee_principal_id, payload_json FROM task_assignments WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<TaskAssignment>(row, "id", id, "Task assignment", {
+          workspaceId: stringValue(row, "workspace_id", "Task assignment"),
+          spaceId: stringValue(row, "space_id", "Task assignment"),
+          taskId: stringValue(row, "task_id", "Task assignment"),
+          assigneePrincipalId: stringValue(
+            row,
+            "assignee_principal_id",
+            "Task assignment",
+          ),
+        });
+  }
+
+  public getActiveTaskAssignment(taskId: TaskId): TaskAssignment | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT id, workspace_id, space_id, assignee_principal_id, payload_json FROM task_assignments WHERE task_id = ? AND state = 'active'",
+      )
+      .get(taskId);
+    if (row === undefined) return undefined;
+    const id = stringValue(row, "id", "Task assignment");
+    return parsePayload<TaskAssignment>(row, "id", id, "Task assignment", {
+      workspaceId: stringValue(row, "workspace_id", "Task assignment"),
+      spaceId: stringValue(row, "space_id", "Task assignment"),
+      taskId,
+      assigneePrincipalId: stringValue(
+        row,
+        "assignee_principal_id",
+        "Task assignment",
+      ),
+    });
+  }
+
+  public listTaskAssignments(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly TaskAssignment[] {
+    return this.database
+      .prepare(
+        "SELECT id, task_id, assignee_principal_id, payload_json FROM task_assignments WHERE workspace_id = ? AND space_id = ? ORDER BY id",
+      )
+      .all(workspaceId, spaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "Task assignment");
+        return parsePayload<TaskAssignment>(row, "id", id, "Task assignment", {
+          workspaceId,
+          spaceId,
+          taskId: stringValue(row, "task_id", "Task assignment"),
+          assigneePrincipalId: stringValue(
+            row,
+            "assignee_principal_id",
+            "Task assignment",
+          ),
+        });
+      });
   }
 
   public getCapture(id: CaptureId): Capture | undefined {
@@ -1004,6 +1090,49 @@ class SqliteTransaction
         ),
     );
   }
+  public insertTaskAssignment(record: TaskAssignment): void {
+    this.insert(
+      "task_assignments",
+      [
+        "id",
+        "workspace_id",
+        "space_id",
+        "task_id",
+        "assignee_principal_id",
+        "state",
+        "version",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.spaceId,
+        record.taskId,
+        record.assigneePrincipalId,
+        record.state,
+        record.version,
+        payload(record),
+      ],
+    );
+  }
+  public updateTaskAssignment(
+    record: TaskAssignment,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE task_assignments SET state = ?, version = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(
+          record.state,
+          record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+        ),
+    );
+  }
   public insertTaskStatus(record: TaskStatusDefinition): void {
     this.insert(
       "task_statuses",
@@ -1363,6 +1492,12 @@ export class SqliteApplicationStore implements ApplicationStore {
       spaces: records("spaces", "id", "id", "space"),
       memberships: records("memberships", "id", "id", "membership"),
       spaceGrants: records("space_grants", "id", "id", "Space grant"),
+      taskAssignments: records(
+        "task_assignments",
+        "id",
+        "id",
+        "Task assignment",
+      ),
       taskStatuses: records("task_statuses", "id", "id", "task status"),
       captures: records("captures", "id", "id", "capture"),
       tasks: records("tasks", "id", "id", "task"),
@@ -1645,6 +1780,9 @@ export class SqliteApplicationStore implements ApplicationStore {
     );
     snapshot.captures.forEach((value) => transaction.insertCapture(value));
     snapshot.tasks.forEach((value) => transaction.insertTask(value));
+    (snapshot.taskAssignments ?? []).forEach((value) =>
+      transaction.insertTaskAssignment(value),
+    );
     snapshot.projects.forEach((value) => transaction.insertProject(value));
     snapshot.relations.forEach((value) => transaction.insertRelation(value));
     snapshot.undoDescriptors.forEach((value) =>

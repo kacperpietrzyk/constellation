@@ -43,6 +43,9 @@ const capabilityScope = [
   "project.create",
   "project.list",
   "task.list",
+  "task.assign",
+  "task.unassign",
+  "task.assignmentCandidates",
   "record.relate",
   "search.global",
   "activity.meaningful",
@@ -238,6 +241,46 @@ describe("collaboration-safe policy kernel", () => {
     const memberV2 = context("member", 2, [ids.shared, ids.private]);
     harness.authorization.register(ownerV2);
     harness.authorization.register(memberV2);
+    const sharedTask = harness.store
+      .snapshot()
+      .tasks.find((task) => task.spaceId === ids.shared);
+    assert.ok(sharedTask);
+    const assignmentId = requestId();
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(ownerV2, {
+          ...metadata("assign-member", { [sharedTask.id]: sharedTask.version }),
+          commandName: "task.assign",
+          payload: {
+            assignmentId,
+            taskId: sharedTask.id,
+            assigneePrincipalId: ids.member,
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    const candidates = harness.kernel.query(memberV2, {
+      contractVersion: 1,
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      queryName: "task.assignmentCandidates",
+      parameters: { spaceId: ids.shared },
+    });
+    if (
+      candidates.kind !== "query_result" ||
+      candidates.result.outcome !== "success" ||
+      candidates.result.projection.kind !== "task.assignmentCandidates"
+    ) {
+      assert.fail(
+        "Assignment candidates should be scoped to the visible Space.",
+      );
+    }
+    assert.deepEqual(
+      candidates.result.projection.candidates.map((item) => item.principalId),
+      [ids.member, ids.owner],
+    );
     const hiddenSearch = harness.kernel.query(memberV2, {
       contractVersion: 1,
       queryId: requestId(),
@@ -277,6 +320,7 @@ describe("collaboration-safe policy kernel", () => {
     assert.equal(scopedExport.result.projection.counts.tasks, 1);
     assert.equal(scopedExport.result.projection.counts.projects, 1);
     assert.equal(scopedExport.result.projection.counts.relations, 1);
+    assert.equal(scopedExport.result.projection.counts.taskAssignments, 1);
     assert.ok(scopedExport.result.projection.counts.activity >= 4);
 
     assert.equal(
@@ -343,5 +387,33 @@ describe("collaboration-safe policy kernel", () => {
     assert.equal(revoked.kind, "query_result");
     if (revoked.kind !== "query_result") throw new Error("Expected query.");
     assert.equal(revoked.result.outcome, "rejected");
+    const ownerV4 = context("owner", 4, [ids.shared, ids.private]);
+    harness.authorization.register(ownerV4);
+    const tasksAfterRevocation = harness.kernel.query(ownerV4, {
+      contractVersion: 1,
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      queryName: "task.list",
+      parameters: { spaceId: ids.shared },
+    });
+    if (
+      tasksAfterRevocation.kind !== "query_result" ||
+      tasksAfterRevocation.result.outcome !== "success" ||
+      tasksAfterRevocation.result.projection.kind !== "task.list"
+    ) {
+      assert.fail(
+        "Owner should retain the shared Task after member revocation.",
+      );
+    }
+    assert.equal(
+      tasksAfterRevocation.result.projection.items[0]?.assignment?.availability,
+      "former_member",
+    );
+    assert.equal(
+      tasksAfterRevocation.result.projection.items[0]?.assignment
+        ?.assigneePrincipalId,
+      undefined,
+    );
   });
 });

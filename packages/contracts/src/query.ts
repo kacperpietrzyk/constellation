@@ -11,6 +11,7 @@ import {
   QueryIdSchema,
   SpaceIdSchema,
   TaskIdSchema,
+  TaskAssignmentIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
 } from "./ids.js";
@@ -72,6 +73,11 @@ export const TaskListQuerySchema = QueryMetadataSchema.extend({
     .strict(),
 }).strict();
 
+export const TaskAssignmentCandidatesQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("task.assignmentCandidates"),
+  parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
+}).strict();
+
 export const ProjectListQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("project.list"),
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
@@ -131,6 +137,7 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   WorkspaceExportScopedQuerySchema,
   CaptureHistoryQuerySchema,
   TaskListQuerySchema,
+  TaskAssignmentCandidatesQuerySchema,
   ProjectListQuerySchema,
   ProjectOperationalOverviewQuerySchema,
   GlobalSearchQuerySchema,
@@ -219,12 +226,13 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           relations: z.int().nonnegative(),
           captures: z.int().nonnegative(),
           activity: z.int().nonnegative(),
+          taskAssignments: z.int().nonnegative().default(0),
         })
         .strict(),
       records: z.array(
         z
           .object({
-            kind: z.enum(["task", "project", "capture"]),
+            kind: z.enum(["task", "project", "capture", "task_assignment"]),
             id: z.uuid(),
             spaceId: SpaceIdSchema,
           })
@@ -295,10 +303,39 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             createdAt: z.iso.datetime({ offset: true }),
             updatedAt: z.iso.datetime({ offset: true }),
             version: z.int().positive(),
+            assignment: z
+              .object({
+                id: TaskAssignmentIdSchema,
+                assigneePrincipalId: PrincipalIdSchema.optional(),
+                displayName: z.string(),
+                availability: z.enum([
+                  "active",
+                  "unavailable_member",
+                  "former_member",
+                ]),
+                version: z.int().positive(),
+              })
+              .strict()
+              .optional(),
           })
           .strict(),
       ),
       nextCursor: z.string().nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("task.assignmentCandidates"),
+      spaceId: SpaceIdSchema,
+      candidates: z.array(
+        z
+          .object({
+            principalId: PrincipalIdSchema,
+            displayName: z.string(),
+            participantKind: z.enum(["member", "guest"]),
+          })
+          .strict(),
+      ),
     })
     .strict(),
   z
@@ -341,6 +378,20 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             title: z.string(),
             completionState: z.enum(["open", "completed"]),
             version: z.int().positive(),
+            assignment: z
+              .object({
+                id: TaskAssignmentIdSchema,
+                assigneePrincipalId: PrincipalIdSchema.optional(),
+                displayName: z.string(),
+                availability: z.enum([
+                  "active",
+                  "unavailable_member",
+                  "former_member",
+                ]),
+                version: z.int().positive(),
+              })
+              .strict()
+              .optional(),
           })
           .strict(),
       ),
@@ -423,6 +474,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "project_outcome_changed",
               "task_completed",
               "task_reopened",
+              "task_assigned",
+              "task_unassigned",
               "relation_added",
               "relation_removed",
               "command_undone",

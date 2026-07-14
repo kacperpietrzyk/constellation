@@ -33,6 +33,8 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "task.setStatus",
   "task.complete",
   "task.reopen",
+  "task.assign",
+  "task.unassign",
   "record.relate",
   "record.unrelate",
   "search.global",
@@ -42,6 +44,7 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "command.undo",
   "recovery.preview",
   "task.list",
+  "task.assignmentCandidates",
   "audit.receipt",
 ];
 
