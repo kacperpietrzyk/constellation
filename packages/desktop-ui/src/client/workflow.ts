@@ -3,6 +3,7 @@ import {
   QueryEnvelopeSchema,
   type AuditReceiptId,
   type CommandId,
+  type DataHomeStatus,
   type ProjectId,
   type QueryName,
   type QueryProjection,
@@ -51,6 +52,7 @@ export interface DesktopSnapshot {
   readonly projects: DataSlice<ProjectListProjection>;
   readonly cockpit: DataSlice<CockpitProjection>;
   readonly activity: DataSlice<ActivityProjection>;
+  readonly dataHome?: DataHomeStatus;
 }
 
 export type SubmitTaskResult =
@@ -146,6 +148,21 @@ export const loadDesktopSnapshot = async (
     queryEnvelope("workspace.bootstrapContext", workspaceId, {}),
     "workspace.bootstrapContext",
   );
+  let dataHome: DataHomeStatus | undefined;
+  if (build.channel === "local-alpha") {
+    try {
+      dataHome = await client.getDataHomeStatus();
+    } catch {
+      // The workspace remains usable; its switcher and Data Home surface show
+      // that provider status requires attention and retry independently.
+    }
+  }
+  if (
+    dataHome !== undefined &&
+    dataHome.descriptor.workspaceId !== workspaceId
+  ) {
+    throw new Error("Data Home identity does not match the open workspace.");
+  }
   const spaceId = firstSpace({ bootstrap });
   const [tasks, captures, projects, cockpit, activity] = await Promise.all([
     queryProjection(
@@ -195,6 +212,7 @@ export const loadDesktopSnapshot = async (
     projects,
     cockpit,
     activity,
+    ...(dataHome === undefined ? {} : { dataHome }),
   };
 };
 

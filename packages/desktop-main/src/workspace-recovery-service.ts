@@ -13,13 +13,14 @@ import {
 } from "node:fs";
 import path from "node:path";
 
-import { CredentialIdSchema, GrantIdSchema } from "@constellation/contracts";
-import type {
-  WorkspaceBackupExportResult,
-  WorkspaceBackupFailureCode,
-  WorkspaceRestorePreviewResult,
-  WorkspaceRestoreResult,
-} from "@constellation/desktop-preload/client";
+import {
+  CredentialIdSchema,
+  GrantIdSchema,
+  type WorkspaceBackupExportResult,
+  type WorkspaceBackupFailureCode,
+  type WorkspaceRestorePreviewResult,
+  type WorkspaceRestoreResult,
+} from "@constellation/contracts";
 import {
   exportEncryptedLocalStore,
   openEncryptedLocalStore,

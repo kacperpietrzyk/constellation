@@ -1,7 +1,8 @@
 # Local store
 
-Status: relational adapter, key custody, Electron lifecycle, and packaged Alpha
-path implemented; distribution signing remains gated.
+Status: relational adapter, key custody, Electron lifecycle, packaged Alpha,
+and local-only Data Home certification implemented; distribution signing
+remains gated.
 
 `@constellation/local-store` implements the existing synchronous
 `ApplicationStore` port over a deliberately small SQLite-shaped driver. It does
@@ -69,6 +70,12 @@ wrapped identity exists but database creation did not finish, and a
 recovery-only launch when an established database cannot recover its protected
 wrapper.
 
+The local SQLCipher database is the canonical store for a local-only Data Home.
+It is not a synchronized file and is never placed behind an arbitrary-folder
+sync claim. A future coordinated Data Home may use this adapter only as a
+device-local projection plus outbox; that role change must preserve the same
+application command/query semantics.
+
 The local Alpha also exposes semantic backup and restore operations without
 giving the renderer database paths, handles, or keys. Export uses
 `sqlcipher_export` under a fresh random key, verifies the closed encrypted copy,
@@ -103,3 +110,8 @@ Remaining recovery gates include real disk-full and permission faults, signed
 cross-version continuity, and managed attachments. Remaining release gates are
 production code signing, notarization, installer/updater behavior, and
 distribution continuity.
+
+The packaged journey also validates the safe Data Home status route, stable
+installation-generated device identity, honest capability matrix, and verified
+checkpoint state across relaunch and recovery. See [Data Homes](data-homes.md)
+for the provider contract.

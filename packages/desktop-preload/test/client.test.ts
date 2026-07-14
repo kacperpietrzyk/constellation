@@ -16,9 +16,12 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "executeCommand",
     "exportWorkspaceBackup",
     "getBuildInfo",
+    "getDataHomeStatus",
     "prepareWorkspaceRestore",
     "runQuery",
   ]);
   void client.getBuildInfo();
   assert.equal(calls[0]?.channel, DESKTOP_CHANNELS.getBuildInfo);
+  void client.getDataHomeStatus();
+  assert.equal(calls[1]?.channel, DESKTOP_CHANNELS.getDataHomeStatus);
 });

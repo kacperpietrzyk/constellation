@@ -588,19 +588,23 @@ export const RealApp = ({
         <button
           type="button"
           className="workspace-switcher"
-          aria-label={`Workspace ${bootstrap.workspace.name}, lokalny`}
+          aria-label={`Workspace ${bootstrap.workspace.name}, Data Home lokalny, dane kanoniczne na tym urządzeniu`}
           disabled={isPreview}
           title={
             isPreview
               ? "Backup jest dostępny w szyfrowanym lokalnym workspace."
-              : "Otwórz backup i odzyskiwanie workspace"
+              : "Otwórz Data Home i odzyskiwanie workspace"
           }
           onClick={() => setRecoveryOpen(true)}
         >
           <span className="workspace-avatar">I</span>
           <span>
             <strong>{bootstrap.workspace.name}</strong>
-            <small>Local-only workspace</small>
+            <small>
+              {state.snapshot.dataHome?.availability === "available"
+                ? "Local only · dane na tym urządzeniu"
+                : "Data Home wymaga uwagi"}
+            </small>
           </span>
           {!isPreview && <span className="workspace-switcher-action">•••</span>}
         </button>
@@ -1199,6 +1203,9 @@ export const RealApp = ({
       {recoveryOpen && client && (
         <WorkspaceRecovery
           client={client}
+          {...(state.snapshot.dataHome === undefined
+            ? {}
+            : { initialStatus: state.snapshot.dataHome })}
           workspaceName={bootstrap.workspace.name}
           recoveredPrevious={
             build.startupRecovery === "previous_workspace_restored"

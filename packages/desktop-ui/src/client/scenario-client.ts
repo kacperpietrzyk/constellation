@@ -1,4 +1,7 @@
 import {
+  DataHomeStatusSchema,
+  DeviceIdSchema,
+  LOCAL_ONLY_PROVIDER_ID,
   WorkspaceIdSchema,
   type QueryEnvelope,
 } from "@constellation/contracts";
@@ -43,6 +46,60 @@ export const createScenarioClient = (
     persistence: "in-memory",
     version: "scenario",
   }),
+  getDataHomeStatus: async () =>
+    DataHomeStatusSchema.parse({
+      descriptor: {
+        contractVersion: 1,
+        providerId: LOCAL_ONLY_PROVIDER_ID,
+        providerInstanceId: `${LOCAL_ONLY_PROVIDER_ID}:00000000-0000-4000-8000-000000000001`,
+        workspaceId: WorkspaceIdSchema.parse(
+          "00000000-0000-4000-8000-000000000001",
+        ),
+        deviceId: DeviceIdSchema.parse("00000000-0000-4000-8000-000000000099"),
+        providerKind: "local_only",
+        storageRole: "canonical",
+        displayName: "Local only",
+        location: "this_device",
+        capabilities: {
+          ordered_changes: {
+            support: "unsupported",
+            reason: "No remote provider is configured.",
+          },
+          checkpoints: { support: "supported" },
+          tombstones: {
+            support: "unsupported",
+            reason: "No remote provider is configured.",
+          },
+          attachments: {
+            support: "unsupported",
+            reason: "Attachments are not implemented.",
+          },
+          quota: {
+            support: "unsupported",
+            reason: "Local filesystem quota is unknown.",
+          },
+          portable_export: { support: "supported" },
+          portable_import: { support: "supported" },
+          provider_migration: { support: "supported" },
+          device_revocation: {
+            support: "unsupported",
+            reason: "No remote authority exists.",
+          },
+        },
+        encryption: {
+          atRest: "sqlcipher",
+          keyCustody: "operating_system",
+          portableRecovery: "separate_recovery_code",
+        },
+      },
+      availability: "available",
+      syncState: "not_configured",
+      checkpointState: "none_recorded",
+      quota: { state: "unknown" },
+      lastVerifiedAt: "2026-07-14T10:00:00.000Z",
+      recoveryActions: ["export_checkpoint", "restore_checkpoint"],
+      detailCode: "ready",
+    }),
   prepareWorkspaceRestore: async () => ({ outcome: "cancelled" }),
   runQuery: async (query) => {
     const response = fixtures.queries[query.queryName];

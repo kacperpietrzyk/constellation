@@ -212,8 +212,10 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     );
     const boundary = await client.evaluate(`(async () => {
       const build = await window.constellation.getBuildInfo();
+      const dataHome = await window.constellation.getDataHomeStatus();
       return {
         build,
+        dataHome,
         bridgeKeys: Object.keys(window.constellation).sort(),
         hasNodeRequire: typeof window.require !== "undefined"
       };
@@ -225,9 +227,40 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         (phase === "restored" ? "recovery_required" : "ready") ||
       boundary.hasNodeRequire ||
       boundary.bridgeKeys.join(",") !==
-        "cancelWorkspaceRestore,confirmWorkspaceRestore,executeCommand,exportWorkspaceBackup,getBuildInfo,prepareWorkspaceRestore,runQuery"
+        "cancelWorkspaceRestore,confirmWorkspaceRestore,executeCommand,exportWorkspaceBackup,getBuildInfo,getDataHomeStatus,prepareWorkspaceRestore,runQuery"
     ) {
       throw new Error("PACKAGED_ALPHA_PRELOAD_OR_IPC_INVALID");
+    }
+    const dataHome = boundary.dataHome;
+    if (
+      dataHome.descriptor.providerId !== "constellation.local-only/v1" ||
+      dataHome.descriptor.providerKind !== "local_only" ||
+      dataHome.descriptor.storageRole !== "canonical" ||
+      dataHome.descriptor.location !== "this_device" ||
+      dataHome.descriptor.encryption.atRest !== "sqlcipher" ||
+      dataHome.syncState !== "not_configured" ||
+      dataHome.quota.state !== "unknown" ||
+      dataHome.descriptor.capabilities.checkpoints.support !== "supported" ||
+      dataHome.descriptor.capabilities.portable_export.support !==
+        "supported" ||
+      dataHome.descriptor.capabilities.portable_import.support !==
+        "supported" ||
+      dataHome.descriptor.capabilities.provider_migration.support !==
+        "supported" ||
+      dataHome.descriptor.capabilities.ordered_changes.support !==
+        "unsupported" ||
+      dataHome.descriptor.capabilities.tombstones.support !== "unsupported" ||
+      dataHome.descriptor.capabilities.attachments.support !== "unsupported" ||
+      dataHome.descriptor.capabilities.quota.support !== "unsupported" ||
+      dataHome.descriptor.capabilities.device_revocation.support !==
+        "unsupported" ||
+      dataHome.availability !==
+        (phase === "restored" ? "recovery_required" : "available") ||
+      (phase === "restored"
+        ? dataHome.descriptor.workspaceId !== undefined
+        : dataHome.descriptor.workspaceId !== boundary.build.initialWorkspaceId)
+    ) {
+      throw new Error("PACKAGED_ALPHA_DATA_HOME_CONTRACT_INVALID");
     }
 
     const submitCapture = async (title) => {
@@ -292,6 +325,12 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         throw new Error(
           `PACKAGED_ALPHA_BACKUP_EXPORT_FAILED_${backup.outcome}_${backup.code ?? "no-code"}_${backup.metadata?.workspaceId ?? "no-workspace"}_${boundary.build.initialWorkspaceId}`,
         );
+      }
+      const checkpointStatus = await client.evaluate(
+        `window.constellation.getDataHomeStatus()`,
+      );
+      if (checkpointStatus.checkpointState !== "verified_this_session") {
+        throw new Error("PACKAGED_ALPHA_CHECKPOINT_STATUS_NOT_VERIFIED");
       }
       await submitCapture(mutationTitle);
       const contextTabs = await client.evaluate(
@@ -454,6 +493,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         phase,
         failpoint,
         restorePreview,
+        dataHomeDeviceId: boundary.dataHome.descriptor.deviceId,
         termination:
           packagedProcess.signalCode ?? `exit-${packagedProcess.exitCode}`,
       };
@@ -495,6 +535,16 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         `document.querySelector('.shell-tab.active [data-shell-tab="destination:tasks"]') !== null`,
         "PACKAGED_ALPHA_TASK_DESTINATION_CONTEXT_MISSING",
       );
+      const restoredDataHome = await client.evaluate(
+        `window.constellation.getDataHomeStatus()`,
+      );
+      if (
+        restoredDataHome.availability !== "available" ||
+        restoredDataHome.descriptor.workspaceId !== expectedWorkspaceId ||
+        restoredDataHome.checkpointState !== "verified_this_session"
+      ) {
+        throw new Error("PACKAGED_ALPHA_RESTORED_DATA_HOME_INVALID");
+      }
     } else {
       if (boundary.build.startupRecovery !== "previous_workspace_restored") {
         throw new Error("PACKAGED_ALPHA_PREVIOUS_WORKSPACE_NOT_RECOVERED");
@@ -539,6 +589,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       taskCount,
       backup,
       restorePreview,
+      dataHomeDeviceId: boundary.dataHome.descriptor.deviceId,
       persistence: boundary.build.persistence,
       preload: "context-isolated",
       transport: "renderer-preload-ipc",
@@ -581,6 +632,17 @@ const restored = await run(
   created.backup.recoveryCode,
   created.backup.metadata.workspaceId,
 );
+const dataHomeDeviceIds = [
+  created,
+  interruptedAfterRetention,
+  recoveredAfterRetention,
+  interruptedAfterActivation,
+  recoveredAfterActivation,
+  restored,
+].map((result) => result.dataHomeDeviceId);
+if (new Set(dataHomeDeviceIds).size !== 1) {
+  throw new Error("PACKAGED_ALPHA_DEVICE_ID_NOT_STABLE");
+}
 process.stdout.write(
   `${JSON.stringify({
     status: "pass",
@@ -602,6 +664,8 @@ process.stdout.write(
     transport: restored.transport,
     taskCount: restored.taskCount,
     backupWorkspaceId: created.backup.metadata.workspaceId,
+    dataHomeProvider: "constellation.local-only/v1",
+    stableDeviceIdentity: true,
     restoreCounts: restored.restorePreview.counts,
   })}\n`,
 );
