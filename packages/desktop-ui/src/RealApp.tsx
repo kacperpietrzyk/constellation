@@ -355,6 +355,8 @@ export const RealApp = ({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const modalOpen = document.querySelector("dialog[open]") !== null;
+      if (modalOpen && event.key !== "Escape") return;
       if (
         (event.metaKey || event.ctrlKey) &&
         event.shiftKey &&
