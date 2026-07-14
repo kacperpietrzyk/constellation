@@ -11,7 +11,10 @@ import {
 import type { AddressInfo } from "node:net";
 
 import {
+  CorrelationIdSchema,
   DeviceIdSchema,
+  DocumentIdSchema,
+  DocumentRevisionIdSchema,
   HubAttachmentBeginRequestSchema,
   HubBootstrapSnapshotRequestSchema,
   HubEnrollmentRequestSchema,
@@ -22,6 +25,7 @@ import { z } from "zod";
 
 import type { HubService } from "./service.js";
 import type { HubAttachmentService } from "./attachments.js";
+import type { RealtimeDocumentGateway } from "./realtime-documents.js";
 
 const MAX_BODY_BYTES = 1_048_576;
 const MAX_ATTACHMENT_CHUNK_BYTES = 8 * 1024 * 1024;
@@ -33,6 +37,24 @@ const ReconcileRequestSchema = z
     commandId: z.uuid(),
   })
   .strict();
+
+const DocumentRequestSchema = z
+  .object({
+    workspaceId: WorkspaceIdSchema,
+    deviceId: DeviceIdSchema,
+    documentId: DocumentIdSchema,
+  })
+  .strict();
+
+const DocumentRevisionCreateRequestSchema = DocumentRequestSchema.extend({
+  name: z.string().trim().min(1).max(120),
+  correlationId: CorrelationIdSchema,
+}).strict();
+
+const DocumentRevisionRestoreRequestSchema = DocumentRequestSchema.extend({
+  revisionId: DocumentRevisionIdSchema,
+  correlationId: CorrelationIdSchema,
+}).strict();
 
 const json = (
   response: ServerResponse,
@@ -86,6 +108,7 @@ export interface HubServerOptions {
   readonly allowInsecureLoopback?: boolean;
   readonly readiness?: () => Promise<boolean>;
   readonly attachments?: HubAttachmentService;
+  readonly realtimeDocuments?: RealtimeDocumentGateway;
   /** Test-only failure injection after the authoritative transaction commits. */
   readonly dropSyncResponseAfterCommit?: () => boolean;
   readonly logger?: (entry: {
@@ -248,6 +271,96 @@ export const startHubServer = async (
         return;
       }
       if (
+        requestUrl.pathname === "/v1/documents/session" &&
+        options.realtimeDocuments !== undefined
+      ) {
+        const parsed = DocumentRequestSchema.safeParse(body);
+        if (!parsed.success) {
+          json(response, 400, { code: "contract_invalid" });
+          return;
+        }
+        const session = await options.realtimeDocuments.createSession({
+          credential,
+          ...parsed.data,
+        });
+        json(
+          response,
+          session === undefined ? 404 : 200,
+          session ?? { code: "not_found" },
+        );
+        return;
+      }
+      if (
+        requestUrl.pathname === "/v1/documents/revisions" &&
+        options.realtimeDocuments !== undefined
+      ) {
+        const parsed = DocumentRevisionCreateRequestSchema.safeParse(body);
+        if (!parsed.success) {
+          json(response, 400, { code: "contract_invalid" });
+          return;
+        }
+        const revisionId = await options.realtimeDocuments.createRevision({
+          credential,
+          ...parsed.data,
+        });
+        json(
+          response,
+          revisionId === undefined ? 404 : 200,
+          revisionId === undefined ? { code: "not_found" } : { revisionId },
+        );
+        return;
+      }
+      if (
+        requestUrl.pathname === "/v1/documents/revisions/list" &&
+        options.realtimeDocuments !== undefined
+      ) {
+        const parsed = DocumentRequestSchema.safeParse(body);
+        if (!parsed.success) {
+          json(response, 400, { code: "contract_invalid" });
+          return;
+        }
+        const revisions = await options.realtimeDocuments.listRevisions({
+          credential,
+          ...parsed.data,
+        });
+        json(
+          response,
+          revisions === undefined ? 404 : 200,
+          revisions === undefined
+            ? { code: "not_found" }
+            : {
+                revisions: revisions.map((revision) => ({
+                  id: revision.id,
+                  name: revision.name,
+                  createdBy: revision.createdBy,
+                  createdAt: revision.createdAt,
+                  restoredFromRevisionId: revision.restoredFromRevisionId,
+                })),
+              },
+        );
+        return;
+      }
+      if (
+        requestUrl.pathname === "/v1/documents/revisions/restore" &&
+        options.realtimeDocuments !== undefined
+      ) {
+        const parsed = DocumentRevisionRestoreRequestSchema.safeParse(body);
+        if (!parsed.success) {
+          json(response, 400, { code: "contract_invalid" });
+          return;
+        }
+        const restored = await options.realtimeDocuments.restoreRevision({
+          credential,
+          ...parsed.data,
+        });
+        json(
+          response,
+          restored ? 200 : 404,
+          restored ? { outcome: "success" } : { code: "not_found" },
+        );
+        return;
+      }
+      if (
         requestUrl.pathname === "/v1/attachments/uploads" &&
         options.attachments !== undefined
       ) {
@@ -326,6 +439,7 @@ export const startHubServer = async (
           return;
         }
         const result = await options.service.sync(credential, parsed.data);
+        await options.realtimeDocuments?.reauthorizeSessions();
         if (options.dropSyncResponseAfterCommit?.() === true) {
           response.destroy();
           return;
@@ -375,6 +489,7 @@ export const startHubServer = async (
   server.requestTimeout = 15_000;
   server.headersTimeout = 10_000;
   server.keepAliveTimeout = 5_000;
+  options.realtimeDocuments?.mount(server);
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(options.port, options.host, () => {
@@ -385,12 +500,14 @@ export const startHubServer = async (
   const address = server.address() as AddressInfo;
   return {
     origin: `${options.tls === undefined ? "http" : "https"}://${options.host}:${address.port}`,
-    close: () =>
-      new Promise<void>((resolve, reject) => {
+    close: async () => {
+      await options.realtimeDocuments?.close();
+      await new Promise<void>((resolve, reject) => {
         server.close((error) =>
           error === undefined ? resolve() : reject(error),
         );
-      }),
+      });
+    },
   };
 };
 

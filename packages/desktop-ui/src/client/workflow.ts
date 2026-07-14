@@ -14,6 +14,7 @@ import {
   type TaskStatusId,
   type CommentId,
   type AttentionSignalId,
+  type DocumentId,
   type WorkspaceId,
 } from "@constellation/contracts";
 import type {
@@ -45,6 +46,7 @@ export type CommentListProjection = Projection<"comment.list">;
 export type MentionCandidatesProjection =
   Projection<"comment.mentionCandidates">;
 export type AttentionInboxProjection = Projection<"attention.inbox">;
+export type DocumentListProjection = Projection<"document.list">;
 export type CommentTarget = CommentListProjection["target"];
 
 export type DataSlice<T> =
@@ -67,6 +69,7 @@ export interface DesktopSnapshot {
   readonly assignmentCandidates: DataSlice<TaskAssignmentCandidatesProjection>;
   readonly mentionCandidates: DataSlice<MentionCandidatesProjection>;
   readonly attention: DataSlice<AttentionInboxProjection>;
+  readonly documents: DataSlice<DocumentListProjection>;
   readonly dataHome?: DataHomeStatus;
 }
 
@@ -191,6 +194,7 @@ export const loadDesktopSnapshot = async (
     assignmentCandidates,
     cockpit,
     activity,
+    documents,
   ] = await Promise.all([
     queryProjection(
       client,
@@ -260,6 +264,13 @@ export const loadDesktopSnapshot = async (
         "activity.meaningful",
       ),
     ),
+    optionalProjection(
+      queryProjection(
+        client,
+        queryEnvelope("document.list", workspaceId, { spaceId }),
+        "document.list",
+      ),
+    ),
   ]);
   return {
     build,
@@ -273,8 +284,47 @@ export const loadDesktopSnapshot = async (
     assignmentCandidates,
     mentionCandidates,
     attention,
+    documents,
     ...(dataHome === undefined ? {} : { dataHome }),
   };
+};
+
+export const createDocument = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  title: string,
+): Promise<MutationResult<DocumentId>> => {
+  const documentId = crypto.randomUUID() as DocumentId;
+  try {
+    const response = await client.executeCommand(
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "document.create",
+        commandId: crypto.randomUUID(),
+        workspaceId: snapshot.bootstrap.workspace.id,
+        idempotencyKey: `document-create:${documentId}`,
+        expectedVersions: {},
+        correlationId: crypto.randomUUID(),
+        payload: {
+          documentId,
+          spaceId: firstSpace(snapshot),
+          title: title.trim(),
+        },
+      }),
+    );
+    if (response.kind === "contract_rejected") {
+      return { kind: "error", message: "Nie udało się utworzyć dokumentu." };
+    }
+    if (response.outcome.outcome !== "success") {
+      return {
+        kind: response.outcome.outcome === "conflict" ? "conflict" : "error",
+        message: "Dokument nie został utworzony. Spróbuj ponownie.",
+      };
+    }
+    return { kind: "success", data: documentId };
+  } catch {
+    return { kind: "error", message: "Nie udało się utworzyć dokumentu." };
+  }
 };
 
 export const loadProjectOverview = (

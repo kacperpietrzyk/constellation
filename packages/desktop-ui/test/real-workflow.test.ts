@@ -133,12 +133,15 @@ const createTypedClient = () => {
   const commands: CommandEnvelope[] = [];
   const queries: QueryEnvelope[] = [];
   const client: ConstellationRendererClient = {
+    acknowledgeDocumentUpdates: async () => undefined,
     onAttentionActivated: () => () => undefined,
     cancelWorkspaceRestore: async () => undefined,
     confirmWorkspaceRestore: async () => ({
       outcome: "success",
       workspaceId,
     }),
+    createDocumentRevision: async () =>
+      "00000000-0000-4000-8000-000000000091" as never,
     enrollHub: async () => ({ outcome: "rejected", code: "hub_unreachable" }),
     exportHubAuthorization: async () => ({ outcome: "cancelled" }),
     exportWorkspaceBackup: async () => ({ outcome: "cancelled" }),
@@ -204,6 +207,9 @@ const createTypedClient = () => {
         recoveryActions: ["export_checkpoint", "restore_checkpoint"],
         detailCode: "ready",
       }),
+    listDocumentRevisions: async () => [],
+    openDocument: async () => ({ mode: "local", pendingUpdateCount: 0 }),
+    persistDocumentUpdate: async () => undefined,
     syncDataHome: async () => client.getDataHomeStatus(),
     prepareWorkspaceRestore: async () => ({ outcome: "cancelled" }),
     runQuery: async (query) => {
@@ -360,6 +366,7 @@ const createTypedClient = () => {
           throw new Error(`Unexpected query ${query.queryName}`);
       }
     },
+    restoreDocumentRevision: async () => undefined,
     executeCommand: async (command) => {
       commands.push(command);
       if (command.commandName === "command.previewUndo")
@@ -422,6 +429,7 @@ describe("real Wave 2 renderer workflow", () => {
         "capture.history",
         "cockpit.week",
         "comment.mentionCandidates",
+        "document.list",
         "project.list",
         "task.list",
         "task.assignmentCandidates",

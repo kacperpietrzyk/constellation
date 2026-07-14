@@ -1,0 +1,18 @@
+{
+  "name": "@constellation/realtime-documents",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Replaceable native-document collaboration adapter.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "types": "./dist/src/index.d.ts",
+  "dependencies": {
+    "yjs": "13.6.31"
+  }
+}

@@ -7,6 +7,7 @@ import {
 import {
   AuditReceiptIdSchema,
   CommandOutcomeSchema,
+  DocumentIdSchema,
   EventIdSchema,
   OutboxEntryIdSchema,
   ProjectIdSchema,
@@ -26,6 +27,7 @@ import {
   completeTask,
   assignTask,
   createProject,
+  createNativeDocument,
   relateTaskToProject,
   removeTaskProjectRelation,
   reopenTask,
@@ -76,6 +78,7 @@ export type Wave2Command = Extract<
   {
     commandName:
       | "project.create"
+      | "document.create"
       | "project.updateOutcome"
       | "task.setStatus"
       | "task.complete"
@@ -100,6 +103,7 @@ export type Wave2Query = Extract<
   {
     queryName:
       | "project.list"
+      | "document.list"
       | "project.operationalOverview"
       | "search.global"
       | "cockpit.week"
@@ -137,6 +141,16 @@ export const isWave2CommandAuthorized = (
   if (context.workspaceId !== command.workspaceId) return false;
   switch (command.commandName) {
     case "project.create": {
+      const space = view.getSpace(command.payload.spaceId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        space?.workspaceId === command.workspaceId ? space.id : undefined,
+      );
+    }
+    case "document.create": {
       const space = view.getSpace(command.payload.spaceId);
       return authorized(
         dependencies,
@@ -516,6 +530,48 @@ export const executeWave2Command = (
     return precondition(command, occurredAt);
   }
   switch (command.commandName) {
+    case "document.create": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (transaction.getDocument(command.payload.documentId) !== undefined) {
+        return precondition(command, occurredAt);
+      }
+      const document = createNativeDocument({
+        id: DocumentIdSchema.parse(command.payload.documentId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        title: command.payload.title,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertDocument(document);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "document.created",
+          workspaceId: document.workspaceId,
+          spaceId: document.spaceId,
+          aggregateId: document.id,
+          aggregateVersion: document.version,
+          occurredAt,
+        },
+        { [document.id]: document.version },
+        ["title"],
+        {
+          diagnosticCode: "document.created",
+          projection: {
+            kind: "document.created",
+            documentId: document.id,
+            title: document.title,
+            version: document.version,
+          },
+        },
+      );
+    }
     case "project.create": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       const project = createProject({
@@ -1937,6 +1993,20 @@ export const executeWave2Query = (
           ).length,
           version: project.version,
           updatedAt: project.updatedAt,
+        })),
+    });
+  }
+  if (query.queryName === "document.list") {
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "document.list",
+      items: view
+        .listDocuments(query.workspaceId, query.parameters.spaceId)
+        .map((document) => ({
+          id: document.id,
+          spaceId: document.spaceId,
+          title: document.title,
+          version: document.version,
+          updatedAt: document.updatedAt,
         })),
     });
   }

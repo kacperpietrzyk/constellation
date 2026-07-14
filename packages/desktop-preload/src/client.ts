@@ -9,6 +9,10 @@ import type {
   WorkspaceRestorePreviewResult,
   WorkspaceRestoreResult,
   WorkspaceId,
+  DocumentId,
+  DocumentRevisionId,
+  PrincipalId,
+  SpaceId,
   TaskId,
   ProjectId,
 } from "@constellation/contracts";
@@ -36,7 +40,34 @@ export const DESKTOP_CHANNELS = {
   confirmWorkspaceRestore: "constellation:workspace-backup:confirm-restore",
   cancelWorkspaceRestore: "constellation:workspace-backup:cancel-restore",
   attentionActivated: "constellation:attention:activated",
+  openDocument: "constellation:document:open",
+  persistDocumentUpdate: "constellation:document:persist-update",
+  acknowledgeDocumentUpdates: "constellation:document:acknowledge-updates",
+  createDocumentRevision: "constellation:document:create-revision",
+  listDocumentRevisions: "constellation:document:list-revisions",
+  restoreDocumentRevision: "constellation:document:restore-revision",
 } as const;
+
+export interface RendererDocumentRevision {
+  readonly id: DocumentRevisionId;
+  readonly name: string;
+  readonly createdBy: PrincipalId;
+  readonly createdAt: string;
+  readonly restoredFromRevisionId?: DocumentRevisionId;
+}
+
+export interface RendererDocumentOpenResult {
+  readonly mode: "local" | "coordinated";
+  readonly state?: Uint8Array;
+  readonly pendingUpdateCount: number;
+  readonly session?: {
+    readonly url: string;
+    readonly room: string;
+    readonly token: string;
+    readonly expiresAt: string;
+    readonly access: "view" | "comment" | "edit";
+  };
+}
 
 export interface ContractRejection {
   readonly kind: "contract_rejected";
@@ -66,6 +97,10 @@ export interface DesktopBuildInfo {
 }
 
 export interface ConstellationRendererClient {
+  acknowledgeDocumentUpdates(input: {
+    readonly documentId: DocumentId;
+    readonly spaceId: SpaceId;
+  }): Promise<void>;
   onAttentionActivated(
     listener: (
       destination:
@@ -78,6 +113,10 @@ export interface ConstellationRendererClient {
     readonly restoreId: string;
   }): Promise<WorkspaceRestoreResult>;
   executeCommand(command: CommandEnvelope): Promise<RendererCommandResponse>;
+  createDocumentRevision(input: {
+    readonly documentId: DocumentId;
+    readonly name: string;
+  }): Promise<DocumentRevisionId>;
   exportWorkspaceBackup(): Promise<WorkspaceBackupExportResult>;
   exportHubAuthorization(): Promise<
     | { readonly outcome: "success"; readonly fileLabel: string }
@@ -86,6 +125,19 @@ export interface ConstellationRendererClient {
   >;
   getBuildInfo(): Promise<DesktopBuildInfo>;
   getDataHomeStatus(): Promise<DataHomeStatus>;
+  listDocumentRevisions(input: {
+    readonly documentId: DocumentId;
+  }): Promise<readonly RendererDocumentRevision[]>;
+  openDocument(input: {
+    readonly documentId: DocumentId;
+    readonly spaceId: SpaceId;
+  }): Promise<RendererDocumentOpenResult>;
+  persistDocumentUpdate(input: {
+    readonly documentId: DocumentId;
+    readonly spaceId: SpaceId;
+    readonly state: Uint8Array;
+    readonly update: Uint8Array;
+  }): Promise<void>;
   enrollHub(input: {
     readonly hubOrigin: string;
     readonly enrollmentSecret: string;
@@ -110,6 +162,10 @@ export interface ConstellationRendererClient {
     readonly recoveryCode: string;
   }): Promise<WorkspaceRestorePreviewResult>;
   runQuery(query: QueryEnvelope): Promise<RendererQueryResponse>;
+  restoreDocumentRevision(input: {
+    readonly documentId: DocumentId;
+    readonly revisionId: DocumentRevisionId;
+  }): Promise<void>;
 }
 
 export type DesktopInvoke = (
@@ -120,6 +176,8 @@ export type DesktopInvoke = (
 export const createRendererClient = (
   invoke: DesktopInvoke,
 ): ConstellationRendererClient => ({
+  acknowledgeDocumentUpdates: (input) =>
+    invoke(DESKTOP_CHANNELS.acknowledgeDocumentUpdates, input) as Promise<void>,
   onAttentionActivated: () => () => undefined,
   cancelWorkspaceRestore: (input) =>
     invoke(DESKTOP_CHANNELS.cancelWorkspaceRestore, input) as Promise<void>,
@@ -133,10 +191,26 @@ export const createRendererClient = (
       DESKTOP_CHANNELS.executeCommand,
       command,
     ) as Promise<RendererCommandResponse>,
+  createDocumentRevision: (input) =>
+    invoke(
+      DESKTOP_CHANNELS.createDocumentRevision,
+      input,
+    ) as Promise<DocumentRevisionId>,
   getBuildInfo: () =>
     invoke(DESKTOP_CHANNELS.getBuildInfo) as Promise<DesktopBuildInfo>,
   getDataHomeStatus: () =>
     invoke(DESKTOP_CHANNELS.getDataHomeStatus) as Promise<DataHomeStatus>,
+  listDocumentRevisions: (input) =>
+    invoke(DESKTOP_CHANNELS.listDocumentRevisions, input) as Promise<
+      readonly RendererDocumentRevision[]
+    >,
+  openDocument: (input) =>
+    invoke(
+      DESKTOP_CHANNELS.openDocument,
+      input,
+    ) as Promise<RendererDocumentOpenResult>,
+  persistDocumentUpdate: (input) =>
+    invoke(DESKTOP_CHANNELS.persistDocumentUpdate, input) as Promise<void>,
   exportHubAuthorization: () =>
     invoke(DESKTOP_CHANNELS.exportHubAuthorization) as ReturnType<
       ConstellationRendererClient["exportHubAuthorization"]
@@ -158,4 +232,6 @@ export const createRendererClient = (
     ) as Promise<WorkspaceRestorePreviewResult>,
   runQuery: (query) =>
     invoke(DESKTOP_CHANNELS.runQuery, query) as Promise<RendererQueryResponse>,
+  restoreDocumentRevision: (input) =>
+    invoke(DESKTOP_CHANNELS.restoreDocumentRevision, input) as Promise<void>,
 });

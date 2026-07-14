@@ -5,6 +5,11 @@ import type {
   HubCheckpoint,
   HubWorkspaceSnapshot,
   WorkspaceId,
+  DocumentId,
+  DocumentRevisionId,
+  PrincipalId,
+  SpaceId,
+  CorrelationId,
 } from "@constellation/contracts";
 
 export interface HubStoredReceipt {
@@ -19,6 +24,31 @@ export interface HubWorkspaceState {
   snapshot: HubWorkspaceSnapshot;
   snapshotDigest: string;
   readonly receipts: Map<string, HubStoredReceipt>;
+}
+
+export interface HubDocumentState {
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly documentId: DocumentId;
+  readonly engine: "yjs-13";
+  readonly state: Uint8Array;
+  readonly updatedAt: string;
+}
+
+export interface HubDocumentRevision {
+  readonly id: DocumentRevisionId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly documentId: DocumentId;
+  readonly name: string;
+  readonly engine: "yjs-13";
+  readonly state: Uint8Array;
+  readonly stateVector: Uint8Array;
+  readonly createdBy: PrincipalId;
+  readonly createdByDeviceId: DeviceId;
+  readonly correlationId: CorrelationId;
+  readonly createdAt: string;
+  readonly restoredFromRevisionId?: DocumentRevisionId;
 }
 
 export interface HubEnrollmentGrant {
@@ -91,6 +121,16 @@ export interface HubRepository {
     readonly deviceId: DeviceId;
     readonly revokedAt: string;
   }): Promise<boolean>;
+  loadDocumentState(input: {
+    readonly workspaceId: WorkspaceId;
+    readonly documentId: DocumentId;
+  }): Promise<HubDocumentState | undefined>;
+  storeDocumentState(state: HubDocumentState): Promise<void>;
+  createDocumentRevision(revision: HubDocumentRevision): Promise<void>;
+  listDocumentRevisions(input: {
+    readonly workspaceId: WorkspaceId;
+    readonly documentId: DocumentId;
+  }): Promise<readonly HubDocumentRevision[]>;
 }
 
 export class InMemoryHubRepository implements HubRepository {
@@ -98,6 +138,8 @@ export class InMemoryHubRepository implements HubRepository {
   private readonly enrollments = new Map<string, HubEnrollmentGrant>();
   private readonly devices = new Map<string, HubDeviceGrant>();
   private readonly locks = new Map<WorkspaceId, Promise<void>>();
+  private readonly documentStates = new Map<string, HubDocumentState>();
+  private readonly documentRevisions = new Map<string, HubDocumentRevision>();
 
   private deviceKey(workspaceId: WorkspaceId, deviceId: DeviceId): string {
     return `${workspaceId}:${deviceId}`;
@@ -228,5 +270,49 @@ export class InMemoryHubRepository implements HubRepository {
     device.revokedAt = input.revokedAt;
     device.purgeRequested = true;
     return true;
+  }
+
+  public async loadDocumentState(input: {
+    readonly workspaceId: WorkspaceId;
+    readonly documentId: DocumentId;
+  }): Promise<HubDocumentState | undefined> {
+    return this.documentStates.get(`${input.workspaceId}:${input.documentId}`);
+  }
+
+  public async storeDocumentState(state: HubDocumentState): Promise<void> {
+    this.documentStates.set(`${state.workspaceId}:${state.documentId}`, {
+      ...state,
+      state: state.state.slice(),
+    });
+  }
+
+  public async createDocumentRevision(
+    revision: HubDocumentRevision,
+  ): Promise<void> {
+    if (this.documentRevisions.has(revision.id)) {
+      throw new Error("Document revision already exists.");
+    }
+    this.documentRevisions.set(revision.id, {
+      ...revision,
+      state: revision.state.slice(),
+      stateVector: revision.stateVector.slice(),
+    });
+  }
+
+  public async listDocumentRevisions(input: {
+    readonly workspaceId: WorkspaceId;
+    readonly documentId: DocumentId;
+  }): Promise<readonly HubDocumentRevision[]> {
+    return [...this.documentRevisions.values()]
+      .filter(
+        (revision) =>
+          revision.workspaceId === input.workspaceId &&
+          revision.documentId === input.documentId,
+      )
+      .sort(
+        (left, right) =>
+          right.createdAt.localeCompare(left.createdAt) ||
+          right.id.localeCompare(left.id),
+      );
   }
 }

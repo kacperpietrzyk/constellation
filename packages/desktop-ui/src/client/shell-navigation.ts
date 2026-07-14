@@ -54,6 +54,11 @@ export const createShellNavigation = (
 export const activeShellContext = (state: ShellNavigationState): ShellContext =>
   state.tabs.find((tab) => tab.key === state.activeKey) ?? state.tabs[0]!;
 
+export const destinationShortcutIndex = (code: string): number | undefined => {
+  const match = /^Digit([1-8])$/.exec(code);
+  return match?.[1] === undefined ? undefined : Number(match[1]) - 1;
+};
+
 const appendHistory = (
   state: ShellNavigationState,
   key: string,

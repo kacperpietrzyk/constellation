@@ -59,6 +59,7 @@ export const fromHubSnapshot = (
     parsed.captures.some((value) => value.workspaceId !== workspaceId) ||
     parsed.tasks.some((value) => value.workspaceId !== workspaceId) ||
     parsed.projects.some((value) => value.workspaceId !== workspaceId) ||
+    parsed.documents.some((value) => value.workspaceId !== workspaceId) ||
     parsed.relations.some((value) => value.workspaceId !== workspaceId) ||
     parsed.events.some((value) => value.workspaceId !== workspaceId) ||
     parsed.auditReceipts.some((value) => value.workspaceId !== workspaceId) ||
@@ -141,6 +142,7 @@ export const scopeHubSnapshot = (
   );
   const captures = state.captures.filter(inScope);
   const projects = state.projects.filter(inScope);
+  const documents = (state.documents ?? []).filter(inScope);
   const relations = state.relations.filter(inScope);
   const undoDescriptors = state.undoDescriptors.filter(inScope);
   const visibleEvents = state.events.filter(inScope);
@@ -275,6 +277,7 @@ export const scopeHubSnapshot = (
     ...captures.map((value) => value.id),
     ...tasks.map((value) => value.id),
     ...projects.map((value) => value.id),
+    ...documents.map((value) => value.id),
     ...relations.map((value) => value.id),
     ...undoDescriptors.map((value) => value.targetCommandId),
   ]);
@@ -308,6 +311,7 @@ export const scopeHubSnapshot = (
     captures,
     tasks,
     projects,
+    documents,
     relations,
     undoDescriptors,
     events,

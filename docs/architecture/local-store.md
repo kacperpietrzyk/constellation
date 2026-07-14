@@ -85,6 +85,16 @@ single SQLite transactions; the latter removes projected records, FTS rows,
 queued commands, receipts, and local policy metadata before recording the
 revoked coordination state.
 
+Native document metadata remains part of the normal scoped projection. Its Yjs
+body is stored separately as a bounded opaque blob. A local-only edit replaces
+that encrypted state atomically; a coordinated edit commits the new state and a
+pending binary update in one transaction. Acknowledgement removes only updates
+confirmed after document synchronization. Named revision state and state
+vectors survive restart, while access-revocation purge removes document bodies,
+pending updates, and revisions before their parent metadata. Scope columns are
+checked against the document record on every load and write so corrupted or
+cross-Space binary rows fail closed.
+
 The local Alpha also exposes semantic backup and restore operations without
 giving the renderer database paths, handles, or keys. Export uses
 `sqlcipher_export` under a fresh random key, verifies the closed encrypted copy,

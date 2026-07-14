@@ -58,7 +58,7 @@ personal work without depending on a server:
 - finish accessibility, platform behavior, and the release-quality Visual Atlas
   contract for every changed surface.
 
-## Current — collaboration-safe workspaces
+## Delivered foundation — collaboration-safe workspaces
 
 Build collaboration on the same identity, authorization, and Data Home
 boundaries rather than adding it as a separate product:
@@ -72,21 +72,24 @@ boundaries rather than adding it as a separate product:
 - assignments, comments, notifications, and simultaneous native-document
   editing through a dedicated, proven collaboration adapter.
 
-The delivered foundation introduces versioned membership and Space grants,
-fresh-policy authorization, scoped Hub projections, revocation-driven cache
-removal, and a desktop access-management surface. A packaged two-human gate now
-proves private-Space exclusion, offline edit acceptance, stale edit rejection
-after a view-only downgrade, and atomic local projection removal after
-revocation. The current desktop and kernel also support one versioned responsible
+The delivered collaboration foundation includes versioned membership and Space
+grants, fresh-policy authorization, scoped Hub projections, revocation-driven
+cache removal, and a desktop access-management surface. A packaged two-human
+gate now proves private-Space exclusion, offline edit acceptance, stale edit
+rejection after a view-only downgrade, and atomic local projection removal
+after revocation. The desktop and kernel also support one versioned responsible
 member or guest per Task, with scoped candidates, explicit conflicts, audit,
 activity, safe former-member states, and durable local/Hub projections. Tasks
 and Projects now also have attributed, resolvable comment threads; Commenter is
 a distinct Space access level, mentions and assignments create recipient-only
 durable attention, and system delivery is isolated behind a main-process
-adapter. Broader collaboration remains current work until the packaged
-comment/notification proof plus document-revision and recovery gates pass.
+adapter. Native documents use a replaceable Yjs/Hocuspocus collaboration
+adapter with encrypted local state, offline convergence, immediate
+read-only/revoked session enforcement, named revisions, restore, and scoped
+purge. Packaged macOS and Windows gates prove the complete two-human
+online/offline, conflict, revocation, document-revision, and recovery journey.
 
-## Next — external agents through MCP
+## Current — external agents through MCP
 
 Expose the application commands and queries as the only agent interface:
 

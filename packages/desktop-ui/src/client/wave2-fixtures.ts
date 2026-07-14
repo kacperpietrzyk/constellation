@@ -7,7 +7,8 @@ export type SurfaceId =
   | "history"
   | "activity"
   | "attention"
-  | "access";
+  | "access"
+  | "documents";
 
 export type PreviewCondition =
   | "ready"

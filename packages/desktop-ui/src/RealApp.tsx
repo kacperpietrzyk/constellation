@@ -21,6 +21,7 @@ import type {
 
 import { AccessSurface } from "./AccessSurface.js";
 import { AttentionSurface, CommentsPanel } from "./CollaborationSurfaces.js";
+import { DocumentsSurface } from "./DocumentsSurface.js";
 
 import {
   ActivitySurface,
@@ -66,6 +67,7 @@ import {
   canMoveShellHistory,
   closeShellContext,
   createShellNavigation,
+  destinationShortcutIndex,
   destinationContext,
   moveShellHistory,
   openShellContext,
@@ -96,7 +98,8 @@ type IconName =
   | "cockpit"
   | "activity"
   | "attention"
-  | "access";
+  | "access"
+  | "documents";
 const Icon = ({ name }: { readonly name: IconName }) => {
   const paths = {
     capture: <path d="M12 5v14M5 12h14" />,
@@ -115,6 +118,7 @@ const Icon = ({ name }: { readonly name: IconName }) => {
     access: (
       <path d="M16 19c0-3-2.2-5-5-5s-5 2-5 5M11 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM17 8h4M19 6v4" />
     ),
+    documents: <path d="M6 3h9l4 4v14H6zM15 3v5h4M9 12h7M9 16h7" />,
   } as const;
   return (
     <svg
@@ -256,6 +260,7 @@ const navItems: readonly {
   { id: "activity", label: "Aktywność", icon: "activity", shortcut: "5" },
   { id: "attention", label: "Do uwagi", icon: "attention", shortcut: "6" },
   { id: "access", label: "Dostęp", icon: "access", shortcut: "7" },
+  { id: "documents", label: "Dokumenty", icon: "documents", shortcut: "8" },
 ];
 
 export const RealApp = ({
@@ -433,6 +438,7 @@ export const RealApp = ({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const modalOpen = document.querySelector("dialog[open]") !== null;
+      const shortcutIndex = destinationShortcutIndex(event.code);
       if (modalOpen && event.key !== "Escape") return;
       if (
         (event.metaKey || event.ctrlKey) &&
@@ -446,10 +452,10 @@ export const RealApp = ({
         setSearchOpen(true);
       } else if (
         (event.metaKey || event.ctrlKey) &&
-        /^Digit[1-7]$/.test(event.code)
+        shortcutIndex !== undefined
       ) {
         event.preventDefault();
-        const item = navItems[Number(event.code.slice(-1)) - 1];
+        const item = navItems[shortcutIndex];
         if (item) openContext(destinationContext(item.id, item.label));
       } else if (event.altKey && event.key === "ArrowLeft") {
         event.preventDefault();
@@ -993,6 +999,14 @@ export const RealApp = ({
                 else showFailure(result);
               });
             }}
+          />
+        )}
+        {surface === "documents" && (
+          <DocumentsSurface
+            client={client}
+            snapshot={state.snapshot}
+            onReload={reload}
+            onFailure={showFailure}
           />
         )}
         {surface === "projects" && (

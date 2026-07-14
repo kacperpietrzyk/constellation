@@ -8,6 +8,7 @@ import {
   activeShellContext,
   closeShellContext,
   createShellNavigation,
+  destinationShortcutIndex,
   destinationContext,
   moveShellHistory,
   openShellContext,
@@ -19,6 +20,12 @@ const taskId = TaskIdSchema.parse("00000000-0000-4000-8000-000000000001");
 const projectId = ProjectIdSchema.parse("00000000-0000-4000-8000-000000000002");
 
 describe("stable shell navigation", () => {
+  it("maps every visible destination shortcut, including Documents", () => {
+    assert.equal(destinationShortcutIndex("Digit1"), 0);
+    assert.equal(destinationShortcutIndex("Digit8"), 7);
+    assert.equal(destinationShortcutIndex("Digit9"), undefined);
+  });
+
   it("preserves record contexts across Back and Forward", () => {
     let state = createShellNavigation(destinationContext("cockpit", "Tydzień"));
     state = openShellContext(state, taskContext(taskId, "Zadanie Alpha"));

@@ -3,6 +3,7 @@ import type {
   CaptureId,
   CommandId,
   CorrelationId,
+  DocumentId,
   EventId,
   GrantId,
   MembershipId,
@@ -197,6 +198,17 @@ export interface Project {
   readonly updatedAt: string;
 }
 
+export interface NativeDocument {
+  readonly id: DocumentId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly title: string;
+  readonly createdBy: PrincipalId;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
 export interface TaskProjectRelation {
   readonly id: RelationId;
   readonly workspaceId: WorkspaceId;
@@ -322,6 +334,15 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: ProjectId;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "document.created";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: DocumentId;
       readonly aggregateVersion: number;
       readonly occurredAt: string;
     }

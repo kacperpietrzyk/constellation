@@ -11,16 +11,22 @@ test("renderer client exposes only semantic application and recovery routes", ()
   });
 
   assert.deepEqual(Object.keys(client).sort(), [
+    "acknowledgeDocumentUpdates",
     "cancelWorkspaceRestore",
     "confirmWorkspaceRestore",
+    "createDocumentRevision",
     "enrollHub",
     "executeCommand",
     "exportHubAuthorization",
     "exportWorkspaceBackup",
     "getBuildInfo",
     "getDataHomeStatus",
+    "listDocumentRevisions",
     "onAttentionActivated",
+    "openDocument",
+    "persistDocumentUpdate",
     "prepareWorkspaceRestore",
+    "restoreDocumentRevision",
     "runQuery",
     "syncDataHome",
   ]);

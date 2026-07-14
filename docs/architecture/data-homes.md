@@ -104,6 +104,17 @@ to a safe label, ineligible mention IDs are removed, and audit receipt record
 lists are stripped of another principal's Attention identifiers before the
 snapshot leaves the Hub.
 
+Native-document bodies use a dedicated collaboration channel rather than the
+logical snapshot feed. Each desktop first commits Yjs state to its encrypted
+local store; coordinated workspaces also retain a bounded update outbox until a
+live document session synchronizes. The Hub accepts only `/v1/realtime`, uses a
+five-minute random room token minted from the protected device credential, and
+reauthorizes current membership and Space access before every inbound update.
+PostgreSQL stores opaque bounded Yjs state and named revision checkpoints.
+Presence is ephemeral, size-limited, and never treated as authoritative data.
+Local-only workspaces keep the same editor and named revisions entirely in
+SQLCipher without claiming remote collaboration.
+
 Operational setup and recovery are documented in the
 [self-hosted Hub runbook](../self-hosting/hub.md). Constellation never
 synchronizes an actively opened database through a generic cloud folder.
