@@ -307,20 +307,27 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       }
       for (
         let attempt = 0;
-        attempt < 200 && packagedProcess.signalCode === null;
+        attempt < 200 &&
+        packagedProcess.signalCode === null &&
+        packagedProcess.exitCode === null;
         attempt += 1
       ) {
         await delay(50);
       }
       client.close();
-      if (!connectionClosed || packagedProcess.signalCode === null) {
+      if (
+        !connectionClosed ||
+        (packagedProcess.signalCode === null &&
+          packagedProcess.exitCode === null)
+      ) {
         throw new Error("PACKAGED_ALPHA_RECOVERY_FAILPOINT_DID_NOT_TERMINATE");
       }
       return {
         phase,
         failpoint,
         restorePreview,
-        terminationSignal: packagedProcess.signalCode,
+        termination:
+          packagedProcess.signalCode ?? `exit-${packagedProcess.exitCode}`,
       };
     } else if (phase === "restored") {
       restorePreview = await client.evaluate(
@@ -453,9 +460,9 @@ process.stdout.write(
       recoveredAfterActivation.phase,
       restored.phase,
     ],
-    interruptionSignals: [
-      interruptedAfterRetention.terminationSignal,
-      interruptedAfterActivation.terminationSignal,
+    interruptionTerminations: [
+      interruptedAfterRetention.termination,
+      interruptedAfterActivation.termination,
     ],
     persistence: restored.persistence,
     preload: restored.preload,
