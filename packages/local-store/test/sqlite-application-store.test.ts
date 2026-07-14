@@ -926,6 +926,68 @@ describe("SQLite ApplicationStore", () => {
     database.close();
   });
 
+  it("initializes a fresh scoped projection with its Task before assignment", () => {
+    const sourceDatabase = new DatabaseSync(":memory:");
+    const source = createKernel(sourceDatabase);
+    assert.equal(
+      unwrap(source.kernel.execute(context(), workspaceCommand)).outcome,
+      "success",
+    );
+    const stored = unwrap(source.kernel.execute(context(), captureCommand));
+    if (
+      stored.outcome !== "success" ||
+      stored.projection.kind !== "capture.stored"
+    ) {
+      throw new Error("Expected Capture storage.");
+    }
+    const routed = unwrap(
+      source.kernel.execute(
+        context(),
+        routeCommand(stored.projection.captureId),
+      ),
+    );
+    if (
+      routed.outcome !== "success" ||
+      routed.projection.kind !== "capture.routed_as_task"
+    ) {
+      throw new Error("Expected Task routing.");
+    }
+    const assignmentId = wave2RequestId();
+    assert.equal(
+      unwrap(
+        source.kernel.execute(
+          context(),
+          wave2Command(
+            "task.assign",
+            {
+              assignmentId,
+              taskId: routed.projection.taskId,
+              assigneePrincipalId: ids.principal,
+            },
+            "scoped-projection-assignment",
+            { [routed.projection.taskId]: 1 },
+          ),
+        ),
+      ).outcome,
+      "success",
+    );
+    const snapshot = source.store.snapshot();
+
+    const targetDatabase = new DatabaseSync(":memory:");
+    const target = createKernel(targetDatabase);
+    target.store.initializeProjection(snapshot);
+    assert.equal(
+      target.store.snapshot().tasks[0]?.id,
+      routed.projection.taskId,
+    );
+    assert.equal(
+      target.store.snapshot().taskAssignments?.[0]?.id,
+      assignmentId,
+    );
+    sourceDatabase.close();
+    targetDatabase.close();
+  });
+
   it("atomically purges coordinated records, FTS, and queued commands after access revocation", () => {
     const database = new DatabaseSync(":memory:");
     const { kernel, store } = createKernel(database);

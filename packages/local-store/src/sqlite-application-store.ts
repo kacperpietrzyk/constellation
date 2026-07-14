@@ -1775,14 +1775,14 @@ export class SqliteApplicationStore implements ApplicationStore {
     (snapshot.spaceGrants ?? []).forEach((value) =>
       transaction.insertSpaceGrant(value),
     );
-    (snapshot.taskAssignments ?? []).forEach((value) =>
-      transaction.insertTaskAssignment(value),
-    );
     snapshot.taskStatuses.forEach((value) =>
       transaction.insertTaskStatus(value),
     );
     snapshot.captures.forEach((value) => transaction.insertCapture(value));
     snapshot.tasks.forEach((value) => transaction.insertTask(value));
+    (snapshot.taskAssignments ?? []).forEach((value) =>
+      transaction.insertTaskAssignment(value),
+    );
     snapshot.projects.forEach((value) => transaction.insertProject(value));
     snapshot.relations.forEach((value) => transaction.insertRelation(value));
     snapshot.undoDescriptors.forEach((value) =>
