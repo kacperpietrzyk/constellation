@@ -316,6 +316,44 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         `document.querySelector('.shell-tab.active [role="tab"] span:last-child')?.textContent === ${JSON.stringify(mutationTitle)}`,
         "PACKAGED_ALPHA_CONTEXT_FORWARD_FAILED",
       );
+      await client.evaluate(`(() => {
+        document.querySelector('.search-control').click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('#global-search') !== null`,
+        "PACKAGED_ALPHA_SEARCH_MISSING",
+      );
+      await client.evaluate(`(() => {
+        const input = document.querySelector('#global-search');
+        const setter = Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value"
+        ).set;
+        setter.call(input, ${JSON.stringify(taskTitle)});
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `[...document.querySelectorAll('.search-results button')].some(
+          (button) => button.querySelector('small')?.textContent?.startsWith('task ·')
+        )`,
+        "PACKAGED_ALPHA_LOCAL_SEARCH_RESULT_MISSING",
+      );
+      await client.evaluate(`(() => {
+        const result = [...document.querySelectorAll('.search-results button')].find(
+          (button) => button.querySelector('small')?.textContent?.startsWith('task ·')
+        );
+        result.click();
+        return true;
+      })()`);
+      await waitFor(
+        client,
+        `document.querySelector('.shell-tab.active [role="tab"] span:last-child')?.textContent === ${JSON.stringify(taskTitle)} && document.querySelectorAll('.shell-tab').length === 3`,
+        "PACKAGED_ALPHA_SEARCH_CONTEXT_NAVIGATION_FAILED",
+      );
     } else if (phase.startsWith("interrupted-")) {
       restorePreview = await client.evaluate(
         `window.constellation.prepareWorkspaceRestore({ recoveryCode: ${JSON.stringify(recoveryCode)} })`,
