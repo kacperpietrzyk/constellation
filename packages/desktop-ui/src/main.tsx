@@ -16,6 +16,13 @@ const render = async (): Promise<void> => {
     const { DataHomeHarness } = await import("./dev/DataHomeHarness.js");
     content = <DataHomeHarness />;
   }
+  if (
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("surface") === "access"
+  ) {
+    const { AccessHarness } = await import("./dev/AccessHarness.js");
+    content = <AccessHarness />;
+  }
 
   createRoot(root).render(<StrictMode>{content}</StrictMode>);
 };

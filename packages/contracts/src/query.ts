@@ -31,6 +31,16 @@ export const WorkspaceBootstrapContextQuerySchema = QueryMetadataSchema.extend({
   parameters: z.object({}).strict(),
 }).strict();
 
+export const WorkspaceAccessQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("workspace.access"),
+  parameters: z.object({}).strict(),
+}).strict();
+
+export const WorkspaceExportScopedQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("workspace.exportScoped"),
+  parameters: z.object({}).strict(),
+}).strict();
+
 export const CaptureHistoryQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("capture.history"),
   parameters: z
@@ -117,6 +127,8 @@ export const RecoveryPreviewQuerySchema = QueryMetadataSchema.extend({
 
 export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   WorkspaceBootstrapContextQuerySchema,
+  WorkspaceAccessQuerySchema,
+  WorkspaceExportScopedQuerySchema,
   CaptureHistoryQuerySchema,
   TaskListQuerySchema,
   ProjectListQuerySchema,
@@ -160,6 +172,66 @@ const CaptureHistoryItemSchema = z.discriminatedUnion("processingState", [
 ]);
 
 export const QueryProjectionSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("workspace.access"),
+      policyVersion: z.int().positive(),
+      currentPrincipalId: PrincipalIdSchema,
+      canManage: z.boolean(),
+      members: z.array(
+        z
+          .object({
+            membershipId: z.uuid(),
+            principalId: PrincipalIdSchema,
+            displayName: z.string(),
+            role: z.enum(["owner", "admin", "member", "guest"]),
+            status: z.enum(["active", "revoked"]),
+            version: z.int().positive(),
+            spaces: z.array(
+              z
+                .object({
+                  spaceGrantId: z.uuid(),
+                  spaceId: SpaceIdSchema,
+                  spaceName: z.string(),
+                  access: z.enum(["view", "edit"]),
+                  status: z.enum(["active", "revoked"]),
+                  version: z.int().positive(),
+                })
+                .strict(),
+            ),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("workspace.exportScoped"),
+      policyVersion: z.int().positive(),
+      workspace: z.object({ id: WorkspaceIdSchema, name: z.string() }).strict(),
+      spaces: z.array(
+        z.object({ id: SpaceIdSchema, name: z.string() }).strict(),
+      ),
+      counts: z
+        .object({
+          tasks: z.int().nonnegative(),
+          projects: z.int().nonnegative(),
+          relations: z.int().nonnegative(),
+          captures: z.int().nonnegative(),
+          activity: z.int().nonnegative(),
+        })
+        .strict(),
+      records: z.array(
+        z
+          .object({
+            kind: z.enum(["task", "project", "capture"]),
+            id: z.uuid(),
+            spaceId: SpaceIdSchema,
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
   z
     .object({
       kind: z.literal("workspace.bootstrapContext"),

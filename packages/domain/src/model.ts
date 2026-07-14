@@ -12,6 +12,7 @@ import type {
   RelationId,
   RequestOrigin,
   SpaceId,
+  SpaceGrantId,
   TaskId,
   TaskStatusId,
   WorkspaceId,
@@ -23,6 +24,7 @@ export interface Workspace {
   readonly timezone: string;
   readonly rootSpaceId: SpaceId;
   readonly defaultTaskStatusId: TaskStatusId;
+  readonly policyVersion?: number;
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -43,8 +45,25 @@ export interface WorkspaceMembership {
   readonly workspaceId: WorkspaceId;
   readonly principalId: PrincipalId;
   readonly role: WorkspaceRole;
+  readonly displayName?: string;
+  readonly status?: "active" | "revoked";
   readonly version: number;
   readonly createdAt: string;
+  readonly updatedAt?: string;
+  readonly revokedAt?: string;
+}
+
+export interface SpaceGrant {
+  readonly id: SpaceGrantId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly principalId: PrincipalId;
+  readonly access: "view" | "edit";
+  readonly status: "active" | "revoked";
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly revokedAt?: string;
 }
 
 interface CaptureBase {
@@ -195,6 +214,18 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: WorkspaceId;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type:
+        | "workspace.member_added"
+        | "workspace.member_access_changed"
+        | "workspace.member_revoked";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: MembershipId;
       readonly aggregateVersion: number;
       readonly occurredAt: string;
     }

@@ -1,4 +1,5 @@
 import {
+  type CommandEnvelope,
   DataHomeStatusSchema,
   DeviceIdSchema,
   LOCAL_ONLY_PROVIDER_ID,
@@ -7,6 +8,7 @@ import {
 } from "@constellation/contracts";
 import type {
   ConstellationRendererClient,
+  RendererCommandResponse,
   RendererQueryResponse,
 } from "@constellation/desktop-preload/client";
 
@@ -14,6 +16,9 @@ export interface ScenarioFixtures {
   readonly queries: Partial<
     Record<QueryEnvelope["queryName"], RendererQueryResponse>
   >;
+  readonly executeCommand?: (
+    command: CommandEnvelope,
+  ) => RendererCommandResponse | Promise<RendererCommandResponse>;
 }
 
 /** Deterministic UI fixture adapter. It returns scripted contract outcomes only. */
@@ -25,16 +30,17 @@ export const createScenarioClient = (
     outcome: "failure",
     code: "io_failed",
   }),
-  executeCommand: async () => ({
-    kind: "contract_rejected",
-    diagnosticCode: "contract.invalid",
-    issues: [
-      {
-        path: "",
-        code: "custom",
-      },
-    ],
-  }),
+  executeCommand: async (command) =>
+    fixtures.executeCommand?.(command) ?? {
+      kind: "contract_rejected",
+      diagnosticCode: "contract.invalid",
+      issues: [
+        {
+          path: "",
+          code: "custom",
+        },
+      ],
+    },
   enrollHub: async () => ({ outcome: "rejected", code: "hub_unreachable" }),
   exportHubAuthorization: async () => ({ outcome: "cancelled" }),
   exportWorkspaceBackup: async () => ({ outcome: "cancelled" }),

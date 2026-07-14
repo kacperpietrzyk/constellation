@@ -16,6 +16,7 @@ import {
   InMemoryHubRepository,
   fromHubSnapshot,
   snapshotDigest,
+  scopeHubSnapshot,
   toHubSnapshot,
 } from "../src/index.js";
 
@@ -385,6 +386,126 @@ describe("self-hosted Hub core", () => {
         }),
         ids.workspace,
       ),
+    );
+  });
+
+  it("builds a per-human projection and removes revoked membership access", () => {
+    const initial = bootstrapSnapshot();
+    const privateSpace = uuid();
+    const memberId = uuid();
+    const membershipId = uuid();
+    const spaceGrantId = uuid();
+    const sharedCaptureId = uuid();
+    const privateCaptureId = uuid();
+    const snapshot = HubWorkspaceSnapshotSchema.parse({
+      ...initial,
+      workspaces: [{ ...initial.workspaces[0], policyVersion: 2, version: 2 }],
+      spaces: [
+        ...initial.spaces,
+        {
+          id: privateSpace,
+          workspaceId: ids.workspace,
+          name: "Private",
+          version: 1,
+          createdAt: "2026-07-14T12:00:00.000Z",
+        },
+      ],
+      memberships: [
+        ...initial.memberships,
+        {
+          id: membershipId,
+          workspaceId: ids.workspace,
+          principalId: memberId,
+          role: "guest",
+          displayName: "Scoped guest",
+          status: "active",
+          version: 1,
+          createdAt: "2026-07-14T12:00:00.000Z",
+          updatedAt: "2026-07-14T12:00:00.000Z",
+        },
+      ],
+      spaceGrants: [
+        {
+          id: spaceGrantId,
+          workspaceId: ids.workspace,
+          spaceId: ids.space,
+          principalId: memberId,
+          access: "view",
+          status: "active",
+          version: 1,
+          createdAt: "2026-07-14T12:00:00.000Z",
+          updatedAt: "2026-07-14T12:00:00.000Z",
+        },
+      ],
+      captures: [
+        {
+          id: sharedCaptureId,
+          workspaceId: ids.workspace,
+          spaceId: ids.space,
+          originalText: "Shared",
+        },
+        {
+          id: privateCaptureId,
+          workspaceId: ids.workspace,
+          spaceId: privateSpace,
+          originalText: "PRIVATE-SENTINEL",
+        },
+      ],
+    });
+    const memberContext = ExecutionContextSchema.parse({
+      ...context(),
+      principalId: memberId,
+      credentialId: uuid(),
+      grantId: uuid(),
+      policyVersion: 1,
+      spaceScope: [ids.space, privateSpace],
+    });
+    const scoped = scopeHubSnapshot(snapshot, ids.workspace, memberContext);
+    assert.ok(scoped);
+    assert.deepEqual(
+      scoped.spaces.map((space) => space.id),
+      [ids.space],
+    );
+    assert.deepEqual(
+      scoped.captures.map((capture) => capture.id),
+      [sharedCaptureId],
+    );
+    assert.deepEqual(
+      scoped.memberships.map((member) => member.principalId),
+      [memberId],
+    );
+    assert.equal(scoped.idempotencyRecords.length, 0);
+    const adminWithoutManagementCapability = scopeHubSnapshot(
+      HubWorkspaceSnapshotSchema.parse({
+        ...snapshot,
+        memberships: snapshot.memberships.map((membership) =>
+          membership.id === membershipId
+            ? { ...membership, role: "admin" }
+            : membership,
+        ),
+      }),
+      ids.workspace,
+      memberContext,
+    );
+    assert.ok(adminWithoutManagementCapability);
+    assert.deepEqual(
+      adminWithoutManagementCapability.memberships.map(
+        (member) => member.principalId,
+      ),
+      [memberId],
+    );
+    const revoked = HubWorkspaceSnapshotSchema.parse({
+      ...snapshot,
+      workspaces: [{ ...snapshot.workspaces[0], policyVersion: 3, version: 3 }],
+      memberships: snapshot.memberships.map((membership) =>
+        membership.id === membershipId
+          ? { ...membership, status: "revoked", version: 2 }
+          : membership,
+      ),
+    });
+    assert.equal(
+      scopeHubSnapshot(revoked, ids.workspace, memberContext),
+      undefined,
     );
   });
 });

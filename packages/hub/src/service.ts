@@ -38,7 +38,13 @@ import {
 } from "@constellation/contracts";
 
 import type { HubRepository, HubStoredReceipt } from "./repository.js";
-import { fromHubSnapshot, snapshotDigest, toHubSnapshot } from "./snapshot.js";
+import {
+  authorizationForSnapshot,
+  fromHubSnapshot,
+  scopeHubSnapshot,
+  snapshotDigest,
+  toHubSnapshot,
+} from "./snapshot.js";
 
 const canonicalJson = (value: unknown): string => {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -179,12 +185,24 @@ export class HubService {
     if (input.authorization.workspaceId !== input.workspaceId) {
       throw new Error("Enrollment authorization must match the workspace.");
     }
+    const currentAuthorization = await this.repository.withWorkspaceLock(
+      input.workspaceId,
+      (state) =>
+        authorizationForSnapshot(
+          state.snapshot,
+          input.workspaceId,
+          input.authorization,
+        ),
+    );
+    if (currentAuthorization === undefined) {
+      throw new Error("Enrollment principal has no active Workspace access.");
+    }
     const enrollmentSecret = this.randomSecret();
     const enrollmentId = randomUUID();
     await this.repository.createEnrollment({
       id: enrollmentId,
       workspaceId: input.workspaceId,
-      authorization: input.authorization,
+      authorization: currentAuthorization,
       secretDigest: digest(enrollmentSecret),
       expiresAt: input.expiresAt,
     });
@@ -239,6 +257,18 @@ export class HubService {
     const result = await this.repository.withWorkspaceLock(
       input.workspaceId,
       (state): HubSyncResult => {
+        let currentAuthorization = authorizationForSnapshot(
+          state.snapshot,
+          input.workspaceId,
+          authentication.device.authorization,
+        );
+        if (currentAuthorization === undefined) {
+          return {
+            outcome: "rejected",
+            code: "membership_revoked",
+            purgeLocalProjection: true,
+          };
+        }
         const requestedCheckpoint = BigInt(input.checkpoint);
         if (requestedCheckpoint > state.checkpoint) {
           return {
@@ -262,9 +292,7 @@ export class HubService {
           const ids = new CommandScopedIdGenerator(hasher);
           ids.begin(command.commandId);
           const kernel = new ApplicationKernel({
-            authorization: new TrustedHubGrant(
-              authentication.device.authorization,
-            ),
+            authorization: new TrustedHubGrant(currentAuthorization),
             clock: new ServerClock(),
             cursorCodec: new CursorCodec(),
             hasher,
@@ -272,7 +300,7 @@ export class HubService {
             store,
           });
           const response = kernel.execute(
-            authentication.device.authorization,
+            currentAuthorization,
             CommandEnvelopeSchema.parse(command),
           );
           if (response.kind !== "command_outcome") {
@@ -287,6 +315,12 @@ export class HubService {
             checkpoint = state.checkpoint.toString();
             state.snapshot = toHubSnapshot(store.snapshot());
             state.snapshotDigest = snapshotDigest(state.snapshot);
+            currentAuthorization =
+              authorizationForSnapshot(
+                state.snapshot,
+                input.workspaceId,
+                currentAuthorization,
+              ) ?? currentAuthorization;
           }
           const receipt: HubStoredReceipt = {
             commandId: command.commandId,
@@ -297,6 +331,18 @@ export class HubService {
           receipts.push(receipt);
         }
         const shouldSendChange = requestedCheckpoint < state.checkpoint;
+        const scopedSnapshot = scopeHubSnapshot(
+          state.snapshot,
+          input.workspaceId,
+          currentAuthorization,
+        );
+        if (scopedSnapshot === undefined) {
+          return {
+            outcome: "rejected",
+            code: "membership_revoked",
+            purgeLocalProjection: true,
+          };
+        }
         return HubSyncResultSchema.parse({
           outcome: "success",
           protocolVersion: 1,
@@ -306,8 +352,8 @@ export class HubService {
             ? {
                 change: {
                   checkpoint: state.checkpoint.toString(),
-                  digest: state.snapshotDigest,
-                  snapshot: state.snapshot,
+                  digest: snapshotDigest(scopedSnapshot),
+                  snapshot: scopedSnapshot,
                 },
               }
             : {}),

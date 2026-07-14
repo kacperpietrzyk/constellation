@@ -47,6 +47,9 @@ export type TaskStatusId = z.infer<typeof TaskStatusIdSchema>;
 export const MembershipIdSchema = opaqueId<"MembershipId">();
 export type MembershipId = z.infer<typeof MembershipIdSchema>;
 
+export const SpaceGrantIdSchema = opaqueId<"SpaceGrantId">();
+export type SpaceGrantId = z.infer<typeof SpaceGrantIdSchema>;
+
 export const EventIdSchema = opaqueId<"EventId">();
 export type EventId = z.infer<typeof EventIdSchema>;
 

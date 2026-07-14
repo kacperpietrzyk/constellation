@@ -21,6 +21,7 @@ import {
   type PrincipalId,
   type ProjectId,
   type RelationId,
+  type SpaceGrantId,
   type SpaceId,
   type TaskId,
   type TaskStatusId,
@@ -33,6 +34,7 @@ import type {
   OutboxEntry,
   Project,
   Space,
+  SpaceGrant,
   Task,
   TaskProjectRelation,
   TaskStatusDefinition,
@@ -47,7 +49,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
   checkpoint: null,
@@ -293,6 +295,21 @@ const schemaV3 = `
   ) STRICT;
 `;
 
+const schemaV4 = `
+  CREATE TABLE space_grants (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    principal_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+    version INTEGER NOT NULL CHECK (version > 0),
+    payload_json TEXT NOT NULL,
+    UNIQUE(workspace_id, space_id, principal_id)
+  ) STRICT;
+  CREATE INDEX space_grants_principal
+    ON space_grants(workspace_id, principal_id, status, space_id);
+`;
+
 export interface LocalCoordinationState {
   readonly workspaceId: WorkspaceId;
   readonly providerInstanceId: string;
@@ -403,6 +420,7 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
     if (currentVersion === 0) database.exec(schemaV1);
     if (currentVersion < 2) database.exec(schemaV2);
     if (currentVersion < 3) database.exec(schemaV3);
+    if (currentVersion < 4) database.exec(schemaV4);
     database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
     database.exec("COMMIT;");
   } catch (error) {
@@ -517,6 +535,83 @@ class SqliteReadView implements ApplicationWave2ReadView {
     return parsePayload<WorkspaceMembership>(row, "id", id, "membership", {
       workspaceId,
       principalId,
+    });
+  }
+
+  public listMemberships(
+    workspaceId: WorkspaceId,
+  ): readonly WorkspaceMembership[] {
+    return this.database
+      .prepare(
+        "SELECT id, principal_id, payload_json FROM memberships WHERE workspace_id = ? ORDER BY id",
+      )
+      .all(workspaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "membership");
+        return parsePayload<WorkspaceMembership>(row, "id", id, "membership", {
+          workspaceId,
+          principalId: stringValue(row, "principal_id", "membership"),
+        });
+      });
+  }
+
+  public getSpaceGrant(id: SpaceGrantId): SpaceGrant | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, space_id, principal_id, payload_json FROM space_grants WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<SpaceGrant>(row, "id", id, "Space grant", {
+          workspaceId: stringValue(row, "workspace_id", "Space grant"),
+          spaceId: stringValue(row, "space_id", "Space grant"),
+          principalId: stringValue(row, "principal_id", "Space grant"),
+        });
+  }
+
+  public getSpaceGrantForPrincipal(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    principalId: PrincipalId,
+  ): SpaceGrant | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT id, payload_json FROM space_grants WHERE workspace_id = ? AND space_id = ? AND principal_id = ?",
+      )
+      .get(workspaceId, spaceId, principalId);
+    if (row === undefined) return undefined;
+    const id = stringValue(row, "id", "Space grant");
+    return parsePayload<SpaceGrant>(row, "id", id, "Space grant", {
+      workspaceId,
+      spaceId,
+      principalId,
+    });
+  }
+
+  public listSpaceGrants(
+    workspaceId: WorkspaceId,
+    principalId?: PrincipalId,
+  ): readonly SpaceGrant[] {
+    const rows =
+      principalId === undefined
+        ? this.database
+            .prepare(
+              "SELECT id, space_id, principal_id, payload_json FROM space_grants WHERE workspace_id = ? ORDER BY id",
+            )
+            .all(workspaceId)
+        : this.database
+            .prepare(
+              "SELECT id, space_id, principal_id, payload_json FROM space_grants WHERE workspace_id = ? AND principal_id = ? ORDER BY id",
+            )
+            .all(workspaceId, principalId);
+    return rows.map((row) => {
+      const id = stringValue(row, "id", "Space grant");
+      return parsePayload<SpaceGrant>(row, "id", id, "Space grant", {
+        workspaceId,
+        spaceId: stringValue(row, "space_id", "Space grant"),
+        principalId: stringValue(row, "principal_id", "Space grant"),
+      });
     });
   }
 
@@ -837,6 +932,59 @@ class SqliteTransaction
         record.version,
         payload(record),
       ],
+    );
+  }
+  public updateMembership(
+    record: WorkspaceMembership,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE memberships SET version = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(record.version, payload(record), record.id, expectedVersion),
+    );
+  }
+  public insertSpaceGrant(record: SpaceGrant): void {
+    this.insert(
+      "space_grants",
+      [
+        "id",
+        "workspace_id",
+        "space_id",
+        "principal_id",
+        "status",
+        "version",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.spaceId,
+        record.principalId,
+        record.status,
+        record.version,
+        payload(record),
+      ],
+    );
+  }
+  public updateSpaceGrant(
+    record: SpaceGrant,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE space_grants SET status = ?, version = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(
+          record.status,
+          record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+        ),
     );
   }
   public insertTaskStatus(record: TaskStatusDefinition): void {
@@ -1197,6 +1345,7 @@ export class SqliteApplicationStore implements ApplicationStore {
       workspaces: records("workspaces", "id", "id", "workspace"),
       spaces: records("spaces", "id", "id", "space"),
       memberships: records("memberships", "id", "id", "membership"),
+      spaceGrants: records("space_grants", "id", "id", "Space grant"),
       taskStatuses: records("task_statuses", "id", "id", "task status"),
       captures: records("captures", "id", "id", "capture"),
       tasks: records("tasks", "id", "id", "task"),
@@ -1442,6 +1591,7 @@ export class SqliteApplicationStore implements ApplicationStore {
         "tasks",
         "captures",
         "task_statuses",
+        "space_grants",
         "memberships",
         "spaces",
         "workspaces",
@@ -1455,6 +1605,9 @@ export class SqliteApplicationStore implements ApplicationStore {
       snapshot.spaces.forEach((value) => transaction.insertSpace(value));
       snapshot.memberships.forEach((value) =>
         transaction.insertMembership(value),
+      );
+      (snapshot.spaceGrants ?? []).forEach((value) =>
+        transaction.insertSpaceGrant(value),
       );
       snapshot.taskStatuses.forEach((value) =>
         transaction.insertTaskStatus(value),

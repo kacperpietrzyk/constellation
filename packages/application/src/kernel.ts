@@ -1,4 +1,16 @@
 import {
+  executeCollaborationCommand,
+  executeCollaborationQuery,
+  type CollaborationCommand,
+  type CollaborationQuery,
+} from "./collaboration.js";
+import {
+  activeMembership,
+  canEditSpace,
+  canManageWorkspaceAccess,
+  canViewSpace,
+} from "./collaboration-policy.js";
+import {
   AuditReceiptIdSchema,
   CaptureIdSchema,
   CommandOutcomeSchema,
@@ -150,9 +162,43 @@ const isCurrentlyAuthorized = (
           workspaceId: command.workspaceId,
           spaceId: workspace.rootSpaceId,
         }) &&
-        canUseSpace(context, command.workspaceId, workspace.rootSpaceId) &&
+        canEditSpace(
+          view,
+          context,
+          command.workspaceId,
+          workspace.rootSpaceId,
+        ) &&
         isWorkspaceAdministrator(membership)
       );
+    }
+    case "workspace.memberAdd":
+    case "workspace.memberSetAccess":
+    case "workspace.memberRevoke": {
+      const workspace = view.getWorkspace(command.workspaceId);
+      const canManage =
+        workspace !== undefined &&
+        canManageWorkspaceAccess(view, context, workspace.id) &&
+        authorization.authorize({
+          context,
+          capability: "workspace.manageAccess",
+          workspaceId: workspace.id,
+        });
+      if (!canManage) return false;
+      if (command.commandName === "workspace.memberAdd")
+        return canEditSpace(
+          view,
+          context,
+          command.workspaceId,
+          command.payload.spaceId,
+        );
+      if (command.commandName === "workspace.memberSetAccess") {
+        const grant = view.getSpaceGrant(command.payload.spaceGrantId);
+        return (
+          grant?.workspaceId === command.workspaceId &&
+          canEditSpace(view, context, command.workspaceId, grant.spaceId)
+        );
+      }
+      return true;
     }
     case "capture.submitText": {
       const workspace = view.getWorkspace(command.workspaceId);
@@ -171,7 +217,12 @@ const isCurrentlyAuthorized = (
           workspaceId: command.workspaceId,
           spaceId: command.payload.spaceId,
         }) &&
-        canUseSpace(context, command.workspaceId, command.payload.spaceId)
+        canEditSpace(
+          view,
+          context,
+          command.workspaceId,
+          command.payload.spaceId,
+        )
       );
     }
     case "capture.routeAsTask": {
@@ -189,7 +240,7 @@ const isCurrentlyAuthorized = (
           workspaceId: command.workspaceId,
           spaceId: capture.spaceId,
         }) &&
-        canUseSpace(context, command.workspaceId, capture.spaceId)
+        canEditSpace(view, context, command.workspaceId, capture.spaceId)
       );
     }
     case "project.create":
@@ -339,6 +390,17 @@ export class ApplicationKernel {
           command,
           scope,
           fingerprint,
+          occurredAt,
+        );
+      case "workspace.memberAdd":
+      case "workspace.memberSetAccess":
+      case "workspace.memberRevoke":
+        return executeCollaborationCommand(
+          this.dependencies,
+          transaction,
+          context,
+          command as CollaborationCommand,
+          { scope, fingerprint },
           occurredAt,
         );
       case "capture.submitText":
@@ -534,7 +596,12 @@ export class ApplicationKernel {
     );
     if (
       workspace === undefined ||
-      !canUseSpace(context, command.workspaceId, workspace.rootSpaceId) ||
+      !canEditSpace(
+        transaction,
+        context,
+        command.workspaceId,
+        workspace.rootSpaceId,
+      ) ||
       !isWorkspaceAdministrator(membership)
     ) {
       return this.outcome(command, occurredAt, {
@@ -659,7 +726,12 @@ export class ApplicationKernel {
       workspace === undefined ||
       space?.workspaceId !== workspace.id ||
       membership === undefined ||
-      !canUseSpace(context, command.workspaceId, command.payload.spaceId)
+      !canEditSpace(
+        transaction,
+        context,
+        command.workspaceId,
+        command.payload.spaceId,
+      )
     ) {
       return this.outcome(command, occurredAt, {
         outcome: "rejected",
@@ -768,7 +840,7 @@ export class ApplicationKernel {
       workspace === undefined ||
       capture?.workspaceId !== workspace.id ||
       membership === undefined ||
-      !canUseSpace(context, command.workspaceId, capture.spaceId)
+      !canEditSpace(transaction, context, command.workspaceId, capture.spaceId)
     ) {
       return this.outcome(command, occurredAt, {
         outcome: "rejected",
@@ -942,6 +1014,15 @@ export class ApplicationKernel {
             kernelTime,
             freshness,
           );
+        case "workspace.access":
+        case "workspace.exportScoped":
+          return executeCollaborationQuery(
+            this.dependencies,
+            view,
+            context,
+            query as CollaborationQuery,
+            kernelTime,
+          );
         case "capture.history":
           return this.captureHistory(
             view,
@@ -985,7 +1066,8 @@ export class ApplicationKernel {
     freshness: StoreFreshness,
   ): QueryResult {
     const workspace = view.getWorkspace(query.workspaceId);
-    const membership = view.getMembership(
+    const membership = activeMembership(
+      view,
       query.workspaceId,
       context.principalId,
     );
@@ -1009,7 +1091,7 @@ export class ApplicationKernel {
     }
     const spaces = view.listSpaces(workspace.id).filter(
       (space) =>
-        context.spaceScope.includes(space.id) &&
+        canViewSpace(view, context, query.workspaceId, space.id) &&
         this.dependencies.authorization.authorize({
           context,
           capability: query.queryName,
@@ -1074,7 +1156,7 @@ export class ApplicationKernel {
         workspaceId: query.workspaceId,
         spaceId: query.parameters.spaceId,
       }) ||
-      !canUseSpace(context, query.workspaceId, query.parameters.spaceId)
+      !canViewSpace(view, context, query.workspaceId, query.parameters.spaceId)
     ) {
       return this.queryRejected(query, kernelTime, "authorization.denied");
     }
@@ -1179,7 +1261,7 @@ export class ApplicationKernel {
         workspaceId: query.workspaceId,
         spaceId: query.parameters.spaceId,
       }) ||
-      !canUseSpace(context, query.workspaceId, query.parameters.spaceId)
+      !canViewSpace(view, context, query.workspaceId, query.parameters.spaceId)
     ) {
       return this.queryRejected(query, kernelTime, "authorization.denied");
     }
@@ -1290,7 +1372,7 @@ export class ApplicationKernel {
         workspaceId: query.workspaceId,
         spaceId: receipt.spaceId,
       }) ||
-      !canUseSpace(context, query.workspaceId, receipt.spaceId)
+      !canViewSpace(view, context, query.workspaceId, receipt.spaceId)
     ) {
       return this.queryRejected(query, kernelTime, "query.not_available");
     }

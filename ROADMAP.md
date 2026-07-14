@@ -18,7 +18,7 @@ We prefer thin, usable end-to-end slices over building broad subsystems in
 isolation. A capability moves forward only when its recovery, privacy,
 accessibility, and cross-platform behavior are credible too.
 
-## Delivered foundation — local Alpha and portable Data Home
+## Delivered foundation — local Alpha and coordinated Data Homes
 
 The repository contains the first durable desktop journey:
 
@@ -37,7 +37,10 @@ The repository contains the first durable desktop journey:
   migration, recovery, and stable installation identity without claiming sync;
 - provider status and recovery in the desktop surface, including honest
   unsupported states for remote change exchange, attachments, provider quota,
-  and remote device revocation.
+  and remote device revocation;
+- a self-hosted coordinating Hub with encrypted local projections, recoverable
+  command queues, one-use enrollment, revocation, resumable attachments, and a
+  packaged two-device convergence gate on macOS and Windows.
 
 This is a pre-alpha engineering foundation, not a distributed desktop release.
 
@@ -55,39 +58,25 @@ personal work without depending on a server:
 - finish accessibility, platform behavior, and the release-quality Visual Atlas
   contract for every changed surface.
 
-## Current — self-hosted multi-device continuity
+## Current — collaboration-safe workspaces
 
-Extend the explicit Data Home boundary from one canonical device to coordinated
-offline work while preserving user ownership:
+Build collaboration on the same identity, authorization, and Data Home
+boundaries rather than adding it as a separate product:
 
-- prove a self-hosted, cross-platform coordinating Hub so two devices stay
-  current without requiring a desktop machine to remain online;
-- add recoverable outbox, change-feed, attachment, conflict, revocation, and
-  device-loss behavior;
-- keep local databases as device-local stores rather than synchronizing an open
-  database file through a generic cloud folder.
+- members and guests with independently configurable Workspace role and Space
+  data scope;
+- permission-safe records, relations, search, counts, activity, exports, and
+  coordinated local caches;
+- explicit version conflicts, immediate revocation, offline reconciliation, and
+  auditable access changes;
+- assignments, comments, notifications, and simultaneous native-document
+  editing through a dedicated, proven collaboration adapter.
 
-Core use and cross-device synchronization will not require a paid
-Constellation-hosted backend.
-
-The current candidate implements the shared-kernel Hub, PostgreSQL persistence,
-encrypted local projections with durable command queues, one-use enrollment,
-revocation, resumable content-addressed attachments, second-device recovery UI,
-and an operator-owned container/runbook. Its release gate drives two isolated
-packaged profiles through portable restore, offline work, post-commit response
-loss, receipt reconciliation, and convergence on macOS and Windows CI.
-
-## Next — collaboration-safe workspaces
-
-Build collaboration on the same identity and authorization boundaries rather
-than adding it as a separate product:
-
-- members, guests, Spaces, assignments, comments, and permission-safe views;
-- authorization across records, relations, search, counts, notifications,
-  exports, and local caches;
-- explicit version conflicts, revocation, offline reconciliation, and audit;
-- simultaneous editing of native documents through a dedicated, proven, and
-  replaceable collaboration adapter.
+The first candidate slice introduces versioned membership and Space grants,
+fresh-policy authorization, scoped Hub projections, revocation-driven cache
+removal, and a desktop access-management surface. Broader collaboration remains
+current work until the full leak, offline, notification, comment, assignment,
+document-revision, and recovery gates pass.
 
 ## Next — external agents through MCP
 

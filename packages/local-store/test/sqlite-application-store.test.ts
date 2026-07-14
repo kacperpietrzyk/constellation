@@ -362,7 +362,7 @@ describe("SQLite ApplicationStore", () => {
           user_version: number;
         }
       ).user_version,
-      3,
+      4,
     );
     assert.deepEqual(
       (

@@ -25,6 +25,7 @@ export const HubWorkspaceSnapshotSchema = z
     workspaces: z.array(JsonObjectSchema),
     spaces: z.array(JsonObjectSchema),
     memberships: z.array(JsonObjectSchema),
+    spaceGrants: z.array(JsonObjectSchema).default([]),
     taskStatuses: z.array(JsonObjectSchema),
     captures: z.array(JsonObjectSchema),
     tasks: z.array(JsonObjectSchema),
@@ -121,6 +122,7 @@ export const HubSyncResultSchema = z.discriminatedUnion("outcome", [
       code: z.enum([
         "credential_invalid",
         "device_revoked",
+        "membership_revoked",
         "workspace_mismatch",
         "checkpoint_ahead",
         "protocol_unsupported",

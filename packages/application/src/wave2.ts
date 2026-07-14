@@ -1,3 +1,4 @@
+import { canEditSpace, canViewSpace } from "./collaboration-policy.js";
 import {
   AuditReceiptIdSchema,
   CommandOutcomeSchema,
@@ -81,13 +82,6 @@ export type Wave2Query = Extract<
   }
 >;
 
-const canUseSpace = (
-  context: ExecutionContext,
-  workspaceId: string,
-  spaceId: SpaceId,
-): boolean =>
-  context.workspaceId === workspaceId && context.spaceScope.includes(spaceId);
-
 const authorized = (
   dependencies: Pick<ApplicationKernelDependencies, "authorization">,
   view: ApplicationWave2ReadView,
@@ -96,8 +90,7 @@ const authorized = (
   spaceId: SpaceId | undefined,
 ): boolean =>
   spaceId !== undefined &&
-  view.getMembership(command.workspaceId, context.principalId) !== undefined &&
-  canUseSpace(context, command.workspaceId, spaceId) &&
+  canEditSpace(view, context, command.workspaceId, spaceId) &&
   dependencies.authorization.authorize({
     context,
     capability: command.commandName,
@@ -1016,12 +1009,11 @@ const authorizeSpaces = (
   query: Wave2Query,
   spaceIds: readonly SpaceId[],
 ): boolean =>
-  view.getMembership(query.workspaceId, context.principalId) !== undefined &&
   spaceIds.every((spaceId) => {
     const space = view.getSpace(spaceId);
     return (
       space?.workspaceId === query.workspaceId &&
-      canUseSpace(context, query.workspaceId, spaceId) &&
+      canViewSpace(view, context, query.workspaceId, spaceId) &&
       dependencies.authorization.authorize({
         context,
         capability: query.queryName,
