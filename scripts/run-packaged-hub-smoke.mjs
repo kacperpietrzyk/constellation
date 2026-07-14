@@ -724,6 +724,11 @@ try {
   );
   if (ownerAttentionSynced.syncState !== "current")
     throw new Error("OWNER_ATTENTION_NOT_SYNCED");
+  await reloadAndWait(
+    first.client,
+    ".desktop-shell",
+    "OWNER_ATTENTION_RELOAD_FAILED",
+  );
   await first.client.evaluate(
     `(() => { document.querySelector('.nav-item[data-surface="attention"]').click(); return true; })()`,
   );
@@ -756,10 +761,17 @@ try {
     ".desktop-shell",
     "MEMBER_VIEW_RELOAD_FAILED",
   );
+  await member.client.evaluate(
+    `(() => { document.querySelector('.nav-item[data-surface="tasks"]').click(); return true; })()`,
+  );
+  await waitFor(
+    member.client,
+    `[...document.querySelectorAll(".task-row")].some((row) => row.textContent.includes(${JSON.stringify(sharedTask.title)}))`,
+    "VIEWER_COMMENT_TARGET_NOT_RENDERED",
+  );
   await member.client.evaluate(`(() => {
-    document.querySelector('.nav-item[data-surface="tasks"]').click();
     const row = [...document.querySelectorAll(".task-row")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
-    row?.querySelector(".task-copy")?.click();
+    row.querySelector(".task-copy").click();
     return true;
   })()`);
   await waitFor(
