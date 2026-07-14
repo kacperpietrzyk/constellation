@@ -104,6 +104,9 @@ export interface ConstellationRendererClient {
     readonly credentialId: CredentialId;
     readonly credentialDigest: string;
     readonly descriptorPath: string;
+    readonly launchCommand: string;
+    readonly launchArgs: readonly string[];
+    readonly launchEnvironment: Readonly<Record<string, string>>;
   }>;
   acknowledgeDocumentUpdates(input: {
     readonly documentId: DocumentId;

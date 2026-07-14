@@ -48,6 +48,8 @@ const ownerContext = ExecutionContextSchema.parse({
   spaceScope: [ids.space],
   capabilityScope: [
     "workspace.createLocal",
+    "workspace.manageAccess",
+    "workspace.access",
     "agent.manageAccess",
     "agent.access",
   ],
@@ -174,6 +176,29 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
           },
         }),
       ),
+    );
+    const humanAccess = owner.query(
+      QueryEnvelopeSchema.parse({
+        contractVersion: 1,
+        queryName: "workspace.access",
+        queryId: crypto.randomUUID(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: {},
+      }),
+    );
+    assert.equal(humanAccess.kind, "query_result");
+    if (
+      humanAccess.kind !== "query_result" ||
+      humanAccess.result.outcome !== "success" ||
+      humanAccess.result.projection.kind !== "workspace.access"
+    )
+      throw new Error(
+        `Expected human access projection: ${JSON.stringify(humanAccess)}`,
+      );
+    assert.deepEqual(
+      humanAccess.result.projection.members.map((member) => member.principalId),
+      [ids.owner],
     );
     const endpoint = await runtime.start();
     const descriptor = runtime.credentialCustody.publish({
@@ -342,6 +367,45 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
     assert.equal(history.outcome, "success");
     assert.equal(history.evidence?.instructionBoundary, "untrusted_data");
     assert.equal(JSON.stringify(history.result).includes(maliciousText), true);
+
+    for (let index = 0; index < 5; index += 1) {
+      const largeCapture = await invokeDesktopMcp(descriptor, {
+        contractVersion: 1,
+        requestId: crypto.randomUUID(),
+        kind: "command",
+        run,
+        command: CommandEnvelopeSchema.parse({
+          ...commandMetadata(`large-capture-${index}`),
+          commandName: "capture.submitText",
+          payload: {
+            spaceId: ids.space,
+            originalText: `${index}${"x".repeat(260_000)}`,
+            deviceId: "mcp-test",
+            source: "in_app_quick_capture",
+          },
+        }),
+      });
+      assert.equal(largeCapture.outcome, "success");
+    }
+    const boundedHistory = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "query",
+      run,
+      query: QueryEnvelopeSchema.parse({
+        contractVersion: 1,
+        queryName: "capture.history",
+        queryId: crypto.randomUUID(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.space, limit: 20 },
+      }),
+    });
+    assert.equal(boundedHistory.outcome, "retryable");
+    assert.equal(
+      (boundedHistory.result as Record<string, unknown>).diagnosticCode,
+      "mcp.response_too_large",
+    );
 
     const snapshot = store.snapshot();
     const receipt = snapshot.auditReceipts.find(

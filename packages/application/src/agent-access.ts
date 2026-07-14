@@ -206,7 +206,6 @@ const commit = (
   transaction.insertEvent(event);
   transaction.insertAuditReceipt(audit);
   transaction.insertIdempotency({ ...idempotency, outcome });
-  transaction.insertSyncCommand(command);
   transaction.insertOutbox(outbox);
   return outcome;
 };

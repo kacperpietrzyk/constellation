@@ -10,6 +10,15 @@ releases begin.
 
 ### Added
 
+- Versioned local MCP tools and capability resource over the shared Application
+  Kernel, with a production-bundled stdio adapter verified in Codex CLI and
+  Claude Code.
+- Device-local agent principals and grants with independent capability and
+  Space scopes, expiry, credential rotation/revocation, durable run attribution,
+  checkpoints, structured handoff, and scoped revert.
+- An accessible desktop agent-access surface plus prompt-injection evidence
+  labels and concurrency coverage for multiple full-access hosts.
+
 - Self-hosted multi-device Hub preview with PostgreSQL coordination, one-use
   device enrollment, ordered checkpoints, command receipts, revocation, and the
   same application kernel used by the desktop.

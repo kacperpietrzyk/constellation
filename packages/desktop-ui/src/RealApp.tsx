@@ -1186,7 +1186,15 @@ export const RealApp = ({
         {surface === "access" && (
           <AccessSurface
             access={state.snapshot.access}
-            agentAccess={state.snapshot.agentAccess}
+            agentAccess={
+              state.snapshot.dataHome?.descriptor.providerKind === "local_only"
+                ? state.snapshot.agentAccess
+                : {
+                    kind: "unavailable",
+                    message:
+                      "Lokalny dostęp MCP jest obecnie dostępny dla Workspace z lokalnym Data Home. Zdalne i skoordynowane działanie należy do następnego etapu.",
+                  }
+            }
             spaces={state.snapshot.bootstrap.spaces}
             busy={accessBusy}
             onAdd={(input) => {
@@ -1242,7 +1250,7 @@ export const RealApp = ({
                   setAccessBusy(false);
                   if (result.kind === "success")
                     await refreshAfter(
-                      `Dostęp MCP utworzono. Plik konfiguracji: ${result.data.descriptorPath}`,
+                      `Dostęp MCP utworzono. Plik dostępu: ${result.data.descriptorPath}. Adapter hosta: ${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
                     );
                   else showFailure(result);
                 },
@@ -1257,7 +1265,7 @@ export const RealApp = ({
                   setAccessBusy(false);
                   if (result.kind === "success")
                     await refreshAfter(
-                      `Poświadczenie obrócono. Plik konfiguracji: ${result.data.descriptorPath}`,
+                      `Poświadczenie obrócono. Plik dostępu: ${result.data.descriptorPath}. Adapter hosta: ${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
                     );
                   else showFailure(result);
                 },

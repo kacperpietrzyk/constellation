@@ -86,6 +86,30 @@ const client = createScenarioClient({
         policyVersion: 5,
         revokedSpaceGrantIds: ["00000000-0000-4000-8000-000000000206"],
       });
+    if (command.commandName === "agent.grantCreate")
+      return commandResult(command.commandId, {
+        kind: "agent.grant_created",
+        grantId: command.payload.grantId,
+        agentPrincipalId: command.payload.agentPrincipalId,
+        credentialId: command.payload.credentialId,
+        version: 1,
+        policyVersion: 5,
+      });
+    if (command.commandName === "agent.grantRotateCredential")
+      return commandResult(command.commandId, {
+        kind: "agent.credential_rotated",
+        grantId: command.payload.grantId,
+        credentialId: command.payload.credentialId,
+        credentialVersion: 3,
+        version: 3,
+      });
+    if (command.commandName === "agent.grantRevoke")
+      return commandResult(command.commandId, {
+        kind: "agent.grant_revoked",
+        grantId: command.payload.grantId,
+        version: 3,
+        policyVersion: 5,
+      });
     return {
       kind: "contract_rejected",
       diagnosticCode: "contract.invalid",
@@ -169,6 +193,72 @@ const client = createScenarioClient({
               version: 2,
             },
           ],
+        },
+      ],
+    }),
+    "agent.access": result({
+      kind: "agent.access",
+      policyVersion: 4,
+      workspaceVersion: 4,
+      canManage: true,
+      grants: [
+        {
+          grantId: "00000000-0000-4000-8000-000000000210",
+          agentPrincipalId: "00000000-0000-4000-8000-000000000211",
+          displayName: "Codex — praca projektowa",
+          preset: "operate",
+          capabilityScope: [
+            "capture.submitText",
+            "capture.history",
+            "project.list",
+            "project.updateOutcome",
+            "task.list",
+            "task.setStatus",
+            "search.global",
+            "activity.meaningful",
+            "command.previewUndo",
+            "command.undo",
+            "agent.checkpoint.create",
+            "agent.checkpoint.revert",
+            "agent.handoff.submit",
+          ],
+          membershipId: "00000000-0000-4000-8000-000000000212",
+          membershipVersion: 1,
+          spaces: [
+            {
+              spaceId,
+              spaceName: "Praca",
+              spaceGrantId: "00000000-0000-4000-8000-000000000213",
+              access: "edit",
+              version: 1,
+            },
+          ],
+          status: "active",
+          expiresAt: "2026-08-13T12:00:00.000Z",
+          credentialVersion: 2,
+          version: 2,
+          lastUsedAt: "2026-07-14T11:48:00.000Z",
+        },
+        {
+          grantId: "00000000-0000-4000-8000-000000000214",
+          agentPrincipalId: "00000000-0000-4000-8000-000000000215",
+          displayName: "Claude — analiza dokumentów",
+          preset: "observe",
+          capabilityScope: ["document.list", "search.global"],
+          membershipId: "00000000-0000-4000-8000-000000000216",
+          membershipVersion: 2,
+          spaces: [
+            {
+              spaceId,
+              spaceName: "Praca",
+              spaceGrantId: "00000000-0000-4000-8000-000000000217",
+              access: "view",
+              version: 2,
+            },
+          ],
+          status: "revoked",
+          credentialVersion: 1,
+          version: 2,
         },
       ],
     }),

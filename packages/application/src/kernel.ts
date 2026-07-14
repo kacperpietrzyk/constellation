@@ -1527,9 +1527,15 @@ export class ApplicationKernel {
       );
     }
     const workspace = view.getWorkspace(query.workspaceId);
+    const agentPrincipals = new Set(
+      view
+        .listAgentGrants(query.workspaceId)
+        .map((grant) => grant.agentPrincipalId),
+    );
     const candidates = view
       .listMemberships(query.workspaceId)
       .filter((membership) => {
+        if (agentPrincipals.has(membership.principalId)) return false;
         if (membership.status === "revoked") return false;
         if (
           membership.role === "owner" &&

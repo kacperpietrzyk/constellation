@@ -89,7 +89,7 @@ read-only/revoked session enforcement, named revisions, restore, and scoped
 purge. Packaged macOS and Windows gates prove the complete two-human
 online/offline, conflict, revocation, document-revision, and recovery journey.
 
-## Current — external agents through MCP
+## Delivered foundation — local external agents through MCP
 
 Expose the application commands and queries as the only agent interface:
 
@@ -99,11 +99,22 @@ Expose the application commands and queries as the only agent interface:
 - structured evidence, receipts, checkpoints, and scoped revert for concurrent
   agent work;
 - interoperability testing with multiple external agent hosts;
-- optional remote operation only through an explicitly configured,
-  always-reachable authorized endpoint.
+- credential rotation, expiry, revocation, and a desktop access-management
+  surface that keeps capability scope separate from Space data scope.
 
 Constellation will not embed a chat interface, model runtime, AI orchestrator,
 or bespoke retrieval stack.
+
+## Current — remote MCP through the self-hosted Hub
+
+Carry the same MCP contract across an explicitly configured, always-reachable
+Hub endpoint without making a desktop the coordinator:
+
+- reauthorize Workspace, Space, capability, and provider policy on every call;
+- preserve equivalent receipts, conflicts, checkpoints, and scoped recovery;
+- add bounded rate, replay, abuse, revocation, and disaster-recovery gates;
+- keep local-only agent credentials device-local and require a distinct remote
+  grant.
 
 ## Later — meetings, calendar, and connected work
 

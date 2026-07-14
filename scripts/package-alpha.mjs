@@ -275,6 +275,7 @@ const expectedDesktopDependencies = [
   "@constellation/contracts",
   "@constellation/desktop-preload",
   "@constellation/local-store",
+  "@constellation/mcp",
   "@constellation/realtime-documents",
   "better-sqlite3",
 ];
@@ -338,6 +339,11 @@ const resources =
   process.platform === "darwin"
     ? path.join(appBundle, "Contents", "Resources")
     : path.join(packageRoot, "resources");
+const packagedMcpEntrypoint = path.join(resources, "constellation-mcp.mjs");
+copy(
+  path.join(root, "packages", "mcp", "dist", "bin", "stdio.mjs"),
+  packagedMcpEntrypoint,
+);
 const unpacked = path.join(resources, "app.asar.unpacked");
 const archive = path.join(resources, "app.asar");
 const unpackedFiles = [];
@@ -355,6 +361,7 @@ if (fs.existsSync(unpacked)) {
 if (
   !fs.existsSync(executable) ||
   !fs.existsSync(archive) ||
+  !fs.existsSync(packagedMcpEntrypoint) ||
   unpackedFiles.length !== 1 ||
   path.basename(unpackedFiles[0]) !== "better_sqlite3.node"
 ) {
@@ -421,6 +428,8 @@ const manifest = {
     "bootstrap.cjs -> @constellation/desktop-main/dist/src/production-main.js",
   runtimePackages: [...expectedRuntimePackages].sort(),
   nativeBindingSha256: digest,
+  mcpEntrypoint: packagedMcpEntrypoint,
+  mcpEntrypointSha256: await digestFile(packagedMcpEntrypoint),
   signatureTier,
 };
 fs.writeFileSync(

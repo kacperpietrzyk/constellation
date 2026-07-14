@@ -406,7 +406,13 @@ export const createAgentGrant = async (
     readonly spaceIds: readonly SpaceId[];
     readonly expiresAt?: string;
   },
-): Promise<MutationResult<{ readonly descriptorPath: string }>> => {
+): Promise<
+  MutationResult<{
+    readonly descriptorPath: string;
+    readonly launchCommand: string;
+    readonly launchArgs: readonly string[];
+  }>
+> => {
   if (snapshot.agentAccess.kind !== "ready")
     return { kind: "unavailable", message: "Dostęp agentów jest niedostępny." };
   const grantId = crypto.randomUUID() as GrantId;
@@ -456,7 +462,11 @@ export const createAgentGrant = async (
       return commandFailure(response);
     return {
       kind: "success",
-      data: { descriptorPath: credential.descriptorPath },
+      data: {
+        descriptorPath: credential.descriptorPath,
+        launchCommand: credential.launchCommand,
+        launchArgs: credential.launchArgs,
+      },
     };
   } catch {
     return { kind: "error", message: "Nie udało się utworzyć dostępu agenta." };
@@ -467,7 +477,13 @@ export const rotateAgentCredential = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
   grant: AgentAccessProjection["grants"][number],
-): Promise<MutationResult<{ readonly descriptorPath: string }>> => {
+): Promise<
+  MutationResult<{
+    readonly descriptorPath: string;
+    readonly launchCommand: string;
+    readonly launchArgs: readonly string[];
+  }>
+> => {
   try {
     const credential = await client.prepareAgentCredential({
       grantId: grant.grantId,
@@ -495,7 +511,11 @@ export const rotateAgentCredential = async (
       return commandFailure(response);
     return {
       kind: "success",
-      data: { descriptorPath: credential.descriptorPath },
+      data: {
+        descriptorPath: credential.descriptorPath,
+        launchCommand: credential.launchCommand,
+        launchArgs: credential.launchArgs,
+      },
     };
   } catch {
     return { kind: "error", message: "Nie udało się obrócić poświadczenia." };

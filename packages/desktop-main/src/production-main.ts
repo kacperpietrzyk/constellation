@@ -546,6 +546,7 @@ const startProductionDesktop = async (): Promise<void> => {
       stateRoot: app.getPath("userData"),
       workspaceId: workspaceRecovery.kernel.identity.workspaceId,
       store: workspaceRecovery.kernel.store,
+      isEnabled: () => coordinatedDataHomeProvider === undefined,
     });
     await localMcpRuntime.start();
   }
@@ -557,12 +558,24 @@ const startProductionDesktop = async (): Promise<void> => {
       readonly expiresAt: number;
     }
   >();
+  const purgeExpiredAgentCredentials = (): void => {
+    const now = Date.now();
+    for (const [credentialId, pending] of pendingAgentCredentials) {
+      if (pending.expiresAt <= now)
+        pendingAgentCredentials.delete(credentialId);
+    }
+  };
   ipcMain.handle(
     DESKTOP_CHANNELS.prepareAgentCredential,
     (event, raw: unknown) => {
       assertTrustedSender(event);
       if (localMcpRuntime === undefined)
         throw new Error("Local MCP runtime is unavailable.");
+      if (coordinatedDataHomeProvider !== undefined)
+        throw new Error("Local MCP grants require a local-only Data Home.");
+      purgeExpiredAgentCredentials();
+      if (pendingAgentCredentials.size >= 32)
+        throw new Error("Too many pending local MCP credentials.");
       if (
         typeof raw !== "object" ||
         raw === null ||
@@ -584,6 +597,13 @@ const startProductionDesktop = async (): Promise<void> => {
         credentialDigest: prepared.credentialDigest,
         descriptorPath:
           localMcpRuntime.credentialCustody.descriptorPath(grantId),
+        launchCommand: process.execPath,
+        launchArgs: [path.join(process.resourcesPath, "constellation-mcp.mjs")],
+        launchEnvironment: {
+          ELECTRON_RUN_AS_NODE: "1",
+          CONSTELLATION_MCP_CREDENTIAL_FILE:
+            localMcpRuntime.credentialCustody.descriptorPath(grantId),
+        },
       };
     },
   );
@@ -599,8 +619,34 @@ const startProductionDesktop = async (): Promise<void> => {
         });
   ipcMain.handle(DESKTOP_CHANNELS.executeCommand, (event, command: unknown) => {
     assertTrustedSender(event);
-    const result = runtime.service.execute(command);
     const parsedCommand = CommandEnvelopeSchema.safeParse(command);
+    if (
+      parsedCommand.success &&
+      coordinatedDataHomeProvider !== undefined &&
+      (parsedCommand.data.commandName === "agent.grantCreate" ||
+        parsedCommand.data.commandName === "agent.grantRotateCredential")
+    )
+      throw new Error("Local MCP grants require a local-only Data Home.");
+    const pendingAgentCredential =
+      parsedCommand.success &&
+      (parsedCommand.data.commandName === "agent.grantCreate" ||
+        parsedCommand.data.commandName === "agent.grantRotateCredential")
+        ? pendingAgentCredentials.get(parsedCommand.data.payload.credentialId)
+        : undefined;
+    if (
+      parsedCommand.success &&
+      (parsedCommand.data.commandName === "agent.grantCreate" ||
+        parsedCommand.data.commandName === "agent.grantRotateCredential") &&
+      (pendingAgentCredential === undefined ||
+        pendingAgentCredential.expiresAt <= Date.now() ||
+        pendingAgentCredential.grantId !== parsedCommand.data.payload.grantId ||
+        pendingAgentCredential.prepared.credentialDigest !==
+          parsedCommand.data.payload.credentialDigest)
+    )
+      throw new Error(
+        "Local MCP credential preparation is invalid or expired.",
+      );
+    const result = runtime.service.execute(command);
     if (
       result.kind === "command_outcome" &&
       result.outcome.outcome === "success" &&
@@ -612,23 +658,14 @@ const startProductionDesktop = async (): Promise<void> => {
         accepted.commandName === "agent.grantCreate" ||
         accepted.commandName === "agent.grantRotateCredential"
       ) {
-        const pending = pendingAgentCredentials.get(
-          accepted.payload.credentialId,
-        );
-        if (
-          pending !== undefined &&
-          pending.expiresAt > Date.now() &&
-          pending.grantId === accepted.payload.grantId &&
-          pending.prepared.credentialDigest ===
-            accepted.payload.credentialDigest
-        ) {
-          localMcpRuntime.credentialCustody.publish({
-            workspaceId: accepted.workspaceId,
-            grantId: accepted.payload.grantId,
-            endpoint: localMcpRuntime.endpoint,
-            credential: pending.prepared,
-          });
-        }
+        if (pendingAgentCredential === undefined)
+          throw new Error("Prepared local MCP credential is unavailable.");
+        localMcpRuntime.credentialCustody.publish({
+          workspaceId: accepted.workspaceId,
+          grantId: accepted.payload.grantId,
+          endpoint: localMcpRuntime.endpoint,
+          credential: pendingAgentCredential.prepared,
+        });
         pendingAgentCredentials.delete(accepted.payload.credentialId);
       } else if (accepted.commandName === "agent.grantRevoke") {
         localMcpRuntime.credentialCustody.revoke(accepted.payload.grantId);

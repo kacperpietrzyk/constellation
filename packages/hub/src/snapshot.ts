@@ -45,9 +45,18 @@ export const toHubSnapshot = (
   void _agentRuns;
   void _agentCheckpoints;
   void _agentHandoffs;
+  const localAgentPrincipals = new Set(
+    (_agentGrants ?? []).map((grant) => grant.agentPrincipalId),
+  );
   return HubWorkspaceSnapshotSchema.parse({
     format: "constellation.workspace-snapshot/v1",
     ...hubState,
+    memberships: hubState.memberships.filter(
+      (membership) => !localAgentPrincipals.has(membership.principalId),
+    ),
+    spaceGrants: (hubState.spaceGrants ?? []).filter(
+      (grant) => !localAgentPrincipals.has(grant.principalId),
+    ),
   });
 };
 

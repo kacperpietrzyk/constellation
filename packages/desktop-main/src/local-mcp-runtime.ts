@@ -36,6 +36,16 @@ import {
 
 const MAX_CONNECTIONS = 32;
 
+const serializeResponse = (response: McpOperatorResponse): string => {
+  const encoded = `${JSON.stringify(response)}\n`;
+  if (Buffer.byteLength(encoded) <= MAX_IPC_MESSAGE_BYTES) return encoded;
+  return `${JSON.stringify(
+    contentSafeResponse(response.requestId, "retryable", {
+      diagnosticCode: "mcp.response_too_large",
+    }),
+  )}\n`;
+};
+
 const contentSafeResponse = (
   requestId: string,
   outcome: McpOperatorResponse["outcome"],
@@ -89,6 +99,7 @@ export class LocalMcpRuntime {
       readonly stateRoot: string;
       readonly workspaceId: WorkspaceId;
       readonly store: ApplicationStore;
+      readonly isEnabled?: () => boolean;
     },
   ) {
     this.custody = new LocalMcpCredentialCustody(input.stateRoot);
@@ -162,7 +173,7 @@ export class LocalMcpRuntime {
       if (newline < 0) return;
       socket.pause();
       void this.handle(body.slice(0, newline)).then((response) => {
-        if (!socket.destroyed) socket.end(`${JSON.stringify(response)}\n`);
+        if (!socket.destroyed) socket.end(serializeResponse(response));
       });
     });
     socket.once("close", () => {
@@ -202,6 +213,7 @@ export class LocalMcpRuntime {
     secret: string,
     invocation: McpOperatorInvocation,
   ): AgentAccessGrant | undefined {
+    if (this.input.isEnabled?.() === false) return undefined;
     const now = Date.now();
     const grant = this.input.store
       .read((view) => view.listAgentGrants(this.input.workspaceId))
