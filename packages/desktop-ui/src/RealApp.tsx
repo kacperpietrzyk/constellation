@@ -882,20 +882,25 @@ export const RealApp = ({
                   : undefined;
               openContext(projectContext(id, project?.title ?? "Projekt"));
             }}
-            onCreate={(title, outcome) => {
-              if (!client) return;
+            onCreate={async (title, outcome) => {
+              if (!client) return false;
               setProjectBusy(true);
-              void createProject(client, state.snapshot, title, outcome).then(
-                async (result) => {
-                  setProjectBusy(false);
-                  if (result.kind === "success") {
-                    openContext(
-                      projectContext(result.data.projectId, title.trim()),
-                    );
-                    await refreshAfter("Projekt utworzono.");
-                  } else showFailure(result);
-                },
+              const result = await createProject(
+                client,
+                state.snapshot,
+                title,
+                outcome,
               );
+              setProjectBusy(false);
+              if (result.kind === "success") {
+                openContext(
+                  projectContext(result.data.projectId, title.trim()),
+                );
+                await refreshAfter("Projekt utworzono.");
+                return true;
+              }
+              showFailure(result);
+              return false;
             }}
             onUpdateOutcome={(outcome) => {
               if (!client || !projectOverview) return;

@@ -376,16 +376,19 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       );
       await client.evaluate(`(() => {
         const title = document.querySelector('#project-title');
-        const outcome = document.querySelector('#project-outcome');
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(
           title,
           ${JSON.stringify(projectTitle)}
         );
+        title.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      })()`);
+      await client.evaluate(`(() => {
+        const outcome = document.querySelector('#project-outcome');
         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(
           outcome,
           ${JSON.stringify(projectOutcome)}
         );
-        title.dispatchEvent(new Event("input", { bubbles: true }));
         outcome.dispatchEvent(new Event("input", { bubbles: true }));
         return true;
       })()`);
