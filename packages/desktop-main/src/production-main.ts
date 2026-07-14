@@ -1086,6 +1086,15 @@ const reportStartupFailure = async (error: unknown): Promise<void> => {
   dataHomeProvider = undefined;
   const failure = startupFailureCopy(error);
   console.error(`Constellation startup stopped safely (${failure.code}).`);
+  if (process.env.CONSTELLATION_ALPHA_RECOVERY_SMOKE_ROOT !== undefined) {
+    console.error(
+      `Packaged smoke startup diagnostic: ${
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : typeof error
+      }`,
+    );
+  }
   try {
     const result = await dialog.showMessageBox({
       type: "error",
