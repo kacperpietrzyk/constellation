@@ -5,6 +5,9 @@ import { describe, it } from "node:test";
 
 import {
   CommandIdSchema,
+  DataHomeStatusSchema,
+  DeviceIdSchema,
+  LOCAL_ONLY_PROVIDER_ID,
   ProjectIdSchema,
   RelationIdSchema,
   SpaceIdSchema,
@@ -144,6 +147,60 @@ const createTypedClient = () => {
       persistence: "encrypted-local",
       version: "test",
     }),
+    getDataHomeStatus: async () =>
+      DataHomeStatusSchema.parse({
+        descriptor: {
+          contractVersion: 1,
+          providerId: LOCAL_ONLY_PROVIDER_ID,
+          providerInstanceId: `${LOCAL_ONLY_PROVIDER_ID}:${workspaceId}`,
+          workspaceId,
+          deviceId: DeviceIdSchema.parse(
+            "00000000-0000-4000-8000-000000000099",
+          ),
+          providerKind: "local_only",
+          storageRole: "canonical",
+          displayName: "Local only",
+          location: "this_device",
+          capabilities: {
+            ordered_changes: {
+              support: "unsupported",
+              reason: "No remote provider is configured.",
+            },
+            checkpoints: { support: "supported" },
+            tombstones: {
+              support: "unsupported",
+              reason: "No remote provider is configured.",
+            },
+            attachments: {
+              support: "unsupported",
+              reason: "Attachments are not implemented.",
+            },
+            quota: {
+              support: "unsupported",
+              reason: "Local filesystem quota is unknown.",
+            },
+            portable_export: { support: "supported" },
+            portable_import: { support: "supported" },
+            provider_migration: { support: "supported" },
+            device_revocation: {
+              support: "unsupported",
+              reason: "No remote authority exists.",
+            },
+          },
+          encryption: {
+            atRest: "sqlcipher",
+            keyCustody: "operating_system",
+            portableRecovery: "separate_recovery_code",
+          },
+        },
+        availability: "available",
+        syncState: "not_configured",
+        checkpointState: "none_recorded",
+        quota: { state: "unknown" },
+        lastVerifiedAt: "2026-07-14T10:00:00.000Z",
+        recoveryActions: ["export_checkpoint", "restore_checkpoint"],
+        detailCode: "ready",
+      }),
     prepareWorkspaceRestore: async () => ({ outcome: "cancelled" }),
     runQuery: async (query) => {
       queries.push(query);
@@ -320,6 +377,8 @@ describe("real Wave 2 renderer workflow", () => {
     assert.equal(snapshot.projects.kind, "ready");
     assert.equal(snapshot.cockpit.kind, "ready");
     assert.equal(snapshot.activity.kind, "ready");
+    assert.equal(snapshot.dataHome?.descriptor.storageRole, "canonical");
+    assert.equal(snapshot.dataHome?.syncState, "not_configured");
     assert.deepEqual(
       queries.map((query) => query.queryName).sort(),
       [
@@ -331,6 +390,16 @@ describe("real Wave 2 renderer workflow", () => {
         "workspace.bootstrapContext",
       ].sort(),
     );
+  });
+
+  it("keeps local work usable when Data Home status needs an independent retry", async () => {
+    const { client } = createTypedClient();
+    client.getDataHomeStatus = async () => {
+      throw new Error("provider unavailable");
+    };
+    const snapshot = await loadDesktopSnapshot(client);
+    assert.equal(snapshot.dataHome, undefined);
+    assert.equal(snapshot.tasks.length, 1);
   });
 
   it("uses search.global and all Wave 2 mutation commands without local decisions", async () => {

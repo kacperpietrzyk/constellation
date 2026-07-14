@@ -18,7 +18,7 @@ We prefer thin, usable end-to-end slices over building broad subsystems in
 isolation. A capability moves forward only when its recovery, privacy,
 accessibility, and cross-platform behavior are credible too.
 
-## Delivered foundation — local Alpha
+## Delivered foundation — local Alpha and portable Data Home
 
 The repository contains the first durable desktop journey:
 
@@ -31,11 +31,17 @@ The repository contains the first durable desktop journey:
   cockpit projection;
 - Capture History, meaningful activity, audit receipts, and previewed undo;
 - a shared application command/query boundary behind the desktop UI;
-- packaged verification on macOS and Windows runners.
+- packaged verification on macOS and Windows runners;
+- a versioned, capability-tested Data Home contract whose local-only adapter
+  exposes canonical storage, encryption, availability, portable checkpoint,
+  migration, recovery, and stable installation identity without claiming sync;
+- provider status and recovery in the desktop surface, including honest
+  unsupported states for remote change exchange, attachments, provider quota,
+  and remote device revocation.
 
 This is a pre-alpha engineering foundation, not a distributed desktop release.
 
-## Current — a complete personal local-first workspace
+## Continuing local workspace depth
 
 Turn the initial journey into a coherent application that can be used for real
 personal work without depending on a server:
@@ -49,13 +55,11 @@ personal work without depending on a server:
 - finish accessibility, platform behavior, and the release-quality Visual Atlas
   contract for every changed surface.
 
-## Next — portable Data Homes and multi-device continuity
+## Current — self-hosted multi-device continuity
 
-Give each workspace an explicit data home while preserving offline work and
-user ownership:
+Extend the explicit Data Home boundary from one canonical device to coordinated
+offline work while preserving user ownership:
 
-- define and certify the synchronization-provider contract;
-- ship local-only export, restore, and migration guarantees;
 - prove a self-hosted, cross-platform coordinating Hub so two devices stay
   current without requiring a desktop machine to remain online;
 - add recoverable outbox, change-feed, attachment, conflict, revocation, and

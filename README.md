@@ -69,6 +69,14 @@ replacing a missing ready database. If an established workspace cannot open,
 the same packaged application presents a recovery-only restore path rather than
 requiring a developer tool.
 
+Each durable workspace now also reports a versioned Data Home descriptor. The
+local-only provider says explicitly that its encrypted database is canonical on
+this device, identifies the installation without using a hardware fingerprint,
+and distinguishes supported portable checkpoints from unsupported remote sync,
+attachment transfer, provider quota, and device revocation. The same provider
+boundary will be used by future coordinated Data Homes; the current Alpha does
+not imply that backup is synchronization.
+
 The packaged gate builds the pinned SQLCipher binding as the only unpacked
 native module and drives the real window, context-isolated preload, IPC,
 Capture-to-Task interaction, encrypted backup/restore, and relaunch on native
@@ -81,7 +89,9 @@ the explicit Capture action remain later work.
 
 The current kernel boundary and implemented subset are documented in
 [Application kernel](docs/architecture/application-kernel.md) and
-[Local store](docs/architecture/local-store.md).
+[Local store](docs/architecture/local-store.md). The provider contract and its
+current capability limits are documented in
+[Data Homes](docs/architecture/data-homes.md).
 
 The [public roadmap](ROADMAP.md) describes the intended product direction and
 the order in which the major outcomes build on one another. It is directional,

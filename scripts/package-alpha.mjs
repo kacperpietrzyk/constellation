@@ -159,8 +159,10 @@ const desktopMainSource = path.join(
 );
 const productionDesktopFiles = new Set([
   "better-sqlite3-factory.js",
+  "device-identity.js",
   "durable-kernel-service.js",
   "index.js",
+  "local-data-home-provider.js",
   "production-main.js",
   "runtime-kernel-service.js",
   "security.js",

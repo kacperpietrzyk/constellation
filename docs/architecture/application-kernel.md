@@ -117,6 +117,9 @@ contracts -> Zod
   reference adapter, and failure injection. It is not production persistence.
 - `local-store` owns the relational ApplicationStore schema and the fail-closed
   SQLCipher driver gate. Electron main retains native loading and key custody.
+- `application` also owns the privileged Data Home provider port. Its versioned
+  descriptor, capabilities, status, and closed outcome vocabulary live in
+  `contracts`; React receives only safe status and portability operations.
 
 ## Verification
 
@@ -144,5 +147,5 @@ deterministic syntax parsing, Attention processing, checkpoint revert, editable
 configuration, synchronized Data Homes, and the exhaustive cross-workspace leak
 matrix remain later capability gates.
 
-The current adapter and its remaining runtime boundary are documented in
-[Local store](local-store.md).
+The current adapters and their remaining runtime boundaries are documented in
+[Local store](local-store.md) and [Data Homes](data-homes.md).

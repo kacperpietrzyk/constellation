@@ -2,80 +2,35 @@ import type {
   CommandEnvelope,
   CommandOutcome,
   ContractIssue,
+  DataHomeStatus,
   QueryEnvelope,
   QueryResult,
+  WorkspaceBackupExportResult,
+  WorkspaceRestorePreviewResult,
+  WorkspaceRestoreResult,
   WorkspaceId,
+} from "@constellation/contracts";
+
+export type {
+  DataHomeStatus,
+  WorkspaceBackupExportResult,
+  WorkspaceBackupFailureCode,
+  WorkspaceBackupMetadata,
+  WorkspaceRecoveryCounts,
+  WorkspaceRestorePreviewResult,
+  WorkspaceRestoreResult,
 } from "@constellation/contracts";
 
 export const DESKTOP_CHANNELS = {
   executeCommand: "constellation:command:execute",
   getBuildInfo: "constellation:build:info",
+  getDataHomeStatus: "constellation:data-home:status",
   runQuery: "constellation:query:run",
   exportWorkspaceBackup: "constellation:workspace-backup:export",
   prepareWorkspaceRestore: "constellation:workspace-backup:prepare-restore",
   confirmWorkspaceRestore: "constellation:workspace-backup:confirm-restore",
   cancelWorkspaceRestore: "constellation:workspace-backup:cancel-restore",
 } as const;
-
-export interface WorkspaceBackupMetadataDto {
-  readonly archiveId: string;
-  readonly workspaceId: WorkspaceId;
-  readonly workspaceName: string;
-  readonly createdAt: string;
-  readonly appVersion: string;
-  readonly databaseByteLength: number;
-}
-
-export interface WorkspaceRecoveryCountsDto {
-  readonly captures: number;
-  readonly tasks: number;
-  readonly projects: number;
-  readonly relations: number;
-  readonly auditReceipts: number;
-}
-
-export type WorkspaceBackupFailureCode =
-  | "secure_storage_unavailable"
-  | "archive_invalid"
-  | "archive_unsupported"
-  | "recovery_code_invalid"
-  | "workspace_identity_invalid"
-  | "operation_busy"
-  | "io_failed"
-  | "restore_interrupted";
-
-export type WorkspaceBackupExportResult =
-  | { readonly outcome: "cancelled" }
-  | {
-      readonly outcome: "success";
-      readonly recoveryCode: string;
-      readonly fileLabel: string;
-      readonly metadata: WorkspaceBackupMetadataDto;
-    }
-  | {
-      readonly outcome: "failure";
-      readonly code: WorkspaceBackupFailureCode;
-    };
-
-export type WorkspaceRestorePreviewResult =
-  | { readonly outcome: "cancelled" }
-  | {
-      readonly outcome: "preview";
-      readonly restoreId: string;
-      readonly metadata: WorkspaceBackupMetadataDto;
-      readonly counts: WorkspaceRecoveryCountsDto;
-    }
-  | {
-      readonly outcome: "failure";
-      readonly code: WorkspaceBackupFailureCode;
-    };
-
-export type WorkspaceRestoreResult =
-  | { readonly outcome: "success"; readonly workspaceId: WorkspaceId }
-  | {
-      readonly outcome: "failure";
-      readonly code: WorkspaceBackupFailureCode;
-    };
 
 export interface ContractRejection {
   readonly kind: "contract_rejected";
@@ -112,6 +67,7 @@ export interface ConstellationRendererClient {
   executeCommand(command: CommandEnvelope): Promise<RendererCommandResponse>;
   exportWorkspaceBackup(): Promise<WorkspaceBackupExportResult>;
   getBuildInfo(): Promise<DesktopBuildInfo>;
+  getDataHomeStatus(): Promise<DataHomeStatus>;
   prepareWorkspaceRestore(input: {
     readonly recoveryCode: string;
   }): Promise<WorkspaceRestorePreviewResult>;
@@ -140,6 +96,8 @@ export const createRendererClient = (
     ) as Promise<RendererCommandResponse>,
   getBuildInfo: () =>
     invoke(DESKTOP_CHANNELS.getBuildInfo) as Promise<DesktopBuildInfo>,
+  getDataHomeStatus: () =>
+    invoke(DESKTOP_CHANNELS.getDataHomeStatus) as Promise<DataHomeStatus>,
   exportWorkspaceBackup: () =>
     invoke(
       DESKTOP_CHANNELS.exportWorkspaceBackup,

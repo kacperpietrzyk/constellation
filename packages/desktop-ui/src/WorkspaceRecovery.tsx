@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import type {
   ConstellationRendererClient,
+  DataHomeStatus,
   WorkspaceBackupExportResult,
   WorkspaceBackupFailureCode,
   WorkspaceRestorePreviewResult,
@@ -75,6 +76,7 @@ const CloseIcon = () => (
 
 export const WorkspaceRecovery = ({
   client,
+  initialStatus,
   workspaceName,
   recoveredPrevious,
   restoreOnly = false,
@@ -82,6 +84,7 @@ export const WorkspaceRecovery = ({
   onRestored,
 }: {
   readonly client: ConstellationRendererClient;
+  readonly initialStatus?: DataHomeStatus;
   readonly workspaceName: string;
   readonly recoveredPrevious: boolean;
   readonly restoreOnly?: boolean;
@@ -93,7 +96,17 @@ export const WorkspaceRecovery = ({
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
+  const [dataHome, setDataHome] = useState<
+    | { readonly kind: "loading" }
+    | { readonly kind: "ready"; readonly status: DataHomeStatus }
+    | { readonly kind: "error" }
+  >(
+    initialStatus === undefined
+      ? { kind: "loading" }
+      : { kind: "ready", status: initialStatus },
+  );
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const codeInputRef = useRef<HTMLInputElement>(null);
   const busy =
     state.kind === "exporting" ||
@@ -102,8 +115,23 @@ export const WorkspaceRecovery = ({
 
   useEffect(() => {
     dialogRef.current?.showModal();
+    closeButtonRef.current?.focus();
     return () => dialogRef.current?.close();
   }, []);
+
+  const refreshDataHome = async () => {
+    setDataHome({ kind: "loading" });
+    try {
+      setDataHome({ kind: "ready", status: await client.getDataHomeStatus() });
+    } catch {
+      setDataHome({ kind: "error" });
+    }
+  };
+
+  useEffect(() => {
+    if (initialStatus !== undefined) return;
+    void refreshDataHome();
+  }, [initialStatus]);
 
   const close = () => {
     if (busy) return;
@@ -119,6 +147,7 @@ export const WorkspaceRecovery = ({
     if (result.outcome === "success") {
       setState({ kind: "code-issued", result });
       setCopyStatus("idle");
+      void refreshDataHome();
     } else if (result.outcome === "cancelled") setState({ kind: "ready" });
     else setState({ kind: "failure", code: result.code });
   };
@@ -160,10 +189,11 @@ export const WorkspaceRecovery = ({
         <header className="recovery-header">
           <div>
             <p className="eyebrow">Workspace</p>
-            <h2 id="recovery-title">Backup i odzyskiwanie</h2>
+            <h2 id="recovery-title">Data Home i odzyskiwanie</h2>
             <p>{workspaceName}</p>
           </div>
           <button
+            ref={closeButtonRef}
             className="icon-button"
             aria-label="Zamknij backup i odzyskiwanie"
             disabled={busy}
@@ -172,6 +202,84 @@ export const WorkspaceRecovery = ({
             <CloseIcon />
           </button>
         </header>
+
+        <section
+          className="data-home-summary"
+          aria-labelledby="data-home-title"
+        >
+          <div className="data-home-summary-heading">
+            <div>
+              <p className="eyebrow">Data Home</p>
+              <h3 id="data-home-title">Kanoniczne dane tego workspace’u</h3>
+            </div>
+            {dataHome.kind === "ready" && (
+              <span
+                className={`data-home-availability data-home-availability--${dataHome.status.availability}`}
+              >
+                <i aria-hidden="true" />
+                {dataHome.status.availability === "available"
+                  ? "Dostępny"
+                  : dataHome.status.availability === "locked"
+                    ? "Zablokowany"
+                    : "Wymaga odzyskania"}
+              </span>
+            )}
+          </div>
+          {dataHome.kind === "loading" && (
+            <div className="data-home-loading" aria-busy="true" role="status">
+              Sprawdzam provider i ochronę danych…
+            </div>
+          )}
+          {dataHome.kind === "error" && (
+            <div className="data-home-status-error" role="alert">
+              <span>
+                Nie udało się potwierdzić stanu Data Home. Żadna operacja nie
+                została uznana za udaną.
+              </span>
+              <button
+                className="secondary-button compact"
+                onClick={refreshDataHome}
+              >
+                Sprawdź ponownie
+              </button>
+            </div>
+          )}
+          {dataHome.kind === "ready" && (
+            <>
+              <dl className="data-home-facts">
+                <div>
+                  <dt>Provider</dt>
+                  <dd>{dataHome.status.descriptor.displayName}</dd>
+                  <span>Dane kanoniczne na tym urządzeniu</span>
+                </div>
+                <div>
+                  <dt>Ochrona</dt>
+                  <dd>SQLCipher + magazyn systemowy</dd>
+                  <span>Osobny kod otwiera przenośny checkpoint</span>
+                </div>
+                <div>
+                  <dt>Przenośność</dt>
+                  <dd>
+                    {dataHome.status.checkpointState === "verified_this_session"
+                      ? "Checkpoint zweryfikowany"
+                      : "Niezweryfikowany w tej sesji"}
+                  </dd>
+                  <span>Eksport, podgląd i bezpieczna migracja</span>
+                </div>
+              </dl>
+              <div className="data-home-boundary-note">
+                <span>
+                  Synchronizacja nie jest skonfigurowana. Workspace działa
+                  lokalnie bez sieci; backup pozostaje oddzielną operacją.
+                </span>
+                <small>
+                  Urządzenie …{dataHome.status.descriptor.deviceId.slice(-8)} ·
+                  limit lokalnego dysku nie jest udawany jako limit providera
+                </small>
+              </div>
+            </>
+          )}
+        </section>
 
         <div
           className="recovery-chain"

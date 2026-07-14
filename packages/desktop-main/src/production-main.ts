@@ -16,11 +16,14 @@ import {
   DESKTOP_CHANNELS,
   type DesktopBuildInfo,
 } from "@constellation/desktop-preload/client";
+import type { DataHomeProvider } from "@constellation/application";
 import { EncryptedStoreCapabilityError } from "@constellation/local-store";
 
 import { createBetterSqlite3Factory } from "./better-sqlite3-factory.js";
 import { DurableWorkspaceOpenError } from "./durable-kernel-service.js";
+import { loadOrCreateDeviceIdentity } from "./device-identity.js";
 import { DESKTOP_PREVIEW_VERSION } from "./index.js";
+import { LocalOnlyDataHomeProvider } from "./local-data-home-provider.js";
 import type { DesktopKernelService } from "./runtime-kernel-service.js";
 import { assertTrustedSender, isTrustedRendererUrl } from "./security.js";
 import {
@@ -58,6 +61,7 @@ const rendererPath = fileURLToPath(
 );
 let mainWindow: BrowserWindowType | undefined;
 let workspaceRecovery: WorkspaceRecoveryService | undefined;
+let dataHomeProvider: DataHomeProvider | undefined;
 
 interface DesktopRuntime {
   readonly buildInfo: DesktopBuildInfo;
@@ -85,6 +89,7 @@ const electronSafeStorage: AsyncSafeStorage = {
 const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
   const databaseFactory = createBetterSqlite3Factory();
   const stateRoot = app.getPath("userData");
+  const deviceIdentity = loadOrCreateDeviceIdentity(stateRoot);
   const smokeRootValue = process.env.CONSTELLATION_ALPHA_RECOVERY_SMOKE_ROOT;
   const smokeRoot =
     smokeRootValue === undefined ? undefined : path.resolve(smokeRootValue);
@@ -165,6 +170,10 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
     },
   });
   workspaceRecovery = recovery;
+  dataHomeProvider = new LocalOnlyDataHomeProvider(
+    recovery,
+    deviceIdentity.deviceId,
+  );
   return {
     service: {
       execute: (command) => {
@@ -282,9 +291,19 @@ const startProductionDesktop = async (): Promise<void> => {
           }),
     };
   });
+  ipcMain.handle(DESKTOP_CHANNELS.getDataHomeStatus, (event) => {
+    assertTrustedSender(event);
+    if (dataHomeProvider === undefined) {
+      throw new Error("Data Home provider is unavailable.");
+    }
+    return dataHomeProvider.getStatus();
+  });
   ipcMain.handle(DESKTOP_CHANNELS.exportWorkspaceBackup, (event) => {
     assertTrustedSender(event);
-    return workspaceRecovery?.exportBackup();
+    return (
+      dataHomeProvider?.exportPortableCheckpoint() ??
+      Promise.resolve({ outcome: "failure", code: "io_failed" as const })
+    );
   });
   ipcMain.handle(
     DESKTOP_CHANNELS.prepareWorkspaceRestore,
@@ -301,8 +320,10 @@ const startProductionDesktop = async (): Promise<void> => {
       ) {
         return { outcome: "failure", code: "recovery_code_invalid" };
       }
-      return workspaceRecovery?.prepareRestore(
-        (input as { recoveryCode: string }).recoveryCode,
+      return (
+        dataHomeProvider?.prepareProviderMigration(
+          (input as { recoveryCode: string }).recoveryCode,
+        ) ?? Promise.resolve({ outcome: "failure", code: "io_failed" as const })
       );
     },
   );
@@ -313,7 +334,10 @@ const startProductionDesktop = async (): Promise<void> => {
       const restoreId = parseRestoreId(input);
       return restoreId === undefined
         ? { outcome: "failure", code: "workspace_identity_invalid" }
-        : workspaceRecovery?.confirmRestore(restoreId);
+        : (dataHomeProvider?.confirmProviderMigration(restoreId) ?? {
+            outcome: "failure",
+            code: "io_failed",
+          });
     },
   );
   ipcMain.handle(
@@ -321,7 +345,8 @@ const startProductionDesktop = async (): Promise<void> => {
     (event, input: unknown) => {
       assertTrustedSender(event);
       const restoreId = parseRestoreId(input);
-      if (restoreId !== undefined) workspaceRecovery?.cancelRestore(restoreId);
+      if (restoreId !== undefined)
+        dataHomeProvider?.cancelProviderMigration(restoreId);
     },
   );
 
@@ -396,6 +421,7 @@ const startupFailureCopy = (
 const reportStartupFailure = async (error: unknown): Promise<void> => {
   workspaceRecovery?.close();
   workspaceRecovery = undefined;
+  dataHomeProvider = undefined;
   const failure = startupFailureCopy(error);
   console.error(`Constellation startup stopped safely (${failure.code}).`);
   try {
@@ -428,4 +454,5 @@ app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   workspaceRecovery?.close();
   workspaceRecovery = undefined;
+  dataHomeProvider = undefined;
 });
