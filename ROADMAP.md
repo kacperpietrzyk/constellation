@@ -22,7 +22,10 @@ accessibility, and cross-platform behavior are credible too.
 
 The repository contains the first durable desktop journey:
 
-- encrypted local workspace storage with restart and interruption recovery;
+- encrypted local workspace storage with portable backup, destructive restore,
+  and rollback at both interrupted activation boundaries;
+- one context-preserving desktop shell with bounded Task and Project tabs,
+  Back/Forward history, and an attached inspector;
 - Quick Capture from original text to a traceable Task;
 - Projects, Task relations, status changes, deterministic search, and a weekly
   cockpit projection;
@@ -37,14 +40,12 @@ This is a pre-alpha engineering foundation, not a distributed desktop release.
 Turn the initial journey into a coherent application that can be used for real
 personal work without depending on a server:
 
-- complete the stable desktop shell, navigation, record context, and recovery
-  experience;
 - expand capture into review-by-exception handling, deterministic routing, and
   durable support for links and files before broader input types;
 - deepen Tasks, Projects, Areas, Initiatives, relations, saved views, and the
   weekly cockpit without losing the common command/query model;
-- make local search, export, backup, restore, workspace lifecycle, and key
-  recovery trustworthy;
+- deepen structured local search into saved views and the remaining record
+  types without adding generated answers to the desktop UI;
 - finish accessibility, platform behavior, and the release-quality Visual Atlas
   contract for every changed surface.
 
