@@ -25,6 +25,10 @@ import {
 import WebSocket from "ws";
 import * as Y from "yjs";
 
+import { assertPackagedCredentialStoreTestAllowed } from "./desktop/packaged-credential-store-policy.mjs";
+
+assertPackagedCredentialStoreTestAllowed();
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const manifest = JSON.parse(
   fs.readFileSync(

@@ -171,6 +171,31 @@ Markdown, and the contract/conformance tests. The same command runs in CI on
 Linux, macOS, and Windows. CI additionally runs `npm run audit:dependencies`
 against the complete locked runtime and development dependency graph.
 
+`npm run build`, `npm test`, and `npm run check` are the unattended local
+development gates. The packaged smoke tests are a separate native integration
+gate because the macOS application exercises Electron `safeStorage`. On macOS,
+those scripts stop before launching Electron unless CI has prepared a disposable
+Keychain or a developer has explicitly opted into the isolated local flow. This
+prevents an unattended agent run from blocking on a system Keychain prompt. The
+full packaged macOS and Windows matrix remains required in GitHub Actions.
+
+A deliberate local macOS packaged run must use the isolated flow below. The
+subshell restores the previous Keychain configuration even when a smoke test
+fails:
+
+```sh
+npm run package:alpha
+(
+  set -eu
+  export CONSTELLATION_ALLOW_LOCAL_KEYCHAIN_TEST=true
+  export CONSTELLATION_KEYCHAIN_TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/constellation-keychain.XXXXXX")"
+  trap 'node scripts/desktop/restore-ci-macos-keychain.mjs; rm -rf "$CONSTELLATION_KEYCHAIN_TEST_ROOT"' EXIT
+  node scripts/desktop/prepare-ci-macos-keychain.mjs
+  npm run test:alpha:packaged
+  npm run test:hub:packaged
+)
+```
+
 To launch the interactive in-memory preview, install the pinned Electron binary
 and start the desktop development surface:
 
