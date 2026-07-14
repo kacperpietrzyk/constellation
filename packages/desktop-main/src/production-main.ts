@@ -541,7 +541,10 @@ const startProductionDesktop = async (): Promise<void> => {
   );
 
   const runtime = await createDesktopRuntime();
-  if (workspaceRecovery?.kernel !== undefined) {
+  if (
+    workspaceRecovery?.kernel !== undefined &&
+    coordinatedDataHomeProvider === undefined
+  ) {
     localMcpRuntime = new LocalMcpRuntime({
       stateRoot: app.getPath("userData"),
       workspaceId: workspaceRecovery.kernel.identity.workspaceId,
