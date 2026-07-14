@@ -164,6 +164,15 @@ const commit = (
     changedFields: input.changedFields,
     occurredAt,
     outcome: "success",
+    ...(command.checkpointId === undefined
+      ? {}
+      : { checkpointId: command.checkpointId }),
+    ...(context.hostRun?.agentRunId === undefined
+      ? {}
+      : { agentRunId: context.hostRun.agentRunId }),
+    ...(context.hostRun?.runId === undefined
+      ? {}
+      : { hostRunId: context.hostRun.runId }),
   };
   const outbox: OutboxEntry = {
     id: outboxEntryId,
@@ -488,8 +497,13 @@ export const executeCollaborationQuery = (
       workspaceId: workspace.id,
     });
   if (query.queryName === "workspace.access") {
+    const agentPrincipals = new Set(
+      view.listAgentGrants(workspace.id).map((grant) => grant.agentPrincipalId),
+    );
     const memberships = canManage
-      ? view.listMemberships(workspace.id)
+      ? view
+          .listMemberships(workspace.id)
+          .filter((item) => !agentPrincipals.has(item.principalId))
       : [membership];
     return success(query, kernelTime, view.getFreshness(), {
       kind: "workspace.access",

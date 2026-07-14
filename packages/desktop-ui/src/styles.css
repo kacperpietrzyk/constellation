@@ -1880,6 +1880,252 @@ kbd {
   background: var(--surface-sunken);
 }
 
+/* PAT-24 keeps capability and data scope visually separate while presenting
+   one deliberate local-agent grant flow. */
+.agent-access-section {
+  display: grid;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.agent-access-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-6);
+}
+
+.agent-access-heading > div {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 42rem;
+}
+
+.agent-access-heading h2,
+.agent-access-heading p,
+.agent-empty-state p {
+  margin: 0;
+}
+
+.agent-access-heading h2 {
+  font-size: 1rem;
+  font-weight: 620;
+}
+
+.agent-access-heading > div > p:last-child,
+.agent-empty-state p {
+  color: var(--text-tertiary);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.agent-access-composer {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(13rem, 1fr) minmax(13rem, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-5);
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--panel-reading-bg);
+  box-shadow: var(--elevation-raised);
+}
+
+.agent-trust-boundary {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-quaternary);
+  font: 550 0.65rem var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.agent-trust-boundary span:last-child {
+  text-align: right;
+}
+
+.agent-trust-boundary i {
+  width: 2.75rem;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--border-strong),
+    transparent
+  );
+}
+
+.agent-name-field,
+.agent-access-composer fieldset {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.agent-name-field {
+  grid-column: 1 / -1;
+}
+
+.agent-name-field > span,
+.agent-access-composer legend {
+  margin-bottom: var(--space-1);
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+  font-weight: 550;
+}
+
+.agent-name-field input {
+  min-height: 2.5rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--input-bg);
+}
+
+.agent-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+  min-height: 3rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.agent-option:has(input:checked) {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.agent-option input {
+  margin-top: 0.2rem;
+  accent-color: var(--text-primary);
+}
+
+.agent-option span,
+.agent-grant-identity {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.agent-option strong,
+.agent-grant-identity strong,
+.agent-empty-state strong {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.agent-option small,
+.agent-grant-identity span,
+.agent-grant-identity small {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 0.69rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+}
+
+.agent-expiry {
+  grid-column: 1 / -1;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+}
+
+.agent-expiry legend {
+  grid-column: 1 / -1;
+}
+
+.agent-expiry label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.agent-access-composer > .primary-button {
+  justify-self: start;
+}
+
+.agent-access-composer .field-error {
+  align-self: center;
+  margin: 0;
+  color: var(--status-error);
+  font-size: 0.7rem;
+}
+
+.agent-grant-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.agent-grant-row,
+.agent-empty-state {
+  display: grid;
+  grid-template-columns: auto minmax(12rem, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 4.75rem;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.agent-grant-row.revoked,
+.agent-grant-row.expired {
+  opacity: 0.62;
+}
+
+.agent-empty-state {
+  grid-template-columns: auto minmax(0, 1fr);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.agent-orbit-mark {
+  position: relative;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+}
+
+.agent-orbit-mark::before,
+.agent-orbit-mark::after {
+  position: absolute;
+  content: "";
+}
+
+.agent-orbit-mark::before {
+  inset: 0.42rem -0.18rem;
+  border: 1px solid var(--text-quaternary);
+  border-radius: 50%;
+  transform: rotate(-28deg);
+}
+
+.agent-orbit-mark::after {
+  top: 50%;
+  left: 50%;
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 50%;
+  background: var(--text-primary);
+  transform: translate(-50%, -50%);
+}
+
 @media (max-width: 900px) {
   .access-composer {
     grid-template-columns: 1fr 1fr;
@@ -1896,6 +2142,14 @@ kbd {
   .member-actions {
     grid-column: 2 / -1;
     justify-content: start;
+  }
+
+  .agent-grant-row {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .agent-grant-row .member-actions {
+    grid-column: 2 / -1;
   }
 }
 
@@ -1933,6 +2187,28 @@ kbd {
   .member-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .agent-access-heading,
+  .agent-access-composer {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .agent-access-heading .policy-version,
+  .agent-name-field,
+  .agent-trust-boundary,
+  .agent-expiry {
+    grid-column: 1;
+  }
+
+  .agent-grant-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .agent-grant-row .access-state,
+  .agent-grant-row .member-actions {
+    grid-column: 2;
   }
 }
 

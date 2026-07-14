@@ -136,10 +136,28 @@ and revision operation reauthorizes current Workspace membership and Space
 access. Local-only workspaces use the same editor and encrypted store without
 requiring a Hub.
 
+Local-only workspaces now expose a versioned MCP server through the same
+Application Kernel used by the desktop. The Access surface creates a distinct
+agent principal with an independently selected capability preset, Space scope,
+expiry, and device-local credential. Every call reauthorizes current policy;
+commands retain idempotency and expected-version conflicts, while audit receipts
+record the agent, external host run, correlation, and optional checkpoint.
+Checkpoint revert applies ordinary compensating commands and refuses to erase
+incompatible later work. Query results label record content as untrusted
+evidence so imported text never becomes an instruction to the host.
+
+The packaged Alpha contains a stdio adapter tested with Codex CLI and Claude
+Code. Rotation invalidates the previous credential immediately, revocation
+also removes the descriptor, and concurrent full-access agents remain isolated
+by principal and grant. This R5 surface is intentionally limited to a
+local-only Data Home; remote or coordinated agent operation requires a separate
+Hub grant in the next roadmap outcome. Setup and security details are in
+[Local MCP agent access](docs/local-mcp-agents.md).
+
 The resulting ad-hoc macOS and unsigned Windows application folders are
 verification artifacts, not a signed/notarized release. The Hub is an operator
-preview rather than a hosted service. Local MCP operator parity is the next
-active product outcome; remote MCP transport, installers, updater, richer
+preview rather than a hosted service. Remote MCP transport is the next active
+product outcome; installers, updater, richer
 notification policy, document comments/citations, and automatic routing rules
 beyond the explicit Capture action remain later work.
 
@@ -148,6 +166,9 @@ The current kernel boundary and implemented subset are documented in
 [Local store](docs/architecture/local-store.md). The provider contract and its
 current capability limits are documented in
 [Data Homes](docs/architecture/data-homes.md).
+
+External-host setup is documented in
+[Local MCP agent access](docs/local-mcp-agents.md).
 
 Operators evaluating multi-device coordination can use the
 [self-hosted Hub runbook](docs/self-hosting/hub.md).

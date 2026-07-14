@@ -9,6 +9,7 @@ export default tseslint.config(
       "docs/plans/**",
       "docs/specs/**",
       "node_modules/**",
+      "release/**",
       "**/dist/**",
       "**/build/**",
       "coverage/**",

@@ -73,6 +73,10 @@ const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "attention.markRead",
   "attention.dismiss",
   "audit.receipt",
+  "agent.manageAccess",
+  "agent.access",
+  "agent.checkpoint.previewRevert",
+  "agent.checkpoint.revert",
 ];
 
 export interface DurableKernelService {

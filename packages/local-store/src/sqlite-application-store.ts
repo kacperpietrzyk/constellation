@@ -36,6 +36,9 @@ import {
   type AttentionSignalId,
   type TaskStatusId,
   type WorkspaceId,
+  type GrantId,
+  type AgentRunId,
+  type CheckpointId,
 } from "@constellation/contracts";
 import type {
   AuditReceipt,
@@ -55,6 +58,10 @@ import type {
   RecordComment,
   AttentionSignal,
   NativeDocument,
+  AgentAccessGrant,
+  AgentRun,
+  AgentHandoff,
+  AgentCheckpoint,
 } from "@constellation/domain";
 
 import type {
@@ -63,7 +70,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
   checkpoint: null,
@@ -71,6 +78,10 @@ const FRESHNESS: StoreFreshness = {
 };
 
 const COORDINATED_PROJECTION_TABLES = [
+  "agent_handoffs",
+  "agent_checkpoints",
+  "agent_runs",
+  "agent_grants",
   "outbox_entries",
   "idempotency_records",
   "audit_receipts",
@@ -444,6 +455,57 @@ const schemaV7 = `
     ON document_revisions(document_id, created_at DESC, id DESC);
 `;
 
+const schemaV8 = `
+  CREATE TABLE agent_grants (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    agent_principal_id TEXT NOT NULL,
+    credential_id TEXT NOT NULL UNIQUE,
+    credential_digest TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+    version INTEGER NOT NULL CHECK (version > 0),
+    updated_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    UNIQUE(workspace_id, agent_principal_id)
+  ) STRICT;
+  CREATE INDEX agent_grants_scope
+    ON agent_grants(workspace_id, status, updated_at DESC, id);
+  CREATE TABLE agent_runs (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    agent_principal_id TEXT NOT NULL,
+    grant_id TEXT NOT NULL REFERENCES agent_grants(id),
+    host_run_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active', 'completed')),
+    updated_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    UNIQUE(grant_id, host_run_id)
+  ) STRICT;
+  CREATE INDEX agent_runs_scope
+    ON agent_runs(workspace_id, agent_principal_id, updated_at DESC, id);
+  CREATE TABLE agent_checkpoints (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    agent_principal_id TEXT NOT NULL,
+    grant_id TEXT NOT NULL REFERENCES agent_grants(id),
+    run_id TEXT NOT NULL REFERENCES agent_runs(id),
+    status TEXT NOT NULL CHECK (status IN ('open', 'reverted')),
+    updated_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX agent_checkpoints_run ON agent_checkpoints(run_id, updated_at, id);
+  CREATE TABLE agent_handoffs (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    agent_principal_id TEXT NOT NULL,
+    grant_id TEXT NOT NULL REFERENCES agent_grants(id),
+    run_id TEXT NOT NULL REFERENCES agent_runs(id),
+    created_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX agent_handoffs_run ON agent_handoffs(run_id, created_at, id);
+`;
+
 export interface LocalCoordinationState {
   readonly workspaceId: WorkspaceId;
   readonly providerInstanceId: string;
@@ -611,6 +673,7 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
     if (currentVersion < 5) database.exec(schemaV5);
     if (currentVersion < 6) database.exec(schemaV6);
     if (currentVersion < 7) database.exec(schemaV7);
+    if (currentVersion < 8) database.exec(schemaV8);
     database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
     database.exec("COMMIT;");
   } catch (error) {
@@ -1232,6 +1295,103 @@ class SqliteReadView implements ApplicationWave2ReadView {
         );
   }
 
+  public getAgentGrant(id: GrantId): AgentAccessGrant | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, agent_principal_id, credential_id, payload_json FROM agent_grants WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<AgentAccessGrant>(row, "id", id, "agent grant", {
+          workspaceId: stringValue(row, "workspace_id", "agent grant"),
+          agentPrincipalId: stringValue(
+            row,
+            "agent_principal_id",
+            "agent grant",
+          ),
+          credentialId: stringValue(row, "credential_id", "agent grant"),
+        });
+  }
+
+  public listAgentGrants(
+    workspaceId: WorkspaceId,
+  ): readonly AgentAccessGrant[] {
+    return this.database
+      .prepare(
+        "SELECT id, agent_principal_id, credential_id, payload_json FROM agent_grants WHERE workspace_id = ? ORDER BY id",
+      )
+      .all(workspaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "agent grant");
+        return parsePayload<AgentAccessGrant>(row, "id", id, "agent grant", {
+          workspaceId,
+          agentPrincipalId: stringValue(
+            row,
+            "agent_principal_id",
+            "agent grant",
+          ),
+          credentialId: stringValue(row, "credential_id", "agent grant"),
+        });
+      });
+  }
+
+  public getAgentRun(id: AgentRunId): AgentRun | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, agent_principal_id, grant_id, payload_json FROM agent_runs WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<AgentRun>(row, "id", id, "agent run", {
+          workspaceId: stringValue(row, "workspace_id", "agent run"),
+          agentPrincipalId: stringValue(row, "agent_principal_id", "agent run"),
+          grantId: stringValue(row, "grant_id", "agent run"),
+        });
+  }
+
+  public getAgentCheckpoint(id: CheckpointId): AgentCheckpoint | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, agent_principal_id, grant_id, run_id, payload_json FROM agent_checkpoints WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<AgentCheckpoint>(row, "id", id, "agent checkpoint", {
+          workspaceId: stringValue(row, "workspace_id", "agent checkpoint"),
+          agentPrincipalId: stringValue(
+            row,
+            "agent_principal_id",
+            "agent checkpoint",
+          ),
+          grantId: stringValue(row, "grant_id", "agent checkpoint"),
+          runId: stringValue(row, "run_id", "agent checkpoint"),
+        });
+  }
+
+  public listAgentHandoffs(runId: AgentRunId): readonly AgentHandoff[] {
+    return this.database
+      .prepare(
+        "SELECT id, workspace_id, agent_principal_id, grant_id, payload_json FROM agent_handoffs WHERE run_id = ? ORDER BY created_at, id",
+      )
+      .all(runId)
+      .map((row) => {
+        const id = stringValue(row, "id", "agent handoff");
+        return parsePayload<AgentHandoff>(row, "id", id, "agent handoff", {
+          workspaceId: stringValue(row, "workspace_id", "agent handoff"),
+          agentPrincipalId: stringValue(
+            row,
+            "agent_principal_id",
+            "agent handoff",
+          ),
+          grantId: stringValue(row, "grant_id", "agent handoff"),
+          runId,
+        });
+      });
+  }
+
   private listPage<RecordType extends object>(
     table: "captures" | "tasks",
     orderedColumn: "captured_at" | "created_at",
@@ -1766,6 +1926,160 @@ class SqliteTransaction
     );
   }
 
+  public insertAgentGrant(record: AgentAccessGrant): void {
+    this.insert(
+      "agent_grants",
+      [
+        "id",
+        "workspace_id",
+        "agent_principal_id",
+        "credential_id",
+        "credential_digest",
+        "status",
+        "version",
+        "updated_at",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.agentPrincipalId,
+        record.credentialId,
+        record.credentialDigest,
+        record.status,
+        record.version,
+        record.updatedAt,
+        payload(record),
+      ],
+    );
+  }
+
+  public updateAgentGrant(
+    record: AgentAccessGrant,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE agent_grants SET credential_id = ?, credential_digest = ?, status = ?, version = ?, updated_at = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(
+          record.credentialId,
+          record.credentialDigest,
+          record.status,
+          record.version,
+          record.updatedAt,
+          payload(record),
+          record.id,
+          expectedVersion,
+        ),
+    );
+  }
+
+  public insertAgentRun(record: AgentRun): void {
+    this.insert(
+      "agent_runs",
+      [
+        "id",
+        "workspace_id",
+        "agent_principal_id",
+        "grant_id",
+        "host_run_id",
+        "status",
+        "updated_at",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.agentPrincipalId,
+        record.grantId,
+        record.hostRunId,
+        record.status,
+        record.updatedAt,
+        payload(record),
+      ],
+    );
+  }
+
+  public updateAgentRun(record: AgentRun): void {
+    if (
+      !changed(
+        this.database
+          .prepare(
+            "UPDATE agent_runs SET status = ?, updated_at = ?, payload_json = ? WHERE id = ?",
+          )
+          .run(record.status, record.updatedAt, payload(record), record.id),
+      )
+    )
+      throw new LocalStoreCorruptionError(`Missing agent run: ${record.id}`);
+  }
+
+  public insertAgentCheckpoint(record: AgentCheckpoint): void {
+    this.insert(
+      "agent_checkpoints",
+      [
+        "id",
+        "workspace_id",
+        "agent_principal_id",
+        "grant_id",
+        "run_id",
+        "status",
+        "updated_at",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.agentPrincipalId,
+        record.grantId,
+        record.runId,
+        record.status,
+        record.updatedAt,
+        payload(record),
+      ],
+    );
+  }
+
+  public updateAgentCheckpoint(record: AgentCheckpoint): void {
+    if (
+      !changed(
+        this.database
+          .prepare(
+            "UPDATE agent_checkpoints SET status = ?, updated_at = ?, payload_json = ? WHERE id = ?",
+          )
+          .run(record.status, record.updatedAt, payload(record), record.id),
+      )
+    )
+      throw new LocalStoreCorruptionError(
+        `Missing agent checkpoint: ${record.id}`,
+      );
+  }
+
+  public insertAgentHandoff(record: AgentHandoff): void {
+    this.insert(
+      "agent_handoffs",
+      [
+        "id",
+        "workspace_id",
+        "agent_principal_id",
+        "grant_id",
+        "run_id",
+        "created_at",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.agentPrincipalId,
+        record.grantId,
+        record.runId,
+        record.createdAt,
+        payload(record),
+      ],
+    );
+  }
+
   private insert(
     table: string,
     columns: readonly string[],
@@ -2206,6 +2520,15 @@ export class SqliteApplicationStore implements ApplicationStore {
         "idempotency record",
       ),
       outboxEntries: records("outbox_entries", "id", "id", "outbox entry"),
+      agentGrants: records("agent_grants", "id", "id", "agent grant"),
+      agentRuns: records("agent_runs", "id", "id", "agent run"),
+      agentCheckpoints: records(
+        "agent_checkpoints",
+        "id",
+        "id",
+        "agent checkpoint",
+      ),
+      agentHandoffs: records("agent_handoffs", "id", "id", "agent handoff"),
     };
   }
 
@@ -2493,6 +2816,18 @@ export class SqliteApplicationStore implements ApplicationStore {
       transaction.insertIdempotency(value),
     );
     snapshot.outboxEntries.forEach((value) => transaction.insertOutbox(value));
+    (snapshot.agentGrants ?? []).forEach((value) =>
+      transaction.insertAgentGrant(value),
+    );
+    (snapshot.agentRuns ?? []).forEach((value) =>
+      transaction.insertAgentRun(value),
+    );
+    (snapshot.agentCheckpoints ?? []).forEach((value) =>
+      transaction.insertAgentCheckpoint(value),
+    );
+    (snapshot.agentHandoffs ?? []).forEach((value) =>
+      transaction.insertAgentHandoff(value),
+    );
   }
 
   public purgeProjection(input: {

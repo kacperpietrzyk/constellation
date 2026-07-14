@@ -6,6 +6,7 @@ import {
   PrincipalIdSchema,
   SpaceIdSchema,
   WorkspaceIdSchema,
+  AgentRunIdSchema,
 } from "./ids.js";
 
 export const PrincipalKindSchema = z.enum([
@@ -67,6 +68,12 @@ export const CapabilitySchema = z.enum([
   "attention.markRead",
   "attention.dismiss",
   "audit.receipt",
+  "agent.manageAccess",
+  "agent.access",
+  "agent.checkpoint.create",
+  "agent.checkpoint.previewRevert",
+  "agent.checkpoint.revert",
+  "agent.handoff.submit",
 ]);
 export type Capability = z.infer<typeof CapabilitySchema>;
 
@@ -87,6 +94,11 @@ export const ExecutionContextSchema = z
         runId: z.string().trim().min(1).max(200),
         parentRunId: z.string().trim().min(1).max(200).optional(),
         intent: z.string().trim().min(1).max(500).optional(),
+        agentRunId: AgentRunIdSchema.optional(),
+        hostName: z.string().trim().min(1).max(120).optional(),
+        hostVersion: z.string().trim().min(1).max(120).optional(),
+        modelProvider: z.string().trim().min(1).max(120).optional(),
+        modelName: z.string().trim().min(1).max(200).optional(),
       })
       .strict()
       .optional(),

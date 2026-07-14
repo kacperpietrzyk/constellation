@@ -17,6 +17,11 @@ import {
   AttentionSignalIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
+  GrantIdSchema,
+  CredentialIdSchema,
+  CheckpointIdSchema,
+  AgentRunIdSchema,
+  AgentHandoffIdSchema,
 } from "./ids.js";
 import { ContractVersionSchema } from "./command.js";
 
@@ -26,6 +31,11 @@ export const DiagnosticCodeSchema = z.enum([
   "workspace.member_added",
   "workspace.member_access_changed",
   "workspace.member_revoked",
+  "agent.grant_created",
+  "agent.credential_rotated",
+  "agent.grant_revoked",
+  "agent.checkpoint_created",
+  "agent.handoff_submitted",
   "capture.stored",
   "capture.routed_as_task",
   "project.created",
@@ -68,6 +78,9 @@ export const RecordKindSchema = z.enum([
   "space",
   "membership",
   "spaceGrant",
+  "agentGrant",
+  "agentCheckpoint",
+  "agentHandoff",
   "capture",
   "task",
   "taskAssignment",
@@ -304,6 +317,48 @@ export const UndoAppliedProjectionSchema = z
   })
   .strict();
 
+export const AgentGrantCreatedProjectionSchema = z
+  .object({
+    kind: z.literal("agent.grant_created"),
+    grantId: GrantIdSchema,
+    agentPrincipalId: z.uuid(),
+    credentialId: CredentialIdSchema,
+    version: z.int().positive(),
+    policyVersion: z.int().positive(),
+  })
+  .strict();
+export const AgentCredentialRotatedProjectionSchema = z
+  .object({
+    kind: z.literal("agent.credential_rotated"),
+    grantId: GrantIdSchema,
+    credentialId: CredentialIdSchema,
+    credentialVersion: z.int().positive(),
+    version: z.int().positive(),
+  })
+  .strict();
+export const AgentGrantRevokedProjectionSchema = z
+  .object({
+    kind: z.literal("agent.grant_revoked"),
+    grantId: GrantIdSchema,
+    version: z.int().positive(),
+    policyVersion: z.int().positive(),
+  })
+  .strict();
+export const AgentCheckpointCreatedProjectionSchema = z
+  .object({
+    kind: z.literal("agent.checkpoint_created"),
+    checkpointId: CheckpointIdSchema,
+    runId: AgentRunIdSchema,
+  })
+  .strict();
+export const AgentHandoffSubmittedProjectionSchema = z
+  .object({
+    kind: z.literal("agent.handoff_submitted"),
+    handoffId: AgentHandoffIdSchema,
+    runId: AgentRunIdSchema,
+  })
+  .strict();
+
 export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   WorkspaceCreatedProjectionSchema,
   WorkspaceRenamedProjectionSchema,
@@ -329,6 +384,11 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   RelationCreatedProjectionSchema,
   RelationRemovedProjectionSchema,
   UndoAppliedProjectionSchema,
+  AgentGrantCreatedProjectionSchema,
+  AgentCredentialRotatedProjectionSchema,
+  AgentGrantRevokedProjectionSchema,
+  AgentCheckpointCreatedProjectionSchema,
+  AgentHandoffSubmittedProjectionSchema,
 ]);
 export type CommandProjection = z.infer<typeof CommandProjectionSchema>;
 
@@ -498,6 +558,37 @@ const UndoSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
   projection: UndoAppliedProjectionSchema,
 }).strict();
 
+const AgentGrantCreatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("agent.grant_created"),
+    projection: AgentGrantCreatedProjectionSchema,
+  }).strict();
+const AgentCredentialRotatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("agent.credential_rotated"),
+    projection: AgentCredentialRotatedProjectionSchema,
+  }).strict();
+const AgentGrantRevokedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("agent.grant_revoked"),
+    projection: AgentGrantRevokedProjectionSchema,
+  }).strict();
+const AgentCheckpointCreatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("agent.checkpoint_created"),
+    projection: AgentCheckpointCreatedProjectionSchema,
+  }).strict();
+const AgentHandoffSubmittedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("agent.handoff_submitted"),
+    projection: AgentHandoffSubmittedProjectionSchema,
+  }).strict();
+
 export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   WorkspaceCreatedSuccessOutcomeSchema,
   WorkspaceRenamedSuccessOutcomeSchema,
@@ -523,6 +614,11 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   RelationCreatedSuccessOutcomeSchema,
   RelationRemovedSuccessOutcomeSchema,
   UndoSuccessOutcomeSchema,
+  AgentGrantCreatedSuccessOutcomeSchema,
+  AgentCredentialRotatedSuccessOutcomeSchema,
+  AgentGrantRevokedSuccessOutcomeSchema,
+  AgentCheckpointCreatedSuccessOutcomeSchema,
+  AgentHandoffSubmittedSuccessOutcomeSchema,
 ]);
 
 export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({

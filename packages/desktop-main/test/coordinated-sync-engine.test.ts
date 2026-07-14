@@ -25,6 +25,7 @@ import {
 
 import {
   CoordinatedSyncEngine,
+  createHubWorkspaceSnapshot,
   type HubTransport,
 } from "../src/coordinated-sync-engine.js";
 import { createRuntimeKernelService } from "../src/runtime-kernel-service.js";
@@ -118,6 +119,20 @@ class ServiceTransport implements HubTransport {
 }
 
 describe("coordinated desktop projection", () => {
+  it("keeps device-local agent control-plane tables out of Hub snapshots", () => {
+    const device = createDevice();
+    try {
+      const snapshot = createHubWorkspaceSnapshot(device.store.snapshot());
+      const record = snapshot as unknown as Record<string, unknown>;
+      assert.equal("agentGrants" in record, false);
+      assert.equal("agentRuns" in record, false);
+      assert.equal("agentCheckpoints" in record, false);
+      assert.equal("agentHandoffs" in record, false);
+    } finally {
+      device.database.close();
+    }
+  });
+
   it("purges the local projection when Hub membership is revoked", async () => {
     const device = createDevice();
     const initial = toHubSnapshot(device.store.snapshot());

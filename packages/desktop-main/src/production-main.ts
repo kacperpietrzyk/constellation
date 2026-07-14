@@ -27,6 +27,7 @@ import {
   PrincipalIdSchema,
   SpaceIdSchema,
   WorkspaceIdSchema,
+  CommandEnvelopeSchema,
   type DeviceId,
 } from "@constellation/contracts";
 import { EncryptedStoreCapabilityError } from "@constellation/local-store";
@@ -54,6 +55,8 @@ import {
 } from "./hub-connection-custody.js";
 import { DESKTOP_PREVIEW_VERSION } from "./index.js";
 import { LocalOnlyDataHomeProvider } from "./local-data-home-provider.js";
+import { LocalMcpRuntime } from "./local-mcp-runtime.js";
+import type { PreparedLocalMcpCredential } from "./local-mcp-credential-custody.js";
 import type { DesktopKernelService } from "./runtime-kernel-service.js";
 import { assertTrustedSender, isTrustedRendererUrl } from "./security.js";
 import {
@@ -99,6 +102,7 @@ let installationDeviceId: DeviceId | undefined;
 let activeHubConnection: HubConnection | undefined;
 let hubSyncTimer: NodeJS.Timeout | undefined;
 let hubSyncFailures = 0;
+let localMcpRuntime: LocalMcpRuntime | undefined;
 const manualHubSyncForPackagedSmoke =
   process.env.CONSTELLATION_ALPHA_HUB_SMOKE_MANUAL_SYNC === "1";
 
@@ -537,6 +541,75 @@ const startProductionDesktop = async (): Promise<void> => {
   );
 
   const runtime = await createDesktopRuntime();
+  if (
+    workspaceRecovery?.kernel !== undefined &&
+    coordinatedDataHomeProvider === undefined
+  ) {
+    localMcpRuntime = new LocalMcpRuntime({
+      stateRoot: app.getPath("userData"),
+      workspaceId: workspaceRecovery.kernel.identity.workspaceId,
+      store: workspaceRecovery.kernel.store,
+      isEnabled: () => coordinatedDataHomeProvider === undefined,
+    });
+    await localMcpRuntime.start();
+  }
+  const pendingAgentCredentials = new Map<
+    string,
+    {
+      readonly grantId: string;
+      readonly prepared: PreparedLocalMcpCredential;
+      readonly expiresAt: number;
+    }
+  >();
+  const purgeExpiredAgentCredentials = (): void => {
+    const now = Date.now();
+    for (const [credentialId, pending] of pendingAgentCredentials) {
+      if (pending.expiresAt <= now)
+        pendingAgentCredentials.delete(credentialId);
+    }
+  };
+  ipcMain.handle(
+    DESKTOP_CHANNELS.prepareAgentCredential,
+    (event, raw: unknown) => {
+      assertTrustedSender(event);
+      if (localMcpRuntime === undefined)
+        throw new Error("Local MCP runtime is unavailable.");
+      if (coordinatedDataHomeProvider !== undefined)
+        throw new Error("Local MCP grants require a local-only Data Home.");
+      purgeExpiredAgentCredentials();
+      if (pendingAgentCredentials.size >= 32)
+        throw new Error("Too many pending local MCP credentials.");
+      if (
+        typeof raw !== "object" ||
+        raw === null ||
+        Array.isArray(raw) ||
+        Object.keys(raw).join(",") !== "grantId"
+      )
+        throw new Error("Invalid local MCP credential request.");
+      const grantId = GrantIdSchema.parse(
+        (raw as { grantId?: unknown }).grantId,
+      );
+      const prepared = localMcpRuntime.credentialCustody.prepare(grantId);
+      pendingAgentCredentials.set(prepared.credentialId, {
+        grantId,
+        prepared,
+        expiresAt: Date.now() + 5 * 60_000,
+      });
+      return {
+        credentialId: prepared.credentialId,
+        credentialDigest: prepared.credentialDigest,
+        descriptorPath:
+          localMcpRuntime.credentialCustody.descriptorPath(grantId),
+        launchCommand: process.execPath,
+        launchArgs: [path.join(process.resourcesPath, "constellation-mcp.mjs")],
+        launchEnvironment: {
+          ELECTRON_RUN_AS_NODE: "1",
+          CONSTELLATION_MCP_CREDENTIAL_FILE:
+            localMcpRuntime.credentialCustody.descriptorPath(grantId),
+        },
+      };
+    },
+  );
   const documentCollaboration =
     workspaceRecovery?.kernel === undefined ||
     installationDeviceId === undefined
@@ -549,7 +622,58 @@ const startProductionDesktop = async (): Promise<void> => {
         });
   ipcMain.handle(DESKTOP_CHANNELS.executeCommand, (event, command: unknown) => {
     assertTrustedSender(event);
+    const parsedCommand = CommandEnvelopeSchema.safeParse(command);
+    if (
+      parsedCommand.success &&
+      coordinatedDataHomeProvider !== undefined &&
+      (parsedCommand.data.commandName === "agent.grantCreate" ||
+        parsedCommand.data.commandName === "agent.grantRotateCredential")
+    )
+      throw new Error("Local MCP grants require a local-only Data Home.");
+    const pendingAgentCredential =
+      parsedCommand.success &&
+      (parsedCommand.data.commandName === "agent.grantCreate" ||
+        parsedCommand.data.commandName === "agent.grantRotateCredential")
+        ? pendingAgentCredentials.get(parsedCommand.data.payload.credentialId)
+        : undefined;
+    if (
+      parsedCommand.success &&
+      (parsedCommand.data.commandName === "agent.grantCreate" ||
+        parsedCommand.data.commandName === "agent.grantRotateCredential") &&
+      (pendingAgentCredential === undefined ||
+        pendingAgentCredential.expiresAt <= Date.now() ||
+        pendingAgentCredential.grantId !== parsedCommand.data.payload.grantId ||
+        pendingAgentCredential.prepared.credentialDigest !==
+          parsedCommand.data.payload.credentialDigest)
+    )
+      throw new Error(
+        "Local MCP credential preparation is invalid or expired.",
+      );
     const result = runtime.service.execute(command);
+    if (
+      result.kind === "command_outcome" &&
+      result.outcome.outcome === "success" &&
+      parsedCommand.success &&
+      localMcpRuntime !== undefined
+    ) {
+      const accepted = parsedCommand.data;
+      if (
+        accepted.commandName === "agent.grantCreate" ||
+        accepted.commandName === "agent.grantRotateCredential"
+      ) {
+        if (pendingAgentCredential === undefined)
+          throw new Error("Prepared local MCP credential is unavailable.");
+        localMcpRuntime.credentialCustody.publish({
+          workspaceId: accepted.workspaceId,
+          grantId: accepted.payload.grantId,
+          endpoint: localMcpRuntime.endpoint,
+          credential: pendingAgentCredential.prepared,
+        });
+        pendingAgentCredentials.delete(accepted.payload.credentialId);
+      } else if (accepted.commandName === "agent.grantRevoke") {
+        localMcpRuntime.credentialCustody.revoke(accepted.payload.grantId);
+      }
+    }
     if (
       result.kind === "command_outcome" &&
       result.outcome.outcome === "success" &&
@@ -962,6 +1086,15 @@ const reportStartupFailure = async (error: unknown): Promise<void> => {
   dataHomeProvider = undefined;
   const failure = startupFailureCopy(error);
   console.error(`Constellation startup stopped safely (${failure.code}).`);
+  if (process.env.CONSTELLATION_ALPHA_RECOVERY_SMOKE_ROOT !== undefined) {
+    console.error(
+      `Packaged smoke startup diagnostic: ${
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : typeof error
+      }`,
+    );
+  }
   try {
     const result = await dialog.showMessageBox({
       type: "error",
@@ -995,4 +1128,6 @@ app.on("will-quit", () => {
   workspaceRecovery?.close();
   workspaceRecovery = undefined;
   dataHomeProvider = undefined;
+  void localMcpRuntime?.close();
+  localMcpRuntime = undefined;
 });

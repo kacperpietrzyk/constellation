@@ -16,6 +16,9 @@ import {
   type AttentionSignalId,
   type DocumentId,
   type WorkspaceId,
+  type Capability,
+  type GrantId,
+  type PrincipalId as AgentPrincipalId,
 } from "@constellation/contracts";
 import type {
   ConstellationRendererClient,
@@ -34,6 +37,7 @@ export type TaskAssignmentCandidatesProjection =
   Projection<"task.assignmentCandidates">;
 type CaptureHistoryProjection = Projection<"capture.history">;
 export type AccessProjection = Projection<"workspace.access">;
+export type AgentAccessProjection = Projection<"agent.access">;
 export type ProjectListProjection = Projection<"project.list">;
 export type ProjectOverviewProjection =
   Projection<"project.operationalOverview">;
@@ -66,6 +70,7 @@ export interface DesktopSnapshot {
   readonly cockpit: DataSlice<CockpitProjection>;
   readonly activity: DataSlice<ActivityProjection>;
   readonly access: DataSlice<AccessProjection>;
+  readonly agentAccess: DataSlice<AgentAccessProjection>;
   readonly assignmentCandidates: DataSlice<TaskAssignmentCandidatesProjection>;
   readonly mentionCandidates: DataSlice<MentionCandidatesProjection>;
   readonly attention: DataSlice<AttentionInboxProjection>;
@@ -191,6 +196,7 @@ export const loadDesktopSnapshot = async (
     mentionCandidates,
     attention,
     access,
+    agentAccess,
     assignmentCandidates,
     cockpit,
     activity,
@@ -232,6 +238,13 @@ export const loadDesktopSnapshot = async (
         client,
         queryEnvelope("workspace.access", workspaceId, {}),
         "workspace.access",
+      ),
+    ),
+    optionalProjection(
+      queryProjection(
+        client,
+        queryEnvelope("agent.access", workspaceId, {}),
+        "agent.access",
       ),
     ),
     optionalProjection(
@@ -281,6 +294,7 @@ export const loadDesktopSnapshot = async (
     cockpit,
     activity,
     access,
+    agentAccess,
     assignmentCandidates,
     mentionCandidates,
     attention,
@@ -324,6 +338,227 @@ export const createDocument = async (
     return { kind: "success", data: documentId };
   } catch {
     return { kind: "error", message: "Nie udało się utworzyć dokumentu." };
+  }
+};
+
+const AGENT_QUERY_CAPABILITIES: readonly Capability[] = [
+  "workspace.bootstrapContext",
+  "workspace.access",
+  "agent.access",
+  "capture.history",
+  "project.list",
+  "project.operationalOverview",
+  "document.list",
+  "task.list",
+  "task.assignmentCandidates",
+  "comment.list",
+  "comment.mentionCandidates",
+  "attention.inbox",
+  "search.global",
+  "cockpit.week",
+  "activity.meaningful",
+  "audit.receipt",
+  "recovery.preview",
+  "agent.checkpoint.previewRevert",
+];
+
+const agentCapabilities = (
+  preset: "observe" | "propose" | "operate" | "full_access",
+): readonly Capability[] => {
+  if (preset === "observe") return AGENT_QUERY_CAPABILITIES;
+  if (preset === "propose")
+    return [...AGENT_QUERY_CAPABILITIES, "comment.add", "comment.edit"];
+  const operate: readonly Capability[] = [
+    ...AGENT_QUERY_CAPABILITIES,
+    "capture.submitText",
+    "capture.routeAsTask",
+    "project.create",
+    "project.updateOutcome",
+    "document.create",
+    "task.setStatus",
+    "task.complete",
+    "task.reopen",
+    "task.assign",
+    "task.unassign",
+    "comment.add",
+    "comment.edit",
+    "comment.resolve",
+    "comment.reopen",
+    "attention.markRead",
+    "attention.dismiss",
+    "record.relate",
+    "record.unrelate",
+    "command.previewUndo",
+    "command.undo",
+    "agent.checkpoint.create",
+    "agent.checkpoint.revert",
+    "agent.handoff.submit",
+  ];
+  return operate;
+};
+
+export const createAgentGrant = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly displayName: string;
+    readonly preset: "observe" | "propose" | "operate" | "full_access";
+    readonly spaceIds: readonly SpaceId[];
+    readonly expiresAt?: string;
+  },
+): Promise<
+  MutationResult<{
+    readonly descriptorPath: string;
+    readonly launchCommand: string;
+    readonly launchArgs: readonly string[];
+  }>
+> => {
+  if (snapshot.agentAccess.kind !== "ready")
+    return { kind: "unavailable", message: "Dostęp agentów jest niedostępny." };
+  const grantId = crypto.randomUUID() as GrantId;
+  try {
+    const credential = await client.prepareAgentCredential({ grantId });
+    const response = await client.executeCommand(
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "agent.grantCreate",
+        commandId: crypto.randomUUID(),
+        workspaceId: snapshot.bootstrap.workspace.id,
+        idempotencyKey: `agent-grant-create:${grantId}`,
+        expectedVersions: {
+          [snapshot.bootstrap.workspace.id]:
+            snapshot.agentAccess.data.workspaceVersion,
+        },
+        correlationId: crypto.randomUUID(),
+        payload: {
+          grantId,
+          membershipId: crypto.randomUUID(),
+          agentPrincipalId: crypto.randomUUID() as AgentPrincipalId,
+          displayName: input.displayName.trim(),
+          preset: input.preset,
+          capabilityScope: agentCapabilities(input.preset),
+          spaces: input.spaceIds.map((spaceId) => ({
+            spaceGrantId: crypto.randomUUID(),
+            spaceId,
+            access:
+              input.preset === "observe"
+                ? "view"
+                : input.preset === "propose"
+                  ? "comment"
+                  : "edit",
+          })),
+          credentialId: credential.credentialId,
+          credentialDigest: credential.credentialDigest,
+          ...(input.expiresAt === undefined
+            ? {}
+            : { expiresAt: input.expiresAt }),
+        },
+      }),
+    );
+    if (
+      response.kind !== "command_outcome" ||
+      response.outcome.outcome !== "success"
+    )
+      return commandFailure(response);
+    return {
+      kind: "success",
+      data: {
+        descriptorPath: credential.descriptorPath,
+        launchCommand: credential.launchCommand,
+        launchArgs: credential.launchArgs,
+      },
+    };
+  } catch {
+    return { kind: "error", message: "Nie udało się utworzyć dostępu agenta." };
+  }
+};
+
+export const rotateAgentCredential = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  grant: AgentAccessProjection["grants"][number],
+): Promise<
+  MutationResult<{
+    readonly descriptorPath: string;
+    readonly launchCommand: string;
+    readonly launchArgs: readonly string[];
+  }>
+> => {
+  try {
+    const credential = await client.prepareAgentCredential({
+      grantId: grant.grantId,
+    });
+    const response = await client.executeCommand(
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "agent.grantRotateCredential",
+        commandId: crypto.randomUUID(),
+        workspaceId: snapshot.bootstrap.workspace.id,
+        idempotencyKey: `agent-credential-rotate:${grant.grantId}:${credential.credentialId}`,
+        expectedVersions: { [grant.grantId]: grant.version },
+        correlationId: crypto.randomUUID(),
+        payload: {
+          grantId: grant.grantId,
+          credentialId: credential.credentialId,
+          credentialDigest: credential.credentialDigest,
+        },
+      }),
+    );
+    if (
+      response.kind !== "command_outcome" ||
+      response.outcome.outcome !== "success"
+    )
+      return commandFailure(response);
+    return {
+      kind: "success",
+      data: {
+        descriptorPath: credential.descriptorPath,
+        launchCommand: credential.launchCommand,
+        launchArgs: credential.launchArgs,
+      },
+    };
+  } catch {
+    return { kind: "error", message: "Nie udało się obrócić poświadczenia." };
+  }
+};
+
+export const revokeAgentGrant = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  grant: AgentAccessProjection["grants"][number],
+): Promise<MutationResult<undefined>> => {
+  if (snapshot.agentAccess.kind !== "ready")
+    return { kind: "unavailable", message: "Dostęp agentów jest niedostępny." };
+  const expectedVersions = {
+    [snapshot.bootstrap.workspace.id]:
+      snapshot.agentAccess.data.workspaceVersion,
+    [grant.grantId]: grant.version,
+    [grant.membershipId]: grant.membershipVersion,
+    ...Object.fromEntries(
+      grant.spaces.map((space) => [space.spaceGrantId, space.version]),
+    ),
+  };
+  try {
+    const response = await client.executeCommand(
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "agent.grantRevoke",
+        commandId: crypto.randomUUID(),
+        workspaceId: snapshot.bootstrap.workspace.id,
+        idempotencyKey: `agent-grant-revoke:${grant.grantId}:${grant.version}`,
+        expectedVersions,
+        correlationId: crypto.randomUUID(),
+        payload: { grantId: grant.grantId },
+      }),
+    );
+    if (
+      response.kind !== "command_outcome" ||
+      response.outcome.outcome !== "success"
+    )
+      return commandFailure(response);
+    return { kind: "success", data: undefined };
+  } catch {
+    return { kind: "error", message: "Nie udało się cofnąć dostępu agenta." };
   }
 };
 

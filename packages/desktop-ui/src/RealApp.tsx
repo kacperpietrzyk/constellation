@@ -53,6 +53,9 @@ import {
   unrelateTask,
   updateProjectOutcome,
   updateAttention,
+  createAgentGrant,
+  rotateAgentCredential,
+  revokeAgentGrant,
   type AuditReceiptProjection,
   type DesktopSnapshot,
   type MutationFailure,
@@ -1183,6 +1186,16 @@ export const RealApp = ({
         {surface === "access" && (
           <AccessSurface
             access={state.snapshot.access}
+            agentAccess={
+              state.snapshot.dataHome?.descriptor.providerKind === "local_only"
+                ? state.snapshot.agentAccess
+                : {
+                    kind: "unavailable",
+                    message:
+                      "Lokalny dostęp MCP jest obecnie dostępny dla Workspace z lokalnym Data Home. Zdalne i skoordynowane działanie należy do następnego etapu.",
+                  }
+            }
+            spaces={state.snapshot.bootstrap.spaces}
             busy={accessBusy}
             onAdd={(input) => {
               if (!client) return;
@@ -1223,6 +1236,51 @@ export const RealApp = ({
                   if (result.kind === "success")
                     await refreshAfter(
                       "Dostęp cofnięto. Urządzenia usuną projekcję po synchronizacji.",
+                    );
+                  else showFailure(result);
+                },
+              );
+            }}
+            onAgentAdd={(input) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              void createAgentGrant(client, state.snapshot, input).then(
+                async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter(
+                      `Dostęp MCP utworzono. Plik dostępu: ${result.data.descriptorPath}. Adapter hosta: ${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                    );
+                  else showFailure(result);
+                },
+              );
+            }}
+            onAgentRotate={(grant) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              void rotateAgentCredential(client, state.snapshot, grant).then(
+                async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter(
+                      `Poświadczenie obrócono. Plik dostępu: ${result.data.descriptorPath}. Adapter hosta: ${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                    );
+                  else showFailure(result);
+                },
+              );
+            }}
+            onAgentRevoke={(grant) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              void revokeAgentGrant(client, state.snapshot, grant).then(
+                async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter(
+                      "Dostęp agenta cofnięto, a lokalne poświadczenie usunięto.",
                     );
                   else showFailure(result);
                 },

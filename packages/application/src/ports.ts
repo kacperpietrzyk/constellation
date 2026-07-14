@@ -20,6 +20,9 @@ import type {
   AttentionSignalId,
   TaskStatusId,
   WorkspaceId,
+  GrantId,
+  AgentRunId,
+  CheckpointId,
 } from "@constellation/contracts";
 import type {
   AuditReceipt,
@@ -39,6 +42,10 @@ import type {
   RecordComment,
   AttentionSignal,
   NativeDocument,
+  AgentAccessGrant,
+  AgentRun,
+  AgentHandoff,
+  AgentCheckpoint,
 } from "@constellation/domain";
 
 export type GeneratedIdKind =
@@ -173,6 +180,11 @@ export interface ApplicationReadView {
   listTasks(request: TaskPageRequest): readonly Task[] | undefined;
   getAuditReceipt(id: AuditReceiptId): AuditReceipt | undefined;
   getIdempotency(scope: string): IdempotencyRecord | undefined;
+  getAgentGrant(id: GrantId): AgentAccessGrant | undefined;
+  listAgentGrants(workspaceId: WorkspaceId): readonly AgentAccessGrant[];
+  getAgentRun(id: AgentRunId): AgentRun | undefined;
+  getAgentCheckpoint(id: CheckpointId): AgentCheckpoint | undefined;
+  listAgentHandoffs(runId: AgentRunId): readonly AgentHandoff[];
 }
 
 export interface ApplicationWave2ReadView extends ApplicationReadView {
@@ -233,6 +245,13 @@ export interface ApplicationTransaction extends ApplicationReadView {
   insertIdempotency(record: IdempotencyRecord): void;
   insertOutbox(entry: OutboxEntry): void;
   insertSyncCommand(command: CommandEnvelope): void;
+  insertAgentGrant(grant: AgentAccessGrant): void;
+  updateAgentGrant(grant: AgentAccessGrant, expectedVersion: number): boolean;
+  insertAgentRun(run: AgentRun): void;
+  updateAgentRun(run: AgentRun): void;
+  insertAgentCheckpoint(checkpoint: AgentCheckpoint): void;
+  updateAgentCheckpoint(checkpoint: AgentCheckpoint): void;
+  insertAgentHandoff(handoff: AgentHandoff): void;
 }
 
 export interface ApplicationWave2Transaction
@@ -320,6 +339,10 @@ export interface ReferenceStateSnapshot {
   readonly auditReceipts: readonly AuditReceipt[];
   readonly idempotencyRecords: readonly IdempotencyRecord[];
   readonly outboxEntries: readonly OutboxEntry[];
+  readonly agentGrants?: readonly AgentAccessGrant[];
+  readonly agentRuns?: readonly AgentRun[];
+  readonly agentCheckpoints?: readonly AgentCheckpoint[];
+  readonly agentHandoffs?: readonly AgentHandoff[];
 }
 
 export type InternalIds =

@@ -17,6 +17,12 @@ export type CredentialId = z.infer<typeof CredentialIdSchema>;
 export const GrantIdSchema = opaqueId<"GrantId">();
 export type GrantId = z.infer<typeof GrantIdSchema>;
 
+export const AgentRunIdSchema = opaqueId<"AgentRunId">();
+export type AgentRunId = z.infer<typeof AgentRunIdSchema>;
+
+export const AgentHandoffIdSchema = opaqueId<"AgentHandoffId">();
+export type AgentHandoffId = z.infer<typeof AgentHandoffIdSchema>;
+
 export const CommandIdSchema = opaqueId<"CommandId">();
 export type CommandId = z.infer<typeof CommandIdSchema>;
 

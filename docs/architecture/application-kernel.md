@@ -3,8 +3,8 @@
 Status: pre-alpha reference implementation. No contract is stable yet.
 
 Constellation keeps product behavior in a storage- and transport-neutral
-application kernel. Desktop UI, imports, deterministic rules, and the future MCP
-adapter must call this same boundary. Electron, a database, HTTP, and MCP are
+application kernel. Desktop UI, imports, deterministic rules, and the local MCP
+adapter call this same boundary. Electron, a database, HTTP, and MCP are
 adapters; none may reimplement domain behavior.
 
 ```text
@@ -28,6 +28,11 @@ Commands:
 - `workspace.memberAdd`
 - `workspace.memberSetAccess`
 - `workspace.memberRevoke`
+- `agent.grantCreate`
+- `agent.grantRotateCredential`
+- `agent.grantRevoke`
+- `agent.checkpointCreate`
+- `agent.handoffSubmit`
 - `capture.submitText`
 - `capture.routeAsTask`
 - `project.create`
@@ -54,6 +59,8 @@ Queries:
 - `workspace.bootstrapContext`
 - `workspace.access`
 - `workspace.exportScoped`
+- `agent.access`
+- `agent.checkpointPreviewRevert`
 - `capture.history`
 - `task.list`
 - `task.assignmentCandidates`
@@ -70,8 +77,8 @@ Queries:
 - `audit.receipt`
 
 This subset proves the command/query mechanics across the in-memory reference
-adapter, the Electron transport, and a restart-safe encrypted relational local
-store adapter. The packaged production entry point uses that durable store; the
+adapter, the Electron transport, the versioned local MCP stdio adapter, and a
+restart-safe encrypted relational local store adapter. The packaged production entry point uses that durable store; the
 developer preview remains an explicit in-memory adapter. A local workspace
 starts with one versioned
 default Task status whose display label is data and whose broad operational
@@ -89,7 +96,7 @@ processing. A future deterministic rule adapter must invoke the same
 typed Project relations, status/completion, scoped search, explainable cockpit,
 meaningful activity, version-safe undo, contextual comments, and durable
 recipient attention. It does not yet claim generalized Attention rules,
-editable workflow configuration, or an MCP server.
+editable workflow configuration, or remote MCP transport.
 
 Task responsibility is a separate versioned collaboration record rather than a
 free-form Task field. An editor can assign one active Workspace member or guest
@@ -121,6 +128,22 @@ and records which immutable revision it came from.
 - Zod schemas validate untrusted envelopes at runtime and reject unknown fields.
 - A trusted adapter constructs the execution context; request payloads cannot
   choose their actor, credential, grant, workspace, or capability scope.
+- Local MCP credentials are random, stored only in a mode-`0600` descriptor,
+  and compared through a one-way digest in Electron main. The renderer receives
+  the descriptor path and host launch instructions, never the secret itself.
+- Agent capabilities and Space scope are independent intersections. Full Access
+  removes prompts only inside both declared scopes; expiry, rotation,
+  revocation, current membership, provider boundaries, and expected versions
+  are still checked on every call.
+- External host runs, parent runs, correlation, causation, checkpoint, and
+  idempotency metadata remain separate. Host-supplied model metadata is marked
+  as host asserted; it cannot choose the durable Constellation principal.
+- Query content returned through MCP is labeled as Space-scoped untrusted
+  evidence. Tool descriptions and response labels explicitly forbid treating
+  record, import, file, comment, or transcript text as instructions.
+- R5 agent grants are device-local and available only while the local-only Data
+  Home and desktop are available. They are excluded from Hub snapshots; remote
+  operation requires the separate R6 grant and gateway boundary.
 - Authorization resolves the current credential, grant, policy version,
   capability, Workspace membership, owning Space, and record scope before every
   command, query, and idempotent replay. Revoked grants cannot reuse an earlier

@@ -11,6 +11,7 @@
     "@constellation/contracts": "0.0.0",
     "@constellation/desktop-preload": "0.0.0",
     "@constellation/local-store": "0.0.0",
+    "@constellation/mcp": "0.0.0",
     "@constellation/realtime-documents": "0.0.0",
     "better-sqlite3": "12.11.1"
   }

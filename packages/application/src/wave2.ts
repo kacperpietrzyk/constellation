@@ -338,6 +338,15 @@ const auditReceipt = (
   changedFields,
   occurredAt,
   outcome: "success",
+  ...(command.checkpointId === undefined
+    ? {}
+    : { checkpointId: command.checkpointId }),
+  ...(context.hostRun?.agentRunId === undefined
+    ? {}
+    : { agentRunId: context.hostRun.agentRunId }),
+  ...(context.hostRun?.runId === undefined
+    ? {}
+    : { hostRunId: context.hostRun.runId }),
 });
 
 const appendJournal = (
@@ -1792,10 +1801,16 @@ export const executeWave2Query = (
     )
       return queryRejected(query, kernelTime, "authorization.denied");
     const workspace = view.getWorkspace(query.workspaceId);
+    const agentPrincipals = new Set(
+      view
+        .listAgentGrants(query.workspaceId)
+        .map((grant) => grant.agentPrincipalId),
+    );
     const candidates = view
       .listMemberships(query.workspaceId)
       .filter(
         (membership) =>
+          !agentPrincipals.has(membership.principalId) &&
           membership.status !== "revoked" &&
           ((membership.role === "owner" &&
             workspace?.rootSpaceId === space.id) ||

@@ -27,6 +27,20 @@ export const createScenarioClient = (
   fixtures: ScenarioFixtures,
 ): ConstellationRendererClient => ({
   acknowledgeDocumentUpdates: async () => undefined,
+  prepareAgentCredential: async () => ({
+    credentialId: "00000000-0000-4000-8000-000000000093" as never,
+    credentialDigest: "0".repeat(64),
+    descriptorPath: "/tmp/constellation-agent.json",
+    launchCommand:
+      "/Applications/Constellation Local Alpha.app/Contents/MacOS/Constellation Local Alpha",
+    launchArgs: [
+      "/Applications/Constellation Local Alpha.app/Contents/Resources/constellation-mcp.mjs",
+    ],
+    launchEnvironment: {
+      ELECTRON_RUN_AS_NODE: "1",
+      CONSTELLATION_MCP_CREDENTIAL_FILE: "/tmp/constellation-agent.json",
+    },
+  }),
   onAttentionActivated: () => () => undefined,
   cancelWorkspaceRestore: async () => undefined,
   confirmWorkspaceRestore: async () => ({
