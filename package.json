@@ -27,7 +27,8 @@
     "package:alpha": "npm run build && node scripts/desktop/fetch-electron.mjs && node scripts/package-alpha.mjs",
     "test:alpha:packaged": "node scripts/run-packaged-alpha-smoke.mjs",
     "test:hub:packaged": "node scripts/run-packaged-hub-smoke.mjs",
-    "test": "npm run clean && npm run build && node scripts/run-tests.mjs",
+    "test:scripts": "node --test scripts/desktop/packaged-credential-store-policy.test.mjs",
+    "test": "npm run clean && npm run build && npm run test:scripts && node scripts/run-tests.mjs",
     "typecheck": "tsc -b --pretty false"
   },
   "devDependencies": {
