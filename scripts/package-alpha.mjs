@@ -18,6 +18,14 @@ const architecture = process.env.CONSTELLATION_ALPHA_ARCH ?? process.arch;
 const releaseVersion = process.env.CONSTELLATION_RELEASE_VERSION ?? "0.0.1";
 const releaseTier = process.env.CONSTELLATION_RELEASE_TIER ?? "mechanism-only";
 const releaseOrigin = process.env.CONSTELLATION_UPDATE_ORIGIN;
+const stablePackagedSmokeRequirement =
+  process.platform === "darwin" &&
+  releaseTier === "mechanism-only" &&
+  ((process.env.GITHUB_ACTIONS === "true" &&
+    process.env.RUNNER_ENVIRONMENT === "github-hosted") ||
+    (process.env.CONSTELLATION_ALLOW_LOCAL_KEYCHAIN_TEST === "true" &&
+      typeof process.env.CONSTELLATION_KEYCHAIN_TEST_ROOT === "string" &&
+      path.isAbsolute(process.env.CONSTELLATION_KEYCHAIN_TEST_ROOT)));
 let normalizedReleaseOrigin;
 if (!/^\d+\.\d+\.\d+$/.test(releaseVersion)) {
   throw new Error("RELEASE_VERSION_INVALID");
@@ -560,6 +568,24 @@ if (appBundle !== undefined) {
     },
   );
   if (sign.status !== 0) throw new Error("AD_HOC_SIGNING_FAILED");
+  if (stablePackagedSmokeRequirement) {
+    const signMain = spawnSync(
+      "codesign",
+      [
+        "--force",
+        "--sign",
+        "-",
+        "--requirements",
+        '=designated => identifier "io.constellation.local-alpha"',
+        appBundle,
+      ],
+      {
+        encoding: "utf8",
+        timeout: 60_000,
+      },
+    );
+    if (signMain.status !== 0) throw new Error("AD_HOC_MAIN_SIGNING_FAILED");
+  }
   const verify = spawnSync(
     "codesign",
     ["--verify", "--deep", "--strict", appBundle],
@@ -569,6 +595,24 @@ if (appBundle !== undefined) {
     },
   );
   if (verify.status !== 0) throw new Error("AD_HOC_SIGNATURE_INVALID");
+  if (stablePackagedSmokeRequirement) {
+    const requirement = spawnSync(
+      "codesign",
+      ["--display", "--requirements", "-", appBundle],
+      {
+        encoding: "utf8",
+        timeout: 60_000,
+      },
+    );
+    if (
+      requirement.status !== 0 ||
+      !`${requirement.stdout}${requirement.stderr}`.includes(
+        'designated => identifier "io.constellation.local-alpha"',
+      )
+    ) {
+      throw new Error("AD_HOC_DESIGNATED_REQUIREMENT_INVALID");
+    }
+  }
   signatureTier = "ad-hoc-mechanism-only";
 }
 const digest = crypto
