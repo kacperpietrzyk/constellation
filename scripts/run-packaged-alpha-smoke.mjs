@@ -695,29 +695,36 @@ const dataHomeDeviceIds = [
 if (new Set(dataHomeDeviceIds).size !== 1) {
   throw new Error("PACKAGED_ALPHA_DEVICE_ID_NOT_STABLE");
 }
-process.stdout.write(
-  `${JSON.stringify({
-    status: "pass",
-    platform: process.platform,
-    phases: [
-      created.phase,
-      interruptedAfterRetention.phase,
-      recoveredAfterRetention.phase,
-      interruptedAfterActivation.phase,
-      recoveredAfterActivation.phase,
-      restored.phase,
-    ],
-    interruptionTerminations: [
-      interruptedAfterRetention.termination,
-      interruptedAfterActivation.termination,
-    ],
-    persistence: restored.persistence,
-    preload: restored.preload,
-    transport: restored.transport,
-    taskCount: restored.taskCount,
-    backupWorkspaceId: created.backup.metadata.workspaceId,
-    dataHomeProvider: "constellation.local-only/v1",
-    stableDeviceIdentity: true,
-    restoreCounts: restored.restorePreview.counts,
-  })}\n`,
-);
+await new Promise((resolve, reject) => {
+  process.stdout.write(
+    `${JSON.stringify({
+      status: "pass",
+      platform: process.platform,
+      phases: [
+        created.phase,
+        interruptedAfterRetention.phase,
+        recoveredAfterRetention.phase,
+        interruptedAfterActivation.phase,
+        recoveredAfterActivation.phase,
+        restored.phase,
+      ],
+      interruptionTerminations: [
+        interruptedAfterRetention.termination,
+        interruptedAfterActivation.termination,
+      ],
+      persistence: restored.persistence,
+      preload: restored.preload,
+      transport: restored.transport,
+      taskCount: restored.taskCount,
+      backupWorkspaceId: created.backup.metadata.workspaceId,
+      dataHomeProvider: "constellation.local-only/v1",
+      stableDeviceIdentity: true,
+      restoreCounts: restored.restorePreview.counts,
+    })}\n`,
+    (error) => {
+      if (error === null || error === undefined) resolve();
+      else reject(error);
+    },
+  );
+});
+process.exit(0);
