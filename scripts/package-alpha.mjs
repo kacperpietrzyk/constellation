@@ -15,6 +15,29 @@ const electronZipDir = path.join(root, "build", "electron-zips");
 const appName = "Constellation Local Alpha";
 const bundleId = "io.constellation.local-alpha";
 const architecture = process.env.CONSTELLATION_ALPHA_ARCH ?? process.arch;
+const releaseVersion = process.env.CONSTELLATION_RELEASE_VERSION ?? "0.0.1";
+const releaseTier = process.env.CONSTELLATION_RELEASE_TIER ?? "mechanism-only";
+const releaseOrigin = process.env.CONSTELLATION_UPDATE_ORIGIN;
+let normalizedReleaseOrigin;
+if (!/^\d+\.\d+\.\d+$/.test(releaseVersion)) {
+  throw new Error("RELEASE_VERSION_INVALID");
+}
+if (releaseTier !== "mechanism-only" && releaseTier !== "production-signed") {
+  throw new Error("RELEASE_TIER_INVALID");
+}
+if (releaseTier === "production-signed") {
+  const origin = new URL(releaseOrigin);
+  if (
+    origin.protocol !== "https:" ||
+    origin.username !== "" ||
+    origin.password !== "" ||
+    origin.search !== "" ||
+    origin.hash !== ""
+  ) {
+    throw new Error("RELEASE_ORIGIN_INVALID");
+  }
+  normalizedReleaseOrigin = origin.toString().replace(/\/$/, "");
+}
 const electronArchive = {
   darwin: {
     arm64: {
@@ -91,7 +114,7 @@ fs.writeFileSync(
     {
       name: "constellation-local-alpha",
       productName: appName,
-      version: "0.0.1",
+      version: releaseVersion,
       private: true,
       type: "module",
       main: "bootstrap.cjs",
@@ -138,6 +161,19 @@ for (const name of [
   "better-sqlite3",
   "yjs",
   "lib0",
+  "electron-updater",
+  "builder-util-runtime",
+  "debug",
+  "ms",
+  "sax",
+  "fs-extra",
+  "graceful-fs",
+  "jsonfile",
+  "universalify",
+  "lazy-val",
+  "lodash.escaperegexp",
+  "lodash.isequal",
+  "tiny-typed-emitter",
 ]) {
   copy(
     path.join(root, "node_modules", name),
@@ -151,6 +187,19 @@ for (const name of [
   "better-sqlite3",
   "yjs",
   "lib0",
+  "electron-updater",
+  "builder-util-runtime",
+  "debug",
+  "ms",
+  "sax",
+  "fs-extra",
+  "graceful-fs",
+  "jsonfile",
+  "universalify",
+  "lazy-val",
+  "lodash.escaperegexp",
+  "lodash.isequal",
+  "tiny-typed-emitter",
 ]) {
   for (const directory of ["test", "tests"]) {
     fs.rmSync(path.join(stage, "node_modules", name, directory), {
@@ -199,6 +248,7 @@ const productionDesktopFiles = new Set([
   "local-mcp-credential-custody.js",
   "local-mcp-runtime.js",
   "production-main.js",
+  "release-service.js",
   "remote-mcp-credential-custody.js",
   "runtime-kernel-service.js",
   "security.js",
@@ -231,6 +281,19 @@ const expectedRuntimePackages = new Set([
   "lib0",
   "yjs",
   "zod",
+  "electron-updater",
+  "builder-util-runtime",
+  "debug",
+  "ms",
+  "sax",
+  "fs-extra",
+  "graceful-fs",
+  "jsonfile",
+  "universalify",
+  "lazy-val",
+  "lodash.escaperegexp",
+  "lodash.isequal",
+  "tiny-typed-emitter",
 ]);
 const stagedRuntimePackages = new Set();
 for (const entry of fs.readdirSync(path.join(stage, "node_modules"), {
@@ -281,6 +344,7 @@ const expectedDesktopDependencies = [
   "@constellation/mcp",
   "@constellation/realtime-documents",
   "better-sqlite3",
+  "electron-updater",
 ];
 if (
   productionDesktopManifest.main !== "dist/src/production-main.js" ||
@@ -345,8 +409,13 @@ const packagePaths = await packager({
   prune: false,
   appBundleId: bundleId,
   helperBundleId: `${bundleId}.helper`,
-  appVersion: "0.0.1",
-  buildVersion: "0.0.1",
+  icon: path.join(
+    root,
+    "assets",
+    process.platform === "darwin" ? "app-icon.icns" : "app-icon.ico",
+  ),
+  appVersion: releaseVersion,
+  buildVersion: releaseVersion,
   extendInfo:
     process.platform === "darwin"
       ? {
@@ -379,6 +448,22 @@ const resources =
   process.platform === "darwin"
     ? path.join(appBundle, "Contents", "Resources")
     : path.join(packageRoot, "resources");
+fs.writeFileSync(
+  path.join(resources, "release-config.json"),
+  `${JSON.stringify(
+    releaseTier === "production-signed"
+      ? { tier: releaseTier, releaseOrigin: normalizedReleaseOrigin }
+      : { tier: releaseTier, releaseOrigin: null },
+    null,
+    2,
+  )}\n`,
+);
+if (releaseTier === "production-signed") {
+  fs.writeFileSync(
+    path.join(resources, "app-update.yml"),
+    `provider: generic\nurl: ${JSON.stringify(normalizedReleaseOrigin)}\nupdaterCacheDirName: constellation-local-alpha-updater\n`,
+  );
+}
 const packagedMcpEntrypoint = path.join(resources, "constellation-mcp.mjs");
 copy(
   path.join(root, "packages", "mcp", "dist", "bin", "stdio.mjs"),
@@ -495,8 +580,11 @@ const manifest = {
   platform: process.platform,
   architecture,
   electron: "43.1.0",
+  version: releaseVersion,
   electronArchiveSha256: electronArchive.sha256,
   executable,
+  packageRoot,
+  ...(appBundle === undefined ? {} : { appBundle }),
   packagedNativeModules: 1,
   productionEntrypoint:
     "bootstrap.cjs -> @constellation/desktop-main/dist/src/production-main.js",
@@ -510,7 +598,11 @@ const manifest = {
         calendarHelper: packagedCalendarHelper,
         calendarHelperSha256: await digestFile(packagedCalendarHelper),
       }),
-  signatureTier,
+  signatureTier:
+    releaseTier === "production-signed"
+      ? "pending-production-signing"
+      : signatureTier,
+  releaseTier,
 };
 fs.writeFileSync(
   path.join(output, "local-alpha-manifest.json"),

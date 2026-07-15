@@ -15,7 +15,8 @@
     "@constellation/realtime-documents": "0.0.0",
     "@constellation/testkit": "0.0.0",
     "better-sqlite3": "12.11.1",
-    "electron": "43.1.0"
+    "electron": "43.1.0",
+    "electron-updater": "6.8.9"
   },
   "devDependencies": {
     "@constellation/hub": "0.0.0"

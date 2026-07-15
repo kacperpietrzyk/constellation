@@ -6,6 +6,7 @@ import type {
   WorkspaceBackupExportResult,
   WorkspaceBackupFailureCode,
   WorkspaceRestorePreviewResult,
+  ReleaseStatus,
 } from "@constellation/desktop-preload/client";
 
 type RecoveryState =
@@ -107,6 +108,144 @@ const CloseIcon = () => (
     <path d="m6 6 12 12M18 6 6 18" />
   </svg>
 );
+
+const ReleaseContinuity = ({
+  client,
+}: {
+  readonly client: ConstellationRendererClient;
+}) => {
+  const [status, setStatus] = useState<ReleaseStatus>();
+
+  useEffect(() => {
+    void client
+      .getReleaseStatus()
+      .then(setStatus)
+      .catch(() =>
+        setStatus({
+          kind: "failure",
+          currentVersion: "nieznana",
+          operation: "check",
+          message:
+            "Nie udało się odczytać kanału wydania. Workspace pozostaje bez zmian.",
+        }),
+      );
+  }, [client]);
+
+  const run = async (
+    action: () => Promise<ReleaseStatus>,
+    pending: ReleaseStatus,
+  ) => {
+    setStatus(pending);
+    try {
+      setStatus(await action());
+    } catch {
+      const operation =
+        pending.kind === "checking"
+          ? "check"
+          : pending.kind === "downloading"
+            ? "download"
+            : "install";
+      setStatus({
+        kind: "failure",
+        currentVersion: pending.currentVersion,
+        operation,
+        message:
+          "Kanał wydania jest chwilowo niedostępny. Obecna aplikacja i workspace pozostają bez zmian.",
+      });
+    }
+  };
+
+  const currentVersion = status?.currentVersion ?? "…";
+  const detail =
+    status === undefined
+      ? "Sprawdzam podpisany kanał wydania…"
+      : status.kind === "unavailable"
+        ? status.reason === "developer_preview"
+          ? "Podgląd deweloperski nie łączy się z kanałem wydań."
+          : status.reason === "mechanism_only_build"
+            ? "Ten build służy do weryfikacji instalatora i nie pobiera aktualizacji."
+            : status.reason === "platform_unsupported"
+              ? "Aktualizacje dla tej platformy nie są jeszcze obsługiwane."
+              : "Kanał wydania nie ma bezpiecznego adresu HTTPS."
+        : status.kind === "idle"
+          ? "Sprawdzenie uruchamiasz ręcznie; nic nie pobierze się w tle."
+          : status.kind === "checking"
+            ? "Sprawdzam podpisane metadane wydania…"
+            : status.kind === "current"
+              ? "Masz najnowszą wersję z tego kanału."
+              : status.kind === "available"
+                ? `Wersja ${status.version} jest dostępna. Pobieranie rozpocznie się dopiero po potwierdzeniu.`
+                : status.kind === "downloading"
+                  ? `Pobieram i weryfikuję wersję ${status.version}…`
+                  : status.kind === "ready"
+                    ? `Wersja ${status.version} jest zweryfikowana i gotowa do restartu.`
+                    : status.kind === "installing"
+                      ? `Zamykam aplikację i instaluję wersję ${status.version}…`
+                      : status.message;
+
+  return (
+    <section className="release-continuity" aria-labelledby="release-title">
+      <div>
+        <p className="eyebrow">Aplikacja</p>
+        <h3 id="release-title">Aktualizacja bez utraty workspace’u</h3>
+        <p role={status?.kind === "failure" ? "alert" : "status"}>{detail}</p>
+        <small>
+          Wersja {currentVersion}. Odinstalowanie usuwa aplikację, ale domyślnie
+          zachowuje zaszyfrowany workspace i klucze w magazynie systemowym.
+        </small>
+      </div>
+      {(status?.kind === "idle" ||
+        status?.kind === "current" ||
+        status?.kind === "failure") && (
+        <button
+          className="secondary-button compact"
+          onClick={() =>
+            void run(client.checkForRelease, {
+              kind: "checking",
+              currentVersion,
+            })
+          }
+        >
+          {status.kind === "failure" ? "Spróbuj ponownie" : "Sprawdź wersję"}
+        </button>
+      )}
+      {status?.kind === "available" && (
+        <button
+          className="secondary-button compact"
+          onClick={() =>
+            void run(client.downloadRelease, {
+              kind: "downloading",
+              currentVersion,
+              version: status.version,
+            })
+          }
+        >
+          Pobierz i zweryfikuj
+        </button>
+      )}
+      {status?.kind === "ready" && (
+        <button
+          className="primary-button compact"
+          onClick={() =>
+            void run(client.installRelease, {
+              kind: "installing",
+              currentVersion,
+              version: status.version,
+            })
+          }
+        >
+          Uruchom ponownie i zainstaluj
+        </button>
+      )}
+      {(status?.kind === "checking" ||
+        status?.kind === "downloading" ||
+        status?.kind === "installing" ||
+        status === undefined) && (
+        <span className="release-progress" aria-hidden="true" />
+      )}
+    </section>
+  );
+};
 
 export const WorkspaceRecovery = ({
   client,
@@ -495,6 +634,8 @@ export const WorkspaceRecovery = ({
             </>
           )}
         </section>
+
+        <ReleaseContinuity client={client} />
 
         <div
           className="recovery-chain"

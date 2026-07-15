@@ -5,6 +5,8 @@ on:
     paths:
       - .nvmrc
       - .github/workflows/local-alpha-packaged.yml
+      - .github/workflows/desktop-release.yml
+      - assets/**
       - package.json
       - package-lock.json
       - packages/application/**
@@ -16,7 +18,9 @@ on:
       - packages/local-store/**
       - packages/hub/**
       - scripts/package-alpha.mjs
+      - scripts/package-distribution.mjs
       - scripts/run-packaged-alpha-smoke.mjs
+      - scripts/run-distribution-continuity.mjs
       - scripts/run-packaged-hub-smoke.mjs
       - scripts/desktop/**
       - scripts/native/**
@@ -125,6 +129,27 @@ jobs:
 
       - name: Verify two packaged devices through an unattended Hub
         run: npm run test:hub:packaged
+
+      - name: Build installable mechanism-only artifacts
+        env:
+          CONSTELLATION_ALPHA_ARCH: ${{ matrix.architecture }}
+          CONSTELLATION_RELEASE_VERSION: 0.0.1
+        run: npm run package:distribution
+
+      - name: Drill install, update, compatible rollback, and clean uninstall
+        env:
+          CONSTELLATION_ALPHA_ARCH: ${{ matrix.architecture }}
+        run: npm run test:distribution:packaged
+
+      - name: Upload the distribution proof manifest
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: distribution-proof-${{ matrix.label }}
+          path: |
+            release/distribution/distribution-manifest.json
+            release/distribution/latest*.yml
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Restore the macOS Keychain configuration
         if: always() && runner.os == 'macOS'

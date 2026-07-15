@@ -15,14 +15,22 @@ const manifest = JSON.parse(
     "utf8",
   ),
 );
-const stateRoot = path.join(root, "build", "packaged-alpha-ui-smoke-state");
+const executable =
+  process.env.CONSTELLATION_PACKAGED_EXECUTABLE ?? manifest.executable;
+const stateRoot =
+  process.env.CONSTELLATION_PACKAGED_SMOKE_STATE_ROOT ??
+  path.join(root, "build", "packaged-alpha-ui-smoke-state");
+const continuityWorkspaceId =
+  process.env.CONSTELLATION_VERIFY_EXISTING_WORKSPACE_ID;
 const userData = path.join(stateRoot, "user-data");
 const recoverySmokeRoot = path.join(userData, "recovery-smoke");
 const taskTitle = "Verify packaged UI, preload, IPC, and persistence";
 const mutationTitle = "This mutation must disappear after restore";
 const projectTitle = "Verify packaged Project context";
 const projectOutcome = "Project inspector preserves the intended outcome";
-fs.rmSync(stateRoot, { recursive: true, force: true });
+if (continuityWorkspaceId === undefined) {
+  fs.rmSync(stateRoot, { recursive: true, force: true });
+}
 fs.mkdirSync(stateRoot, { recursive: true });
 
 const delay = (milliseconds) =>
@@ -176,7 +184,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
   let stdout = "";
   let stderr = "";
   const packagedProcess = spawn(
-    manifest.executable,
+    executable,
     [
       `--user-data-dir=${userData}`,
       "--remote-debugging-address=127.0.0.1",
@@ -217,9 +225,11 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     const boundary = await client.evaluate(`(async () => {
       const build = await window.constellation.getBuildInfo();
       const dataHome = await window.constellation.getDataHomeStatus();
+      const release = await window.constellation.getReleaseStatus();
       return {
         build,
         dataHome,
+        release,
         bridgeKeys: Object.keys(window.constellation).sort(),
         hasNodeRequire: typeof window.require !== "undefined"
       };
@@ -231,11 +241,18 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         (phase === "restored" ? "recovery_required" : "ready") ||
       boundary.hasNodeRequire ||
       boundary.bridgeKeys.join(",") !==
-        "acknowledgeDocumentUpdates,addMeetingWorkItem,cancelWorkspaceRestore,configureJamie,confirmCalendarBlocks,confirmWorkspaceRestore,createDocumentRevision,createRemoteAgentGrant,disconnectJamie,editMeetingWorkItem,enrollHub,executeCommand,exportHubAuthorization,exportWorkspaceBackup,getBuildInfo,getDataHomeStatus,getJamieStatus,getMeetingLoop,listDocumentRevisions,listRemoteAgentGrants,onAttentionActivated,openDocument,persistDocumentUpdate,prepareAgentCredential,prepareWorkspaceRestore,previewCalendarBlocks,requestCalendarAccess,restoreDocumentRevision,revokeRemoteAgentGrant,rotateRemoteAgentGrant,runQuery,syncDataHome,syncJamie"
+        "acknowledgeDocumentUpdates,addMeetingWorkItem,cancelWorkspaceRestore,checkForRelease,configureJamie,confirmCalendarBlocks,confirmWorkspaceRestore,createDocumentRevision,createRemoteAgentGrant,disconnectJamie,downloadRelease,editMeetingWorkItem,enrollHub,executeCommand,exportHubAuthorization,exportWorkspaceBackup,getBuildInfo,getDataHomeStatus,getJamieStatus,getMeetingLoop,getReleaseStatus,installRelease,listDocumentRevisions,listRemoteAgentGrants,onAttentionActivated,openDocument,persistDocumentUpdate,prepareAgentCredential,prepareWorkspaceRestore,previewCalendarBlocks,requestCalendarAccess,restoreDocumentRevision,revokeRemoteAgentGrant,rotateRemoteAgentGrant,runQuery,syncDataHome,syncJamie"
     ) {
       throw new Error(
         `PACKAGED_ALPHA_PRELOAD_OR_IPC_INVALID:${JSON.stringify(boundary)}`,
       );
+    }
+    if (
+      boundary.release.kind !== "unavailable" ||
+      boundary.release.reason !== "mechanism_only_build" ||
+      boundary.release.currentVersion !== boundary.build.version
+    ) {
+      throw new Error("PACKAGED_ALPHA_RELEASE_BOUNDARY_INVALID");
     }
     const dataHome = boundary.dataHome;
     if (
@@ -551,6 +568,17 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       ) {
         throw new Error("PACKAGED_ALPHA_RESTORED_DATA_HOME_INVALID");
       }
+    } else if (phase === "continuity") {
+      if (
+        boundary.build.startupRecovery !== "none" ||
+        boundary.build.initialWorkspaceId !== expectedWorkspaceId
+      ) {
+        throw new Error("PACKAGED_ALPHA_RELEASE_CONTINUITY_INVALID");
+      }
+      await client.evaluate(`(() => {
+        document.querySelector('.nav-item[data-surface="tasks"]').click();
+        return true;
+      })()`);
     } else {
       if (boundary.build.startupRecovery !== "previous_workspace_restored") {
         throw new Error("PACKAGED_ALPHA_PREVIOUS_WORKSPACE_NOT_RECOVERED");
@@ -570,7 +598,8 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     const taskCount = await client.evaluate(
       `document.querySelectorAll(".task-row").length`,
     );
-    const expectedTaskCount = phase === "restored" ? 1 : 2;
+    const expectedTaskCount =
+      phase === "restored" || phase === "continuity" ? 1 : 2;
     if (taskCount !== expectedTaskCount) {
       throw new Error("PACKAGED_ALPHA_TASK_COUNT_INVALID");
     }
@@ -599,6 +628,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       persistence: boundary.build.persistence,
       preload: "context-isolated",
       transport: "renderer-preload-ipc",
+      version: boundary.build.version,
     };
   } catch (error) {
     if (client !== undefined) client.close();
@@ -608,6 +638,21 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     throw error;
   }
 };
+
+if (continuityWorkspaceId !== undefined) {
+  const continuity = await run("continuity", undefined, continuityWorkspaceId);
+  process.stdout.write(
+    `${JSON.stringify({
+      status: "pass",
+      phase: continuity.phase,
+      version: continuity.version,
+      workspaceId: continuityWorkspaceId,
+      taskCount: continuity.taskCount,
+      encryptedContinuity: true,
+    })}\n`,
+  );
+  process.exit(0);
+}
 
 const created = await run("created");
 const interruptedAfterRetention = await run(

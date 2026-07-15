@@ -168,17 +168,26 @@ without adding generated answers to the desktop application. These records use
 the same deterministic search, activity, export, audit, recovery, MCP, local
 store, and Space-scoped Hub projection rules as the earlier graph.
 
-## Current — coherent local workspace depth
+## Current — desktop distribution continuity and coherent local depth
 
-Deepen the delivered record journeys into saved views, richer artifact and
-approval states, and strategic orientation across goals, initiatives, projects,
-and daily work while preserving the shared command/query and recovery model.
+Turn the packaged engineering Alpha into installable macOS and Windows
+artifacts with an explicit, fail-closed path to platform signing and
+notarization. Prove install, manual update, compatible application rollback,
+clean uninstall, encrypted key continuity, and recovery before publishing a
+desktop release. Unsigned or ad-hoc artifacts remain mechanism-only evidence
+and cannot be labeled as releases.
 
-## Later — distribution and ecosystem
+In parallel, deepen the delivered record journeys into saved views, richer
+artifact and approval states, and strategic orientation across goals,
+initiatives, projects, and daily work while preserving the shared command/query
+and recovery model.
 
-- signed and notarized macOS distribution;
-- signed Windows installer, safe updates, rollback, and clean uninstall;
-- tested backup, restore, provider migration, and device-revocation drills;
+## Later — public release and ecosystem
+
+- publish the first signed and notarized macOS distribution and signed Windows
+  installer only after the protected release gate has real credential evidence;
+- expand release drills across schema migrations, provider migration, device
+  revocation, and supported upgrade windows;
 - documented stable extension points where the underlying contracts are ready;
 - a focused mobile capture and review companion using the same product truth,
   developed as a separate client rather than another independent feature stack.

@@ -1531,6 +1531,56 @@ kbd {
   animation: loading 1.2s var(--ease-in-out) infinite;
 }
 
+.release-continuity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  margin: 0 var(--space-6);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.release-continuity > div {
+  min-width: 0;
+}
+.release-continuity h3 {
+  margin: var(--space-1) 0 var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 580;
+  letter-spacing: -0.01em;
+}
+.release-continuity p:not(.eyebrow),
+.release-continuity small {
+  display: block;
+  max-width: 42rem;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+.release-continuity small {
+  margin-top: var(--space-1);
+  color: var(--text-quaternary);
+}
+.release-continuity > button {
+  flex: 0 0 auto;
+}
+.release-progress {
+  width: 4rem;
+  height: 1px;
+  overflow: hidden;
+  flex: 0 0 auto;
+  background: var(--border-default);
+}
+.release-progress::after {
+  content: "";
+  display: block;
+  width: 45%;
+  height: 100%;
+  background: var(--text-secondary);
+  animation: loading 1.2s var(--ease-in-out) infinite;
+}
+
 @keyframes dialog-in {
   from {
     opacity: 0;
@@ -5278,6 +5328,11 @@ kbd {
   .data-home-summary {
     margin-inline: var(--space-4);
   }
+  .release-continuity {
+    align-items: flex-start;
+    flex-direction: column;
+    margin-inline: var(--space-4);
+  }
   .data-home-summary-heading,
   .data-home-status-error {
     align-items: flex-start;
@@ -5410,7 +5465,8 @@ kbd {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .recovery-progress-mark {
+  .recovery-progress-mark,
+  .release-progress::after {
     animation: none;
     border-color: var(--text-secondary);
   }
@@ -5437,7 +5493,8 @@ kbd {
   .recovery-error,
   .recovery-notice,
   .data-home-summary,
-  .data-home-status-error {
+  .data-home-status-error,
+  .release-continuity {
     border: 1px solid CanvasText;
   }
   .data-home-availability i {
