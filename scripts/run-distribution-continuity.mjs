@@ -43,20 +43,6 @@ const terminateProcessTree = (child) => {
   }
 };
 
-const terminateInstalledMacApplication = async () => {
-  if (process.platform !== "darwin") return;
-  spawnSync("/usr/bin/pkill", ["-TERM", "-f", installRoot], {
-    stdio: "ignore",
-    timeout: 5_000,
-  });
-  await delay(500);
-  spawnSync("/usr/bin/pkill", ["-KILL", "-f", installRoot], {
-    stdio: "ignore",
-    timeout: 5_000,
-  });
-  await delay(500);
-};
-
 const runCaptured = (command, args, options = {}) =>
   new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -219,20 +205,17 @@ let manifest = fs.existsSync(
 if (manifest.version !== "0.0.1") manifest = build("0.0.1");
 let executable = install(manifest);
 const installed = await smoke(executable);
-await terminateInstalledMacApplication();
 const workspaceId = installed.backupWorkspaceId;
 if (typeof workspaceId !== "string") throw new Error("WORKSPACE_ID_MISSING");
 
 manifest = build("0.0.2");
 executable = install(manifest);
 const updated = await smoke(executable, workspaceId);
-await terminateInstalledMacApplication();
 if (updated.version !== "0.0.2") throw new Error("UPDATE_VERSION_NOT_ACTIVE");
 
 manifest = build("0.0.1");
 executable = install(manifest);
 const rolledBack = await smoke(executable, workspaceId);
-await terminateInstalledMacApplication();
 if (rolledBack.version !== "0.0.1")
   throw new Error("ROLLBACK_VERSION_NOT_ACTIVE");
 

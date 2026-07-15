@@ -40,36 +40,40 @@ class CdpClient {
   #issues = [];
   #pending = new Map();
   #sessionId;
-  #socket;
+  #closeTransport;
+  #sendRaw;
 
-  constructor(socket) {
-    this.#socket = socket;
-    socket.addEventListener("message", (event) => {
-      const message = JSON.parse(String(event.data));
-      if (message.method === "Runtime.exceptionThrown") {
-        this.#issues.push("renderer-exception");
-      }
-      if (
-        message.method === "Log.entryAdded" &&
-        message.params?.entry?.level === "error"
-      ) {
-        this.#issues.push(`renderer-log-${message.params.entry.level}`);
-      }
-      if (message.id === undefined) return;
-      const pending = this.#pending.get(message.id);
-      if (pending === undefined) return;
-      this.#pending.delete(message.id);
-      clearTimeout(pending.timeout);
-      if (message.error === undefined) pending.resolve(message.result);
-      else pending.reject(new Error(`CDP_${message.error.message}`));
-    });
-    socket.addEventListener("close", () => {
-      for (const pending of this.#pending.values()) {
+  constructor(sendRaw, closeTransport, subscribe) {
+    this.#sendRaw = sendRaw;
+    this.#closeTransport = closeTransport;
+    subscribe(
+      (payload) => {
+        const message = JSON.parse(payload);
+        if (message.method === "Runtime.exceptionThrown") {
+          this.#issues.push("renderer-exception");
+        }
+        if (
+          message.method === "Log.entryAdded" &&
+          message.params?.entry?.level === "error"
+        ) {
+          this.#issues.push(`renderer-log-${message.params.entry.level}`);
+        }
+        if (message.id === undefined) return;
+        const pending = this.#pending.get(message.id);
+        if (pending === undefined) return;
+        this.#pending.delete(message.id);
         clearTimeout(pending.timeout);
-        pending.reject(new Error("CDP_CONNECTION_CLOSED"));
-      }
-      this.#pending.clear();
-    });
+        if (message.error === undefined) pending.resolve(message.result);
+        else pending.reject(new Error(`CDP_${message.error.message}`));
+      },
+      () => {
+        for (const pending of this.#pending.values()) {
+          clearTimeout(pending.timeout);
+          pending.reject(new Error("CDP_CONNECTION_CLOSED"));
+        }
+        this.#pending.clear();
+      },
+    );
   }
 
   static async connect(url) {
@@ -100,7 +104,41 @@ class CdpClient {
         { once: true },
       );
     });
-    return new CdpClient(socket);
+    return new CdpClient(
+      (payload) => socket.send(payload),
+      () => socket.close(),
+      (onMessage, onClose) => {
+        socket.addEventListener("message", (event) =>
+          onMessage(String(event.data)),
+        );
+        socket.addEventListener("close", onClose);
+      },
+    );
+  }
+
+  static connectPipe(input, output) {
+    return new CdpClient(
+      (payload) => output.write(`${payload}\0`),
+      () => {
+        input.destroy();
+        output.destroy();
+      },
+      (onMessage, onClose) => {
+        let buffer = "";
+        input.setEncoding("utf8");
+        input.on("data", (chunk) => {
+          buffer += chunk;
+          let boundary = buffer.indexOf("\0");
+          while (boundary !== -1) {
+            const payload = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 1);
+            if (payload.length > 0) onMessage(payload);
+            boundary = buffer.indexOf("\0");
+          }
+        });
+        input.on("close", onClose);
+      },
+    );
   }
 
   async send(method, params = {}, browserCommand = false) {
@@ -112,7 +150,7 @@ class CdpClient {
       }, 5_000);
       this.#pending.set(id, { resolve, reject, timeout });
     });
-    this.#socket.send(
+    this.#sendRaw(
       JSON.stringify({
         id,
         method,
@@ -158,7 +196,7 @@ class CdpClient {
   }
 
   close() {
-    this.#socket.close();
+    this.#closeTransport();
   }
 
   issues() {
@@ -291,13 +329,20 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     executable,
     [
       `--user-data-dir=${userData}`,
-      "--remote-debugging-address=127.0.0.1",
-      "--remote-debugging-port=0",
+      ...(process.platform === "darwin"
+        ? ["--remote-debugging-pipe"]
+        : [
+            "--remote-debugging-address=127.0.0.1",
+            "--remote-debugging-port=0",
+          ]),
     ],
     {
       detached: process.platform !== "win32",
       windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio:
+        process.platform === "darwin"
+          ? ["ignore", "pipe", "pipe", "pipe", "pipe"]
+          : ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
         CONSTELLATION_ALPHA_RECOVERY_SMOKE_ROOT: recoverySmokeRoot,
@@ -318,7 +363,13 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
 
   let client;
   try {
-    client = await connectToBrowser(packagedProcess);
+    client =
+      process.platform === "darwin"
+        ? CdpClient.connectPipe(
+            packagedProcess.stdio[4],
+            packagedProcess.stdio[3],
+          )
+        : await connectToBrowser(packagedProcess);
     await waitForPage(client);
     await client.send("Runtime.enable");
     await client.send("Log.enable");
