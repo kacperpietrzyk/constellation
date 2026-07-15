@@ -1,5 +1,7 @@
 import type {
   CaptureId,
+  CaptureOriginal,
+  KnowledgeSourceId,
   PrincipalId,
   SpaceId,
   TaskId,
@@ -7,13 +9,21 @@ import type {
   WorkspaceId,
 } from "@constellation/contracts";
 
-import type { PendingCapture, RoutedTaskCapture, Task } from "./model.js";
+import type {
+  PendingCapture,
+  RoutedKnowledgeSourceCapture,
+  RoutedTaskCapture,
+  KnowledgeSource,
+  Task,
+} from "./model.js";
 
 export interface SubmitCaptureInput {
   readonly captureId: CaptureId;
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
   readonly originalText: string;
+  readonly original: CaptureOriginal;
+  readonly originalFingerprint: string;
   readonly deviceId: string;
   readonly source: PendingCapture["source"];
   readonly submittedBy: PrincipalId;
@@ -25,12 +35,39 @@ export const submitCapture = (input: SubmitCaptureInput): PendingCapture => ({
   workspaceId: input.workspaceId,
   spaceId: input.spaceId,
   originalText: input.originalText,
+  original: input.original,
+  originalFingerprint: input.originalFingerprint,
   deviceId: input.deviceId,
   source: input.source,
   capturedAt: input.capturedAt,
   processingState: "pending_processing",
   submittedBy: input.submittedBy,
   version: 1,
+});
+
+export const captureDisplayText = (original: CaptureOriginal): string => {
+  switch (original.kind) {
+    case "text":
+      return original.text;
+    case "url":
+      return original.title ?? original.url;
+    case "file":
+      return original.displayName;
+  }
+};
+
+export const routeCaptureAsKnowledgeSource = (input: {
+  readonly capture: PendingCapture;
+  readonly sourceId: KnowledgeSourceId;
+  readonly routedBy: PrincipalId;
+  readonly occurredAt: string;
+}): RoutedKnowledgeSourceCapture => ({
+  ...input.capture,
+  processingState: "routed_as_knowledge_source",
+  derivedKnowledgeSourceId: input.sourceId,
+  routedAt: input.occurredAt,
+  routedBy: input.routedBy,
+  version: input.capture.version + 1,
 });
 
 export interface RouteCaptureAsTaskInput {
@@ -66,6 +103,7 @@ export const routeCaptureAsTask = (
     statusId: input.taskStatusId,
     recordState: "active",
     completionState: "open",
+    operationalState: "actionable",
     sourceCaptureId: input.capture.id,
     createdBy: input.routedBy,
     version: 1,
@@ -87,6 +125,8 @@ export const undoCaptureTaskRoute = (input: {
     workspaceId: input.capture.workspaceId,
     spaceId: input.capture.spaceId,
     originalText: input.capture.originalText,
+    original: input.capture.original,
+    originalFingerprint: input.capture.originalFingerprint,
     deviceId: input.capture.deviceId,
     source: input.capture.source,
     capturedAt: input.capture.capturedAt,
@@ -100,6 +140,40 @@ export const undoCaptureTaskRoute = (input: {
       ...input.task,
       recordState: "removed",
       version: input.task.version + 1,
+      updatedAt: input.occurredAt,
+    },
+  };
+};
+
+export const undoCaptureKnowledgeRoute = (input: {
+  readonly capture: RoutedKnowledgeSourceCapture;
+  readonly source: KnowledgeSource;
+  readonly occurredAt: string;
+}): { readonly capture: PendingCapture; readonly source: KnowledgeSource } => {
+  if (input.capture.derivedKnowledgeSourceId !== input.source.id) {
+    throw new Error(
+      "Capture provenance does not match the Knowledge Source being undone.",
+    );
+  }
+  return {
+    capture: {
+      id: input.capture.id,
+      workspaceId: input.capture.workspaceId,
+      spaceId: input.capture.spaceId,
+      originalText: input.capture.originalText,
+      original: input.capture.original,
+      originalFingerprint: input.capture.originalFingerprint,
+      deviceId: input.capture.deviceId,
+      source: input.capture.source,
+      capturedAt: input.capture.capturedAt,
+      submittedBy: input.capture.submittedBy,
+      processingState: "pending_processing",
+      version: input.capture.version + 1,
+    },
+    source: {
+      ...input.source,
+      availability: "unavailable",
+      version: input.source.version + 1,
       updatedAt: input.occurredAt,
     },
   };

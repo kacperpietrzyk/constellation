@@ -401,6 +401,16 @@ class ReadView implements ApplicationReadView {
     return this.state.captures.get(id);
   }
 
+  public listCapturesInSpace(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly Capture[] {
+    return [...this.state.captures.values()].filter(
+      (capture) =>
+        capture.workspaceId === workspaceId && capture.spaceId === spaceId,
+    );
+  }
+
   public listCaptures(
     request: CapturePageRequest,
   ): readonly Capture[] | undefined {

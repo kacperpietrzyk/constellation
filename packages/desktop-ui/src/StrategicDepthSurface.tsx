@@ -2,11 +2,15 @@ import { useMemo, useState, type FormEvent } from "react";
 
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
+import { StrategicCreatePanel } from "./StrategicCreatePanel.js";
+
 import {
   createOpportunity,
   createOrganization,
+  generateRecurrenceOccurrence,
   resolveDecisionImpact,
   resolveRadarCandidate,
+  resolveRenewal,
   type DesktopSnapshot,
   type MutationFailure,
   type RelationshipWorkspaceProjection,
@@ -53,6 +57,8 @@ export const StrategicDepthSurface = ({
     (record) => record.kind === "opportunity",
   );
   const offers = records.filter((record) => record.kind === "offer");
+  const people = records.filter((record) => record.kind === "person");
+  const decisions = records.filter((record) => record.kind === "decision");
   const renewals = records.filter((record) => record.kind === "renewal");
   const facts = records.filter((record) => record.kind === "relationship_fact");
   const reviews = records.filter(
@@ -263,6 +269,21 @@ export const StrategicDepthSurface = ({
         </section>
       )}
 
+      {snapshot.relationships.kind === "ready" && (
+        <StrategicCreatePanel
+          client={client}
+          snapshot={snapshot}
+          records={records}
+          busy={busyId !== undefined}
+          onRun={(id, operation) => {
+            void act(`create:${id}`, async () => {
+              const result = await operation();
+              if (result.kind !== "success") onFailure(result);
+            });
+          }}
+        />
+      )}
+
       {snapshot.relationships.kind === "unavailable" ? (
         <section className="empty-state" role="status">
           <div>
@@ -374,11 +395,103 @@ export const StrategicDepthSurface = ({
                     </small>
                   </div>
                   <StateMark state={record.state} />
+                  {record.kind === "renewal" && record.state === "watching" && (
+                    <div className="ledger-actions">
+                      <button
+                        type="button"
+                        disabled={!client || busyId === record.id}
+                        onClick={() => {
+                          if (!client) return;
+                          void act(record.id, async () => {
+                            const result = await resolveRenewal(
+                              client,
+                              snapshot,
+                              record,
+                              "renewed",
+                            );
+                            if (result.kind !== "success") onFailure(result);
+                          });
+                        }}
+                      >
+                        Odnowiono
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
               {renewals.length + facts.length === 0 && (
                 <p className="strategic-quiet">
                   Brak terminowych rekordów do pokazania.
+                </p>
+              )}
+            </section>
+
+            <section
+              className="strategic-ledger"
+              aria-labelledby="supporting-title"
+            >
+              <header className="section-heading">
+                <div>
+                  <p className="eyebrow">People, decisions, recurrence</p>
+                  <h2 id="supporting-title">Rekordy wspierające nić</h2>
+                </div>
+              </header>
+              {people.map((person) => (
+                <div className="ledger-row" key={person.id}>
+                  <span className="record-kind">Person</span>
+                  <div>
+                    <strong>{person.name}</strong>
+                    <small>
+                      {[person.role, person.email]
+                        .filter(Boolean)
+                        .join(" · ") || "Bez dodatkowych danych"}
+                    </small>
+                  </div>
+                  <StateMark state="current" />
+                </div>
+              ))}
+              {decisions.map((decision) => (
+                <div className="ledger-row" key={decision.id}>
+                  <span className="record-kind">Decision</span>
+                  <div>
+                    <strong>{decision.title}</strong>
+                    <small>{decision.rationale}</small>
+                  </div>
+                  <StateMark state={decision.state} />
+                </div>
+              ))}
+              {recurrences.map((recurrence) => (
+                <div className="ledger-row" key={recurrence.id}>
+                  <span className="record-kind">Recurrence</span>
+                  <div>
+                    <strong>{recurrence.title}</strong>
+                    <small>
+                      {recurrence.taskTitle} · {recurrence.cadence}
+                    </small>
+                  </div>
+                  <button
+                    type="button"
+                    className="ledger-action"
+                    disabled={!client || busyId === recurrence.id}
+                    onClick={() => {
+                      if (!client) return;
+                      void act(recurrence.id, async () => {
+                        const result = await generateRecurrenceOccurrence(
+                          client,
+                          snapshot,
+                          recurrence,
+                        );
+                        if (result.kind !== "success") onFailure(result);
+                      });
+                    }}
+                  >
+                    Utwórz wystąpienie
+                  </button>
+                </div>
+              ))}
+              {people.length + decisions.length + recurrences.length === 0 && (
+                <p className="strategic-quiet">
+                  Brak dodatkowych rekordów w tym Space.
                 </p>
               )}
             </section>

@@ -205,6 +205,52 @@ export const createArea = (
   state: "active",
 });
 
+export const createInitiative = (
+  input: Common & { readonly title: string; readonly intendedOutcome: string },
+): Extract<StrategicRecord, { kind: "initiative" }> => ({
+  ...base(input),
+  kind: "initiative",
+  title: input.title,
+  intendedOutcome: input.intendedOutcome,
+  state: "active",
+});
+
+export const createWorkLink = (
+  input: Common & {
+    readonly linkType: Extract<
+      StrategicRecord,
+      { kind: "work_link" }
+    >["linkType"];
+    readonly sourceRecordId: string;
+    readonly targetRecordId: string;
+  },
+): Extract<StrategicRecord, { kind: "work_link" }> => ({
+  ...base(input),
+  kind: "work_link",
+  linkType: input.linkType,
+  sourceRecordId: input.sourceRecordId,
+  targetRecordId: input.targetRecordId,
+  state: "active",
+});
+
+export const createSavedView = (
+  input: Common & {
+    readonly name: string;
+    readonly filters: Extract<
+      StrategicRecord,
+      { kind: "saved_view" }
+    >["filters"];
+    readonly sort: Extract<StrategicRecord, { kind: "saved_view" }>["sort"];
+  },
+): Extract<StrategicRecord, { kind: "saved_view" }> => ({
+  ...base(input),
+  kind: "saved_view",
+  name: input.name,
+  filters: input.filters,
+  sort: input.sort,
+  state: "active",
+});
+
 export const createRecurrence = (
   input: Common & {
     readonly title: string;

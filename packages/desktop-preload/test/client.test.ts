@@ -20,6 +20,7 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "confirmWorkspaceRestore",
     "createDocumentRevision",
     "createRemoteAgentGrant",
+    "createWorkspace",
     "disconnectJamie",
     "downloadRelease",
     "editMeetingWorkItem",
@@ -28,14 +29,18 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "exportHubAuthorization",
     "exportWorkspaceBackup",
     "getBuildInfo",
+    "getCrossWorkspaceCockpit",
     "getDataHomeStatus",
     "getJamieStatus",
     "getMeetingLoop",
     "getReleaseStatus",
+    "importStarterWorkspace",
     "installRelease",
     "listDocumentRevisions",
     "listRemoteAgentGrants",
+    "listWorkspaces",
     "onAttentionActivated",
+    "openDetachedSurface",
     "openDocument",
     "persistDocumentUpdate",
     "prepareAgentCredential",
@@ -46,6 +51,7 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "revokeRemoteAgentGrant",
     "rotateRemoteAgentGrant",
     "runQuery",
+    "switchWorkspace",
     "syncDataHome",
     "syncJamie",
   ]);
@@ -61,4 +67,10 @@ test("renderer client exposes only semantic application and recovery routes", ()
   assert.equal(calls[4]?.channel, DESKTOP_CHANNELS.getReleaseStatus);
   void client.checkForRelease();
   assert.equal(calls[5]?.channel, DESKTOP_CHANNELS.checkForRelease);
+  void client.listWorkspaces?.();
+  assert.equal(calls[6]?.channel, DESKTOP_CHANNELS.listWorkspaces);
+  void client.getCrossWorkspaceCockpit?.();
+  assert.equal(calls[7]?.channel, DESKTOP_CHANNELS.getCrossWorkspaceCockpit);
+  void client.importStarterWorkspace?.({});
+  assert.equal(calls[8]?.channel, DESKTOP_CHANNELS.importStarterWorkspace);
 });

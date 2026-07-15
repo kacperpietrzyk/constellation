@@ -13,9 +13,11 @@ Projects remain independent outcome records. Linking an Offer or Project to an
 Opportunity preserves each record's identity and version history.
 
 Desktop and MCP operators call the same commands. The desktop relationship
-surface can create Organizations and Opportunities and renders the connected
-thread; the remaining structured commands stay available through the shared
-contract rather than a UI-only write path.
+surface creates Organizations, People, Opportunities, Offer drafts tied to a
+Deliverable, Renewals with one follow-up, sourced facts, Decisions and their
+replacements, recurrence rules, and finite Radar candidates. The forms remain
+attached to the connected consequence thread rather than becoming a separate
+CRM or generic database builder.
 
 ## Time and consequence rules
 
@@ -31,6 +33,12 @@ contract rather than a UI-only write path.
 - A recurrence generates an ordinary Task occurrence and advances its next due
   time. An Area remains a durable responsibility rather than a completable
   Project.
+- An Initiative is a completable multi-Project outcome. Typed work links connect
+  Projects to Areas or Initiatives and Tasks to their dependencies without
+  forcing every record into one containment tree.
+- Task operational state distinguishes actionable, waiting, and blocked work.
+  Waiting records its direction explicitly; saved views keep deterministic
+  structured filters rather than generated recommendations.
 - Closing a Project is a versioned lifecycle change. Open Tasks and history are
   preserved, and reopening is an ordinary auditable command.
 - Knowledge Radar candidates are deduplicated by material key. Review is finite:
@@ -45,7 +53,9 @@ deterministic search, meaningful activity, scoped export, backup and restore,
 audit receipts, expected-version conflicts, and generic local or remote MCP
 transport.
 
-The desktop does not generate recommendations or answers from these records.
+The desktop Work destination presents this composition as one thread from
+responsibility through outcome to next action. The desktop does not generate
+recommendations or answers from these records.
 External agents may reason over authorized evidence through MCP, but their
 mutations remain attributable, auditable, scoped, version-checked, and
 recoverable like human actions.

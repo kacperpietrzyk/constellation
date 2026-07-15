@@ -44,6 +44,16 @@ const context = (): ExecutionContext =>
       "decision.supersede",
       "decision.resolveImpact",
       "area.create",
+      "initiative.create",
+      "work.linkCreate",
+      "work.linkRemove",
+      "savedView.create",
+      "task.setOperationalState",
+      "work.overview",
+      "command.previewUndo",
+      "command.undo",
+      "capture.submitText",
+      "capture.routeAsTask",
       "recurrence.create",
       "recurrence.generateOccurrence",
       "project.close",
@@ -68,6 +78,234 @@ const metadata = (key: string, expectedVersions = {}) => ({
   idempotencyKey: key,
   expectedVersions,
   correlationId: uuid(),
+});
+
+it("composes Areas, Initiatives, dependencies, waiting, and saved views", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("work-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Work graph",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  const areaId = uuid();
+  const initiativeId = uuid();
+  const savedViewId = uuid();
+  const projectInitiativeLinkId = uuid();
+  const projectAreaLinkId = uuid();
+  for (const command of [
+    {
+      ...metadata("work-area"),
+      commandName: "area.create" as const,
+      payload: {
+        areaId,
+        spaceId: ids.space,
+        title: "Product",
+        responsibility: "Keep Constellation useful and maintainable",
+      },
+    },
+    {
+      ...metadata("work-initiative"),
+      commandName: "initiative.create" as const,
+      payload: {
+        initiativeId,
+        spaceId: ids.space,
+        title: "Interactive alpha",
+        intendedOutcome: "Use Constellation for a real working week",
+      },
+    },
+    {
+      ...metadata("work-project"),
+      commandName: "project.create" as const,
+      payload: {
+        spaceId: ids.space,
+        title: "Application completion",
+        intendedOutcome: "All primary product surfaces are operable",
+      },
+    },
+  ]) {
+    const outcome = unwrap(harness.kernel.execute(context(), command));
+    assert.equal(outcome.outcome, "success");
+    if (
+      command.commandName === "project.create" &&
+      outcome.outcome === "success" &&
+      outcome.projection.kind === "project.created"
+    ) {
+      assert.equal(outcome.projection.projectId.length > 0, true);
+    }
+  }
+  const project = harness.store.snapshot().projects[0];
+  assert.ok(project);
+
+  const taskIds: string[] = [];
+  for (const [index, title] of [
+    "Prepare the Work surface",
+    "Approve the content model",
+  ].entries()) {
+    const submitted = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(`work-capture-${index}`),
+        commandName: "capture.submitText",
+        payload: {
+          spaceId: ids.space,
+          originalText: title,
+          deviceId: "work-test-device",
+          source: "in_app_quick_capture",
+        },
+      }),
+    );
+    if (
+      submitted.outcome !== "success" ||
+      submitted.projection.kind !== "capture.stored"
+    )
+      assert.fail("Expected stored capture");
+    const routed = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(`work-route-${index}`, {
+          [submitted.projection.captureId]: submitted.projection.version,
+        }),
+        commandName: "capture.routeAsTask",
+        payload: { captureId: submitted.projection.captureId, title },
+      }),
+    );
+    if (
+      routed.outcome !== "success" ||
+      routed.projection.kind !== "capture.routed_as_task"
+    )
+      assert.fail("Expected routed task");
+    taskIds.push(routed.projection.taskId);
+  }
+
+  const commands = [
+    {
+      ...metadata("work-project-initiative"),
+      commandName: "work.linkCreate" as const,
+      payload: {
+        linkId: projectInitiativeLinkId,
+        spaceId: ids.space,
+        linkType: "project_advances_initiative" as const,
+        sourceRecordId: project.id,
+        targetRecordId: initiativeId,
+      },
+    },
+    {
+      ...metadata("work-project-area"),
+      commandName: "work.linkCreate" as const,
+      payload: {
+        linkId: projectAreaLinkId,
+        spaceId: ids.space,
+        linkType: "project_serves_area" as const,
+        sourceRecordId: project.id,
+        targetRecordId: areaId,
+      },
+    },
+    {
+      ...metadata("work-task-dependency"),
+      commandName: "work.linkCreate" as const,
+      payload: {
+        linkId: uuid(),
+        spaceId: ids.space,
+        linkType: "task_depends_on_task" as const,
+        sourceRecordId: taskIds[0]!,
+        targetRecordId: taskIds[1]!,
+      },
+    },
+    {
+      ...metadata("work-waiting", { [taskIds[0]!]: 1 }),
+      commandName: "task.setOperationalState" as const,
+      payload: {
+        taskId: taskIds[0]!,
+        operationalState: "waiting" as const,
+        waitingOn: { kind: "external" as const, label: "Product review" },
+      },
+    },
+    {
+      ...metadata("work-saved-view"),
+      commandName: "savedView.create" as const,
+      payload: {
+        savedViewId,
+        spaceId: ids.space,
+        name: "Waiting this week",
+        filters: { operationalStates: ["waiting" as const] },
+        sort: "updated_desc" as const,
+      },
+    },
+  ];
+  for (const command of commands) {
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), command)).outcome,
+      "success",
+    );
+  }
+
+  const result = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "work.overview",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space },
+  });
+  if (
+    result.kind !== "query_result" ||
+    result.result.outcome !== "success" ||
+    result.result.projection.kind !== "work.overview"
+  )
+    assert.fail("Expected Work overview");
+  assert.equal(result.result.projection.areas.length, 1);
+  assert.equal(result.result.projection.initiatives.length, 1);
+  assert.equal(result.result.projection.projects.length, 1);
+  assert.equal(result.result.projection.tasks.length, 2);
+  assert.equal(result.result.projection.tasks[0]?.operationalState, "waiting");
+  assert.equal(result.result.projection.links.length, 3);
+  assert.equal(
+    result.result.projection.savedViews[0]?.name,
+    "Waiting this week",
+  );
+
+  const waitingCommand = commands[3]!;
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("work-waiting-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: waitingCommand.commandId },
+    }),
+  );
+  assert.equal(preview.outcome, "preview");
+  if (
+    preview.outcome !== "preview" ||
+    preview.projection.kind !== "undo.previewed"
+  )
+    assert.fail("Expected operational-state undo preview");
+  assert.equal(
+    preview.projection.compensationKind,
+    "task.restore_operational_state",
+  );
+  const undone = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("work-waiting-undo", preview.projection.requiredVersions),
+      commandName: "command.undo",
+      payload: { targetCommandId: waitingCommand.commandId },
+    }),
+  );
+  assert.equal(undone.outcome, "success");
+  assert.equal(
+    harness.store.snapshot().tasks.find((task) => task.id === taskIds[0])
+      ?.operationalState,
+    "actionable",
+  );
 });
 
 it("deduplicates reviews and preserves recurrence, decision, and Project history", () => {

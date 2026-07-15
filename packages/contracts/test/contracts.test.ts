@@ -29,6 +29,8 @@ const context = {
   workspaceId: ids.workspace,
   spaceScope: [ids.space],
   capabilityScope: [
+    "capture.submit",
+    "capture.process",
     "capture.submitText",
     "capture.routeAsTask",
     "capture.history",
@@ -67,11 +69,40 @@ const routeCommand = {
   correlationId: ids.correlation,
 };
 
+const submitUrlCommand = {
+  ...captureCommand,
+  commandName: "capture.submit",
+  payload: {
+    spaceId: ids.space,
+    original: {
+      kind: "url",
+      url: "https://example.test/research?utm_source=ignored",
+      title: "Research source",
+    },
+    deviceId: "test-device",
+    source: "global_quick_capture",
+  },
+  idempotencyKey: "capture-url-1",
+};
+
+const processCaptureCommand = {
+  ...captureCommand,
+  commandName: "capture.process",
+  payload: {
+    captureId: ids.query,
+    destination: "auto",
+  },
+  idempotencyKey: "capture-process-1",
+  expectedVersions: { [ids.query]: 1 },
+};
+
 describe("application contracts", () => {
   it("accepts strict execution, command, and query envelopes", () => {
     assert.equal(validateExecutionContext(context).ok, true);
     assert.equal(validateCommandEnvelope(captureCommand).ok, true);
     assert.equal(validateCommandEnvelope(routeCommand).ok, true);
+    assert.equal(validateCommandEnvelope(submitUrlCommand).ok, true);
+    assert.equal(validateCommandEnvelope(processCaptureCommand).ok, true);
     assert.equal(
       validateQueryEnvelope({
         contractVersion: 1,
@@ -94,6 +125,45 @@ describe("application contracts", () => {
       }).ok,
       true,
     );
+  });
+
+  it("accepts text, URL, and file originals while rejecting file content", () => {
+    const submitText = validateCommandEnvelope({
+      ...submitUrlCommand,
+      payload: {
+        ...submitUrlCommand.payload,
+        original: { kind: "text", text: "Follow up with Patryk" },
+      },
+    });
+    const submitFile = validateCommandEnvelope({
+      ...submitUrlCommand,
+      payload: {
+        ...submitUrlCommand.payload,
+        original: {
+          kind: "file",
+          displayName: "brief.pdf",
+          reference: "constellation-file://picker/brief.pdf",
+          mediaType: "application/pdf",
+          sizeBytes: 42_000,
+        },
+      },
+    });
+    const fileWithContent = validateCommandEnvelope({
+      ...submitUrlCommand,
+      payload: {
+        ...submitUrlCommand.payload,
+        original: {
+          kind: "file",
+          displayName: "brief.pdf",
+          reference: "constellation-file://picker/brief.pdf",
+          content: "private bytes",
+        },
+      },
+    });
+
+    assert.equal(submitText.ok, true);
+    assert.equal(submitFile.ok, true);
+    assert.equal(fileWithContent.ok, false);
   });
 
   it("rejects unknown route and task-list fields at strict boundaries", () => {

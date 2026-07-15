@@ -1,6 +1,7 @@
 import type {
   AuditReceiptId,
   CaptureId,
+  CaptureOriginal,
   CommandId,
   CorrelationId,
   DocumentId,
@@ -156,6 +157,8 @@ interface CaptureBase {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
   readonly originalText: string;
+  readonly original: CaptureOriginal;
+  readonly originalFingerprint: string;
   readonly deviceId: string;
   readonly source: "global_quick_capture" | "in_app_quick_capture";
   readonly capturedAt: string;
@@ -174,7 +177,26 @@ export type RoutedTaskCapture = CaptureBase & {
   readonly routedBy: PrincipalId;
 };
 
-export type Capture = PendingCapture | RoutedTaskCapture;
+export type RoutedKnowledgeSourceCapture = CaptureBase & {
+  readonly processingState: "routed_as_knowledge_source";
+  readonly derivedKnowledgeSourceId: KnowledgeSourceId;
+  readonly routedAt: string;
+  readonly routedBy: PrincipalId;
+};
+
+export type ReviewCapture = CaptureBase & {
+  readonly processingState: "needs_review";
+  readonly reviewReason: "duplicate" | "unsupported";
+  readonly duplicateOfCaptureId?: CaptureId;
+  readonly attentionSignalId: AttentionSignalId;
+  readonly reviewedAt: string;
+};
+
+export type Capture =
+  | PendingCapture
+  | RoutedTaskCapture
+  | RoutedKnowledgeSourceCapture
+  | ReviewCapture;
 
 export interface TaskStatusDefinition {
   readonly id: TaskStatusId;
@@ -195,6 +217,12 @@ export interface Task {
   readonly statusId: TaskStatusId;
   readonly recordState: "active" | "removed";
   readonly completionState: "open" | "completed";
+  readonly operationalState: "actionable" | "waiting" | "blocked";
+  readonly waitingOn?: {
+    readonly kind: "person" | "task" | "external";
+    readonly label: string;
+    readonly recordId?: string;
+  };
   readonly completedAt?: string;
   readonly sourceCaptureId?: CaptureId;
   readonly createdBy: PrincipalId;
@@ -224,7 +252,8 @@ export type CommentTarget =
 
 export type AttentionDestination =
   | CommentTarget
-  | { readonly kind: "document"; readonly documentId: DocumentId };
+  | { readonly kind: "document"; readonly documentId: DocumentId }
+  | { readonly kind: "capture"; readonly captureId: CaptureId };
 
 export interface CommentRevision {
   readonly body: string;
@@ -264,7 +293,9 @@ export interface AttentionSignal {
     | "knowledge_evidence_changed"
     | "renewal_due"
     | "relationship_fact_stale"
-    | "decision_impact_review";
+    | "decision_impact_review"
+    | "capture_duplicate"
+    | "capture_unsupported";
   readonly destination: AttentionDestination;
   readonly sourceRecordId: string;
   readonly deduplicationKey: string;
@@ -317,6 +348,7 @@ export interface KnowledgeSource {
   readonly canonicalUrl?: string;
   readonly excerpt?: string;
   readonly availability: "reference_only" | "available" | "unavailable";
+  readonly sourceCaptureId?: CaptureId;
   readonly observedAt: string;
   readonly createdBy: PrincipalId;
   readonly version: number;
@@ -451,6 +483,38 @@ export type StrategicRecord =
       readonly state: "active" | "archived";
     })
   | (StrategicRecordBase & {
+      readonly kind: "initiative";
+      readonly title: string;
+      readonly intendedOutcome: string;
+      readonly state: "active" | "closed";
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "work_link";
+      readonly linkType:
+        | "project_advances_initiative"
+        | "project_serves_area"
+        | "task_depends_on_task";
+      readonly sourceRecordId: string;
+      readonly targetRecordId: string;
+      readonly state: "active" | "removed";
+      readonly removedAt?: string;
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "saved_view";
+      readonly name: string;
+      readonly filters: {
+        readonly operationalStates?: readonly (
+          "actionable" | "waiting" | "blocked"
+        )[];
+        readonly projectIds?: readonly ProjectId[];
+        readonly areaIds?: readonly StrategicRecordId[];
+        readonly initiativeIds?: readonly StrategicRecordId[];
+        readonly unassigned?: boolean;
+      };
+      readonly sort: "updated_desc" | "due_asc" | "title_asc";
+      readonly state: "active" | "deleted";
+    })
+  | (StrategicRecordBase & {
       readonly kind: "recurrence";
       readonly title: string;
       readonly taskTitle: string;
@@ -497,6 +561,39 @@ export type UndoDescriptor =
       readonly projectId: ProjectId;
       readonly priorOutcome: string;
       readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "task.restore_operational_state";
+      readonly taskId: TaskId;
+      readonly priorOperationalState: Task["operationalState"];
+      readonly priorWaitingOn?: Task["waitingOn"];
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "work_link.restore_state";
+      readonly linkId: StrategicRecordId;
+      readonly priorState: "active" | "removed";
+      readonly priorRemovedAt?: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "capture.undo_knowledge_route";
+      readonly captureId: CaptureId;
+      readonly sourceId: KnowledgeSourceId;
+      readonly resultingCaptureVersion: number;
+      readonly resultingSourceVersion: number;
       readonly consumedByCommandId?: CommandId;
     }
   | {
@@ -653,6 +750,27 @@ export type DomainEvent = { readonly commandId: CommandId } & (
     }
   | {
       readonly id: EventId;
+      readonly type: "capture.routed_as_knowledge_source";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: CaptureId;
+      readonly aggregateVersion: number;
+      readonly knowledgeSourceId: KnowledgeSourceId;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "capture.needs_review";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: CaptureId;
+      readonly aggregateVersion: number;
+      readonly attentionSignalId: AttentionSignalId;
+      readonly reason: ReviewCapture["reviewReason"];
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
       readonly type:
         | "project.created"
         | "project.outcome_updated"
@@ -689,7 +807,11 @@ export type DomainEvent = { readonly commandId: CommandId } & (
     }
   | {
       readonly id: EventId;
-      readonly type: "task.status_changed" | "task.completed" | "task.reopened";
+      readonly type:
+        | "task.status_changed"
+        | "task.operational_state_changed"
+        | "task.completed"
+        | "task.reopened";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: TaskId;

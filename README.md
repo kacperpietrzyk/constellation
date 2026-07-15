@@ -55,8 +55,14 @@ Constellation is in **pre-alpha local Alpha work**. There is no published signed
 release yet, and no contract should be considered stable. The repository now
 contains a storage-neutral Application Kernel, a restart-safe encrypted local
 store, an in-memory Electron developer preview, and a packaged Alpha candidate.
-The implemented desktop journey covers Quick Capture to Task, Project outcome
-and Task relations, task status/completion, deterministic scoped search,
+The implemented desktop journey covers Universal Quick Capture for text, URLs,
+and file references, deterministic routing to Tasks or knowledge sources,
+duplicate review-by-exception in Attention, Project outcome and Task relations,
+and a Work destination that connects Areas, Initiatives, Projects, dependencies,
+waiting direction, and saved deterministic views without imposing a mandatory
+containment tree. The same work-composition commands and query are available to
+desktop and MCP operators with Space-scoped authorization,
+task status/completion, deterministic scoped search,
 explainable weekly focus, Capture History, meaningful activity, and previewed
 undo. Destinations and open Task or Project contexts share one bounded tab rail
 with Back/Forward history and a context-preserving inspector. It can also export
@@ -68,6 +74,15 @@ plaintext or in-memory fallback, and stops in recovery instead of silently
 replacing a missing ready database. If an established workspace cannot open,
 the same packaged application presents a recovery-only restore path rather than
 requiring a developer tool.
+
+The desktop can create and switch independent workspaces without sharing their
+database, key, Data Home, Hub credential, or local MCP endpoint. A personal
+Cockpit may read a bounded focus summary from locally authorized workspace
+projections, but it never joins their records. Settings also accepts a strict,
+bounded starter-workspace JSON manifest; the example at
+[`docs/examples/starter-workspace.json`](docs/examples/starter-workspace.json)
+creates Areas, Initiatives, Projects, Tasks, and explicit links through the same
+idempotent, audited commands used by the UI and MCP.
 
 Each durable workspace reports a versioned Data Home descriptor. The
 local-only provider says explicitly that its encrypted database is canonical on
@@ -82,7 +97,7 @@ synchronizes an open database file through a generic cloud folder.
 
 The packaged gate builds the pinned SQLCipher binding as the only unpacked
 native module and drives the real window, context-isolated preload, IPC,
-Capture-to-Task interaction, encrypted backup/restore, and relaunch on native
+typed Capture processing, encrypted backup/restore, and relaunch on native
 macOS arm64, native macOS x64, and Windows x64 runners. No macOS result depends
 on Rosetta. The coordinated gate uses three isolated packaged profiles: two
 devices for one owner plus a separately scoped second human. It restores the
@@ -280,8 +295,10 @@ npm run dev:desktop
 ```
 
 Use the Quick Capture button or `Command/Ctrl+Shift+K`. The preview is
-development infrastructure, not a durable local Alpha; closing it clears its
-synthetic workspace.
+development infrastructure, not a durable local Alpha. Text becomes a Task;
+URLs and selected file references become knowledge sources; exact duplicates
+remain preserved and appear in Attention for an explicit destination choice.
+Closing the preview clears its synthetic workspace.
 
 Questions and early product discussion belong in
 [GitHub Discussions](https://github.com/kacperpietrzyk/constellation/discussions).

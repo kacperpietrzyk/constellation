@@ -761,7 +761,11 @@ describe("SQLite ApplicationStore", () => {
           user_version: number;
         }
       ).user_version,
-      11,
+      13,
+    );
+    assert.equal(
+      store.read((view) => view.getTask(taskId))?.operationalState,
+      "actionable",
     );
     assert.equal(
       (
@@ -1138,6 +1142,8 @@ describe("SQLite ApplicationStore", () => {
       workspaceId: context().workspaceId,
       spaceId: context().spaceScope[0]!,
       originalText: "Must roll back",
+      original: { kind: "text" as const, text: "Must roll back" },
+      originalFingerprint: "synthetic-capture-fingerprint",
       deviceId: "synthetic-local-store-test",
       source: "in_app_quick_capture" as const,
       capturedAt: "2026-07-13T20:00:00.000Z",

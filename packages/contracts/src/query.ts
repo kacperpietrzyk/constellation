@@ -23,7 +23,7 @@ import {
   DocumentRevisionIdSchema,
   StrategicRecordIdSchema,
 } from "./ids.js";
-import { ContractVersionSchema } from "./command.js";
+import { CaptureOriginalSchema, ContractVersionSchema } from "./command.js";
 import { RequestOriginSchema } from "./execution-context.js";
 import { ImportedMeetingSchema } from "./meeting-loop.js";
 
@@ -120,6 +120,11 @@ export const AttentionInboxQuerySchema = QueryMetadataSchema.extend({
 
 export const ProjectListQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("project.list"),
+  parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
+}).strict();
+
+export const WorkOverviewQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("work.overview"),
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
 }).strict();
 
@@ -235,6 +240,7 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   CommentMentionCandidatesQuerySchema,
   AttentionInboxQuerySchema,
   ProjectListQuerySchema,
+  WorkOverviewQuerySchema,
   DocumentListQuerySchema,
   KnowledgeListQuerySchema,
   KnowledgeDocumentContextQuerySchema,
@@ -262,6 +268,7 @@ const CaptureHistoryItemBaseSchema = z.object({
   id: CaptureIdSchema,
   spaceId: SpaceIdSchema,
   originalText: z.string(),
+  original: CaptureOriginalSchema,
   source: z.enum(["global_quick_capture", "in_app_quick_capture"]),
   capturedAt: z.iso.datetime({ offset: true }),
   version: z.int().positive(),
@@ -377,6 +384,41 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     state: z.enum(["active", "archived"]),
   }).strict(),
   StrategicRecordBaseSchema.extend({
+    kind: z.literal("initiative"),
+    title: z.string(),
+    intendedOutcome: z.string(),
+    state: z.enum(["active", "closed"]),
+  }).strict(),
+  StrategicRecordBaseSchema.extend({
+    kind: z.literal("work_link"),
+    linkType: z.enum([
+      "project_advances_initiative",
+      "project_serves_area",
+      "task_depends_on_task",
+    ]),
+    sourceRecordId: z.uuid(),
+    targetRecordId: z.uuid(),
+    state: z.enum(["active", "removed"]),
+    removedAt: z.iso.datetime({ offset: true }).optional(),
+  }).strict(),
+  StrategicRecordBaseSchema.extend({
+    kind: z.literal("saved_view"),
+    name: z.string(),
+    filters: z
+      .object({
+        operationalStates: z
+          .array(z.enum(["actionable", "waiting", "blocked"]))
+          .optional(),
+        projectIds: z.array(ProjectIdSchema).optional(),
+        areaIds: z.array(StrategicRecordIdSchema).optional(),
+        initiativeIds: z.array(StrategicRecordIdSchema).optional(),
+        unassigned: z.boolean().optional(),
+      })
+      .strict(),
+    sort: z.enum(["updated_desc", "due_asc", "title_asc"]),
+    state: z.enum(["active", "deleted"]),
+  }).strict(),
+  StrategicRecordBaseSchema.extend({
     kind: z.literal("recurrence"),
     title: z.string(),
     taskTitle: z.string(),
@@ -411,9 +453,119 @@ const CaptureHistoryItemSchema = z.discriminatedUnion("processingState", [
     routedAt: z.iso.datetime({ offset: true }),
     routedBy: PrincipalIdSchema,
   }).strict(),
+  CaptureHistoryItemBaseSchema.extend({
+    processingState: z.literal("routed_as_knowledge_source"),
+    derivedKnowledgeSourceId: KnowledgeSourceIdSchema,
+    routedAt: z.iso.datetime({ offset: true }),
+    routedBy: PrincipalIdSchema,
+  }).strict(),
+  CaptureHistoryItemBaseSchema.extend({
+    processingState: z.literal("needs_review"),
+    reviewReason: z.enum(["duplicate", "unsupported"]),
+    duplicateOfCaptureId: CaptureIdSchema.optional(),
+    attentionSignalId: AttentionSignalIdSchema,
+    reviewedAt: z.iso.datetime({ offset: true }),
+  }).strict(),
 ]);
 
 export const QueryProjectionSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("work.overview"),
+      tasks: z.array(
+        z
+          .object({
+            id: TaskIdSchema,
+            title: z.string(),
+            operationalState: z.enum(["actionable", "waiting", "blocked"]),
+            waitingOn: z
+              .object({
+                kind: z.enum(["person", "task", "external"]),
+                label: z.string(),
+                recordId: z.uuid().optional(),
+              })
+              .strict()
+              .optional(),
+            completionState: z.enum(["open", "completed"]),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      projects: z.array(
+        z
+          .object({
+            id: ProjectIdSchema,
+            title: z.string(),
+            intendedOutcome: z.string(),
+            lifecycle: z.enum(["active", "closed"]),
+            version: z.int().positive(),
+          })
+          .strict(),
+      ),
+      areas: z.array(
+        z
+          .object({
+            id: StrategicRecordIdSchema,
+            title: z.string(),
+            responsibility: z.string(),
+            state: z.enum(["active", "archived"]),
+            version: z.int().positive(),
+          })
+          .strict(),
+      ),
+      initiatives: z.array(
+        z
+          .object({
+            id: StrategicRecordIdSchema,
+            title: z.string(),
+            intendedOutcome: z.string(),
+            state: z.enum(["active", "closed"]),
+            version: z.int().positive(),
+          })
+          .strict(),
+      ),
+      links: z.array(
+        z
+          .object({
+            id: StrategicRecordIdSchema,
+            linkType: z.enum([
+              "project_advances_initiative",
+              "project_serves_area",
+              "task_depends_on_task",
+            ]),
+            sourceRecordId: z.uuid(),
+            targetRecordId: z.uuid(),
+            state: z.enum(["active", "removed"]),
+            version: z.int().positive(),
+          })
+          .strict(),
+      ),
+      savedViews: z.array(
+        z
+          .object({
+            id: StrategicRecordIdSchema,
+            name: z.string(),
+            filters: z
+              .object({
+                operationalStates: z
+                  .array(z.enum(["actionable", "waiting", "blocked"]))
+                  .optional(),
+                projectIds: z.array(ProjectIdSchema).optional(),
+                areaIds: z.array(StrategicRecordIdSchema).optional(),
+                initiativeIds: z.array(StrategicRecordIdSchema).optional(),
+                unassigned: z.boolean().optional(),
+              })
+              .strict(),
+            sort: z.enum(["updated_desc", "due_asc", "title_asc"]),
+            state: z.enum(["active", "deleted"]),
+            version: z.int().positive(),
+          })
+          .strict(),
+      ),
+      freshness: FreshnessSchema,
+    })
+    .strict(),
   z
     .object({
       kind: z.literal("relationship.workspace"),
@@ -814,6 +966,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "renewal_due",
               "relationship_fact_stale",
               "decision_impact_review",
+              "capture_duplicate",
+              "capture_unsupported",
             ]),
             destination: z.discriminatedUnion("kind", [
               z
@@ -829,6 +983,12 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
                 .object({
                   kind: z.literal("document"),
                   documentId: DocumentIdSchema,
+                })
+                .strict(),
+              z
+                .object({
+                  kind: z.literal("capture"),
+                  captureId: CaptureIdSchema,
                 })
                 .strict(),
             ]),
@@ -1054,6 +1214,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
         .enum([
           "project.restore_outcome",
           "task.restore_state",
+          "task.restore_operational_state",
+          "work_link.restore_state",
           "relation.remove",
           "relation.restore",
           "capture.undo_route",

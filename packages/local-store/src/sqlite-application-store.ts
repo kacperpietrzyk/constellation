@@ -78,7 +78,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 13;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
   checkpoint: null,
@@ -565,6 +565,25 @@ const schemaV11 = `
     ON strategic_records(workspace_id, space_id, updated_at DESC, id DESC);
 `;
 
+const schemaV12 = `
+  UPDATE captures
+  SET payload_json = json_set(
+    payload_json,
+    '$.original', json_object(
+      'kind', 'text',
+      'text', json_extract(payload_json, '$.originalText')
+    ),
+    '$.originalFingerprint', 'legacy:' || id
+  )
+  WHERE json_type(payload_json, '$.original') IS NULL;
+`;
+
+const schemaV13 = `
+  UPDATE tasks
+  SET payload_json = json_set(payload_json, '$.operationalState', 'actionable')
+  WHERE json_type(payload_json, '$.operationalState') IS NULL;
+`;
+
 export interface LocalCoordinationState {
   readonly workspaceId: WorkspaceId;
   readonly providerInstanceId: string;
@@ -736,6 +755,8 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
     if (currentVersion < 9) database.exec(schemaV9);
     if (currentVersion < 10) database.exec(schemaV10);
     if (currentVersion < 11) database.exec(schemaV11);
+    if (currentVersion < 12) database.exec(schemaV12);
+    if (currentVersion < 13) database.exec(schemaV13);
     database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
     database.exec("COMMIT;");
   } catch (error) {
@@ -1103,6 +1124,26 @@ class SqliteReadView implements ApplicationWave2ReadView {
           workspaceId: stringValue(row, "workspace_id", "capture"),
           spaceId: stringValue(row, "space_id", "capture"),
         });
+  }
+
+  public listCapturesInSpace(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly Capture[] {
+    return this.database
+      .prepare(
+        "SELECT id, workspace_id, space_id, payload_json FROM captures WHERE workspace_id = ? AND space_id = ? ORDER BY captured_at DESC, id DESC",
+      )
+      .all(workspaceId, spaceId)
+      .map((row) =>
+        parsePayload<Capture>(
+          row,
+          "id",
+          stringValue(row, "id", "capture"),
+          "capture",
+          { workspaceId, spaceId },
+        ),
+      );
   }
 
   public listCaptures(

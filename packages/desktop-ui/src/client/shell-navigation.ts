@@ -20,6 +20,113 @@ export interface ShellNavigationState {
   readonly historyIndex: number;
 }
 
+const RESTORABLE_SURFACES = new Set<SurfaceId>([
+  "cockpit",
+  "work",
+  "tasks",
+  "projects",
+  "history",
+  "activity",
+  "attention",
+  "access",
+  "documents",
+  "meetings",
+  "relationships",
+  "settings",
+]);
+
+export const serializeShellNavigation = (state: ShellNavigationState): string =>
+  JSON.stringify({ version: 1, state });
+
+export const restoreShellNavigation = (
+  value: string | null,
+  fallback: ShellContext,
+): ShellNavigationState => {
+  if (value === null) return createShellNavigation(fallback);
+  try {
+    const parsed = JSON.parse(value) as {
+      readonly version?: unknown;
+      readonly state?: Partial<ShellNavigationState>;
+    };
+    const state = parsed.state;
+    if (
+      parsed.version !== 1 ||
+      state === undefined ||
+      !Array.isArray(state.tabs) ||
+      state.tabs.length === 0 ||
+      state.tabs.length > MAX_TABS ||
+      typeof state.activeKey !== "string" ||
+      !Array.isArray(state.history) ||
+      typeof state.historyIndex !== "number"
+    )
+      return createShellNavigation(fallback);
+    const tabs = state.tabs.filter(
+      (tab): tab is ShellContext =>
+        typeof tab === "object" &&
+        tab !== null &&
+        typeof tab.key === "string" &&
+        typeof tab.label === "string" &&
+        RESTORABLE_SURFACES.has(tab.surface),
+    );
+    if (tabs.length !== state.tabs.length)
+      return createShellNavigation(fallback);
+    if (!tabs.some((tab) => tab.key === state.activeKey))
+      return createShellNavigation(fallback);
+    const keys = new Set(tabs.map((tab) => tab.key));
+    const history = state.history.filter(
+      (key): key is string => typeof key === "string" && keys.has(key),
+    );
+    if (history.length === 0) return createShellNavigation(fallback);
+    return {
+      tabs,
+      activeKey: state.activeKey,
+      history: history.slice(-MAX_HISTORY),
+      historyIndex: Math.min(
+        Math.max(0, Math.trunc(state.historyIndex)),
+        history.length - 1,
+      ),
+    };
+  } catch {
+    return createShellNavigation(fallback);
+  }
+};
+
+export const pruneInaccessibleShellContexts = (
+  state: ShellNavigationState,
+  access: {
+    readonly taskIds: ReadonlySet<TaskId>;
+    readonly projectIds: ReadonlySet<ProjectId>;
+  },
+  fallback: ShellContext,
+): ShellNavigationState => {
+  const tabs = state.tabs.filter(
+    (tab) =>
+      (tab.taskId === undefined || access.taskIds.has(tab.taskId)) &&
+      (tab.projectId === undefined || access.projectIds.has(tab.projectId)),
+  );
+  if (tabs.length === 0) return createShellNavigation(fallback);
+  const keys = new Set(tabs.map((tab) => tab.key));
+  const activeKey = keys.has(state.activeKey) ? state.activeKey : tabs[0]!.key;
+  let history = state.history.filter((key) => keys.has(key));
+  let historyIndex = Math.min(state.historyIndex, history.length - 1);
+  if (history.length === 0) {
+    history = [activeKey];
+    historyIndex = 0;
+  } else if (history[historyIndex] !== activeKey) {
+    history = [...history.slice(0, historyIndex + 1), activeKey];
+    historyIndex = history.length - 1;
+  }
+  if (
+    tabs.length === state.tabs.length &&
+    history.length === state.history.length &&
+    activeKey === state.activeKey &&
+    historyIndex === state.historyIndex
+  ) {
+    return state;
+  }
+  return { tabs, activeKey, history, historyIndex };
+};
+
 export const destinationContext = (
   surface: SurfaceId,
   label: string,

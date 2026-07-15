@@ -59,6 +59,7 @@ export type GeneratedIdKind =
   | "task"
   | "project"
   | "document"
+  | "knowledgeSource"
   | "relation"
   | "taskStatus"
   | "membership"
@@ -181,6 +182,10 @@ export interface ApplicationReadView {
     principalId: PrincipalId,
   ): readonly AttentionSignal[];
   getCapture(id: CaptureId): Capture | undefined;
+  listCapturesInSpace(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly Capture[];
   listCaptures(request: CapturePageRequest): readonly Capture[] | undefined;
   getTask(id: TaskId): Task | undefined;
   listTasks(request: TaskPageRequest): readonly Task[] | undefined;

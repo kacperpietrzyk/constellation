@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import type {
+  CaptureOriginal,
   PrincipalId,
   ProjectId,
   RelationId,
@@ -24,6 +25,9 @@ import { AttentionSurface, CommentsPanel } from "./CollaborationSurfaces.js";
 import { DocumentsSurface } from "./DocumentsSurface.js";
 import { MeetingsSurface } from "./MeetingsSurface.js";
 import { StrategicDepthSurface } from "./StrategicDepthSurface.js";
+import { WorkSurface } from "./WorkSurface.js";
+import { SettingsSurface } from "./SettingsSurface.js";
+import { OnboardingFlow } from "./OnboardingFlow.js";
 
 import {
   ActivitySurface,
@@ -51,7 +55,7 @@ import {
   setWorkspaceMemberAccess,
   setCommentResolved,
   setProjectLifecycle,
-  submitCaptureAsTask,
+  submitQuickCapture,
   undoCommand,
   unrelateTask,
   updateProjectOutcome,
@@ -62,6 +66,7 @@ import {
   createRemoteAgentGrant,
   rotateRemoteAgentCredential,
   revokeRemoteAgentGrant,
+  routeCaptureException,
   type AuditReceiptProjection,
   type DesktopSnapshot,
   type MutationFailure,
@@ -81,6 +86,9 @@ import {
   moveShellHistory,
   openShellContext,
   projectContext,
+  pruneInaccessibleShellContexts,
+  restoreShellNavigation,
+  serializeShellNavigation,
   taskContext,
   type ShellContext,
 } from "./client/shell-navigation.js";
@@ -168,7 +176,7 @@ const BrandMark = () => (
   </svg>
 );
 
-const CaptureDialog = ({
+export const CaptureDialog = ({
   busy,
   workspaceName,
   onClose,
@@ -177,9 +185,12 @@ const CaptureDialog = ({
   readonly busy: boolean;
   readonly workspaceName: string;
   readonly onClose: () => void;
-  readonly onSubmit: (text: string) => void;
+  readonly onSubmit: (original: CaptureOriginal) => void;
 }) => {
+  const [mode, setMode] = useState<CaptureOriginal["kind"]>("text");
   const [text, setText] = useState("");
+  const [url, setUrl] = useState("");
+  const [file, setFile] = useState<File>();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -189,8 +200,25 @@ const CaptureDialog = ({
   }, []);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (text.trim() && !busy) onSubmit(text);
+    if (busy) return;
+    if (mode === "text" && text.trim()) onSubmit({ kind: "text", text });
+    if (mode === "url" && url.trim())
+      onSubmit({ kind: "url", url: url.trim() });
+    if (mode === "file" && file !== undefined)
+      onSubmit({
+        kind: "file",
+        displayName: file.name,
+        reference: `external-file:${file.name}:${file.size}:${file.lastModified}`,
+        ...(file.type.length === 0 ? {} : { mediaType: file.type }),
+        sizeBytes: file.size,
+      });
   };
+  const canSubmit =
+    mode === "text"
+      ? text.trim().length > 0
+      : mode === "url"
+        ? url.trim().length > 0
+        : file !== undefined;
   return (
     <dialog
       ref={dialogRef}
@@ -220,22 +248,67 @@ const CaptureDialog = ({
           </button>
         </header>
         <form onSubmit={submit}>
-          <label className="sr-only" htmlFor="capture-text">
-            Treść przechwycenia
-          </label>
-          <textarea
-            id="capture-text"
-            name="capture"
-            ref={inputRef}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder="Myśl, zadanie, link albo coś do sprawdzenia…"
-            maxLength={500}
-            onKeyDown={(event) => {
-              if ((event.metaKey || event.ctrlKey) && event.key === "Enter")
-                submit(event);
-            }}
-          />
+          <div
+            className="capture-kind"
+            role="tablist"
+            aria-label="Rodzaj Capture"
+          >
+            {(["text", "url", "file"] as const).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                role="tab"
+                aria-selected={mode === kind}
+                onClick={() => setMode(kind)}
+              >
+                {kind === "text" ? "Tekst" : kind === "url" ? "Link" : "Plik"}
+              </button>
+            ))}
+          </div>
+          {mode === "text" ? (
+            <>
+              <label className="sr-only" htmlFor="capture-text">
+                Treść przechwycenia
+              </label>
+              <textarea
+                id="capture-text"
+                name="capture"
+                ref={inputRef}
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                placeholder="Myśl, zadanie albo coś do zrobienia…"
+                maxLength={262_144}
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter")
+                    submit(event);
+                }}
+              />
+            </>
+          ) : mode === "url" ? (
+            <label className="capture-field">
+              <span>Adres URL</span>
+              <input
+                type="url"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="https://…"
+                autoFocus
+                required
+              />
+            </label>
+          ) : (
+            <label className="capture-file">
+              <span>{file?.name ?? "Wybierz plik z urządzenia"}</span>
+              <input
+                type="file"
+                onChange={(event) => setFile(event.target.files?.[0])}
+              />
+              <small>
+                Constellation zachowa metadane i prywatne odwołanie, nie kopię
+                zawartości.
+              </small>
+            </label>
+          )}
           <div className="capture-target">
             <div>
               <span>Workspace</span>
@@ -243,7 +316,7 @@ const CaptureDialog = ({
             </div>
             <div>
               <span>Wynik</span>
-              <strong>Zadanie · jawny routing</strong>
+              <strong>Reguła aplikacji · z możliwością cofnięcia</strong>
             </div>
           </div>
           <footer className="capture-footer">
@@ -251,9 +324,9 @@ const CaptureDialog = ({
             <button
               className="primary-button"
               type="submit"
-              disabled={busy || !text.trim()}
+              disabled={busy || !canSubmit}
             >
-              {busy ? "Zapisuję…" : "Zapisz jako zadanie"}
+              {busy ? "Przetwarzam…" : "Zapisz i uporządkuj"}
             </button>
           </footer>
         </form>
@@ -271,13 +344,15 @@ const navItems: readonly {
   { id: "cockpit", label: "Tydzień", icon: "cockpit", shortcut: "1" },
   { id: "meetings", label: "Spotkania", icon: "meetings", shortcut: "2" },
   { id: "relationships", label: "Relacje", icon: "relationships" },
-  { id: "tasks", label: "Zadania", icon: "tasks", shortcut: "3" },
-  { id: "projects", label: "Projekty", icon: "project", shortcut: "4" },
-  { id: "history", label: "Historia Capture", icon: "history", shortcut: "5" },
-  { id: "activity", label: "Aktywność", icon: "activity", shortcut: "6" },
-  { id: "attention", label: "Do uwagi", icon: "attention", shortcut: "7" },
-  { id: "access", label: "Dostęp", icon: "access", shortcut: "8" },
-  { id: "documents", label: "Dokumenty", icon: "documents", shortcut: "9" },
+  { id: "work", label: "Praca", icon: "project", shortcut: "3" },
+  { id: "tasks", label: "Zadania", icon: "tasks", shortcut: "4" },
+  { id: "projects", label: "Projekty", icon: "project", shortcut: "5" },
+  { id: "history", label: "Historia Capture", icon: "history", shortcut: "6" },
+  { id: "activity", label: "Aktywność", icon: "activity", shortcut: "7" },
+  { id: "attention", label: "Do uwagi", icon: "attention", shortcut: "8" },
+  { id: "access", label: "Dostęp", icon: "access", shortcut: "9" },
+  { id: "documents", label: "Dokumenty", icon: "documents" },
+  { id: "settings", label: "Ustawienia", icon: "access" },
 ];
 
 export const RealApp = ({
@@ -286,12 +361,40 @@ export const RealApp = ({
   readonly client: ConstellationRendererClient | undefined;
 }) => {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
-  const [navigation, setNavigation] = useState(() =>
-    createShellNavigation(destinationContext("cockpit", "Tydzień")),
-  );
+  const [navigation, setNavigation] = useState(() => {
+    const parameters = new URLSearchParams(window.location.search);
+    const requested = navItems.find(
+      (item) => item.id === parameters.get("destination"),
+    );
+    const fallback = destinationContext(
+      requested?.id ?? "cockpit",
+      requested?.label ?? "Tydzień",
+    );
+    return parameters.get("detached") === "1"
+      ? createShellNavigation(fallback)
+      : restoreShellNavigation(
+          localStorage.getItem("constellation.shell-navigation"),
+          fallback,
+        );
+  });
+  const [favorites, setFavorites] = useState<readonly SurfaceId[]>(() => {
+    try {
+      const parsed = JSON.parse(
+        localStorage.getItem("constellation.favorites") ?? "[]",
+      ) as unknown;
+      return Array.isArray(parsed)
+        ? parsed.filter((item): item is SurfaceId =>
+            navItems.some((entry) => entry.id === item),
+          )
+        : ["cockpit", "work"];
+    } catch {
+      return ["cockpit", "work"];
+    }
+  });
   const [captureOpen, setCaptureOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<TaskId>();
   const [selectedProjectId, setSelectedProjectId] = useState<ProjectId>();
@@ -327,6 +430,30 @@ export const RealApp = ({
     : "Ctrl";
   const activeContext = activeShellContext(navigation);
   const surface = activeContext.surface;
+  const detachedWindow =
+    new URLSearchParams(window.location.search).get("detached") === "1";
+  const recentContexts = navigation.history
+    .slice(0, navigation.historyIndex + 1)
+    .reverse()
+    .reduce<ShellContext[]>((items, key) => {
+      if (key === activeContext.key || items.some((item) => item.key === key))
+        return items;
+      const context = navigation.tabs.find((item) => item.key === key);
+      if (context) items.push(context);
+      return items;
+    }, [])
+    .slice(0, 3);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "constellation.shell-navigation",
+      serializeShellNavigation(navigation),
+    );
+  }, [navigation]);
+
+  useEffect(() => {
+    localStorage.setItem("constellation.favorites", JSON.stringify(favorites));
+  }, [favorites]);
 
   const openContext = useCallback((context: ShellContext) => {
     setNavigation((current) => openShellContext(current, context));
@@ -338,6 +465,23 @@ export const RealApp = ({
   }, [activeContext.projectId, activeContext.taskId]);
 
   const snapshot = state.kind === "ready" ? state.snapshot : undefined;
+  useEffect(() => {
+    if (!snapshot) return;
+    const taskIds = new Set(snapshot.tasks.map((task) => task.id));
+    const projectIds = new Set(
+      snapshot.projects.kind === "ready"
+        ? snapshot.projects.data.items.map((project) => project.id)
+        : [],
+    );
+    setNavigation((current) =>
+      pruneInaccessibleShellContexts(
+        current,
+        { taskIds, projectIds },
+        destinationContext("cockpit", "Tydzień"),
+      ),
+    );
+  }, [snapshot]);
+
   useEffect(() => {
     if (!client) return;
     return client.onAttentionActivated((destination) => {
@@ -382,6 +526,13 @@ export const RealApp = ({
       .then((next) => {
         if (!active || next === undefined) return;
         setState({ kind: "ready", snapshot: next });
+        if (
+          next.build.channel !== "developer-preview" &&
+          localStorage.getItem(
+            `constellation.onboarded:${next.bootstrap.workspace.id}`,
+          ) !== "1"
+        )
+          setOnboardingOpen(true);
       })
       .catch(
         (error: unknown) =>
@@ -713,12 +864,14 @@ export const RealApp = ({
           disabled={isPreview}
           title={
             isPreview
-              ? "Backup jest dostępny w szyfrowanym lokalnym workspace."
+              ? "Otwórz ustawienia workspace"
               : coordinatedDataHome
-                ? "Otwórz skoordynowany Data Home i odzyskiwanie workspace"
-                : "Otwórz Data Home i odzyskiwanie workspace"
+                ? "Otwórz ustawienia skoordynowanego workspace"
+                : "Otwórz ustawienia i przełączanie workspace"
           }
-          onClick={() => setRecoveryOpen(true)}
+          onClick={() =>
+            openContext(destinationContext("settings", "Ustawienia"))
+          }
         >
           <span className="workspace-avatar">I</span>
           <span>
@@ -741,44 +894,105 @@ export const RealApp = ({
           <kbd>{modifierLabel}K</kbd>
         </button>
         <nav ref={navRef} aria-label="Główna nawigacja" onKeyDown={navKeyDown}>
-          <p className="nav-label">Praca</p>
+          {favorites.length > 0 && (
+            <>
+              <p className="nav-label">Ulubione</p>
+              {favorites.map((favorite) => {
+                const item = navItems.find((entry) => entry.id === favorite);
+                return item ? (
+                  <button
+                    key={`favorite:${item.id}`}
+                    className={`nav-item nav-favorite ${surface === item.id ? "active" : ""}`}
+                    aria-current={surface === item.id ? "page" : undefined}
+                    onClick={() =>
+                      openContext(destinationContext(item.id, item.label))
+                    }
+                  >
+                    <Icon name={item.icon} />
+                    <span>{item.label}</span>
+                    <span aria-hidden="true">★</span>
+                  </button>
+                ) : null;
+              })}
+            </>
+          )}
+          {recentContexts.length > 0 && (
+            <>
+              <p className="nav-label">Ostatnie</p>
+              {recentContexts.map((recent) => {
+                const item = navItems.find(
+                  (entry) => entry.id === recent.surface,
+                );
+                return (
+                  <button
+                    key={`recent:${recent.key}`}
+                    className="nav-item nav-recent"
+                    onClick={() =>
+                      setNavigation((current) =>
+                        activateShellContext(current, recent.key),
+                      )
+                    }
+                  >
+                    <Icon name={item?.icon ?? "project"} />
+                    <span>{recent.label}</span>
+                    <small>{item?.label}</small>
+                  </button>
+                );
+              })}
+            </>
+          )}
+          <p className="nav-label">Wszystkie</p>
           {navItems.map((item) => (
-            <button
-              key={item.id}
-              data-surface={item.id}
-              className={`nav-item ${surface === item.id ? "active" : ""}`}
-              aria-label={
-                item.id === "tasks"
-                  ? `${item.label} · ${tasks.length}`
-                  : item.shortcut === undefined
-                    ? item.label
-                    : `${item.label} · ${modifierLabel}${item.shortcut}`
-              }
-              aria-current={surface === item.id ? "page" : undefined}
-              onClick={() =>
-                openContext(destinationContext(item.id, item.label))
-              }
-            >
-              <Icon name={item.icon} />
-              <span>{item.label}</span>
-              {item.id === "tasks" ? (
-                <span className="nav-count">{tasks.length}</span>
-              ) : item.id === "attention" &&
-                state.snapshot.attention.kind === "ready" &&
-                state.snapshot.attention.data.unreadCount > 0 ? (
-                <span
-                  className="nav-count"
-                  aria-label={`${state.snapshot.attention.data.unreadCount} nieprzeczytanych`}
-                >
-                  {state.snapshot.attention.data.unreadCount}
-                </span>
-              ) : item.shortcut !== undefined ? (
-                <kbd>
-                  {modifierLabel}
-                  {item.shortcut}
-                </kbd>
-              ) : null}
-            </button>
+            <div className="nav-entry" key={item.id}>
+              <button
+                data-surface={item.id}
+                className={`nav-item ${surface === item.id ? "active" : ""}`}
+                aria-label={
+                  item.id === "tasks"
+                    ? `${item.label} · ${tasks.length}`
+                    : item.label
+                }
+                aria-current={surface === item.id ? "page" : undefined}
+                onClick={() =>
+                  openContext(destinationContext(item.id, item.label))
+                }
+              >
+                <Icon name={item.icon} />
+                <span>{item.label}</span>
+                {item.id === "tasks" ? (
+                  <span className="nav-count">{tasks.length}</span>
+                ) : item.id === "attention" &&
+                  state.snapshot.attention.kind === "ready" &&
+                  state.snapshot.attention.data.unreadCount > 0 ? (
+                  <span
+                    className="nav-count"
+                    aria-label={`${state.snapshot.attention.data.unreadCount} nieprzeczytanych`}
+                  >
+                    {state.snapshot.attention.data.unreadCount}
+                  </span>
+                ) : item.shortcut !== undefined ? (
+                  <kbd>
+                    {modifierLabel}
+                    {item.shortcut}
+                  </kbd>
+                ) : null}
+              </button>
+              <button
+                type="button"
+                className="nav-favorite-toggle"
+                aria-label={`${favorites.includes(item.id) ? "Usuń" : "Dodaj"} ${item.label} ${favorites.includes(item.id) ? "z" : "do"} ulubionych`}
+                aria-pressed={favorites.includes(item.id)}
+                onClick={() =>
+                  setFavorites((current) =>
+                    current.includes(item.id)
+                      ? current.filter((id) => id !== item.id)
+                      : [...current, item.id],
+                  )
+                }
+              >
+                {favorites.includes(item.id) ? "★" : "☆"}
+              </button>
+            </div>
           ))}
         </nav>
         <div className="sidebar-spacer" />
@@ -916,6 +1130,31 @@ export const RealApp = ({
               );
             })}
           </div>
+          <button
+            type="button"
+            className="shell-detach"
+            aria-label={
+              detachedWindow
+                ? "Zamknij osobne okno"
+                : `Otwórz ${activeContext.label} w osobnym oknie`
+            }
+            disabled={
+              !detachedWindow && client?.openDetachedSurface === undefined
+            }
+            onClick={() => {
+              if (detachedWindow) window.close();
+              else
+                void client?.openDetachedSurface?.(surface).catch(() =>
+                  setNotice({
+                    kind: "unavailable",
+                    message:
+                      "Nie udało się otworzyć osobnego okna. Bieżący kontekst pozostaje tutaj.",
+                  }),
+                );
+            }}
+          >
+            {detachedWindow ? "Dołącz z powrotem" : "Osobne okno"}
+          </button>
         </div>
         {notice && (
           <div
@@ -954,6 +1193,7 @@ export const RealApp = ({
         )}
         {surface === "cockpit" && (
           <CockpitSurface
+            client={client}
             snapshot={state.snapshot}
             onOpenProject={(id) => {
               const project =
@@ -979,6 +1219,26 @@ export const RealApp = ({
             snapshot={state.snapshot}
             onReload={reload}
             onFailure={showFailure}
+          />
+        )}
+        {surface === "work" && (
+          <WorkSurface
+            client={client}
+            snapshot={state.snapshot}
+            onReload={reload}
+            onFailure={showFailure}
+          />
+        )}
+        {surface === "settings" && (
+          <SettingsSurface
+            client={client}
+            snapshot={state.snapshot}
+            onReload={reload}
+            onFailure={showFailure}
+            onOpenRecovery={() => setRecoveryOpen(true)}
+            onNavigate={(next, label) =>
+              openContext(destinationContext(next, label))
+            }
           />
         )}
         {surface === "tasks" && (
@@ -1213,8 +1473,10 @@ export const RealApp = ({
                     project?.title ?? item.title,
                   ),
                 );
-              } else {
+              } else if (destination.kind === "document") {
                 openContext(destinationContext("documents", "Dokumenty"));
+              } else {
+                openContext(destinationContext("history", "Historia Capture"));
               }
               if (client && item.state === "unread") {
                 setAttentionBusy(true);
@@ -1252,6 +1514,36 @@ export const RealApp = ({
                 if (result.kind === "success")
                   await refreshAfter("Sygnał usunięto z uwagi.");
                 else showFailure(result);
+              });
+            }}
+            onRouteCapture={(item, destination) => {
+              if (!client || item.destination.kind !== "capture") return;
+              setAttentionBusy(true);
+              void routeCaptureException(
+                client,
+                state.snapshot,
+                item.destination.captureId,
+                destination,
+              ).then(async (routeResult) => {
+                if (routeResult.kind !== "success") {
+                  setAttentionBusy(false);
+                  showFailure(routeResult);
+                  return;
+                }
+                const dismissResult = await updateAttention(
+                  client,
+                  state.snapshot,
+                  item,
+                  "dismiss",
+                );
+                setAttentionBusy(false);
+                if (dismissResult.kind === "success")
+                  await refreshAfter(
+                    destination === "task"
+                      ? "Capture skierowano do zadań."
+                      : "Capture zapisano jako źródło wiedzy.",
+                  );
+                else showFailure(dismissResult);
               });
             }}
           />
@@ -1684,30 +1976,43 @@ export const RealApp = ({
           busy={capturing}
           workspaceName={bootstrap.workspace.name}
           onClose={() => !capturing && setCaptureOpen(false)}
-          onSubmit={(text) => {
+          onSubmit={(original) => {
             if (!client) return;
             setCapturing(true);
             setNotice(undefined);
-            void submitCaptureAsTask(client, state.snapshot, text).then(
+            void submitQuickCapture(client, state.snapshot, original).then(
               (result) => {
                 setCapturing(false);
                 if (result.kind === "success") {
                   setState({ kind: "ready", snapshot: result.snapshot });
-                  const task = result.snapshot.tasks.find(
-                    (item) => item.id === result.selectedTaskId,
-                  );
-                  openContext(
-                    taskContext(
-                      result.selectedTaskId,
-                      task?.title ?? "Nowe zadanie",
-                    ),
-                  );
-                  setReceipts((current) => ({
-                    ...current,
-                    [result.selectedTaskId]: result.receipt,
-                  }));
+                  const captureResult = result.result;
+                  if (captureResult.kind === "task") {
+                    const task = result.snapshot.tasks.find(
+                      (item) => item.id === captureResult.taskId,
+                    );
+                    openContext(
+                      taskContext(
+                        captureResult.taskId,
+                        task?.title ?? "Nowe zadanie",
+                      ),
+                    );
+                    setReceipts((current) => ({
+                      ...current,
+                      [captureResult.taskId]: result.receipt,
+                    }));
+                  } else if (captureResult.kind === "review") {
+                    openContext(destinationContext("attention", "Do uwagi"));
+                  } else {
+                    openContext(destinationContext("documents", "Dokumenty"));
+                  }
                   setCaptureOpen(false);
-                  setToast("Capture zapisano i utworzono zadanie.");
+                  setToast(
+                    captureResult.kind === "task"
+                      ? "Capture zapisano jako zadanie."
+                      : captureResult.kind === "knowledge_source"
+                        ? "Capture zapisano jako źródło wiedzy."
+                        : "Capture wymaga decyzji i trafił do Attention.",
+                  );
                 } else showFailure(result);
               },
             );
@@ -1718,7 +2023,18 @@ export const RealApp = ({
         <SearchOverlay
           client={client}
           snapshot={state.snapshot}
+          destinations={[
+            ...favorites
+              .map((id) => navItems.find((item) => item.id === id))
+              .filter(
+                (item): item is (typeof navItems)[number] => item !== undefined,
+              ),
+            ...navItems.filter((item) => !favorites.includes(item.id)),
+          ]}
           onClose={() => setSearchOpen(false)}
+          onOpenDestination={(nextSurface, label) =>
+            openContext(destinationContext(nextSurface, label))
+          }
           onNavigate={(nextSurface, recordId) => {
             if (nextSurface === "tasks") {
               const id = recordId as TaskId;
@@ -1761,6 +2077,17 @@ export const RealApp = ({
               },
             );
           }}
+        />
+      )}
+      {onboardingOpen && client && (
+        <OnboardingFlow
+          client={client}
+          snapshot={state.snapshot}
+          onComplete={async () => {
+            setOnboardingOpen(false);
+            await reload();
+          }}
+          onFailure={showFailure}
         />
       )}
       {recoveryOpen && client && (

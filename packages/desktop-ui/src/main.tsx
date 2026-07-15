@@ -6,9 +6,23 @@ import "./tokens.css";
 import "./styles.css";
 
 const render = async (): Promise<void> => {
+  const savedTheme = localStorage.getItem("constellation.theme");
+  document.documentElement.dataset.theme =
+    savedTheme === "light" || savedTheme === "dark"
+      ? savedTheme
+      : matchMedia("(prefers-color-scheme: light)").matches
+        ? "light"
+        : "dark";
   const root = document.getElementById("root");
   if (root === null) throw new Error("Missing renderer root.");
   let content: ReactNode = <App client={window.constellation} />;
+  if (
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("surface") === "capture"
+  ) {
+    const { CaptureHarness } = await import("./dev/CaptureHarness.js");
+    content = <CaptureHarness />;
+  }
   if (
     import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get("surface") === "data-home"
@@ -53,6 +67,27 @@ const render = async (): Promise<void> => {
     const { StrategicDepthHarness } =
       await import("./dev/StrategicDepthHarness.js");
     content = <StrategicDepthHarness />;
+  }
+  if (
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("surface") === "work"
+  ) {
+    const { WorkHarness } = await import("./dev/WorkHarness.js");
+    content = <WorkHarness />;
+  }
+  if (
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("surface") === "settings"
+  ) {
+    const { SettingsHarness } = await import("./dev/SettingsHarness.js");
+    content = <SettingsHarness />;
+  }
+  if (
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("surface") === "onboarding"
+  ) {
+    const { OnboardingHarness } = await import("./dev/OnboardingHarness.js");
+    content = <OnboardingHarness />;
   }
 
   createRoot(root).render(<StrictMode>{content}</StrictMode>);

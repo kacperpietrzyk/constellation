@@ -33,6 +33,8 @@ Commands:
 - `agent.grantRevoke`
 - `agent.checkpointCreate`
 - `agent.handoffSubmit`
+- `capture.submit`
+- `capture.process`
 - `capture.submitText`
 - `capture.routeAsTask`
 - `project.create`
@@ -55,6 +57,10 @@ Commands:
 - `decision.supersede`
 - `decision.resolveImpact`
 - `area.create`
+- `initiative.create`
+- `work.linkCreate`
+- `work.linkRemove`
+- `savedView.create`
 - `recurrence.create`
 - `recurrence.generateOccurrence`
 - `project.close`
@@ -63,6 +69,7 @@ Commands:
 - `radar.resolve`
 - `meeting.upsertImported`
 - `task.setStatus`
+- `task.setOperationalState`
 - `task.complete`
 - `task.reopen`
 - `task.assign`
@@ -92,6 +99,7 @@ Queries:
 - `comment.mentionCandidates`
 - `attention.inbox`
 - `project.list`
+- `work.overview`
 - `project.operationalOverview`
 - `document.list`
 - `knowledge.list`
@@ -111,17 +119,20 @@ restart-safe encrypted relational local store adapter. The packaged production e
 developer preview remains an explicit in-memory adapter. A local workspace
 starts with one versioned
 default Task status whose display label is data and whose broad operational
-semantics are `actionable`. An explicit routing command preserves the original
-Capture, advances its processing state, and creates one canonical standalone
-Task that points back to its source.
+semantics are `actionable`. The generic Capture contract preserves typed text,
+URL, or file-reference originals before a separate deterministic processing
+command creates one canonical standalone Task or knowledge source that points
+back to its source Capture. The original text command remains compatible.
 
 Capture provenance is optional on the core Task model. A routed Task records
 its source Capture, while future direct `task.create` commands will not invent
 one.
 
-The implementation deliberately does not parse task syntax or start automatic
-processing. A future deterministic rule adapter must invoke the same
-`capture.routeAsTask` command. The current slice has a runnable desktop flow,
+The application-owned rule is deliberately narrow: text becomes a Task, while
+URLs and file references become knowledge sources. Exact duplicates remain
+durable and create a scoped Attention signal instead of a second domain record;
+an explicit follow-up can choose a different destination. The rules never start
+an AI executor. The current slice has a runnable desktop flow,
 typed Project relations, status/completion, scoped search, explainable cockpit,
 meaningful activity, version-safe undo, contextual comments, and durable
 recipient attention. It does not yet claim generalized Attention rules,
@@ -223,14 +234,15 @@ Radar behavior are domain rules rather than UI or MCP special cases. See
   a newly authorized read-only session; revocation closes the room and local
   coordinated purge removes document metadata, state, queued updates, and
   revisions.
-- Capture routing requires the exact current Capture version. Repeating a
+- Capture processing requires the exact current Capture version. Repeating a
   committed route with the same idempotency input returns its original result;
-  a distinct attempt cannot create a second Task.
+  a distinct attempt cannot create a second Task or knowledge source.
 - Record changes, domain events, audit receipts, idempotency outcomes, and outbox
   entries share one unit of work. Success is returned only after that unit commits.
 - Audit, events, outbox records, validation issues, and diagnostics omit capture
-  bodies. Authorized Capture History retains the original text and routing
-  provenance, while the Task projection exposes only the canonical Task fields.
+  bodies. Authorized Capture History retains the typed original and routing
+  provenance, while Task and knowledge projections expose only their canonical
+  fields plus the source-Capture link.
 - Query freshness comes from the read provider, never from the caller's requested
   consistency. The current local reference reports an authoritative local view;
   a projection reports its checkpoint and missing capabilities, and rejects an
@@ -266,6 +278,28 @@ contracts -> Zod
   `contracts`; React receives only safe status and portability operations.
 - `realtime-documents` owns the replaceable Yjs adapter. Hocuspocus is a Hub
   transport/presence adapter and never becomes a second domain implementation.
+
+## Desktop workspace runtime boundary
+
+The desktop registry contains only workspace identity, display name, active
+selection, and a relative application-state root. Every registered workspace
+opens through its own SQLCipher database, wrapped key, Data Home state, Hub
+credential, and local MCP endpoint. Switching changes the registry selection
+and relaunches the process; the renderer cannot switch an identifier while
+retaining another workspace's privileged main-process services.
+
+The personal Cockpit may open an inactive encrypted local projection long
+enough to run the ordinary `cockpit.week` query with that workspace's own
+principal and Space scope. It returns only a bounded focus count and first
+action, closes the store immediately, and never joins records across workspace
+boundaries. Unavailable or unauthorized projections remain unavailable without
+affecting the active workspace.
+
+Starter manifests are a bounded convenience format, not an alternate import
+kernel. Main validates their exact shape and references, derives stable record
+IDs, and executes the normal commands with stable idempotency keys. Partial
+progress remains auditable and retrying the same `importId` cannot duplicate
+records.
 
 ## Verification
 
