@@ -166,17 +166,18 @@ const stopPackagedApp = async (client, process) => {
     // A closed browser can tear down CDP before acknowledging the command.
   }
   client.close();
-  for (
-    let attempt = 0;
-    attempt < 100 && process.exitCode === null;
-    attempt += 1
-  ) {
-    await delay(50);
-  }
-  if (process.exitCode === null) process.kill("SIGTERM");
-  if (process.exitCode === null) {
-    await new Promise((resolve) => process.once("exit", resolve));
-  }
+  const waitForExit = async () => {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (process.exitCode !== null || process.signalCode !== null) return true;
+      await delay(50);
+    }
+    return false;
+  };
+  if (await waitForExit()) return;
+  process.kill("SIGTERM");
+  if (await waitForExit()) return;
+  process.kill("SIGKILL");
+  if (!(await waitForExit())) throw new Error("PACKAGED_ALPHA_DID_NOT_EXIT");
 };
 
 const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
