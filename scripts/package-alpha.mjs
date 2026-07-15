@@ -260,6 +260,7 @@ const productionDesktopFiles = new Set([
   "remote-mcp-credential-custody.js",
   "runtime-kernel-service.js",
   "security.js",
+  "starter-workspace-import.js",
   "workspace-key-custody.js",
   "workspace-backup-archive.js",
   "workspace-recovery-service.js",
@@ -271,6 +272,22 @@ for (const entry of fs.readdirSync(desktopMainSource)) {
       force: true,
       recursive: true,
     });
+  }
+}
+
+for (const entry of productionDesktopFiles) {
+  const sourcePath = path.join(desktopMainSource, entry);
+  const source = fs.readFileSync(sourcePath, "utf8");
+  const relativeImports = source.matchAll(
+    /(?:from\s+|import\()\s*["'](\.[^"']+\.js)["']/g,
+  );
+  for (const [, specifier] of relativeImports) {
+    const importedPath = path.resolve(path.dirname(sourcePath), specifier);
+    if (!fs.existsSync(importedPath)) {
+      throw new Error(
+        `PRODUCTION_DESKTOP_IMPORT_MISSING:${entry}:${specifier}`,
+      );
+    }
   }
 }
 
