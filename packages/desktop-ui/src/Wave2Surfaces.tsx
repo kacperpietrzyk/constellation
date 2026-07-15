@@ -14,7 +14,10 @@ import type {
   TaskId,
   TaskStatusId,
 } from "@constellation/contracts";
-import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
+import type {
+  ConstellationRendererClient,
+  DesktopWorkspaceCockpitEntry,
+} from "@constellation/desktop-preload/client";
 
 import {
   searchGlobal,
@@ -74,10 +77,12 @@ const InlineState = ({
 );
 
 export const CockpitSurface = ({
+  client,
   snapshot,
   onOpenProject,
   onSelectTask,
 }: {
+  readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
   readonly onOpenProject: (id: ProjectId) => void;
   readonly onSelectTask: (id: TaskId) => void;
@@ -85,6 +90,26 @@ export const CockpitSurface = ({
   const cockpit = snapshot.cockpit;
   const projects = snapshot.projects;
   const focus = cockpit.kind === "ready" ? cockpit.data.focus : [];
+  const [workspaceFocus, setWorkspaceFocus] = useState<
+    readonly DesktopWorkspaceCockpitEntry[]
+  >([]);
+  const [workspaceFocusUnavailable, setWorkspaceFocusUnavailable] =
+    useState(false);
+  useEffect(() => {
+    if (!client?.getCrossWorkspaceCockpit) return;
+    let active = true;
+    void client
+      .getCrossWorkspaceCockpit()
+      .then((items) => {
+        if (!active) return;
+        setWorkspaceFocus(items);
+        setWorkspaceFocusUnavailable(false);
+      })
+      .catch(() => active && setWorkspaceFocusUnavailable(true));
+    return () => {
+      active = false;
+    };
+  }, [client]);
   return (
     <div className="surface-scroll cockpit-surface">
       <SurfaceHeader
@@ -96,6 +121,60 @@ export const CockpitSurface = ({
         title="Tydzień oparty na aktualnych danych"
         description="Deterministyczna kolejność otwartych zadań i aktywnych projektów. Bez generowanych rekomendacji."
       />
+      {workspaceFocus.length > 1 && (
+        <section
+          className="workspace-focus-strip"
+          aria-labelledby="workspace-focus-title"
+        >
+          <header>
+            <div>
+              <p className="eyebrow">Twoje workspace</p>
+              <h2 id="workspace-focus-title">Fokus bez mieszania danych</h2>
+            </div>
+            <span>{workspaceFocus.length} autoryzowane</span>
+          </header>
+          <div>
+            {workspaceFocus.map((workspace) => (
+              <button
+                type="button"
+                key={workspace.workspaceId}
+                disabled={
+                  workspace.active ||
+                  workspace.availability === "unavailable" ||
+                  !client?.switchWorkspace
+                }
+                onClick={() =>
+                  client?.switchWorkspace?.({
+                    workspaceId: workspace.workspaceId,
+                  })
+                }
+              >
+                <span>
+                  <strong>{workspace.name}</strong>
+                  <small>
+                    {workspace.availability === "unavailable"
+                      ? "Lokalna projekcja niedostępna"
+                      : (workspace.firstFocus ?? "Brak otwartych działań")}
+                  </small>
+                </span>
+                <em>
+                  {workspace.active
+                    ? "Otwarty"
+                    : workspace.availability === "ready"
+                      ? `${workspace.focusCount ?? 0} działań`
+                      : "Offline"}
+                </em>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      {workspaceFocusUnavailable && (
+        <InlineState
+          title="Przekrojowy fokus jest chwilowo niedostępny"
+          detail="Bieżący workspace działa normalnie; pozostałe zaszyfrowane projekcje nie zostały otwarte."
+        />
+      )}
       {cockpit.kind === "unavailable" ? (
         <InlineState
           title="Widok tygodnia jest niedostępny"
@@ -808,12 +887,19 @@ export const ActivitySurface = ({
 export const SearchOverlay = ({
   client,
   snapshot,
+  destinations,
   onClose,
+  onOpenDestination,
   onNavigate,
 }: {
   readonly client: ConstellationRendererClient;
   readonly snapshot: DesktopSnapshot;
+  readonly destinations: readonly {
+    readonly id: SurfaceId;
+    readonly label: string;
+  }[];
   readonly onClose: () => void;
+  readonly onOpenDestination: (surface: SurfaceId, label: string) => void;
   readonly onNavigate: (surface: SurfaceId, recordId: string) => void;
 }) => {
   const [query, setQuery] = useState("");
@@ -858,6 +944,11 @@ export const SearchOverlay = ({
     };
   }, [client, query, snapshot]);
   const results = state.kind === "ready" ? state.data.items : [];
+  const commandResults = destinations.filter((item) =>
+    item.label
+      .toLocaleLowerCase("pl-PL")
+      .includes(query.trim().toLocaleLowerCase("pl-PL")),
+  );
   const choose = (item: SearchProjection["items"][number] | undefined) => {
     if (!item) return;
     onNavigate(
@@ -872,10 +963,21 @@ export const SearchOverlay = ({
     );
     onClose();
   };
+  const chooseIndex = (index: number) => {
+    const command = commandResults[index];
+    if (command !== undefined) {
+      onOpenDestination(command.id, command.label);
+      onClose();
+      return;
+    }
+    choose(results[index - commandResults.length]);
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActiveIndex((value) => Math.min(value + 1, results.length - 1));
+      setActiveIndex((value) =>
+        Math.min(value + 1, commandResults.length + results.length - 1),
+      );
     }
     if (event.key === "ArrowUp") {
       event.preventDefault();
@@ -883,7 +985,7 @@ export const SearchOverlay = ({
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      choose(results[activeIndex]);
+      chooseIndex(activeIndex);
     }
     if (event.key === "Escape") onClose();
   };
@@ -900,12 +1002,12 @@ export const SearchOverlay = ({
     >
       <section className="search-dialog">
         <h2 id="search-title" className="sr-only">
-          Globalne wyszukiwanie
+          Paleta poleceń i globalne wyszukiwanie
         </h2>
         <div className="search-query">
           <Mark kind="search" />
           <label className="sr-only" htmlFor="global-search">
-            Szukaj projektów, zadań i Capture
+            Otwórz widok albo szukaj projektów, zadań i Capture
           </label>
           <input
             id="global-search"
@@ -916,7 +1018,7 @@ export const SearchOverlay = ({
               setActiveIndex(0);
             }}
             onKeyDown={onKeyDown}
-            placeholder="Projekt, zadanie, źródło…"
+            placeholder="Widok, projekt, zadanie, źródło…"
           />
           <kbd>Esc</kbd>
         </div>
@@ -925,23 +1027,41 @@ export const SearchOverlay = ({
           workspace
         </p>
         {state.kind === "idle" ? (
-          <div className="search-empty">
-            <strong>Wpisz co najmniej jeden znak</strong>
-            <span>
-              Wyniki pochodzą z lokalnego indeksu z zachowaniem zakresu Space.
-            </span>
+          <div
+            className="search-results search-command-list"
+            role="listbox"
+            aria-label="Polecenia nawigacji"
+          >
+            <p>Otwórz widok</p>
+            {commandResults.map((item, index) => (
+              <button
+                key={item.id}
+                role="option"
+                aria-selected={index === activeIndex}
+                className={index === activeIndex ? "active" : ""}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => chooseIndex(index)}
+              >
+                <Mark kind="command" />
+                <span>
+                  <strong>{item.label}</strong>
+                  <small>Polecenie nawigacji</small>
+                </span>
+                <em>↵</em>
+              </button>
+            ))}
           </div>
-        ) : state.kind === "loading" ? (
+        ) : state.kind === "loading" && commandResults.length === 0 ? (
           <div className="search-empty" aria-busy="true">
             <strong>Wyszukuję…</strong>
             <span>Sprawdzam projekty, zadania i Capture.</span>
           </div>
-        ) : state.kind === "error" ? (
+        ) : state.kind === "error" && commandResults.length === 0 ? (
           <div className="search-empty" role="alert">
             <strong>Wyszukiwanie jest niedostępne</strong>
             <span>{state.message}</span>
           </div>
-        ) : results.length === 0 ? (
+        ) : results.length === 0 && commandResults.length === 0 ? (
           <div className="search-empty">
             <strong>Brak wyników dla „{query}”</strong>
             <span>Sprawdź pisownię albo wyszukaj szersze pojęcie.</span>
@@ -955,13 +1075,34 @@ export const SearchOverlay = ({
             role="listbox"
             aria-label="Wyniki wyszukiwania"
           >
-            {results.map((item, index) => (
+            {commandResults.map((item, index) => (
               <button
-                key={`${item.recordKind}-${item.recordId}`}
+                key={`command:${item.id}`}
                 role="option"
                 aria-selected={index === activeIndex}
                 className={index === activeIndex ? "active" : ""}
                 onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => chooseIndex(index)}
+              >
+                <Mark kind="command" />
+                <span>
+                  <strong>{item.label}</strong>
+                  <small>Polecenie nawigacji</small>
+                </span>
+                <em>↵</em>
+              </button>
+            ))}
+            {results.map((item, index) => (
+              <button
+                key={`${item.recordKind}-${item.recordId}`}
+                role="option"
+                aria-selected={index + commandResults.length === activeIndex}
+                className={
+                  index + commandResults.length === activeIndex ? "active" : ""
+                }
+                onMouseEnter={() =>
+                  setActiveIndex(index + commandResults.length)
+                }
                 onClick={() => choose(item)}
               >
                 <Mark kind={item.recordKind} />

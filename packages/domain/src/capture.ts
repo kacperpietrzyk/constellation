@@ -103,6 +103,7 @@ export const routeCaptureAsTask = (
     statusId: input.taskStatusId,
     recordState: "active",
     completionState: "open",
+    operationalState: "actionable",
     sourceCaptureId: input.capture.id,
     createdBy: input.routedBy,
     version: 1,

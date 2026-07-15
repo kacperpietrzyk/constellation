@@ -25,11 +25,22 @@ The repository contains the first durable desktop journey:
 - encrypted local workspace storage with portable backup, destructive restore,
   and rollback at both interrupted activation boundaries;
 - one context-preserving desktop shell with bounded Task and Project tabs,
-  Back/Forward history, and an attached inspector;
+  Back/Forward history, favorites, deterministic command palette, restored
+  session state, native detached windows, and an attached inspector;
 - Universal Quick Capture for text, URLs, and file references, preserving the
   original before deterministic routing to a traceable Task or knowledge source;
 - Projects, Task relations, status changes, deterministic search, and a weekly
   cockpit projection;
+- one Work destination that composes Areas, Initiatives, Projects, actionable,
+  waiting, and blocked Tasks, dependencies, and saved structured views;
+- direct strategic operations for People, Offers, Renewals, sourced facts,
+  Decisions, recurrence rules, and Radar candidates without a separate CRM;
+- first-run onboarding and Settings for workspace identity, Data Home,
+  recovery, appearance, access, connectors, starter imports, and honest release
+  state;
+- independent encrypted workspace creation and switching, plus a bounded
+  personal focus summary over locally authorized workspace projections without
+  joining their records;
 - Capture History, duplicate review-by-exception in Attention, meaningful
   activity, audit receipts, and previewed undo;
 - a shared application command/query boundary behind the desktop UI;
@@ -179,10 +190,12 @@ clean uninstall, encrypted key continuity, and recovery before publishing a
 desktop release. Unsigned or ad-hoc artifacts remain mechanism-only evidence
 and cannot be labeled as releases.
 
-In parallel, deepen the delivered record journeys into saved views, richer
-artifact and approval states, and strategic orientation across goals,
-initiatives, projects, and daily work while preserving the shared command/query
-and recovery model.
+The coherent-depth slices now connect Areas, Initiatives, Projects,
+dependencies, waiting direction, next actions, and saved deterministic views in
+one Work destination. The relationship thread also exposes direct operations
+for People, Offers, Renewals, sourced facts, Decisions, recurrences, and finite
+Radar review. Continue workspace operation without weakening the shared
+command/query and recovery model.
 
 ## Later — public release and ecosystem
 

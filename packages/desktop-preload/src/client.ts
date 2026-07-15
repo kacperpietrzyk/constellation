@@ -74,7 +74,62 @@ export const DESKTOP_CHANNELS = {
   checkForRelease: "constellation:release:check",
   downloadRelease: "constellation:release:download",
   installRelease: "constellation:release:install",
+  openDetachedSurface: "constellation:shell:open-detached-surface",
+  listWorkspaces: "constellation:workspace:list",
+  createWorkspace: "constellation:workspace:create",
+  switchWorkspace: "constellation:workspace:switch",
+  getCrossWorkspaceCockpit: "constellation:workspace:cockpit",
+  importStarterWorkspace: "constellation:workspace:import-starter",
 } as const;
+
+export type DesktopSurface =
+  | "cockpit"
+  | "work"
+  | "tasks"
+  | "projects"
+  | "history"
+  | "activity"
+  | "attention"
+  | "access"
+  | "documents"
+  | "meetings"
+  | "relationships"
+  | "settings";
+
+export interface DesktopWorkspaceEntry {
+  readonly workspaceId: WorkspaceId;
+  readonly name: string;
+  readonly active: boolean;
+}
+
+export type DesktopWorkspaceOperationResult =
+  | { readonly outcome: "success" }
+  | {
+      readonly outcome: "failure";
+      readonly code: "invalid_name" | "workspace_missing" | "operation_failed";
+    };
+
+export interface DesktopWorkspaceCockpitEntry extends DesktopWorkspaceEntry {
+  readonly availability: "ready" | "unavailable";
+  readonly focusCount?: number;
+  readonly firstFocus?: string;
+}
+
+export type StarterWorkspaceImportResponse =
+  | {
+      readonly outcome: "success";
+      readonly counts: {
+        readonly areas: number;
+        readonly initiatives: number;
+        readonly projects: number;
+        readonly tasks: number;
+        readonly links: number;
+      };
+    }
+  | {
+      readonly outcome: "failure";
+      readonly code: "manifest_invalid" | "import_failed" | "unavailable";
+    };
 
 export type ReleaseStatus =
   | {
@@ -170,6 +225,18 @@ export interface DesktopBuildInfo {
 }
 
 export interface ConstellationRendererClient {
+  openDetachedSurface?(surface: DesktopSurface): Promise<void>;
+  listWorkspaces?(): Promise<readonly DesktopWorkspaceEntry[]>;
+  createWorkspace?(input: {
+    readonly name: string;
+  }): Promise<DesktopWorkspaceOperationResult>;
+  switchWorkspace?(input: {
+    readonly workspaceId: WorkspaceId;
+  }): Promise<DesktopWorkspaceOperationResult>;
+  getCrossWorkspaceCockpit?(): Promise<readonly DesktopWorkspaceCockpitEntry[]>;
+  importStarterWorkspace?(
+    manifest: unknown,
+  ): Promise<StarterWorkspaceImportResponse>;
   getReleaseStatus(): Promise<ReleaseStatus>;
   checkForRelease(): Promise<ReleaseStatus>;
   downloadRelease(): Promise<ReleaseStatus>;
@@ -340,6 +407,31 @@ export type DesktopInvoke = (
 export const createRendererClient = (
   invoke: DesktopInvoke,
 ): ConstellationRendererClient => ({
+  openDetachedSurface: (surface) =>
+    invoke(DESKTOP_CHANNELS.openDetachedSurface, { surface }) as Promise<void>,
+  listWorkspaces: () =>
+    invoke(DESKTOP_CHANNELS.listWorkspaces) as Promise<
+      readonly DesktopWorkspaceEntry[]
+    >,
+  createWorkspace: (input) =>
+    invoke(
+      DESKTOP_CHANNELS.createWorkspace,
+      input,
+    ) as Promise<DesktopWorkspaceOperationResult>,
+  switchWorkspace: (input) =>
+    invoke(
+      DESKTOP_CHANNELS.switchWorkspace,
+      input,
+    ) as Promise<DesktopWorkspaceOperationResult>,
+  getCrossWorkspaceCockpit: () =>
+    invoke(DESKTOP_CHANNELS.getCrossWorkspaceCockpit) as Promise<
+      readonly DesktopWorkspaceCockpitEntry[]
+    >,
+  importStarterWorkspace: (manifest) =>
+    invoke(
+      DESKTOP_CHANNELS.importStarterWorkspace,
+      manifest,
+    ) as Promise<StarterWorkspaceImportResponse>,
   getReleaseStatus: () =>
     invoke(DESKTOP_CHANNELS.getReleaseStatus) as Promise<ReleaseStatus>,
   checkForRelease: () =>

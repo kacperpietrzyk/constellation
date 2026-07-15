@@ -23,6 +23,7 @@ import type {
 import {
   DESKTOP_CHANNELS,
   type DesktopBuildInfo,
+  type DesktopWorkspaceCockpitEntry,
 } from "@constellation/desktop-preload/client";
 import {
   normalizeJamieApiMeeting,
@@ -37,6 +38,7 @@ import {
   SpaceIdSchema,
   WorkspaceIdSchema,
   CommandEnvelopeSchema,
+  QueryEnvelopeSchema,
   RemoteMcpGrantChangeRequestSchema,
   RemoteMcpGrantCreateRequestSchema,
   RemoteMcpGrantListRequestSchema,
@@ -64,6 +66,7 @@ import {
 } from "./coordinated-sync-engine.js";
 import {
   DurableWorkspaceOpenError,
+  createDurableKernelService,
   type DurableBootstrapProjection,
 } from "./durable-kernel-service.js";
 import { writeHubAuthorizationFile } from "./hub-authorization-export.js";
@@ -86,6 +89,17 @@ import {
   createWorkspaceRecoveryService,
   type WorkspaceRecoveryService,
 } from "./workspace-recovery-service.js";
+import {
+  ensureRegisteredWorkspace,
+  loadWorkspaceRegistry,
+  renameRegisteredWorkspace,
+  resolveWorkspaceStateRoot,
+  setActiveRegisteredWorkspace,
+} from "./workspace-registry.js";
+import {
+  importStarterWorkspace,
+  parseStarterWorkspaceManifest,
+} from "./starter-workspace-import.js";
 import {
   DesktopReleaseService,
   type DesktopUpdaterAdapter,
@@ -300,7 +314,7 @@ const electronSafeStorage: AsyncSafeStorage = {
       : electron.safeStorage.decryptStringAsync(value),
 };
 
-const desktopStateRoot = (): string => {
+const desktopBaseRoot = (): string => {
   const override = process.env.CONSTELLATION_ALPHA_STATE_ROOT;
   if (override === undefined) return app.getPath("userData");
   if (
@@ -314,10 +328,22 @@ const desktopStateRoot = (): string => {
   return path.resolve(override);
 };
 
+const desktopStateRoot = (baseRoot = desktopBaseRoot()): string => {
+  const registry = loadWorkspaceRegistry(baseRoot);
+  if (registry === undefined) return baseRoot;
+  const active = registry.workspaces.find(
+    (workspace) => workspace.workspaceId === registry.activeWorkspaceId,
+  );
+  if (active === undefined)
+    throw new Error("WORKSPACE_REGISTRY_ACTIVE_MISSING");
+  return resolveWorkspaceStateRoot(baseRoot, active);
+};
+
 const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
   const databaseFactory = createBetterSqlite3Factory();
-  const stateRoot = desktopStateRoot();
-  const deviceIdentity = loadOrCreateDeviceIdentity(stateRoot);
+  const baseRoot = desktopBaseRoot();
+  const stateRoot = desktopStateRoot(baseRoot);
+  const deviceIdentity = loadOrCreateDeviceIdentity(baseRoot);
   installationDeviceId = deviceIdentity.deviceId;
   hubConnectionCustody = new HubConnectionCustody(
     stateRoot,
@@ -460,6 +486,16 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
     },
   });
   workspaceRecovery = recovery;
+  if (recovery.kernel !== undefined) {
+    ensureRegisteredWorkspace(baseRoot, {
+      workspaceId: recovery.kernel.identity.workspaceId,
+      name: recovery.kernel.workspaceName,
+      relativeStateRoot:
+        path.resolve(stateRoot) === path.resolve(baseRoot)
+          ? "."
+          : path.relative(baseRoot, stateRoot),
+    });
+  }
   const activateHub = (connection: HubConnection): void => {
     if (
       recovery.kernel === undefined ||
@@ -616,7 +652,24 @@ const parseRestoreId = (input: unknown): string | undefined => {
     : undefined;
 };
 
-const createWindow = async (): Promise<BrowserWindowType> => {
+const DETACHABLE_SURFACES = new Set([
+  "cockpit",
+  "work",
+  "tasks",
+  "projects",
+  "history",
+  "activity",
+  "attention",
+  "access",
+  "documents",
+  "meetings",
+  "relationships",
+  "settings",
+]);
+
+const createWindow = async (
+  destination?: string,
+): Promise<BrowserWindowType> => {
   const window = new BrowserWindow({
     width: 1380,
     height: 860,
@@ -638,7 +691,7 @@ const createWindow = async (): Promise<BrowserWindowType> => {
       webSecurity: true,
     },
   });
-  mainWindow = window;
+  if (destination === undefined) mainWindow = window;
   window.once("closed", () => {
     if (mainWindow === window) mainWindow = undefined;
   });
@@ -650,7 +703,12 @@ const createWindow = async (): Promise<BrowserWindowType> => {
     if (!isTrustedRendererUrl(url)) event.preventDefault();
   });
   window.once("ready-to-show", () => window.show());
-  await window.loadFile(rendererPath);
+  await window.loadFile(
+    rendererPath,
+    destination === undefined
+      ? undefined
+      : { query: { destination, detached: "1" } },
+  );
   return window;
 };
 
@@ -663,7 +721,192 @@ const startProductionDesktop = async (): Promise<void> => {
   );
 
   const stateRoot = desktopStateRoot();
+  const baseRoot = desktopBaseRoot();
   const runtime = await createDesktopRuntime();
+  const relaunchIntoSelectedWorkspace = (): void => {
+    setTimeout(() => {
+      app.relaunch();
+      app.exit(0);
+    }, 150);
+  };
+  ipcMain.handle(DESKTOP_CHANNELS.listWorkspaces, (event) => {
+    assertTrustedSender(event);
+    const registry = loadWorkspaceRegistry(baseRoot);
+    return (
+      registry?.workspaces.map((workspace) => ({
+        workspaceId: workspace.workspaceId,
+        name: workspace.name,
+        active: workspace.workspaceId === registry.activeWorkspaceId,
+      })) ?? []
+    );
+  });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.createWorkspace,
+    async (event, input: unknown) => {
+      assertTrustedSender(event);
+      if (
+        typeof input !== "object" ||
+        input === null ||
+        Array.isArray(input) ||
+        Object.keys(input).join(",") !== "name" ||
+        typeof (input as { name?: unknown }).name !== "string"
+      )
+        return { outcome: "failure", code: "invalid_name" } as const;
+      const name = (input as { name: string }).name.trim();
+      if (name.length === 0 || name.length > 80)
+        return { outcome: "failure", code: "invalid_name" } as const;
+      const directoryId = randomUUID();
+      const relativeStateRoot = `workspaces/${directoryId}`;
+      const nextStateRoot = path.join(baseRoot, relativeStateRoot);
+      try {
+        const created = await createDurableKernelService({
+          databaseFactory: createBetterSqlite3Factory(),
+          safeStorage: electronSafeStorage,
+          stateRoot: nextStateRoot,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+          workspaceName: name,
+        });
+        const workspaceId = created.identity.workspaceId;
+        created.close();
+        ensureRegisteredWorkspace(baseRoot, {
+          workspaceId,
+          name,
+          relativeStateRoot,
+        });
+        relaunchIntoSelectedWorkspace();
+        return { outcome: "success" } as const;
+      } catch {
+        rmSync(nextStateRoot, { recursive: true, force: true });
+        return { outcome: "failure", code: "operation_failed" } as const;
+      }
+    },
+  );
+  ipcMain.handle(DESKTOP_CHANNELS.switchWorkspace, (event, input: unknown) => {
+    assertTrustedSender(event);
+    if (
+      typeof input !== "object" ||
+      input === null ||
+      Array.isArray(input) ||
+      Object.keys(input).join(",") !== "workspaceId"
+    )
+      return { outcome: "failure", code: "workspace_missing" } as const;
+    const parsed = WorkspaceIdSchema.safeParse(
+      (input as { workspaceId?: unknown }).workspaceId,
+    );
+    if (!parsed.success)
+      return { outcome: "failure", code: "workspace_missing" } as const;
+    try {
+      setActiveRegisteredWorkspace(baseRoot, parsed.data);
+      relaunchIntoSelectedWorkspace();
+      return { outcome: "success" } as const;
+    } catch {
+      return { outcome: "failure", code: "workspace_missing" } as const;
+    }
+  });
+  ipcMain.handle(DESKTOP_CHANNELS.getCrossWorkspaceCockpit, async (event) => {
+    assertTrustedSender(event);
+    const registry = loadWorkspaceRegistry(baseRoot);
+    if (registry === undefined) return [];
+    const now = new Date();
+    const day = now.getDay() || 7;
+    now.setDate(now.getDate() - day + 1);
+    const weekStart = now.toISOString().slice(0, 10);
+    const result: DesktopWorkspaceCockpitEntry[] = [];
+    for (const entry of registry.workspaces) {
+      const active = entry.workspaceId === registry.activeWorkspaceId;
+      let kernel = active ? workspaceRecovery?.kernel : undefined;
+      let close = false;
+      try {
+        if (kernel === undefined) {
+          const entryRoot = resolveWorkspaceStateRoot(baseRoot, entry);
+          if (!existsSync(path.join(entryRoot, "active", "workspace.db")))
+            throw new Error("WORKSPACE_NOT_AVAILABLE");
+          kernel = await createDurableKernelService({
+            databaseFactory: createBetterSqlite3Factory(),
+            safeStorage: electronSafeStorage,
+            stateRoot: entryRoot,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+          });
+          close = true;
+        }
+        const query = kernel.service.query(
+          QueryEnvelopeSchema.parse({
+            contractVersion: 1,
+            queryName: "cockpit.week",
+            queryId: randomUUID(),
+            workspaceId: kernel.identity.workspaceId,
+            consistency: "local_projection",
+            parameters: {
+              spaceId: kernel.identity.rootSpaceId,
+              weekStart,
+              limit: 10,
+            },
+          }),
+        );
+        if (
+          query.kind !== "query_result" ||
+          query.result.outcome !== "success" ||
+          query.result.projection.kind !== "cockpit.week"
+        )
+          throw new Error("WORKSPACE_COCKPIT_UNAVAILABLE");
+        result.push({
+          workspaceId: entry.workspaceId,
+          name: entry.name,
+          active,
+          availability: "ready" as const,
+          focusCount: query.result.projection.focus.length,
+          ...(query.result.projection.focus[0] === undefined
+            ? {}
+            : { firstFocus: query.result.projection.focus[0].title }),
+        });
+      } catch {
+        result.push({
+          workspaceId: entry.workspaceId,
+          name: entry.name,
+          active,
+          availability: "unavailable" as const,
+        });
+      } finally {
+        if (close) kernel?.close();
+      }
+    }
+    return result;
+  });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.importStarterWorkspace,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      let byteLength: number;
+      try {
+        byteLength = Buffer.byteLength(JSON.stringify(input), "utf8");
+      } catch {
+        return { outcome: "failure", code: "manifest_invalid" } as const;
+      }
+      const manifest =
+        byteLength <= 256 * 1024
+          ? parseStarterWorkspaceManifest(input)
+          : undefined;
+      if (manifest === undefined)
+        return { outcome: "failure", code: "manifest_invalid" } as const;
+      const kernel = workspaceRecovery?.kernel;
+      if (kernel === undefined || installationDeviceId === undefined)
+        return { outcome: "failure", code: "unavailable" } as const;
+      try {
+        const counts = importStarterWorkspace({
+          service: runtime.service,
+          workspaceId: kernel.identity.workspaceId,
+          spaceId: kernel.identity.rootSpaceId,
+          deviceId: installationDeviceId,
+          manifest,
+        });
+        if (coordinatedDataHomeProvider !== undefined) scheduleHubSync(0);
+        deliverUrgentAttention(runtime.service);
+        return { outcome: "success", counts } as const;
+      } catch {
+        return { outcome: "failure", code: "import_failed" } as const;
+      }
+    },
+  );
   const releaseService = loadReleaseService();
   const calendarHelperCandidate =
     process.env.CONSTELLATION_CALENDAR_HELPER_PATH ??
@@ -1006,6 +1249,16 @@ const startProductionDesktop = async (): Promise<void> => {
       result.kind === "command_outcome" &&
       result.outcome.outcome === "success"
     ) {
+      if (
+        parsedCommand.success &&
+        parsedCommand.data.commandName === "workspace.rename"
+      ) {
+        renameRegisteredWorkspace(
+          baseRoot,
+          parsedCommand.data.workspaceId,
+          parsedCommand.data.payload.name,
+        );
+      }
       deliverUrgentAttention(runtime.service);
     }
     return result;
@@ -1329,6 +1582,19 @@ const startProductionDesktop = async (): Promise<void> => {
           }),
     };
   });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.openDetachedSurface,
+    async (event, input: unknown) => {
+      assertTrustedSender(event);
+      const surface =
+        typeof input === "object" && input !== null
+          ? (input as { surface?: unknown }).surface
+          : undefined;
+      if (typeof surface !== "string" || !DETACHABLE_SURFACES.has(surface))
+        throw new Error("Unsupported detached surface.");
+      await createWindow(surface);
+    },
+  );
   ipcMain.handle(DESKTOP_CHANNELS.getReleaseStatus, (event) => {
     assertTrustedSender(event);
     return releaseService.getStatus();
@@ -1578,15 +1844,29 @@ const startProductionDesktop = async (): Promise<void> => {
   );
   ipcMain.handle(
     DESKTOP_CHANNELS.confirmWorkspaceRestore,
-    (event, input: unknown) => {
+    async (event, input: unknown) => {
       assertTrustedSender(event);
       const restoreId = parseRestoreId(input);
-      return restoreId === undefined
-        ? { outcome: "failure", code: "workspace_identity_invalid" }
-        : (dataHomeProvider?.confirmProviderMigration(restoreId) ?? {
-            outcome: "failure",
-            code: "io_failed",
-          });
+      const result =
+        restoreId === undefined
+          ? { outcome: "failure", code: "workspace_identity_invalid" }
+          : await (dataHomeProvider?.confirmProviderMigration(restoreId) ??
+              Promise.resolve({
+                outcome: "failure" as const,
+                code: "io_failed" as const,
+              }));
+      if (result.outcome === "success" && workspaceRecovery?.kernel) {
+        ensureRegisteredWorkspace(baseRoot, {
+          workspaceId: workspaceRecovery.kernel.identity.workspaceId,
+          name: workspaceRecovery.kernel.workspaceName,
+          relativeStateRoot:
+            path.resolve(stateRoot) === path.resolve(baseRoot)
+              ? "."
+              : path.relative(baseRoot, stateRoot),
+        });
+        relaunchIntoSelectedWorkspace();
+      }
+      return result;
     },
   );
   ipcMain.handle(

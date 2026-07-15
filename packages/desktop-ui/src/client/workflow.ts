@@ -44,6 +44,7 @@ type CaptureHistoryProjection = Projection<"capture.history">;
 export type AccessProjection = Projection<"workspace.access">;
 export type AgentAccessProjection = Projection<"agent.access">;
 export type ProjectListProjection = Projection<"project.list">;
+export type WorkOverviewProjection = Projection<"work.overview">;
 export type ProjectOverviewProjection =
   Projection<"project.operationalOverview">;
 export type SearchProjection = Projection<"search.global">;
@@ -78,6 +79,7 @@ export interface DesktopSnapshot {
   readonly captures: CaptureHistoryProjection["items"];
   readonly tasks: TaskListProjection["items"];
   readonly projects: DataSlice<ProjectListProjection>;
+  readonly work: DataSlice<WorkOverviewProjection>;
   readonly cockpit: DataSlice<CockpitProjection>;
   readonly activity: DataSlice<ActivityProjection>;
   readonly access: DataSlice<AccessProjection>;
@@ -225,6 +227,7 @@ export const loadDesktopSnapshot = async (
     tasks,
     captures,
     projects,
+    work,
     mentionCandidates,
     attention,
     access,
@@ -252,6 +255,13 @@ export const loadDesktopSnapshot = async (
         client,
         queryEnvelope("project.list", workspaceId, { spaceId }),
         "project.list",
+      ),
+    ),
+    optionalProjection(
+      queryProjection(
+        client,
+        queryEnvelope("work.overview", workspaceId, { spaceId }),
+        "work.overview",
       ),
     ),
     optionalProjection(
@@ -388,6 +398,7 @@ export const loadDesktopSnapshot = async (
     captures: captures.items,
     tasks: tasks.items,
     projects,
+    work,
     cockpit,
     activity,
     access,
@@ -636,6 +647,7 @@ const AGENT_QUERY_CAPABILITIES: readonly Capability[] = [
   "capture.history",
   "project.list",
   "project.operationalOverview",
+  "work.overview",
   "document.list",
   "knowledge.list",
   "knowledge.documentContext",
@@ -666,6 +678,10 @@ const agentCapabilities = (
     "capture.routeAsTask",
     "project.create",
     "project.updateOutcome",
+    "initiative.create",
+    "work.linkCreate",
+    "work.linkRemove",
+    "savedView.create",
     "document.create",
     "knowledge.sourceCreate",
     "knowledge.sourceUpdate",
@@ -673,6 +689,7 @@ const agentCapabilities = (
     "knowledge.namedVersionCreate",
     "knowledge.namedVersionVoid",
     "task.setStatus",
+    "task.setOperationalState",
     "task.complete",
     "task.reopen",
     "task.assign",
@@ -1091,6 +1108,175 @@ export const createProject = (
         : undefined,
   );
 
+export const renameWorkspace = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  name: string,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [snapshot.bootstrap.workspace.id]: snapshot.bootstrap.workspace.version,
+      }),
+      commandName: "workspace.rename",
+      payload: { name },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "workspace.renamed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const createArea = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  title: string,
+  responsibility: string,
+) => {
+  const areaId = crypto.randomUUID() as StrategicRecordId;
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "area.create",
+      payload: {
+        areaId,
+        spaceId: firstSpace(snapshot),
+        title,
+        responsibility,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? { areaId }
+        : undefined,
+  );
+};
+
+export const createInitiative = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  title: string,
+  intendedOutcome: string,
+) => {
+  const initiativeId = crypto.randomUUID() as StrategicRecordId;
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "initiative.create",
+      payload: {
+        initiativeId,
+        spaceId: firstSpace(snapshot),
+        title,
+        intendedOutcome,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? { initiativeId }
+        : undefined,
+  );
+};
+
+export const createSavedWorkView = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  name: string,
+  operationalStates: readonly ("actionable" | "waiting" | "blocked")[],
+) => {
+  const savedViewId = crypto.randomUUID() as StrategicRecordId;
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "savedView.create",
+      payload: {
+        savedViewId,
+        spaceId: firstSpace(snapshot),
+        name,
+        filters: { operationalStates },
+        sort: "updated_desc",
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? { savedViewId }
+        : undefined,
+  );
+};
+
+export const createWorkLink = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  linkType:
+    | "project_advances_initiative"
+    | "project_serves_area"
+    | "task_depends_on_task",
+  sourceRecordId: string,
+  targetRecordId: string,
+) => {
+  const linkId = crypto.randomUUID() as StrategicRecordId;
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "work.linkCreate",
+      payload: {
+        linkId,
+        spaceId: firstSpace(snapshot),
+        linkType,
+        sourceRecordId,
+        targetRecordId,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? { linkId }
+        : undefined,
+  );
+};
+
+export const setTaskOperationalState = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  task: WorkOverviewProjection["tasks"][number],
+  operationalState: "actionable" | "waiting" | "blocked",
+  waitingLabel?: string,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [task.id]: task.version,
+      }),
+      commandName: "task.setOperationalState",
+      payload: {
+        taskId: task.id,
+        operationalState,
+        ...(operationalState === "waiting" && waitingLabel?.trim()
+          ? {
+              waitingOn: {
+                kind: "external",
+                label: waitingLabel.trim(),
+              },
+            }
+          : {}),
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "task.operational_state_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export const createOrganization = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -1153,6 +1339,349 @@ export const createOpportunity = (
       response.outcome.outcome === "success" &&
       response.outcome.projection.kind === "strategic.record_changed"
         ? response.outcome.projection
+        : undefined,
+  );
+};
+
+const currentPrincipal = (
+  snapshot: DesktopSnapshot,
+): PrincipalId | undefined =>
+  snapshot.access.kind === "ready"
+    ? snapshot.access.data.currentPrincipalId
+    : undefined;
+
+export const createPerson = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly name: string;
+    readonly organizationId?: StrategicRecordId;
+    readonly role?: string;
+    readonly email?: string;
+  },
+) => {
+  const personId = crypto.randomUUID() as StrategicRecordId;
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "relationship.personCreate",
+      payload: {
+        personId,
+        spaceId: firstSpace(snapshot),
+        name: input.name,
+        ...(input.organizationId === undefined
+          ? {}
+          : { organizationId: input.organizationId }),
+        ...(input.role?.trim() ? { role: input.role.trim() } : {}),
+        ...(input.email?.trim() ? { email: input.email.trim() } : {}),
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? { personId }
+        : undefined,
+  );
+};
+
+export const createOffer = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly opportunityId: StrategicRecordId;
+    readonly deliverableDocumentId: DocumentId;
+    readonly title: string;
+    readonly nextAction: string;
+  },
+) => {
+  const ownerPrincipalId = currentPrincipal(snapshot);
+  if (ownerPrincipalId === undefined)
+    return Promise.resolve<MutationResult<never>>({
+      kind: "unavailable",
+      message: "Nie można ustalić właściciela oferty.",
+    });
+  const offerId = crypto.randomUUID() as StrategicRecordId;
+  const created = await execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "opportunity.offerCreate",
+      payload: {
+        offerId,
+        opportunityId: input.opportunityId,
+        deliverableDocumentId: input.deliverableDocumentId,
+        title: input.title,
+        ownerPrincipalId,
+        state: "draft",
+        nextAction: input.nextAction,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? { offerId }
+        : undefined,
+  );
+  if (created.kind !== "success") return created;
+  const opportunity =
+    snapshot.relationships.kind === "ready"
+      ? snapshot.relationships.data.records.find(
+          (
+            record,
+          ): record is Extract<
+            RelationshipWorkspaceProjection["records"][number],
+            { kind: "opportunity" }
+          > =>
+            record.kind === "opportunity" && record.id === input.opportunityId,
+        )
+      : undefined;
+  if (opportunity === undefined)
+    return {
+      kind: "unavailable",
+      message:
+        "Oferta powstała, ale Opportunity wymaga ponownego wczytania przed powiązaniem.",
+    } as const;
+  const linked = await execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [opportunity.id]: opportunity.version,
+      }),
+      commandName: "opportunity.linkOutcomes",
+      payload: {
+        opportunityId: opportunity.id,
+        offerIds: [...opportunity.offerIds, offerId],
+        projectIds: opportunity.projectIds,
+        state: "pursued",
+        nextAction: input.nextAction,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? { offerId }
+        : undefined,
+  );
+  return linked;
+};
+
+export const createRenewal = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly organizationId: StrategicRecordId;
+    readonly title: string;
+    readonly scope: string;
+    readonly expiresAt: string;
+    readonly evidenceSourceIds: readonly KnowledgeSourceId[];
+  },
+) => {
+  const ownerPrincipalId = currentPrincipal(snapshot);
+  if (ownerPrincipalId === undefined)
+    return Promise.resolve<MutationResult<never>>({
+      kind: "unavailable",
+      message: "Nie można ustalić właściciela odnowienia.",
+    });
+  const renewalId = crypto.randomUUID() as StrategicRecordId;
+  const followUpTaskId = crypto.randomUUID() as TaskId;
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "relationship.renewalCreate",
+      payload: {
+        renewalId,
+        followUpTaskId,
+        spaceId: firstSpace(snapshot),
+        organizationId: input.organizationId,
+        title: input.title,
+        scope: input.scope,
+        expiresAt: input.expiresAt,
+        leadTimeDays: 30,
+        ownerPrincipalId,
+        evidenceSourceIds: input.evidenceSourceIds,
+        cycleKey: `${input.organizationId}:${input.expiresAt.slice(0, 10)}`,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? { renewalId, followUpTaskId }
+        : undefined,
+  );
+};
+
+export const createRelationshipFact = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly organizationId: StrategicRecordId;
+    readonly factType: string;
+    readonly value: string;
+    readonly evidenceSourceId: KnowledgeSourceId;
+  },
+) => {
+  const factId = crypto.randomUUID() as StrategicRecordId;
+  const verifiedAt = new Date().toISOString();
+  const staleAfter = new Date(Date.now() + 90 * 86_400_000).toISOString();
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "relationship.factCreate",
+      payload: {
+        factId,
+        spaceId: firstSpace(snapshot),
+        organizationId: input.organizationId,
+        factType: input.factType,
+        value: input.value,
+        evidenceSourceIds: [input.evidenceSourceId],
+        verifiedAt,
+        staleAfter,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? { factId }
+        : undefined,
+  );
+};
+
+export const createDecision = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  title: string,
+  rationale: string,
+  evidenceSourceIds: readonly KnowledgeSourceId[] = [],
+) => {
+  const decisionId = crypto.randomUUID() as StrategicRecordId;
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "decision.create",
+      payload: {
+        decisionId,
+        spaceId: firstSpace(snapshot),
+        title,
+        rationale,
+        evidenceSourceIds,
+        linkedRecordIds: [],
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? { decisionId }
+        : undefined,
+  );
+};
+
+export const supersedeDecision = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  prior: Extract<
+    RelationshipWorkspaceProjection["records"][number],
+    { kind: "decision" }
+  >,
+  input: {
+    readonly title: string;
+    readonly rationale: string;
+    readonly reason: string;
+  },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [prior.id]: prior.version,
+      }),
+      commandName: "decision.supersede",
+      payload: {
+        priorDecisionId: prior.id,
+        replacementDecisionId: crypto.randomUUID(),
+        impactReviewId: crypto.randomUUID(),
+        title: input.title,
+        rationale: input.rationale,
+        reason: input.reason,
+        evidenceSourceIds: prior.evidenceSourceIds,
+        consequences: [],
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const createRecurrence = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly title: string;
+    readonly taskTitle: string;
+    readonly cadence: "daily" | "weekly" | "monthly" | "yearly";
+  },
+) => {
+  const recurrenceId = crypto.randomUUID() as StrategicRecordId;
+  const intervalDays = { daily: 1, weekly: 7, monthly: 30, yearly: 365 }[
+    input.cadence
+  ];
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "recurrence.create",
+      payload: {
+        recurrenceId,
+        spaceId: firstSpace(snapshot),
+        title: input.title,
+        taskTitle: input.taskTitle,
+        cadence: input.cadence,
+        nextDueAt: new Date(
+          Date.now() + intervalDays * 86_400_000,
+        ).toISOString(),
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? { recurrenceId }
+        : undefined,
+  );
+};
+
+export const createRadarCandidate = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly sourceId: KnowledgeSourceId;
+    readonly title: string;
+    readonly relevance: string;
+  },
+) => {
+  const candidateId = crypto.randomUUID() as StrategicRecordId;
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "radar.candidateUpsert",
+      payload: {
+        candidateId,
+        spaceId: firstSpace(snapshot),
+        sourceId: input.sourceId,
+        materialKey: `${input.sourceId}:${input.title.trim().toLocaleLowerCase("pl-PL")}`,
+        title: input.title,
+        relevance: input.relevance,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? { candidateId }
         : undefined,
   );
 };
@@ -1537,6 +2066,68 @@ export const resolveRadarCandidate = (
         ? response.outcome.projection
         : undefined,
   );
+
+export const resolveRenewal = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  renewal: Extract<
+    RelationshipWorkspaceProjection["records"][number],
+    { kind: "renewal" }
+  >,
+  state: "renewed" | "not_renewing" | "irrelevant",
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [renewal.id]: renewal.version,
+      }),
+      commandName: "relationship.renewalResolve",
+      payload: { renewalId: renewal.id, state },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const generateRecurrenceOccurrence = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  recurrence: Extract<
+    RelationshipWorkspaceProjection["records"][number],
+    { kind: "recurrence" }
+  >,
+) => {
+  const intervalDays = {
+    daily: 1,
+    weekly: 7,
+    monthly: 30,
+    yearly: 365,
+  }[recurrence.cadence];
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [recurrence.id]: recurrence.version,
+      }),
+      commandName: "recurrence.generateOccurrence",
+      payload: {
+        recurrenceId: recurrence.id,
+        occurrenceTaskId: crypto.randomUUID(),
+        nextDueAt: new Date(
+          Date.parse(recurrence.nextDueAt) + intervalDays * 86_400_000,
+        ).toISOString(),
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+};
 
 export const resolveDecisionImpact = (
   client: ConstellationRendererClient,

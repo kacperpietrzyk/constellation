@@ -58,6 +58,10 @@ store, an in-memory Electron developer preview, and a packaged Alpha candidate.
 The implemented desktop journey covers Universal Quick Capture for text, URLs,
 and file references, deterministic routing to Tasks or knowledge sources,
 duplicate review-by-exception in Attention, Project outcome and Task relations,
+and a Work destination that connects Areas, Initiatives, Projects, dependencies,
+waiting direction, and saved deterministic views without imposing a mandatory
+containment tree. The same work-composition commands and query are available to
+desktop and MCP operators with Space-scoped authorization,
 task status/completion, deterministic scoped search,
 explainable weekly focus, Capture History, meaningful activity, and previewed
 undo. Destinations and open Task or Project contexts share one bounded tab rail
@@ -70,6 +74,15 @@ plaintext or in-memory fallback, and stops in recovery instead of silently
 replacing a missing ready database. If an established workspace cannot open,
 the same packaged application presents a recovery-only restore path rather than
 requiring a developer tool.
+
+The desktop can create and switch independent workspaces without sharing their
+database, key, Data Home, Hub credential, or local MCP endpoint. A personal
+Cockpit may read a bounded focus summary from locally authorized workspace
+projections, but it never joins their records. Settings also accepts a strict,
+bounded starter-workspace JSON manifest; the example at
+[`docs/examples/starter-workspace.json`](docs/examples/starter-workspace.json)
+creates Areas, Initiatives, Projects, Tasks, and explicit links through the same
+idempotent, audited commands used by the UI and MCP.
 
 Each durable workspace reports a versioned Data Home descriptor. The
 local-only provider says explicitly that its encrypted database is canonical on

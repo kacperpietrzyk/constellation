@@ -13,6 +13,8 @@ import {
   moveShellHistory,
   openShellContext,
   projectContext,
+  restoreShellNavigation,
+  serializeShellNavigation,
   taskContext,
 } from "../src/client/shell-navigation.js";
 
@@ -70,5 +72,24 @@ describe("stable shell navigation", () => {
     }
     assert.ok(state.tabs.length <= 7);
     assert.ok(state.tabs.some((tab) => tab.key === state.activeKey));
+  });
+
+  it("restores bounded tabs and rejects corrupt or unknown destinations", () => {
+    let state = createShellNavigation(destinationContext("work", "Praca"));
+    state = openShellContext(state, taskContext(taskId, "Zadanie Alpha"));
+    const restored = restoreShellNavigation(
+      serializeShellNavigation(state),
+      destinationContext("cockpit", "Tydzień"),
+    );
+    assert.equal(activeShellContext(restored).taskId, taskId);
+    assert.equal(
+      activeShellContext(
+        restoreShellNavigation(
+          '{"version":1,"state":{"tabs":[{"key":"x","label":"X","surface":"unknown"}]}}',
+          destinationContext("cockpit", "Tydzień"),
+        ),
+      ).surface,
+      "cockpit",
+    );
   });
 });

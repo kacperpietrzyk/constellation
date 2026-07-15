@@ -57,6 +57,10 @@ Commands:
 - `decision.supersede`
 - `decision.resolveImpact`
 - `area.create`
+- `initiative.create`
+- `work.linkCreate`
+- `work.linkRemove`
+- `savedView.create`
 - `recurrence.create`
 - `recurrence.generateOccurrence`
 - `project.close`
@@ -65,6 +69,7 @@ Commands:
 - `radar.resolve`
 - `meeting.upsertImported`
 - `task.setStatus`
+- `task.setOperationalState`
 - `task.complete`
 - `task.reopen`
 - `task.assign`
@@ -94,6 +99,7 @@ Queries:
 - `comment.mentionCandidates`
 - `attention.inbox`
 - `project.list`
+- `work.overview`
 - `project.operationalOverview`
 - `document.list`
 - `knowledge.list`
@@ -272,6 +278,28 @@ contracts -> Zod
   `contracts`; React receives only safe status and portability operations.
 - `realtime-documents` owns the replaceable Yjs adapter. Hocuspocus is a Hub
   transport/presence adapter and never becomes a second domain implementation.
+
+## Desktop workspace runtime boundary
+
+The desktop registry contains only workspace identity, display name, active
+selection, and a relative application-state root. Every registered workspace
+opens through its own SQLCipher database, wrapped key, Data Home state, Hub
+credential, and local MCP endpoint. Switching changes the registry selection
+and relaunches the process; the renderer cannot switch an identifier while
+retaining another workspace's privileged main-process services.
+
+The personal Cockpit may open an inactive encrypted local projection long
+enough to run the ordinary `cockpit.week` query with that workspace's own
+principal and Space scope. It returns only a bounded focus count and first
+action, closes the store immediately, and never joins records across workspace
+boundaries. Unavailable or unauthorized projections remain unavailable without
+affecting the active workspace.
+
+Starter manifests are a bounded convenience format, not an alternate import
+kernel. Main validates their exact shape and references, derives stable record
+IDs, and executes the normal commands with stable idempotency keys. Partial
+progress remains auditable and retrying the same `importId` cannot duplicate
+records.
 
 ## Verification
 

@@ -38,6 +38,25 @@ export const reopenTask = (task: Task, occurredAt: string): Task => {
   };
 };
 
+export const setTaskOperationalState = (
+  task: Task,
+  input: {
+    readonly operationalState: Task["operationalState"];
+    readonly waitingOn?: Task["waitingOn"];
+    readonly occurredAt: string;
+  },
+): Task => {
+  const { waitingOn: _waitingOn, ...base } = task;
+  void _waitingOn;
+  return {
+    ...base,
+    operationalState: input.operationalState,
+    ...(input.waitingOn === undefined ? {} : { waitingOn: input.waitingOn }),
+    version: task.version + 1,
+    updatedAt: input.occurredAt,
+  };
+};
+
 export const relateTaskToProject = (input: {
   readonly id: RelationId;
   readonly task: Task;

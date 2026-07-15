@@ -53,12 +53,16 @@ import {
   createRelationshipFact,
   createDecision,
   createArea,
+  createInitiative,
+  createWorkLink,
+  createSavedView,
   createRecurrence,
   createRadarCandidate,
   closeProject,
   reopenProject,
   restoreTaskProjectRelation,
   setTaskStatus,
+  setTaskOperationalState,
   undoCaptureTaskRoute,
   undoCaptureKnowledgeRoute,
   updateProjectOutcome,
@@ -124,6 +128,10 @@ export type Wave2Command = Extract<
       | "decision.supersede"
       | "decision.resolveImpact"
       | "area.create"
+      | "initiative.create"
+      | "work.linkCreate"
+      | "work.linkRemove"
+      | "savedView.create"
       | "recurrence.create"
       | "recurrence.generateOccurrence"
       | "project.close"
@@ -133,6 +141,7 @@ export type Wave2Command = Extract<
       | "meeting.upsertImported"
       | "project.updateOutcome"
       | "task.setStatus"
+      | "task.setOperationalState"
       | "task.complete"
       | "task.reopen"
       | "task.assign"
@@ -167,7 +176,8 @@ export type Wave2Query = Extract<
       | "recovery.preview"
       | "comment.list"
       | "comment.mentionCandidates"
-      | "attention.inbox";
+      | "attention.inbox"
+      | "work.overview";
   }
 >;
 
@@ -296,6 +306,9 @@ export const isWave2CommandAuthorized = (
     case "relationship.factCreate":
     case "decision.create":
     case "area.create":
+    case "initiative.create":
+    case "work.linkCreate":
+    case "savedView.create":
     case "recurrence.create":
     case "radar.candidateUpsert": {
       const space = view.getSpace(command.payload.spaceId);
@@ -309,6 +322,18 @@ export const isWave2CommandAuthorized = (
     }
     case "relationship.renewalResolve": {
       const record = view.getStrategicRecord(command.payload.renewalId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        record?.workspaceId === command.workspaceId
+          ? record.spaceId
+          : undefined,
+      );
+    }
+    case "work.linkRemove": {
+      const record = view.getStrategicRecord(command.payload.linkId);
       return authorized(
         dependencies,
         view,
@@ -398,6 +423,7 @@ export const isWave2CommandAuthorized = (
       );
     }
     case "task.setStatus":
+    case "task.setOperationalState":
     case "task.complete":
     case "task.reopen":
     case "task.assign":
@@ -671,6 +697,7 @@ const appendStrategicJournal = (
   additionalKinds: Readonly<
     Record<string, "task" | "project" | "attentionSignal">
   > = {},
+  undoDescriptor?: UndoDescriptor,
 ): CommandOutcome =>
   appendJournal(
     dependencies,
@@ -698,7 +725,7 @@ const appendStrategicJournal = (
         version: record.version,
       },
     },
-    undefined,
+    undoDescriptor,
     {
       [record.id]: "strategicRecord",
       ...additionalKinds,
@@ -1417,6 +1444,7 @@ export const executeWave2Command = (
         statusId: workspace.defaultTaskStatusId,
         recordState: "active",
         completionState: "open",
+        operationalState: "actionable",
         createdBy: context.principalId,
         version: 1,
         createdAt: occurredAt,
@@ -1756,6 +1784,198 @@ export const executeWave2Command = (
         ["title", "responsibility", "state"],
       );
     }
+    case "initiative.create": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (
+        transaction.getStrategicRecord(command.payload.initiativeId) !==
+        undefined
+      )
+        return precondition(command, occurredAt);
+      const record = createInitiative({
+        id: StrategicRecordIdSchema.parse(command.payload.initiativeId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        title: command.payload.title,
+        intendedOutcome: command.payload.intendedOutcome,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertStrategicRecord(record);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["title", "intendedOutcome", "state"],
+      );
+    }
+    case "work.linkCreate": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (
+        transaction.getStrategicRecord(command.payload.linkId) !== undefined ||
+        command.payload.sourceRecordId === command.payload.targetRecordId
+      )
+        return precondition(command, occurredAt);
+      const sourceProject = transaction.getProject(
+        ProjectIdSchema.parse(command.payload.sourceRecordId),
+      );
+      const sourceTask = transaction.getTask(
+        TaskIdSchema.parse(command.payload.sourceRecordId),
+      );
+      const targetTask = transaction.getTask(
+        TaskIdSchema.parse(command.payload.targetRecordId),
+      );
+      const targetStrategic = transaction.getStrategicRecord(
+        StrategicRecordIdSchema.parse(command.payload.targetRecordId),
+      );
+      const valid =
+        command.payload.linkType === "task_depends_on_task"
+          ? sourceTask?.spaceId === command.payload.spaceId &&
+            sourceTask.workspaceId === command.workspaceId &&
+            targetTask?.spaceId === command.payload.spaceId &&
+            targetTask.workspaceId === command.workspaceId
+          : sourceProject?.spaceId === command.payload.spaceId &&
+            sourceProject.workspaceId === command.workspaceId &&
+            targetStrategic?.spaceId === command.payload.spaceId &&
+            targetStrategic.workspaceId === command.workspaceId &&
+            ((command.payload.linkType === "project_advances_initiative" &&
+              targetStrategic.kind === "initiative") ||
+              (command.payload.linkType === "project_serves_area" &&
+                targetStrategic.kind === "area"));
+      if (!valid) return precondition(command, occurredAt);
+      const duplicate = transaction
+        .listStrategicRecords(command.workspaceId, command.payload.spaceId)
+        .some(
+          (record) =>
+            record.kind === "work_link" &&
+            record.state === "active" &&
+            record.linkType === command.payload.linkType &&
+            record.sourceRecordId === command.payload.sourceRecordId &&
+            record.targetRecordId === command.payload.targetRecordId,
+        );
+      if (duplicate) return precondition(command, occurredAt);
+      const record = createWorkLink({
+        id: StrategicRecordIdSchema.parse(command.payload.linkId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        linkType: command.payload.linkType,
+        sourceRecordId: command.payload.sourceRecordId,
+        targetRecordId: command.payload.targetRecordId,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertStrategicRecord(record);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["linkType", "sourceRecordId", "targetRecordId", "state"],
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          kind: "work_link.restore_state",
+          linkId: record.id,
+          priorState: "removed",
+          priorRemovedAt: occurredAt,
+          resultingVersion: record.version,
+        },
+      );
+    }
+    case "work.linkRemove": {
+      const current = transaction.getStrategicRecord(command.payload.linkId);
+      if (current?.kind !== "work_link" || current.state !== "active")
+        return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const record: StrategicRecord = {
+        ...current,
+        state: "removed",
+        removedAt: occurredAt,
+        version: current.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["state", "removedAt"],
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          kind: "work_link.restore_state",
+          linkId: record.id,
+          priorState: "active",
+          resultingVersion: record.version,
+        },
+      );
+    }
+    case "savedView.create": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (
+        transaction.getStrategicRecord(command.payload.savedViewId) !==
+        undefined
+      )
+        return precondition(command, occurredAt);
+      const record = createSavedView({
+        id: StrategicRecordIdSchema.parse(command.payload.savedViewId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        name: command.payload.name,
+        filters: {
+          ...(command.payload.filters.operationalStates === undefined
+            ? {}
+            : {
+                operationalStates: command.payload.filters.operationalStates,
+              }),
+          ...(command.payload.filters.projectIds === undefined
+            ? {}
+            : { projectIds: command.payload.filters.projectIds }),
+          ...(command.payload.filters.areaIds === undefined
+            ? {}
+            : { areaIds: command.payload.filters.areaIds }),
+          ...(command.payload.filters.initiativeIds === undefined
+            ? {}
+            : { initiativeIds: command.payload.filters.initiativeIds }),
+          ...(command.payload.filters.unassigned === undefined
+            ? {}
+            : { unassigned: command.payload.filters.unassigned }),
+        },
+        sort: command.payload.sort,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertStrategicRecord(record);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["name", "filters", "sort", "state"],
+      );
+    }
     case "recurrence.create": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       if (
@@ -1819,6 +2039,7 @@ export const executeWave2Command = (
         statusId: workspace.defaultTaskStatusId,
         recordState: "active",
         completionState: "open",
+        operationalState: "actionable",
         createdBy: context.principalId,
         version: 1,
         createdAt: occurredAt,
@@ -2438,6 +2659,84 @@ export const executeWave2Command = (
           priorOutcome: project.intendedOutcome,
           resultingVersion: updated.version,
         },
+      );
+    }
+    case "task.setOperationalState": {
+      const task = transaction.getTask(command.payload.taskId);
+      if (task === undefined) return precondition(command, occurredAt);
+      if (!exactExpected(command, { [task.id]: task.version }))
+        return versionConflict(command, occurredAt, {
+          [task.id]: task.version,
+        });
+      if (
+        (command.payload.operationalState === "waiting" &&
+          command.payload.waitingOn === undefined) ||
+        (command.payload.operationalState !== "waiting" &&
+          command.payload.waitingOn !== undefined)
+      )
+        return precondition(command, occurredAt);
+      const waitingOn = command.payload.waitingOn;
+      const updated = setTaskOperationalState(task, {
+        operationalState: command.payload.operationalState,
+        ...(waitingOn === undefined
+          ? {}
+          : {
+              waitingOn: {
+                kind: waitingOn.kind,
+                label: waitingOn.label,
+                ...(waitingOn.recordId === undefined
+                  ? {}
+                  : { recordId: waitingOn.recordId }),
+              },
+            }),
+        occurredAt,
+      });
+      if (!transaction.updateTask(updated, task.version))
+        return versionConflict(command, occurredAt, {
+          [task.id]: task.version,
+        });
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "task.operational_state_changed",
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          aggregateId: task.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        ["operationalState", "waitingOn"],
+        {
+          diagnosticCode: "task.operational_state_changed",
+          projection: {
+            kind: "task.operational_state_changed",
+            taskId: updated.id,
+            operationalState: updated.operationalState,
+            ...(updated.waitingOn === undefined
+              ? {}
+              : { waitingOn: updated.waitingOn }),
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          kind: "task.restore_operational_state",
+          taskId: task.id,
+          priorOperationalState: task.operationalState,
+          ...(task.waitingOn === undefined
+            ? {}
+            : { priorWaitingOn: task.waitingOn }),
+          resultingVersion: updated.version,
+        },
+        { [updated.id]: "task" },
       );
     }
     case "task.setStatus":
@@ -3202,6 +3501,37 @@ const descriptorState = (
             reason: "later_change",
           };
     }
+    case "task.restore_operational_state": {
+      const task = view.getTask(descriptor.taskId);
+      return task?.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [task.id],
+            versions: { [task.id]: task.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "work_link.restore_state": {
+      const link = view.getStrategicRecord(descriptor.linkId);
+      return link?.kind === "work_link" &&
+        link.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [link.id],
+            versions: { [link.id]: link.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
     case "relation.remove": {
       const relation = view.getRelation(descriptor.relationId);
       return relation?.version === descriptor.resultingVersion
@@ -3415,6 +3745,7 @@ const applyUndo = (
     | "knowledgeSource"
     | "namedDocumentVersion"
     | "relation"
+    | "strategicRecord"
   >;
   if (descriptor.kind === "project.restore_outcome") {
     const project = transaction.getProject(descriptor.projectId) as Project;
@@ -3448,6 +3779,41 @@ const applyUndo = (
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "task" };
+  } else if (descriptor.kind === "task.restore_operational_state") {
+    const task = transaction.getTask(descriptor.taskId) as Task;
+    const restored = setTaskOperationalState(task, {
+      operationalState: descriptor.priorOperationalState,
+      ...(descriptor.priorWaitingOn === undefined
+        ? {}
+        : { waitingOn: descriptor.priorWaitingOn }),
+      occurredAt,
+    });
+    transaction.updateTask(restored, task.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "task" };
+  } else if (descriptor.kind === "work_link.restore_state") {
+    const link = transaction.getStrategicRecord(descriptor.linkId);
+    if (link?.kind !== "work_link") {
+      return outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "undo.not_available",
+        currentVersions: state.versions,
+      });
+    }
+    const { removedAt: _removedAt, ...withoutRemovedAt } = link;
+    void _removedAt;
+    const restored: StrategicRecord = {
+      ...withoutRemovedAt,
+      state: descriptor.priorState,
+      ...(descriptor.priorRemovedAt === undefined
+        ? {}
+        : { removedAt: descriptor.priorRemovedAt }),
+      version: link.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateStrategicRecord(restored, link.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
   } else if (descriptor.kind === "relation.remove") {
     const relation = transaction.getRelation(
       descriptor.relationId,
@@ -3706,6 +4072,18 @@ const strategicSearchText = (
       return { title: "Decision impact review", detail: record.reason };
     case "area":
       return { title: record.title, detail: record.responsibility };
+    case "initiative":
+      return { title: record.title, detail: record.intendedOutcome };
+    case "work_link":
+      return {
+        title: record.linkType.replaceAll("_", " "),
+        detail: `${record.sourceRecordId} -> ${record.targetRecordId}`,
+      };
+    case "saved_view":
+      return {
+        title: record.name,
+        detail: `${record.sort} saved work view`,
+      };
     case "recurrence":
       return { title: record.title, detail: record.taskTitle };
     case "radar_candidate":
@@ -3752,6 +4130,109 @@ export const executeWave2Query = (
         ? "authorization.denied"
         : "query.consistency_unavailable",
     );
+  }
+  if (query.queryName === "work.overview") {
+    const space = view.getSpace(query.parameters.spaceId);
+    if (
+      space?.workspaceId !== query.workspaceId ||
+      !canViewSpace(view, context, query.workspaceId, space.id) ||
+      !dependencies.authorization.authorize({
+        context,
+        capability: query.queryName,
+        workspaceId: query.workspaceId,
+        spaceId: space.id,
+      })
+    )
+      return queryRejected(query, kernelTime, "authorization.denied");
+    const records = view.listStrategicRecords(query.workspaceId, space.id);
+    const stateOrder = { waiting: 0, blocked: 1, actionable: 2 } as const;
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "work.overview",
+      tasks: view
+        .listTasksInSpace(query.workspaceId, space.id)
+        .filter((task) => task.recordState === "active")
+        .sort(
+          (left, right) =>
+            stateOrder[left.operationalState] -
+              stateOrder[right.operationalState] ||
+            right.updatedAt.localeCompare(left.updatedAt),
+        )
+        .map((task) => ({
+          id: task.id,
+          title: task.title,
+          operationalState: task.operationalState,
+          ...(task.waitingOn === undefined
+            ? {}
+            : { waitingOn: task.waitingOn }),
+          completionState: task.completionState,
+          version: task.version,
+          updatedAt: task.updatedAt,
+        })),
+      projects: view
+        .listProjects(query.workspaceId, space.id)
+        .map((project) => ({
+          id: project.id,
+          title: project.title,
+          intendedOutcome: project.intendedOutcome,
+          lifecycle: project.lifecycle,
+          version: project.version,
+        })),
+      areas: records
+        .filter(
+          (record): record is Extract<StrategicRecord, { kind: "area" }> =>
+            record.kind === "area",
+        )
+        .map((area) => ({
+          id: area.id,
+          title: area.title,
+          responsibility: area.responsibility,
+          state: area.state,
+          version: area.version,
+        })),
+      initiatives: records
+        .filter(
+          (
+            record,
+          ): record is Extract<StrategicRecord, { kind: "initiative" }> =>
+            record.kind === "initiative",
+        )
+        .map((initiative) => ({
+          id: initiative.id,
+          title: initiative.title,
+          intendedOutcome: initiative.intendedOutcome,
+          state: initiative.state,
+          version: initiative.version,
+        })),
+      links: records
+        .filter(
+          (record): record is Extract<StrategicRecord, { kind: "work_link" }> =>
+            record.kind === "work_link",
+        )
+        .map((link) => ({
+          id: link.id,
+          linkType: link.linkType,
+          sourceRecordId: link.sourceRecordId,
+          targetRecordId: link.targetRecordId,
+          state: link.state,
+          version: link.version,
+        })),
+      savedViews: records
+        .filter(
+          (
+            record,
+          ): record is Extract<StrategicRecord, { kind: "saved_view" }> =>
+            record.kind === "saved_view" && record.state === "active",
+        )
+        .map((savedView) => ({
+          id: savedView.id,
+          name: savedView.name,
+          filters: savedView.filters,
+          sort: savedView.sort,
+          state: savedView.state,
+          version: savedView.version,
+        })),
+      freshness,
+    });
   }
   if (query.queryName === "comment.mentionCandidates") {
     const space = view.getSpace(query.parameters.spaceId);

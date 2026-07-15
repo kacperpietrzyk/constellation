@@ -141,6 +141,7 @@ const snapshot: DesktopSnapshot = {
   captures: [],
   tasks: [],
   projects: { kind: "unavailable", message: "Scenario" },
+  work: { kind: "unavailable", message: "Scenario" },
   relationships: { kind: "unavailable", message: "Scenario" },
   radar: { kind: "unavailable", message: "Scenario" },
   cockpit: { kind: "unavailable", message: "Scenario" },

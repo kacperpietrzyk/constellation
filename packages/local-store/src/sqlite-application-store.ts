@@ -78,7 +78,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 13;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
   checkpoint: null,
@@ -578,6 +578,12 @@ const schemaV12 = `
   WHERE json_type(payload_json, '$.original') IS NULL;
 `;
 
+const schemaV13 = `
+  UPDATE tasks
+  SET payload_json = json_set(payload_json, '$.operationalState', 'actionable')
+  WHERE json_type(payload_json, '$.operationalState') IS NULL;
+`;
+
 export interface LocalCoordinationState {
   readonly workspaceId: WorkspaceId;
   readonly providerInstanceId: string;
@@ -750,6 +756,7 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
     if (currentVersion < 10) database.exec(schemaV10);
     if (currentVersion < 11) database.exec(schemaV11);
     if (currentVersion < 12) database.exec(schemaV12);
+    if (currentVersion < 13) database.exec(schemaV13);
     database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
     database.exec("COMMIT;");
   } catch (error) {

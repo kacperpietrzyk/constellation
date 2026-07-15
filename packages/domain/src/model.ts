@@ -217,6 +217,12 @@ export interface Task {
   readonly statusId: TaskStatusId;
   readonly recordState: "active" | "removed";
   readonly completionState: "open" | "completed";
+  readonly operationalState: "actionable" | "waiting" | "blocked";
+  readonly waitingOn?: {
+    readonly kind: "person" | "task" | "external";
+    readonly label: string;
+    readonly recordId?: string;
+  };
   readonly completedAt?: string;
   readonly sourceCaptureId?: CaptureId;
   readonly createdBy: PrincipalId;
@@ -477,6 +483,38 @@ export type StrategicRecord =
       readonly state: "active" | "archived";
     })
   | (StrategicRecordBase & {
+      readonly kind: "initiative";
+      readonly title: string;
+      readonly intendedOutcome: string;
+      readonly state: "active" | "closed";
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "work_link";
+      readonly linkType:
+        | "project_advances_initiative"
+        | "project_serves_area"
+        | "task_depends_on_task";
+      readonly sourceRecordId: string;
+      readonly targetRecordId: string;
+      readonly state: "active" | "removed";
+      readonly removedAt?: string;
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "saved_view";
+      readonly name: string;
+      readonly filters: {
+        readonly operationalStates?: readonly (
+          "actionable" | "waiting" | "blocked"
+        )[];
+        readonly projectIds?: readonly ProjectId[];
+        readonly areaIds?: readonly StrategicRecordId[];
+        readonly initiativeIds?: readonly StrategicRecordId[];
+        readonly unassigned?: boolean;
+      };
+      readonly sort: "updated_desc" | "due_asc" | "title_asc";
+      readonly state: "active" | "deleted";
+    })
+  | (StrategicRecordBase & {
       readonly kind: "recurrence";
       readonly title: string;
       readonly taskTitle: string;
@@ -522,6 +560,28 @@ export type UndoDescriptor =
       readonly kind: "project.restore_outcome";
       readonly projectId: ProjectId;
       readonly priorOutcome: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "task.restore_operational_state";
+      readonly taskId: TaskId;
+      readonly priorOperationalState: Task["operationalState"];
+      readonly priorWaitingOn?: Task["waitingOn"];
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "work_link.restore_state";
+      readonly linkId: StrategicRecordId;
+      readonly priorState: "active" | "removed";
+      readonly priorRemovedAt?: string;
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }
@@ -747,7 +807,11 @@ export type DomainEvent = { readonly commandId: CommandId } & (
     }
   | {
       readonly id: EventId;
-      readonly type: "task.status_changed" | "task.completed" | "task.reopened";
+      readonly type:
+        | "task.status_changed"
+        | "task.operational_state_changed"
+        | "task.completed"
+        | "task.reopened";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: TaskId;

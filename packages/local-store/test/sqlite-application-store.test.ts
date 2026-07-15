@@ -761,7 +761,11 @@ describe("SQLite ApplicationStore", () => {
           user_version: number;
         }
       ).user_version,
-      12,
+      13,
+    );
+    assert.equal(
+      store.read((view) => view.getTask(taskId))?.operationalState,
+      "actionable",
     );
     assert.equal(
       (

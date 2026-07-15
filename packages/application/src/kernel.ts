@@ -293,6 +293,10 @@ const isCurrentlyAuthorized = (
     case "decision.supersede":
     case "decision.resolveImpact":
     case "area.create":
+    case "initiative.create":
+    case "work.linkCreate":
+    case "work.linkRemove":
+    case "savedView.create":
     case "recurrence.create":
     case "recurrence.generateOccurrence":
     case "project.close":
@@ -302,6 +306,7 @@ const isCurrentlyAuthorized = (
     case "meeting.upsertImported":
     case "project.updateOutcome":
     case "task.setStatus":
+    case "task.setOperationalState":
     case "task.complete":
     case "task.reopen":
     case "task.assign":
@@ -564,6 +569,10 @@ export class ApplicationKernel {
       case "decision.supersede":
       case "decision.resolveImpact":
       case "area.create":
+      case "initiative.create":
+      case "work.linkCreate":
+      case "work.linkRemove":
+      case "savedView.create":
       case "recurrence.create":
       case "recurrence.generateOccurrence":
       case "project.close":
@@ -573,6 +582,7 @@ export class ApplicationKernel {
       case "meeting.upsertImported":
       case "project.updateOutcome":
       case "task.setStatus":
+      case "task.setOperationalState":
       case "task.complete":
       case "task.reopen":
       case "comment.add":
@@ -1650,6 +1660,7 @@ export class ApplicationKernel {
             freshness,
           );
         case "project.list":
+        case "work.overview":
         case "document.list":
         case "knowledge.list":
         case "knowledge.documentContext":

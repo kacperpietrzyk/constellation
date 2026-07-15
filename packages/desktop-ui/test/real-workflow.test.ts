@@ -20,12 +20,17 @@ import {
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import {
+  createArea,
+  createInitiative,
   createProject,
+  createSavedWorkView,
+  createWorkLink,
   loadDesktopSnapshot,
   previewUndo,
   relateTask,
   searchGlobal,
   setTaskCompletion,
+  setTaskOperationalState,
   setTaskStatus,
   undoCommand,
   unrelateTask,
@@ -82,6 +87,40 @@ const commandProjection = (command: CommandEnvelope) => {
         title: "Alpha",
         intendedOutcome: command.payload.intendedOutcome,
         lifecycle: "active",
+        version: 3,
+      };
+    case "area.create":
+    case "initiative.create":
+    case "savedView.create":
+    case "work.linkCreate":
+      return {
+        kind: "strategic.record_changed",
+        recordId:
+          "areaId" in command.payload
+            ? command.payload.areaId
+            : "initiativeId" in command.payload
+              ? command.payload.initiativeId
+              : "savedViewId" in command.payload
+                ? command.payload.savedViewId
+                : command.payload.linkId,
+        recordType:
+          command.commandName === "area.create"
+            ? "area"
+            : command.commandName === "initiative.create"
+              ? "initiative"
+              : command.commandName === "savedView.create"
+                ? "saved_view"
+                : "work_link",
+        version: 1,
+      };
+    case "task.setOperationalState":
+      return {
+        kind: "task.operational_state_changed",
+        taskId,
+        operationalState: command.payload.operationalState,
+        ...(command.payload.waitingOn === undefined
+          ? {}
+          : { waitingOn: command.payload.waitingOn }),
         version: 3,
       };
     case "task.setStatus":
@@ -374,6 +413,30 @@ const createTypedClient = () => {
               },
             ],
           }) as Awaited<ReturnType<ConstellationRendererClient["runQuery"]>>;
+        case "work.overview":
+          return successQuery(query, {
+            kind: "work.overview",
+            tasks: [
+              {
+                id: taskId,
+                title: "Sprawdź integrację",
+                operationalState: "actionable",
+                completionState: "open",
+                version: 2,
+                updatedAt: "2026-07-13T10:00:00.000Z",
+              },
+            ],
+            projects: [],
+            areas: [],
+            initiatives: [],
+            links: [],
+            savedViews: [],
+            freshness: {
+              mode: "local_authoritative",
+              checkpoint: null,
+              missingCapabilities: [],
+            },
+          }) as Awaited<ReturnType<ConstellationRendererClient["runQuery"]>>;
         case "cockpit.week":
           return successQuery(query, {
             kind: "cockpit.week",
@@ -501,6 +564,7 @@ describe("real Wave 2 renderer workflow", () => {
     assert.equal(snapshot.projects.kind, "ready");
     assert.equal(snapshot.cockpit.kind, "ready");
     assert.equal(snapshot.activity.kind, "ready");
+    assert.equal(snapshot.work.kind, "ready");
     assert.equal(snapshot.access.kind, "ready");
     assert.equal(snapshot.dataHome?.descriptor.storageRole, "canonical");
     assert.equal(snapshot.dataHome?.syncState, "not_configured");
@@ -520,6 +584,7 @@ describe("real Wave 2 renderer workflow", () => {
         "relationship.workspace",
         "task.list",
         "task.assignmentCandidates",
+        "work.overview",
         "workspace.access",
         "workspace.bootstrapContext",
       ].sort(),
@@ -541,6 +606,30 @@ describe("real Wave 2 renderer workflow", () => {
     const snapshot = await loadDesktopSnapshot(client);
     await searchGlobal(client, snapshot, "Alpha");
     await createProject(client, snapshot, "Alpha", "Gotowe");
+    await createArea(client, snapshot, "Produkt", "Utrzymuj jakość");
+    await createInitiative(client, snapshot, "Alfa", "Pełny tydzień pracy");
+    await createSavedWorkView(client, snapshot, "Czekam", ["waiting"]);
+    await createWorkLink(
+      client,
+      snapshot,
+      "project_advances_initiative",
+      projectId,
+      "00000000-0000-4000-8000-000000000020",
+    );
+    await setTaskOperationalState(
+      client,
+      snapshot,
+      {
+        id: taskId,
+        title: "Sprawdź integrację",
+        operationalState: "actionable",
+        completionState: "open",
+        version: 2,
+        updatedAt: "2026-07-13T10:00:00.000Z",
+      },
+      "waiting",
+      "Dostawca",
+    );
     await updateProjectOutcome(
       client,
       snapshot,
@@ -564,6 +653,11 @@ describe("real Wave 2 renderer workflow", () => {
       commands.map((command) => command.commandName),
       [
         "project.create",
+        "area.create",
+        "initiative.create",
+        "savedView.create",
+        "work.linkCreate",
+        "task.setOperationalState",
         "project.updateOutcome",
         "task.setStatus",
         "task.complete",

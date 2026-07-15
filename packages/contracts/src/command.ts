@@ -568,6 +568,66 @@ export const AreaCreateCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 
+export const InitiativeCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("initiative.create"),
+  payload: z
+    .object({
+      initiativeId: StrategicRecordIdSchema,
+      spaceId: SpaceIdSchema,
+      title: z.string().trim().min(1).max(500),
+      intendedOutcome: z.string().trim().min(1).max(4_000),
+    })
+    .strict(),
+}).strict();
+
+export const WorkLinkCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("work.linkCreate"),
+  payload: z
+    .object({
+      linkId: StrategicRecordIdSchema,
+      spaceId: SpaceIdSchema,
+      linkType: z.enum([
+        "project_advances_initiative",
+        "project_serves_area",
+        "task_depends_on_task",
+      ]),
+      sourceRecordId: z.uuid(),
+      targetRecordId: z.uuid(),
+    })
+    .strict(),
+}).strict();
+
+export const WorkLinkRemoveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("work.linkRemove"),
+  payload: z.object({ linkId: StrategicRecordIdSchema }).strict(),
+}).strict();
+
+const SavedViewFiltersSchema = z
+  .object({
+    operationalStates: z
+      .array(z.enum(["actionable", "waiting", "blocked"]))
+      .max(3)
+      .optional(),
+    projectIds: z.array(ProjectIdSchema).max(100).optional(),
+    areaIds: z.array(StrategicRecordIdSchema).max(100).optional(),
+    initiativeIds: z.array(StrategicRecordIdSchema).max(100).optional(),
+    unassigned: z.boolean().optional(),
+  })
+  .strict();
+
+export const SavedViewCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("savedView.create"),
+  payload: z
+    .object({
+      savedViewId: StrategicRecordIdSchema,
+      spaceId: SpaceIdSchema,
+      name: z.string().trim().min(1).max(200),
+      filters: SavedViewFiltersSchema,
+      sort: z.enum(["updated_desc", "due_asc", "title_asc"]),
+    })
+    .strict(),
+}).strict();
+
 export const RecurrenceCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("recurrence.create"),
   payload: z
@@ -649,6 +709,25 @@ export const TaskSetStatusCommandSchema = CommandMetadataSchema.extend({
     .object({ taskId: TaskIdSchema, statusId: TaskStatusIdSchema })
     .strict(),
 }).strict();
+
+export const TaskSetOperationalStateCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("task.setOperationalState"),
+    payload: z
+      .object({
+        taskId: TaskIdSchema,
+        operationalState: z.enum(["actionable", "waiting", "blocked"]),
+        waitingOn: z
+          .object({
+            kind: z.enum(["person", "task", "external"]),
+            label: z.string().trim().min(1).max(500),
+            recordId: z.uuid().optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict(),
+  }).strict();
 
 export const TaskCompleteCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("task.complete"),
@@ -787,6 +866,10 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   DecisionSupersedeCommandSchema,
   DecisionResolveImpactCommandSchema,
   AreaCreateCommandSchema,
+  InitiativeCreateCommandSchema,
+  WorkLinkCreateCommandSchema,
+  WorkLinkRemoveCommandSchema,
+  SavedViewCreateCommandSchema,
   RecurrenceCreateCommandSchema,
   RecurrenceGenerateOccurrenceCommandSchema,
   ProjectCloseCommandSchema,
@@ -796,6 +879,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   MeetingUpsertImportedCommandSchema,
   ProjectUpdateOutcomeCommandSchema,
   TaskSetStatusCommandSchema,
+  TaskSetOperationalStateCommandSchema,
   TaskCompleteCommandSchema,
   TaskReopenCommandSchema,
   TaskAssignCommandSchema,

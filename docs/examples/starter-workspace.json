@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "importId": "3f8751f8-40a9-4b52-8f8c-c9a552216e56",
+  "areas": [
+    {
+      "key": "product",
+      "title": "Product",
+      "responsibility": "Keep the product useful, reliable, and understandable."
+    }
+  ],
+  "initiatives": [
+    {
+      "key": "first-release",
+      "title": "First release",
+      "intendedOutcome": "A coherent release can be used for ordinary weekly work."
+    }
+  ],
+  "projects": [
+    {
+      "key": "dogfood",
+      "title": "Dogfood the weekly workflow",
+      "intendedOutcome": "Capture, plan, and close one real week without leaving the application.",
+      "areaKey": "product",
+      "initiativeKey": "first-release"
+    }
+  ],
+  "tasks": [
+    {
+      "key": "capture-inputs",
+      "title": "Capture this week's loose inputs",
+      "projectKey": "dogfood"
+    },
+    {
+      "key": "await-review",
+      "title": "Review the first weekly outcome",
+      "projectKey": "dogfood",
+      "operationalState": "waiting",
+      "waitingOn": "A concrete week of product use"
+    }
+  ]
+}

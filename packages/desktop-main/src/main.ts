@@ -86,7 +86,22 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
   };
 };
 
-const createWindow = async (): Promise<BrowserWindow> => {
+const DETACHABLE_SURFACES = new Set([
+  "cockpit",
+  "work",
+  "tasks",
+  "projects",
+  "history",
+  "activity",
+  "attention",
+  "access",
+  "documents",
+  "meetings",
+  "relationships",
+  "settings",
+]);
+
+const createWindow = async (destination?: string): Promise<BrowserWindow> => {
   const window = new BrowserWindow({
     width: 1380,
     height: 860,
@@ -108,7 +123,7 @@ const createWindow = async (): Promise<BrowserWindow> => {
       webSecurity: true,
     },
   });
-  mainWindow = window;
+  if (destination === undefined) mainWindow = window;
   window.once("closed", () => {
     if (mainWindow === window) mainWindow = undefined;
   });
@@ -122,8 +137,20 @@ const createWindow = async (): Promise<BrowserWindow> => {
   });
   window.once("ready-to-show", () => window.show());
 
-  if (developmentUrl !== undefined) await window.loadURL(developmentUrl);
-  else await window.loadFile(rendererPath);
+  if (developmentUrl !== undefined) {
+    const url = new URL(developmentUrl);
+    if (destination !== undefined) {
+      url.searchParams.set("destination", destination);
+      url.searchParams.set("detached", "1");
+    }
+    await window.loadURL(url.toString());
+  } else
+    await window.loadFile(
+      rendererPath,
+      destination === undefined
+        ? undefined
+        : { query: { destination, detached: "1" } },
+    );
   return window;
 };
 
@@ -162,6 +189,53 @@ void app.whenReady().then(async () => {
     assertTrustedSender(event, developmentUrl);
     return runtime.buildInfo;
   });
+  ipcMain.handle(DESKTOP_CHANNELS.listWorkspaces, (event) => {
+    assertTrustedSender(event, developmentUrl);
+    const workspaceId = runtime.buildInfo.initialWorkspaceId;
+    return workspaceId === undefined
+      ? []
+      : [{ workspaceId, name: "Developer preview", active: true }];
+  });
+  ipcMain.handle(DESKTOP_CHANNELS.createWorkspace, (event) => {
+    assertTrustedSender(event, developmentUrl);
+    return { outcome: "failure", code: "operation_failed" } as const;
+  });
+  ipcMain.handle(DESKTOP_CHANNELS.switchWorkspace, (event) => {
+    assertTrustedSender(event, developmentUrl);
+    return { outcome: "failure", code: "workspace_missing" } as const;
+  });
+  ipcMain.handle(DESKTOP_CHANNELS.getCrossWorkspaceCockpit, (event) => {
+    assertTrustedSender(event, developmentUrl);
+    const workspaceId = runtime.buildInfo.initialWorkspaceId;
+    return workspaceId === undefined
+      ? []
+      : [
+          {
+            workspaceId,
+            name: "Developer preview",
+            active: true,
+            availability: "ready",
+            focusCount: 0,
+          },
+        ];
+  });
+  ipcMain.handle(DESKTOP_CHANNELS.importStarterWorkspace, (event) => {
+    assertTrustedSender(event, developmentUrl);
+    return { outcome: "failure", code: "unavailable" } as const;
+  });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.openDetachedSurface,
+    async (event, input: unknown) => {
+      assertTrustedSender(event, developmentUrl);
+      const surface =
+        typeof input === "object" && input !== null
+          ? (input as { surface?: unknown }).surface
+          : undefined;
+      if (typeof surface !== "string" || !DETACHABLE_SURFACES.has(surface))
+        throw new Error("Unsupported detached surface.");
+      await createWindow(surface);
+    },
+  );
 
   await createWindow();
   const shortcutRegistered = globalShortcut.register(

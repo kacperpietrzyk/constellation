@@ -49,6 +49,12 @@ const recurrenceId = StrategicRecordIdSchema.parse(
 const radarId = StrategicRecordIdSchema.parse(
   "19000000-0000-4000-8000-000000000017",
 );
+const personId = StrategicRecordIdSchema.parse(
+  "19000000-0000-4000-8000-000000000018",
+);
+const decisionId = StrategicRecordIdSchema.parse(
+  "19000000-0000-4000-8000-000000000019",
+);
 const projectId = ProjectIdSchema.parse("19000000-0000-4000-8000-000000000020");
 const timestamp = "2026-07-15T10:00:00.000Z";
 const freshness = {
@@ -160,6 +166,25 @@ const records: RelationshipWorkspaceProjection["records"] = [
     relevance: "Może wpłynąć na aktywną decyzję o modelu dostawy.",
     state: "pending",
   },
+  {
+    ...base,
+    id: personId,
+    kind: "person",
+    name: "Marta Nowak",
+    organizationId,
+    role: "Sponsor programu",
+    email: "marta@example.test",
+  },
+  {
+    ...base,
+    id: decisionId,
+    kind: "decision",
+    title: "Warsztat poprzedza wdrożenie",
+    rationale: "Najpierw potwierdzamy zakres na dowodach.",
+    evidenceSourceIds: [],
+    linkedRecordIds: [projectId],
+    state: "current",
+  },
 ];
 
 const relationships: RelationshipWorkspaceProjection = {
@@ -171,7 +196,7 @@ const radar: RadarReviewProjection = {
   kind: "radar.review",
   finite: true,
   pendingCount: 1,
-  items: [records[7]!],
+  items: [records.find((record) => record.kind === "radar_candidate")!],
   freshness,
 };
 const client = createScenarioClient({ queries: {} });
@@ -200,15 +225,58 @@ const snapshot: DesktopSnapshot = {
   captures: [],
   tasks: [],
   projects: { kind: "ready", data: { kind: "project.list", items: [] } },
+  work: { kind: "unavailable", message: "Scenario" },
   cockpit: { kind: "unavailable", message: "Scenario" },
   activity: { kind: "unavailable", message: "Scenario" },
-  access: { kind: "unavailable", message: "Scenario" },
+  access: {
+    kind: "ready",
+    data: {
+      kind: "workspace.access",
+      policyVersion: 1,
+      currentPrincipalId: principalId,
+      canManage: true,
+      members: [],
+    },
+  },
   agentAccess: { kind: "unavailable", message: "Scenario" },
   assignmentCandidates: { kind: "unavailable", message: "Scenario" },
   mentionCandidates: { kind: "unavailable", message: "Scenario" },
   attention: { kind: "unavailable", message: "Scenario" },
-  documents: { kind: "unavailable", message: "Scenario" },
-  knowledge: { kind: "unavailable", message: "Scenario" },
+  documents: {
+    kind: "ready",
+    data: {
+      kind: "document.list",
+      items: [
+        {
+          id: "19000000-0000-4000-8000-000000000030" as never,
+          spaceId,
+          title: "Oferta warsztatu",
+          role: "deliverable",
+          version: 1,
+          updatedAt: timestamp,
+        },
+      ],
+    },
+  },
+  knowledge: {
+    kind: "ready",
+    data: {
+      kind: "knowledge.list",
+      spaceId,
+      sources: [
+        {
+          id: "19000000-0000-4000-8000-000000000050" as never,
+          sourceKind: "excerpt",
+          title: "Warunki umowy",
+          availability: "available",
+          observedAt: timestamp,
+          version: 1,
+          updatedAt: timestamp,
+        },
+      ],
+      documents: [],
+    },
+  },
   relationships: { kind: "ready", data: relationships },
   radar: { kind: "ready", data: radar },
 };
