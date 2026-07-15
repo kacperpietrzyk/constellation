@@ -73,12 +73,15 @@ const install = (manifest) => {
       if (app === undefined) throw new Error("DISTRIBUTION_APP_MISSING");
       const target = path.join(installRoot, app);
       run("ditto", [path.join(mount, app), target]);
-      return path.join(
-        target,
-        "Contents",
-        "MacOS",
-        "Constellation Local Alpha",
-      );
+      const executableRoot = path.join(target, "Contents", "MacOS");
+      const executables = fs
+        .readdirSync(executableRoot, { withFileTypes: true })
+        .filter((entry) => entry.isFile())
+        .map((entry) => path.join(executableRoot, entry.name));
+      if (executables.length !== 1) {
+        throw new Error("DISTRIBUTION_EXECUTABLE_SET_INVALID");
+      }
+      return executables[0];
     } finally {
       run("hdiutil", ["detach", mount, "-force"]);
     }
@@ -155,7 +158,7 @@ const preservedWorkspace = path.join(
   smokeStateRoot,
   "user-data",
   "local-alpha-workspace",
-  "workspace.sqlite3",
+  "workspace.db",
 );
 const preservedKey = path.join(
   smokeStateRoot,

@@ -119,7 +119,9 @@ const built = spawnSync(
   builder,
   [
     "--prepackaged",
-    alphaManifest.packageRoot,
+    process.platform === "darwin"
+      ? alphaManifest.appBundle
+      : alphaManifest.packageRoot,
     "--config",
     buildConfig,
     "--publish",
