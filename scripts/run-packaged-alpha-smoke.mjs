@@ -202,6 +202,12 @@ const signalPackagedProcessTree = (child, signal) => {
   if (child.exitCode === null && child.signalCode === null) child.kill(signal);
 };
 
+const removeSmokeSingletonArtifacts = () => {
+  for (const name of ["SingletonCookie", "SingletonLock", "SingletonSocket"]) {
+    fs.rmSync(path.join(userData, name), { force: true, recursive: true });
+  }
+};
+
 const stopPackagedApp = async (client, child) => {
   await Promise.race([
     client.send("Browser.close").catch(() => undefined),
@@ -222,6 +228,7 @@ const stopPackagedApp = async (client, child) => {
   if (!(await waitForExit())) throw new Error("PACKAGED_ALPHA_DID_NOT_EXIT");
   child.stdout.destroy();
   child.stderr.destroy();
+  removeSmokeSingletonArtifacts();
 };
 
 const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
