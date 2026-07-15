@@ -197,12 +197,7 @@ const smoke = async (executable, workspaceId) => {
   return summary;
 };
 
-let manifest = fs.existsSync(
-  path.join(releaseRoot, "distribution-manifest.json"),
-)
-  ? distributionManifest()
-  : build("0.0.1");
-if (manifest.version !== "0.0.1") manifest = build("0.0.1");
+let manifest = build("0.0.1");
 let executable = install(manifest);
 const installed = await smoke(executable);
 const workspaceId = installed.backupWorkspaceId;
@@ -233,13 +228,13 @@ if (!(await waitForAbsent(executable))) {
 }
 const preservedWorkspace = path.join(
   smokeStateRoot,
-  "user-data",
+  "application-state",
   "local-alpha-workspace",
   "workspace.db",
 );
 const preservedKey = path.join(
   smokeStateRoot,
-  "user-data",
+  "application-state",
   "local-alpha-workspace",
   "key-wrapper.json",
 );

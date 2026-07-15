@@ -300,9 +300,23 @@ const electronSafeStorage: AsyncSafeStorage = {
       : electron.safeStorage.decryptStringAsync(value),
 };
 
+const desktopStateRoot = (): string => {
+  const override = process.env.CONSTELLATION_ALPHA_STATE_ROOT;
+  if (override === undefined) return app.getPath("userData");
+  if (
+    !path.isAbsolute(override) ||
+    process.env.CONSTELLATION_ALPHA_RECOVERY_SMOKE_ROOT === undefined
+  ) {
+    throw new Error(
+      "The Alpha state override is restricted to packaged smoke.",
+    );
+  }
+  return path.resolve(override);
+};
+
 const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
   const databaseFactory = createBetterSqlite3Factory();
-  const stateRoot = app.getPath("userData");
+  const stateRoot = desktopStateRoot();
   const deviceIdentity = loadOrCreateDeviceIdentity(stateRoot);
   installationDeviceId = deviceIdentity.deviceId;
   hubConnectionCustody = new HubConnectionCustody(
@@ -316,7 +330,9 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
     smokeRoot !== undefined &&
     !smokeRoot.startsWith(`${path.resolve(stateRoot)}${path.sep}`)
   ) {
-    throw new Error("Recovery smoke path must remain inside user data.");
+    throw new Error(
+      "Recovery smoke path must remain inside application state.",
+    );
   }
   const smokeBackupPath =
     smokeRoot === undefined
@@ -646,6 +662,7 @@ const startProductionDesktop = async (): Promise<void> => {
     },
   );
 
+  const stateRoot = desktopStateRoot();
   const runtime = await createDesktopRuntime();
   const releaseService = loadReleaseService();
   const calendarHelperCandidate =
@@ -694,7 +711,7 @@ const startProductionDesktop = async (): Promise<void> => {
     }
   };
   const jamieCustody = new JamieConnectionCustody(
-    app.getPath("userData"),
+    stateRoot,
     electronSafeStorage,
   );
   const jamieApi = new JamieApiClient();
@@ -703,7 +720,7 @@ const startProductionDesktop = async (): Promise<void> => {
     coordinatedDataHomeProvider === undefined
   ) {
     localMcpRuntime = new LocalMcpRuntime({
-      stateRoot: app.getPath("userData"),
+      stateRoot,
       workspaceId: workspaceRecovery.kernel.identity.workspaceId,
       store: workspaceRecovery.kernel.store,
       isEnabled: () => coordinatedDataHomeProvider === undefined,
@@ -799,9 +816,7 @@ const startProductionDesktop = async (): Promise<void> => {
       );
     return value as Record<string, unknown>;
   };
-  const remoteMcpCredentialCustody = new RemoteMcpCredentialCustody(
-    app.getPath("userData"),
-  );
+  const remoteMcpCredentialCustody = new RemoteMcpCredentialCustody(stateRoot);
   ipcMain.handle(DESKTOP_CHANNELS.listRemoteAgentGrants, async (event) => {
     assertTrustedSender(event);
     const connection = activeHubConnection;
@@ -1679,7 +1694,7 @@ const reportStartupFailure = async (error: unknown): Promise<void> => {
       noLink: true,
     });
     if (result.response === 1) {
-      await shell.openPath(app.getPath("userData"));
+      await shell.openPath(desktopStateRoot());
     }
   } catch {
     // The app must still terminate if the operating-system dialog fails.

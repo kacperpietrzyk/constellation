@@ -21,8 +21,8 @@ const stateRoot =
   path.join(root, "build", "packaged-alpha-ui-smoke-state");
 const continuityWorkspaceId =
   process.env.CONSTELLATION_VERIFY_EXISTING_WORKSPACE_ID;
-const userData = path.join(stateRoot, "user-data");
-const recoverySmokeRoot = path.join(userData, "recovery-smoke");
+const applicationStateRoot = path.join(stateRoot, "application-state");
+const recoverySmokeRoot = path.join(applicationStateRoot, "recovery-smoke");
 const taskTitle = "Verify packaged UI, preload, IPC, and persistence";
 const mutationTitle = "This mutation must disappear after restore";
 const projectTitle = "Verify packaged Project context";
@@ -204,8 +204,8 @@ class CdpClient {
   }
 }
 
-const waitForBrowserEndpoint = async (process) => {
-  const activePortFile = path.join(userData, "DevToolsActivePort");
+const waitForBrowserEndpoint = async (process, browserUserData) => {
+  const activePortFile = path.join(browserUserData, "DevToolsActivePort");
   const deadline = Date.now() + 60_000;
   let lastObservation = "active-port-unavailable";
   while (Date.now() < deadline) {
@@ -246,8 +246,8 @@ const waitForPage = async (client) => {
   throw new Error(`PACKAGED_ALPHA_CDP_PAGE_TIMEOUT_${lastObservation}`);
 };
 
-const connectToBrowser = async (process) => {
-  const endpoint = await waitForBrowserEndpoint(process);
+const connectToBrowser = async (process, browserUserData) => {
+  const endpoint = await waitForBrowserEndpoint(process, browserUserData);
   const deadline = Date.now() + 60_000;
   let lastObservation = "websocket-unavailable";
   while (Date.now() < deadline) {
@@ -293,18 +293,21 @@ const signalInstalledAppProcesses = (signal) => {
   });
 };
 
-const removeSmokeSingletonArtifacts = () => {
+const removeSmokeSingletonArtifacts = (browserUserData) => {
   for (const name of [
     "DevToolsActivePort",
     "SingletonCookie",
     "SingletonLock",
     "SingletonSocket",
   ]) {
-    fs.rmSync(path.join(userData, name), { force: true, recursive: true });
+    fs.rmSync(path.join(browserUserData, name), {
+      force: true,
+      recursive: true,
+    });
   }
 };
 
-const stopPackagedApp = async (client, child) => {
+const stopPackagedApp = async (client, child, browserUserData) => {
   await Promise.race([
     client.sendBrowser("Browser.close").catch(() => undefined),
     delay(1_000),
@@ -326,17 +329,23 @@ const stopPackagedApp = async (client, child) => {
   if (!(await waitForExit())) throw new Error("PACKAGED_ALPHA_DID_NOT_EXIT");
   child.stdout.destroy();
   child.stderr.destroy();
-  removeSmokeSingletonArtifacts();
+  removeSmokeSingletonArtifacts(browserUserData);
+  fs.rmSync(browserUserData, { force: true, recursive: true });
 };
 
 const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
-  removeSmokeSingletonArtifacts();
+  const browserUserData = path.join(
+    stateRoot,
+    "browser-data",
+    `${phase}-${process.pid}-${Date.now()}`,
+  );
+  removeSmokeSingletonArtifacts(browserUserData);
   let stdout = "";
   let stderr = "";
   const packagedProcess = spawn(
     executable,
     [
-      `--user-data-dir=${userData}`,
+      `--user-data-dir=${browserUserData}`,
       ...(process.platform === "darwin"
         ? ["--remote-debugging-pipe"]
         : [
@@ -353,6 +362,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           : ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
+        CONSTELLATION_ALPHA_STATE_ROOT: applicationStateRoot,
         CONSTELLATION_ALPHA_RECOVERY_SMOKE_ROOT: recoverySmokeRoot,
         ...(failpoint === undefined
           ? {}
@@ -377,7 +387,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             packagedProcess.stdio[4],
             packagedProcess.stdio[3],
           )
-        : await connectToBrowser(packagedProcess);
+        : await connectToBrowser(packagedProcess, browserUserData);
     await waitForPage(client);
     await client.send("Runtime.enable");
     await client.send("Log.enable");
@@ -782,7 +792,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         `PACKAGED_ALPHA_RENDERER_ERRORS_${client.issues().join("_")}`,
       );
     }
-    await stopPackagedApp(client, packagedProcess);
+    await stopPackagedApp(client, packagedProcess, browserUserData);
     return {
       phase,
       taskCount,
@@ -837,7 +847,7 @@ const interruptedAfterActivation = await run(
 );
 const recoveredAfterActivation = await run("recovered-after-activation");
 const destroyedWrapper = path.join(
-  userData,
+  applicationStateRoot,
   "local-alpha-workspace",
   "key-wrapper.json",
 );
