@@ -75,11 +75,13 @@ class CdpClient {
       const pending = this.#pending.get(message.id);
       if (pending === undefined) return;
       this.#pending.delete(message.id);
+      clearTimeout(pending.timeout);
       if (message.error === undefined) pending.resolve(message.result);
       else pending.reject(new Error(`CDP_${message.error.message}`));
     });
     socket.addEventListener("close", () => {
       for (const pending of this.#pending.values()) {
+        clearTimeout(pending.timeout);
         pending.reject(new Error("CDP_CONNECTION_CLOSED"));
       }
       this.#pending.clear();
@@ -98,7 +100,11 @@ class CdpClient {
   async send(method, params = {}) {
     const id = ++this.#id;
     const result = new Promise((resolve, reject) => {
-      this.#pending.set(id, { resolve, reject });
+      const timeout = setTimeout(() => {
+        if (!this.#pending.delete(id)) return;
+        reject(new Error(`CDP_${method}_TIMEOUT`));
+      }, 5_000);
+      this.#pending.set(id, { resolve, reject, timeout });
     });
     this.#socket.send(JSON.stringify({ id, method, params }));
     return result;
