@@ -285,12 +285,24 @@ const signalPackagedProcessTree = (child, signal) => {
 };
 
 const signalInstalledAppProcesses = (signal) => {
-  if (process.platform !== "darwin") return;
-  const appBundle = path.dirname(path.dirname(path.dirname(executable)));
-  spawnSync("/usr/bin/pkill", [`-${signal}`, "-f", appBundle], {
-    stdio: "ignore",
-    timeout: 5_000,
-  });
+  if (process.platform === "darwin") {
+    const appBundle = path.dirname(path.dirname(path.dirname(executable)));
+    spawnSync("/usr/bin/pkill", [`-${signal}`, "-f", appBundle], {
+      stdio: "ignore",
+      timeout: 5_000,
+    });
+  } else if (process.platform === "win32") {
+    spawnSync(
+      "taskkill.exe",
+      [
+        "/IM",
+        path.basename(executable),
+        "/T",
+        ...(signal === "KILL" ? ["/F"] : []),
+      ],
+      { stdio: "ignore", timeout: 5_000 },
+    );
+  }
 };
 
 const removeSmokeSingletonArtifacts = (browserUserData) => {
