@@ -23,6 +23,8 @@ import type {
   GrantId,
   AgentRunId,
   CheckpointId,
+  KnowledgeSourceId,
+  NamedDocumentVersionId,
 } from "@constellation/contracts";
 import type {
   AuditReceipt,
@@ -46,6 +48,8 @@ import type {
   AgentRun,
   AgentHandoff,
   AgentCheckpoint,
+  KnowledgeSource,
+  NamedDocumentVersion,
 } from "@constellation/domain";
 
 export type GeneratedIdKind =
@@ -196,6 +200,19 @@ export interface ApplicationWave2ReadView extends ApplicationReadView {
     workspaceId: WorkspaceId,
     spaceId: SpaceId,
   ): readonly NativeDocument[];
+  getKnowledgeSource(id: KnowledgeSourceId): KnowledgeSource | undefined;
+  listKnowledgeSources(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly KnowledgeSource[];
+  getNamedDocumentVersion(
+    id: NamedDocumentVersionId,
+  ): NamedDocumentVersion | undefined;
+  listNamedDocumentVersions(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    documentId?: DocumentId,
+  ): readonly NamedDocumentVersion[];
   getRelation(id: RelationId): TaskProjectRelation | undefined;
   findTaskProjectRelation(
     taskId: TaskId,
@@ -260,6 +277,17 @@ export interface ApplicationWave2Transaction
   insertProject(project: Project): void;
   updateProject(project: Project, expectedVersion: number): boolean;
   insertDocument(document: NativeDocument): void;
+  updateDocument(document: NativeDocument, expectedVersion: number): boolean;
+  insertKnowledgeSource(source: KnowledgeSource): void;
+  updateKnowledgeSource(
+    source: KnowledgeSource,
+    expectedVersion: number,
+  ): boolean;
+  insertNamedDocumentVersion(version: NamedDocumentVersion): void;
+  updateNamedDocumentVersion(
+    version: NamedDocumentVersion,
+    expectedVersion: number,
+  ): boolean;
   insertRelation(relation: TaskProjectRelation): void;
   updateRelation(
     relation: TaskProjectRelation,
@@ -277,6 +305,10 @@ export const isApplicationWave2ReadView = (
   "listProjects" in view &&
   "getDocument" in view &&
   "listDocuments" in view &&
+  "getKnowledgeSource" in view &&
+  "listKnowledgeSources" in view &&
+  "getNamedDocumentVersion" in view &&
+  "listNamedDocumentVersions" in view &&
   "getRelation" in view &&
   "findTaskProjectRelation" in view &&
   "listRelations" in view &&
@@ -292,6 +324,11 @@ export const isApplicationWave2Transaction = (
   "insertProject" in transaction &&
   "updateProject" in transaction &&
   "insertDocument" in transaction &&
+  "updateDocument" in transaction &&
+  "insertKnowledgeSource" in transaction &&
+  "updateKnowledgeSource" in transaction &&
+  "insertNamedDocumentVersion" in transaction &&
+  "updateNamedDocumentVersion" in transaction &&
   "insertRelation" in transaction &&
   "updateRelation" in transaction &&
   "insertUndoDescriptor" in transaction &&
@@ -333,6 +370,8 @@ export interface ReferenceStateSnapshot {
   readonly tasks: readonly Task[];
   readonly projects: readonly Project[];
   readonly documents?: readonly NativeDocument[];
+  readonly knowledgeSources?: readonly KnowledgeSource[];
+  readonly namedDocumentVersions?: readonly NamedDocumentVersion[];
   readonly relations: readonly TaskProjectRelation[];
   readonly undoDescriptors: readonly UndoDescriptor[];
   readonly events: readonly DomainEvent[];

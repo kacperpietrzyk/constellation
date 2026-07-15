@@ -124,7 +124,7 @@ The desktop creates, rotates, and revokes a remote grant without exposing its
 bearer token to the renderer. Bounded request, rate, concurrency, replay,
 PostgreSQL restart, and restore procedures complete the first operational gate.
 
-## Current — meetings, calendar, and connected work
+## Delivered foundation — meetings, calendar, and connected work
 
 - read calendar context through platform-neutral adapters, beginning with
   EventKit on macOS;
@@ -143,10 +143,22 @@ imports and source corrections, and manage each resulting item independently.
 Calendar work blocks use an exact, expiring, single-use preview; no calendar
 write occurs from a factual brief or Jamie import.
 
-## Later — knowledge, relationships, and strategic depth
+## Current — knowledge and evidence-backed deliverables
 
-- sources, notes, native documents, artifacts, named versions, approvals, and
-  evidence-backed deliverables;
+The first knowledge journey now preserves Sources separately from evolving
+Notes, Documents, and Deliverables. Explicit evidence links remain editable,
+while each named milestone freezes one collaborative revision, content snapshot,
+and the exact versions of every source and Note used. Changed evidence is shown
+without rewriting delivered history. The same versioned commands, deterministic
+search, audit, recovery, encrypted restart, and Space-scoped Hub projection
+rules apply to desktop and MCP operators.
+
+The next knowledge outcomes deepen artifacts, approval state, freshness, and a
+finite reviewable Knowledge Radar without adding generated answers to the
+desktop application.
+
+## Later — relationships and strategic depth
+
 - people, organizations, opportunities, offers, renewals, and relationship
   history;
 - recurring responsibilities, project closure, decision replacement, and impact

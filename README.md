@@ -136,6 +136,17 @@ and revision operation reauthorizes current Workspace membership and Space
 access. Local-only workspaces use the same editor and encrypted store without
 requiring a Hub.
 
+The first knowledge-to-deliverable journey now separates preserved Sources,
+evolving Notes or Documents, and evidence-backed Deliverables. A named version
+freezes one collaborative revision, a content snapshot, milestone meaning, and
+the exact source and Note versions used at that moment. Later source changes do
+not rewrite a delivered result; the Knowledge surface marks the evidence as
+changed, keeps the frozen state inspectable, and restores revisions only as new
+collaborative changes. The same commands and permission-safe queries are
+available to desktop and MCP, survive encrypted SQLite restart, and pass through
+Space-scoped Hub projections. The boundary and current limits are documented in
+[Knowledge evidence and deliverables](docs/architecture/knowledge-and-deliverables.md).
+
 Local-only workspaces now expose a versioned MCP server through the same
 Application Kernel used by the desktop. The Access surface creates a distinct
 agent principal with an independently selected capability preset, Space scope,
@@ -180,8 +191,8 @@ boundary and current limitations are documented in
 The resulting ad-hoc macOS and unsigned Windows application folders are
 verification artifacts, not a signed/notarized release. The Hub is an operator
 preview rather than a hosted service. Cross-device meeting-loop replication,
-installers, updater, richer
-notification policy, document comments/citations, and automatic routing rules
+installers, updater, richer notification policy, document comments/citations,
+and automatic routing rules
 beyond the explicit Capture action remain later work.
 
 The current kernel boundary and implemented subset are documented in

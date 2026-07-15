@@ -749,6 +749,12 @@ export const executeAgentAccessQuery = (
             return [descriptor.relationId];
           case "capture.undo_route":
             return [descriptor.captureId, descriptor.taskId];
+          case "knowledge.restore_source":
+            return [descriptor.sourceId];
+          case "knowledge.restore_evidence":
+            return [descriptor.documentId];
+          case "knowledge.void_named_version":
+            return [descriptor.namedVersionId];
         }
       }),
       ...(unavailableReason === undefined ? {} : { unavailableReason }),

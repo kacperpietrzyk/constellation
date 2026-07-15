@@ -28,6 +28,8 @@ import type {
   GrantId,
   AgentRunId,
   CheckpointId,
+  KnowledgeSourceId,
+  NamedDocumentVersionId,
 } from "@constellation/contracts";
 import type {
   AuditReceipt,
@@ -51,6 +53,8 @@ import type {
   AgentRun,
   AgentHandoff,
   AgentCheckpoint,
+  KnowledgeSource,
+  NamedDocumentVersion,
 } from "@constellation/domain";
 
 export type FailureBoundary =
@@ -75,6 +79,11 @@ export type FailureBoundary =
   | "project"
   | "project-update"
   | "document"
+  | "document-update"
+  | "knowledge-source"
+  | "knowledge-source-update"
+  | "named-document-version"
+  | "named-document-version-update"
   | "relation"
   | "relation-update"
   | "undo"
@@ -122,6 +131,11 @@ interface MutableState {
   readonly tasks: Map<TaskId, Task>;
   readonly projects: Map<ProjectId, Project>;
   readonly documents: Map<DocumentId, NativeDocument>;
+  readonly knowledgeSources: Map<KnowledgeSourceId, KnowledgeSource>;
+  readonly namedDocumentVersions: Map<
+    NamedDocumentVersionId,
+    NamedDocumentVersion
+  >;
   readonly relations: Map<RelationId, TaskProjectRelation>;
   readonly undoDescriptors: Map<string, UndoDescriptor>;
   readonly events: Map<string, DomainEvent>;
@@ -148,6 +162,8 @@ const emptyState = (): MutableState => ({
   tasks: new Map(),
   projects: new Map(),
   documents: new Map(),
+  knowledgeSources: new Map(),
+  namedDocumentVersions: new Map(),
   relations: new Map(),
   undoDescriptors: new Map(),
   events: new Map(),
@@ -174,6 +190,8 @@ const cloneState = (state: MutableState): MutableState => ({
   tasks: new Map(state.tasks),
   projects: new Map(state.projects),
   documents: new Map(state.documents),
+  knowledgeSources: new Map(state.knowledgeSources),
+  namedDocumentVersions: new Map(state.namedDocumentVersions),
   relations: new Map(state.relations),
   undoDescriptors: new Map(state.undoDescriptors),
   events: new Map(state.events),
@@ -453,6 +471,53 @@ class ReadView implements ApplicationReadView {
       .sort(
         (left, right) =>
           right.updatedAt.localeCompare(left.updatedAt) ||
+          right.id.localeCompare(left.id),
+      );
+  }
+
+  public getKnowledgeSource(
+    id: KnowledgeSourceId,
+  ): KnowledgeSource | undefined {
+    return this.state.knowledgeSources.get(id);
+  }
+
+  public listKnowledgeSources(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly KnowledgeSource[] {
+    return [...this.state.knowledgeSources.values()]
+      .filter(
+        (source) =>
+          source.workspaceId === workspaceId && source.spaceId === spaceId,
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          right.id.localeCompare(left.id),
+      );
+  }
+
+  public getNamedDocumentVersion(
+    id: NamedDocumentVersionId,
+  ): NamedDocumentVersion | undefined {
+    return this.state.namedDocumentVersions.get(id);
+  }
+
+  public listNamedDocumentVersions(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    documentId?: DocumentId,
+  ): readonly NamedDocumentVersion[] {
+    return [...this.state.namedDocumentVersions.values()]
+      .filter(
+        (version) =>
+          version.workspaceId === workspaceId &&
+          version.spaceId === spaceId &&
+          (documentId === undefined || version.documentId === documentId),
+      )
+      .sort(
+        (left, right) =>
+          right.createdAt.localeCompare(left.createdAt) ||
           right.id.localeCompare(left.id),
       );
   }
@@ -784,6 +849,55 @@ class Transaction extends ReadView implements ApplicationTransaction {
     this.failures.reached("document");
   }
 
+  public updateDocument(
+    document: NativeDocument,
+    expectedVersion: number,
+  ): boolean {
+    const current = this.state.documents.get(document.id);
+    if (current?.version !== expectedVersion) return false;
+    this.state.documents.set(document.id, document);
+    this.failures.reached("document-update");
+    return true;
+  }
+
+  public insertKnowledgeSource(source: KnowledgeSource): void {
+    if (this.state.knowledgeSources.has(source.id)) {
+      throw new Error(`Duplicate knowledge source ID: ${source.id}`);
+    }
+    this.state.knowledgeSources.set(source.id, source);
+    this.failures.reached("knowledge-source");
+  }
+
+  public updateKnowledgeSource(
+    source: KnowledgeSource,
+    expectedVersion: number,
+  ): boolean {
+    const current = this.state.knowledgeSources.get(source.id);
+    if (current?.version !== expectedVersion) return false;
+    this.state.knowledgeSources.set(source.id, source);
+    this.failures.reached("knowledge-source-update");
+    return true;
+  }
+
+  public insertNamedDocumentVersion(version: NamedDocumentVersion): void {
+    if (this.state.namedDocumentVersions.has(version.id)) {
+      throw new Error(`Duplicate named document version ID: ${version.id}`);
+    }
+    this.state.namedDocumentVersions.set(version.id, version);
+    this.failures.reached("named-document-version");
+  }
+
+  public updateNamedDocumentVersion(
+    version: NamedDocumentVersion,
+    expectedVersion: number,
+  ): boolean {
+    const current = this.state.namedDocumentVersions.get(version.id);
+    if (current?.version !== expectedVersion) return false;
+    this.state.namedDocumentVersions.set(version.id, version);
+    this.failures.reached("named-document-version-update");
+    return true;
+  }
+
   public insertRelation(relation: TaskProjectRelation): void {
     if (this.state.relations.has(relation.id))
       throw new Error(`Duplicate relation ID: ${relation.id}`);
@@ -944,6 +1058,12 @@ const stateFromSnapshot = (snapshot: ReferenceStateSnapshot): MutableState => ({
   documents: new Map(
     (snapshot.documents ?? []).map((value) => [value.id, value]),
   ),
+  knowledgeSources: new Map(
+    (snapshot.knowledgeSources ?? []).map((value) => [value.id, value]),
+  ),
+  namedDocumentVersions: new Map(
+    (snapshot.namedDocumentVersions ?? []).map((value) => [value.id, value]),
+  ),
   relations: new Map(snapshot.relations.map((value) => [value.id, value])),
   undoDescriptors: new Map(
     snapshot.undoDescriptors.map((value) => [value.targetCommandId, value]),
@@ -1018,6 +1138,8 @@ export class InMemoryReferenceStore implements ApplicationStore {
       tasks: [...this.state.tasks.values()],
       projects: [...this.state.projects.values()],
       documents: [...this.state.documents.values()],
+      knowledgeSources: [...this.state.knowledgeSources.values()],
+      namedDocumentVersions: [...this.state.namedDocumentVersions.values()],
       relations: [...this.state.relations.values()],
       undoDescriptors: [...this.state.undoDescriptors.values()],
       events: [...this.state.events.values()],

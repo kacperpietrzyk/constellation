@@ -38,6 +38,11 @@ Commands:
 - `project.create`
 - `project.updateOutcome`
 - `document.create`
+- `knowledge.sourceCreate`
+- `knowledge.sourceUpdate`
+- `knowledge.documentSetEvidence`
+- `knowledge.namedVersionCreate`
+- `knowledge.namedVersionVoid`
 - `task.setStatus`
 - `task.complete`
 - `task.reopen`
@@ -70,6 +75,8 @@ Queries:
 - `project.list`
 - `project.operationalOverview`
 - `document.list`
+- `knowledge.list`
+- `knowledge.documentContext`
 - `search.global`
 - `cockpit.week`
 - `activity.meaningful`
@@ -124,6 +131,14 @@ outbox for coordinated workspaces; the Hub persists bounded binary state and
 revision checkpoints in PostgreSQL. Revision restore applies a new Yjs change
 and records which immutable revision it came from.
 
+Knowledge Sources remain separate versioned records. A Native Document declares
+whether it is a Note, Document, or Deliverable and keeps an explicit current
+evidence set. A named version freezes one realtime revision, its content
+snapshot, milestone meaning, and the exact versions of its source and Note
+evidence. Later evidence changes are reported without rewriting that version.
+The implemented boundary and recovery behavior are documented in
+[Knowledge evidence and deliverables](knowledge-and-deliverables.md).
+
 ## Boundary rules
 
 - Zod schemas validate untrusted envelopes at runtime and reject unknown fields.
@@ -162,6 +177,9 @@ and records which immutable revision it came from.
   version churn; different input under the same key conflicts.
 - Existing-record mutations require expected versions. Stale writes return an
   explicit conflict and never apply last-write-wins.
+- Knowledge evidence is authorized in one Space before linking. Named versions
+  freeze exact evidence versions, while source/evidence changes and version
+  creation remain recoverable through ordinary compensation descriptors.
 - Assignment mutations require exact Task and current-assignment versions. The
   assignee is reauthorized against active membership and Space access when the
   command executes; assignment candidates never include unrelated members.
@@ -206,8 +224,9 @@ contracts -> Zod
 - `contracts` owns schemas, branded IDs, result taxonomy, and safe validation
   issues.
 - `domain` owns framework-independent workspace, Space, membership, Capture,
-  Task, Task assignment, comment, Attention signal, Task status, event, audit,
-  and outbox records.
+  Task, Task assignment, comment, Attention signal, Knowledge Source, Native
+  Document, named document version, Task status, event, audit, and outbox
+  records.
 - `application` owns authorization orchestration, command/query handlers, and
   storage ports.
 - `testkit` owns deterministic clocks/IDs, hashing/cursor fixtures, the in-memory
@@ -265,6 +284,11 @@ local state and queued updates, bounded binary persistence across PostgreSQL
 restart, five-minute renderer sessions without credential exposure, named
 revision restore, view downgrade, revoked-session closure, coordinated purge,
 and the real packaged editor on macOS and Windows gates.
+
+Knowledge coverage proves source-to-Note-to-Deliverable provenance, frozen
+evidence versions, changed-evidence signals, deterministic scoped search,
+version-safe undo, encrypted SQLite restart, and Hub exclusion of private-Space
+sources and named versions.
 
 Production signing/notarization, installer/updater continuity, MCP mapping,
 deterministic syntax parsing, generalized Attention rules, checkpoint revert, editable

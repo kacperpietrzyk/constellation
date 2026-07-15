@@ -7,6 +7,7 @@ import {
 } from "@constellation/application";
 import {
   ExecutionContextSchema,
+  KnowledgeSourceIdSchema,
   ProjectIdSchema,
   SpaceIdSchema,
   TaskStatusIdSchema,
@@ -55,6 +56,15 @@ const context = (): ExecutionContext =>
       "project.updateOutcome",
       "project.list",
       "project.operationalOverview",
+      "document.create",
+      "document.list",
+      "knowledge.sourceCreate",
+      "knowledge.sourceUpdate",
+      "knowledge.documentSetEvidence",
+      "knowledge.namedVersionCreate",
+      "knowledge.namedVersionVoid",
+      "knowledge.list",
+      "knowledge.documentContext",
       "task.setStatus",
       "task.complete",
       "task.reopen",
@@ -184,6 +194,180 @@ const createProjectRecord = (
 };
 
 describe("Wave 2 reference semantics", () => {
+  it("preserves source provenance through notes, deliverables, named versions, search, and undo", () => {
+    const harness = setup();
+    const sourceId = requestId();
+    const source = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("knowledge-source"),
+        commandName: "knowledge.sourceCreate",
+        payload: {
+          sourceId,
+          spaceId: ids.rootSpace,
+          sourceKind: "url",
+          title: "Restart-safe evidence guide",
+          canonicalUrl: "https://example.test/evidence",
+          excerpt: "Preserve the original evidence chain.",
+          availability: "available",
+          observedAt: "2026-07-15T08:00:00.000Z",
+        },
+      }),
+    );
+    assert.equal(source.diagnosticCode, "knowledge.source_created");
+
+    const noteId = requestId();
+    const deliverableId = requestId();
+    for (const [documentId, role, title] of [
+      [noteId, "note", "Evidence synthesis"],
+      [deliverableId, "deliverable", "Client evidence report"],
+    ] as const) {
+      const created = unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`document-${role}`),
+          commandName: "document.create",
+          payload: { documentId, spaceId: ids.rootSpace, title, role },
+        }),
+      );
+      assert.equal(created.diagnosticCode, "document.created");
+    }
+
+    const evidenceCommand = {
+      ...metadata("knowledge-evidence", {
+        [deliverableId]: 1,
+        [sourceId]: 1,
+        [noteId]: 1,
+      }),
+      commandName: "knowledge.documentSetEvidence" as const,
+      payload: {
+        documentId: deliverableId,
+        sourceIds: [sourceId],
+        noteDocumentIds: [noteId],
+      },
+    };
+    const evidence = unwrap(harness.kernel.execute(context(), evidenceCommand));
+    assert.equal(evidence.diagnosticCode, "knowledge.evidence_updated");
+
+    const namedVersionId = requestId();
+    const namedVersionCommand = {
+      ...metadata("knowledge-version", {
+        [deliverableId]: 2,
+        [sourceId]: 1,
+        [noteId]: 1,
+      }),
+      commandName: "knowledge.namedVersionCreate" as const,
+      payload: {
+        namedVersionId,
+        documentId: deliverableId,
+        documentRevisionId: requestId(),
+        name: "Delivered · 15 July",
+        milestone: "delivered" as const,
+        contentSnapshot: "A durable report with explicit evidence.",
+      },
+    };
+    const namedVersion = unwrap(
+      harness.kernel.execute(context(), namedVersionCommand),
+    );
+    assert.equal(
+      namedVersion.diagnosticCode,
+      "knowledge.named_version_created",
+    );
+
+    const sourceUpdateCommand = {
+      ...metadata("knowledge-source-update", { [sourceId]: 1 }),
+      commandName: "knowledge.sourceUpdate" as const,
+      payload: {
+        sourceId,
+        title: "Restart-safe evidence guide · revised",
+        canonicalUrl: "https://example.test/evidence",
+        excerpt: "The upstream source changed after delivery.",
+        availability: "available" as const,
+        observedAt: "2026-07-15T09:00:00.000Z",
+      },
+    };
+    const sourceUpdate = unwrap(
+      harness.kernel.execute(context(), sourceUpdateCommand),
+    );
+    assert.equal(sourceUpdate.diagnosticCode, "knowledge.source_updated");
+
+    const contextResult = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "knowledge.documentContext",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { documentId: deliverableId },
+    });
+    assert.equal(contextResult.kind, "query_result");
+    if (
+      contextResult.kind !== "query_result" ||
+      contextResult.result.outcome !== "success" ||
+      contextResult.result.projection.kind !== "knowledge.documentContext"
+    )
+      assert.fail("Expected knowledge context.");
+    assert.equal(contextResult.result.projection.namedVersions.length, 1);
+    assert.equal(
+      contextResult.result.projection.namedVersions[0]?.evidence[0]
+        ?.frozenVersion,
+      1,
+    );
+    assert.equal(
+      contextResult.result.projection.namedVersions[0]?.evidence[0]?.changed,
+      true,
+    );
+
+    const search = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "search.global",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceIds: [ids.rootSpace], text: "evidence" },
+    });
+    assert.equal(search.kind, "query_result");
+    if (
+      search.kind !== "query_result" ||
+      search.result.outcome !== "success" ||
+      search.result.projection.kind !== "search.global"
+    )
+      assert.fail("Expected search projection.");
+    assert.ok(
+      search.result.projection.items.some(
+        (item) => item.recordKind === "source",
+      ),
+    );
+    assert.ok(
+      search.result.projection.items.some(
+        (item) => item.recordKind === "deliverable",
+      ),
+    );
+
+    const undoSource = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("undo-source", { [sourceId]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: sourceUpdateCommand.commandId },
+      }),
+    );
+    assert.equal(undoSource.diagnosticCode, "command.undone");
+    assert.equal(
+      harness.store.snapshot().knowledgeSources?.[0]?.title,
+      "Restart-safe evidence guide",
+    );
+
+    const undoVersion = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("undo-version", { [namedVersionId]: 1 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: namedVersionCommand.commandId },
+      }),
+    );
+    assert.equal(undoVersion.diagnosticCode, "command.undone");
+    assert.equal(
+      harness.store.snapshot().namedDocumentVersions?.[0]?.state,
+      "voided",
+    );
+  });
+
   it("keeps attributed comment threads, edit history, and durable attention distinct from activity", () => {
     const harness = setup();
     const taskId = createTask(harness, "Review the scoped comment");
@@ -938,6 +1122,14 @@ describe("Wave 2 reference semantics", () => {
         queryName: "activity.meaningful",
         parameters: { spaceId: ids.rootSpace },
       },
+      {
+        queryName: "knowledge.list",
+        parameters: { spaceId: ids.rootSpace },
+      },
+      {
+        queryName: "knowledge.documentContext",
+        parameters: { documentId: requestId() },
+      },
     ] as const) {
       const response = harness.kernel.query(context(), {
         contractVersion: 1,
@@ -977,6 +1169,9 @@ describe("Wave 2 reference semantics", () => {
     const hiddenProjectId = ProjectIdSchema.parse(
       "10000000-0000-4000-8000-00000000dcbb",
     );
+    const hiddenSourceId = KnowledgeSourceIdSchema.parse(
+      "10000000-0000-4000-8000-00000000dcbc",
+    );
     harness.store.transact((transaction) => {
       assert.equal(isApplicationWave2Transaction(transaction), true);
       if (!isApplicationWave2Transaction(transaction)) {
@@ -996,6 +1191,20 @@ describe("Wave 2 reference semantics", () => {
         title: "SECRET_PROJECT_TITLE",
         intendedOutcome: "SECRET_PROJECT_OUTCOME",
         lifecycle: "active",
+        createdBy: context().principalId,
+        version: 1,
+        createdAt: "2026-07-12T12:00:00.000Z",
+        updatedAt: "2026-07-12T12:00:00.000Z",
+      });
+      transaction.insertKnowledgeSource({
+        id: hiddenSourceId,
+        workspaceId: context().workspaceId,
+        spaceId: hiddenSpaceId,
+        sourceKind: "excerpt",
+        title: "SECRET_SOURCE_TITLE",
+        excerpt: "SECRET_SOURCE_EXCERPT",
+        availability: "available",
+        observedAt: "2026-07-12T12:00:00.000Z",
         createdBy: context().principalId,
         version: 1,
         createdAt: "2026-07-12T12:00:00.000Z",

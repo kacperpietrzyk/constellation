@@ -15,6 +15,8 @@ import {
   RelationIdSchema,
   TaskAssignmentIdSchema,
   AttentionSignalIdSchema,
+  KnowledgeSourceIdSchema,
+  NamedDocumentVersionIdSchema,
   type CommandEnvelope,
   type CommandOutcome,
   type ExecutionContext,
@@ -35,6 +37,11 @@ import {
   editComment,
   setCommentThreadState,
   setAttentionState,
+  createKnowledgeSource,
+  updateKnowledgeSource,
+  setDocumentEvidence,
+  createNamedDocumentVersion,
+  voidNamedDocumentVersion,
   restoreTaskProjectRelation,
   setTaskStatus,
   undoCaptureTaskRoute,
@@ -50,6 +57,9 @@ import {
   type RecordComment,
   type AttentionSignal,
   type CommentTarget,
+  type AttentionDestination,
+  type KnowledgeSource,
+  type NativeDocument,
 } from "@constellation/domain";
 
 import type {
@@ -79,6 +89,11 @@ export type Wave2Command = Extract<
     commandName:
       | "project.create"
       | "document.create"
+      | "knowledge.sourceCreate"
+      | "knowledge.sourceUpdate"
+      | "knowledge.documentSetEvidence"
+      | "knowledge.namedVersionCreate"
+      | "knowledge.namedVersionVoid"
       | "project.updateOutcome"
       | "task.setStatus"
       | "task.complete"
@@ -104,6 +119,8 @@ export type Wave2Query = Extract<
     queryName:
       | "project.list"
       | "document.list"
+      | "knowledge.list"
+      | "knowledge.documentContext"
       | "project.operationalOverview"
       | "search.global"
       | "cockpit.week"
@@ -158,6 +175,55 @@ export const isWave2CommandAuthorized = (
         context,
         command,
         space?.workspaceId === command.workspaceId ? space.id : undefined,
+      );
+    }
+    case "knowledge.sourceCreate": {
+      const space = view.getSpace(command.payload.spaceId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        space?.workspaceId === command.workspaceId ? space.id : undefined,
+      );
+    }
+    case "knowledge.sourceUpdate": {
+      const source = view.getKnowledgeSource(command.payload.sourceId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        source?.workspaceId === command.workspaceId
+          ? source.spaceId
+          : undefined,
+      );
+    }
+    case "knowledge.documentSetEvidence":
+    case "knowledge.namedVersionCreate": {
+      const document = view.getDocument(command.payload.documentId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        document?.workspaceId === command.workspaceId
+          ? document.spaceId
+          : undefined,
+      );
+    }
+    case "knowledge.namedVersionVoid": {
+      const namedVersion = view.getNamedDocumentVersion(
+        command.payload.namedVersionId,
+      );
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        namedVersion?.workspaceId === command.workspaceId
+          ? namedVersion.spaceId
+          : undefined,
       );
     }
     case "project.updateOutcome": {
@@ -368,6 +434,9 @@ const appendJournal = (
       | "task"
       | "taskAssignment"
       | "project"
+      | "document"
+      | "knowledgeSource"
+      | "namedDocumentVersion"
       | "relation"
       | "comment"
       | "attentionSignal"
@@ -460,11 +529,13 @@ const taskProjection = (kind: string, task: Task): Record<string, unknown> => ({
 
 const targetRecord = (
   view: ApplicationWave2ReadView,
-  target: CommentTarget,
-): Task | Project | undefined =>
+  target: AttentionDestination,
+): Task | Project | NativeDocument | undefined =>
   target.kind === "task"
     ? view.getTask(target.taskId)
-    : view.getProject(target.projectId);
+    : target.kind === "project"
+      ? view.getProject(target.projectId)
+      : view.getDocument(target.documentId);
 
 const targetId = (target: CommentTarget): string =>
   target.kind === "task" ? target.taskId : target.projectId;
@@ -549,6 +620,9 @@ export const executeWave2Command = (
         workspaceId: command.workspaceId,
         spaceId: command.payload.spaceId,
         title: command.payload.title,
+        ...(command.payload.role === undefined
+          ? {}
+          : { role: command.payload.role }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -576,9 +650,449 @@ export const executeWave2Command = (
             kind: "document.created",
             documentId: document.id,
             title: document.title,
+            role: document.role ?? "document",
             version: document.version,
           },
         },
+        undefined,
+        { [document.id]: "document" },
+      );
+    }
+    case "knowledge.sourceCreate": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (
+        transaction.getKnowledgeSource(command.payload.sourceId) !== undefined
+      )
+        return precondition(command, occurredAt);
+      const source = createKnowledgeSource({
+        id: KnowledgeSourceIdSchema.parse(command.payload.sourceId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        sourceKind: command.payload.sourceKind,
+        title: command.payload.title,
+        ...(command.payload.canonicalUrl === undefined
+          ? {}
+          : { canonicalUrl: command.payload.canonicalUrl }),
+        ...(command.payload.excerpt === undefined
+          ? {}
+          : { excerpt: command.payload.excerpt }),
+        availability: command.payload.availability,
+        observedAt: command.payload.observedAt,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertKnowledgeSource(source);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "knowledge.source_created",
+          workspaceId: source.workspaceId,
+          spaceId: source.spaceId,
+          aggregateId: source.id,
+          aggregateVersion: source.version,
+          occurredAt,
+        },
+        { [source.id]: source.version },
+        [
+          "sourceKind",
+          "title",
+          "canonicalUrl",
+          "excerpt",
+          "availability",
+          "observedAt",
+        ],
+        {
+          diagnosticCode: "knowledge.source_created",
+          projection: {
+            kind: "knowledge.source_created",
+            sourceId: source.id,
+            title: source.title,
+            version: source.version,
+          },
+        },
+        undefined,
+        { [source.id]: "knowledgeSource" },
+      );
+    }
+    case "knowledge.sourceUpdate": {
+      const source = transaction.getKnowledgeSource(command.payload.sourceId);
+      if (source === undefined) return precondition(command, occurredAt);
+      const expected = { [source.id]: source.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const updated = updateKnowledgeSource(source, {
+        title: command.payload.title,
+        ...(command.payload.canonicalUrl === undefined
+          ? {}
+          : { canonicalUrl: command.payload.canonicalUrl }),
+        ...(command.payload.excerpt === undefined
+          ? {}
+          : { excerpt: command.payload.excerpt }),
+        availability: command.payload.availability,
+        observedAt: command.payload.observedAt,
+        occurredAt,
+      });
+      if (!transaction.updateKnowledgeSource(updated, source.version))
+        return versionConflict(command, occurredAt, expected);
+      const signals = transaction
+        .listDocuments(source.workspaceId, source.spaceId)
+        .flatMap((document) => {
+          const latest = transaction
+            .listNamedDocumentVersions(
+              source.workspaceId,
+              source.spaceId,
+              document.id,
+            )
+            .find((version) => version.state === "active");
+          if (
+            latest === undefined ||
+            !latest.evidence.some(
+              (item) =>
+                item.kind === "source" &&
+                item.recordId === source.id &&
+                item.version === source.version,
+            ) ||
+            !eligibleMention(
+              transaction,
+              source.workspaceId,
+              source.spaceId,
+              document.createdBy,
+            )
+          )
+            return [];
+          return [
+            upsertAttention(
+              dependencies,
+              transaction,
+              {
+                workspaceId: source.workspaceId,
+                spaceId: source.spaceId,
+                targetPrincipalId: document.createdBy,
+                reason: "knowledge_evidence_changed",
+                destination: { kind: "document", documentId: document.id },
+                sourceRecordId: source.id,
+                deduplicationKey: `knowledge_evidence:${document.id}:${document.createdBy}`,
+                urgency: "in_app",
+              },
+              occurredAt,
+            ),
+          ];
+        });
+      const recordVersions = {
+        [updated.id]: updated.version,
+        ...Object.fromEntries(
+          signals.map((signal) => [signal.id, signal.version]),
+        ),
+      };
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "knowledge.source_updated",
+          workspaceId: updated.workspaceId,
+          spaceId: updated.spaceId,
+          aggregateId: updated.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        recordVersions,
+        ["title", "canonicalUrl", "excerpt", "availability", "observedAt"],
+        {
+          diagnosticCode: "knowledge.source_updated",
+          projection: {
+            kind: "knowledge.source_updated",
+            sourceId: updated.id,
+            title: updated.title,
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: source.workspaceId,
+          spaceId: source.spaceId,
+          kind: "knowledge.restore_source",
+          sourceId: source.id,
+          priorTitle: source.title,
+          ...(source.canonicalUrl === undefined
+            ? {}
+            : { priorCanonicalUrl: source.canonicalUrl }),
+          ...(source.excerpt === undefined
+            ? {}
+            : { priorExcerpt: source.excerpt }),
+          priorAvailability: source.availability,
+          priorObservedAt: source.observedAt,
+          resultingVersion: updated.version,
+        },
+        {
+          [updated.id]: "knowledgeSource",
+          ...Object.fromEntries(
+            signals.map((signal) => [signal.id, "attentionSignal" as const]),
+          ),
+        },
+      );
+    }
+    case "knowledge.documentSetEvidence": {
+      const document = transaction.getDocument(command.payload.documentId);
+      if (document === undefined) return precondition(command, occurredAt);
+      const sources = command.payload.sourceIds.map((id) =>
+        transaction.getKnowledgeSource(id),
+      );
+      const notes = command.payload.noteDocumentIds.map((id) =>
+        transaction.getDocument(id),
+      );
+      if (
+        sources.some(
+          (source) =>
+            source === undefined ||
+            source.workspaceId !== document.workspaceId ||
+            source.spaceId !== document.spaceId,
+        ) ||
+        notes.some(
+          (note) =>
+            note === undefined ||
+            note.workspaceId !== document.workspaceId ||
+            note.spaceId !== document.spaceId ||
+            (note.role ?? "document") !== "note" ||
+            note.id === document.id,
+        )
+      )
+        return precondition(command, occurredAt);
+      const expected = {
+        [document.id]: document.version,
+        ...Object.fromEntries(
+          sources.map((source) => [source!.id, source!.version]),
+        ),
+        ...Object.fromEntries(notes.map((note) => [note!.id, note!.version])),
+      };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const updated = setDocumentEvidence(document, {
+        sourceIds: command.payload.sourceIds,
+        noteDocumentIds: command.payload.noteDocumentIds,
+        occurredAt,
+      });
+      if (!transaction.updateDocument(updated, document.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "knowledge.evidence_updated",
+          workspaceId: updated.workspaceId,
+          spaceId: updated.spaceId,
+          aggregateId: updated.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        ["evidence"],
+        {
+          diagnosticCode: "knowledge.evidence_updated",
+          projection: {
+            kind: "knowledge.evidence_updated",
+            documentId: updated.id,
+            evidenceCount:
+              (updated.evidence?.sourceIds.length ?? 0) +
+              (updated.evidence?.noteDocumentIds.length ?? 0),
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: document.workspaceId,
+          spaceId: document.spaceId,
+          kind: "knowledge.restore_evidence",
+          documentId: document.id,
+          priorSourceIds: document.evidence?.sourceIds ?? [],
+          priorNoteDocumentIds: document.evidence?.noteDocumentIds ?? [],
+          resultingVersion: updated.version,
+        },
+        { [updated.id]: "document" },
+      );
+    }
+    case "knowledge.namedVersionCreate": {
+      const document = transaction.getDocument(command.payload.documentId);
+      if (
+        document === undefined ||
+        transaction.getNamedDocumentVersion(command.payload.namedVersionId) !==
+          undefined
+      )
+        return precondition(command, occurredAt);
+      const sourceIds = document.evidence?.sourceIds ?? [];
+      const noteIds = document.evidence?.noteDocumentIds ?? [];
+      const sources = sourceIds.map((id) => transaction.getKnowledgeSource(id));
+      const notes = noteIds.map((id) => transaction.getDocument(id));
+      if (
+        sources.some((value) => value === undefined) ||
+        notes.some((value) => value === undefined)
+      )
+        return precondition(command, occurredAt);
+      const expected = {
+        [document.id]: document.version,
+        ...Object.fromEntries(
+          sources.map((value) => [value!.id, value!.version]),
+        ),
+        ...Object.fromEntries(
+          notes.map((value) => [value!.id, value!.version]),
+        ),
+      };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const namedVersion = createNamedDocumentVersion({
+        id: NamedDocumentVersionIdSchema.parse(command.payload.namedVersionId),
+        workspaceId: document.workspaceId,
+        spaceId: document.spaceId,
+        documentId: document.id,
+        documentRevisionId: command.payload.documentRevisionId,
+        name: command.payload.name,
+        milestone: command.payload.milestone,
+        contentSnapshot: command.payload.contentSnapshot,
+        evidence: [
+          ...sources.map((source) => ({
+            kind: "source" as const,
+            recordId: source!.id,
+            version: source!.version,
+            title: source!.title,
+          })),
+          ...notes.map((note) => ({
+            kind: "note" as const,
+            recordId: note!.id,
+            version: note!.version,
+            title: note!.title,
+          })),
+        ],
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertNamedDocumentVersion(namedVersion);
+      const staleSignal = transaction.findAttentionSignalByDeduplicationKey(
+        document.workspaceId,
+        document.createdBy,
+        `knowledge_evidence:${document.id}:${document.createdBy}`,
+      );
+      const clearedSignal =
+        staleSignal === undefined || staleSignal.state === "dismissed"
+          ? undefined
+          : setAttentionState(staleSignal, "dismissed", occurredAt);
+      if (
+        clearedSignal !== undefined &&
+        !transaction.updateAttentionSignal(clearedSignal, staleSignal!.version)
+      )
+        throw new RetryableUnitOfWorkError();
+      const namedRecordVersions = {
+        [namedVersion.id]: namedVersion.version,
+        ...(clearedSignal === undefined
+          ? {}
+          : { [clearedSignal.id]: clearedSignal.version }),
+      };
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "knowledge.named_version_created",
+          workspaceId: namedVersion.workspaceId,
+          spaceId: namedVersion.spaceId,
+          aggregateId: namedVersion.id,
+          aggregateVersion: namedVersion.version,
+          occurredAt,
+        },
+        namedRecordVersions,
+        [
+          "documentRevisionId",
+          "name",
+          "milestone",
+          "contentSnapshot",
+          "evidence",
+        ],
+        {
+          diagnosticCode: "knowledge.named_version_created",
+          projection: {
+            kind: "knowledge.named_version_created",
+            namedVersionId: namedVersion.id,
+            documentId: namedVersion.documentId,
+            documentRevisionId: namedVersion.documentRevisionId,
+            state: namedVersion.state,
+            version: namedVersion.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: namedVersion.workspaceId,
+          spaceId: namedVersion.spaceId,
+          kind: "knowledge.void_named_version",
+          namedVersionId: namedVersion.id,
+          resultingVersion: namedVersion.version,
+        },
+        {
+          [namedVersion.id]: "namedDocumentVersion",
+          ...(clearedSignal === undefined
+            ? {}
+            : { [clearedSignal.id]: "attentionSignal" as const }),
+        },
+      );
+    }
+    case "knowledge.namedVersionVoid": {
+      const namedVersion = transaction.getNamedDocumentVersion(
+        command.payload.namedVersionId,
+      );
+      if (namedVersion === undefined || namedVersion.state === "voided")
+        return precondition(command, occurredAt);
+      const expected = { [namedVersion.id]: namedVersion.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const voided = voidNamedDocumentVersion(namedVersion, {
+        principalId: context.principalId,
+        occurredAt,
+      });
+      if (!transaction.updateNamedDocumentVersion(voided, namedVersion.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "knowledge.named_version_voided",
+          workspaceId: voided.workspaceId,
+          spaceId: voided.spaceId,
+          aggregateId: voided.id,
+          aggregateVersion: voided.version,
+          occurredAt,
+        },
+        { [voided.id]: voided.version },
+        ["state", "voidedAt", "voidedBy"],
+        {
+          diagnosticCode: "knowledge.named_version_voided",
+          projection: {
+            kind: "knowledge.named_version_voided",
+            namedVersionId: voided.id,
+            documentId: voided.documentId,
+            documentRevisionId: voided.documentRevisionId,
+            state: voided.state,
+            version: voided.version,
+          },
+        },
+        undefined,
+        { [voided.id]: "namedDocumentVersion" },
       );
     }
     case "project.create": {
@@ -1494,6 +2008,52 @@ const descriptorState = (
             reason: "later_change",
           };
     }
+    case "knowledge.restore_source": {
+      const source = view.getKnowledgeSource(descriptor.sourceId);
+      return source?.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [source.id],
+            versions: { [source.id]: source.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "knowledge.restore_evidence": {
+      const document = view.getDocument(descriptor.documentId);
+      return document?.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [document.id],
+            versions: { [document.id]: document.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "knowledge.void_named_version": {
+      const version = view.getNamedDocumentVersion(descriptor.namedVersionId);
+      return version?.state === "active" &&
+        version.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [version.id],
+            versions: { [version.id]: version.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
   }
 };
 
@@ -1581,7 +2141,13 @@ const applyUndo = (
   let compensatedVersions: Record<string, number>;
   let compensatedKinds: Record<
     string,
-    "capture" | "task" | "project" | "relation"
+    | "capture"
+    | "task"
+    | "project"
+    | "document"
+    | "knowledgeSource"
+    | "namedDocumentVersion"
+    | "relation"
   >;
   if (descriptor.kind === "project.restore_outcome") {
     const project = transaction.getProject(descriptor.projectId) as Project;
@@ -1635,7 +2201,7 @@ const applyUndo = (
     transaction.updateRelation(restored, relation.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "relation" };
-  } else {
+  } else if (descriptor.kind === "capture.undo_route") {
     const capture = transaction.getCapture(descriptor.captureId);
     const task = transaction.getTask(descriptor.taskId);
     if (capture?.processingState !== "routed_as_task" || task === undefined) {
@@ -1656,6 +2222,55 @@ const applyUndo = (
       [restored.capture.id]: "capture",
       [restored.task.id]: "task",
     };
+  } else if (descriptor.kind === "knowledge.restore_source") {
+    const source = transaction.getKnowledgeSource(
+      descriptor.sourceId,
+    ) as KnowledgeSource;
+    const {
+      canonicalUrl: _currentCanonicalUrl,
+      excerpt: _currentExcerpt,
+      ...sourceWithoutOptionalText
+    } = source;
+    void _currentCanonicalUrl;
+    void _currentExcerpt;
+    const restored: KnowledgeSource = {
+      ...sourceWithoutOptionalText,
+      title: descriptor.priorTitle,
+      availability: descriptor.priorAvailability,
+      observedAt: descriptor.priorObservedAt,
+      version: source.version + 1,
+      updatedAt: occurredAt,
+      ...(descriptor.priorCanonicalUrl === undefined
+        ? {}
+        : { canonicalUrl: descriptor.priorCanonicalUrl }),
+      ...(descriptor.priorExcerpt === undefined
+        ? {}
+        : { excerpt: descriptor.priorExcerpt }),
+    };
+    transaction.updateKnowledgeSource(restored, source.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "knowledgeSource" };
+  } else if (descriptor.kind === "knowledge.restore_evidence") {
+    const document = transaction.getDocument(descriptor.documentId)!;
+    const restored = setDocumentEvidence(document, {
+      sourceIds: descriptor.priorSourceIds,
+      noteDocumentIds: descriptor.priorNoteDocumentIds,
+      occurredAt,
+    });
+    transaction.updateDocument(restored, document.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "document" };
+  } else {
+    const namedVersion = transaction.getNamedDocumentVersion(
+      descriptor.namedVersionId,
+    )!;
+    const voided = voidNamedDocumentVersion(namedVersion, {
+      principalId: context.principalId,
+      occurredAt,
+    });
+    transaction.updateNamedDocumentVersion(voided, namedVersion.version);
+    compensatedVersions = { [voided.id]: voided.version };
+    compensatedKinds = { [voided.id]: "namedDocumentVersion" };
   }
   transaction.updateUndoDescriptor({
     ...descriptor,
@@ -1940,7 +2555,9 @@ export const executeWave2Query = (
                 ? "You were mentioned in a comment."
                 : signal.reason === "task_assignment"
                   ? "You are responsible for this Task."
-                  : "An offline change needs reconciliation.",
+                  : signal.reason === "knowledge_evidence_changed"
+                    ? "Source evidence changed after the latest named version."
+                    : "An offline change needs reconciliation.",
             urgency: signal.urgency,
             state: signal.state,
             version: signal.version,
@@ -1964,16 +2581,23 @@ export const executeWave2Query = (
               ? [project.spaceId]
               : [];
           })()
-        : query.queryName === "recovery.preview"
+        : query.queryName === "knowledge.documentContext"
           ? (() => {
-              const receipt = view.getAuditReceiptByCommand(
-                query.parameters.targetCommandId,
-              );
-              return receipt?.workspaceId === query.workspaceId
-                ? [receipt.spaceId]
+              const document = view.getDocument(query.parameters.documentId);
+              return document?.workspaceId === query.workspaceId
+                ? [document.spaceId]
                 : [];
             })()
-          : [query.parameters.spaceId];
+          : query.queryName === "recovery.preview"
+            ? (() => {
+                const receipt = view.getAuditReceiptByCommand(
+                  query.parameters.targetCommandId,
+                );
+                return receipt?.workspaceId === query.workspaceId
+                  ? [receipt.spaceId]
+                  : [];
+              })()
+            : [query.parameters.spaceId];
   if (
     spaceIds.length === 0 ||
     !authorizeSpaces(dependencies, view, context, query, spaceIds)
@@ -2020,8 +2644,138 @@ export const executeWave2Query = (
           id: document.id,
           spaceId: document.spaceId,
           title: document.title,
+          role: document.role ?? "document",
           version: document.version,
           updatedAt: document.updatedAt,
+        })),
+    });
+  }
+  if (query.queryName === "knowledge.list") {
+    const namedVersions = view.listNamedDocumentVersions(
+      query.workspaceId,
+      query.parameters.spaceId,
+    );
+    const currentVersion = (kind: "source" | "note", recordId: string) =>
+      kind === "source"
+        ? view.getKnowledgeSource(recordId as never)?.version
+        : view.getDocument(recordId as never)?.version;
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "knowledge.list",
+      spaceId: query.parameters.spaceId,
+      sources: view
+        .listKnowledgeSources(query.workspaceId, query.parameters.spaceId)
+        .map((source) => ({
+          id: source.id,
+          sourceKind: source.sourceKind,
+          title: source.title,
+          ...(source.canonicalUrl === undefined
+            ? {}
+            : { canonicalUrl: source.canonicalUrl }),
+          availability: source.availability,
+          observedAt: source.observedAt,
+          version: source.version,
+          updatedAt: source.updatedAt,
+        })),
+      documents: view
+        .listDocuments(query.workspaceId, query.parameters.spaceId)
+        .map((document) => {
+          const versions = namedVersions.filter(
+            (version) =>
+              version.documentId === document.id && version.state === "active",
+          );
+          const latest = versions[0];
+          return {
+            id: document.id,
+            title: document.title,
+            role: document.role ?? "document",
+            evidenceCount:
+              (document.evidence?.sourceIds.length ?? 0) +
+              (document.evidence?.noteDocumentIds.length ?? 0),
+            namedVersionCount: versions.length,
+            staleEvidence:
+              latest?.evidence.some(
+                (evidence) =>
+                  currentVersion(evidence.kind, evidence.recordId) !==
+                  evidence.version,
+              ) ?? false,
+            version: document.version,
+            updatedAt: document.updatedAt,
+          };
+        }),
+    });
+  }
+  if (query.queryName === "knowledge.documentContext") {
+    const document = view.getDocument(query.parameters.documentId);
+    if (document === undefined)
+      return queryRejected(query, kernelTime, "authorization.denied");
+    const evidence = [
+      ...(document.evidence?.sourceIds ?? []).flatMap((id) => {
+        const source = view.getKnowledgeSource(id);
+        return source === undefined
+          ? []
+          : [
+              {
+                kind: "source" as const,
+                recordId: source.id,
+                title: source.title,
+                currentVersion: source.version,
+              },
+            ];
+      }),
+      ...(document.evidence?.noteDocumentIds ?? []).flatMap((id) => {
+        const note = view.getDocument(id);
+        return note === undefined
+          ? []
+          : [
+              {
+                kind: "note" as const,
+                recordId: note.id,
+                title: note.title,
+                currentVersion: note.version,
+              },
+            ];
+      }),
+    ];
+    const currentById = new Map(
+      evidence.map((item) => [item.recordId, item.currentVersion]),
+    );
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "knowledge.documentContext",
+      document: {
+        id: document.id,
+        spaceId: document.spaceId,
+        title: document.title,
+        role: document.role ?? "document",
+        version: document.version,
+        updatedAt: document.updatedAt,
+      },
+      evidence,
+      namedVersions: view
+        .listNamedDocumentVersions(
+          query.workspaceId,
+          document.spaceId,
+          document.id,
+        )
+        .map((version) => ({
+          id: version.id,
+          documentRevisionId: version.documentRevisionId,
+          name: version.name,
+          milestone: version.milestone,
+          contentSnapshot: version.contentSnapshot,
+          evidence: version.evidence.map((item) => {
+            const current = currentById.get(item.recordId);
+            return {
+              kind: item.kind,
+              recordId: item.recordId,
+              title: item.title,
+              frozenVersion: item.version,
+              ...(current === undefined ? {} : { currentVersion: current }),
+              changed: current !== item.version,
+            };
+          }),
+          state: version.state,
+          version: version.version,
+          createdAt: version.createdAt,
         })),
     });
   }
@@ -2126,15 +2880,36 @@ export const executeWave2Query = (
   if (query.queryName === "search.global") {
     const needle = normalizeSearch(query.parameters.text);
     const kinds = new Set(
-      query.parameters.kinds ?? ["task", "project", "capture"],
+      query.parameters.kinds ?? [
+        "task",
+        "project",
+        "capture",
+        "source",
+        "note",
+        "document",
+        "deliverable",
+      ],
     );
     const items: Array<{
-      recordKind: "task" | "project" | "capture";
+      recordKind:
+        | "task"
+        | "project"
+        | "capture"
+        | "source"
+        | "note"
+        | "document"
+        | "deliverable";
       recordId: string;
       spaceId: SpaceId;
       title: string;
       snippet: string;
-      matchedFields: Array<"title" | "intendedOutcome" | "originalText">;
+      matchedFields: Array<
+        | "title"
+        | "intendedOutcome"
+        | "originalText"
+        | "excerpt"
+        | "canonicalUrl"
+      >;
       score: number;
       updatedAt: string;
     }> = [];
@@ -2213,6 +2988,53 @@ export const executeWave2Query = (
                 : capture.capturedAt,
           });
         }
+      }
+      if (kinds.has("source")) {
+        for (const source of view.listKnowledgeSources(
+          query.workspaceId,
+          spaceId,
+        )) {
+          const title = normalizeSearch(source.title);
+          const sourceExcerpt = normalizeSearch(source.excerpt ?? "");
+          const sourceUrl = normalizeSearch(source.canonicalUrl ?? "");
+          const matchedFields: Array<"title" | "excerpt" | "canonicalUrl"> = [];
+          if (title.includes(needle)) matchedFields.push("title");
+          if (sourceExcerpt.includes(needle)) matchedFields.push("excerpt");
+          if (sourceUrl.includes(needle)) matchedFields.push("canonicalUrl");
+          if (matchedFields.length === 0) continue;
+          const value = matchedFields.includes("title")
+            ? source.title
+            : matchedFields.includes("excerpt")
+              ? (source.excerpt ?? source.title)
+              : (source.canonicalUrl ?? source.title);
+          items.push({
+            recordKind: "source",
+            recordId: source.id,
+            spaceId,
+            title: source.title,
+            snippet: snippet(value, needle),
+            matchedFields,
+            score:
+              title === needle ? 300 : title.startsWith(needle) ? 220 : 140,
+            updatedAt: source.updatedAt,
+          });
+        }
+      }
+      for (const document of view.listDocuments(query.workspaceId, spaceId)) {
+        const role = document.role ?? "document";
+        if (!kinds.has(role)) continue;
+        const title = normalizeSearch(document.title);
+        if (!title.includes(needle)) continue;
+        items.push({
+          recordKind: role,
+          recordId: document.id,
+          spaceId,
+          title: document.title,
+          snippet: snippet(document.title, needle),
+          matchedFields: ["title"],
+          score: title === needle ? 300 : title.startsWith(needle) ? 220 : 160,
+          updatedAt: document.updatedAt,
+        });
       }
     }
     items.sort(
@@ -2304,6 +3126,11 @@ export const executeWave2Query = (
     "comment.reopened": "comment_reopened",
     "relation.created": "relation_added",
     "relation.removed": "relation_removed",
+    "knowledge.source_created": "knowledge_source_created",
+    "knowledge.source_updated": "knowledge_source_updated",
+    "knowledge.evidence_updated": "knowledge_evidence_updated",
+    "knowledge.named_version_created": "knowledge_named_version_created",
+    "knowledge.named_version_voided": "knowledge_named_version_voided",
     "command.undone": "command_undone",
   };
   const items = view

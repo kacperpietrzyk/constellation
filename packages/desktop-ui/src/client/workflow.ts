@@ -15,6 +15,9 @@ import {
   type CommentId,
   type AttentionSignalId,
   type DocumentId,
+  type DocumentRevisionId,
+  type KnowledgeSourceId,
+  type NamedDocumentVersionId,
   type WorkspaceId,
   type Capability,
   type GrantId,
@@ -51,6 +54,9 @@ export type MentionCandidatesProjection =
   Projection<"comment.mentionCandidates">;
 export type AttentionInboxProjection = Projection<"attention.inbox">;
 export type DocumentListProjection = Projection<"document.list">;
+export type KnowledgeListProjection = Projection<"knowledge.list">;
+export type KnowledgeDocumentContextProjection =
+  Projection<"knowledge.documentContext">;
 export type CommentTarget = CommentListProjection["target"];
 
 export type DataSlice<T> =
@@ -75,6 +81,7 @@ export interface DesktopSnapshot {
   readonly mentionCandidates: DataSlice<MentionCandidatesProjection>;
   readonly attention: DataSlice<AttentionInboxProjection>;
   readonly documents: DataSlice<DocumentListProjection>;
+  readonly knowledge: DataSlice<KnowledgeListProjection>;
   readonly dataHome?: DataHomeStatus;
 }
 
@@ -201,6 +208,7 @@ export const loadDesktopSnapshot = async (
     cockpit,
     activity,
     documents,
+    knowledge,
   ] = await Promise.all([
     queryProjection(
       client,
@@ -284,6 +292,13 @@ export const loadDesktopSnapshot = async (
         "document.list",
       ),
     ),
+    optionalProjection(
+      queryProjection(
+        client,
+        queryEnvelope("knowledge.list", workspaceId, { spaceId }),
+        "knowledge.list",
+      ),
+    ),
   ]);
   let agentAccess = localAgentAccess;
   if (dataHome?.descriptor.providerKind === "coordinated") {
@@ -340,6 +355,7 @@ export const loadDesktopSnapshot = async (
     mentionCandidates,
     attention,
     documents,
+    knowledge,
     ...(dataHome === undefined ? {} : { dataHome }),
   };
 };
@@ -348,6 +364,7 @@ export const createDocument = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
   title: string,
+  role: "note" | "document" | "deliverable" = "document",
 ): Promise<MutationResult<DocumentId>> => {
   const documentId = crypto.randomUUID() as DocumentId;
   try {
@@ -364,6 +381,7 @@ export const createDocument = async (
           documentId,
           spaceId: firstSpace(snapshot),
           title: title.trim(),
+          role,
         },
       }),
     );
@@ -382,6 +400,192 @@ export const createDocument = async (
   }
 };
 
+export const createKnowledgeSource = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly title: string;
+    readonly canonicalUrl?: string;
+    readonly excerpt?: string;
+  },
+): Promise<MutationResult<KnowledgeSourceId>> => {
+  const sourceId = crypto.randomUUID() as KnowledgeSourceId;
+  try {
+    const response = await client.executeCommand(
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "knowledge.sourceCreate",
+        commandId: crypto.randomUUID(),
+        workspaceId: snapshot.bootstrap.workspace.id,
+        idempotencyKey: `knowledge-source:${sourceId}`,
+        expectedVersions: {},
+        correlationId: crypto.randomUUID(),
+        payload: {
+          sourceId,
+          spaceId: firstSpace(snapshot),
+          sourceKind: input.canonicalUrl === undefined ? "excerpt" : "url",
+          title: input.title.trim(),
+          ...(input.canonicalUrl === undefined
+            ? {}
+            : { canonicalUrl: input.canonicalUrl.trim() }),
+          ...(input.excerpt === undefined || input.excerpt.trim() === ""
+            ? {}
+            : { excerpt: input.excerpt.trim() }),
+          availability:
+            input.excerpt === undefined || input.excerpt.trim() === ""
+              ? "reference_only"
+              : "available",
+          observedAt: new Date().toISOString(),
+        },
+      }),
+    );
+    if (
+      response.kind !== "command_outcome" ||
+      response.outcome.outcome !== "success"
+    )
+      return { kind: "error", message: "Źródło nie zostało zapisane." };
+    return { kind: "success", data: sourceId };
+  } catch {
+    return { kind: "error", message: "Źródło nie zostało zapisane." };
+  }
+};
+
+export const setKnowledgeEvidence = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  documentId: DocumentId,
+  sourceIds: readonly KnowledgeSourceId[],
+  noteDocumentIds: readonly DocumentId[],
+): Promise<MutationResult<void>> => {
+  const document =
+    snapshot.knowledge.kind === "ready"
+      ? snapshot.knowledge.data.documents.find((item) => item.id === documentId)
+      : undefined;
+  const sources =
+    snapshot.knowledge.kind === "ready"
+      ? snapshot.knowledge.data.sources.filter((item) =>
+          sourceIds.includes(item.id),
+        )
+      : [];
+  const notes =
+    snapshot.knowledge.kind === "ready"
+      ? snapshot.knowledge.data.documents.filter((item) =>
+          noteDocumentIds.includes(item.id),
+        )
+      : [];
+  if (
+    document === undefined ||
+    sources.length !== sourceIds.length ||
+    notes.length !== noteDocumentIds.length
+  )
+    return { kind: "unavailable", message: "Dowody nie są już dostępne." };
+  const expectedVersions = {
+    [document.id]: document.version,
+    ...Object.fromEntries(sources.map((source) => [source.id, source.version])),
+    ...Object.fromEntries(notes.map((note) => [note.id, note.version])),
+  };
+  try {
+    const response = await client.executeCommand(
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "knowledge.documentSetEvidence",
+        commandId: crypto.randomUUID(),
+        workspaceId: snapshot.bootstrap.workspace.id,
+        idempotencyKey: `knowledge-evidence:${crypto.randomUUID()}`,
+        expectedVersions,
+        correlationId: crypto.randomUUID(),
+        payload: { documentId, sourceIds, noteDocumentIds },
+      }),
+    );
+    if (response.kind !== "command_outcome")
+      return { kind: "error", message: "Nie zapisano zestawu dowodów." };
+    if (response.outcome.outcome === "conflict")
+      return {
+        kind: "conflict",
+        message: "Dowody zmieniły się. Odśwież i wybierz ponownie.",
+      };
+    return response.outcome.outcome === "success"
+      ? { kind: "success", data: undefined }
+      : { kind: "error", message: "Nie zapisano zestawu dowodów." };
+  } catch {
+    return { kind: "error", message: "Nie zapisano zestawu dowodów." };
+  }
+};
+
+export const createNamedKnowledgeVersion = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly documentId: DocumentId;
+    readonly documentRevisionId: DocumentRevisionId;
+    readonly name: string;
+    readonly milestone: "finalized" | "delivered" | "approved" | "published";
+    readonly contentSnapshot: string;
+  },
+): Promise<MutationResult<NamedDocumentVersionId>> => {
+  const context = await queryProjection(
+    client,
+    queryEnvelope(
+      "knowledge.documentContext",
+      snapshot.bootstrap.workspace.id,
+      {
+        documentId: input.documentId,
+      },
+    ),
+    "knowledge.documentContext",
+  );
+  const namedVersionId = crypto.randomUUID() as NamedDocumentVersionId;
+  const expectedVersions = {
+    [context.document.id]: context.document.version,
+    ...Object.fromEntries(
+      context.evidence.map((item) => [item.recordId, item.currentVersion]),
+    ),
+  };
+  try {
+    const response = await client.executeCommand(
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "knowledge.namedVersionCreate",
+        commandId: crypto.randomUUID(),
+        workspaceId: snapshot.bootstrap.workspace.id,
+        idempotencyKey: `knowledge-version:${namedVersionId}`,
+        expectedVersions,
+        correlationId: crypto.randomUUID(),
+        payload: { namedVersionId, ...input },
+      }),
+    );
+    if (response.kind !== "command_outcome")
+      return { kind: "error", message: "Nazwana wersja nie została zapisana." };
+    if (response.outcome.outcome === "conflict")
+      return {
+        kind: "conflict",
+        message: "Treść lub dowody zmieniły się. Utwórz świeżą wersję.",
+      };
+    return response.outcome.outcome === "success"
+      ? { kind: "success", data: namedVersionId }
+      : { kind: "error", message: "Nazwana wersja nie została zapisana." };
+  } catch {
+    return { kind: "error", message: "Nazwana wersja nie została zapisana." };
+  }
+};
+
+export const loadKnowledgeDocumentContext = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  documentId: DocumentId,
+): Promise<KnowledgeDocumentContextProjection> =>
+  queryProjection(
+    client,
+    queryEnvelope(
+      "knowledge.documentContext",
+      snapshot.bootstrap.workspace.id,
+      {
+        documentId,
+      },
+    ),
+    "knowledge.documentContext",
+  );
+
 const AGENT_QUERY_CAPABILITIES: readonly Capability[] = [
   "workspace.bootstrapContext",
   "workspace.access",
@@ -390,6 +594,8 @@ const AGENT_QUERY_CAPABILITIES: readonly Capability[] = [
   "project.list",
   "project.operationalOverview",
   "document.list",
+  "knowledge.list",
+  "knowledge.documentContext",
   "task.list",
   "task.assignmentCandidates",
   "comment.list",
@@ -416,6 +622,11 @@ const agentCapabilities = (
     "project.create",
     "project.updateOutcome",
     "document.create",
+    "knowledge.sourceCreate",
+    "knowledge.sourceUpdate",
+    "knowledge.documentSetEvidence",
+    "knowledge.namedVersionCreate",
+    "knowledge.namedVersionVoid",
     "task.setStatus",
     "task.complete",
     "task.reopen",

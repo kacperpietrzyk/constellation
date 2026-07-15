@@ -4,6 +4,7 @@ import type {
   CommandId,
   CorrelationId,
   DocumentId,
+  DocumentRevisionId,
   EventId,
   GrantId,
   CredentialId,
@@ -25,6 +26,8 @@ import type {
   Capability,
   AgentRunId,
   AgentHandoffId,
+  KnowledgeSourceId,
+  NamedDocumentVersionId,
 } from "@constellation/contracts";
 
 export interface Workspace {
@@ -217,6 +220,10 @@ export type CommentTarget =
   | { readonly kind: "task"; readonly taskId: TaskId }
   | { readonly kind: "project"; readonly projectId: ProjectId };
 
+export type AttentionDestination =
+  | CommentTarget
+  | { readonly kind: "document"; readonly documentId: DocumentId };
+
 export interface CommentRevision {
   readonly body: string;
   readonly mentionPrincipalIds: readonly PrincipalId[];
@@ -248,8 +255,12 @@ export interface AttentionSignal {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
   readonly targetPrincipalId: PrincipalId;
-  readonly reason: "comment_mention" | "task_assignment" | "sync_conflict";
-  readonly destination: CommentTarget;
+  readonly reason:
+    | "comment_mention"
+    | "task_assignment"
+    | "sync_conflict"
+    | "knowledge_evidence_changed";
+  readonly destination: AttentionDestination;
   readonly sourceRecordId: string;
   readonly deduplicationKey: string;
   readonly urgency: "in_app" | "urgent";
@@ -279,10 +290,57 @@ export interface NativeDocument {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
   readonly title: string;
+  readonly role?: "note" | "document" | "deliverable";
+  readonly evidence?: {
+    readonly sourceIds: readonly KnowledgeSourceId[];
+    readonly noteDocumentIds: readonly DocumentId[];
+  };
   readonly createdBy: PrincipalId;
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export interface KnowledgeSource {
+  readonly id: KnowledgeSourceId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly sourceKind: "url" | "file" | "screenshot" | "excerpt";
+  readonly title: string;
+  readonly canonicalUrl?: string;
+  readonly excerpt?: string;
+  readonly availability: "reference_only" | "available" | "unavailable";
+  readonly observedAt: string;
+  readonly createdBy: PrincipalId;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface FrozenEvidenceVersion {
+  readonly kind: "source" | "note";
+  readonly recordId: KnowledgeSourceId | DocumentId;
+  readonly version: number;
+  readonly title: string;
+}
+
+export interface NamedDocumentVersion {
+  readonly id: NamedDocumentVersionId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly documentId: DocumentId;
+  readonly documentRevisionId: DocumentRevisionId;
+  readonly name: string;
+  readonly milestone: "finalized" | "delivered" | "approved" | "published";
+  readonly contentSnapshot: string;
+  readonly evidence: readonly FrozenEvidenceVersion[];
+  readonly state: "active" | "voided";
+  readonly createdBy: PrincipalId;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly voidedAt?: string;
+  readonly voidedBy?: PrincipalId;
 }
 
 export interface TaskProjectRelation {
@@ -349,6 +407,41 @@ export type UndoDescriptor =
       readonly taskId: TaskId;
       readonly resultingCaptureVersion: number;
       readonly resultingTaskVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "knowledge.restore_source";
+      readonly sourceId: KnowledgeSourceId;
+      readonly priorTitle: string;
+      readonly priorCanonicalUrl?: string;
+      readonly priorExcerpt?: string;
+      readonly priorAvailability:
+        "reference_only" | "available" | "unavailable";
+      readonly priorObservedAt: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "knowledge.restore_evidence";
+      readonly documentId: DocumentId;
+      readonly priorSourceIds: readonly KnowledgeSourceId[];
+      readonly priorNoteDocumentIds: readonly DocumentId[];
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "knowledge.void_named_version";
+      readonly namedVersionId: NamedDocumentVersionId;
+      readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     };
 
@@ -433,6 +526,21 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: DocumentId;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type:
+        | "knowledge.source_created"
+        | "knowledge.source_updated"
+        | "knowledge.evidence_updated"
+        | "knowledge.named_version_created"
+        | "knowledge.named_version_voided";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId:
+        KnowledgeSourceId | DocumentId | NamedDocumentVersionId;
       readonly aggregateVersion: number;
       readonly occurredAt: string;
     }

@@ -558,6 +558,8 @@ export const executeCollaborationQuery = (
       | "task"
       | "project"
       | "document"
+      | "knowledge_source"
+      | "named_document_version"
       | "capture"
       | "task_assignment"
       | "comment"
@@ -620,6 +622,22 @@ export const executeCollaborationQuery = (
       })),
     );
     records.push(
+      ...view.listKnowledgeSources(workspace.id, space.id).map((record) => ({
+        kind: "knowledge_source" as const,
+        id: record.id,
+        spaceId: record.spaceId,
+      })),
+    );
+    records.push(
+      ...view
+        .listNamedDocumentVersions(workspace.id, space.id)
+        .map((record) => ({
+          kind: "named_document_version" as const,
+          id: record.id,
+          spaceId: record.spaceId,
+        })),
+    );
+    records.push(
       ...(
         view.listCaptures({
           workspaceId: workspace.id,
@@ -646,6 +664,12 @@ export const executeCollaborationQuery = (
       tasks: records.filter((item) => item.kind === "task").length,
       projects: records.filter((item) => item.kind === "project").length,
       documents: records.filter((item) => item.kind === "document").length,
+      knowledgeSources: records.filter(
+        (item) => item.kind === "knowledge_source",
+      ).length,
+      namedDocumentVersions: records.filter(
+        (item) => item.kind === "named_document_version",
+      ).length,
       captures: records.filter((item) => item.kind === "capture").length,
       taskAssignments: records.filter((item) => item.kind === "task_assignment")
         .length,

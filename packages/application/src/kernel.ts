@@ -263,6 +263,11 @@ const isCurrentlyAuthorized = (
     }
     case "project.create":
     case "document.create":
+    case "knowledge.sourceCreate":
+    case "knowledge.sourceUpdate":
+    case "knowledge.documentSetEvidence":
+    case "knowledge.namedVersionCreate":
+    case "knowledge.namedVersionVoid":
     case "project.updateOutcome":
     case "task.setStatus":
     case "task.complete":
@@ -492,6 +497,11 @@ export class ApplicationKernel {
         );
       case "project.create":
       case "document.create":
+      case "knowledge.sourceCreate":
+      case "knowledge.sourceUpdate":
+      case "knowledge.documentSetEvidence":
+      case "knowledge.namedVersionCreate":
+      case "knowledge.namedVersionVoid":
       case "project.updateOutcome":
       case "task.setStatus":
       case "task.complete":
@@ -1138,6 +1148,8 @@ export class ApplicationKernel {
           );
         case "project.list":
         case "document.list":
+        case "knowledge.list":
+        case "knowledge.documentContext":
         case "project.operationalOverview":
         case "search.global":
         case "cockpit.week":

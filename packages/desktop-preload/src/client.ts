@@ -215,7 +215,8 @@ export interface ConstellationRendererClient {
     listener: (
       destination:
         | { readonly kind: "task"; readonly taskId: TaskId }
-        | { readonly kind: "project"; readonly projectId: ProjectId },
+        | { readonly kind: "project"; readonly projectId: ProjectId }
+        | { readonly kind: "document"; readonly documentId: DocumentId },
     ) => void,
   ): () => void;
   cancelWorkspaceRestore(input: { readonly restoreId: string }): Promise<void>;

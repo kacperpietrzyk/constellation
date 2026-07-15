@@ -12,6 +12,7 @@ export const createNativeDocument = (input: {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
   readonly title: string;
+  readonly role?: "note" | "document" | "deliverable";
   readonly createdBy: PrincipalId;
   readonly occurredAt: string;
 }): NativeDocument => ({
@@ -19,6 +20,8 @@ export const createNativeDocument = (input: {
   workspaceId: input.workspaceId,
   spaceId: input.spaceId,
   title: input.title,
+  role: input.role ?? "document",
+  evidence: { sourceIds: [], noteDocumentIds: [] },
   createdBy: input.createdBy,
   version: 1,
   createdAt: input.occurredAt,

@@ -82,6 +82,8 @@ export const parseHubWorkspaceProjection = (
     ...parsed.tasks,
     ...parsed.projects,
     ...parsed.documents,
+    ...parsed.knowledgeSources,
+    ...parsed.namedDocumentVersions,
     ...parsed.relations,
     ...parsed.events,
     ...parsed.auditReceipts,
