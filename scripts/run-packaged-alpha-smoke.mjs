@@ -330,15 +330,23 @@ const stopPackagedApp = async (client, child, browserUserData) => {
   child.stdout.destroy();
   child.stderr.destroy();
   removeSmokeSingletonArtifacts(browserUserData);
-  fs.rmSync(browserUserData, { force: true, recursive: true });
+  if (process.platform === "darwin") {
+    fs.rmSync(browserUserData, { force: true, recursive: true });
+  }
 };
 
 const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
-  const browserUserData = path.join(
-    stateRoot,
-    "browser-data",
-    `${phase}-${process.pid}-${Date.now()}`,
-  );
+  // Non-macOS safeStorage binds its protected material to Chromium's profile.
+  // Keep that profile across relaunch phases while macOS uses isolated profiles
+  // to avoid stale singleton/CDP state; macOS key custody lives in Keychain.
+  const browserUserData =
+    process.platform === "darwin"
+      ? path.join(
+          stateRoot,
+          "browser-data",
+          `${phase}-${process.pid}-${Date.now()}`,
+        )
+      : path.join(stateRoot, "browser-data", "profile-bound-safe-storage");
   removeSmokeSingletonArtifacts(browserUserData);
   let stdout = "";
   let stderr = "";
