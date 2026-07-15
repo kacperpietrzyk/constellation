@@ -158,28 +158,33 @@ class CdpClient {
 const waitForTarget = async (port, process) => {
   const endpoint = `http://127.0.0.1:${port}/json/list`;
   const deadline = Date.now() + 60_000;
+  let lastObservation = "endpoint-unavailable";
   while (Date.now() < deadline) {
     if (process.exitCode !== null) {
       throw new Error(`PACKAGED_ALPHA_EXITED_EARLY_${process.exitCode}`);
     }
     try {
       const response = await fetch(endpoint, {
-        signal: AbortSignal.timeout(250),
+        signal: AbortSignal.timeout(2_000),
       });
       if (response.ok) {
         const targets = await response.json();
+        lastObservation = targets
+          .map((target) => `${target.type}:${target.url}`)
+          .join("|");
         const page = targets.find(
           (target) =>
             target.type === "page" && target.url.startsWith("file://"),
         );
         if (page?.webSocketDebuggerUrl !== undefined) return page;
       }
-    } catch {
+    } catch (error) {
+      lastObservation = error instanceof Error ? error.name : "fetch-error";
       // The packaged browser is still starting.
     }
     await delay(100);
   }
-  throw new Error("PACKAGED_ALPHA_CDP_TARGET_TIMEOUT");
+  throw new Error(`PACKAGED_ALPHA_CDP_TARGET_TIMEOUT_${lastObservation}`);
 };
 
 const waitFor = async (client, expression, diagnosticCode) => {
