@@ -420,7 +420,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       boundary.build.channel !== "local-alpha" ||
       boundary.build.persistence !== "encrypted-local" ||
       boundary.build.workspaceAvailability !==
-        (phase === "restored" ? "recovery_required" : "ready") ||
+        (phase === "restore-confirm" ? "recovery_required" : "ready") ||
       boundary.hasNodeRequire ||
       boundary.bridgeKeys.join(",") !==
         "acknowledgeDocumentUpdates,addMeetingWorkItem,cancelWorkspaceRestore,checkForRelease,configureJamie,confirmCalendarBlocks,confirmWorkspaceRestore,createDocumentRevision,createRemoteAgentGrant,createWorkspace,disconnectJamie,downloadRelease,editMeetingWorkItem,enrollHub,executeCommand,exportHubAuthorization,exportWorkspaceBackup,getBuildInfo,getCrossWorkspaceCockpit,getDataHomeStatus,getJamieStatus,getMeetingLoop,getReleaseStatus,importStarterWorkspace,installRelease,listDocumentRevisions,listRemoteAgentGrants,listWorkspaces,onAttentionActivated,openDetachedSurface,openDocument,persistDocumentUpdate,prepareAgentCredential,prepareWorkspaceRestore,previewCalendarBlocks,requestCalendarAccess,restoreDocumentRevision,revokeRemoteAgentGrant,rotateRemoteAgentGrant,runQuery,switchWorkspace,syncDataHome,syncJamie"
@@ -460,8 +460,8 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       dataHome.descriptor.capabilities.device_revocation.support !==
         "unsupported" ||
       dataHome.availability !==
-        (phase === "restored" ? "recovery_required" : "available") ||
-      (phase === "restored"
+        (phase === "restore-confirm" ? "recovery_required" : "available") ||
+      (phase === "restore-confirm"
         ? dataHome.descriptor.workspaceId !== undefined
         : dataHome.descriptor.workspaceId !== boundary.build.initialWorkspaceId)
     ) {
@@ -702,7 +702,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         termination:
           packagedProcess.signalCode ?? `exit-${packagedProcess.exitCode}`,
       };
-    } else if (phase === "restored") {
+    } else if (phase === "restore-confirm") {
       restorePreview = await client.evaluate(
         `window.constellation.prepareWorkspaceRestore({ recoveryCode: ${JSON.stringify(recoveryCode)} })`,
       );
@@ -714,23 +714,56 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       ) {
         throw new Error("PACKAGED_ALPHA_RESTORE_PREVIEW_INVALID");
       }
-      const restored = await client.evaluate(
-        `window.constellation.confirmWorkspaceRestore({ restoreId: ${JSON.stringify(restorePreview.restoreId)} })`,
-      );
+      let restored;
+      let connectionClosed = false;
+      try {
+        restored = await client.evaluate(
+          `window.constellation.confirmWorkspaceRestore({ restoreId: ${JSON.stringify(restorePreview.restoreId)} })`,
+        );
+      } catch {
+        connectionClosed = true;
+      }
       if (
-        restored.outcome !== "success" ||
-        restored.workspaceId !== expectedWorkspaceId
+        restored !== undefined &&
+        (restored.outcome !== "success" ||
+          restored.workspaceId !== expectedWorkspaceId)
       ) {
         throw new Error("PACKAGED_ALPHA_RESTORE_CONFIRM_FAILED");
       }
-      await client.evaluate(
-        `(() => { window.location.reload(); return true; })()`,
-      );
-      await waitFor(
-        client,
-        `document.querySelector(".desktop-shell") !== null`,
-        "PACKAGED_ALPHA_RESTORED_UI_NOT_READY",
-      );
+      for (
+        let attempt = 0;
+        attempt < 200 &&
+        packagedProcess.signalCode === null &&
+        packagedProcess.exitCode === null;
+        attempt += 1
+      ) {
+        await delay(50);
+      }
+      client.close();
+      signalInstalledAppProcesses("TERM");
+      await delay(500);
+      signalInstalledAppProcesses("KILL");
+      if (
+        packagedProcess.signalCode === null &&
+        packagedProcess.exitCode === null
+      ) {
+        throw new Error("PACKAGED_ALPHA_RESTORE_DID_NOT_RELAUNCH");
+      }
+      return {
+        phase,
+        restorePreview,
+        dataHomeDeviceId: boundary.dataHome.descriptor.deviceId,
+        connectionClosed,
+        termination:
+          packagedProcess.signalCode ?? `exit-${packagedProcess.exitCode}`,
+      };
+    } else if (phase === "restored") {
+      if (
+        boundary.build.startupRecovery !== "none" ||
+        boundary.build.initialWorkspaceId !== expectedWorkspaceId
+      ) {
+        throw new Error("PACKAGED_ALPHA_RESTORED_BOOT_INVALID");
+      }
       await client.evaluate(`(() => {
         document.querySelector('.nav-item[data-surface="tasks"]').click();
         return true;
@@ -740,16 +773,6 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         `document.querySelector('.shell-tab.active [data-shell-tab="destination:tasks"]') !== null`,
         "PACKAGED_ALPHA_TASK_DESTINATION_CONTEXT_MISSING",
       );
-      const restoredDataHome = await client.evaluate(
-        `window.constellation.getDataHomeStatus()`,
-      );
-      if (
-        restoredDataHome.availability !== "available" ||
-        restoredDataHome.descriptor.workspaceId !== expectedWorkspaceId ||
-        restoredDataHome.checkpointState !== "verified_this_session"
-      ) {
-        throw new Error("PACKAGED_ALPHA_RESTORED_DATA_HOME_INVALID");
-      }
     } else if (phase === "continuity") {
       if (
         boundary.build.startupRecovery !== "none" ||
@@ -863,9 +886,14 @@ fs.rmSync(destroyedWrapper, { force: true });
 if (fs.existsSync(destroyedWrapper)) {
   throw new Error("PACKAGED_ALPHA_DESTRUCTIVE_FIXTURE_FAILED");
 }
+const restoreConfirmed = await run(
+  "restore-confirm",
+  created.backup.recoveryCode,
+  created.backup.metadata.workspaceId,
+);
 const restored = await run(
   "restored",
-  created.backup.recoveryCode,
+  undefined,
   created.backup.metadata.workspaceId,
 );
 const dataHomeDeviceIds = [
@@ -874,6 +902,7 @@ const dataHomeDeviceIds = [
   recoveredAfterRetention,
   interruptedAfterActivation,
   recoveredAfterActivation,
+  restoreConfirmed,
   restored,
 ].map((result) => result.dataHomeDeviceId);
 if (new Set(dataHomeDeviceIds).size !== 1) {
@@ -890,12 +919,14 @@ await new Promise((resolve, reject) => {
         recoveredAfterRetention.phase,
         interruptedAfterActivation.phase,
         recoveredAfterActivation.phase,
+        restoreConfirmed.phase,
         restored.phase,
       ],
       interruptionTerminations: [
         interruptedAfterRetention.termination,
         interruptedAfterActivation.termination,
       ],
+      restoreRelaunchTermination: restoreConfirmed.termination,
       persistence: restored.persistence,
       preload: restored.preload,
       transport: restored.transport,
@@ -903,7 +934,7 @@ await new Promise((resolve, reject) => {
       backupWorkspaceId: created.backup.metadata.workspaceId,
       dataHomeProvider: "constellation.local-only/v1",
       stableDeviceIdentity: true,
-      restoreCounts: restored.restorePreview.counts,
+      restoreCounts: restoreConfirmed.restorePreview.counts,
     })}\n`,
     (error) => {
       if (error === null || error === undefined) resolve();
