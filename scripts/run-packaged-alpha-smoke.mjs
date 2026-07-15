@@ -200,6 +200,24 @@ const waitForPage = async (client) => {
   throw new Error("PACKAGED_ALPHA_CDP_PAGE_TIMEOUT");
 };
 
+const connectToBrowser = async (process) => {
+  const endpoint = await waitForBrowserEndpoint(process);
+  const deadline = Date.now() + 60_000;
+  let lastObservation = "websocket-unavailable";
+  while (Date.now() < deadline) {
+    if (process.exitCode !== null) {
+      throw new Error(`PACKAGED_ALPHA_EXITED_EARLY_${process.exitCode}`);
+    }
+    try {
+      return await CdpClient.connect(endpoint);
+    } catch (error) {
+      lastObservation = error instanceof Error ? error.message : "socket-error";
+    }
+    await delay(100);
+  }
+  throw new Error(`PACKAGED_ALPHA_CDP_CONNECT_TIMEOUT_${lastObservation}`);
+};
+
 const waitFor = async (client, expression, diagnosticCode) => {
   for (let attempt = 0; attempt < 300; attempt += 1) {
     if (await client.evaluate(expression)) return;
@@ -300,8 +318,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
 
   let client;
   try {
-    const browserEndpoint = await waitForBrowserEndpoint(packagedProcess);
-    client = await CdpClient.connect(browserEndpoint);
+    client = await connectToBrowser(packagedProcess);
     await waitForPage(client);
     await client.send("Runtime.enable");
     await client.send("Log.enable");
