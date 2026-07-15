@@ -25,8 +25,10 @@
     "lint:code": "eslint . --max-warnings=0",
     "lint:md": "markdownlint-cli2 \"*.md\" \".github/**/*.md\" \"docs/**/*.md\" \"packages/**/*.md\" \"tools/**/*.md\" \"#**/node_modules/**\" \"#AGENTS.md\" \"#dlaczego-notion-zawodzi-i-czego-potrzebuje.md\" \"#docs/plans/**\" \"#docs/specs/**\"",
     "package:alpha": "npm run build && node scripts/desktop/fetch-electron.mjs && node scripts/package-alpha.mjs",
+    "package:distribution": "npm run package:alpha && node scripts/package-distribution.mjs",
     "test:alpha:packaged": "node scripts/run-packaged-alpha-smoke.mjs",
     "test:hub:packaged": "node scripts/run-packaged-hub-smoke.mjs",
+    "test:distribution:packaged": "node scripts/run-distribution-continuity.mjs",
     "test:scripts": "node --test scripts/desktop/packaged-credential-store-policy.test.mjs",
     "test": "npm run clean && npm run build && npm run test:scripts && node scripts/run-tests.mjs",
     "typecheck": "tsc -b --pretty false"
@@ -38,6 +40,7 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.3",
     "electron": "43.1.0",
+    "electron-builder": "26.15.3",
     "eslint": "10.7.0",
     "markdownlint-cli2": "0.23.0",
     "node-gyp": "13.0.1",

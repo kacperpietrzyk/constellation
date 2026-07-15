@@ -51,8 +51,8 @@ already solve well:
 
 ## Project status
 
-Constellation is in **pre-alpha local Alpha work**. There is no distributed
-installer yet, and no contract should be considered stable. The repository now
+Constellation is in **pre-alpha local Alpha work**. There is no published signed
+release yet, and no contract should be considered stable. The repository now
 contains a storage-neutral Application Kernel, a restart-safe encrypted local
 store, an in-memory Electron developer preview, and a packaged Alpha candidate.
 The implemented desktop journey covers Quick Capture to Task, Project outcome
@@ -202,11 +202,17 @@ meeting projection without a meeting-specific synchronization path. The
 boundary and current limitations are documented in
 [Meetings and calendar](docs/architecture/meetings-and-calendar.md).
 
-The resulting ad-hoc macOS and unsigned Windows application folders are
-verification artifacts, not a signed/notarized release. The Hub is an operator
-preview rather than a hosted service. Installers, updater, richer notification
-policy, document comments/citations, and automatic routing rules
-beyond the explicit Capture action remain later work.
+The distribution gate now also produces a DMG plus update ZIP on macOS and a
+per-user NSIS installer on Windows. Hosted drills install the application,
+reopen the encrypted workspace through a compatible update and rollback, and
+remove application files while preserving workspace data. These mechanism-only
+artifacts remain ad-hoc/unsigned evidence, not a release. A separate manual
+workflow fails closed unless macOS Developer ID signing/notarization or Windows
+Authenticode succeeds; the in-app updater is enabled only in that production
+tier and requires explicit check, download, and restart actions. The Hub is
+still an operator preview rather than a hosted service. The distribution
+boundary and current limitations are documented in
+[Desktop distribution](docs/architecture/desktop-distribution.md).
 
 The current kernel boundary and implemented subset are documented in
 [Application kernel](docs/architecture/application-kernel.md) and

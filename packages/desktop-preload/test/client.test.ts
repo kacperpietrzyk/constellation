@@ -14,12 +14,14 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "acknowledgeDocumentUpdates",
     "addMeetingWorkItem",
     "cancelWorkspaceRestore",
+    "checkForRelease",
     "configureJamie",
     "confirmCalendarBlocks",
     "confirmWorkspaceRestore",
     "createDocumentRevision",
     "createRemoteAgentGrant",
     "disconnectJamie",
+    "downloadRelease",
     "editMeetingWorkItem",
     "enrollHub",
     "executeCommand",
@@ -29,6 +31,8 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "getDataHomeStatus",
     "getJamieStatus",
     "getMeetingLoop",
+    "getReleaseStatus",
+    "installRelease",
     "listDocumentRevisions",
     "listRemoteAgentGrants",
     "onAttentionActivated",
@@ -53,4 +57,8 @@ test("renderer client exposes only semantic application and recovery routes", ()
   assert.equal(calls[2]?.channel, DESKTOP_CHANNELS.syncDataHome);
   void client.exportHubAuthorization();
   assert.equal(calls[3]?.channel, DESKTOP_CHANNELS.exportHubAuthorization);
+  void client.getReleaseStatus();
+  assert.equal(calls[4]?.channel, DESKTOP_CHANNELS.getReleaseStatus);
+  void client.checkForRelease();
+  assert.equal(calls[5]?.channel, DESKTOP_CHANNELS.checkForRelease);
 });

@@ -70,7 +70,56 @@ export const DESKTOP_CHANNELS = {
   configureJamie: "constellation:jamie:configure",
   syncJamie: "constellation:jamie:sync",
   disconnectJamie: "constellation:jamie:disconnect",
+  getReleaseStatus: "constellation:release:status",
+  checkForRelease: "constellation:release:check",
+  downloadRelease: "constellation:release:download",
+  installRelease: "constellation:release:install",
 } as const;
+
+export type ReleaseStatus =
+  | {
+      readonly kind: "unavailable";
+      readonly currentVersion: string;
+      readonly reason:
+        | "developer_preview"
+        | "mechanism_only_build"
+        | "platform_unsupported"
+        | "release_origin_missing";
+    }
+  | { readonly kind: "idle"; readonly currentVersion: string }
+  | { readonly kind: "checking"; readonly currentVersion: string }
+  | {
+      readonly kind: "current";
+      readonly currentVersion: string;
+      readonly checkedAt: string;
+    }
+  | {
+      readonly kind: "available";
+      readonly currentVersion: string;
+      readonly version: string;
+      readonly releasedAt?: string;
+    }
+  | {
+      readonly kind: "downloading";
+      readonly currentVersion: string;
+      readonly version: string;
+    }
+  | {
+      readonly kind: "ready";
+      readonly currentVersion: string;
+      readonly version: string;
+    }
+  | {
+      readonly kind: "installing";
+      readonly currentVersion: string;
+      readonly version: string;
+    }
+  | {
+      readonly kind: "failure";
+      readonly currentVersion: string;
+      readonly operation: "check" | "download" | "install";
+      readonly message: string;
+    };
 
 export interface RendererDocumentRevision {
   readonly id: DocumentRevisionId;
@@ -121,6 +170,10 @@ export interface DesktopBuildInfo {
 }
 
 export interface ConstellationRendererClient {
+  getReleaseStatus(): Promise<ReleaseStatus>;
+  checkForRelease(): Promise<ReleaseStatus>;
+  downloadRelease(): Promise<ReleaseStatus>;
+  installRelease(): Promise<ReleaseStatus>;
   getJamieStatus(): Promise<{
     readonly configured: boolean;
     readonly scope?: "personal" | "workspace";
@@ -287,6 +340,14 @@ export type DesktopInvoke = (
 export const createRendererClient = (
   invoke: DesktopInvoke,
 ): ConstellationRendererClient => ({
+  getReleaseStatus: () =>
+    invoke(DESKTOP_CHANNELS.getReleaseStatus) as Promise<ReleaseStatus>,
+  checkForRelease: () =>
+    invoke(DESKTOP_CHANNELS.checkForRelease) as Promise<ReleaseStatus>,
+  downloadRelease: () =>
+    invoke(DESKTOP_CHANNELS.downloadRelease) as Promise<ReleaseStatus>,
+  installRelease: () =>
+    invoke(DESKTOP_CHANNELS.installRelease) as Promise<ReleaseStatus>,
   getJamieStatus: () =>
     invoke(DESKTOP_CHANNELS.getJamieStatus) as ReturnType<
       ConstellationRendererClient["getJamieStatus"]

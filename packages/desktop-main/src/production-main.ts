@@ -72,7 +72,6 @@ import {
   HubConnectionCustody,
   type HubConnection,
 } from "./hub-connection-custody.js";
-import { DESKTOP_PREVIEW_VERSION } from "./index.js";
 import { LocalOnlyDataHomeProvider } from "./local-data-home-provider.js";
 import { LocalMcpRuntime } from "./local-mcp-runtime.js";
 import type { PreparedLocalMcpCredential } from "./local-mcp-credential-custody.js";
@@ -87,6 +86,10 @@ import {
   createWorkspaceRecoveryService,
   type WorkspaceRecoveryService,
 } from "./workspace-recovery-service.js";
+import {
+  DesktopReleaseService,
+  type DesktopUpdaterAdapter,
+} from "./release-service.js";
 
 // Electron's ESM namespace materializes lazy exports before the application is
 // ready. On macOS that can initialize safeStorage early and block on Keychain.
@@ -101,6 +104,16 @@ interface ElectronRuntime {
   readonly safeStorage: SafeStorage;
   readonly session: { readonly defaultSession: Session };
   readonly shell: Shell;
+}
+
+interface ElectronUpdaterRuntime {
+  readonly autoUpdater: {
+    autoDownload: boolean;
+    autoInstallOnAppQuit: boolean;
+    checkForUpdates(): ReturnType<DesktopUpdaterAdapter["checkForUpdates"]>;
+    downloadUpdate(): ReturnType<DesktopUpdaterAdapter["downloadUpdate"]>;
+    quitAndInstall(isSilent: boolean, isForceRunAfter: boolean): void;
+  };
 }
 
 const electron = createRequire(import.meta.url)("electron") as ElectronRuntime;
@@ -125,6 +138,79 @@ let hubSyncFailures = 0;
 let localMcpRuntime: LocalMcpRuntime | undefined;
 const manualHubSyncForPackagedSmoke =
   process.env.CONSTELLATION_ALPHA_HUB_SMOKE_MANUAL_SYNC === "1";
+
+const loadReleaseService = (): DesktopReleaseService => {
+  const currentVersion = app.getVersion();
+  if (!app.isPackaged) {
+    return new DesktopReleaseService(
+      currentVersion,
+      undefined,
+      "developer_preview",
+    );
+  }
+  if (process.platform !== "darwin" && process.platform !== "win32") {
+    return new DesktopReleaseService(
+      currentVersion,
+      undefined,
+      "platform_unsupported",
+    );
+  }
+  let config: unknown;
+  try {
+    config = JSON.parse(
+      readFileSync(
+        path.join(process.resourcesPath, "release-config.json"),
+        "utf8",
+      ),
+    );
+  } catch {
+    return new DesktopReleaseService(
+      currentVersion,
+      undefined,
+      "mechanism_only_build",
+    );
+  }
+  if (
+    config === null ||
+    typeof config !== "object" ||
+    Array.isArray(config) ||
+    Object.keys(config).sort().join(",") !== "releaseOrigin,tier" ||
+    (config as Record<string, unknown>).tier !== "production-signed" ||
+    typeof (config as Record<string, unknown>).releaseOrigin !== "string"
+  ) {
+    return new DesktopReleaseService(
+      currentVersion,
+      undefined,
+      "mechanism_only_build",
+    );
+  }
+  try {
+    const origin = new URL(
+      (config as { readonly releaseOrigin: string }).releaseOrigin,
+    );
+    if (
+      origin.protocol !== "https:" ||
+      origin.username !== "" ||
+      origin.password !== "" ||
+      origin.search !== "" ||
+      origin.hash !== ""
+    ) {
+      throw new Error("release origin");
+    }
+  } catch {
+    return new DesktopReleaseService(
+      currentVersion,
+      undefined,
+      "release_origin_missing",
+    );
+  }
+  const updater = (
+    createRequire(import.meta.url)("electron-updater") as ElectronUpdaterRuntime
+  ).autoUpdater;
+  updater.autoDownload = false;
+  updater.autoInstallOnAppQuit = false;
+  return new DesktopReleaseService(currentVersion, updater);
+};
 
 const attentionNotifications = new AttentionNotificationCoordinator({
   show: ({ title, body, onActivate }) => {
@@ -214,9 +300,23 @@ const electronSafeStorage: AsyncSafeStorage = {
       : electron.safeStorage.decryptStringAsync(value),
 };
 
+const desktopStateRoot = (): string => {
+  const override = process.env.CONSTELLATION_ALPHA_STATE_ROOT;
+  if (override === undefined) return app.getPath("userData");
+  if (
+    !path.isAbsolute(override) ||
+    process.env.CONSTELLATION_ALPHA_RECOVERY_SMOKE_ROOT === undefined
+  ) {
+    throw new Error(
+      "The Alpha state override is restricted to packaged smoke.",
+    );
+  }
+  return path.resolve(override);
+};
+
 const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
   const databaseFactory = createBetterSqlite3Factory();
-  const stateRoot = app.getPath("userData");
+  const stateRoot = desktopStateRoot();
   const deviceIdentity = loadOrCreateDeviceIdentity(stateRoot);
   installationDeviceId = deviceIdentity.deviceId;
   hubConnectionCustody = new HubConnectionCustody(
@@ -230,7 +330,9 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
     smokeRoot !== undefined &&
     !smokeRoot.startsWith(`${path.resolve(stateRoot)}${path.sep}`)
   ) {
-    throw new Error("Recovery smoke path must remain inside user data.");
+    throw new Error(
+      "Recovery smoke path must remain inside application state.",
+    );
   }
   const smokeBackupPath =
     smokeRoot === undefined
@@ -303,7 +405,7 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
     );
   }
   const recovery = await createWorkspaceRecoveryService({
-    appVersion: DESKTOP_PREVIEW_VERSION,
+    appVersion: app.getVersion(),
     databaseFactory,
     safeStorage: electronSafeStorage,
     stateRoot,
@@ -493,7 +595,7 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
           }
         : { initialWorkspaceId: recovery.kernel.identity.workspaceId }),
       persistence: "encrypted-local",
-      version: DESKTOP_PREVIEW_VERSION,
+      version: app.getVersion(),
     },
   };
 };
@@ -560,7 +662,9 @@ const startProductionDesktop = async (): Promise<void> => {
     },
   );
 
+  const stateRoot = desktopStateRoot();
   const runtime = await createDesktopRuntime();
+  const releaseService = loadReleaseService();
   const calendarHelperCandidate =
     process.env.CONSTELLATION_CALENDAR_HELPER_PATH ??
     path.join(process.resourcesPath, "constellation-calendar-helper");
@@ -607,7 +711,7 @@ const startProductionDesktop = async (): Promise<void> => {
     }
   };
   const jamieCustody = new JamieConnectionCustody(
-    app.getPath("userData"),
+    stateRoot,
     electronSafeStorage,
   );
   const jamieApi = new JamieApiClient();
@@ -616,7 +720,7 @@ const startProductionDesktop = async (): Promise<void> => {
     coordinatedDataHomeProvider === undefined
   ) {
     localMcpRuntime = new LocalMcpRuntime({
-      stateRoot: app.getPath("userData"),
+      stateRoot,
       workspaceId: workspaceRecovery.kernel.identity.workspaceId,
       store: workspaceRecovery.kernel.store,
       isEnabled: () => coordinatedDataHomeProvider === undefined,
@@ -712,9 +816,7 @@ const startProductionDesktop = async (): Promise<void> => {
       );
     return value as Record<string, unknown>;
   };
-  const remoteMcpCredentialCustody = new RemoteMcpCredentialCustody(
-    app.getPath("userData"),
-  );
+  const remoteMcpCredentialCustody = new RemoteMcpCredentialCustody(stateRoot);
   ipcMain.handle(DESKTOP_CHANNELS.listRemoteAgentGrants, async (event) => {
     assertTrustedSender(event);
     const connection = activeHubConnection;
@@ -1227,6 +1329,22 @@ const startProductionDesktop = async (): Promise<void> => {
           }),
     };
   });
+  ipcMain.handle(DESKTOP_CHANNELS.getReleaseStatus, (event) => {
+    assertTrustedSender(event);
+    return releaseService.getStatus();
+  });
+  ipcMain.handle(DESKTOP_CHANNELS.checkForRelease, (event) => {
+    assertTrustedSender(event);
+    return releaseService.check();
+  });
+  ipcMain.handle(DESKTOP_CHANNELS.downloadRelease, (event) => {
+    assertTrustedSender(event);
+    return releaseService.download();
+  });
+  ipcMain.handle(DESKTOP_CHANNELS.installRelease, (event) => {
+    assertTrustedSender(event);
+    return releaseService.install();
+  });
   ipcMain.handle(DESKTOP_CHANNELS.getDataHomeStatus, (event) => {
     assertTrustedSender(event);
     if (dataHomeProvider === undefined) {
@@ -1576,7 +1694,7 @@ const reportStartupFailure = async (error: unknown): Promise<void> => {
       noLink: true,
     });
     if (result.response === 1) {
-      await shell.openPath(app.getPath("userData"));
+      await shell.openPath(desktopStateRoot());
     }
   } catch {
     // The app must still terminate if the operating-system dialog fails.

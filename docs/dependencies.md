@@ -11,6 +11,7 @@ with `npm ci --ignore-scripts` and runs `npm audit` as part of lockfile review.
 | React 19.2.7               | Render the shared desktop product surface                                                      | MIT          | `desktop-ui` only          |
 | React DOM 19.2.7           | Mount the React renderer into the Electron document                                            | MIT          | `desktop-ui` only          |
 | Electron 43.1.0            | Secure desktop main/preload boundary for the preview and local Alpha                           | MIT          | `desktop-main` and preload |
+| `electron-updater` 6.8.9   | Manual signed-channel update check, verified download, and explicit restart installation       | MIT          | `desktop-main` only        |
 | `better-sqlite3` 12.11.1   | Native driver rebuilt against the pinned SQLCipher source                                      | MIT          | `desktop-main` only        |
 | SQLCipher Community 4.16.0 | Encrypted local SQLite compiled into the native driver                                         | BSD-3-Clause | packaged native module     |
 | PostgreSQL client 8.22.0   | Hub persistence, migrations, locking, and bounded binary document state                        | MIT          | `hub` only                 |
@@ -25,17 +26,18 @@ errors are converted to content-safe code/path pairs and never echo input values
 
 ## Development
 
-| Dependency                               | Purpose                                   | License      |
-| ---------------------------------------- | ----------------------------------------- | ------------ |
-| TypeScript 6.0.3                         | Strict compilation and project references | Apache-2.0   |
-| ESLint 10.7.0 + typescript-eslint 8.63.0 | TypeScript static checks                  | MIT          |
-| Prettier 3.9.5                           | Deterministic formatting                  | MIT          |
-| markdownlint-cli2 0.23.0                 | Public Markdown checks                    | MIT          |
-| `@types/node` 24.13.3                    | Node.js 24 compile-time declarations      | MIT          |
-| Vite 8.1.4 + React plugin 6.0.3          | Renderer and sandboxed preload builds     | MIT          |
-| React type declarations 19.2             | React compile-time declarations           | MIT          |
-| `@electron/packager` 20.0.2              | Assemble the native Alpha candidate       | BSD-2-Clause |
-| `node-gyp` 13.0.1                        | Build the pinned Electron native ABI      | MIT          |
+| Dependency                               | Purpose                                                               | License      |
+| ---------------------------------------- | --------------------------------------------------------------------- | ------------ |
+| TypeScript 6.0.3                         | Strict compilation and project references                             | Apache-2.0   |
+| ESLint 10.7.0 + typescript-eslint 8.63.0 | TypeScript static checks                                              | MIT          |
+| Prettier 3.9.5                           | Deterministic formatting                                              | MIT          |
+| markdownlint-cli2 0.23.0                 | Public Markdown checks                                                | MIT          |
+| `@types/node` 24.13.3                    | Node.js 24 compile-time declarations                                  | MIT          |
+| Vite 8.1.4 + React plugin 6.0.3          | Renderer and sandboxed preload builds                                 | MIT          |
+| React type declarations 19.2             | React compile-time declarations                                       | MIT          |
+| `@electron/packager` 20.0.2              | Assemble the native Alpha candidate                                   | BSD-2-Clause |
+| `electron-builder` 26.15.3               | Build DMG/ZIP, NSIS, update metadata, signing, and notarization gates | MIT          |
+| `node-gyp` 13.0.1                        | Build the pinned Electron native ABI                                  | MIT          |
 
 Electron exposes no generic renderer bridge. The sandboxed preload bundles an
 explicit semantic allow-list for application commands, queries, recovery, Data
@@ -61,7 +63,9 @@ pinned static OpenSSL provider, while macOS uses CommonCrypto. Key custody uses
 the asynchronous DPAPI provider on Windows and the Keychain provider after app
 readiness on macOS. Yjs and `lib0` are packed inside the ASAR and add no native
 module. Hocuspocus, `crossws`, and the PostgreSQL client run in the self-hosted
-Hub and are not shipped as privileged renderer code. There is still no telemetry SDK, network client,
-model-provider client, or post-install build step. Ad-hoc macOS and unsigned
-Windows folders are Alpha evidence, not production signing, notarization,
-installer, updater, or distribution continuity.
+Hub and are not shipped as privileged renderer code. There is still no
+telemetry SDK, model-provider client, or post-install build step.
+`electron-updater` is the only desktop release network client; it remains
+disabled in developer and mechanism-only builds and never enters the renderer.
+Ad-hoc macOS and unsigned Windows installers are Alpha evidence, not a
+production release.

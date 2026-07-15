@@ -125,10 +125,11 @@ packaged process at both restore activation boundaries and requires startup to
 reopen the retained last-known-good workspace before a successful retry. Native
 macOS arm64, macOS x64, and Windows x64 jobs are required. Each macOS binding is compiled and exercised on
 a matching native runner; Rosetta is not a build or verification dependency.
-Remaining recovery gates include real disk-full and permission faults, signed
-cross-version continuity, and managed attachments. Remaining release gates are
-production code signing, notarization, installer/updater behavior, and
-distribution continuity.
+Remaining recovery gates include real disk-full and permission faults and
+managed attachments. Installer/update/compatible-rollback/uninstall mechanics
+now have a separate packaged distribution drill; production signing and
+notarization remain a credential-gated release proof rather than a claim made
+by ordinary CI. See [Desktop distribution](desktop-distribution.md).
 
 The packaged journey also validates the safe Data Home status route, stable
 installation-generated device identity, honest capability matrix, and verified

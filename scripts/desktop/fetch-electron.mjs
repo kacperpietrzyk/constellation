@@ -52,38 +52,42 @@ if (fs.existsSync(target)) {
     throw new Error("ELECTRON_ARCHIVE_DIGEST_MISMATCH");
   }
 } else {
-  const response = await fetch(
-    `https://github.com/electron/electron/releases/download/v43.1.0/${release.filename}`,
-    {
-      redirect: "follow",
-      signal: AbortSignal.timeout(120_000),
-      headers: { "user-agent": "constellation-alpha-packager" },
-    },
-  );
-  if (!response.ok || !response.body) {
-    throw new Error("ELECTRON_ARCHIVE_DOWNLOAD_FAILED");
-  }
-
-  const hash = crypto.createHash("sha256");
-  const hashingStream = new Transform({
-    transform(chunk, _encoding, callback) {
-      hash.update(chunk);
-      callback(null, chunk);
-    },
-  });
-
-  try {
-    await pipeline(
-      Readable.fromWeb(response.body),
-      hashingStream,
-      fs.createWriteStream(temporary, { flags: "wx", mode: 0o600 }),
-    );
-    if (hash.digest("hex") !== release.sha256) {
-      throw new Error("ELECTRON_ARCHIVE_DIGEST_MISMATCH");
+  let downloaded = false;
+  for (let attempt = 1; attempt <= 3 && !downloaded; attempt += 1) {
+    try {
+      const response = await fetch(
+        `https://github.com/electron/electron/releases/download/v43.1.0/${release.filename}`,
+        {
+          redirect: "follow",
+          signal: AbortSignal.timeout(120_000),
+          headers: { "user-agent": "constellation-alpha-packager" },
+        },
+      );
+      if (!response.ok || !response.body) {
+        throw new Error("ELECTRON_ARCHIVE_DOWNLOAD_FAILED");
+      }
+      const hash = crypto.createHash("sha256");
+      const hashingStream = new Transform({
+        transform(chunk, _encoding, callback) {
+          hash.update(chunk);
+          callback(null, chunk);
+        },
+      });
+      await pipeline(
+        Readable.fromWeb(response.body),
+        hashingStream,
+        fs.createWriteStream(temporary, { flags: "wx", mode: 0o600 }),
+      );
+      if (hash.digest("hex") !== release.sha256) {
+        throw new Error("ELECTRON_ARCHIVE_DIGEST_MISMATCH");
+      }
+      fs.renameSync(temporary, target);
+      downloaded = true;
+    } catch (error) {
+      fs.rmSync(temporary, { force: true });
+      if (attempt === 3) throw error;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 1_000));
     }
-    fs.renameSync(temporary, target);
-  } finally {
-    fs.rmSync(temporary, { force: true });
   }
 }
 

@@ -1,6 +1,5 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
-import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,85 +14,171 @@ const manifest = JSON.parse(
     "utf8",
   ),
 );
-const stateRoot = path.join(root, "build", "packaged-alpha-ui-smoke-state");
-const userData = path.join(stateRoot, "user-data");
-const recoverySmokeRoot = path.join(userData, "recovery-smoke");
+const executable =
+  process.env.CONSTELLATION_PACKAGED_EXECUTABLE ?? manifest.executable;
+const stateRoot =
+  process.env.CONSTELLATION_PACKAGED_SMOKE_STATE_ROOT ??
+  path.join(root, "build", "packaged-alpha-ui-smoke-state");
+const continuityWorkspaceId =
+  process.env.CONSTELLATION_VERIFY_EXISTING_WORKSPACE_ID;
+const applicationStateRoot = path.join(stateRoot, "application-state");
+const recoverySmokeRoot = path.join(applicationStateRoot, "recovery-smoke");
 const taskTitle = "Verify packaged UI, preload, IPC, and persistence";
 const mutationTitle = "This mutation must disappear after restore";
 const projectTitle = "Verify packaged Project context";
 const projectOutcome = "Project inspector preserves the intended outcome";
-fs.rmSync(stateRoot, { recursive: true, force: true });
+if (continuityWorkspaceId === undefined) {
+  fs.rmSync(stateRoot, { recursive: true, force: true });
+}
 fs.mkdirSync(stateRoot, { recursive: true });
 
 const delay = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-const reservePort = async () => {
-  const server = net.createServer();
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  if (address === null || typeof address === "string") {
-    throw new Error("CDP_PORT_ALLOCATION_FAILED");
-  }
-  await new Promise((resolve, reject) =>
-    server.close((error) => (error === undefined ? resolve() : reject(error))),
-  );
-  return address.port;
-};
-
 class CdpClient {
   #id = 0;
   #issues = [];
   #pending = new Map();
-  #socket;
+  #sessionId;
+  #closeTransport;
+  #sendRaw;
 
-  constructor(socket) {
-    this.#socket = socket;
-    socket.addEventListener("message", (event) => {
-      const message = JSON.parse(String(event.data));
-      if (message.method === "Runtime.exceptionThrown") {
-        this.#issues.push("renderer-exception");
-      }
-      if (
-        message.method === "Log.entryAdded" &&
-        message.params?.entry?.level === "error"
-      ) {
-        this.#issues.push(`renderer-log-${message.params.entry.level}`);
-      }
-      if (message.id === undefined) return;
-      const pending = this.#pending.get(message.id);
-      if (pending === undefined) return;
-      this.#pending.delete(message.id);
-      if (message.error === undefined) pending.resolve(message.result);
-      else pending.reject(new Error(`CDP_${message.error.message}`));
-    });
-    socket.addEventListener("close", () => {
-      for (const pending of this.#pending.values()) {
-        pending.reject(new Error("CDP_CONNECTION_CLOSED"));
-      }
-      this.#pending.clear();
-    });
+  constructor(sendRaw, closeTransport, subscribe) {
+    this.#sendRaw = sendRaw;
+    this.#closeTransport = closeTransport;
+    subscribe(
+      (payload) => {
+        const message = JSON.parse(payload);
+        if (message.method === "Runtime.exceptionThrown") {
+          this.#issues.push("renderer-exception");
+        }
+        if (
+          message.method === "Log.entryAdded" &&
+          message.params?.entry?.level === "error"
+        ) {
+          this.#issues.push(`renderer-log-${message.params.entry.level}`);
+        }
+        if (message.id === undefined) return;
+        const pending = this.#pending.get(message.id);
+        if (pending === undefined) return;
+        this.#pending.delete(message.id);
+        clearTimeout(pending.timeout);
+        if (message.error === undefined) pending.resolve(message.result);
+        else pending.reject(new Error(`CDP_${message.error.message}`));
+      },
+      () => {
+        for (const pending of this.#pending.values()) {
+          clearTimeout(pending.timeout);
+          pending.reject(new Error("CDP_CONNECTION_CLOSED"));
+        }
+        this.#pending.clear();
+      },
+    );
   }
 
   static async connect(url) {
     const socket = new WebSocket(url);
     await new Promise((resolve, reject) => {
-      socket.addEventListener("open", resolve, { once: true });
-      socket.addEventListener("error", reject, { once: true });
+      const timeout = setTimeout(() => {
+        try {
+          socket.close();
+        } catch {
+          // A connecting WebSocket can reject close before it is established.
+        }
+        reject(new Error("CDP_CONNECTION_TIMEOUT"));
+      }, 5_000);
+      socket.addEventListener(
+        "open",
+        () => {
+          clearTimeout(timeout);
+          resolve();
+        },
+        { once: true },
+      );
+      socket.addEventListener(
+        "error",
+        (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+        { once: true },
+      );
     });
-    return new CdpClient(socket);
+    return new CdpClient(
+      (payload) => socket.send(payload),
+      () => socket.close(),
+      (onMessage, onClose) => {
+        socket.addEventListener("message", (event) =>
+          onMessage(String(event.data)),
+        );
+        socket.addEventListener("close", onClose);
+      },
+    );
   }
 
-  async send(method, params = {}) {
+  static connectPipe(input, output) {
+    return new CdpClient(
+      (payload) => output.write(`${payload}\0`),
+      () => {
+        input.destroy();
+        output.destroy();
+      },
+      (onMessage, onClose) => {
+        let buffer = "";
+        input.setEncoding("utf8");
+        input.on("data", (chunk) => {
+          buffer += chunk;
+          let boundary = buffer.indexOf("\0");
+          while (boundary !== -1) {
+            const payload = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 1);
+            if (payload.length > 0) onMessage(payload);
+            boundary = buffer.indexOf("\0");
+          }
+        });
+        input.on("close", onClose);
+      },
+    );
+  }
+
+  async send(method, params = {}, browserCommand = false) {
     const id = ++this.#id;
     const result = new Promise((resolve, reject) => {
-      this.#pending.set(id, { resolve, reject });
+      const timeout = setTimeout(() => {
+        if (!this.#pending.delete(id)) return;
+        reject(new Error(`CDP_${method}_TIMEOUT`));
+      }, 5_000);
+      this.#pending.set(id, { resolve, reject, timeout });
     });
-    this.#socket.send(JSON.stringify({ id, method, params }));
+    this.#sendRaw(
+      JSON.stringify({
+        id,
+        method,
+        params,
+        ...(!browserCommand && this.#sessionId !== undefined
+          ? { sessionId: this.#sessionId }
+          : {}),
+      }),
+    );
     return result;
+  }
+
+  sendBrowser(method, params = {}) {
+    return this.send(method, params, true);
+  }
+
+  async attachToPage() {
+    const { targetInfos } = await this.sendBrowser("Target.getTargets");
+    const page = targetInfos.find(
+      (target) => target.type === "page" && target.url.startsWith("file://"),
+    );
+    if (page === undefined) return false;
+    const { sessionId } = await this.sendBrowser("Target.attachToTarget", {
+      targetId: page.targetId,
+      flatten: true,
+    });
+    this.#sessionId = sessionId;
+    return true;
   }
 
   async evaluate(expression) {
@@ -111,7 +196,7 @@ class CdpClient {
   }
 
   close() {
-    this.#socket.close();
+    this.#closeTransport();
   }
 
   issues() {
@@ -119,28 +204,64 @@ class CdpClient {
   }
 }
 
-const waitForTarget = async (port, process) => {
-  const endpoint = `http://127.0.0.1:${port}/json/list`;
-  for (let attempt = 0; attempt < 300; attempt += 1) {
+const waitForBrowserEndpoint = async (process, browserUserData) => {
+  const activePortFile = path.join(browserUserData, "DevToolsActivePort");
+  const deadline = Date.now() + 60_000;
+  let lastObservation = "active-port-unavailable";
+  while (Date.now() < deadline) {
     if (process.exitCode !== null) {
       throw new Error(`PACKAGED_ALPHA_EXITED_EARLY_${process.exitCode}`);
     }
     try {
-      const response = await fetch(endpoint);
-      if (response.ok) {
-        const targets = await response.json();
-        const page = targets.find(
-          (target) =>
-            target.type === "page" && target.url.startsWith("file://"),
-        );
-        if (page?.webSocketDebuggerUrl !== undefined) return page;
+      const [port, browserPath] = fs
+        .readFileSync(activePortFile, "utf8")
+        .trim()
+        .split("\n");
+      if (/^\d+$/.test(port) && browserPath?.startsWith("/devtools/browser/")) {
+        return `ws://127.0.0.1:${port}${browserPath}`;
       }
-    } catch {
+      lastObservation = "active-port-invalid";
+    } catch (error) {
+      lastObservation = error instanceof Error ? error.message : "read-error";
       // The packaged browser is still starting.
     }
     await delay(100);
   }
-  throw new Error("PACKAGED_ALPHA_CDP_TARGET_TIMEOUT");
+  throw new Error(`PACKAGED_ALPHA_CDP_BROWSER_TIMEOUT_${lastObservation}`);
+};
+
+const waitForPage = async (client) => {
+  const deadline = Date.now() + 60_000;
+  let lastObservation = "page-unavailable";
+  while (Date.now() < deadline) {
+    try {
+      if (await client.attachToPage()) return;
+      lastObservation = "page-unavailable";
+    } catch (error) {
+      lastObservation =
+        error instanceof Error ? error.message : "target-query-error";
+    }
+    await delay(100);
+  }
+  throw new Error(`PACKAGED_ALPHA_CDP_PAGE_TIMEOUT_${lastObservation}`);
+};
+
+const connectToBrowser = async (process, browserUserData) => {
+  const endpoint = await waitForBrowserEndpoint(process, browserUserData);
+  const deadline = Date.now() + 60_000;
+  let lastObservation = "websocket-unavailable";
+  while (Date.now() < deadline) {
+    if (process.exitCode !== null) {
+      throw new Error(`PACKAGED_ALPHA_EXITED_EARLY_${process.exitCode}`);
+    }
+    try {
+      return await CdpClient.connect(endpoint);
+    } catch (error) {
+      lastObservation = error instanceof Error ? error.message : "socket-error";
+    }
+    await delay(100);
+  }
+  throw new Error(`PACKAGED_ALPHA_CDP_CONNECT_TIMEOUT_${lastObservation}`);
 };
 
 const waitFor = async (client, expression, diagnosticCode) => {
@@ -151,42 +272,105 @@ const waitFor = async (client, expression, diagnosticCode) => {
   throw new Error(diagnosticCode);
 };
 
-const stopPackagedApp = async (client, process) => {
-  try {
-    await client.send("Browser.close");
-  } catch {
-    // A closed browser can tear down CDP before acknowledging the command.
+const signalPackagedProcessTree = (child, signal) => {
+  if (process.platform !== "win32" && child.pid !== undefined) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // Fall back to the direct child when the process group has already gone.
+    }
   }
+  if (child.exitCode === null && child.signalCode === null) child.kill(signal);
+};
+
+const signalInstalledAppProcesses = (signal) => {
+  if (process.platform !== "darwin") return;
+  const appBundle = path.dirname(path.dirname(path.dirname(executable)));
+  spawnSync("/usr/bin/pkill", [`-${signal}`, "-f", appBundle], {
+    stdio: "ignore",
+    timeout: 5_000,
+  });
+};
+
+const removeSmokeSingletonArtifacts = (browserUserData) => {
+  for (const name of [
+    "DevToolsActivePort",
+    "SingletonCookie",
+    "SingletonLock",
+    "SingletonSocket",
+  ]) {
+    fs.rmSync(path.join(browserUserData, name), {
+      force: true,
+      recursive: true,
+    });
+  }
+};
+
+const stopPackagedApp = async (client, child, browserUserData) => {
+  await Promise.race([
+    client.sendBrowser("Browser.close").catch(() => undefined),
+    delay(1_000),
+  ]);
   client.close();
-  for (
-    let attempt = 0;
-    attempt < 100 && process.exitCode === null;
-    attempt += 1
-  ) {
-    await delay(50);
-  }
-  if (process.exitCode === null) process.kill("SIGTERM");
-  if (process.exitCode === null) {
-    await new Promise((resolve) => process.once("exit", resolve));
+  const waitForExit = async () => {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (child.exitCode !== null || child.signalCode !== null) return true;
+      await delay(50);
+    }
+    return false;
+  };
+  await waitForExit();
+  signalPackagedProcessTree(child, "SIGTERM");
+  signalInstalledAppProcesses("TERM");
+  await delay(500);
+  signalPackagedProcessTree(child, "SIGKILL");
+  signalInstalledAppProcesses("KILL");
+  if (!(await waitForExit())) throw new Error("PACKAGED_ALPHA_DID_NOT_EXIT");
+  child.stdout.destroy();
+  child.stderr.destroy();
+  removeSmokeSingletonArtifacts(browserUserData);
+  if (process.platform === "darwin") {
+    fs.rmSync(browserUserData, { force: true, recursive: true });
   }
 };
 
 const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
-  const port = await reservePort();
+  // Non-macOS safeStorage binds its protected material to Chromium's profile.
+  // Keep that profile across relaunch phases while macOS uses isolated profiles
+  // to avoid stale singleton/CDP state; macOS key custody lives in Keychain.
+  const browserUserData =
+    process.platform === "darwin"
+      ? path.join(
+          stateRoot,
+          "browser-data",
+          `${phase}-${process.pid}-${Date.now()}`,
+        )
+      : path.join(stateRoot, "browser-data", "profile-bound-safe-storage");
+  removeSmokeSingletonArtifacts(browserUserData);
   let stdout = "";
   let stderr = "";
   const packagedProcess = spawn(
-    manifest.executable,
+    executable,
     [
-      `--user-data-dir=${userData}`,
-      "--remote-debugging-address=127.0.0.1",
-      `--remote-debugging-port=${port}`,
+      `--user-data-dir=${browserUserData}`,
+      ...(process.platform === "darwin"
+        ? ["--remote-debugging-pipe"]
+        : [
+            "--remote-debugging-address=127.0.0.1",
+            "--remote-debugging-port=0",
+          ]),
     ],
     {
+      detached: process.platform !== "win32",
       windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio:
+        process.platform === "darwin"
+          ? ["ignore", "pipe", "pipe", "pipe", "pipe"]
+          : ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
+        CONSTELLATION_ALPHA_STATE_ROOT: applicationStateRoot,
         CONSTELLATION_ALPHA_RECOVERY_SMOKE_ROOT: recoverySmokeRoot,
         ...(failpoint === undefined
           ? {}
@@ -205,8 +389,14 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
 
   let client;
   try {
-    const target = await waitForTarget(port, packagedProcess);
-    client = await CdpClient.connect(target.webSocketDebuggerUrl);
+    client =
+      process.platform === "darwin"
+        ? CdpClient.connectPipe(
+            packagedProcess.stdio[4],
+            packagedProcess.stdio[3],
+          )
+        : await connectToBrowser(packagedProcess, browserUserData);
+    await waitForPage(client);
     await client.send("Runtime.enable");
     await client.send("Log.enable");
     await waitFor(
@@ -217,9 +407,11 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     const boundary = await client.evaluate(`(async () => {
       const build = await window.constellation.getBuildInfo();
       const dataHome = await window.constellation.getDataHomeStatus();
+      const release = await window.constellation.getReleaseStatus();
       return {
         build,
         dataHome,
+        release,
         bridgeKeys: Object.keys(window.constellation).sort(),
         hasNodeRequire: typeof window.require !== "undefined"
       };
@@ -231,11 +423,18 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         (phase === "restored" ? "recovery_required" : "ready") ||
       boundary.hasNodeRequire ||
       boundary.bridgeKeys.join(",") !==
-        "acknowledgeDocumentUpdates,addMeetingWorkItem,cancelWorkspaceRestore,configureJamie,confirmCalendarBlocks,confirmWorkspaceRestore,createDocumentRevision,createRemoteAgentGrant,disconnectJamie,editMeetingWorkItem,enrollHub,executeCommand,exportHubAuthorization,exportWorkspaceBackup,getBuildInfo,getDataHomeStatus,getJamieStatus,getMeetingLoop,listDocumentRevisions,listRemoteAgentGrants,onAttentionActivated,openDocument,persistDocumentUpdate,prepareAgentCredential,prepareWorkspaceRestore,previewCalendarBlocks,requestCalendarAccess,restoreDocumentRevision,revokeRemoteAgentGrant,rotateRemoteAgentGrant,runQuery,syncDataHome,syncJamie"
+        "acknowledgeDocumentUpdates,addMeetingWorkItem,cancelWorkspaceRestore,checkForRelease,configureJamie,confirmCalendarBlocks,confirmWorkspaceRestore,createDocumentRevision,createRemoteAgentGrant,disconnectJamie,downloadRelease,editMeetingWorkItem,enrollHub,executeCommand,exportHubAuthorization,exportWorkspaceBackup,getBuildInfo,getDataHomeStatus,getJamieStatus,getMeetingLoop,getReleaseStatus,installRelease,listDocumentRevisions,listRemoteAgentGrants,onAttentionActivated,openDocument,persistDocumentUpdate,prepareAgentCredential,prepareWorkspaceRestore,previewCalendarBlocks,requestCalendarAccess,restoreDocumentRevision,revokeRemoteAgentGrant,rotateRemoteAgentGrant,runQuery,syncDataHome,syncJamie"
     ) {
       throw new Error(
         `PACKAGED_ALPHA_PRELOAD_OR_IPC_INVALID:${JSON.stringify(boundary)}`,
       );
+    }
+    if (
+      boundary.release.kind !== "unavailable" ||
+      boundary.release.reason !== "mechanism_only_build" ||
+      boundary.release.currentVersion !== boundary.build.version
+    ) {
+      throw new Error("PACKAGED_ALPHA_RELEASE_BOUNDARY_INVALID");
     }
     const dataHome = boundary.dataHome;
     if (
@@ -551,6 +750,17 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       ) {
         throw new Error("PACKAGED_ALPHA_RESTORED_DATA_HOME_INVALID");
       }
+    } else if (phase === "continuity") {
+      if (
+        boundary.build.startupRecovery !== "none" ||
+        boundary.build.initialWorkspaceId !== expectedWorkspaceId
+      ) {
+        throw new Error("PACKAGED_ALPHA_RELEASE_CONTINUITY_INVALID");
+      }
+      await client.evaluate(`(() => {
+        document.querySelector('.nav-item[data-surface="tasks"]').click();
+        return true;
+      })()`);
     } else {
       if (boundary.build.startupRecovery !== "previous_workspace_restored") {
         throw new Error("PACKAGED_ALPHA_PREVIOUS_WORKSPACE_NOT_RECOVERED");
@@ -570,7 +780,8 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     const taskCount = await client.evaluate(
       `document.querySelectorAll(".task-row").length`,
     );
-    const expectedTaskCount = phase === "restored" ? 1 : 2;
+    const expectedTaskCount =
+      phase === "restored" || phase === "continuity" ? 1 : 2;
     if (taskCount !== expectedTaskCount) {
       throw new Error("PACKAGED_ALPHA_TASK_COUNT_INVALID");
     }
@@ -589,7 +800,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         `PACKAGED_ALPHA_RENDERER_ERRORS_${client.issues().join("_")}`,
       );
     }
-    await stopPackagedApp(client, packagedProcess);
+    await stopPackagedApp(client, packagedProcess, browserUserData);
     return {
       phase,
       taskCount,
@@ -599,15 +810,34 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       persistence: boundary.build.persistence,
       preload: "context-isolated",
       transport: "renderer-preload-ipc",
+      version: boundary.build.version,
     };
   } catch (error) {
     if (client !== undefined) client.close();
-    if (packagedProcess.exitCode === null) packagedProcess.kill("SIGKILL");
+    signalPackagedProcessTree(packagedProcess, "SIGKILL");
+    signalInstalledAppProcesses("KILL");
+    packagedProcess.stdout.destroy();
+    packagedProcess.stderr.destroy();
     process.stderr.write(stdout);
     process.stderr.write(stderr);
     throw error;
   }
 };
+
+if (continuityWorkspaceId !== undefined) {
+  const continuity = await run("continuity", undefined, continuityWorkspaceId);
+  process.stdout.write(
+    `${JSON.stringify({
+      status: "pass",
+      phase: continuity.phase,
+      version: continuity.version,
+      workspaceId: continuityWorkspaceId,
+      taskCount: continuity.taskCount,
+      encryptedContinuity: true,
+    })}\n`,
+  );
+  process.exit(0);
+}
 
 const created = await run("created");
 const interruptedAfterRetention = await run(
@@ -625,7 +855,7 @@ const interruptedAfterActivation = await run(
 );
 const recoveredAfterActivation = await run("recovered-after-activation");
 const destroyedWrapper = path.join(
-  userData,
+  applicationStateRoot,
   "local-alpha-workspace",
   "key-wrapper.json",
 );
@@ -649,29 +879,36 @@ const dataHomeDeviceIds = [
 if (new Set(dataHomeDeviceIds).size !== 1) {
   throw new Error("PACKAGED_ALPHA_DEVICE_ID_NOT_STABLE");
 }
-process.stdout.write(
-  `${JSON.stringify({
-    status: "pass",
-    platform: process.platform,
-    phases: [
-      created.phase,
-      interruptedAfterRetention.phase,
-      recoveredAfterRetention.phase,
-      interruptedAfterActivation.phase,
-      recoveredAfterActivation.phase,
-      restored.phase,
-    ],
-    interruptionTerminations: [
-      interruptedAfterRetention.termination,
-      interruptedAfterActivation.termination,
-    ],
-    persistence: restored.persistence,
-    preload: restored.preload,
-    transport: restored.transport,
-    taskCount: restored.taskCount,
-    backupWorkspaceId: created.backup.metadata.workspaceId,
-    dataHomeProvider: "constellation.local-only/v1",
-    stableDeviceIdentity: true,
-    restoreCounts: restored.restorePreview.counts,
-  })}\n`,
-);
+await new Promise((resolve, reject) => {
+  process.stdout.write(
+    `${JSON.stringify({
+      status: "pass",
+      platform: process.platform,
+      phases: [
+        created.phase,
+        interruptedAfterRetention.phase,
+        recoveredAfterRetention.phase,
+        interruptedAfterActivation.phase,
+        recoveredAfterActivation.phase,
+        restored.phase,
+      ],
+      interruptionTerminations: [
+        interruptedAfterRetention.termination,
+        interruptedAfterActivation.termination,
+      ],
+      persistence: restored.persistence,
+      preload: restored.preload,
+      transport: restored.transport,
+      taskCount: restored.taskCount,
+      backupWorkspaceId: created.backup.metadata.workspaceId,
+      dataHomeProvider: "constellation.local-only/v1",
+      stableDeviceIdentity: true,
+      restoreCounts: restored.restorePreview.counts,
+    })}\n`,
+    (error) => {
+      if (error === null || error === undefined) resolve();
+      else reject(error);
+    },
+  );
+});
+process.exit(0);

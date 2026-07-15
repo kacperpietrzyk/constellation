@@ -26,6 +26,26 @@ export interface ScenarioFixtures {
 export const createScenarioClient = (
   fixtures: ScenarioFixtures,
 ): ConstellationRendererClient => ({
+  getReleaseStatus: async () => ({
+    kind: "unavailable",
+    currentVersion: "0.0.0-m1",
+    reason: "developer_preview",
+  }),
+  checkForRelease: async () => ({
+    kind: "unavailable",
+    currentVersion: "0.0.0-m1",
+    reason: "developer_preview",
+  }),
+  downloadRelease: async () => ({
+    kind: "unavailable",
+    currentVersion: "0.0.0-m1",
+    reason: "developer_preview",
+  }),
+  installRelease: async () => ({
+    kind: "unavailable",
+    currentVersion: "0.0.0-m1",
+    reason: "developer_preview",
+  }),
   getJamieStatus: async () => ({ configured: false }),
   configureJamie: async () => undefined,
   syncJamie: async () => ({
