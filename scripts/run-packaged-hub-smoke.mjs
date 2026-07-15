@@ -988,7 +988,7 @@ try {
     "PACKAGED_DOCUMENT_DID_NOT_RECONNECT",
   );
   await member.client.evaluate(`(() => {
-    const input = document.querySelector("#revision-name");
+    const input = document.querySelector('.named-version-form input[name="versionName"]');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(
       input,
       "Review packaged",
@@ -998,15 +998,15 @@ try {
   })()`);
   await waitFor(
     member.client,
-    `document.querySelector(".document-revisions form button")?.disabled === false`,
+    `document.querySelector(".named-version-form button")?.disabled === false`,
     "PACKAGED_DOCUMENT_REVISION_DISABLED",
   );
   await member.client.evaluate(
-    `(() => { document.querySelector(".document-revisions form button").click(); return true; })()`,
+    `(() => { document.querySelector(".named-version-form button").click(); return true; })()`,
   );
   await waitFor(
     member.client,
-    `[...document.querySelectorAll(".document-revisions li strong")].some((node) => node.textContent === "Review packaged")`,
+    `[...document.querySelectorAll(".named-version-list li strong")].some((node) => node.textContent === "Review packaged")`,
     "PACKAGED_DOCUMENT_REVISION_MISSING",
   );
   ownerDocument.getText("content").insert(0, "TYMCZASOWE ");
@@ -1017,7 +1017,7 @@ try {
   );
   await member.client.evaluate(`(() => {
     window.confirm = () => true;
-    document.querySelector(".document-revisions li .text-button").click();
+    document.querySelector(".named-version-list li .text-button").click();
     return true;
   })()`);
   for (
