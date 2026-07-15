@@ -285,6 +285,36 @@ const signalInstalledAppProcesses = (signal) => {
   });
 };
 
+const waitForInstalledAppProcessesToExit = async () => {
+  if (process.platform !== "darwin") return;
+  const appBundle = path.dirname(path.dirname(path.dirname(executable)));
+  let remaining = [];
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const result = spawnSync("/usr/bin/pgrep", ["-f", appBundle], {
+      encoding: "utf8",
+      timeout: 5_000,
+    });
+    remaining = (result.stdout ?? "")
+      .trim()
+      .split("\n")
+      .filter((value) => /^\d+$/.test(value))
+      .map(Number)
+      .filter((pid) => pid !== process.pid);
+    if (remaining.length === 0) return;
+    for (const pid of remaining) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // The process exited after it was listed.
+      }
+    }
+    await delay(100);
+  }
+  throw new Error(
+    `PACKAGED_ALPHA_PROCESS_TREE_DID_NOT_EXIT_${remaining.join("_")}`,
+  );
+};
+
 const removeSmokeSingletonArtifacts = () => {
   for (const name of [
     "DevToolsActivePort",
@@ -315,6 +345,7 @@ const stopPackagedApp = async (client, child) => {
   await delay(500);
   signalPackagedProcessTree(child, "SIGKILL");
   signalInstalledAppProcesses("KILL");
+  await waitForInstalledAppProcessesToExit();
   if (!(await waitForExit())) throw new Error("PACKAGED_ALPHA_DID_NOT_EXIT");
   child.stdout.destroy();
   child.stderr.destroy();
