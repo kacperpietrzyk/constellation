@@ -1,7 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
-import http from "node:http";
-import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,55 +35,11 @@ fs.mkdirSync(stateRoot, { recursive: true });
 const delay = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-const reservePort = async () => {
-  const server = net.createServer();
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  if (address === null || typeof address === "string") {
-    throw new Error("CDP_PORT_ALLOCATION_FAILED");
-  }
-  await new Promise((resolve, reject) =>
-    server.close((error) => (error === undefined ? resolve() : reject(error))),
-  );
-  return address.port;
-};
-
-const readJsonEndpoint = (endpoint) =>
-  new Promise((resolve, reject) => {
-    const request = http.get(endpoint, { timeout: 2_000 }, (response) => {
-      let body = "";
-      response.setEncoding("utf8");
-      response.on("data", (chunk) => {
-        body += chunk;
-        if (body.length > 1024 * 1024) {
-          request.destroy(new Error("CDP_HTTP_RESPONSE_TOO_LARGE"));
-        }
-      });
-      response.on("end", () => {
-        if (response.statusCode !== 200) {
-          reject(new Error(`CDP_HTTP_STATUS_${response.statusCode}`));
-          return;
-        }
-        try {
-          resolve(JSON.parse(body));
-        } catch {
-          reject(new Error("CDP_HTTP_RESPONSE_INVALID"));
-        }
-      });
-    });
-    request.on("timeout", () => {
-      request.destroy(new Error("CDP_HTTP_TIMEOUT"));
-    });
-    request.on("error", reject);
-  });
-
 class CdpClient {
   #id = 0;
   #issues = [];
   #pending = new Map();
+  #sessionId;
   #socket;
 
   constructor(socket) {
@@ -149,7 +103,7 @@ class CdpClient {
     return new CdpClient(socket);
   }
 
-  async send(method, params = {}) {
+  async send(method, params = {}, browserCommand = false) {
     const id = ++this.#id;
     const result = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -158,8 +112,35 @@ class CdpClient {
       }, 5_000);
       this.#pending.set(id, { resolve, reject, timeout });
     });
-    this.#socket.send(JSON.stringify({ id, method, params }));
+    this.#socket.send(
+      JSON.stringify({
+        id,
+        method,
+        params,
+        ...(!browserCommand && this.#sessionId !== undefined
+          ? { sessionId: this.#sessionId }
+          : {}),
+      }),
+    );
     return result;
+  }
+
+  sendBrowser(method, params = {}) {
+    return this.send(method, params, true);
+  }
+
+  async attachToPage() {
+    const { targetInfos } = await this.sendBrowser("Target.getTargets");
+    const page = targetInfos.find(
+      (target) => target.type === "page" && target.url.startsWith("file://"),
+    );
+    if (page === undefined) return false;
+    const { sessionId } = await this.sendBrowser("Target.attachToTarget", {
+      targetId: page.targetId,
+      flatten: true,
+    });
+    this.#sessionId = sessionId;
+    return true;
   }
 
   async evaluate(expression) {
@@ -185,30 +166,38 @@ class CdpClient {
   }
 }
 
-const waitForTarget = async (port, process) => {
-  const endpoint = `http://127.0.0.1:${port}/json/list`;
+const waitForBrowserEndpoint = async (process) => {
+  const activePortFile = path.join(userData, "DevToolsActivePort");
   const deadline = Date.now() + 60_000;
-  let lastObservation = "endpoint-unavailable";
+  let lastObservation = "active-port-unavailable";
   while (Date.now() < deadline) {
     if (process.exitCode !== null) {
       throw new Error(`PACKAGED_ALPHA_EXITED_EARLY_${process.exitCode}`);
     }
     try {
-      const targets = await readJsonEndpoint(endpoint);
-      lastObservation = targets
-        .map((target) => `${target.type}:${target.url}`)
-        .join("|");
-      const page = targets.find(
-        (target) => target.type === "page" && target.url.startsWith("file://"),
-      );
-      if (page?.webSocketDebuggerUrl !== undefined) return page;
+      const [port, browserPath] = fs
+        .readFileSync(activePortFile, "utf8")
+        .trim()
+        .split("\n");
+      if (/^\d+$/.test(port) && browserPath?.startsWith("/devtools/browser/")) {
+        return `ws://127.0.0.1:${port}${browserPath}`;
+      }
+      lastObservation = "active-port-invalid";
     } catch (error) {
-      lastObservation = error instanceof Error ? error.name : "fetch-error";
+      lastObservation = error instanceof Error ? error.message : "read-error";
       // The packaged browser is still starting.
     }
     await delay(100);
   }
-  throw new Error(`PACKAGED_ALPHA_CDP_TARGET_TIMEOUT_${lastObservation}`);
+  throw new Error(`PACKAGED_ALPHA_CDP_BROWSER_TIMEOUT_${lastObservation}`);
+};
+
+const waitForPage = async (client) => {
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    if (await client.attachToPage()) return;
+    await delay(100);
+  }
+  throw new Error("PACKAGED_ALPHA_CDP_PAGE_TIMEOUT");
 };
 
 const waitFor = async (client, expression, diagnosticCode) => {
@@ -241,14 +230,19 @@ const signalInstalledAppProcesses = (signal) => {
 };
 
 const removeSmokeSingletonArtifacts = () => {
-  for (const name of ["SingletonCookie", "SingletonLock", "SingletonSocket"]) {
+  for (const name of [
+    "DevToolsActivePort",
+    "SingletonCookie",
+    "SingletonLock",
+    "SingletonSocket",
+  ]) {
     fs.rmSync(path.join(userData, name), { force: true, recursive: true });
   }
 };
 
 const stopPackagedApp = async (client, child) => {
   await Promise.race([
-    client.send("Browser.close").catch(() => undefined),
+    client.sendBrowser("Browser.close").catch(() => undefined),
     delay(1_000),
   ]);
   client.close();
@@ -272,7 +266,7 @@ const stopPackagedApp = async (client, child) => {
 };
 
 const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
-  const port = await reservePort();
+  removeSmokeSingletonArtifacts();
   let stdout = "";
   let stderr = "";
   const packagedProcess = spawn(
@@ -280,7 +274,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     [
       `--user-data-dir=${userData}`,
       "--remote-debugging-address=127.0.0.1",
-      `--remote-debugging-port=${port}`,
+      "--remote-debugging-port=0",
     ],
     {
       detached: process.platform !== "win32",
@@ -306,8 +300,9 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
 
   let client;
   try {
-    const target = await waitForTarget(port, packagedProcess);
-    client = await CdpClient.connect(target.webSocketDebuggerUrl);
+    const browserEndpoint = await waitForBrowserEndpoint(packagedProcess);
+    client = await CdpClient.connect(browserEndpoint);
+    await waitForPage(client);
     await client.send("Runtime.enable");
     await client.send("Log.enable");
     await waitFor(
