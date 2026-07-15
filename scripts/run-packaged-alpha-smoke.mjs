@@ -157,13 +157,14 @@ class CdpClient {
 
 const waitForTarget = async (port, process) => {
   const endpoint = `http://127.0.0.1:${port}/json/list`;
-  for (let attempt = 0; attempt < 300; attempt += 1) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
     if (process.exitCode !== null) {
       throw new Error(`PACKAGED_ALPHA_EXITED_EARLY_${process.exitCode}`);
     }
     try {
       const response = await fetch(endpoint, {
-        signal: AbortSignal.timeout(1_000),
+        signal: AbortSignal.timeout(250),
       });
       if (response.ok) {
         const targets = await response.json();
@@ -189,7 +190,19 @@ const waitFor = async (client, expression, diagnosticCode) => {
   throw new Error(diagnosticCode);
 };
 
-const stopPackagedApp = async (client, process) => {
+const signalPackagedProcessTree = (child, signal) => {
+  if (process.platform !== "win32" && child.pid !== undefined) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // Fall back to the direct child when the process group has already gone.
+    }
+  }
+  if (child.exitCode === null && child.signalCode === null) child.kill(signal);
+};
+
+const stopPackagedApp = async (client, child) => {
   await Promise.race([
     client.send("Browser.close").catch(() => undefined),
     delay(1_000),
@@ -197,16 +210,18 @@ const stopPackagedApp = async (client, process) => {
   client.close();
   const waitForExit = async () => {
     for (let attempt = 0; attempt < 100; attempt += 1) {
-      if (process.exitCode !== null || process.signalCode !== null) return true;
+      if (child.exitCode !== null || child.signalCode !== null) return true;
       await delay(50);
     }
     return false;
   };
-  if (await waitForExit()) return;
-  process.kill("SIGTERM");
-  if (await waitForExit()) return;
-  process.kill("SIGKILL");
+  await waitForExit();
+  signalPackagedProcessTree(child, "SIGTERM");
+  await delay(500);
+  signalPackagedProcessTree(child, "SIGKILL");
   if (!(await waitForExit())) throw new Error("PACKAGED_ALPHA_DID_NOT_EXIT");
+  child.stdout.destroy();
+  child.stderr.destroy();
 };
 
 const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
@@ -221,6 +236,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       `--remote-debugging-port=${port}`,
     ],
     {
+      detached: process.platform !== "win32",
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
       env: {
@@ -662,7 +678,9 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     };
   } catch (error) {
     if (client !== undefined) client.close();
-    if (packagedProcess.exitCode === null) packagedProcess.kill("SIGKILL");
+    signalPackagedProcessTree(packagedProcess, "SIGKILL");
+    packagedProcess.stdout.destroy();
+    packagedProcess.stderr.destroy();
     process.stderr.write(stdout);
     process.stderr.write(stderr);
     throw error;
