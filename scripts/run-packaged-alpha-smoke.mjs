@@ -160,11 +160,10 @@ const waitFor = async (client, expression, diagnosticCode) => {
 };
 
 const stopPackagedApp = async (client, process) => {
-  try {
-    await client.send("Browser.close");
-  } catch {
-    // A closed browser can tear down CDP before acknowledging the command.
-  }
+  await Promise.race([
+    client.send("Browser.close").catch(() => undefined),
+    delay(1_000),
+  ]);
   client.close();
   const waitForExit = async () => {
     for (let attempt = 0; attempt < 100; attempt += 1) {
