@@ -99,6 +99,13 @@ const context = (): ExecutionContext =>
       "audit.receipt",
       "document.create",
       "document.list",
+      "knowledge.sourceCreate",
+      "knowledge.sourceUpdate",
+      "knowledge.documentSetEvidence",
+      "knowledge.namedVersionCreate",
+      "knowledge.namedVersionVoid",
+      "knowledge.list",
+      "knowledge.documentContext",
     ],
     origin: "desktop",
   });
@@ -259,6 +266,120 @@ const wave2Command = (
   });
 
 describe("SQLite ApplicationStore", () => {
+  it("restores sources, evidence links, and immutable named versions after restart", () => {
+    withDatabase((filename) => {
+      const sourceId = "00000000-0000-4000-8000-000000000130";
+      const noteId = "00000000-0000-4000-8000-000000000131";
+      const deliverableId = "00000000-0000-4000-8000-000000000132";
+      const namedVersionId = "00000000-0000-4000-8000-000000000133";
+      const firstDatabase = new DatabaseSync(filename);
+      const first = createKernel(firstDatabase);
+      assert.equal(
+        unwrap(first.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "knowledge.sourceCreate",
+              {
+                sourceId,
+                spaceId: ids.rootSpace,
+                sourceKind: "url",
+                title: "Durable source",
+                canonicalUrl: "https://example.test/durable",
+                availability: "available",
+                observedAt: "2026-07-15T08:00:00.000Z",
+              },
+              "durable-source",
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      for (const [documentId, role] of [
+        [noteId, "note"],
+        [deliverableId, "deliverable"],
+      ] as const) {
+        assert.equal(
+          unwrap(
+            first.kernel.execute(
+              context(),
+              wave2Command(
+                "document.create",
+                {
+                  documentId,
+                  spaceId: ids.rootSpace,
+                  title: `Durable ${role}`,
+                  role,
+                },
+                `durable-${role}`,
+              ),
+            ),
+          ).outcome,
+          "success",
+        );
+      }
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "knowledge.documentSetEvidence",
+              {
+                documentId: deliverableId,
+                sourceIds: [sourceId],
+                noteDocumentIds: [noteId],
+              },
+              "durable-evidence",
+              { [deliverableId]: 1, [sourceId]: 1, [noteId]: 1 },
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "knowledge.namedVersionCreate",
+              {
+                namedVersionId,
+                documentId: deliverableId,
+                documentRevisionId: "00000000-0000-4000-8000-000000000134",
+                name: "Delivered state",
+                milestone: "delivered",
+                contentSnapshot: "Durable content",
+              },
+              "durable-named-version",
+              { [deliverableId]: 2, [sourceId]: 1, [noteId]: 1 },
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      firstDatabase.close();
+
+      const reopenedDatabase = new DatabaseSync(filename);
+      const reopened = createKernel(reopenedDatabase);
+      const snapshot = reopened.store.snapshot();
+      assert.equal(snapshot.knowledgeSources?.[0]?.id, sourceId);
+      assert.deepEqual(
+        snapshot.documents?.find((item) => item.id === deliverableId)?.evidence,
+        { sourceIds: [sourceId], noteDocumentIds: [noteId] },
+      );
+      assert.equal(
+        snapshot.namedDocumentVersions?.[0]?.evidence[0]?.version,
+        1,
+      );
+      assert.equal(snapshot.namedDocumentVersions?.[0]?.state, "active");
+      reopenedDatabase.close();
+    });
+  });
+
   it("persists document state and its outbox atomically across restart, then purges collaboration data", () => {
     withDatabase((filename) => {
       const documentId = "00000000-0000-4000-8000-000000000120" as DocumentId;
@@ -536,7 +657,7 @@ describe("SQLite ApplicationStore", () => {
           user_version: number;
         }
       ).user_version,
-      9,
+      10,
     );
     assert.equal(
       (

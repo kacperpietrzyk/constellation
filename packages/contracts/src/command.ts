@@ -24,6 +24,9 @@ import {
   AgentHandoffIdSchema,
   CredentialIdSchema,
   GrantIdSchema,
+  KnowledgeSourceIdSchema,
+  NamedDocumentVersionIdSchema,
+  DocumentRevisionIdSchema,
 } from "./ids.js";
 import { CapabilitySchema } from "./execution-context.js";
 
@@ -252,9 +255,75 @@ export const DocumentCreateCommandSchema = CommandMetadataSchema.extend({
       documentId: DocumentIdSchema,
       spaceId: SpaceIdSchema,
       title: z.string().trim().min(1).max(500),
+      role: z.enum(["note", "document", "deliverable"]).optional(),
     })
     .strict(),
 }).strict();
+
+export const KnowledgeSourceCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("knowledge.sourceCreate"),
+  payload: z
+    .object({
+      sourceId: KnowledgeSourceIdSchema,
+      spaceId: SpaceIdSchema,
+      sourceKind: z.enum(["url", "file", "screenshot", "excerpt"]),
+      title: z.string().trim().min(1).max(500),
+      canonicalUrl: z.url().max(4_096).optional(),
+      excerpt: z.string().trim().min(1).max(32_768).optional(),
+      availability: z.enum(["reference_only", "available", "unavailable"]),
+      observedAt: z.iso.datetime({ offset: true }),
+    })
+    .strict(),
+}).strict();
+
+export const KnowledgeSourceUpdateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("knowledge.sourceUpdate"),
+  payload: z
+    .object({
+      sourceId: KnowledgeSourceIdSchema,
+      title: z.string().trim().min(1).max(500),
+      canonicalUrl: z.url().max(4_096).optional(),
+      excerpt: z.string().trim().min(1).max(32_768).optional(),
+      availability: z.enum(["reference_only", "available", "unavailable"]),
+      observedAt: z.iso.datetime({ offset: true }),
+    })
+    .strict(),
+}).strict();
+
+export const KnowledgeDocumentSetEvidenceCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("knowledge.documentSetEvidence"),
+    payload: z
+      .object({
+        documentId: DocumentIdSchema,
+        sourceIds: z.array(KnowledgeSourceIdSchema).max(100),
+        noteDocumentIds: z.array(DocumentIdSchema).max(100),
+      })
+      .strict(),
+  }).strict();
+
+export const KnowledgeNamedVersionCreateCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("knowledge.namedVersionCreate"),
+    payload: z
+      .object({
+        namedVersionId: NamedDocumentVersionIdSchema,
+        documentId: DocumentIdSchema,
+        documentRevisionId: DocumentRevisionIdSchema,
+        name: z.string().trim().min(1).max(120),
+        milestone: z.enum(["finalized", "delivered", "approved", "published"]),
+        contentSnapshot: z.string().max(262_144),
+      })
+      .strict(),
+  }).strict();
+
+export const KnowledgeNamedVersionVoidCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("knowledge.namedVersionVoid"),
+    payload: z
+      .object({ namedVersionId: NamedDocumentVersionIdSchema })
+      .strict(),
+  }).strict();
 
 export const ProjectUpdateOutcomeCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("project.updateOutcome"),
@@ -391,6 +460,11 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   CaptureRouteAsTaskCommandSchema,
   ProjectCreateCommandSchema,
   DocumentCreateCommandSchema,
+  KnowledgeSourceCreateCommandSchema,
+  KnowledgeSourceUpdateCommandSchema,
+  KnowledgeDocumentSetEvidenceCommandSchema,
+  KnowledgeNamedVersionCreateCommandSchema,
+  KnowledgeNamedVersionVoidCommandSchema,
   ProjectUpdateOutcomeCommandSchema,
   TaskSetStatusCommandSchema,
   TaskCompleteCommandSchema,

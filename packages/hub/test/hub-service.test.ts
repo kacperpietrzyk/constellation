@@ -406,6 +406,12 @@ describe("self-hosted Hub core", () => {
     const otherAttentionId = uuid();
     const attentionReceiptId = uuid();
     const resolvedCommentId = uuid();
+    const sharedDocumentId = uuid();
+    const privateDocumentId = uuid();
+    const sharedSourceId = uuid();
+    const privateSourceId = uuid();
+    const sharedNamedVersionId = uuid();
+    const privateNamedVersionId = uuid();
     const snapshot = HubWorkspaceSnapshotSchema.parse({
       ...initial,
       workspaces: [{ ...initial.workspaces[0], policyVersion: 2, version: 2 }],
@@ -487,6 +493,50 @@ describe("self-hosted Hub core", () => {
           id: sharedTaskId,
           workspaceId: ids.workspace,
           spaceId: ids.space,
+        },
+      ],
+      documents: [
+        {
+          id: sharedDocumentId,
+          workspaceId: ids.workspace,
+          spaceId: ids.space,
+          title: "Shared evidence report",
+        },
+        {
+          id: privateDocumentId,
+          workspaceId: ids.workspace,
+          spaceId: privateSpace,
+          title: "PRIVATE-DOCUMENT-SENTINEL",
+        },
+      ],
+      knowledgeSources: [
+        {
+          id: sharedSourceId,
+          workspaceId: ids.workspace,
+          spaceId: ids.space,
+          title: "Shared source",
+        },
+        {
+          id: privateSourceId,
+          workspaceId: ids.workspace,
+          spaceId: privateSpace,
+          title: "PRIVATE-SOURCE-SENTINEL",
+        },
+      ],
+      namedDocumentVersions: [
+        {
+          id: sharedNamedVersionId,
+          workspaceId: ids.workspace,
+          spaceId: ids.space,
+          documentId: sharedDocumentId,
+          name: "Shared delivered version",
+        },
+        {
+          id: privateNamedVersionId,
+          workspaceId: ids.workspace,
+          spaceId: privateSpace,
+          documentId: privateDocumentId,
+          name: "PRIVATE-VERSION-SENTINEL",
         },
       ],
       taskAssignments: [
@@ -607,6 +657,18 @@ describe("self-hosted Hub core", () => {
     assert.deepEqual(
       scoped.taskAssignments.map((assignment) => assignment.id),
       [assignmentId],
+    );
+    assert.deepEqual(
+      scoped.documents.map((item) => item.id),
+      [sharedDocumentId],
+    );
+    assert.deepEqual(
+      scoped.knowledgeSources.map((item) => item.id),
+      [sharedSourceId],
+    );
+    assert.deepEqual(
+      scoped.namedDocumentVersions.map((item) => item.id),
+      [sharedNamedVersionId],
     );
     assert.deepEqual(
       scoped.attentionSignals.map((signal) => signal.id),

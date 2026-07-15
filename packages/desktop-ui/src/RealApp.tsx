@@ -336,8 +336,10 @@ export const RealApp = ({
     return client.onAttentionActivated((destination) => {
       if (destination.kind === "task") {
         openContext(taskContext(destination.taskId, "Zadanie"));
-      } else {
+      } else if (destination.kind === "project") {
         openContext(projectContext(destination.projectId, "Projekt"));
+      } else {
+        openContext(destinationContext("documents", "Dokumenty"));
       }
     });
   }, [client, openContext]);
@@ -1162,7 +1164,7 @@ export const RealApp = ({
                 openContext(
                   taskContext(destination.taskId, task?.title ?? item.title),
                 );
-              } else {
+              } else if (destination.kind === "project") {
                 const project =
                   state.snapshot.projects.kind === "ready"
                     ? state.snapshot.projects.data.items.find(
@@ -1175,6 +1177,8 @@ export const RealApp = ({
                     project?.title ?? item.title,
                   ),
                 );
+              } else {
+                openContext(destinationContext("documents", "Dokumenty"));
               }
               if (client && item.state === "unread") {
                 setAttentionBusy(true);

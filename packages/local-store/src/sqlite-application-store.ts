@@ -41,6 +41,8 @@ import {
   type GrantId,
   type AgentRunId,
   type CheckpointId,
+  type KnowledgeSourceId,
+  type NamedDocumentVersionId,
 } from "@constellation/contracts";
 import type {
   AuditReceipt,
@@ -64,6 +66,8 @@ import type {
   AgentRun,
   AgentHandoff,
   AgentCheckpoint,
+  KnowledgeSource,
+  NamedDocumentVersion,
 } from "@constellation/domain";
 
 import type {
@@ -72,7 +76,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
   checkpoint: null,
@@ -94,7 +98,9 @@ const COORDINATED_PROJECTION_TABLES = [
   "document_pending_updates",
   "document_revisions",
   "document_collaboration_state",
+  "named_document_versions",
   "documents",
+  "knowledge_sources",
   "undo_descriptors",
   "task_project_relations",
   "task_assignments",
@@ -517,6 +523,31 @@ const schemaV9 = `
   ) STRICT;
 `;
 
+const schemaV10 = `
+  CREATE TABLE knowledge_sources (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    updated_at TEXT NOT NULL,
+    version INTEGER NOT NULL CHECK (version > 0),
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX knowledge_sources_page
+    ON knowledge_sources(workspace_id, space_id, updated_at DESC, id DESC);
+  CREATE TABLE named_document_versions (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('active', 'voided')),
+    version INTEGER NOT NULL CHECK (version > 0),
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX named_document_versions_document
+    ON named_document_versions(workspace_id, space_id, document_id, created_at DESC, id DESC);
+`;
+
 export interface LocalCoordinationState {
   readonly workspaceId: WorkspaceId;
   readonly providerInstanceId: string;
@@ -686,6 +717,7 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
     if (currentVersion < 7) database.exec(schemaV7);
     if (currentVersion < 8) database.exec(schemaV8);
     if (currentVersion < 9) database.exec(schemaV9);
+    if (currentVersion < 10) database.exec(schemaV10);
     database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
     database.exec("COMMIT;");
   } catch (error) {
@@ -1160,6 +1192,101 @@ class SqliteReadView implements ApplicationWave2ReadView {
           spaceId,
         });
       });
+  }
+
+  public getKnowledgeSource(
+    id: KnowledgeSourceId,
+  ): KnowledgeSource | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, space_id, payload_json FROM knowledge_sources WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<KnowledgeSource>(row, "id", id, "knowledge source", {
+          workspaceId: stringValue(row, "workspace_id", "knowledge source"),
+          spaceId: stringValue(row, "space_id", "knowledge source"),
+        });
+  }
+
+  public listKnowledgeSources(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly KnowledgeSource[] {
+    return this.database
+      .prepare(
+        "SELECT id, payload_json FROM knowledge_sources WHERE workspace_id = ? AND space_id = ? ORDER BY updated_at DESC, id DESC",
+      )
+      .all(workspaceId, spaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "knowledge source");
+        return parsePayload<KnowledgeSource>(
+          row,
+          "id",
+          id,
+          "knowledge source",
+          {
+            workspaceId,
+            spaceId,
+          },
+        );
+      });
+  }
+
+  public getNamedDocumentVersion(
+    id: NamedDocumentVersionId,
+  ): NamedDocumentVersion | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, space_id, payload_json FROM named_document_versions WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<NamedDocumentVersion>(
+          row,
+          "id",
+          id,
+          "named document version",
+          {
+            workspaceId: stringValue(
+              row,
+              "workspace_id",
+              "named document version",
+            ),
+            spaceId: stringValue(row, "space_id", "named document version"),
+          },
+        );
+  }
+
+  public listNamedDocumentVersions(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    documentId?: DocumentId,
+  ): readonly NamedDocumentVersion[] {
+    const rows =
+      documentId === undefined
+        ? this.database
+            .prepare(
+              "SELECT id, payload_json FROM named_document_versions WHERE workspace_id = ? AND space_id = ? ORDER BY created_at DESC, id DESC",
+            )
+            .all(workspaceId, spaceId)
+        : this.database
+            .prepare(
+              "SELECT id, payload_json FROM named_document_versions WHERE workspace_id = ? AND space_id = ? AND document_id = ? ORDER BY created_at DESC, id DESC",
+            )
+            .all(workspaceId, spaceId, documentId);
+    return rows.map((row) => {
+      const id = stringValue(row, "id", "named document version");
+      return parsePayload<NamedDocumentVersion>(
+        row,
+        "id",
+        id,
+        "named document version",
+        { workspaceId, spaceId },
+      );
+    });
   }
 
   public getRelation(id: RelationId): TaskProjectRelation | undefined {
@@ -1810,6 +1937,106 @@ class SqliteTransaction
         record.version,
         payload(record),
       ],
+    );
+  }
+  public updateDocument(
+    record: NativeDocument,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE documents SET updated_at = ?, version = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(
+          record.updatedAt,
+          record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+        ),
+    );
+  }
+  public insertKnowledgeSource(record: KnowledgeSource): void {
+    this.insert(
+      "knowledge_sources",
+      [
+        "id",
+        "workspace_id",
+        "space_id",
+        "updated_at",
+        "version",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.spaceId,
+        record.updatedAt,
+        record.version,
+        payload(record),
+      ],
+    );
+  }
+  public updateKnowledgeSource(
+    record: KnowledgeSource,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE knowledge_sources SET updated_at = ?, version = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(
+          record.updatedAt,
+          record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+        ),
+    );
+  }
+  public insertNamedDocumentVersion(record: NamedDocumentVersion): void {
+    this.insert(
+      "named_document_versions",
+      [
+        "id",
+        "workspace_id",
+        "space_id",
+        "document_id",
+        "created_at",
+        "state",
+        "version",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.spaceId,
+        record.documentId,
+        record.createdAt,
+        record.state,
+        record.version,
+        payload(record),
+      ],
+    );
+  }
+  public updateNamedDocumentVersion(
+    record: NamedDocumentVersion,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE named_document_versions SET state = ?, version = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(
+          record.state,
+          record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+        ),
     );
   }
   public insertRelation(record: TaskProjectRelation): void {
@@ -2594,6 +2821,18 @@ export class SqliteApplicationStore
       tasks: records("tasks", "id", "id", "task"),
       projects: records("projects", "id", "id", "project"),
       documents: records("documents", "id", "id", "document"),
+      knowledgeSources: records(
+        "knowledge_sources",
+        "id",
+        "id",
+        "knowledge source",
+      ),
+      namedDocumentVersions: records(
+        "named_document_versions",
+        "id",
+        "id",
+        "named document version",
+      ),
       relations: records("task_project_relations", "id", "id", "relation"),
       undoDescriptors: records(
         "undo_descriptors",
@@ -2887,6 +3126,12 @@ export class SqliteApplicationStore
     snapshot.projects.forEach((value) => transaction.insertProject(value));
     (snapshot.documents ?? []).forEach((value) =>
       transaction.insertDocument(value),
+    );
+    (snapshot.knowledgeSources ?? []).forEach((value) =>
+      transaction.insertKnowledgeSource(value),
+    );
+    (snapshot.namedDocumentVersions ?? []).forEach((value) =>
+      transaction.insertNamedDocumentVersion(value),
     );
     (snapshot.comments ?? []).forEach((value) =>
       transaction.insertComment(value),

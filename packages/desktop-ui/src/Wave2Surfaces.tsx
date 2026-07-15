@@ -708,6 +708,11 @@ const activityLabels: Record<
   comment_reopened: "Ponownie otwarto wątek komentarzy",
   relation_added: "Powiązano zadanie z projektem",
   relation_removed: "Usunięto powiązanie",
+  knowledge_source_created: "Zachowano źródło wiedzy",
+  knowledge_source_updated: "Zaktualizowano źródło wiedzy",
+  knowledge_evidence_updated: "Zmieniono dowody dokumentu",
+  knowledge_named_version_created: "Zamrożono nazwaną wersję",
+  knowledge_named_version_voided: "Unieważniono nazwaną wersję",
   command_undone: "Cofnięto polecenie",
 };
 
@@ -828,7 +833,9 @@ export const SearchOverlay = ({
         ? "projects"
         : item.recordKind === "task"
           ? "tasks"
-          : "history",
+          : item.recordKind === "capture"
+            ? "history"
+            : "documents",
       item.recordId,
     );
     onClose();

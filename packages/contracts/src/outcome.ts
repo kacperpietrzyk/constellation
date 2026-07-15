@@ -22,6 +22,9 @@ import {
   CheckpointIdSchema,
   AgentRunIdSchema,
   AgentHandoffIdSchema,
+  KnowledgeSourceIdSchema,
+  NamedDocumentVersionIdSchema,
+  DocumentRevisionIdSchema,
 } from "./ids.js";
 import { ContractVersionSchema } from "./command.js";
 
@@ -40,6 +43,11 @@ export const DiagnosticCodeSchema = z.enum([
   "capture.routed_as_task",
   "project.created",
   "document.created",
+  "knowledge.source_created",
+  "knowledge.source_updated",
+  "knowledge.evidence_updated",
+  "knowledge.named_version_created",
+  "knowledge.named_version_voided",
   "project.outcome_updated",
   "task.status_changed",
   "task.completed",
@@ -89,6 +97,8 @@ export const RecordKindSchema = z.enum([
   "taskStatus",
   "project",
   "document",
+  "knowledgeSource",
+  "namedDocumentVersion",
   "relation",
 ]);
 export type RecordKind = z.infer<typeof RecordKindSchema>;
@@ -197,6 +207,39 @@ export const DocumentCreatedProjectionSchema = z
     kind: z.literal("document.created"),
     documentId: DocumentIdSchema,
     title: z.string(),
+    role: z.enum(["note", "document", "deliverable"]),
+    version: z.int().positive(),
+  })
+  .strict();
+
+export const KnowledgeSourceMutationProjectionSchema = z
+  .object({
+    kind: z.enum(["knowledge.source_created", "knowledge.source_updated"]),
+    sourceId: KnowledgeSourceIdSchema,
+    title: z.string(),
+    version: z.int().positive(),
+  })
+  .strict();
+
+export const KnowledgeEvidenceUpdatedProjectionSchema = z
+  .object({
+    kind: z.literal("knowledge.evidence_updated"),
+    documentId: DocumentIdSchema,
+    evidenceCount: z.int().nonnegative(),
+    version: z.int().positive(),
+  })
+  .strict();
+
+export const KnowledgeNamedVersionMutationProjectionSchema = z
+  .object({
+    kind: z.enum([
+      "knowledge.named_version_created",
+      "knowledge.named_version_voided",
+    ]),
+    namedVersionId: NamedDocumentVersionIdSchema,
+    documentId: DocumentIdSchema,
+    documentRevisionId: DocumentRevisionIdSchema,
+    state: z.enum(["active", "voided"]),
     version: z.int().positive(),
   })
   .strict();
@@ -369,6 +412,9 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   CaptureRoutedAsTaskProjectionSchema,
   ProjectCreatedProjectionSchema,
   DocumentCreatedProjectionSchema,
+  KnowledgeSourceMutationProjectionSchema,
+  KnowledgeEvidenceUpdatedProjectionSchema,
+  KnowledgeNamedVersionMutationProjectionSchema,
   ProjectOutcomeUpdatedProjectionSchema,
   TaskStatusChangedProjectionSchema,
   TaskCompletedProjectionSchema,
@@ -466,6 +512,36 @@ const DocumentCreatedSuccessOutcomeSchema =
     outcome: z.literal("success"),
     diagnosticCode: z.literal("document.created"),
     projection: DocumentCreatedProjectionSchema,
+  }).strict();
+const KnowledgeSourceCreatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("knowledge.source_created"),
+    projection: KnowledgeSourceMutationProjectionSchema,
+  }).strict();
+const KnowledgeSourceUpdatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("knowledge.source_updated"),
+    projection: KnowledgeSourceMutationProjectionSchema,
+  }).strict();
+const KnowledgeEvidenceUpdatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("knowledge.evidence_updated"),
+    projection: KnowledgeEvidenceUpdatedProjectionSchema,
+  }).strict();
+const KnowledgeNamedVersionCreatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("knowledge.named_version_created"),
+    projection: KnowledgeNamedVersionMutationProjectionSchema,
+  }).strict();
+const KnowledgeNamedVersionVoidedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("knowledge.named_version_voided"),
+    projection: KnowledgeNamedVersionMutationProjectionSchema,
   }).strict();
 const ProjectOutcomeUpdatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
@@ -599,6 +675,11 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   CaptureRoutedAsTaskSuccessOutcomeSchema,
   ProjectCreatedSuccessOutcomeSchema,
   DocumentCreatedSuccessOutcomeSchema,
+  KnowledgeSourceCreatedSuccessOutcomeSchema,
+  KnowledgeSourceUpdatedSuccessOutcomeSchema,
+  KnowledgeEvidenceUpdatedSuccessOutcomeSchema,
+  KnowledgeNamedVersionCreatedSuccessOutcomeSchema,
+  KnowledgeNamedVersionVoidedSuccessOutcomeSchema,
   ProjectOutcomeUpdatedSuccessOutcomeSchema,
   TaskStatusChangedSuccessOutcomeSchema,
   TaskCompletedSuccessOutcomeSchema,
@@ -636,6 +717,9 @@ export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
           "relation.remove",
           "relation.restore",
           "capture.undo_route",
+          "knowledge.restore_source",
+          "knowledge.restore_evidence",
+          "knowledge.void_named_version",
         ])
         .optional(),
       affectedRecordIds: z.array(z.uuid()),

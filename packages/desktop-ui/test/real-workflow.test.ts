@@ -494,6 +494,7 @@ describe("real Wave 2 renderer workflow", () => {
         "cockpit.week",
         "comment.mentionCandidates",
         "document.list",
+        "knowledge.list",
         "project.list",
         "task.list",
         "task.assignmentCandidates",

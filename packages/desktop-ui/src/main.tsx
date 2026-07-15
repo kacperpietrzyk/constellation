@@ -39,6 +39,13 @@ const render = async (): Promise<void> => {
       await import("./dev/CollaborationHarness.js");
     content = <CollaborationHarness />;
   }
+  if (
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("surface") === "knowledge"
+  ) {
+    const { KnowledgeHarness } = await import("./dev/KnowledgeHarness.js");
+    content = <KnowledgeHarness />;
+  }
 
   createRoot(root).render(<StrictMode>{content}</StrictMode>);
 };

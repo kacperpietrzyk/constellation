@@ -18,6 +18,9 @@ import {
   TaskStatusIdSchema,
   WorkspaceIdSchema,
   CheckpointIdSchema,
+  KnowledgeSourceIdSchema,
+  NamedDocumentVersionIdSchema,
+  DocumentRevisionIdSchema,
 } from "./ids.js";
 import { ContractVersionSchema } from "./command.js";
 import { RequestOriginSchema } from "./execution-context.js";
@@ -123,6 +126,16 @@ export const DocumentListQuerySchema = QueryMetadataSchema.extend({
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
 }).strict();
 
+export const KnowledgeListQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("knowledge.list"),
+  parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
+}).strict();
+
+export const KnowledgeDocumentContextQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("knowledge.documentContext"),
+  parameters: z.object({ documentId: DocumentIdSchema }).strict(),
+}).strict();
+
 export const ProjectOperationalOverviewQuerySchema = QueryMetadataSchema.extend(
   {
     queryName: z.literal("project.operationalOverview"),
@@ -137,7 +150,17 @@ export const GlobalSearchQuerySchema = QueryMetadataSchema.extend({
       spaceIds: z.array(SpaceIdSchema).min(1).max(50),
       text: z.string().trim().min(1).max(500),
       kinds: z
-        .array(z.enum(["task", "project", "capture"]))
+        .array(
+          z.enum([
+            "task",
+            "project",
+            "capture",
+            "source",
+            "note",
+            "document",
+            "deliverable",
+          ]),
+        )
         .min(1)
         .optional(),
       limit: z.int().min(1).max(100).optional(),
@@ -185,6 +208,8 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   AttentionInboxQuerySchema,
   ProjectListQuerySchema,
   DocumentListQuerySchema,
+  KnowledgeListQuerySchema,
+  KnowledgeDocumentContextQuerySchema,
   ProjectOperationalOverviewQuerySchema,
   GlobalSearchQuerySchema,
   CockpitWeekQuerySchema,
@@ -325,6 +350,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           tasks: z.int().nonnegative(),
           projects: z.int().nonnegative(),
           documents: z.int().nonnegative().default(0),
+          knowledgeSources: z.int().nonnegative().default(0),
+          namedDocumentVersions: z.int().nonnegative().default(0),
           relations: z.int().nonnegative(),
           captures: z.int().nonnegative(),
           activity: z.int().nonnegative(),
@@ -340,6 +367,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "task",
               "project",
               "document",
+              "knowledge_source",
+              "named_document_version",
               "capture",
               "task_assignment",
               "comment",
@@ -437,6 +466,100 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
+      kind: z.literal("knowledge.list"),
+      spaceId: SpaceIdSchema,
+      sources: z.array(
+        z
+          .object({
+            id: KnowledgeSourceIdSchema,
+            sourceKind: z.enum(["url", "file", "screenshot", "excerpt"]),
+            title: z.string(),
+            canonicalUrl: z.string().optional(),
+            availability: z.enum([
+              "reference_only",
+              "available",
+              "unavailable",
+            ]),
+            observedAt: z.iso.datetime({ offset: true }),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      documents: z.array(
+        z
+          .object({
+            id: DocumentIdSchema,
+            title: z.string(),
+            role: z.enum(["note", "document", "deliverable"]),
+            evidenceCount: z.int().nonnegative(),
+            namedVersionCount: z.int().nonnegative(),
+            staleEvidence: z.boolean(),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("knowledge.documentContext"),
+      document: z
+        .object({
+          id: DocumentIdSchema,
+          spaceId: SpaceIdSchema,
+          title: z.string(),
+          role: z.enum(["note", "document", "deliverable"]),
+          version: z.int().positive(),
+          updatedAt: z.iso.datetime({ offset: true }),
+        })
+        .strict(),
+      evidence: z.array(
+        z
+          .object({
+            kind: z.enum(["source", "note"]),
+            recordId: z.uuid(),
+            title: z.string(),
+            currentVersion: z.int().positive(),
+          })
+          .strict(),
+      ),
+      namedVersions: z.array(
+        z
+          .object({
+            id: NamedDocumentVersionIdSchema,
+            documentRevisionId: DocumentRevisionIdSchema,
+            name: z.string(),
+            milestone: z.enum([
+              "finalized",
+              "delivered",
+              "approved",
+              "published",
+            ]),
+            contentSnapshot: z.string(),
+            evidence: z.array(
+              z
+                .object({
+                  kind: z.enum(["source", "note"]),
+                  recordId: z.uuid(),
+                  title: z.string(),
+                  frozenVersion: z.int().positive(),
+                  currentVersion: z.int().positive().optional(),
+                  changed: z.boolean(),
+                })
+                .strict(),
+            ),
+            state: z.enum(["active", "voided"]),
+            version: z.int().positive(),
+            createdAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
       kind: z.literal("task.assignmentCandidates"),
       spaceId: SpaceIdSchema,
       candidates: z.array(
@@ -505,6 +628,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "comment_mention",
               "task_assignment",
               "sync_conflict",
+              "knowledge_evidence_changed",
             ]),
             destination: z.discriminatedUnion("kind", [
               z
@@ -514,6 +638,12 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
                 .object({
                   kind: z.literal("project"),
                   projectId: ProjectIdSchema,
+                })
+                .strict(),
+              z
+                .object({
+                  kind: z.literal("document"),
+                  documentId: DocumentIdSchema,
                 })
                 .strict(),
             ]),
@@ -556,6 +686,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             id: DocumentIdSchema,
             spaceId: SpaceIdSchema,
             title: z.string(),
+            role: z.enum(["note", "document", "deliverable"]),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
           })
@@ -610,13 +741,27 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
       items: z.array(
         z
           .object({
-            recordKind: z.enum(["task", "project", "capture"]),
+            recordKind: z.enum([
+              "task",
+              "project",
+              "capture",
+              "source",
+              "note",
+              "document",
+              "deliverable",
+            ]),
             recordId: z.uuid(),
             spaceId: SpaceIdSchema,
             title: z.string(),
             snippet: z.string(),
             matchedFields: z.array(
-              z.enum(["title", "intendedOutcome", "originalText"]),
+              z.enum([
+                "title",
+                "intendedOutcome",
+                "originalText",
+                "excerpt",
+                "canonicalUrl",
+              ]),
             ),
             score: z.int().nonnegative(),
             updatedAt: z.iso.datetime({ offset: true }),
@@ -687,6 +832,11 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "comment_reopened",
               "relation_added",
               "relation_removed",
+              "knowledge_source_created",
+              "knowledge_source_updated",
+              "knowledge_evidence_updated",
+              "knowledge_named_version_created",
+              "knowledge_named_version_voided",
               "command_undone",
             ]),
             recordId: z.uuid(),
@@ -708,6 +858,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           "relation.remove",
           "relation.restore",
           "capture.undo_route",
+          "knowledge.restore_source",
+          "knowledge.restore_evidence",
+          "knowledge.void_named_version",
         ])
         .optional(),
       affectedRecordIds: z.array(z.uuid()),

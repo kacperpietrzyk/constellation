@@ -81,6 +81,12 @@ export const fromHubSnapshot = (
     parsed.tasks.some((value) => value.workspaceId !== workspaceId) ||
     parsed.projects.some((value) => value.workspaceId !== workspaceId) ||
     parsed.documents.some((value) => value.workspaceId !== workspaceId) ||
+    parsed.knowledgeSources.some(
+      (value) => value.workspaceId !== workspaceId,
+    ) ||
+    parsed.namedDocumentVersions.some(
+      (value) => value.workspaceId !== workspaceId,
+    ) ||
     parsed.relations.some((value) => value.workspaceId !== workspaceId) ||
     parsed.events.some((value) => value.workspaceId !== workspaceId) ||
     parsed.auditReceipts.some((value) => value.workspaceId !== workspaceId) ||
@@ -164,6 +170,12 @@ export const scopeHubSnapshot = (
   const captures = state.captures.filter(inScope);
   const projects = state.projects.filter(inScope);
   const documents = (state.documents ?? []).filter(inScope);
+  const knowledgeSources = (state.knowledgeSources ?? []).filter(inScope);
+  const namedDocumentVersions = (state.namedDocumentVersions ?? []).filter(
+    (version) =>
+      inScope(version) &&
+      documents.some((doc) => doc.id === version.documentId),
+  );
   const relations = state.relations.filter(inScope);
   const undoDescriptors = state.undoDescriptors.filter(inScope);
   const visibleEvents = state.events.filter(inScope);
@@ -299,6 +311,8 @@ export const scopeHubSnapshot = (
     ...tasks.map((value) => value.id),
     ...projects.map((value) => value.id),
     ...documents.map((value) => value.id),
+    ...knowledgeSources.map((value) => value.id),
+    ...namedDocumentVersions.map((value) => value.id),
     ...relations.map((value) => value.id),
     ...undoDescriptors.map((value) => value.targetCommandId),
   ]);
@@ -333,6 +347,8 @@ export const scopeHubSnapshot = (
     tasks,
     projects,
     documents,
+    knowledgeSources,
+    namedDocumentVersions,
     relations,
     undoDescriptors,
     events,

@@ -50,6 +50,15 @@ export type DocumentId = z.infer<typeof DocumentIdSchema>;
 export const DocumentRevisionIdSchema = opaqueId<"DocumentRevisionId">();
 export type DocumentRevisionId = z.infer<typeof DocumentRevisionIdSchema>;
 
+export const KnowledgeSourceIdSchema = opaqueId<"KnowledgeSourceId">();
+export type KnowledgeSourceId = z.infer<typeof KnowledgeSourceIdSchema>;
+
+export const NamedDocumentVersionIdSchema =
+  opaqueId<"NamedDocumentVersionId">();
+export type NamedDocumentVersionId = z.infer<
+  typeof NamedDocumentVersionIdSchema
+>;
+
 export const RelationIdSchema = opaqueId<"RelationId">();
 export type RelationId = z.infer<typeof RelationIdSchema>;
 
