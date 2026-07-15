@@ -101,12 +101,7 @@ const config = {
 };
 fs.writeFileSync(buildConfig, `${JSON.stringify(config, null, 2)}\n`);
 
-const builder = path.join(
-  root,
-  "node_modules",
-  ".bin",
-  process.platform === "win32" ? "electron-builder.cmd" : "electron-builder",
-);
+const builder = path.join(root, "node_modules", "electron-builder", "cli.js");
 const targetArgs =
   process.platform === "darwin"
     ? ["--mac", "dmg", "zip", `--${alphaManifest.architecture}`]
@@ -116,8 +111,9 @@ const targetArgs =
 if (targetArgs === undefined)
   throw new Error("DISTRIBUTION_PLATFORM_UNSUPPORTED");
 const built = spawnSync(
-  builder,
+  process.execPath,
   [
+    builder,
     "--prepackaged",
     process.platform === "darwin"
       ? alphaManifest.appBundle

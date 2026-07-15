@@ -36,8 +36,11 @@ const distributionManifest = () =>
   );
 
 const build = (version) => {
-  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  run(npm, ["run", "package:distribution"], {
+  const npmCli = process.env.npm_execpath;
+  if (npmCli === undefined || !path.isAbsolute(npmCli)) {
+    throw new Error("NPM_CLI_PATH_INVALID");
+  }
+  run(process.execPath, [npmCli, "run", "package:distribution"], {
     env: {
       ...process.env,
       CONSTELLATION_RELEASE_VERSION: version,
