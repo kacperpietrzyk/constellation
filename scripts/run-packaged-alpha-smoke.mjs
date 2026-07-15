@@ -91,8 +91,30 @@ class CdpClient {
   static async connect(url) {
     const socket = new WebSocket(url);
     await new Promise((resolve, reject) => {
-      socket.addEventListener("open", resolve, { once: true });
-      socket.addEventListener("error", reject, { once: true });
+      const timeout = setTimeout(() => {
+        try {
+          socket.close();
+        } catch {
+          // A connecting WebSocket can reject close before it is established.
+        }
+        reject(new Error("CDP_CONNECTION_TIMEOUT"));
+      }, 5_000);
+      socket.addEventListener(
+        "open",
+        () => {
+          clearTimeout(timeout);
+          resolve();
+        },
+        { once: true },
+      );
+      socket.addEventListener(
+        "error",
+        (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+        { once: true },
+      );
     });
     return new CdpClient(socket);
   }
@@ -140,7 +162,9 @@ const waitForTarget = async (port, process) => {
       throw new Error(`PACKAGED_ALPHA_EXITED_EARLY_${process.exitCode}`);
     }
     try {
-      const response = await fetch(endpoint);
+      const response = await fetch(endpoint, {
+        signal: AbortSignal.timeout(1_000),
+      });
       if (response.ok) {
         const targets = await response.json();
         const page = targets.find(
