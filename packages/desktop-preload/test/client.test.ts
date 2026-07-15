@@ -12,16 +12,23 @@ test("renderer client exposes only semantic application and recovery routes", ()
 
   assert.deepEqual(Object.keys(client).sort(), [
     "acknowledgeDocumentUpdates",
+    "addMeetingWorkItem",
     "cancelWorkspaceRestore",
+    "configureJamie",
+    "confirmCalendarBlocks",
     "confirmWorkspaceRestore",
     "createDocumentRevision",
     "createRemoteAgentGrant",
+    "disconnectJamie",
+    "editMeetingWorkItem",
     "enrollHub",
     "executeCommand",
     "exportHubAuthorization",
     "exportWorkspaceBackup",
     "getBuildInfo",
     "getDataHomeStatus",
+    "getJamieStatus",
+    "getMeetingLoop",
     "listDocumentRevisions",
     "listRemoteAgentGrants",
     "onAttentionActivated",
@@ -29,11 +36,14 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "persistDocumentUpdate",
     "prepareAgentCredential",
     "prepareWorkspaceRestore",
+    "previewCalendarBlocks",
+    "requestCalendarAccess",
     "restoreDocumentRevision",
     "revokeRemoteAgentGrant",
     "rotateRemoteAgentGrant",
     "runQuery",
     "syncDataHome",
+    "syncJamie",
   ]);
   void client.getBuildInfo();
   assert.equal(calls[0]?.channel, DESKTOP_CHANNELS.getBuildInfo);

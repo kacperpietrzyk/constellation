@@ -134,6 +134,15 @@ PostgreSQL restart, and restore procedures complete the first operational gate.
 - turn commitments, decisions, and follow-ups into independently managed work;
 - require explicit consent for every concrete calendar write or previewed batch.
 
+The first end-to-end loop is now present in the desktop Alpha. macOS reads an
+EventKit projection through a narrow native helper, while other platforms
+report their calendar capability explicitly. A user can connect a personal or
+workspace Jamie API key through operating-system credential protection, import
+recent results with stable meeting and task identity, distinguish partial
+imports and source corrections, and manage each resulting item independently.
+Calendar work blocks use an exact, expiring, single-use preview; no calendar
+write occurs from a factual brief or Jamie import.
+
 ## Later — knowledge, relationships, and strategic depth
 
 - sources, notes, native documents, artifacts, named versions, approvals, and

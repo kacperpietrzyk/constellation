@@ -10,6 +10,8 @@ import {
   type ReferenceStateSnapshot,
   type StoreFreshness,
   type TaskPageRequest,
+  type MeetingLoopRepository,
+  type MeetingLoopState,
 } from "@constellation/application";
 import {
   CommandEnvelopeSchema,
@@ -70,7 +72,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
   checkpoint: null,
@@ -78,6 +80,7 @@ const FRESHNESS: StoreFreshness = {
 };
 
 const COORDINATED_PROJECTION_TABLES = [
+  "meeting_loop_state",
   "agent_handoffs",
   "agent_checkpoints",
   "agent_runs",
@@ -506,6 +509,14 @@ const schemaV8 = `
   CREATE INDEX agent_handoffs_run ON agent_handoffs(run_id, created_at, id);
 `;
 
+const schemaV9 = `
+  CREATE TABLE meeting_loop_state (
+    workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id),
+    revision INTEGER NOT NULL CHECK (revision >= 0),
+    payload_json TEXT NOT NULL
+  ) STRICT;
+`;
+
 export interface LocalCoordinationState {
   readonly workspaceId: WorkspaceId;
   readonly providerInstanceId: string;
@@ -674,6 +685,7 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
     if (currentVersion < 6) database.exec(schemaV6);
     if (currentVersion < 7) database.exec(schemaV7);
     if (currentVersion < 8) database.exec(schemaV8);
+    if (currentVersion < 9) database.exec(schemaV9);
     database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
     database.exec("COMMIT;");
   } catch (error) {
@@ -2094,7 +2106,9 @@ class SqliteTransaction
   }
 }
 
-export class SqliteApplicationStore implements ApplicationStore {
+export class SqliteApplicationStore
+  implements ApplicationStore, MeetingLoopRepository
+{
   public constructor(private readonly database: SqliteDatabase) {
     initializeLocalStoreSchema(database);
   }
@@ -2119,6 +2133,82 @@ export class SqliteApplicationStore implements ApplicationStore {
 
   public read<Result>(read: (view: ApplicationReadView) => Result): Result {
     return read(new SqliteReadView(this.database));
+  }
+
+  public load(workspaceId: WorkspaceId): MeetingLoopState {
+    const row = this.database
+      .prepare(
+        "SELECT revision, payload_json FROM meeting_loop_state WHERE workspace_id = ?",
+      )
+      .get(workspaceId);
+    if (row === undefined) {
+      return {
+        revision: 0,
+        meetings: [],
+        previews: [],
+        receipts: [],
+        audits: [],
+      };
+    }
+    const revision = numberValue(row, "revision", "meeting loop state");
+    const raw = stringValue(row, "payload_json", "meeting loop state");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      throw new LocalStoreCorruptionError(
+        "Meeting loop state contains invalid JSON.",
+      );
+    }
+    const state = objectValue(parsed, "meeting loop state payload");
+    if (
+      state.revision !== revision ||
+      !Array.isArray(state.meetings) ||
+      !Array.isArray(state.previews) ||
+      !Array.isArray(state.receipts) ||
+      (state.audits !== undefined && !Array.isArray(state.audits))
+    ) {
+      throw new LocalStoreCorruptionError(
+        "Meeting loop state violates its storage contract.",
+      );
+    }
+    return {
+      ...(state as unknown as MeetingLoopState),
+      audits: (state.audits as MeetingLoopState["audits"] | undefined) ?? [],
+    };
+  }
+
+  public save(
+    workspaceId: WorkspaceId,
+    expectedRevision: number,
+    state: MeetingLoopState,
+  ): boolean {
+    if (state.revision !== expectedRevision + 1) return false;
+    if (expectedRevision === 0) {
+      try {
+        const result = this.database
+          .prepare(
+            "INSERT INTO meeting_loop_state (workspace_id, revision, payload_json) VALUES (?, ?, ?)",
+          )
+          .run(workspaceId, state.revision, payload(state));
+        return changed(result);
+      } catch (error) {
+        const existing = this.database
+          .prepare(
+            "SELECT revision FROM meeting_loop_state WHERE workspace_id = ?",
+          )
+          .get(workspaceId);
+        if (existing !== undefined) return false;
+        throw error;
+      }
+    }
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE meeting_loop_state SET revision = ?, payload_json = ? WHERE workspace_id = ? AND revision = ?",
+        )
+        .run(state.revision, payload(state), workspaceId, expectedRevision),
+    );
   }
 
   public loadDocumentCollaborationState(input: {

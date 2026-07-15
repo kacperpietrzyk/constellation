@@ -120,6 +120,37 @@ const workspaceCommand = CommandEnvelopeSchema.parse({
   },
 });
 
+describe("meeting loop persistence", () => {
+  it("persists optimistic meeting state in the encrypted workspace database", () => {
+    const database = new DatabaseSync(":memory:");
+    const { kernel, store } = createKernel(database);
+    assert.equal(
+      unwrap(kernel.execute(context(), workspaceCommand)).outcome,
+      "success",
+    );
+    const state = {
+      revision: 1,
+      meetings: [],
+      previews: [],
+      audits: [],
+      receipts: [
+        {
+          id: "00000000-0000-4000-8000-000000000099",
+          workspaceId: context().workspaceId,
+          externalMeetingIdHash: "a".repeat(64),
+          outcome: "no_change" as const,
+          changedRecordIds: [],
+          occurredAt: "2026-07-15T10:00:00.000Z",
+        },
+      ],
+    };
+    assert.equal(store.save(context().workspaceId, 0, state), true);
+    assert.equal(store.save(context().workspaceId, 0, state), false);
+    assert.deepEqual(store.load(context().workspaceId), state);
+    database.close();
+  });
+});
+
 const captureCommand = CommandEnvelopeSchema.parse({
   contractVersion: 1,
   commandName: "capture.submitText",
@@ -505,7 +536,7 @@ describe("SQLite ApplicationStore", () => {
           user_version: number;
         }
       ).user_version,
-      8,
+      9,
     );
     assert.equal(
       (

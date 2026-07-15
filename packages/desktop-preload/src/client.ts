@@ -20,6 +20,10 @@ import type {
   Capability,
   RemoteMcpFederationScope,
   RemoteMcpGrantProjection,
+  CalendarBlockDraft,
+  CalendarWritePreview,
+  MeetingLoopSurface,
+  MeetingWorkItem,
 } from "@constellation/contracts";
 
 export type {
@@ -56,6 +60,16 @@ export const DESKTOP_CHANNELS = {
   createRemoteAgentGrant: "constellation:agent:remote:create",
   rotateRemoteAgentGrant: "constellation:agent:remote:rotate",
   revokeRemoteAgentGrant: "constellation:agent:remote:revoke",
+  getMeetingLoop: "constellation:meeting-loop:get",
+  requestCalendarAccess: "constellation:calendar:request-access",
+  editMeetingWorkItem: "constellation:meeting-loop:edit-work-item",
+  addMeetingWorkItem: "constellation:meeting-loop:add-work-item",
+  previewCalendarBlocks: "constellation:calendar-blocks:preview",
+  confirmCalendarBlocks: "constellation:calendar-blocks:confirm",
+  getJamieStatus: "constellation:jamie:status",
+  configureJamie: "constellation:jamie:configure",
+  syncJamie: "constellation:jamie:sync",
+  disconnectJamie: "constellation:jamie:disconnect",
 } as const;
 
 export interface RendererDocumentRevision {
@@ -107,6 +121,52 @@ export interface DesktopBuildInfo {
 }
 
 export interface ConstellationRendererClient {
+  getJamieStatus(): Promise<{
+    readonly configured: boolean;
+    readonly scope?: "personal" | "workspace";
+  }>;
+  configureJamie(input: {
+    readonly apiKey: string;
+    readonly scope: "personal" | "workspace";
+  }): Promise<void>;
+  syncJamie(): Promise<{
+    readonly applied: number;
+    readonly corrected: number;
+    readonly noChange: number;
+    readonly partial: number;
+    readonly conflicted: number;
+    readonly failed: number;
+  }>;
+  disconnectJamie(): Promise<void>;
+  requestCalendarAccess(): Promise<MeetingLoopSurface["capability"]>;
+  editMeetingWorkItem(input: {
+    readonly meetingId: string;
+    readonly workItemId: string;
+    readonly expectedVersion: number;
+    readonly title: string;
+    readonly state: MeetingWorkItem["state"];
+  }): Promise<boolean>;
+  addMeetingWorkItem(input: {
+    readonly meetingId: string;
+    readonly requestId: string;
+    readonly kind: MeetingWorkItem["kind"];
+    readonly title: string;
+  }): Promise<boolean>;
+  getMeetingLoop(input: {
+    readonly from: string;
+    readonly to: string;
+  }): Promise<MeetingLoopSurface>;
+  previewCalendarBlocks(input: {
+    readonly blocks: readonly CalendarBlockDraft[];
+  }): Promise<CalendarWritePreview | undefined>;
+  confirmCalendarBlocks(input: {
+    readonly previewId: string;
+    readonly consentToken: string;
+    readonly blocks: readonly CalendarBlockDraft[];
+  }): Promise<
+    | { readonly outcome: "applied"; readonly revisions: readonly string[] }
+    | { readonly outcome: "rejected"; readonly code: string }
+  >;
   listRemoteAgentGrants(): Promise<{
     readonly policyVersion: number;
     readonly workspaceVersion: number;
@@ -226,6 +286,47 @@ export type DesktopInvoke = (
 export const createRendererClient = (
   invoke: DesktopInvoke,
 ): ConstellationRendererClient => ({
+  getJamieStatus: () =>
+    invoke(DESKTOP_CHANNELS.getJamieStatus) as ReturnType<
+      ConstellationRendererClient["getJamieStatus"]
+    >,
+  configureJamie: (input) =>
+    invoke(DESKTOP_CHANNELS.configureJamie, input) as ReturnType<
+      ConstellationRendererClient["configureJamie"]
+    >,
+  syncJamie: () =>
+    invoke(DESKTOP_CHANNELS.syncJamie) as ReturnType<
+      ConstellationRendererClient["syncJamie"]
+    >,
+  disconnectJamie: () =>
+    invoke(DESKTOP_CHANNELS.disconnectJamie) as ReturnType<
+      ConstellationRendererClient["disconnectJamie"]
+    >,
+  requestCalendarAccess: () =>
+    invoke(DESKTOP_CHANNELS.requestCalendarAccess) as ReturnType<
+      ConstellationRendererClient["requestCalendarAccess"]
+    >,
+  editMeetingWorkItem: (input) =>
+    invoke(DESKTOP_CHANNELS.editMeetingWorkItem, input) as ReturnType<
+      ConstellationRendererClient["editMeetingWorkItem"]
+    >,
+  addMeetingWorkItem: (input) =>
+    invoke(DESKTOP_CHANNELS.addMeetingWorkItem, input) as ReturnType<
+      ConstellationRendererClient["addMeetingWorkItem"]
+    >,
+  getMeetingLoop: (input) =>
+    invoke(
+      DESKTOP_CHANNELS.getMeetingLoop,
+      input,
+    ) as Promise<MeetingLoopSurface>,
+  previewCalendarBlocks: (input) =>
+    invoke(DESKTOP_CHANNELS.previewCalendarBlocks, input) as Promise<
+      CalendarWritePreview | undefined
+    >,
+  confirmCalendarBlocks: (input) =>
+    invoke(DESKTOP_CHANNELS.confirmCalendarBlocks, input) as ReturnType<
+      ConstellationRendererClient["confirmCalendarBlocks"]
+    >,
   listRemoteAgentGrants: () =>
     invoke(DESKTOP_CHANNELS.listRemoteAgentGrants) as ReturnType<
       ConstellationRendererClient["listRemoteAgentGrants"]

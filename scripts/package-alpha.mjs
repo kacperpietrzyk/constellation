@@ -184,6 +184,8 @@ const desktopMainSource = path.join(
 );
 const productionDesktopFiles = new Set([
   "attention-notification.js",
+  "calendar-meeting-loop.js",
+  "jamie-integration.js",
   "better-sqlite3-factory.js",
   "coordinated-data-home-provider.js",
   "coordinated-sync-engine.js",
@@ -300,6 +302,36 @@ const nativeBinding = path.join(
 );
 if (!fs.existsSync(nativeBinding)) throw new Error("NATIVE_BINDING_MISSING");
 
+const calendarHelperBuild = path.join(
+  root,
+  "build",
+  "calendar-helper",
+  "constellation-calendar-helper",
+);
+if (process.platform === "darwin") {
+  fs.mkdirSync(path.dirname(calendarHelperBuild), { recursive: true });
+  const buildCalendarHelper = spawnSync(
+    "swiftc",
+    [
+      path.join(
+        root,
+        "packages",
+        "desktop-main",
+        "native",
+        "macos-calendar",
+        "main.swift",
+      ),
+      "-framework",
+      "EventKit",
+      "-o",
+      calendarHelperBuild,
+    ],
+    { encoding: "utf8", timeout: 120_000 },
+  );
+  if (buildCalendarHelper.status !== 0)
+    throw new Error("CALENDAR_HELPER_BUILD_FAILED");
+}
+
 const packagePaths = await packager({
   dir: stage,
   name: appName,
@@ -315,6 +347,13 @@ const packagePaths = await packager({
   helperBundleId: `${bundleId}.helper`,
   appVersion: "0.0.1",
   buildVersion: "0.0.1",
+  extendInfo:
+    process.platform === "darwin"
+      ? {
+          NSCalendarsFullAccessUsageDescription:
+            "Constellation reads upcoming meetings to prepare factual work context and writes only exact work blocks you explicitly confirm.",
+        }
+      : undefined,
   appCopyright: "Copyright Constellation contributors",
   win32metadata: {
     CompanyName: "Constellation contributors",
@@ -345,6 +384,35 @@ copy(
   path.join(root, "packages", "mcp", "dist", "bin", "stdio.mjs"),
   packagedMcpEntrypoint,
 );
+const packagedCalendarHelper =
+  process.platform === "darwin"
+    ? path.join(resources, "constellation-calendar-helper")
+    : undefined;
+if (packagedCalendarHelper !== undefined) {
+  copy(calendarHelperBuild, packagedCalendarHelper);
+  fs.chmodSync(packagedCalendarHelper, 0o755);
+  const signCalendarHelper = spawnSync(
+    "codesign",
+    [
+      "--force",
+      "--sign",
+      "-",
+      "--entitlements",
+      path.join(
+        root,
+        "packages",
+        "desktop-main",
+        "native",
+        "macos-calendar",
+        "CalendarHelper.entitlements",
+      ),
+      packagedCalendarHelper,
+    ],
+    { encoding: "utf8", timeout: 60_000 },
+  );
+  if (signCalendarHelper.status !== 0)
+    throw new Error("CALENDAR_HELPER_SIGNING_FAILED");
+}
 const unpacked = path.join(resources, "app.asar.unpacked");
 const archive = path.join(resources, "app.asar");
 const unpackedFiles = [];
@@ -363,6 +431,8 @@ if (
   !fs.existsSync(executable) ||
   !fs.existsSync(archive) ||
   !fs.existsSync(packagedMcpEntrypoint) ||
+  (packagedCalendarHelper !== undefined &&
+    !fs.existsSync(packagedCalendarHelper)) ||
   unpackedFiles.length !== 1 ||
   path.basename(unpackedFiles[0]) !== "better_sqlite3.node"
 ) {
@@ -434,6 +504,12 @@ const manifest = {
   nativeBindingSha256: digest,
   mcpEntrypoint: packagedMcpEntrypoint,
   mcpEntrypointSha256: await digestFile(packagedMcpEntrypoint),
+  ...(packagedCalendarHelper === undefined
+    ? {}
+    : {
+        calendarHelper: packagedCalendarHelper,
+        calendarHelperSha256: await digestFile(packagedCalendarHelper),
+      }),
   signatureTier,
 };
 fs.writeFileSync(

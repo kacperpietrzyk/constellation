@@ -1,6 +1,12 @@
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
-import { lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import type {
@@ -18,7 +24,10 @@ import {
   DESKTOP_CHANNELS,
   type DesktopBuildInfo,
 } from "@constellation/desktop-preload/client";
-import type { DataHomeProvider } from "@constellation/application";
+import {
+  normalizeJamieApiMeeting,
+  type DataHomeProvider,
+} from "@constellation/application";
 import {
   CredentialIdSchema,
   GrantIdSchema,
@@ -33,12 +42,16 @@ import {
   RemoteMcpGrantListRequestSchema,
   RemoteMcpGrantProjectionSchema,
   type DeviceId,
+  CalendarBlockDraftSchema,
+  MeetingWorkItemSchema,
 } from "@constellation/contracts";
 import { EncryptedStoreCapabilityError } from "@constellation/local-store";
 import { RemoteMcpCredentialSchema } from "@constellation/mcp/protocol";
 
 import { createBetterSqlite3Factory } from "./better-sqlite3-factory.js";
 import { AttentionNotificationCoordinator } from "./attention-notification.js";
+import { createDesktopMeetingLoopRuntime } from "./calendar-meeting-loop.js";
+import { JamieApiClient, JamieConnectionCustody } from "./jamie-integration.js";
 import { CoordinatedDataHomeProvider } from "./coordinated-data-home-provider.js";
 import { DocumentCollaborationBridge } from "./document-collaboration.js";
 import {
@@ -547,6 +560,24 @@ const startProductionDesktop = async (): Promise<void> => {
   );
 
   const runtime = await createDesktopRuntime();
+  const calendarHelperCandidate =
+    process.env.CONSTELLATION_CALENDAR_HELPER_PATH ??
+    path.join(process.resourcesPath, "constellation-calendar-helper");
+  const meetingLoop =
+    workspaceRecovery?.kernel === undefined
+      ? undefined
+      : createDesktopMeetingLoopRuntime({
+          context: workspaceRecovery.kernel.context,
+          store: workspaceRecovery.kernel.store,
+          ...(existsSync(calendarHelperCandidate)
+            ? { helperPath: calendarHelperCandidate }
+            : {}),
+        });
+  const jamieCustody = new JamieConnectionCustody(
+    app.getPath("userData"),
+    electronSafeStorage,
+  );
+  const jamieApi = new JamieApiClient();
   if (
     workspaceRecovery?.kernel !== undefined &&
     coordinatedDataHomeProvider === undefined
@@ -848,6 +879,249 @@ const startProductionDesktop = async (): Promise<void> => {
     assertTrustedSender(event);
     return runtime.service.query(query);
   });
+  ipcMain.handle(DESKTOP_CHANNELS.getJamieStatus, async (event) => {
+    assertTrustedSender(event);
+    const connection = await jamieCustody.load();
+    return connection === undefined
+      ? { configured: false }
+      : { configured: true, scope: connection.scope };
+  });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.configureJamie,
+    async (event, raw: unknown) => {
+      assertTrustedSender(event);
+      if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+        throw new Error("Invalid Jamie connection.");
+      const candidate = raw as Record<string, unknown>;
+      if (
+        Object.keys(candidate).sort().join(",") !== "apiKey,scope" ||
+        typeof candidate.apiKey !== "string" ||
+        (candidate.scope !== "personal" && candidate.scope !== "workspace")
+      )
+        throw new Error("Invalid Jamie connection.");
+      await jamieCustody.replace({
+        apiKey: candidate.apiKey,
+        scope: candidate.scope,
+      });
+    },
+  );
+  ipcMain.handle(DESKTOP_CHANNELS.disconnectJamie, (event) => {
+    assertTrustedSender(event);
+    jamieCustody.revoke();
+  });
+  ipcMain.handle(DESKTOP_CHANNELS.syncJamie, async (event) => {
+    assertTrustedSender(event);
+    if (meetingLoop === undefined)
+      throw new Error("Meeting loop is unavailable.");
+    const connection = await jamieCustody.load();
+    if (connection === undefined) throw new Error("Jamie is not configured.");
+    const authorization = meetingLoop.authorization();
+    const spaceId = authorization.editableSpaceIds[0];
+    if (spaceId === undefined || !authorization.canImportJamie)
+      throw new Error("Jamie import is not authorized.");
+    const now = new Date().toISOString();
+    const meetingIds = await jamieApi.listRecent({
+      connection,
+      startDate: new Date(Date.parse(now) - 90 * 86_400_000).toISOString(),
+      limit: 50,
+    });
+    const counts = {
+      applied: 0,
+      corrected: 0,
+      noChange: 0,
+      partial: 0,
+      conflicted: 0,
+      failed: 0,
+    };
+    for (const meetingId of meetingIds) {
+      try {
+        const meeting = await jamieApi.getMeeting({ connection, meetingId });
+        let tasksComplete = true;
+        const tasks = await jamieApi
+          .listMeetingTasks({ connection, meetingId })
+          .catch(() => {
+            tasksComplete = false;
+            return [];
+          });
+        const normalized = normalizeJamieApiMeeting({
+          connectionId: connection.connectionId,
+          meeting,
+          tasks,
+          tasksComplete,
+          receivedAt: now,
+          hasher: {
+            fingerprint: (value) =>
+              createHash("sha256").update(JSON.stringify(value)).digest("hex"),
+          },
+        });
+        if (normalized === undefined) {
+          counts.failed += 1;
+          continue;
+        }
+        const outcome = meetingLoop.service.importJamie({
+          authorization,
+          spaceId,
+          source: normalized,
+        });
+        if (outcome.outcome === "rejected") counts.failed += 1;
+        else if (outcome.outcome === "no_change") counts.noChange += 1;
+        else counts[outcome.outcome] += 1;
+      } catch {
+        counts.failed += 1;
+      }
+    }
+    return counts;
+  });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.getMeetingLoop,
+    async (event, raw: unknown) => {
+      assertTrustedSender(event);
+      if (meetingLoop === undefined)
+        throw new Error("Meeting loop is unavailable.");
+      if (
+        raw === null ||
+        typeof raw !== "object" ||
+        Array.isArray(raw) ||
+        Object.keys(raw).sort().join(",") !== "from,to"
+      )
+        throw new Error("Invalid meeting window.");
+      const candidate = raw as Record<string, unknown>;
+      if (
+        typeof candidate.from !== "string" ||
+        typeof candidate.to !== "string" ||
+        Number.isNaN(Date.parse(candidate.from)) ||
+        Number.isNaN(Date.parse(candidate.to)) ||
+        Date.parse(candidate.to) <= Date.parse(candidate.from) ||
+        Date.parse(candidate.to) - Date.parse(candidate.from) > 93 * 86_400_000
+      )
+        throw new Error("Invalid meeting window.");
+      return meetingLoop.service.surface({
+        authorization: meetingLoop.authorization(),
+        from: candidate.from,
+        to: candidate.to,
+      });
+    },
+  );
+  ipcMain.handle(DESKTOP_CHANNELS.requestCalendarAccess, (event) => {
+    assertTrustedSender(event);
+    if (meetingLoop === undefined)
+      throw new Error("Meeting loop is unavailable.");
+    return meetingLoop.requestCalendarAccess();
+  });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.editMeetingWorkItem,
+    (event, raw: unknown) => {
+      assertTrustedSender(event);
+      if (meetingLoop === undefined)
+        throw new Error("Meeting loop is unavailable.");
+      if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+        throw new Error("Invalid meeting work item edit.");
+      const candidate = raw as Record<string, unknown>;
+      if (
+        Object.keys(candidate).sort().join(",") !==
+          "expectedVersion,meetingId,state,title,workItemId" ||
+        typeof candidate.meetingId !== "string" ||
+        typeof candidate.workItemId !== "string" ||
+        typeof candidate.expectedVersion !== "number" ||
+        typeof candidate.title !== "string" ||
+        candidate.title.trim().length === 0 ||
+        candidate.title.length > 4_000
+      )
+        throw new Error("Invalid meeting work item edit.");
+      const state = MeetingWorkItemSchema.shape.state.parse(candidate.state);
+      return (
+        meetingLoop.service.editWorkItem({
+          authorization: meetingLoop.authorization(),
+          meetingId: candidate.meetingId,
+          workItemId: candidate.workItemId,
+          expectedVersion: candidate.expectedVersion,
+          title: candidate.title,
+          state,
+        }) !== undefined
+      );
+    },
+  );
+  ipcMain.handle(DESKTOP_CHANNELS.addMeetingWorkItem, (event, raw: unknown) => {
+    assertTrustedSender(event);
+    if (meetingLoop === undefined)
+      throw new Error("Meeting loop is unavailable.");
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+      throw new Error("Invalid meeting work item.");
+    const candidate = raw as Record<string, unknown>;
+    if (
+      Object.keys(candidate).sort().join(",") !==
+        "kind,meetingId,requestId,title" ||
+      typeof candidate.meetingId !== "string" ||
+      typeof candidate.requestId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        candidate.requestId,
+      ) ||
+      typeof candidate.title !== "string" ||
+      candidate.title.trim().length === 0 ||
+      candidate.title.length > 4_000
+    )
+      throw new Error("Invalid meeting work item.");
+    const kind = MeetingWorkItemSchema.shape.kind.parse(candidate.kind);
+    return (
+      meetingLoop.service.addWorkItem({
+        authorization: meetingLoop.authorization(),
+        meetingId: candidate.meetingId,
+        requestId: candidate.requestId,
+        kind,
+        title: candidate.title,
+      }) !== undefined
+    );
+  });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.previewCalendarBlocks,
+    (event, raw: unknown) => {
+      assertTrustedSender(event);
+      if (meetingLoop === undefined)
+        throw new Error("Meeting loop is unavailable.");
+      if (
+        raw === null ||
+        typeof raw !== "object" ||
+        Array.isArray(raw) ||
+        Object.keys(raw).join(",") !== "blocks" ||
+        !Array.isArray((raw as Record<string, unknown>).blocks)
+      )
+        throw new Error("Invalid calendar preview.");
+      const blocks = (raw as { blocks: unknown[] }).blocks.map((block) =>
+        CalendarBlockDraftSchema.parse(block),
+      );
+      return meetingLoop.service.previewCalendarWrite({
+        authorization: meetingLoop.authorization(),
+        blocks,
+      });
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.confirmCalendarBlocks,
+    (event, raw: unknown) => {
+      assertTrustedSender(event);
+      if (meetingLoop === undefined)
+        throw new Error("Meeting loop is unavailable.");
+      if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+        throw new Error("Invalid calendar confirmation.");
+      const candidate = raw as Record<string, unknown>;
+      if (
+        Object.keys(candidate).sort().join(",") !==
+          "blocks,consentToken,previewId" ||
+        typeof candidate.previewId !== "string" ||
+        typeof candidate.consentToken !== "string" ||
+        !Array.isArray(candidate.blocks)
+      )
+        throw new Error("Invalid calendar confirmation.");
+      return meetingLoop.service.confirmCalendarWrite({
+        authorization: meetingLoop.authorization(),
+        previewId: candidate.previewId,
+        consentToken: candidate.consentToken,
+        blocks: candidate.blocks.map((block) =>
+          CalendarBlockDraftSchema.parse(block),
+        ),
+      });
+    },
+  );
   ipcMain.handle(DESKTOP_CHANNELS.openDocument, (event, input: unknown) => {
     assertTrustedSender(event);
     if (documentCollaboration === undefined)

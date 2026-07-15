@@ -22,6 +22,7 @@ import type {
 import { AccessSurface } from "./AccessSurface.js";
 import { AttentionSurface, CommentsPanel } from "./CollaborationSurfaces.js";
 import { DocumentsSurface } from "./DocumentsSurface.js";
+import { MeetingsSurface } from "./MeetingsSurface.js";
 
 import {
   ActivitySurface,
@@ -105,7 +106,8 @@ type IconName =
   | "activity"
   | "attention"
   | "access"
-  | "documents";
+  | "documents"
+  | "meetings";
 const Icon = ({ name }: { readonly name: IconName }) => {
   const paths = {
     capture: <path d="M12 5v14M5 12h14" />,
@@ -125,6 +127,7 @@ const Icon = ({ name }: { readonly name: IconName }) => {
       <path d="M16 19c0-3-2.2-5-5-5s-5 2-5 5M11 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM17 8h4M19 6v4" />
     ),
     documents: <path d="M6 3h9l4 4v14H6zM15 3v5h4M9 12h7M9 16h7" />,
+    meetings: <path d="M5 5h14v14H5zM8 3v5M16 3v5M5 10h14M8 14h3M13 14h3" />,
   } as const;
   return (
     <svg
@@ -260,13 +263,14 @@ const navItems: readonly {
   shortcut: string;
 }[] = [
   { id: "cockpit", label: "Tydzień", icon: "cockpit", shortcut: "1" },
-  { id: "tasks", label: "Zadania", icon: "tasks", shortcut: "2" },
-  { id: "projects", label: "Projekty", icon: "project", shortcut: "3" },
-  { id: "history", label: "Historia Capture", icon: "history", shortcut: "4" },
-  { id: "activity", label: "Aktywność", icon: "activity", shortcut: "5" },
-  { id: "attention", label: "Do uwagi", icon: "attention", shortcut: "6" },
-  { id: "access", label: "Dostęp", icon: "access", shortcut: "7" },
-  { id: "documents", label: "Dokumenty", icon: "documents", shortcut: "8" },
+  { id: "meetings", label: "Spotkania", icon: "meetings", shortcut: "2" },
+  { id: "tasks", label: "Zadania", icon: "tasks", shortcut: "3" },
+  { id: "projects", label: "Projekty", icon: "project", shortcut: "4" },
+  { id: "history", label: "Historia Capture", icon: "history", shortcut: "5" },
+  { id: "activity", label: "Aktywność", icon: "activity", shortcut: "6" },
+  { id: "attention", label: "Do uwagi", icon: "attention", shortcut: "7" },
+  { id: "access", label: "Dostęp", icon: "access", shortcut: "8" },
+  { id: "documents", label: "Dokumenty", icon: "documents", shortcut: "9" },
 ];
 
 export const RealApp = ({
@@ -954,6 +958,9 @@ export const RealApp = ({
               openContext(taskContext(id, task?.title ?? "Zadanie"));
             }}
           />
+        )}
+        {surface === "meetings" && client && (
+          <MeetingsSurface client={client} />
         )}
         {surface === "tasks" && (
           <TasksSurface

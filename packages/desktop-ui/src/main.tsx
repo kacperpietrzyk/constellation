@@ -18,6 +18,13 @@ const render = async (): Promise<void> => {
   }
   if (
     import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("surface") === "meetings"
+  ) {
+    const { MeetingsHarness } = await import("./dev/MeetingsHarness.js");
+    content = <MeetingsHarness />;
+  }
+  if (
+    import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get("surface") === "access"
   ) {
     const { AccessHarness } = await import("./dev/AccessHarness.js");

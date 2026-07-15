@@ -133,6 +133,46 @@ const createTypedClient = () => {
   const commands: CommandEnvelope[] = [];
   const queries: QueryEnvelope[] = [];
   const client: ConstellationRendererClient = {
+    getJamieStatus: async () => ({ configured: false }),
+    configureJamie: async () => undefined,
+    syncJamie: async () => ({
+      applied: 0,
+      corrected: 0,
+      noChange: 0,
+      partial: 0,
+      conflicted: 0,
+      failed: 0,
+    }),
+    disconnectJamie: async () => undefined,
+    requestCalendarAccess: async () => ({
+      platform: "other",
+      provider: "unconfigured",
+      availability: "provider_unavailable",
+      canRead: false,
+      canWriteOwnedBlocks: false,
+      detailCode: "test_unconfigured",
+    }),
+    editMeetingWorkItem: async () => false,
+    addMeetingWorkItem: async () => false,
+    getMeetingLoop: async () => ({
+      capability: {
+        platform: "other",
+        provider: "unconfigured",
+        availability: "provider_unavailable",
+        canRead: false,
+        canWriteOwnedBlocks: false,
+        detailCode: "test_unconfigured",
+      },
+      upcoming: [],
+      completed: [],
+      freshness: "partial",
+      generatedAt: "2026-07-15T10:00:00.000Z",
+    }),
+    previewCalendarBlocks: async () => undefined,
+    confirmCalendarBlocks: async () => ({
+      outcome: "rejected",
+      code: "provider_unavailable",
+    }),
     listRemoteAgentGrants: async () => {
       throw new Error("Remote MCP is unavailable in this local fixture.");
     },
