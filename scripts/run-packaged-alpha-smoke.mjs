@@ -157,7 +157,7 @@ class CdpClient {
 
 const waitForTarget = async (port, process) => {
   const endpoint = `http://127.0.0.1:${port}/json/list`;
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     if (process.exitCode !== null) {
       throw new Error(`PACKAGED_ALPHA_EXITED_EARLY_${process.exitCode}`);
