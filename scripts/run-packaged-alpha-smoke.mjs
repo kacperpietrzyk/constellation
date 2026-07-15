@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import http from "node:http";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,6 +52,35 @@ const reservePort = async () => {
   );
   return address.port;
 };
+
+const readJsonEndpoint = (endpoint) =>
+  new Promise((resolve, reject) => {
+    const request = http.get(endpoint, { timeout: 2_000 }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => {
+        body += chunk;
+        if (body.length > 1024 * 1024) {
+          request.destroy(new Error("CDP_HTTP_RESPONSE_TOO_LARGE"));
+        }
+      });
+      response.on("end", () => {
+        if (response.statusCode !== 200) {
+          reject(new Error(`CDP_HTTP_STATUS_${response.statusCode}`));
+          return;
+        }
+        try {
+          resolve(JSON.parse(body));
+        } catch {
+          reject(new Error("CDP_HTTP_RESPONSE_INVALID"));
+        }
+      });
+    });
+    request.on("timeout", () => {
+      request.destroy(new Error("CDP_HTTP_TIMEOUT"));
+    });
+    request.on("error", reject);
+  });
 
 class CdpClient {
   #id = 0;
@@ -164,20 +194,14 @@ const waitForTarget = async (port, process) => {
       throw new Error(`PACKAGED_ALPHA_EXITED_EARLY_${process.exitCode}`);
     }
     try {
-      const response = await fetch(endpoint, {
-        signal: AbortSignal.timeout(2_000),
-      });
-      if (response.ok) {
-        const targets = await response.json();
-        lastObservation = targets
-          .map((target) => `${target.type}:${target.url}`)
-          .join("|");
-        const page = targets.find(
-          (target) =>
-            target.type === "page" && target.url.startsWith("file://"),
-        );
-        if (page?.webSocketDebuggerUrl !== undefined) return page;
-      }
+      const targets = await readJsonEndpoint(endpoint);
+      lastObservation = targets
+        .map((target) => `${target.type}:${target.url}`)
+        .join("|");
+      const page = targets.find(
+        (target) => target.type === "page" && target.url.startsWith("file://"),
+      );
+      if (page?.webSocketDebuggerUrl !== undefined) return page;
     } catch (error) {
       lastObservation = error instanceof Error ? error.name : "fetch-error";
       // The packaged browser is still starting.
