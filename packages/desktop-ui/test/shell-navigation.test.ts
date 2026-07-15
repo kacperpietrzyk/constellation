@@ -13,6 +13,7 @@ import {
   moveShellHistory,
   openShellContext,
   projectContext,
+  pruneInaccessibleShellContexts,
   restoreShellNavigation,
   serializeShellNavigation,
   taskContext,
@@ -91,5 +92,29 @@ describe("stable shell navigation", () => {
       ).surface,
       "cockpit",
     );
+  });
+
+  it("removes inaccessible record titles and IDs after reauthorization", () => {
+    const cockpit = destinationContext("cockpit", "Tydzień");
+    let state = createShellNavigation(cockpit);
+    state = openShellContext(state, taskContext(taskId, "Poufne zadanie"));
+    state = openShellContext(
+      state,
+      projectContext(projectId, "Poufny projekt"),
+    );
+
+    const pruned = pruneInaccessibleShellContexts(
+      state,
+      {
+        taskIds: new Set(),
+        projectIds: new Set(),
+      },
+      cockpit,
+    );
+
+    assert.deepEqual(pruned.tabs, [cockpit]);
+    assert.deepEqual(pruned.history, [cockpit.key]);
+    assert.equal(pruned.activeKey, cockpit.key);
+    assert.doesNotMatch(serializeShellNavigation(pruned), /Poufne|00000000/);
   });
 });

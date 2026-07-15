@@ -91,6 +91,42 @@ export const restoreShellNavigation = (
   }
 };
 
+export const pruneInaccessibleShellContexts = (
+  state: ShellNavigationState,
+  access: {
+    readonly taskIds: ReadonlySet<TaskId>;
+    readonly projectIds: ReadonlySet<ProjectId>;
+  },
+  fallback: ShellContext,
+): ShellNavigationState => {
+  const tabs = state.tabs.filter(
+    (tab) =>
+      (tab.taskId === undefined || access.taskIds.has(tab.taskId)) &&
+      (tab.projectId === undefined || access.projectIds.has(tab.projectId)),
+  );
+  if (tabs.length === 0) return createShellNavigation(fallback);
+  const keys = new Set(tabs.map((tab) => tab.key));
+  const activeKey = keys.has(state.activeKey) ? state.activeKey : tabs[0]!.key;
+  let history = state.history.filter((key) => keys.has(key));
+  let historyIndex = Math.min(state.historyIndex, history.length - 1);
+  if (history.length === 0) {
+    history = [activeKey];
+    historyIndex = 0;
+  } else if (history[historyIndex] !== activeKey) {
+    history = [...history.slice(0, historyIndex + 1), activeKey];
+    historyIndex = history.length - 1;
+  }
+  if (
+    tabs.length === state.tabs.length &&
+    history.length === state.history.length &&
+    activeKey === state.activeKey &&
+    historyIndex === state.historyIndex
+  ) {
+    return state;
+  }
+  return { tabs, activeKey, history, historyIndex };
+};
+
 export const destinationContext = (
   surface: SurfaceId,
   label: string,

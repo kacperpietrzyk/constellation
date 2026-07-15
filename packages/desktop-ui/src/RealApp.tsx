@@ -86,6 +86,7 @@ import {
   moveShellHistory,
   openShellContext,
   projectContext,
+  pruneInaccessibleShellContexts,
   restoreShellNavigation,
   serializeShellNavigation,
   taskContext,
@@ -464,6 +465,23 @@ export const RealApp = ({
   }, [activeContext.projectId, activeContext.taskId]);
 
   const snapshot = state.kind === "ready" ? state.snapshot : undefined;
+  useEffect(() => {
+    if (!snapshot) return;
+    const taskIds = new Set(snapshot.tasks.map((task) => task.id));
+    const projectIds = new Set(
+      snapshot.projects.kind === "ready"
+        ? snapshot.projects.data.items.map((project) => project.id)
+        : [],
+    );
+    setNavigation((current) =>
+      pruneInaccessibleShellContexts(
+        current,
+        { taskIds, projectIds },
+        destinationContext("cockpit", "Tydzień"),
+      ),
+    );
+  }, [snapshot]);
+
   useEffect(() => {
     if (!client) return;
     return client.onAttentionActivated((destination) => {
