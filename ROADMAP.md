@@ -143,7 +143,12 @@ imports and source corrections, and manage each resulting item independently.
 Calendar work blocks use an exact, expiring, single-use preview; no calendar
 write occurs from a factual brief or Jamie import.
 
-## Current — knowledge and evidence-backed deliverables
+Imported meeting state also enters the ordinary versioned Hub command and
+receipt feed. Coordinated projections therefore carry the same stable meeting
+identity to another authorized device; revocation and Space filtering use the
+existing synchronization boundary rather than a meeting-specific protocol.
+
+## Delivered foundation — knowledge, relationships, and strategic depth
 
 The first knowledge journey now preserves Sources separately from evolving
 Notes, Documents, and Deliverables. Explicit evidence links remain editable,
@@ -153,18 +158,21 @@ without rewriting delivered history. The same versioned commands, deterministic
 search, audit, recovery, encrypted restart, and Space-scoped Hub projection
 rules apply to desktop and MCP operators.
 
-The next knowledge outcomes deepen artifacts, approval state, freshness, and a
-finite reviewable Knowledge Radar without adding generated answers to the
-desktop application.
+The graph now also connects Organizations and People to Opportunities, Offers,
+and Projects without copying the outcome records. Date-aware Renewals create
+one deduplicated ordinary follow-up Task, relationship facts retain evidence and
+freshness, and replaced Decisions preserve history while opening a bounded
+impact review. Areas, recurring Task occurrences, reversible Project closure,
+and a finite material-key-deduplicated Knowledge Radar deepen everyday work
+without adding generated answers to the desktop application. These records use
+the same deterministic search, activity, export, audit, recovery, MCP, local
+store, and Space-scoped Hub projection rules as the earlier graph.
 
-## Later — relationships and strategic depth
+## Current — coherent local workspace depth
 
-- people, organizations, opportunities, offers, renewals, and relationship
-  history;
-- recurring responsibilities, project closure, decision replacement, and impact
-  review;
-- richer strategic orientation across goals, initiatives, projects, and daily
-  work without generated answers inside the application.
+Deepen the delivered record journeys into saved views, richer artifact and
+approval states, and strategic orientation across goals, initiatives, projects,
+and daily work while preserving the shared command/query and recovery model.
 
 ## Later — distribution and ecosystem
 

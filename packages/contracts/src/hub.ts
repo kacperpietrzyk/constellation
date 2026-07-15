@@ -44,6 +44,7 @@ export const HubWorkspaceSnapshotSchema = z
     documents: z.array(JsonObjectSchema).default([]),
     knowledgeSources: z.array(JsonObjectSchema).default([]),
     namedDocumentVersions: z.array(JsonObjectSchema).default([]),
+    strategicRecords: z.array(JsonObjectSchema).default([]),
     relations: z.array(JsonObjectSchema),
     undoDescriptors: z.array(JsonObjectSchema),
     events: z.array(JsonObjectSchema),

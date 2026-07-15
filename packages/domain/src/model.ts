@@ -28,6 +28,8 @@ import type {
   AgentHandoffId,
   KnowledgeSourceId,
   NamedDocumentVersionId,
+  StrategicRecordId,
+  ImportedMeeting,
 } from "@constellation/contracts";
 
 export interface Workspace {
@@ -259,7 +261,10 @@ export interface AttentionSignal {
     | "comment_mention"
     | "task_assignment"
     | "sync_conflict"
-    | "knowledge_evidence_changed";
+    | "knowledge_evidence_changed"
+    | "renewal_due"
+    | "relationship_fact_stale"
+    | "decision_impact_review";
   readonly destination: AttentionDestination;
   readonly sourceRecordId: string;
   readonly deduplicationKey: string;
@@ -278,7 +283,9 @@ export interface Project {
   readonly spaceId: SpaceId;
   readonly title: string;
   readonly intendedOutcome: string;
-  readonly lifecycle: "active";
+  readonly lifecycle: "active" | "closed";
+  readonly closedAt?: string;
+  readonly closedBy?: PrincipalId;
   readonly createdBy: PrincipalId;
   readonly version: number;
   readonly createdAt: string;
@@ -342,6 +349,130 @@ export interface NamedDocumentVersion {
   readonly voidedAt?: string;
   readonly voidedBy?: PrincipalId;
 }
+
+interface StrategicRecordBase {
+  readonly id: StrategicRecordId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly createdBy: PrincipalId;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export type StrategicRecord =
+  | (StrategicRecordBase & {
+      readonly kind: "organization";
+      readonly name: string;
+      readonly relationshipState: "prospect" | "active" | "inactive";
+      readonly nextAction?: string;
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "person";
+      readonly name: string;
+      readonly organizationId?: StrategicRecordId;
+      readonly role?: string;
+      readonly email?: string;
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "opportunity";
+      readonly title: string;
+      readonly organizationId: StrategicRecordId;
+      readonly personIds: readonly StrategicRecordId[];
+      readonly need: string;
+      readonly qualification: string;
+      readonly stage: string;
+      readonly nextAction: string;
+      readonly evidenceSourceIds: readonly KnowledgeSourceId[];
+      readonly offerIds: readonly StrategicRecordId[];
+      readonly projectIds: readonly ProjectId[];
+      readonly state: "open" | "pursued" | "deferred" | "rejected" | "lost";
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "offer";
+      readonly title: string;
+      readonly opportunityId: StrategicRecordId;
+      readonly deliverableDocumentId: DocumentId;
+      readonly ownerPrincipalId: PrincipalId;
+      readonly state: "draft" | "ready" | "submitted" | "accepted" | "declined";
+      readonly nextAction: string;
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "renewal";
+      readonly organizationId: StrategicRecordId;
+      readonly title: string;
+      readonly scope: string;
+      readonly expiresAt: string;
+      readonly leadTimeDays: number;
+      readonly ownerPrincipalId: PrincipalId;
+      readonly evidenceSourceIds: readonly KnowledgeSourceId[];
+      readonly followUpTaskId: TaskId;
+      readonly cycleKey: string;
+      readonly state: "watching" | "renewed" | "not_renewing" | "irrelevant";
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "relationship_fact";
+      readonly organizationId: StrategicRecordId;
+      readonly factType: string;
+      readonly value: string;
+      readonly evidenceSourceIds: readonly KnowledgeSourceId[];
+      readonly verifiedAt: string;
+      readonly staleAfter: string;
+      readonly state: "current" | "stale" | "conflicted";
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "decision";
+      readonly title: string;
+      readonly rationale: string;
+      readonly evidenceSourceIds: readonly KnowledgeSourceId[];
+      readonly linkedRecordIds: readonly string[];
+      readonly state: "current" | "superseded";
+      readonly supersededById?: StrategicRecordId;
+      readonly supersededAt?: string;
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "impact_review";
+      readonly priorDecisionId: StrategicRecordId;
+      readonly replacementDecisionId: StrategicRecordId;
+      readonly reason: string;
+      readonly consequences: readonly {
+        readonly recordId: string;
+        readonly recordKind:
+          "task" | "offer" | "document" | "deliverable" | "commitment";
+        readonly state: "open" | "resolved";
+        readonly resolution?: string;
+      }[];
+      readonly state: "open" | "resolved";
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "area";
+      readonly title: string;
+      readonly responsibility: string;
+      readonly state: "active" | "archived";
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "recurrence";
+      readonly title: string;
+      readonly taskTitle: string;
+      readonly contextRecordId?: string;
+      readonly cadence: "daily" | "weekly" | "monthly" | "yearly";
+      readonly nextDueAt: string;
+      readonly state: "active" | "paused" | "ended";
+      readonly lastOccurrenceTaskId?: TaskId;
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "radar_candidate";
+      readonly sourceId: KnowledgeSourceId;
+      readonly materialKey: string;
+      readonly title: string;
+      readonly relevance: string;
+      readonly state: "pending" | "saved" | "dismissed";
+      readonly resolutionRecordId?: string;
+    })
+  | (StrategicRecordBase & {
+      readonly kind: "meeting";
+      readonly meeting: ImportedMeeting;
+    });
 
 export interface TaskProjectRelation {
   readonly id: RelationId;
@@ -448,6 +579,15 @@ export type UndoDescriptor =
 export type DomainEvent = { readonly commandId: CommandId } & (
   | {
       readonly id: EventId;
+      readonly type: "strategic.record_changed";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: StrategicRecordId;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
       readonly type: "workspace.created";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
@@ -513,7 +653,10 @@ export type DomainEvent = { readonly commandId: CommandId } & (
     }
   | {
       readonly id: EventId;
-      readonly type: "project.created" | "project.outcome_updated";
+      readonly type:
+        | "project.created"
+        | "project.outcome_updated"
+        | "project.lifecycle_changed";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: ProjectId;

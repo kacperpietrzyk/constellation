@@ -25,6 +25,7 @@ import {
   KnowledgeSourceIdSchema,
   NamedDocumentVersionIdSchema,
   DocumentRevisionIdSchema,
+  StrategicRecordIdSchema,
 } from "./ids.js";
 import { ContractVersionSchema } from "./command.js";
 
@@ -48,7 +49,9 @@ export const DiagnosticCodeSchema = z.enum([
   "knowledge.evidence_updated",
   "knowledge.named_version_created",
   "knowledge.named_version_voided",
+  "strategic.record_changed",
   "project.outcome_updated",
+  "project.lifecycle_changed",
   "task.status_changed",
   "task.completed",
   "task.reopened",
@@ -99,6 +102,7 @@ export const RecordKindSchema = z.enum([
   "document",
   "knowledgeSource",
   "namedDocumentVersion",
+  "strategicRecord",
   "relation",
 ]);
 export type RecordKind = z.infer<typeof RecordKindSchema>;
@@ -194,7 +198,7 @@ const ProjectProjectionFields = {
   projectId: ProjectIdSchema,
   title: z.string(),
   intendedOutcome: z.string(),
-  lifecycle: z.literal("active"),
+  lifecycle: z.enum(["active", "closed"]),
   version: z.int().positive(),
 } as const;
 
@@ -243,10 +247,40 @@ export const KnowledgeNamedVersionMutationProjectionSchema = z
     version: z.int().positive(),
   })
   .strict();
+export const StrategicRecordMutationProjectionSchema = z
+  .object({
+    kind: z.literal("strategic.record_changed"),
+    recordId: StrategicRecordIdSchema,
+    recordType: z.enum([
+      "organization",
+      "person",
+      "opportunity",
+      "offer",
+      "renewal",
+      "relationship_fact",
+      "decision",
+      "impact_review",
+      "area",
+      "recurrence",
+      "radar_candidate",
+      "meeting",
+    ]),
+    version: z.int().positive(),
+  })
+  .strict();
 export const ProjectOutcomeUpdatedProjectionSchema = z
   .object({
     kind: z.literal("project.outcome_updated"),
     ...ProjectProjectionFields,
+  })
+  .strict();
+export const ProjectLifecycleChangedProjectionSchema = z
+  .object({
+    kind: z.literal("project.lifecycle_changed"),
+    projectId: ProjectIdSchema,
+    lifecycle: z.enum(["active", "closed"]),
+    unresolvedTaskCount: z.int().nonnegative(),
+    version: z.int().positive(),
   })
   .strict();
 
@@ -415,7 +449,9 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   KnowledgeSourceMutationProjectionSchema,
   KnowledgeEvidenceUpdatedProjectionSchema,
   KnowledgeNamedVersionMutationProjectionSchema,
+  StrategicRecordMutationProjectionSchema,
   ProjectOutcomeUpdatedProjectionSchema,
+  ProjectLifecycleChangedProjectionSchema,
   TaskStatusChangedProjectionSchema,
   TaskCompletedProjectionSchema,
   TaskReopenedProjectionSchema,
@@ -543,11 +579,23 @@ const KnowledgeNamedVersionVoidedSuccessOutcomeSchema =
     diagnosticCode: z.literal("knowledge.named_version_voided"),
     projection: KnowledgeNamedVersionMutationProjectionSchema,
   }).strict();
+const StrategicRecordChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("strategic.record_changed"),
+    projection: StrategicRecordMutationProjectionSchema,
+  }).strict();
 const ProjectOutcomeUpdatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
     diagnosticCode: z.literal("project.outcome_updated"),
     projection: ProjectOutcomeUpdatedProjectionSchema,
+  }).strict();
+const ProjectLifecycleChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("project.lifecycle_changed"),
+    projection: ProjectLifecycleChangedProjectionSchema,
   }).strict();
 const TaskStatusChangedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
@@ -680,7 +728,9 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   KnowledgeEvidenceUpdatedSuccessOutcomeSchema,
   KnowledgeNamedVersionCreatedSuccessOutcomeSchema,
   KnowledgeNamedVersionVoidedSuccessOutcomeSchema,
+  StrategicRecordChangedSuccessOutcomeSchema,
   ProjectOutcomeUpdatedSuccessOutcomeSchema,
+  ProjectLifecycleChangedSuccessOutcomeSchema,
   TaskStatusChangedSuccessOutcomeSchema,
   TaskCompletedSuccessOutcomeSchema,
   TaskReopenedSuccessOutcomeSchema,

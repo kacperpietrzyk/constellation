@@ -412,6 +412,8 @@ describe("self-hosted Hub core", () => {
     const privateSourceId = uuid();
     const sharedNamedVersionId = uuid();
     const privateNamedVersionId = uuid();
+    const sharedStrategicId = uuid();
+    const privateStrategicId = uuid();
     const snapshot = HubWorkspaceSnapshotSchema.parse({
       ...initial,
       workspaces: [{ ...initial.workspaces[0], policyVersion: 2, version: 2 }],
@@ -537,6 +539,32 @@ describe("self-hosted Hub core", () => {
           spaceId: privateSpace,
           documentId: privateDocumentId,
           name: "PRIVATE-VERSION-SENTINEL",
+        },
+      ],
+      strategicRecords: [
+        {
+          id: sharedStrategicId,
+          workspaceId: ids.workspace,
+          spaceId: ids.space,
+          kind: "organization",
+          name: "Shared organization",
+          relationshipState: "active",
+          createdBy: ids.principal,
+          version: 1,
+          createdAt: "2026-07-14T12:00:00.000Z",
+          updatedAt: "2026-07-14T12:00:00.000Z",
+        },
+        {
+          id: privateStrategicId,
+          workspaceId: ids.workspace,
+          spaceId: privateSpace,
+          kind: "organization",
+          name: "PRIVATE-STRATEGIC-SENTINEL",
+          relationshipState: "active",
+          createdBy: ids.principal,
+          version: 1,
+          createdAt: "2026-07-14T12:00:00.000Z",
+          updatedAt: "2026-07-14T12:00:00.000Z",
         },
       ],
       taskAssignments: [
@@ -669,6 +697,10 @@ describe("self-hosted Hub core", () => {
     assert.deepEqual(
       scoped.namedDocumentVersions.map((item) => item.id),
       [sharedNamedVersionId],
+    );
+    assert.deepEqual(
+      scoped.strategicRecords.map((item) => item.id),
+      [sharedStrategicId],
     );
     assert.deepEqual(
       scoped.attentionSignals.map((signal) => signal.id),

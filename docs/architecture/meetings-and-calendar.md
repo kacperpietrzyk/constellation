@@ -50,7 +50,14 @@ revisions fail closed before a provider write.
 
 ## Current limitation
 
-Meeting-loop state is durable in the encrypted local workspace database. It is
-not yet part of the coordinated Hub command feed. That compatibility pass must
-reuse the existing command, receipt, and authorization path; it must not create
-a second synchronization protocol.
+Meeting-loop state is durable in the encrypted local workspace database.
+Normalized imported meetings are also strategic records published through
+`meeting.upsertImported`, the ordinary Hub command/receipt feed, and the same
+Space-scoped coordinated snapshot used by other records. Loading that projection
+hydrates the local meeting surface on another authorized device. Local calendar
+capabilities, provider credentials, exact write previews, and unsynchronized
+optimistic edits remain device concerns; they are not copied through Hub state.
+
+EventKit and Jamie can expose different identifiers for the same real-world
+meeting. Factual preparation therefore still requires an exact provider link
+and remains empty when one cannot be established safely.

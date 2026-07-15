@@ -9,7 +9,8 @@ export type SurfaceId =
   | "attention"
   | "access"
   | "documents"
-  | "meetings";
+  | "meetings"
+  | "relationships";
 
 export type PreviewCondition =
   | "ready"

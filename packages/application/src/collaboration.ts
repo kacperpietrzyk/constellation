@@ -563,13 +563,21 @@ export const executeCollaborationQuery = (
       | "capture"
       | "task_assignment"
       | "comment"
-      | "attention_signal";
+      | "attention_signal"
+      | "strategic_record";
     id: string;
     spaceId: string;
   }> = [];
   let activity = 0;
   let relations = 0;
   for (const space of spaces) {
+    records.push(
+      ...view.listStrategicRecords(workspace.id, space.id).map((record) => ({
+        kind: "strategic_record" as const,
+        id: record.id,
+        spaceId: record.spaceId,
+      })),
+    );
     records.push(
       ...view.listComments(workspace.id, space.id).map((record) => ({
         kind: "comment" as const,
@@ -676,6 +684,9 @@ export const executeCollaborationQuery = (
       comments: records.filter((item) => item.kind === "comment").length,
       attentionSignals: records.filter(
         (item) => item.kind === "attention_signal",
+      ).length,
+      strategicRecords: records.filter(
+        (item) => item.kind === "strategic_record",
       ).length,
       relations,
       activity,

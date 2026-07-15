@@ -21,9 +21,11 @@ import {
   KnowledgeSourceIdSchema,
   NamedDocumentVersionIdSchema,
   DocumentRevisionIdSchema,
+  StrategicRecordIdSchema,
 } from "./ids.js";
 import { ContractVersionSchema } from "./command.js";
 import { RequestOriginSchema } from "./execution-context.js";
+import { ImportedMeetingSchema } from "./meeting-loop.js";
 
 const QueryMetadataSchema = z
   .object({
@@ -136,6 +138,20 @@ export const KnowledgeDocumentContextQuerySchema = QueryMetadataSchema.extend({
   parameters: z.object({ documentId: DocumentIdSchema }).strict(),
 }).strict();
 
+export const RelationshipWorkspaceQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("relationship.workspace"),
+  parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
+}).strict();
+export const RadarReviewQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("radar.review"),
+  parameters: z
+    .object({
+      spaceId: SpaceIdSchema,
+      limit: z.int().min(1).max(50).default(12),
+    })
+    .strict(),
+}).strict();
+
 export const ProjectOperationalOverviewQuerySchema = QueryMetadataSchema.extend(
   {
     queryName: z.literal("project.operationalOverview"),
@@ -159,6 +175,18 @@ export const GlobalSearchQuerySchema = QueryMetadataSchema.extend({
             "note",
             "document",
             "deliverable",
+            "organization",
+            "person",
+            "opportunity",
+            "offer",
+            "renewal",
+            "relationship_fact",
+            "decision",
+            "impact_review",
+            "area",
+            "recurrence",
+            "radar_candidate",
+            "meeting",
           ]),
         )
         .min(1)
@@ -210,6 +238,8 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   DocumentListQuerySchema,
   KnowledgeListQuerySchema,
   KnowledgeDocumentContextQuerySchema,
+  RelationshipWorkspaceQuerySchema,
+  RadarReviewQuerySchema,
   ProjectOperationalOverviewQuerySchema,
   GlobalSearchQuerySchema,
   CockpitWeekQuerySchema,
@@ -237,6 +267,140 @@ const CaptureHistoryItemBaseSchema = z.object({
   version: z.int().positive(),
 });
 
+const StrategicRecordBaseSchema = z.object({
+  id: StrategicRecordIdSchema,
+  workspaceId: WorkspaceIdSchema,
+  spaceId: SpaceIdSchema,
+  createdBy: PrincipalIdSchema,
+  version: z.int().positive(),
+  createdAt: z.iso.datetime({ offset: true }),
+  updatedAt: z.iso.datetime({ offset: true }),
+});
+
+export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
+  StrategicRecordBaseSchema.extend({
+    kind: z.literal("organization"),
+    name: z.string(),
+    relationshipState: z.enum(["prospect", "active", "inactive"]),
+    nextAction: z.string().optional(),
+  }).strict(),
+  StrategicRecordBaseSchema.extend({
+    kind: z.literal("person"),
+    name: z.string(),
+    organizationId: StrategicRecordIdSchema.optional(),
+    role: z.string().optional(),
+    email: z.string().optional(),
+  }).strict(),
+  StrategicRecordBaseSchema.extend({
+    kind: z.literal("opportunity"),
+    title: z.string(),
+    organizationId: StrategicRecordIdSchema,
+    personIds: z.array(StrategicRecordIdSchema),
+    need: z.string(),
+    qualification: z.string(),
+    stage: z.string(),
+    nextAction: z.string(),
+    evidenceSourceIds: z.array(KnowledgeSourceIdSchema),
+    offerIds: z.array(StrategicRecordIdSchema),
+    projectIds: z.array(ProjectIdSchema),
+    state: z.enum(["open", "pursued", "deferred", "rejected", "lost"]),
+  }).strict(),
+  StrategicRecordBaseSchema.extend({
+    kind: z.literal("offer"),
+    title: z.string(),
+    opportunityId: StrategicRecordIdSchema,
+    deliverableDocumentId: DocumentIdSchema,
+    ownerPrincipalId: PrincipalIdSchema,
+    state: z.enum(["draft", "ready", "submitted", "accepted", "declined"]),
+    nextAction: z.string(),
+  }).strict(),
+  StrategicRecordBaseSchema.extend({
+    kind: z.literal("renewal"),
+    organizationId: StrategicRecordIdSchema,
+    title: z.string(),
+    scope: z.string(),
+    expiresAt: z.iso.datetime({ offset: true }),
+    leadTimeDays: z.int().nonnegative(),
+    ownerPrincipalId: PrincipalIdSchema,
+    evidenceSourceIds: z.array(KnowledgeSourceIdSchema),
+    followUpTaskId: TaskIdSchema,
+    cycleKey: z.string(),
+    state: z.enum(["watching", "renewed", "not_renewing", "irrelevant"]),
+  }).strict(),
+  StrategicRecordBaseSchema.extend({
+    kind: z.literal("relationship_fact"),
+    organizationId: StrategicRecordIdSchema,
+    factType: z.string(),
+    value: z.string(),
+    evidenceSourceIds: z.array(KnowledgeSourceIdSchema),
+    verifiedAt: z.iso.datetime({ offset: true }),
+    staleAfter: z.iso.datetime({ offset: true }),
+    state: z.enum(["current", "stale", "conflicted"]),
+  }).strict(),
+  StrategicRecordBaseSchema.extend({
+    kind: z.literal("decision"),
+    title: z.string(),
+    rationale: z.string(),
+    evidenceSourceIds: z.array(KnowledgeSourceIdSchema),
+    linkedRecordIds: z.array(z.uuid()),
+    state: z.enum(["current", "superseded"]),
+    supersededById: StrategicRecordIdSchema.optional(),
+    supersededAt: z.iso.datetime({ offset: true }).optional(),
+  }).strict(),
+  StrategicRecordBaseSchema.extend({
+    kind: z.literal("impact_review"),
+    priorDecisionId: StrategicRecordIdSchema,
+    replacementDecisionId: StrategicRecordIdSchema,
+    reason: z.string(),
+    consequences: z.array(
+      z
+        .object({
+          recordId: z.uuid(),
+          recordKind: z.enum([
+            "task",
+            "offer",
+            "document",
+            "deliverable",
+            "commitment",
+          ]),
+          state: z.enum(["open", "resolved"]),
+          resolution: z.string().optional(),
+        })
+        .strict(),
+    ),
+    state: z.enum(["open", "resolved"]),
+  }).strict(),
+  StrategicRecordBaseSchema.extend({
+    kind: z.literal("area"),
+    title: z.string(),
+    responsibility: z.string(),
+    state: z.enum(["active", "archived"]),
+  }).strict(),
+  StrategicRecordBaseSchema.extend({
+    kind: z.literal("recurrence"),
+    title: z.string(),
+    taskTitle: z.string(),
+    contextRecordId: z.uuid().optional(),
+    cadence: z.enum(["daily", "weekly", "monthly", "yearly"]),
+    nextDueAt: z.iso.datetime({ offset: true }),
+    state: z.enum(["active", "paused", "ended"]),
+    lastOccurrenceTaskId: TaskIdSchema.optional(),
+  }).strict(),
+  StrategicRecordBaseSchema.extend({
+    kind: z.literal("radar_candidate"),
+    sourceId: KnowledgeSourceIdSchema,
+    materialKey: z.string(),
+    title: z.string(),
+    relevance: z.string(),
+    state: z.enum(["pending", "saved", "dismissed"]),
+    resolutionRecordId: z.uuid().optional(),
+  }).strict(),
+  StrategicRecordBaseSchema.extend({
+    kind: z.literal("meeting"),
+    meeting: ImportedMeetingSchema,
+  }).strict(),
+]);
+
 const CaptureHistoryItemSchema = z.discriminatedUnion("processingState", [
   CaptureHistoryItemBaseSchema.extend({
     processingState: z.literal("pending_processing"),
@@ -250,6 +414,22 @@ const CaptureHistoryItemSchema = z.discriminatedUnion("processingState", [
 ]);
 
 export const QueryProjectionSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("relationship.workspace"),
+      records: z.array(StrategicRecordProjectionSchema),
+      freshness: FreshnessSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("radar.review"),
+      items: z.array(StrategicRecordProjectionSchema),
+      pendingCount: z.int().nonnegative(),
+      finite: z.literal(true),
+      freshness: FreshnessSchema,
+    })
+    .strict(),
   z
     .object({
       kind: z.literal("agent.access"),
@@ -358,6 +538,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           taskAssignments: z.int().nonnegative().default(0),
           comments: z.int().nonnegative().default(0),
           attentionSignals: z.int().nonnegative().default(0),
+          strategicRecords: z.int().nonnegative().default(0),
         })
         .strict(),
       records: z.array(
@@ -373,6 +554,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "task_assignment",
               "comment",
               "attention_signal",
+              "strategic_record",
             ]),
             id: z.uuid(),
             spaceId: SpaceIdSchema,
@@ -629,6 +811,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "task_assignment",
               "sync_conflict",
               "knowledge_evidence_changed",
+              "renewal_due",
+              "relationship_fact_stale",
+              "decision_impact_review",
             ]),
             destination: z.discriminatedUnion("kind", [
               z
@@ -668,7 +853,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             spaceId: SpaceIdSchema,
             title: z.string(),
             intendedOutcome: z.string(),
-            lifecycle: z.literal("active"),
+            lifecycle: z.enum(["active", "closed"]),
             relatedOpenTaskCount: z.int().nonnegative(),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
@@ -703,7 +888,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           spaceId: SpaceIdSchema,
           title: z.string(),
           intendedOutcome: z.string(),
-          lifecycle: z.literal("active"),
+          lifecycle: z.enum(["active", "closed"]),
           version: z.int().positive(),
           updatedAt: z.iso.datetime({ offset: true }),
         })
@@ -749,6 +934,18 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "note",
               "document",
               "deliverable",
+              "organization",
+              "person",
+              "opportunity",
+              "offer",
+              "renewal",
+              "relationship_fact",
+              "decision",
+              "impact_review",
+              "area",
+              "recurrence",
+              "radar_candidate",
+              "meeting",
             ]),
             recordId: z.uuid(),
             spaceId: SpaceIdSchema,
@@ -761,6 +958,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
                 "originalText",
                 "excerpt",
                 "canonicalUrl",
+                "detail",
               ]),
             ),
             score: z.int().nonnegative(),
@@ -837,6 +1035,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "knowledge_evidence_updated",
               "knowledge_named_version_created",
               "knowledge_named_version_voided",
+              "strategic_record_changed",
               "command_undone",
             ]),
             recordId: z.uuid(),

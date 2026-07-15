@@ -268,6 +268,25 @@ const isCurrentlyAuthorized = (
     case "knowledge.documentSetEvidence":
     case "knowledge.namedVersionCreate":
     case "knowledge.namedVersionVoid":
+    case "relationship.organizationCreate":
+    case "relationship.personCreate":
+    case "opportunity.create":
+    case "opportunity.offerCreate":
+    case "opportunity.linkOutcomes":
+    case "relationship.renewalCreate":
+    case "relationship.renewalResolve":
+    case "relationship.factCreate":
+    case "decision.create":
+    case "decision.supersede":
+    case "decision.resolveImpact":
+    case "area.create":
+    case "recurrence.create":
+    case "recurrence.generateOccurrence":
+    case "project.close":
+    case "project.reopen":
+    case "radar.candidateUpsert":
+    case "radar.resolve":
+    case "meeting.upsertImported":
     case "project.updateOutcome":
     case "task.setStatus":
     case "task.complete":
@@ -502,6 +521,25 @@ export class ApplicationKernel {
       case "knowledge.documentSetEvidence":
       case "knowledge.namedVersionCreate":
       case "knowledge.namedVersionVoid":
+      case "relationship.organizationCreate":
+      case "relationship.personCreate":
+      case "opportunity.create":
+      case "opportunity.offerCreate":
+      case "opportunity.linkOutcomes":
+      case "relationship.renewalCreate":
+      case "relationship.renewalResolve":
+      case "relationship.factCreate":
+      case "decision.create":
+      case "decision.supersede":
+      case "decision.resolveImpact":
+      case "area.create":
+      case "recurrence.create":
+      case "recurrence.generateOccurrence":
+      case "project.close":
+      case "project.reopen":
+      case "radar.candidateUpsert":
+      case "radar.resolve":
+      case "meeting.upsertImported":
       case "project.updateOutcome":
       case "task.setStatus":
       case "task.complete":
@@ -1150,6 +1188,8 @@ export class ApplicationKernel {
         case "document.list":
         case "knowledge.list":
         case "knowledge.documentContext":
+        case "relationship.workspace":
+        case "radar.review":
         case "project.operationalOverview":
         case "search.global":
         case "cockpit.week":

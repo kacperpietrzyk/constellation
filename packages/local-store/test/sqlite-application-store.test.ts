@@ -106,6 +106,13 @@ const context = (): ExecutionContext =>
       "knowledge.namedVersionVoid",
       "knowledge.list",
       "knowledge.documentContext",
+      "relationship.organizationCreate",
+      "relationship.personCreate",
+      "opportunity.create",
+      "opportunity.offerCreate",
+      "opportunity.linkOutcomes",
+      "relationship.workspace",
+      "meeting.upsertImported",
     ],
     origin: "desktop",
   });
@@ -155,6 +162,103 @@ describe("meeting loop persistence", () => {
     assert.equal(store.save(context().workspaceId, 0, state), false);
     assert.deepEqual(store.load(context().workspaceId), state);
     database.close();
+  });
+
+  it("projects imported meeting work through the coordinated snapshot onto a second device", () => {
+    const sourceDatabase = new DatabaseSync(":memory:");
+    const source = createKernel(sourceDatabase);
+    assert.equal(
+      unwrap(source.kernel.execute(context(), workspaceCommand)).outcome,
+      "success",
+    );
+    const meetingId = "00000000-0000-4000-8000-000000000191";
+    const meeting = {
+      id: meetingId,
+      workspaceId: ids.workspace,
+      spaceId: ids.rootSpace,
+      connectionId: "jamie-personal",
+      externalMeetingId: "jamie-meeting-191",
+      title: "Coordinated customer review",
+      startedAt: "2026-07-15T10:00:00.000Z",
+      participants: [],
+      workItems: [
+        {
+          id: "00000000-0000-4000-8000-000000000192",
+          kind: "follow_up" as const,
+          sourceExternalId: "local:follow-up-191",
+          title: "Send the evidence pack",
+          state: "open" as const,
+          sourceControlled: false,
+          locallyModified: true,
+          version: 1,
+        },
+      ],
+      contentHash: "b".repeat(64),
+      triage: "ready" as const,
+      missingComponents: [],
+      version: 1,
+      updatedAt: "2026-07-15T10:05:00.000Z",
+    };
+    assert.equal(
+      unwrap(
+        source.kernel.execute(
+          context(),
+          CommandEnvelopeSchema.parse({
+            contractVersion: 1,
+            commandName: "meeting.upsertImported",
+            commandId: "00000000-0000-4000-8000-000000000193",
+            workspaceId: ids.workspace,
+            idempotencyKey: "meeting-191-v1",
+            expectedVersions: {},
+            correlationId: "00000000-0000-4000-8000-000000000194",
+            payload: { meeting },
+          }),
+        ),
+      ).outcome,
+      "success",
+    );
+    const targetDatabase = new DatabaseSync(":memory:");
+    const target = createKernel(targetDatabase);
+    target.store.initializeProjection(source.store.snapshot());
+    assert.deepEqual(target.store.load(context().workspaceId).meetings, [
+      meeting,
+    ]);
+    assert.equal(
+      target.store.snapshot().strategicRecords?.[0]?.kind,
+      "meeting",
+    );
+    const completedMeeting = {
+      ...meeting,
+      workItems: [
+        { ...meeting.workItems[0]!, state: "completed" as const, version: 2 },
+      ],
+      version: 2,
+      updatedAt: "2026-07-15T10:10:00.000Z",
+    };
+    assert.equal(
+      unwrap(
+        target.kernel.execute(
+          context(),
+          CommandEnvelopeSchema.parse({
+            contractVersion: 1,
+            commandName: "meeting.upsertImported",
+            commandId: "00000000-0000-4000-8000-000000000195",
+            workspaceId: ids.workspace,
+            idempotencyKey: "meeting-191-v2-device-b",
+            expectedVersions: { [meetingId]: 1 },
+            correlationId: "00000000-0000-4000-8000-000000000196",
+            payload: { meeting: completedMeeting },
+          }),
+        ),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      target.store.load(context().workspaceId).meetings[0]?.workItems[0]?.state,
+      "completed",
+    );
+    sourceDatabase.close();
+    targetDatabase.close();
   });
 });
 
@@ -657,7 +761,7 @@ describe("SQLite ApplicationStore", () => {
           user_version: number;
         }
       ).user_version,
-      10,
+      11,
     );
     assert.equal(
       (

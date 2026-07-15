@@ -496,6 +496,8 @@ describe("real Wave 2 renderer workflow", () => {
         "document.list",
         "knowledge.list",
         "project.list",
+        "radar.review",
+        "relationship.workspace",
         "task.list",
         "task.assignmentCandidates",
         "workspace.access",

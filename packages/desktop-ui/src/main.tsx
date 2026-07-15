@@ -46,6 +46,14 @@ const render = async (): Promise<void> => {
     const { KnowledgeHarness } = await import("./dev/KnowledgeHarness.js");
     content = <KnowledgeHarness />;
   }
+  if (
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("surface") === "strategic"
+  ) {
+    const { StrategicDepthHarness } =
+      await import("./dev/StrategicDepthHarness.js");
+    content = <StrategicDepthHarness />;
+  }
 
   createRoot(root).render(<StrictMode>{content}</StrictMode>);
 };

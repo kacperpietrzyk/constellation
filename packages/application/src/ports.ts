@@ -25,6 +25,7 @@ import type {
   CheckpointId,
   KnowledgeSourceId,
   NamedDocumentVersionId,
+  StrategicRecordId,
 } from "@constellation/contracts";
 import type {
   AuditReceipt,
@@ -50,6 +51,7 @@ import type {
   AgentCheckpoint,
   KnowledgeSource,
   NamedDocumentVersion,
+  StrategicRecord,
 } from "@constellation/domain";
 
 export type GeneratedIdKind =
@@ -213,6 +215,11 @@ export interface ApplicationWave2ReadView extends ApplicationReadView {
     spaceId: SpaceId,
     documentId?: DocumentId,
   ): readonly NamedDocumentVersion[];
+  getStrategicRecord(id: StrategicRecordId): StrategicRecord | undefined;
+  listStrategicRecords(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly StrategicRecord[];
   getRelation(id: RelationId): TaskProjectRelation | undefined;
   findTaskProjectRelation(
     taskId: TaskId,
@@ -288,6 +295,11 @@ export interface ApplicationWave2Transaction
     version: NamedDocumentVersion,
     expectedVersion: number,
   ): boolean;
+  insertStrategicRecord(record: StrategicRecord): void;
+  updateStrategicRecord(
+    record: StrategicRecord,
+    expectedVersion: number,
+  ): boolean;
   insertRelation(relation: TaskProjectRelation): void;
   updateRelation(
     relation: TaskProjectRelation,
@@ -309,6 +321,8 @@ export const isApplicationWave2ReadView = (
   "listKnowledgeSources" in view &&
   "getNamedDocumentVersion" in view &&
   "listNamedDocumentVersions" in view &&
+  "getStrategicRecord" in view &&
+  "listStrategicRecords" in view &&
   "getRelation" in view &&
   "findTaskProjectRelation" in view &&
   "listRelations" in view &&
@@ -329,6 +343,8 @@ export const isApplicationWave2Transaction = (
   "updateKnowledgeSource" in transaction &&
   "insertNamedDocumentVersion" in transaction &&
   "updateNamedDocumentVersion" in transaction &&
+  "insertStrategicRecord" in transaction &&
+  "updateStrategicRecord" in transaction &&
   "insertRelation" in transaction &&
   "updateRelation" in transaction &&
   "insertUndoDescriptor" in transaction &&
@@ -372,6 +388,7 @@ export interface ReferenceStateSnapshot {
   readonly documents?: readonly NativeDocument[];
   readonly knowledgeSources?: readonly KnowledgeSource[];
   readonly namedDocumentVersions?: readonly NamedDocumentVersion[];
+  readonly strategicRecords?: readonly StrategicRecord[];
   readonly relations: readonly TaskProjectRelation[];
   readonly undoDescriptors: readonly UndoDescriptor[];
   readonly events: readonly DomainEvent[];
