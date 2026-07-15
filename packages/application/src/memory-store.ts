@@ -30,6 +30,7 @@ import type {
   CheckpointId,
   KnowledgeSourceId,
   NamedDocumentVersionId,
+  StrategicRecordId,
 } from "@constellation/contracts";
 import type {
   AuditReceipt,
@@ -55,6 +56,7 @@ import type {
   AgentCheckpoint,
   KnowledgeSource,
   NamedDocumentVersion,
+  StrategicRecord,
 } from "@constellation/domain";
 
 export type FailureBoundary =
@@ -84,6 +86,8 @@ export type FailureBoundary =
   | "knowledge-source-update"
   | "named-document-version"
   | "named-document-version-update"
+  | "strategic-record"
+  | "strategic-record-update"
   | "relation"
   | "relation-update"
   | "undo"
@@ -136,6 +140,7 @@ interface MutableState {
     NamedDocumentVersionId,
     NamedDocumentVersion
   >;
+  readonly strategicRecords: Map<StrategicRecordId, StrategicRecord>;
   readonly relations: Map<RelationId, TaskProjectRelation>;
   readonly undoDescriptors: Map<string, UndoDescriptor>;
   readonly events: Map<string, DomainEvent>;
@@ -164,6 +169,7 @@ const emptyState = (): MutableState => ({
   documents: new Map(),
   knowledgeSources: new Map(),
   namedDocumentVersions: new Map(),
+  strategicRecords: new Map(),
   relations: new Map(),
   undoDescriptors: new Map(),
   events: new Map(),
@@ -192,6 +198,7 @@ const cloneState = (state: MutableState): MutableState => ({
   documents: new Map(state.documents),
   knowledgeSources: new Map(state.knowledgeSources),
   namedDocumentVersions: new Map(state.namedDocumentVersions),
+  strategicRecords: new Map(state.strategicRecords),
   relations: new Map(state.relations),
   undoDescriptors: new Map(state.undoDescriptors),
   events: new Map(state.events),
@@ -519,6 +526,28 @@ class ReadView implements ApplicationReadView {
         (left, right) =>
           right.createdAt.localeCompare(left.createdAt) ||
           right.id.localeCompare(left.id),
+      );
+  }
+
+  public getStrategicRecord(
+    id: StrategicRecordId,
+  ): StrategicRecord | undefined {
+    return this.state.strategicRecords.get(id);
+  }
+
+  public listStrategicRecords(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly StrategicRecord[] {
+    return [...this.state.strategicRecords.values()]
+      .filter(
+        (record) =>
+          record.workspaceId === workspaceId && record.spaceId === spaceId,
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          left.id.localeCompare(right.id),
       );
   }
 
@@ -898,6 +927,25 @@ class Transaction extends ReadView implements ApplicationTransaction {
     return true;
   }
 
+  public insertStrategicRecord(record: StrategicRecord): void {
+    if (this.state.strategicRecords.has(record.id)) {
+      throw new Error(`Duplicate strategic record ID: ${record.id}`);
+    }
+    this.state.strategicRecords.set(record.id, record);
+    this.failures.reached("strategic-record");
+  }
+
+  public updateStrategicRecord(
+    record: StrategicRecord,
+    expectedVersion: number,
+  ): boolean {
+    const current = this.state.strategicRecords.get(record.id);
+    if (current?.version !== expectedVersion) return false;
+    this.state.strategicRecords.set(record.id, record);
+    this.failures.reached("strategic-record-update");
+    return true;
+  }
+
   public insertRelation(relation: TaskProjectRelation): void {
     if (this.state.relations.has(relation.id))
       throw new Error(`Duplicate relation ID: ${relation.id}`);
@@ -1064,6 +1112,9 @@ const stateFromSnapshot = (snapshot: ReferenceStateSnapshot): MutableState => ({
   namedDocumentVersions: new Map(
     (snapshot.namedDocumentVersions ?? []).map((value) => [value.id, value]),
   ),
+  strategicRecords: new Map(
+    (snapshot.strategicRecords ?? []).map((value) => [value.id, value]),
+  ),
   relations: new Map(snapshot.relations.map((value) => [value.id, value])),
   undoDescriptors: new Map(
     snapshot.undoDescriptors.map((value) => [value.targetCommandId, value]),
@@ -1140,6 +1191,7 @@ export class InMemoryReferenceStore implements ApplicationStore {
       documents: [...this.state.documents.values()],
       knowledgeSources: [...this.state.knowledgeSources.values()],
       namedDocumentVersions: [...this.state.namedDocumentVersions.values()],
+      strategicRecords: [...this.state.strategicRecords.values()],
       relations: [...this.state.relations.values()],
       undoDescriptors: [...this.state.undoDescriptors.values()],
       events: [...this.state.events.values()],

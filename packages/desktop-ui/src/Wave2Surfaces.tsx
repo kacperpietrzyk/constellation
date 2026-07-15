@@ -376,6 +376,7 @@ export const ProjectsSurface = ({
   onSelectProject,
   onCreate,
   onUpdateOutcome,
+  onSetLifecycle,
   onRelate,
   onUnrelate,
 }: {
@@ -393,6 +394,7 @@ export const ProjectsSurface = ({
   readonly onSelectProject: (id: ProjectId) => void;
   readonly onCreate: (title: string, outcome: string) => Promise<boolean>;
   readonly onUpdateOutcome: (outcome: string) => void;
+  readonly onSetLifecycle: (lifecycle: "active" | "closed") => void;
   readonly onRelate: (taskId: TaskId) => void;
   readonly onUnrelate: () => void;
 }) => {
@@ -534,12 +536,29 @@ export const ProjectsSurface = ({
                     <h2 id="project-outcome-title">
                       {overview.project.intendedOutcome}
                     </h2>
-                    <button
-                      className="ghost-button"
-                      onClick={() => setEditing(true)}
-                    >
-                      Edytuj wynik
-                    </button>
+                    <div className="capture-footer">
+                      <button
+                        className="ghost-button"
+                        onClick={() => setEditing(true)}
+                      >
+                        Edytuj wynik
+                      </button>
+                      <button
+                        className="secondary-button compact"
+                        disabled={busy}
+                        onClick={() =>
+                          onSetLifecycle(
+                            overview.project.lifecycle === "active"
+                              ? "closed"
+                              : "active",
+                          )
+                        }
+                      >
+                        {overview.project.lifecycle === "active"
+                          ? "Zamknij projekt"
+                          : "Otwórz ponownie"}
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
@@ -713,6 +732,7 @@ const activityLabels: Record<
   knowledge_evidence_updated: "Zmieniono dowody dokumentu",
   knowledge_named_version_created: "Zamrożono nazwaną wersję",
   knowledge_named_version_voided: "Unieważniono nazwaną wersję",
+  strategic_record_changed: "Zmieniono rekord strategiczny",
   command_undone: "Cofnięto polecenie",
 };
 

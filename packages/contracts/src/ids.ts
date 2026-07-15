@@ -59,6 +59,9 @@ export type NamedDocumentVersionId = z.infer<
   typeof NamedDocumentVersionIdSchema
 >;
 
+export const StrategicRecordIdSchema = opaqueId<"StrategicRecordId">();
+export type StrategicRecordId = z.infer<typeof StrategicRecordIdSchema>;
+
 export const RelationIdSchema = opaqueId<"RelationId">();
 export type RelationId = z.infer<typeof RelationIdSchema>;
 

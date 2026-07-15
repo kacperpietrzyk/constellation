@@ -43,6 +43,7 @@ import {
   type CheckpointId,
   type KnowledgeSourceId,
   type NamedDocumentVersionId,
+  type StrategicRecordId,
 } from "@constellation/contracts";
 import type {
   AuditReceipt,
@@ -68,6 +69,7 @@ import type {
   AgentCheckpoint,
   KnowledgeSource,
   NamedDocumentVersion,
+  StrategicRecord,
 } from "@constellation/domain";
 
 import type {
@@ -76,7 +78,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
   checkpoint: null,
@@ -99,6 +101,7 @@ const COORDINATED_PROJECTION_TABLES = [
   "document_revisions",
   "document_collaboration_state",
   "named_document_versions",
+  "strategic_records",
   "documents",
   "knowledge_sources",
   "undo_descriptors",
@@ -548,6 +551,20 @@ const schemaV10 = `
     ON named_document_versions(workspace_id, space_id, document_id, created_at DESC, id DESC);
 `;
 
+const schemaV11 = `
+  CREATE TABLE strategic_records (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    kind TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    version INTEGER NOT NULL CHECK (version > 0),
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX strategic_records_page
+    ON strategic_records(workspace_id, space_id, updated_at DESC, id DESC);
+`;
+
 export interface LocalCoordinationState {
   readonly workspaceId: WorkspaceId;
   readonly providerInstanceId: string;
@@ -718,6 +735,7 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
     if (currentVersion < 8) database.exec(schemaV8);
     if (currentVersion < 9) database.exec(schemaV9);
     if (currentVersion < 10) database.exec(schemaV10);
+    if (currentVersion < 11) database.exec(schemaV11);
     database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
     database.exec("COMMIT;");
   } catch (error) {
@@ -1287,6 +1305,43 @@ class SqliteReadView implements ApplicationWave2ReadView {
         { workspaceId, spaceId },
       );
     });
+  }
+
+  public getStrategicRecord(
+    id: StrategicRecordId,
+  ): StrategicRecord | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, space_id, payload_json FROM strategic_records WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<StrategicRecord>(row, "id", id, "strategic record", {
+          workspaceId: stringValue(row, "workspace_id", "strategic record"),
+          spaceId: stringValue(row, "space_id", "strategic record"),
+        });
+  }
+
+  public listStrategicRecords(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+  ): readonly StrategicRecord[] {
+    return this.database
+      .prepare(
+        "SELECT id, payload_json FROM strategic_records WHERE workspace_id = ? AND space_id = ? ORDER BY updated_at DESC, id DESC",
+      )
+      .all(workspaceId, spaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "strategic record");
+        return parsePayload<StrategicRecord>(
+          row,
+          "id",
+          id,
+          "strategic record",
+          { workspaceId, spaceId },
+        );
+      });
   }
 
   public getRelation(id: RelationId): TaskProjectRelation | undefined {
@@ -2039,6 +2094,48 @@ class SqliteTransaction
         ),
     );
   }
+  public insertStrategicRecord(record: StrategicRecord): void {
+    this.insert(
+      "strategic_records",
+      [
+        "id",
+        "workspace_id",
+        "space_id",
+        "kind",
+        "updated_at",
+        "version",
+        "payload_json",
+      ],
+      [
+        record.id,
+        record.workspaceId,
+        record.spaceId,
+        record.kind,
+        record.updatedAt,
+        record.version,
+        payload(record),
+      ],
+    );
+  }
+  public updateStrategicRecord(
+    record: StrategicRecord,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE strategic_records SET kind = ?, updated_at = ?, version = ?, payload_json = ? WHERE id = ? AND version = ?",
+        )
+        .run(
+          record.kind,
+          record.updatedAt,
+          record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+        ),
+    );
+  }
   public insertRelation(record: TaskProjectRelation): void {
     this.insert(
       "task_project_relations",
@@ -2363,19 +2460,47 @@ export class SqliteApplicationStore
   }
 
   public load(workspaceId: WorkspaceId): MeetingLoopState {
+    const coordinatedMeetings = new SqliteReadView(this.database)
+      .listSpaces(workspaceId)
+      .flatMap((space) =>
+        new SqliteReadView(this.database)
+          .listStrategicRecords(workspaceId, space.id)
+          .flatMap((record) =>
+            record.kind === "meeting" ? [record.meeting] : [],
+          ),
+      );
+    const withCoordinatedMeetings = (
+      state: MeetingLoopState,
+    ): MeetingLoopState => {
+      const meetings = new Map(
+        state.meetings.map((meeting) => [meeting.id, meeting]),
+      );
+      for (const meeting of coordinatedMeetings) {
+        const current = meetings.get(meeting.id);
+        if (current === undefined || meeting.version > current.version) {
+          meetings.set(meeting.id, meeting);
+        }
+      }
+      return {
+        ...state,
+        meetings: [...meetings.values()].sort((left, right) =>
+          right.startedAt.localeCompare(left.startedAt),
+        ),
+      };
+    };
     const row = this.database
       .prepare(
         "SELECT revision, payload_json FROM meeting_loop_state WHERE workspace_id = ?",
       )
       .get(workspaceId);
     if (row === undefined) {
-      return {
+      return withCoordinatedMeetings({
         revision: 0,
         meetings: [],
         previews: [],
         receipts: [],
         audits: [],
-      };
+      });
     }
     const revision = numberValue(row, "revision", "meeting loop state");
     const raw = stringValue(row, "payload_json", "meeting loop state");
@@ -2399,10 +2524,10 @@ export class SqliteApplicationStore
         "Meeting loop state violates its storage contract.",
       );
     }
-    return {
+    return withCoordinatedMeetings({
       ...(state as unknown as MeetingLoopState),
       audits: (state.audits as MeetingLoopState["audits"] | undefined) ?? [],
-    };
+    });
   }
 
   public save(
@@ -2833,6 +2958,12 @@ export class SqliteApplicationStore
         "id",
         "named document version",
       ),
+      strategicRecords: records(
+        "strategic_records",
+        "id",
+        "id",
+        "strategic record",
+      ),
       relations: records("task_project_relations", "id", "id", "relation"),
       undoDescriptors: records(
         "undo_descriptors",
@@ -3132,6 +3263,9 @@ export class SqliteApplicationStore
     );
     (snapshot.namedDocumentVersions ?? []).forEach((value) =>
       transaction.insertNamedDocumentVersion(value),
+    );
+    (snapshot.strategicRecords ?? []).forEach((value) =>
+      transaction.insertStrategicRecord(value),
     );
     (snapshot.comments ?? []).forEach((value) =>
       transaction.insertComment(value),

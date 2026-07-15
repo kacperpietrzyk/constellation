@@ -44,6 +44,7 @@ import {
   type DeviceId,
   CalendarBlockDraftSchema,
   MeetingWorkItemSchema,
+  type ImportedMeeting,
 } from "@constellation/contracts";
 import { EncryptedStoreCapabilityError } from "@constellation/local-store";
 import { RemoteMcpCredentialSchema } from "@constellation/mcp/protocol";
@@ -573,6 +574,38 @@ const startProductionDesktop = async (): Promise<void> => {
             ? { helperPath: calendarHelperCandidate }
             : {}),
         });
+  const publishMeetingToCommandFeed = (meeting: ImportedMeeting): void => {
+    const store = workspaceRecovery?.kernel?.store;
+    if (store === undefined)
+      throw new Error("Meeting projection is unavailable.");
+    const current = store
+      .snapshot()
+      .strategicRecords?.find((record) => record.id === meeting.id);
+    if (
+      current?.kind === "meeting" &&
+      current.meeting.version >= meeting.version
+    )
+      return;
+    const result = runtime.service.execute(
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "meeting.upsertImported",
+        commandId: randomUUID(),
+        workspaceId: meeting.workspaceId,
+        idempotencyKey: `meeting:${meeting.id}:v${meeting.version}`,
+        expectedVersions:
+          current === undefined ? {} : { [current.id]: current.version },
+        correlationId: randomUUID(),
+        payload: { meeting },
+      }),
+    );
+    if (
+      result.kind !== "command_outcome" ||
+      result.outcome.outcome !== "success"
+    ) {
+      throw new Error("Meeting change could not enter the coordinated feed.");
+    }
+  };
   const jamieCustody = new JamieConnectionCustody(
     app.getPath("userData"),
     electronSafeStorage,
@@ -964,8 +997,13 @@ const startProductionDesktop = async (): Promise<void> => {
           source: normalized,
         });
         if (outcome.outcome === "rejected") counts.failed += 1;
-        else if (outcome.outcome === "no_change") counts.noChange += 1;
-        else counts[outcome.outcome] += 1;
+        else if (outcome.outcome === "no_change") {
+          publishMeetingToCommandFeed(outcome.meeting);
+          counts.noChange += 1;
+        } else {
+          publishMeetingToCommandFeed(outcome.meeting);
+          counts[outcome.outcome] += 1;
+        }
       } catch {
         counts.failed += 1;
       }
@@ -1029,16 +1067,17 @@ const startProductionDesktop = async (): Promise<void> => {
       )
         throw new Error("Invalid meeting work item edit.");
       const state = MeetingWorkItemSchema.shape.state.parse(candidate.state);
-      return (
-        meetingLoop.service.editWorkItem({
-          authorization: meetingLoop.authorization(),
-          meetingId: candidate.meetingId,
-          workItemId: candidate.workItemId,
-          expectedVersion: candidate.expectedVersion,
-          title: candidate.title,
-          state,
-        }) !== undefined
-      );
+      const updated = meetingLoop.service.editWorkItem({
+        authorization: meetingLoop.authorization(),
+        meetingId: candidate.meetingId,
+        workItemId: candidate.workItemId,
+        expectedVersion: candidate.expectedVersion,
+        title: candidate.title,
+        state,
+      });
+      if (updated === undefined) return false;
+      publishMeetingToCommandFeed(updated);
+      return true;
     },
   );
   ipcMain.handle(DESKTOP_CHANNELS.addMeetingWorkItem, (event, raw: unknown) => {
@@ -1062,15 +1101,16 @@ const startProductionDesktop = async (): Promise<void> => {
     )
       throw new Error("Invalid meeting work item.");
     const kind = MeetingWorkItemSchema.shape.kind.parse(candidate.kind);
-    return (
-      meetingLoop.service.addWorkItem({
-        authorization: meetingLoop.authorization(),
-        meetingId: candidate.meetingId,
-        requestId: candidate.requestId,
-        kind,
-        title: candidate.title,
-      }) !== undefined
-    );
+    const updated = meetingLoop.service.addWorkItem({
+      authorization: meetingLoop.authorization(),
+      meetingId: candidate.meetingId,
+      requestId: candidate.requestId,
+      kind,
+      title: candidate.title,
+    });
+    if (updated === undefined) return false;
+    publishMeetingToCommandFeed(updated);
+    return true;
   });
   ipcMain.handle(
     DESKTOP_CHANNELS.previewCalendarBlocks,

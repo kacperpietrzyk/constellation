@@ -13,10 +13,12 @@ import {
   ProjectIdSchema,
   QueryResultSchema,
   RelationIdSchema,
+  TaskIdSchema,
   TaskAssignmentIdSchema,
   AttentionSignalIdSchema,
   KnowledgeSourceIdSchema,
   NamedDocumentVersionIdSchema,
+  StrategicRecordIdSchema,
   type CommandEnvelope,
   type CommandOutcome,
   type ExecutionContext,
@@ -42,6 +44,19 @@ import {
   setDocumentEvidence,
   createNamedDocumentVersion,
   voidNamedDocumentVersion,
+  createOrganization,
+  createPerson,
+  createOpportunity,
+  createOffer,
+  linkOpportunityOutcomes,
+  createRenewal,
+  createRelationshipFact,
+  createDecision,
+  createArea,
+  createRecurrence,
+  createRadarCandidate,
+  closeProject,
+  reopenProject,
   restoreTaskProjectRelation,
   setTaskStatus,
   undoCaptureTaskRoute,
@@ -60,6 +75,7 @@ import {
   type AttentionDestination,
   type KnowledgeSource,
   type NativeDocument,
+  type StrategicRecord,
 } from "@constellation/domain";
 
 import type {
@@ -94,6 +110,25 @@ export type Wave2Command = Extract<
       | "knowledge.documentSetEvidence"
       | "knowledge.namedVersionCreate"
       | "knowledge.namedVersionVoid"
+      | "relationship.organizationCreate"
+      | "relationship.personCreate"
+      | "opportunity.create"
+      | "opportunity.offerCreate"
+      | "opportunity.linkOutcomes"
+      | "relationship.renewalCreate"
+      | "relationship.renewalResolve"
+      | "relationship.factCreate"
+      | "decision.create"
+      | "decision.supersede"
+      | "decision.resolveImpact"
+      | "area.create"
+      | "recurrence.create"
+      | "recurrence.generateOccurrence"
+      | "project.close"
+      | "project.reopen"
+      | "radar.candidateUpsert"
+      | "radar.resolve"
+      | "meeting.upsertImported"
       | "project.updateOutcome"
       | "task.setStatus"
       | "task.complete"
@@ -121,6 +156,8 @@ export type Wave2Query = Extract<
       | "document.list"
       | "knowledge.list"
       | "knowledge.documentContext"
+      | "relationship.workspace"
+      | "radar.review"
       | "project.operationalOverview"
       | "search.global"
       | "cockpit.week"
@@ -223,6 +260,126 @@ export const isWave2CommandAuthorized = (
         command,
         namedVersion?.workspaceId === command.workspaceId
           ? namedVersion.spaceId
+          : undefined,
+      );
+    }
+    case "relationship.organizationCreate":
+    case "relationship.personCreate":
+    case "opportunity.create": {
+      const space = view.getSpace(command.payload.spaceId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        space?.workspaceId === command.workspaceId ? space.id : undefined,
+      );
+    }
+    case "opportunity.offerCreate":
+    case "opportunity.linkOutcomes": {
+      const opportunity = view.getStrategicRecord(
+        command.payload.opportunityId,
+      );
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        opportunity?.workspaceId === command.workspaceId
+          ? opportunity.spaceId
+          : undefined,
+      );
+    }
+    case "relationship.renewalCreate":
+    case "relationship.factCreate":
+    case "decision.create":
+    case "area.create":
+    case "recurrence.create":
+    case "radar.candidateUpsert": {
+      const space = view.getSpace(command.payload.spaceId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        space?.workspaceId === command.workspaceId ? space.id : undefined,
+      );
+    }
+    case "relationship.renewalResolve": {
+      const record = view.getStrategicRecord(command.payload.renewalId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        record?.workspaceId === command.workspaceId
+          ? record.spaceId
+          : undefined,
+      );
+    }
+    case "decision.supersede": {
+      const record = view.getStrategicRecord(command.payload.priorDecisionId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        record?.workspaceId === command.workspaceId
+          ? record.spaceId
+          : undefined,
+      );
+    }
+    case "decision.resolveImpact": {
+      const record = view.getStrategicRecord(command.payload.impactReviewId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        record?.workspaceId === command.workspaceId
+          ? record.spaceId
+          : undefined,
+      );
+    }
+    case "recurrence.generateOccurrence":
+    case "radar.resolve": {
+      const record = view.getStrategicRecord(
+        command.commandName === "recurrence.generateOccurrence"
+          ? command.payload.recurrenceId
+          : command.payload.candidateId,
+      );
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        record?.workspaceId === command.workspaceId
+          ? record.spaceId
+          : undefined,
+      );
+    }
+    case "project.close":
+    case "project.reopen": {
+      const project = view.getProject(command.payload.projectId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        project?.workspaceId === command.workspaceId
+          ? project.spaceId
+          : undefined,
+      );
+    }
+    case "meeting.upsertImported": {
+      const meeting = command.payload.meeting;
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        meeting.workspaceId === command.workspaceId
+          ? meeting.spaceId
           : undefined,
       );
     }
@@ -437,6 +594,7 @@ const appendJournal = (
       | "document"
       | "knowledgeSource"
       | "namedDocumentVersion"
+      | "strategicRecord"
       | "relation"
       | "comment"
       | "attentionSignal"
@@ -497,6 +655,53 @@ const appendJournal = (
     transaction.insertUndoDescriptor(undoDescriptor);
   return committed;
 };
+
+const appendStrategicJournal = (
+  dependencies: ApplicationKernelDependencies,
+  transaction: ApplicationWave2Transaction,
+  context: ExecutionContext,
+  command: Wave2Command,
+  idempotency: Omit<IdempotencyRecord, "outcome">,
+  occurredAt: string,
+  record: StrategicRecord,
+  changedFields: readonly string[],
+  additionalVersions: Readonly<Record<string, number>> = {},
+  additionalKinds: Readonly<
+    Record<string, "task" | "project" | "attentionSignal">
+  > = {},
+): CommandOutcome =>
+  appendJournal(
+    dependencies,
+    transaction,
+    context,
+    command,
+    idempotency,
+    occurredAt,
+    {
+      type: "strategic.record_changed",
+      workspaceId: record.workspaceId,
+      spaceId: record.spaceId,
+      aggregateId: record.id,
+      aggregateVersion: record.version,
+      occurredAt,
+    },
+    { [record.id]: record.version, ...additionalVersions },
+    changedFields,
+    {
+      diagnosticCode: "strategic.record_changed",
+      projection: {
+        kind: "strategic.record_changed",
+        recordId: record.id,
+        recordType: record.kind,
+        version: record.version,
+      },
+    },
+    undefined,
+    {
+      [record.id]: "strategicRecord",
+      ...additionalKinds,
+    },
+  );
 
 const versionConflict = (
   command: Wave2Command,
@@ -1093,6 +1298,1043 @@ export const executeWave2Command = (
         },
         undefined,
         { [voided.id]: "namedDocumentVersion" },
+      );
+    }
+    case "relationship.organizationCreate": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (transaction.getStrategicRecord(command.payload.organizationId))
+        return precondition(command, occurredAt);
+      const record = createOrganization({
+        id: StrategicRecordIdSchema.parse(command.payload.organizationId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        name: command.payload.name,
+        relationshipState: command.payload.relationshipState,
+        ...(command.payload.nextAction === undefined
+          ? {}
+          : { nextAction: command.payload.nextAction }),
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertStrategicRecord(record);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "strategic.record_changed",
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          aggregateId: record.id,
+          aggregateVersion: record.version,
+          occurredAt,
+        },
+        { [record.id]: record.version },
+        ["name", "relationshipState", "nextAction"],
+        {
+          diagnosticCode: "strategic.record_changed",
+          projection: {
+            kind: "strategic.record_changed",
+            recordId: record.id,
+            recordType: record.kind,
+            version: record.version,
+          },
+        },
+        undefined,
+        { [record.id]: "strategicRecord" },
+      );
+    }
+    case "relationship.renewalCreate": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (
+        transaction.getStrategicRecord(command.payload.renewalId) !==
+          undefined ||
+        transaction.getTask(command.payload.followUpTaskId) !== undefined
+      )
+        return precondition(command, occurredAt);
+      const organization = transaction.getStrategicRecord(
+        command.payload.organizationId,
+      );
+      const sources = command.payload.evidenceSourceIds.map((id) =>
+        transaction.getKnowledgeSource(id),
+      );
+      const owner = transaction.getMembership(
+        command.workspaceId,
+        command.payload.ownerPrincipalId,
+      );
+      const duplicateCycle = transaction
+        .listStrategicRecords(command.workspaceId, command.payload.spaceId)
+        .some(
+          (record) =>
+            record.kind === "renewal" &&
+            record.organizationId === command.payload.organizationId &&
+            record.cycleKey === command.payload.cycleKey,
+        );
+      if (
+        organization?.kind !== "organization" ||
+        organization.spaceId !== command.payload.spaceId ||
+        owner === undefined ||
+        owner.status === "revoked" ||
+        duplicateCycle ||
+        sources.some(
+          (source) =>
+            source === undefined ||
+            source.workspaceId !== command.workspaceId ||
+            source.spaceId !== command.payload.spaceId,
+        )
+      )
+        return precondition(command, occurredAt);
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (workspace === undefined) return precondition(command, occurredAt);
+      const record = createRenewal({
+        id: StrategicRecordIdSchema.parse(command.payload.renewalId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        organizationId: organization.id,
+        title: command.payload.title,
+        scope: command.payload.scope,
+        expiresAt: command.payload.expiresAt,
+        leadTimeDays: command.payload.leadTimeDays,
+        ownerPrincipalId: command.payload.ownerPrincipalId,
+        evidenceSourceIds: command.payload.evidenceSourceIds,
+        followUpTaskId: TaskIdSchema.parse(command.payload.followUpTaskId),
+        cycleKey: command.payload.cycleKey,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      const task: Task = {
+        id: record.followUpTaskId,
+        workspaceId: record.workspaceId,
+        spaceId: record.spaceId,
+        title: `Review renewal: ${record.title}`,
+        statusId: workspace.defaultTaskStatusId,
+        recordState: "active",
+        completionState: "open",
+        createdBy: context.principalId,
+        version: 1,
+        createdAt: occurredAt,
+        updatedAt: occurredAt,
+      };
+      transaction.insertStrategicRecord(record);
+      transaction.insertTask(task);
+      const signal = upsertAttention(
+        dependencies,
+        transaction,
+        {
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          targetPrincipalId: record.ownerPrincipalId,
+          reason: "renewal_due",
+          destination: { kind: "task", taskId: task.id },
+          sourceRecordId: record.id,
+          deduplicationKey: `renewal:${record.id}:${record.cycleKey}`,
+          urgency: "in_app",
+        },
+        occurredAt,
+      );
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        [
+          "organizationId",
+          "expiresAt",
+          "leadTimeDays",
+          "evidenceSourceIds",
+          "followUpTaskId",
+          "cycleKey",
+          "state",
+        ],
+        { [task.id]: task.version, [signal.id]: signal.version },
+        { [task.id]: "task", [signal.id]: "attentionSignal" },
+      );
+    }
+    case "relationship.renewalResolve": {
+      const current = transaction.getStrategicRecord(command.payload.renewalId);
+      if (current?.kind !== "renewal" || current.state !== "watching")
+        return precondition(command, occurredAt);
+      const task = transaction.getTask(current.followUpTaskId);
+      if (task === undefined) return precondition(command, occurredAt);
+      const expected = {
+        [current.id]: current.version,
+        [task.id]: task.version,
+      };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const record: StrategicRecord = {
+        ...current,
+        state: command.payload.state,
+        version: current.version + 1,
+        updatedAt: occurredAt,
+      };
+      const updatedTask =
+        task.completionState === "completed"
+          ? task
+          : completeTask(task, occurredAt);
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      if (
+        updatedTask !== task &&
+        !transaction.updateTask(updatedTask, task.version)
+      )
+        throw new RetryableUnitOfWorkError();
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["state"],
+        { [updatedTask.id]: updatedTask.version },
+        { [updatedTask.id]: "task" },
+      );
+    }
+    case "relationship.factCreate": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (transaction.getStrategicRecord(command.payload.factId) !== undefined)
+        return precondition(command, occurredAt);
+      const organization = transaction.getStrategicRecord(
+        command.payload.organizationId,
+      );
+      const sources = command.payload.evidenceSourceIds.map((id) =>
+        transaction.getKnowledgeSource(id),
+      );
+      if (
+        organization?.kind !== "organization" ||
+        organization.spaceId !== command.payload.spaceId ||
+        sources.some(
+          (source) =>
+            source === undefined || source.spaceId !== command.payload.spaceId,
+        )
+      )
+        return precondition(command, occurredAt);
+      const record = createRelationshipFact({
+        id: StrategicRecordIdSchema.parse(command.payload.factId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        organizationId: organization.id,
+        factType: command.payload.factType,
+        value: command.payload.value,
+        evidenceSourceIds: command.payload.evidenceSourceIds,
+        verifiedAt: command.payload.verifiedAt,
+        staleAfter: command.payload.staleAfter,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertStrategicRecord(record);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        [
+          "organizationId",
+          "factType",
+          "value",
+          "evidenceSourceIds",
+          "verifiedAt",
+          "staleAfter",
+          "state",
+        ],
+      );
+    }
+    case "decision.create": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (
+        transaction.getStrategicRecord(command.payload.decisionId) !== undefined
+      )
+        return precondition(command, occurredAt);
+      const sources = command.payload.evidenceSourceIds.map((id) =>
+        transaction.getKnowledgeSource(id),
+      );
+      if (
+        sources.some(
+          (source) =>
+            source === undefined || source.spaceId !== command.payload.spaceId,
+        )
+      )
+        return precondition(command, occurredAt);
+      const record = createDecision({
+        id: StrategicRecordIdSchema.parse(command.payload.decisionId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        title: command.payload.title,
+        rationale: command.payload.rationale,
+        evidenceSourceIds: command.payload.evidenceSourceIds,
+        linkedRecordIds: command.payload.linkedRecordIds,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertStrategicRecord(record);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["title", "rationale", "evidenceSourceIds", "linkedRecordIds", "state"],
+      );
+    }
+    case "decision.supersede": {
+      const prior = transaction.getStrategicRecord(
+        command.payload.priorDecisionId,
+      );
+      if (
+        prior?.kind !== "decision" ||
+        prior.state !== "current" ||
+        transaction.getStrategicRecord(
+          command.payload.replacementDecisionId,
+        ) !== undefined ||
+        transaction.getStrategicRecord(command.payload.impactReviewId) !==
+          undefined
+      )
+        return precondition(command, occurredAt);
+      const sources = command.payload.evidenceSourceIds.map((id) =>
+        transaction.getKnowledgeSource(id),
+      );
+      if (
+        sources.some(
+          (source) => source === undefined || source.spaceId !== prior.spaceId,
+        )
+      )
+        return precondition(command, occurredAt);
+      const expected = { [prior.id]: prior.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const replacement = createDecision({
+        id: StrategicRecordIdSchema.parse(
+          command.payload.replacementDecisionId,
+        ),
+        workspaceId: prior.workspaceId,
+        spaceId: prior.spaceId,
+        title: command.payload.title,
+        rationale: command.payload.rationale,
+        evidenceSourceIds: command.payload.evidenceSourceIds,
+        linkedRecordIds: command.payload.consequences.map(
+          (item) => item.recordId,
+        ),
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      const superseded: StrategicRecord = {
+        ...prior,
+        state: "superseded",
+        supersededById: replacement.id,
+        supersededAt: occurredAt,
+        version: prior.version + 1,
+        updatedAt: occurredAt,
+      };
+      const review: StrategicRecord = {
+        id: StrategicRecordIdSchema.parse(command.payload.impactReviewId),
+        workspaceId: prior.workspaceId,
+        spaceId: prior.spaceId,
+        kind: "impact_review",
+        priorDecisionId: prior.id,
+        replacementDecisionId: replacement.id,
+        reason: command.payload.reason,
+        consequences: command.payload.consequences.map((item) => ({
+          ...item,
+          state: "open" as const,
+        })),
+        state: command.payload.consequences.length === 0 ? "resolved" : "open",
+        createdBy: context.principalId,
+        version: 1,
+        createdAt: occurredAt,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateStrategicRecord(superseded, prior.version))
+        return versionConflict(command, occurredAt, expected);
+      transaction.insertStrategicRecord(replacement);
+      transaction.insertStrategicRecord(review);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        review,
+        [
+          "priorDecisionId",
+          "replacementDecisionId",
+          "reason",
+          "consequences",
+          "state",
+        ],
+        {
+          [superseded.id]: superseded.version,
+          [replacement.id]: replacement.version,
+        },
+        {},
+      );
+    }
+    case "decision.resolveImpact": {
+      const current = transaction.getStrategicRecord(
+        command.payload.impactReviewId,
+      );
+      if (current?.kind !== "impact_review" || current.state !== "open")
+        return precondition(command, occurredAt);
+      const consequence = current.consequences.find(
+        (item) => item.recordId === command.payload.recordId,
+      );
+      if (consequence === undefined || consequence.state === "resolved")
+        return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const consequences = current.consequences.map((item) =>
+        item.recordId === consequence.recordId
+          ? {
+              ...item,
+              state: "resolved" as const,
+              resolution: command.payload.resolution,
+            }
+          : item,
+      );
+      const record: StrategicRecord = {
+        ...current,
+        consequences,
+        state: consequences.every((item) => item.state === "resolved")
+          ? "resolved"
+          : "open",
+        version: current.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["consequences", "state"],
+      );
+    }
+    case "area.create": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (transaction.getStrategicRecord(command.payload.areaId) !== undefined)
+        return precondition(command, occurredAt);
+      const record = createArea({
+        id: StrategicRecordIdSchema.parse(command.payload.areaId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        title: command.payload.title,
+        responsibility: command.payload.responsibility,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertStrategicRecord(record);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["title", "responsibility", "state"],
+      );
+    }
+    case "recurrence.create": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (
+        transaction.getStrategicRecord(command.payload.recurrenceId) !==
+        undefined
+      )
+        return precondition(command, occurredAt);
+      const record = createRecurrence({
+        id: StrategicRecordIdSchema.parse(command.payload.recurrenceId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        title: command.payload.title,
+        taskTitle: command.payload.taskTitle,
+        ...(command.payload.contextRecordId === undefined
+          ? {}
+          : { contextRecordId: command.payload.contextRecordId }),
+        cadence: command.payload.cadence,
+        nextDueAt: command.payload.nextDueAt,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertStrategicRecord(record);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        [
+          "title",
+          "taskTitle",
+          "contextRecordId",
+          "cadence",
+          "nextDueAt",
+          "state",
+        ],
+      );
+    }
+    case "recurrence.generateOccurrence": {
+      const current = transaction.getStrategicRecord(
+        command.payload.recurrenceId,
+      );
+      if (
+        current?.kind !== "recurrence" ||
+        current.state !== "active" ||
+        transaction.getTask(command.payload.occurrenceTaskId) !== undefined
+      )
+        return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (workspace === undefined) return precondition(command, occurredAt);
+      const task: Task = {
+        id: TaskIdSchema.parse(command.payload.occurrenceTaskId),
+        workspaceId: current.workspaceId,
+        spaceId: current.spaceId,
+        title: current.taskTitle,
+        statusId: workspace.defaultTaskStatusId,
+        recordState: "active",
+        completionState: "open",
+        createdBy: context.principalId,
+        version: 1,
+        createdAt: occurredAt,
+        updatedAt: occurredAt,
+      };
+      const record: StrategicRecord = {
+        ...current,
+        lastOccurrenceTaskId: task.id,
+        nextDueAt: command.payload.nextDueAt,
+        version: current.version + 1,
+        updatedAt: occurredAt,
+      };
+      transaction.insertTask(task);
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["lastOccurrenceTaskId", "nextDueAt"],
+        { [task.id]: task.version },
+        { [task.id]: "task" },
+      );
+    }
+    case "relationship.personCreate": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (transaction.getStrategicRecord(command.payload.personId))
+        return precondition(command, occurredAt);
+      const organization =
+        command.payload.organizationId === undefined
+          ? undefined
+          : transaction.getStrategicRecord(command.payload.organizationId);
+      if (
+        organization !== undefined &&
+        (organization.kind !== "organization" ||
+          organization.workspaceId !== command.workspaceId ||
+          organization.spaceId !== command.payload.spaceId)
+      )
+        return precondition(command, occurredAt);
+      if (
+        command.payload.organizationId !== undefined &&
+        organization === undefined
+      )
+        return precondition(command, occurredAt);
+      const record = createPerson({
+        id: StrategicRecordIdSchema.parse(command.payload.personId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        name: command.payload.name,
+        ...(organization === undefined
+          ? {}
+          : { organizationId: organization.id }),
+        ...(command.payload.role === undefined
+          ? {}
+          : { role: command.payload.role }),
+        ...(command.payload.email === undefined
+          ? {}
+          : { email: command.payload.email }),
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertStrategicRecord(record);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "strategic.record_changed",
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          aggregateId: record.id,
+          aggregateVersion: record.version,
+          occurredAt,
+        },
+        { [record.id]: record.version },
+        ["name", "organizationId", "role", "email"],
+        {
+          diagnosticCode: "strategic.record_changed",
+          projection: {
+            kind: "strategic.record_changed",
+            recordId: record.id,
+            recordType: record.kind,
+            version: record.version,
+          },
+        },
+        undefined,
+        { [record.id]: "strategicRecord" },
+      );
+    }
+    case "opportunity.create": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (transaction.getStrategicRecord(command.payload.opportunityId))
+        return precondition(command, occurredAt);
+      const organization = transaction.getStrategicRecord(
+        command.payload.organizationId,
+      );
+      const people = command.payload.personIds.map((id) =>
+        transaction.getStrategicRecord(id),
+      );
+      const sources = command.payload.evidenceSourceIds.map((id) =>
+        transaction.getKnowledgeSource(id),
+      );
+      if (
+        organization?.kind !== "organization" ||
+        organization.workspaceId !== command.workspaceId ||
+        organization.spaceId !== command.payload.spaceId ||
+        people.some(
+          (person) =>
+            person?.kind !== "person" ||
+            person.workspaceId !== command.workspaceId ||
+            person.spaceId !== command.payload.spaceId,
+        ) ||
+        sources.some(
+          (source) =>
+            source === undefined ||
+            source.workspaceId !== command.workspaceId ||
+            source.spaceId !== command.payload.spaceId,
+        )
+      )
+        return precondition(command, occurredAt);
+      const record = createOpportunity({
+        id: StrategicRecordIdSchema.parse(command.payload.opportunityId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        title: command.payload.title,
+        organizationId: organization.id,
+        personIds: command.payload.personIds,
+        need: command.payload.need,
+        qualification: command.payload.qualification,
+        stage: command.payload.stage,
+        nextAction: command.payload.nextAction,
+        evidenceSourceIds: command.payload.evidenceSourceIds,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertStrategicRecord(record);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "strategic.record_changed",
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          aggregateId: record.id,
+          aggregateVersion: record.version,
+          occurredAt,
+        },
+        { [record.id]: record.version },
+        [
+          "title",
+          "organizationId",
+          "personIds",
+          "need",
+          "qualification",
+          "stage",
+          "nextAction",
+          "evidenceSourceIds",
+        ],
+        {
+          diagnosticCode: "strategic.record_changed",
+          projection: {
+            kind: "strategic.record_changed",
+            recordId: record.id,
+            recordType: record.kind,
+            version: record.version,
+          },
+        },
+        undefined,
+        { [record.id]: "strategicRecord" },
+      );
+    }
+    case "opportunity.offerCreate": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (transaction.getStrategicRecord(command.payload.offerId))
+        return precondition(command, occurredAt);
+      const opportunity = transaction.getStrategicRecord(
+        command.payload.opportunityId,
+      );
+      const document = transaction.getDocument(
+        command.payload.deliverableDocumentId,
+      );
+      const owner = transaction.getMembership(
+        command.workspaceId,
+        command.payload.ownerPrincipalId,
+      );
+      if (
+        opportunity?.kind !== "opportunity" ||
+        document === undefined ||
+        (document.role ?? "document") !== "deliverable" ||
+        document.workspaceId !== command.workspaceId ||
+        document.spaceId !== opportunity.spaceId ||
+        owner === undefined ||
+        owner.status === "revoked"
+      )
+        return precondition(command, occurredAt);
+      const record = createOffer({
+        id: StrategicRecordIdSchema.parse(command.payload.offerId),
+        workspaceId: command.workspaceId,
+        spaceId: opportunity.spaceId,
+        title: command.payload.title,
+        opportunityId: opportunity.id,
+        deliverableDocumentId: document.id,
+        ownerPrincipalId: command.payload.ownerPrincipalId,
+        state: command.payload.state,
+        nextAction: command.payload.nextAction,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertStrategicRecord(record);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "strategic.record_changed",
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          aggregateId: record.id,
+          aggregateVersion: record.version,
+          occurredAt,
+        },
+        { [record.id]: record.version },
+        [
+          "title",
+          "opportunityId",
+          "deliverableDocumentId",
+          "ownerPrincipalId",
+          "state",
+          "nextAction",
+        ],
+        {
+          diagnosticCode: "strategic.record_changed",
+          projection: {
+            kind: "strategic.record_changed",
+            recordId: record.id,
+            recordType: record.kind,
+            version: record.version,
+          },
+        },
+        undefined,
+        { [record.id]: "strategicRecord" },
+      );
+    }
+    case "opportunity.linkOutcomes": {
+      const opportunity = transaction.getStrategicRecord(
+        command.payload.opportunityId,
+      );
+      if (opportunity?.kind !== "opportunity")
+        return precondition(command, occurredAt);
+      const offers = command.payload.offerIds.map((id) =>
+        transaction.getStrategicRecord(id),
+      );
+      const projects = command.payload.projectIds.map((id) =>
+        transaction.getProject(id),
+      );
+      if (
+        offers.some(
+          (offer) =>
+            offer?.kind !== "offer" ||
+            offer.opportunityId !== opportunity.id ||
+            offer.spaceId !== opportunity.spaceId,
+        ) ||
+        projects.some(
+          (project) =>
+            project === undefined ||
+            project.workspaceId !== opportunity.workspaceId ||
+            project.spaceId !== opportunity.spaceId,
+        )
+      )
+        return precondition(command, occurredAt);
+      const expected = {
+        [opportunity.id]: opportunity.version,
+        ...Object.fromEntries(
+          offers.map((offer) => [offer!.id, offer!.version]),
+        ),
+        ...Object.fromEntries(
+          projects.map((project) => [project!.id, project!.version]),
+        ),
+      };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const record = linkOpportunityOutcomes(opportunity, {
+        offerIds: command.payload.offerIds,
+        projectIds: command.payload.projectIds,
+        state: command.payload.state,
+        nextAction: command.payload.nextAction,
+        occurredAt,
+      });
+      if (!transaction.updateStrategicRecord(record, opportunity.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "strategic.record_changed",
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          aggregateId: record.id,
+          aggregateVersion: record.version,
+          occurredAt,
+        },
+        { [record.id]: record.version },
+        ["offerIds", "projectIds", "state", "nextAction"],
+        {
+          diagnosticCode: "strategic.record_changed",
+          projection: {
+            kind: "strategic.record_changed",
+            recordId: record.id,
+            recordType: record.kind,
+            version: record.version,
+          },
+        },
+        undefined,
+        { [record.id]: "strategicRecord" },
+      );
+    }
+    case "project.close":
+    case "project.reopen": {
+      const current = transaction.getProject(command.payload.projectId);
+      if (
+        current === undefined ||
+        (command.commandName === "project.close" &&
+          current.lifecycle === "closed") ||
+        (command.commandName === "project.reopen" &&
+          current.lifecycle === "active")
+      )
+        return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const relatedTaskIds = new Set(
+        transaction
+          .listRelations(current.workspaceId, current.spaceId)
+          .filter(
+            (relation) =>
+              relation.projectId === current.id && relation.state === "active",
+          )
+          .map((relation) => relation.taskId),
+      );
+      const unresolvedTaskCount = transaction
+        .listTasksInSpace(current.workspaceId, current.spaceId)
+        .filter(
+          (task) =>
+            relatedTaskIds.has(task.id) && task.completionState === "open",
+        ).length;
+      const project =
+        command.commandName === "project.close"
+          ? closeProject(current, context.principalId, occurredAt)
+          : reopenProject(current, occurredAt);
+      if (!transaction.updateProject(project, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "project.lifecycle_changed",
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          aggregateId: project.id,
+          aggregateVersion: project.version,
+          occurredAt,
+        },
+        { [project.id]: project.version },
+        ["lifecycle", "closedAt", "closedBy"],
+        {
+          diagnosticCode: "project.lifecycle_changed",
+          projection: {
+            kind: "project.lifecycle_changed",
+            projectId: project.id,
+            lifecycle: project.lifecycle,
+            unresolvedTaskCount,
+            version: project.version,
+          },
+        },
+        undefined,
+        { [project.id]: "project" },
+      );
+    }
+    case "radar.candidateUpsert": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (
+        transaction.getStrategicRecord(command.payload.candidateId) !==
+        undefined
+      )
+        return precondition(command, occurredAt);
+      const source = transaction.getKnowledgeSource(command.payload.sourceId);
+      const duplicate = transaction
+        .listStrategicRecords(command.workspaceId, command.payload.spaceId)
+        .some(
+          (record) =>
+            record.kind === "radar_candidate" &&
+            record.materialKey === command.payload.materialKey,
+        );
+      if (
+        source === undefined ||
+        source.spaceId !== command.payload.spaceId ||
+        duplicate
+      )
+        return precondition(command, occurredAt);
+      const record = createRadarCandidate({
+        id: StrategicRecordIdSchema.parse(command.payload.candidateId),
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        sourceId: source.id,
+        materialKey: command.payload.materialKey,
+        title: command.payload.title,
+        relevance: command.payload.relevance,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertStrategicRecord(record);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["sourceId", "materialKey", "title", "relevance", "state"],
+      );
+    }
+    case "radar.resolve": {
+      const current = transaction.getStrategicRecord(
+        command.payload.candidateId,
+      );
+      if (current?.kind !== "radar_candidate" || current.state !== "pending")
+        return precondition(command, occurredAt);
+      if (
+        command.payload.state === "saved" &&
+        command.payload.resolutionRecordId === undefined
+      )
+        return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const record: StrategicRecord = {
+        ...current,
+        state: command.payload.state,
+        ...(command.payload.resolutionRecordId === undefined
+          ? {}
+          : { resolutionRecordId: command.payload.resolutionRecordId }),
+        version: current.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["state", "resolutionRecordId"],
+      );
+    }
+    case "meeting.upsertImported": {
+      const meeting = command.payload.meeting;
+      if (meeting.workspaceId !== command.workspaceId)
+        return precondition(command, occurredAt);
+      const id = StrategicRecordIdSchema.parse(meeting.id);
+      const current = transaction.getStrategicRecord(id);
+      if (current !== undefined && current.kind !== "meeting")
+        return precondition(command, occurredAt);
+      if (
+        current?.kind === "meeting" &&
+        meeting.version <= current.meeting.version
+      )
+        return precondition(command, occurredAt);
+      const expected =
+        current === undefined ? {} : { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const record: StrategicRecord = {
+        id,
+        workspaceId: meeting.workspaceId,
+        spaceId: meeting.spaceId,
+        kind: "meeting",
+        meeting,
+        createdBy: context.principalId,
+        version: (current?.version ?? 0) + 1,
+        createdAt: current?.createdAt ?? occurredAt,
+        updatedAt: occurredAt,
+      };
+      if (current === undefined) transaction.insertStrategicRecord(record);
+      else if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["meeting", "triage", "workItems"],
       );
     }
     case "project.create": {
@@ -2372,6 +3614,62 @@ const snippet = (value: string, needle: string): string => {
   return value.slice(start, start + 160);
 };
 
+const strategicSearchText = (
+  record: StrategicRecord,
+): { readonly title: string; readonly detail: string } => {
+  switch (record.kind) {
+    case "organization":
+      return {
+        title: record.name,
+        detail: record.nextAction ?? record.relationshipState,
+      };
+    case "person":
+      return {
+        title: record.name,
+        detail: [record.role, record.email].filter(Boolean).join(" · "),
+      };
+    case "opportunity":
+      return {
+        title: record.title,
+        detail: [
+          record.need,
+          record.qualification,
+          record.stage,
+          record.nextAction,
+        ].join(" · "),
+      };
+    case "offer":
+      return { title: record.title, detail: record.nextAction };
+    case "renewal":
+      return {
+        title: record.title,
+        detail: `${record.scope} · ${record.expiresAt}`,
+      };
+    case "relationship_fact":
+      return { title: record.factType, detail: record.value };
+    case "decision":
+      return { title: record.title, detail: record.rationale };
+    case "impact_review":
+      return { title: "Decision impact review", detail: record.reason };
+    case "area":
+      return { title: record.title, detail: record.responsibility };
+    case "recurrence":
+      return { title: record.title, detail: record.taskTitle };
+    case "radar_candidate":
+      return { title: record.title, detail: record.relevance };
+    case "meeting":
+      return {
+        title: record.meeting.title ?? "Imported meeting",
+        detail: [
+          record.meeting.summaryMarkdown,
+          record.meeting.transcriptMarkdown,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      };
+  }
+};
+
 export const executeWave2Query = (
   dependencies: ApplicationKernelDependencies,
   view: ApplicationReadView,
@@ -2557,7 +3855,13 @@ export const executeWave2Query = (
                   ? "You are responsible for this Task."
                   : signal.reason === "knowledge_evidence_changed"
                     ? "Source evidence changed after the latest named version."
-                    : "An offline change needs reconciliation.",
+                    : signal.reason === "renewal_due"
+                      ? "A date-aware renewal has one follow-up ready for review."
+                      : signal.reason === "relationship_fact_stale"
+                        ? "A time-sensitive relationship fact needs verification."
+                        : signal.reason === "decision_impact_review"
+                          ? "A replacement Decision has unresolved consequences."
+                          : "An offline change needs reconciliation.",
             urgency: signal.urgency,
             state: signal.state,
             version: signal.version,
@@ -2603,6 +3907,33 @@ export const executeWave2Query = (
     !authorizeSpaces(dependencies, view, context, query, spaceIds)
   ) {
     return queryRejected(query, kernelTime, "authorization.denied");
+  }
+  if (query.queryName === "relationship.workspace") {
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "relationship.workspace",
+      records: view.listStrategicRecords(
+        query.workspaceId,
+        query.parameters.spaceId,
+      ),
+      freshness,
+    });
+  }
+  if (query.queryName === "radar.review") {
+    const pending = view
+      .listStrategicRecords(query.workspaceId, query.parameters.spaceId)
+      .filter(
+        (
+          record,
+        ): record is Extract<StrategicRecord, { kind: "radar_candidate" }> =>
+          record.kind === "radar_candidate" && record.state === "pending",
+      );
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "radar.review",
+      items: pending.slice(0, query.parameters.limit),
+      pendingCount: pending.length,
+      finite: true,
+      freshness,
+    });
   }
   if (query.queryName === "project.list") {
     const relations = view.listRelations(
@@ -2888,6 +4219,18 @@ export const executeWave2Query = (
         "note",
         "document",
         "deliverable",
+        "organization",
+        "person",
+        "opportunity",
+        "offer",
+        "renewal",
+        "relationship_fact",
+        "decision",
+        "impact_review",
+        "area",
+        "recurrence",
+        "radar_candidate",
+        "meeting",
       ],
     );
     const items: Array<{
@@ -2898,7 +4241,8 @@ export const executeWave2Query = (
         | "source"
         | "note"
         | "document"
-        | "deliverable";
+        | "deliverable"
+        | StrategicRecord["kind"];
       recordId: string;
       spaceId: SpaceId;
       title: string;
@@ -2909,6 +4253,7 @@ export const executeWave2Query = (
         | "originalText"
         | "excerpt"
         | "canonicalUrl"
+        | "detail"
       >;
       score: number;
       updatedAt: string;
@@ -3036,6 +4381,39 @@ export const executeWave2Query = (
           updatedAt: document.updatedAt,
         });
       }
+      for (const record of view.listStrategicRecords(
+        query.workspaceId,
+        spaceId,
+      )) {
+        if (!kinds.has(record.kind)) continue;
+        const content = strategicSearchText(record);
+        const title = normalizeSearch(content.title);
+        const detail = normalizeSearch(content.detail);
+        const matchedFields: Array<"title" | "detail"> = [];
+        if (title.includes(needle)) matchedFields.push("title");
+        if (detail.includes(needle)) matchedFields.push("detail");
+        if (matchedFields.length === 0) continue;
+        items.push({
+          recordKind: record.kind,
+          recordId: record.id,
+          spaceId,
+          title: content.title,
+          snippet: snippet(
+            matchedFields.includes("title") ? content.title : content.detail,
+            needle,
+          ),
+          matchedFields,
+          score:
+            title === needle
+              ? 300
+              : title.startsWith(needle)
+                ? 220
+                : title.includes(needle)
+                  ? 160
+                  : 100,
+          updatedAt: record.updatedAt,
+        });
+      }
     }
     items.sort(
       (left, right) =>
@@ -3131,6 +4509,7 @@ export const executeWave2Query = (
     "knowledge.evidence_updated": "knowledge_evidence_updated",
     "knowledge.named_version_created": "knowledge_named_version_created",
     "knowledge.named_version_voided": "knowledge_named_version_voided",
+    "strategic.record_changed": "strategic_record_changed",
     "command.undone": "command_undone",
   };
   const items = view

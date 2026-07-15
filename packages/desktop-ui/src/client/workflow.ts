@@ -21,6 +21,7 @@ import {
   type WorkspaceId,
   type Capability,
   type GrantId,
+  type StrategicRecordId,
   type PrincipalId as AgentPrincipalId,
 } from "@constellation/contracts";
 import type {
@@ -57,6 +58,9 @@ export type DocumentListProjection = Projection<"document.list">;
 export type KnowledgeListProjection = Projection<"knowledge.list">;
 export type KnowledgeDocumentContextProjection =
   Projection<"knowledge.documentContext">;
+export type RelationshipWorkspaceProjection =
+  Projection<"relationship.workspace">;
+export type RadarReviewProjection = Projection<"radar.review">;
 export type CommentTarget = CommentListProjection["target"];
 
 export type DataSlice<T> =
@@ -82,6 +86,8 @@ export interface DesktopSnapshot {
   readonly attention: DataSlice<AttentionInboxProjection>;
   readonly documents: DataSlice<DocumentListProjection>;
   readonly knowledge: DataSlice<KnowledgeListProjection>;
+  readonly relationships: DataSlice<RelationshipWorkspaceProjection>;
+  readonly radar: DataSlice<RadarReviewProjection>;
   readonly dataHome?: DataHomeStatus;
 }
 
@@ -209,6 +215,8 @@ export const loadDesktopSnapshot = async (
     activity,
     documents,
     knowledge,
+    relationships,
+    radar,
   ] = await Promise.all([
     queryProjection(
       client,
@@ -299,6 +307,20 @@ export const loadDesktopSnapshot = async (
         "knowledge.list",
       ),
     ),
+    optionalProjection(
+      queryProjection(
+        client,
+        queryEnvelope("relationship.workspace", workspaceId, { spaceId }),
+        "relationship.workspace",
+      ),
+    ),
+    optionalProjection(
+      queryProjection(
+        client,
+        queryEnvelope("radar.review", workspaceId, { spaceId, limit: 12 }),
+        "radar.review",
+      ),
+    ),
   ]);
   let agentAccess = localAgentAccess;
   if (dataHome?.descriptor.providerKind === "coordinated") {
@@ -356,6 +378,8 @@ export const loadDesktopSnapshot = async (
     attention,
     documents,
     knowledge,
+    relationships,
+    radar,
     ...(dataHome === undefined ? {} : { dataHome }),
   };
 };
@@ -1046,6 +1070,72 @@ export const createProject = (
         : undefined,
   );
 
+export const createOrganization = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: { readonly name: string; readonly nextAction?: string },
+) => {
+  const organizationId = crypto.randomUUID() as StrategicRecordId;
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "relationship.organizationCreate",
+      payload: {
+        organizationId,
+        spaceId: firstSpace(snapshot),
+        name: input.name,
+        relationshipState: "prospect",
+        ...(input.nextAction === undefined || input.nextAction.trim() === ""
+          ? {}
+          : { nextAction: input.nextAction }),
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+};
+
+export const createOpportunity = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly organizationId: StrategicRecordId;
+    readonly title: string;
+    readonly need: string;
+    readonly nextAction: string;
+  },
+) => {
+  const opportunityId = crypto.randomUUID() as StrategicRecordId;
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "opportunity.create",
+      payload: {
+        opportunityId,
+        spaceId: firstSpace(snapshot),
+        organizationId: input.organizationId,
+        personIds: [],
+        title: input.title,
+        need: input.need,
+        qualification: "Requires review",
+        stage: "discovery",
+        nextAction: input.nextAction,
+        evidenceSourceIds: [],
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+};
+
 export const addWorkspaceMember = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -1361,6 +1451,87 @@ export const updateAttention = (
       response.outcome.outcome === "success" &&
       (response.outcome.projection.kind === "attention.read" ||
         response.outcome.projection.kind === "attention.dismissed")
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const resolveRadarCandidate = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  candidate: Extract<
+    RelationshipWorkspaceProjection["records"][number],
+    { kind: "radar_candidate" }
+  >,
+  state: "saved" | "dismissed",
+  resolutionRecordId?: string,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [candidate.id]: candidate.version,
+      }),
+      commandName: "radar.resolve",
+      payload: {
+        candidateId: candidate.id as StrategicRecordId,
+        state,
+        ...(resolutionRecordId === undefined ? {} : { resolutionRecordId }),
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const resolveDecisionImpact = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  review: Extract<
+    RelationshipWorkspaceProjection["records"][number],
+    { kind: "impact_review" }
+  >,
+  recordId: string,
+  resolution: string,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [review.id]: review.version,
+      }),
+      commandName: "decision.resolveImpact",
+      payload: { impactReviewId: review.id, recordId, resolution },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const setProjectLifecycle = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  project: Pick<
+    ProjectListProjection["items"][number],
+    "id" | "version" | "lifecycle"
+  >,
+  lifecycle: "active" | "closed",
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [project.id]: project.version,
+      }),
+      commandName: lifecycle === "closed" ? "project.close" : "project.reopen",
+      payload: { projectId: project.id },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "project.lifecycle_changed"
         ? response.outcome.projection
         : undefined,
   );

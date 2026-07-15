@@ -87,6 +87,9 @@ export const fromHubSnapshot = (
     parsed.namedDocumentVersions.some(
       (value) => value.workspaceId !== workspaceId,
     ) ||
+    parsed.strategicRecords.some(
+      (value) => value.workspaceId !== workspaceId,
+    ) ||
     parsed.relations.some((value) => value.workspaceId !== workspaceId) ||
     parsed.events.some((value) => value.workspaceId !== workspaceId) ||
     parsed.auditReceipts.some((value) => value.workspaceId !== workspaceId) ||
@@ -176,6 +179,7 @@ export const scopeHubSnapshot = (
       inScope(version) &&
       documents.some((doc) => doc.id === version.documentId),
   );
+  const strategicRecords = (state.strategicRecords ?? []).filter(inScope);
   const relations = state.relations.filter(inScope);
   const undoDescriptors = state.undoDescriptors.filter(inScope);
   const visibleEvents = state.events.filter(inScope);
@@ -313,6 +317,7 @@ export const scopeHubSnapshot = (
     ...documents.map((value) => value.id),
     ...knowledgeSources.map((value) => value.id),
     ...namedDocumentVersions.map((value) => value.id),
+    ...strategicRecords.map((value) => value.id),
     ...relations.map((value) => value.id),
     ...undoDescriptors.map((value) => value.targetCommandId),
   ]);
@@ -349,6 +354,7 @@ export const scopeHubSnapshot = (
     documents,
     knowledgeSources,
     namedDocumentVersions,
+    strategicRecords,
     relations,
     undoDescriptors,
     events,

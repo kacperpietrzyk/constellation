@@ -38,3 +38,34 @@ export const updateProjectOutcome = (
   version: project.version + 1,
   updatedAt: occurredAt,
 });
+
+export const closeProject = (
+  project: Project,
+  principalId: PrincipalId,
+  occurredAt: string,
+): Project => ({
+  ...project,
+  lifecycle: "closed",
+  closedAt: occurredAt,
+  closedBy: principalId,
+  version: project.version + 1,
+  updatedAt: occurredAt,
+});
+
+export const reopenProject = (
+  project: Project,
+  occurredAt: string,
+): Project => {
+  const opened: Omit<Project, "closedAt" | "closedBy"> & {
+    closedAt?: string;
+    closedBy?: PrincipalId;
+  } = { ...project };
+  delete opened.closedAt;
+  delete opened.closedBy;
+  return {
+    ...opened,
+    lifecycle: "active",
+    version: project.version + 1,
+    updatedAt: occurredAt,
+  };
+};

@@ -147,6 +147,17 @@ available to desktop and MCP, survive encrypted SQLite restart, and pass through
 Space-scoped Hub projections. The boundary and current limits are documented in
 [Knowledge evidence and deliverables](docs/architecture/knowledge-and-deliverables.md).
 
+The same graph now supports a strategic-depth thread from Organization and
+Person through Opportunity, Offer, and Project. Renewals create one
+deduplicated follow-up Task per cycle; evidence-backed relationship facts carry
+an explicit freshness horizon; superseding a Decision preserves the prior
+record and opens a bounded consequence review. Areas, recurring Task
+occurrences, reversible Project closure, and a finite Knowledge Radar retain
+history instead of manufacturing a parallel workflow. Desktop and MCP use the
+same versioned commands, and the records participate in deterministic search,
+meaningful activity, scoped export, encrypted restart, and Hub projections.
+See [Relationships and strategic depth](docs/architecture/relationships-and-strategic-depth.md).
+
 Local-only workspaces now expose a versioned MCP server through the same
 Application Kernel used by the desktop. The Access surface creates a distinct
 agent principal with an independently selected capability preset, Space scope,
@@ -185,14 +196,16 @@ protection, import the last 90 days with stable meeting and task identity, and
 preserve local edits when Jamie later corrects a result. Each imported action
 has its own version and lifecycle. Creating or changing a Constellation-owned
 calendar block always requires an exact, five-minute, single-use preview. The
+normalized imported meeting is also published through the existing Hub
+command/receipt feed, so another authorized device receives the same stable
+meeting projection without a meeting-specific synchronization path. The
 boundary and current limitations are documented in
 [Meetings and calendar](docs/architecture/meetings-and-calendar.md).
 
 The resulting ad-hoc macOS and unsigned Windows application folders are
 verification artifacts, not a signed/notarized release. The Hub is an operator
-preview rather than a hosted service. Cross-device meeting-loop replication,
-installers, updater, richer notification policy, document comments/citations,
-and automatic routing rules
+preview rather than a hosted service. Installers, updater, richer notification
+policy, document comments/citations, and automatic routing rules
 beyond the explicit Capture action remain later work.
 
 The current kernel boundary and implemented subset are documented in

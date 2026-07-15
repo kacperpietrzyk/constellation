@@ -4,6 +4,7 @@ export * from "./agent-access.js";
 export * from "./comment.js";
 export * from "./document.js";
 export * from "./knowledge.js";
+export * from "./strategic-depth.js";
 export * from "./assignment.js";
 export * from "./model.js";
 export * from "./project.js";

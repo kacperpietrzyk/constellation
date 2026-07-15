@@ -43,6 +43,25 @@ Commands:
 - `knowledge.documentSetEvidence`
 - `knowledge.namedVersionCreate`
 - `knowledge.namedVersionVoid`
+- `relationship.organizationCreate`
+- `relationship.personCreate`
+- `opportunity.create`
+- `opportunity.offerCreate`
+- `opportunity.linkOutcomes`
+- `relationship.renewalCreate`
+- `relationship.renewalResolve`
+- `relationship.factCreate`
+- `decision.create`
+- `decision.supersede`
+- `decision.resolveImpact`
+- `area.create`
+- `recurrence.create`
+- `recurrence.generateOccurrence`
+- `project.close`
+- `project.reopen`
+- `radar.candidateUpsert`
+- `radar.resolve`
+- `meeting.upsertImported`
 - `task.setStatus`
 - `task.complete`
 - `task.reopen`
@@ -77,6 +96,8 @@ Queries:
 - `document.list`
 - `knowledge.list`
 - `knowledge.documentContext`
+- `relationship.workspace`
+- `radar.review`
 - `search.global`
 - `cockpit.week`
 - `activity.meaningful`
@@ -138,6 +159,13 @@ snapshot, milestone meaning, and the exact versions of its source and Note
 evidence. Later evidence changes are reported without rewriting that version.
 The implemented boundary and recovery behavior are documented in
 [Knowledge evidence and deliverables](knowledge-and-deliverables.md).
+
+Strategic records remain ordinary Space-scoped graph records. Their commands
+share expected versions, idempotency, attribution, audit receipts, recovery,
+and synchronization with the rest of the kernel. Renewal deduplication,
+Decision impact review, recurrence generation, Project closure, and finite
+Radar behavior are domain rules rather than UI or MCP special cases. See
+[Relationships and strategic depth](relationships-and-strategic-depth.md).
 
 ## Boundary rules
 

@@ -27,8 +27,10 @@ import {
   KnowledgeSourceIdSchema,
   NamedDocumentVersionIdSchema,
   DocumentRevisionIdSchema,
+  StrategicRecordIdSchema,
 } from "./ids.js";
 import { CapabilitySchema } from "./execution-context.js";
+import { ImportedMeetingSchema } from "./meeting-loop.js";
 
 export const ContractVersionSchema = z.literal(1);
 export type ContractVersion = z.infer<typeof ContractVersionSchema>;
@@ -325,6 +327,264 @@ export const KnowledgeNamedVersionVoidCommandSchema =
       .strict(),
   }).strict();
 
+export const RelationshipOrganizationCreateCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("relationship.organizationCreate"),
+    payload: z
+      .object({
+        organizationId: StrategicRecordIdSchema,
+        spaceId: SpaceIdSchema,
+        name: z.string().trim().min(1).max(300),
+        relationshipState: z.enum(["prospect", "active", "inactive"]),
+        nextAction: z.string().trim().min(1).max(1_000).optional(),
+      })
+      .strict(),
+  }).strict();
+
+export const RelationshipPersonCreateCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("relationship.personCreate"),
+    payload: z
+      .object({
+        personId: StrategicRecordIdSchema,
+        spaceId: SpaceIdSchema,
+        name: z.string().trim().min(1).max(300),
+        organizationId: StrategicRecordIdSchema.optional(),
+        role: z.string().trim().min(1).max(300).optional(),
+        email: z.email().max(320).optional(),
+      })
+      .strict(),
+  }).strict();
+
+export const OpportunityCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("opportunity.create"),
+  payload: z
+    .object({
+      opportunityId: StrategicRecordIdSchema,
+      spaceId: SpaceIdSchema,
+      title: z.string().trim().min(1).max(500),
+      organizationId: StrategicRecordIdSchema,
+      personIds: z.array(StrategicRecordIdSchema).max(100),
+      need: z.string().trim().min(1).max(4_000),
+      qualification: z.string().trim().min(1).max(2_000),
+      stage: z.string().trim().min(1).max(120),
+      nextAction: z.string().trim().min(1).max(1_000),
+      evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100),
+    })
+    .strict(),
+}).strict();
+
+export const OpportunityOfferCreateCommandSchema = CommandMetadataSchema.extend(
+  {
+    commandName: z.literal("opportunity.offerCreate"),
+    payload: z
+      .object({
+        offerId: StrategicRecordIdSchema,
+        opportunityId: StrategicRecordIdSchema,
+        deliverableDocumentId: DocumentIdSchema,
+        title: z.string().trim().min(1).max(500),
+        ownerPrincipalId: PrincipalIdSchema,
+        state: z.enum(["draft", "ready", "submitted", "accepted", "declined"]),
+        nextAction: z.string().trim().min(1).max(1_000),
+      })
+      .strict(),
+  },
+).strict();
+
+export const OpportunityLinkOutcomesCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("opportunity.linkOutcomes"),
+    payload: z
+      .object({
+        opportunityId: StrategicRecordIdSchema,
+        offerIds: z.array(StrategicRecordIdSchema).max(100),
+        projectIds: z.array(ProjectIdSchema).max(100),
+        state: z.enum(["open", "pursued", "deferred", "rejected", "lost"]),
+        nextAction: z.string().trim().min(1).max(1_000),
+      })
+      .strict(),
+  }).strict();
+
+export const RelationshipRenewalCreateCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("relationship.renewalCreate"),
+    payload: z
+      .object({
+        renewalId: StrategicRecordIdSchema,
+        followUpTaskId: TaskIdSchema,
+        spaceId: SpaceIdSchema,
+        organizationId: StrategicRecordIdSchema,
+        title: z.string().trim().min(1).max(500),
+        scope: z.string().trim().min(1).max(2_000),
+        expiresAt: z.iso.datetime({ offset: true }),
+        leadTimeDays: z.int().min(0).max(3_650),
+        ownerPrincipalId: PrincipalIdSchema,
+        evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100),
+        cycleKey: z.string().trim().min(1).max(300),
+      })
+      .strict(),
+  }).strict();
+
+export const RelationshipRenewalResolveCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("relationship.renewalResolve"),
+    payload: z
+      .object({
+        renewalId: StrategicRecordIdSchema,
+        state: z.enum(["renewed", "not_renewing", "irrelevant"]),
+      })
+      .strict(),
+  }).strict();
+
+export const RelationshipFactCreateCommandSchema = CommandMetadataSchema.extend(
+  {
+    commandName: z.literal("relationship.factCreate"),
+    payload: z
+      .object({
+        factId: StrategicRecordIdSchema,
+        spaceId: SpaceIdSchema,
+        organizationId: StrategicRecordIdSchema,
+        factType: z.string().trim().min(1).max(200),
+        value: z.string().trim().min(1).max(8_000),
+        evidenceSourceIds: z.array(KnowledgeSourceIdSchema).min(1).max(100),
+        verifiedAt: z.iso.datetime({ offset: true }),
+        staleAfter: z.iso.datetime({ offset: true }),
+      })
+      .strict(),
+  },
+).strict();
+
+export const DecisionCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("decision.create"),
+  payload: z
+    .object({
+      decisionId: StrategicRecordIdSchema,
+      spaceId: SpaceIdSchema,
+      title: z.string().trim().min(1).max(500),
+      rationale: z.string().trim().min(1).max(8_000),
+      evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100),
+      linkedRecordIds: z.array(z.uuid()).max(200),
+    })
+    .strict(),
+}).strict();
+
+const ImpactConsequenceSchema = z
+  .object({
+    recordId: z.uuid(),
+    recordKind: z.enum([
+      "task",
+      "offer",
+      "document",
+      "deliverable",
+      "commitment",
+    ]),
+  })
+  .strict();
+
+export const DecisionSupersedeCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("decision.supersede"),
+  payload: z
+    .object({
+      priorDecisionId: StrategicRecordIdSchema,
+      replacementDecisionId: StrategicRecordIdSchema,
+      impactReviewId: StrategicRecordIdSchema,
+      title: z.string().trim().min(1).max(500),
+      rationale: z.string().trim().min(1).max(8_000),
+      reason: z.string().trim().min(1).max(4_000),
+      evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100),
+      consequences: z.array(ImpactConsequenceSchema).max(200),
+    })
+    .strict(),
+}).strict();
+
+export const DecisionResolveImpactCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("decision.resolveImpact"),
+  payload: z
+    .object({
+      impactReviewId: StrategicRecordIdSchema,
+      recordId: z.uuid(),
+      resolution: z.string().trim().min(1).max(4_000),
+    })
+    .strict(),
+}).strict();
+
+export const AreaCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("area.create"),
+  payload: z
+    .object({
+      areaId: StrategicRecordIdSchema,
+      spaceId: SpaceIdSchema,
+      title: z.string().trim().min(1).max(500),
+      responsibility: z.string().trim().min(1).max(4_000),
+    })
+    .strict(),
+}).strict();
+
+export const RecurrenceCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("recurrence.create"),
+  payload: z
+    .object({
+      recurrenceId: StrategicRecordIdSchema,
+      spaceId: SpaceIdSchema,
+      title: z.string().trim().min(1).max(500),
+      taskTitle: z.string().trim().min(1).max(500),
+      contextRecordId: z.uuid().optional(),
+      cadence: z.enum(["daily", "weekly", "monthly", "yearly"]),
+      nextDueAt: z.iso.datetime({ offset: true }),
+    })
+    .strict(),
+}).strict();
+
+export const RecurrenceGenerateOccurrenceCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("recurrence.generateOccurrence"),
+    payload: z
+      .object({
+        recurrenceId: StrategicRecordIdSchema,
+        occurrenceTaskId: TaskIdSchema,
+        nextDueAt: z.iso.datetime({ offset: true }),
+      })
+      .strict(),
+  }).strict();
+
+export const ProjectCloseCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("project.close"),
+  payload: z.object({ projectId: ProjectIdSchema }).strict(),
+}).strict();
+export const ProjectReopenCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("project.reopen"),
+  payload: z.object({ projectId: ProjectIdSchema }).strict(),
+}).strict();
+
+export const RadarCandidateUpsertCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("radar.candidateUpsert"),
+  payload: z
+    .object({
+      candidateId: StrategicRecordIdSchema,
+      spaceId: SpaceIdSchema,
+      sourceId: KnowledgeSourceIdSchema,
+      materialKey: z.string().trim().min(1).max(500),
+      title: z.string().trim().min(1).max(500),
+      relevance: z.string().trim().min(1).max(2_000),
+    })
+    .strict(),
+}).strict();
+
+export const RadarResolveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("radar.resolve"),
+  payload: z
+    .object({
+      candidateId: StrategicRecordIdSchema,
+      state: z.enum(["saved", "dismissed"]),
+      resolutionRecordId: z.uuid().optional(),
+    })
+    .strict(),
+}).strict();
+export const MeetingUpsertImportedCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("meeting.upsertImported"),
+  payload: z.object({ meeting: ImportedMeetingSchema }).strict(),
+}).strict();
+
 export const ProjectUpdateOutcomeCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("project.updateOutcome"),
   payload: z
@@ -465,6 +725,25 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   KnowledgeDocumentSetEvidenceCommandSchema,
   KnowledgeNamedVersionCreateCommandSchema,
   KnowledgeNamedVersionVoidCommandSchema,
+  RelationshipOrganizationCreateCommandSchema,
+  RelationshipPersonCreateCommandSchema,
+  OpportunityCreateCommandSchema,
+  OpportunityOfferCreateCommandSchema,
+  OpportunityLinkOutcomesCommandSchema,
+  RelationshipRenewalCreateCommandSchema,
+  RelationshipRenewalResolveCommandSchema,
+  RelationshipFactCreateCommandSchema,
+  DecisionCreateCommandSchema,
+  DecisionSupersedeCommandSchema,
+  DecisionResolveImpactCommandSchema,
+  AreaCreateCommandSchema,
+  RecurrenceCreateCommandSchema,
+  RecurrenceGenerateOccurrenceCommandSchema,
+  ProjectCloseCommandSchema,
+  ProjectReopenCommandSchema,
+  RadarCandidateUpsertCommandSchema,
+  RadarResolveCommandSchema,
+  MeetingUpsertImportedCommandSchema,
   ProjectUpdateOutcomeCommandSchema,
   TaskSetStatusCommandSchema,
   TaskCompleteCommandSchema,

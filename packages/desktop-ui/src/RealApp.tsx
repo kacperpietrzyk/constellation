@@ -23,6 +23,7 @@ import { AccessSurface } from "./AccessSurface.js";
 import { AttentionSurface, CommentsPanel } from "./CollaborationSurfaces.js";
 import { DocumentsSurface } from "./DocumentsSurface.js";
 import { MeetingsSurface } from "./MeetingsSurface.js";
+import { StrategicDepthSurface } from "./StrategicDepthSurface.js";
 
 import {
   ActivitySurface,
@@ -49,6 +50,7 @@ import {
   setTaskStatus,
   setWorkspaceMemberAccess,
   setCommentResolved,
+  setProjectLifecycle,
   submitCaptureAsTask,
   undoCommand,
   unrelateTask,
@@ -107,7 +109,8 @@ type IconName =
   | "attention"
   | "access"
   | "documents"
-  | "meetings";
+  | "meetings"
+  | "relationships";
 const Icon = ({ name }: { readonly name: IconName }) => {
   const paths = {
     capture: <path d="M12 5v14M5 12h14" />,
@@ -128,6 +131,9 @@ const Icon = ({ name }: { readonly name: IconName }) => {
     ),
     documents: <path d="M6 3h9l4 4v14H6zM15 3v5h4M9 12h7M9 16h7" />,
     meetings: <path d="M5 5h14v14H5zM8 3v5M16 3v5M5 10h14M8 14h3M13 14h3" />,
+    relationships: (
+      <path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM16.5 10a2.5 2.5 0 1 0 0-5M3 20c0-4 2-6 5-6s5 2 5 6M14 14c3 0 5 2 5 6M11 8h3" />
+    ),
   } as const;
   return (
     <svg
@@ -260,10 +266,11 @@ const navItems: readonly {
   id: SurfaceId;
   label: string;
   icon: IconName;
-  shortcut: string;
+  shortcut?: string;
 }[] = [
   { id: "cockpit", label: "Tydzień", icon: "cockpit", shortcut: "1" },
   { id: "meetings", label: "Spotkania", icon: "meetings", shortcut: "2" },
+  { id: "relationships", label: "Relacje", icon: "relationships" },
   { id: "tasks", label: "Zadania", icon: "tasks", shortcut: "3" },
   { id: "projects", label: "Projekty", icon: "project", shortcut: "4" },
   { id: "history", label: "Historia Capture", icon: "history", shortcut: "5" },
@@ -743,7 +750,9 @@ export const RealApp = ({
               aria-label={
                 item.id === "tasks"
                   ? `${item.label} · ${tasks.length}`
-                  : `${item.label} · ${modifierLabel}${item.shortcut}`
+                  : item.shortcut === undefined
+                    ? item.label
+                    : `${item.label} · ${modifierLabel}${item.shortcut}`
               }
               aria-current={surface === item.id ? "page" : undefined}
               onClick={() =>
@@ -763,12 +772,12 @@ export const RealApp = ({
                 >
                   {state.snapshot.attention.data.unreadCount}
                 </span>
-              ) : (
+              ) : item.shortcut !== undefined ? (
                 <kbd>
                   {modifierLabel}
                   {item.shortcut}
                 </kbd>
-              )}
+              ) : null}
             </button>
           ))}
         </nav>
@@ -964,6 +973,14 @@ export const RealApp = ({
         {surface === "meetings" && client && (
           <MeetingsSurface client={client} />
         )}
+        {surface === "relationships" && (
+          <StrategicDepthSurface
+            client={client}
+            snapshot={state.snapshot}
+            onReload={reload}
+            onFailure={showFailure}
+          />
+        )}
         {surface === "tasks" && (
           <TasksSurface
             snapshot={state.snapshot}
@@ -1095,6 +1112,25 @@ export const RealApp = ({
                 setProjectBusy(false);
                 if (result.kind === "success")
                   await refreshAfter("Zamierzony wynik zaktualizowano.");
+                else showFailure(result);
+              });
+            }}
+            onSetLifecycle={(lifecycle) => {
+              if (!client || !projectOverview) return;
+              setProjectBusy(true);
+              void setProjectLifecycle(
+                client,
+                state.snapshot,
+                projectOverview.project,
+                lifecycle,
+              ).then(async (result) => {
+                setProjectBusy(false);
+                if (result.kind === "success")
+                  await refreshAfter(
+                    lifecycle === "closed"
+                      ? "Projekt zamknięto; historia i otwarte zadania pozostały bez zmian."
+                      : "Projekt otwarto ponownie.",
+                  );
                 else showFailure(result);
               });
             }}
