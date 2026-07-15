@@ -1388,6 +1388,29 @@ kbd {
 .capture-dialog form {
   padding: 0 var(--space-5) var(--space-5);
 }
+.capture-kind {
+  display: inline-flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  padding: 0.2rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+}
+.capture-kind button {
+  min-height: 2rem;
+  padding: 0 var(--space-3);
+  color: var(--text-tertiary);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  font-size: var(--text-xs);
+}
+.capture-kind button[aria-selected="true"] {
+  color: var(--text-primary);
+  background: var(--surface-active);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
 .capture-dialog textarea {
   width: 100%;
   min-height: 8.75rem;
@@ -1407,6 +1430,39 @@ kbd {
 }
 .capture-dialog textarea::placeholder {
   color: var(--input-placeholder);
+}
+.capture-field,
+.capture-file {
+  display: flex;
+  min-height: 8.75rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  color: var(--text-secondary);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-lg);
+  background: var(--input-bg);
+}
+.capture-field input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
+  color: var(--input-text);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  background: var(--surface-raised);
+  font-size: var(--text-sm);
+}
+.capture-field input:focus-visible,
+.capture-file:focus-within {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px var(--focus-ring-soft);
+}
+.capture-file small {
+  color: var(--text-quaternary);
+  line-height: var(--leading-normal);
 }
 .attachment-strip {
   display: flex;

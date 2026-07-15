@@ -11,6 +11,13 @@ const render = async (): Promise<void> => {
   let content: ReactNode = <App client={window.constellation} />;
   if (
     import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("surface") === "capture"
+  ) {
+    const { CaptureHarness } = await import("./dev/CaptureHarness.js");
+    content = <CaptureHarness />;
+  }
+  if (
+    import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get("surface") === "data-home"
   ) {
     const { DataHomeHarness } = await import("./dev/DataHomeHarness.js");

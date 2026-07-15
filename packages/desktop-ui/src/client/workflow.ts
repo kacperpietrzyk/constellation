@@ -22,6 +22,7 @@ import {
   type Capability,
   type GrantId,
   type StrategicRecordId,
+  type CaptureOriginal,
   type PrincipalId as AgentPrincipalId,
 } from "@constellation/contracts";
 import type {
@@ -96,6 +97,24 @@ export type SubmitTaskResult =
       readonly kind: "success";
       readonly receipt: AuditReceiptProjection;
       readonly selectedTaskId: TaskId;
+      readonly snapshot: DesktopSnapshot;
+    }
+  | MutationFailure;
+
+export type QuickCaptureResult =
+  | {
+      readonly kind: "success";
+      readonly receipt: AuditReceiptProjection;
+      readonly result:
+        | { readonly kind: "task"; readonly taskId: TaskId }
+        | {
+            readonly kind: "knowledge_source";
+            readonly sourceId: KnowledgeSourceId;
+          }
+        | {
+            readonly kind: "review";
+            readonly attentionSignalId: AttentionSignalId;
+          };
       readonly snapshot: DesktopSnapshot;
     }
   | MutationFailure;
@@ -641,6 +660,8 @@ const agentCapabilities = (
     return [...AGENT_QUERY_CAPABILITIES, "comment.add", "comment.edit"];
   const operate: readonly Capability[] = [
     ...AGENT_QUERY_CAPABILITIES,
+    "capture.submit",
+    "capture.process",
     "capture.submitText",
     "capture.routeAsTask",
     "project.create",
@@ -1455,6 +1476,38 @@ export const updateAttention = (
         : undefined,
   );
 
+export const routeCaptureException = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  captureId: string,
+  destination: "task" | "knowledge_source",
+) => {
+  const capture = snapshot.captures.find((item) => item.id === captureId);
+  if (capture === undefined) {
+    return Promise.resolve<MutationResult<never>>({
+      kind: "error",
+      message: "Nie znaleziono zachowanego Capture.",
+    });
+  }
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [capture.id]: capture.version,
+      }),
+      commandName: "capture.process",
+      payload: { captureId: capture.id, destination },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      (response.outcome.projection.kind === "capture.routed_as_task" ||
+        response.outcome.projection.kind ===
+          "capture.routed_as_knowledge_source")
+        ? response.outcome.projection
+        : undefined,
+  );
+};
+
 export const resolveRadarCandidate = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -1677,12 +1730,12 @@ const loadReceipt = async (
     "audit.receipt",
   ).then((projection) => projection.receipt);
 
-export const submitCaptureAsTask = async (
+export const submitQuickCapture = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
-  originalText: string,
-): Promise<SubmitTaskResult> => {
-  const title = originalText.trim();
+  original: CaptureOriginal,
+  destination: "auto" | "task" | "knowledge_source" = "auto",
+): Promise<QuickCaptureResult> => {
   const workspaceId = snapshot.bootstrap.workspace.id;
   const spaceId = firstSpace(snapshot);
   try {
@@ -1691,10 +1744,10 @@ export const submitCaptureAsTask = async (
       CommandEnvelopeSchema.parse({
         ...commandBase(workspaceId, {}),
         correlationId,
-        commandName: "capture.submitText",
+        commandName: "capture.submit",
         payload: {
           spaceId,
-          originalText,
+          original,
           deviceId: crypto.randomUUID(),
           source: "in_app_quick_capture",
         },
@@ -1712,14 +1765,13 @@ export const submitCaptureAsTask = async (
         ...commandBase(workspaceId, { [capture.captureId]: capture.version }),
         correlationId,
         idempotencyKey: `desktop-route-${capture.captureId}`,
-        commandName: "capture.routeAsTask",
-        payload: { captureId: capture.captureId, title },
+        commandName: "capture.process",
+        payload: { captureId: capture.captureId, destination },
       }),
     );
     if (
       routed.kind !== "command_outcome" ||
-      routed.outcome.outcome !== "success" ||
-      routed.outcome.projection.kind !== "capture.routed_as_task"
+      routed.outcome.outcome !== "success"
     )
       return commandFailure(routed);
     const [nextSnapshot, receipt] = await Promise.all([
@@ -1729,7 +1781,24 @@ export const submitCaptureAsTask = async (
     return {
       kind: "success",
       receipt,
-      selectedTaskId: routed.outcome.projection.taskId,
+      result:
+        routed.outcome.projection.kind === "capture.routed_as_task"
+          ? { kind: "task", taskId: routed.outcome.projection.taskId }
+          : routed.outcome.projection.kind ===
+              "capture.routed_as_knowledge_source"
+            ? {
+                kind: "knowledge_source",
+                sourceId: routed.outcome.projection.sourceId,
+              }
+            : routed.outcome.projection.kind === "capture.needs_review"
+              ? {
+                  kind: "review",
+                  attentionSignalId:
+                    routed.outcome.projection.attentionSignalId,
+                }
+              : (() => {
+                  throw new Error("Nieoczekiwany wynik przetwarzania Capture.");
+                })(),
       snapshot: nextSnapshot,
     };
   } catch (error) {
@@ -1739,4 +1808,27 @@ export const submitCaptureAsTask = async (
         error instanceof Error ? error.message : "Nieoczekiwany błąd desktopu.",
     };
   }
+};
+
+export const submitCaptureAsTask = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  originalText: string,
+): Promise<SubmitTaskResult> => {
+  const result = await submitQuickCapture(
+    client,
+    snapshot,
+    { kind: "text", text: originalText },
+    "task",
+  );
+  if (result.kind !== "success") return result;
+  if (result.result.kind !== "task") {
+    return { kind: "error", message: "Capture nie utworzył zadania." };
+  }
+  return {
+    kind: "success",
+    receipt: result.receipt,
+    selectedTaskId: result.result.taskId,
+    snapshot: result.snapshot,
+  };
 };

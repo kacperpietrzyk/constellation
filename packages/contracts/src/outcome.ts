@@ -41,6 +41,8 @@ export const DiagnosticCodeSchema = z.enum([
   "agent.checkpoint_created",
   "agent.handoff_submitted",
   "capture.stored",
+  "capture.routed_as_knowledge_source",
+  "capture.needs_review",
   "capture.routed_as_task",
   "project.created",
   "document.created",
@@ -191,6 +193,26 @@ export const CaptureRoutedAsTaskProjectionSchema = z
     taskId: TaskIdSchema,
     taskStatusId: TaskStatusIdSchema,
     taskVersion: z.int().positive(),
+  })
+  .strict();
+
+export const CaptureRoutedAsKnowledgeSourceProjectionSchema = z
+  .object({
+    kind: z.literal("capture.routed_as_knowledge_source"),
+    captureId: CaptureIdSchema,
+    captureVersion: z.int().positive(),
+    sourceId: KnowledgeSourceIdSchema,
+    sourceVersion: z.int().positive(),
+  })
+  .strict();
+
+export const CaptureNeedsReviewProjectionSchema = z
+  .object({
+    kind: z.literal("capture.needs_review"),
+    captureId: CaptureIdSchema,
+    captureVersion: z.int().positive(),
+    attentionSignalId: AttentionSignalIdSchema,
+    reason: z.enum(["duplicate", "unsupported"]),
   })
   .strict();
 
@@ -444,6 +466,8 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   WorkspaceMemberRevokedProjectionSchema,
   CaptureStoredProjectionSchema,
   CaptureRoutedAsTaskProjectionSchema,
+  CaptureRoutedAsKnowledgeSourceProjectionSchema,
+  CaptureNeedsReviewProjectionSchema,
   ProjectCreatedProjectionSchema,
   DocumentCreatedProjectionSchema,
   KnowledgeSourceMutationProjectionSchema,
@@ -535,6 +559,20 @@ const CaptureRoutedAsTaskSuccessOutcomeSchema =
     outcome: z.literal("success"),
     diagnosticCode: z.literal("capture.routed_as_task"),
     projection: CaptureRoutedAsTaskProjectionSchema,
+  }).strict();
+
+const CaptureRoutedAsKnowledgeSourceSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("capture.routed_as_knowledge_source"),
+    projection: CaptureRoutedAsKnowledgeSourceProjectionSchema,
+  }).strict();
+
+const CaptureNeedsReviewSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("capture.needs_review"),
+    projection: CaptureNeedsReviewProjectionSchema,
   }).strict();
 
 const ProjectCreatedSuccessOutcomeSchema =
@@ -721,6 +759,8 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   WorkspaceMemberRevokedSuccessOutcomeSchema,
   CaptureStoredSuccessOutcomeSchema,
   CaptureRoutedAsTaskSuccessOutcomeSchema,
+  CaptureRoutedAsKnowledgeSourceSuccessOutcomeSchema,
+  CaptureNeedsReviewSuccessOutcomeSchema,
   ProjectCreatedSuccessOutcomeSchema,
   DocumentCreatedSuccessOutcomeSchema,
   KnowledgeSourceCreatedSuccessOutcomeSchema,
@@ -767,6 +807,7 @@ export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
           "relation.remove",
           "relation.restore",
           "capture.undo_route",
+          "capture.undo_knowledge_route",
           "knowledge.restore_source",
           "knowledge.restore_evidence",
           "knowledge.void_named_version",

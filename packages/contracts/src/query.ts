@@ -23,7 +23,7 @@ import {
   DocumentRevisionIdSchema,
   StrategicRecordIdSchema,
 } from "./ids.js";
-import { ContractVersionSchema } from "./command.js";
+import { CaptureOriginalSchema, ContractVersionSchema } from "./command.js";
 import { RequestOriginSchema } from "./execution-context.js";
 import { ImportedMeetingSchema } from "./meeting-loop.js";
 
@@ -262,6 +262,7 @@ const CaptureHistoryItemBaseSchema = z.object({
   id: CaptureIdSchema,
   spaceId: SpaceIdSchema,
   originalText: z.string(),
+  original: CaptureOriginalSchema,
   source: z.enum(["global_quick_capture", "in_app_quick_capture"]),
   capturedAt: z.iso.datetime({ offset: true }),
   version: z.int().positive(),
@@ -410,6 +411,19 @@ const CaptureHistoryItemSchema = z.discriminatedUnion("processingState", [
     derivedTaskId: TaskIdSchema,
     routedAt: z.iso.datetime({ offset: true }),
     routedBy: PrincipalIdSchema,
+  }).strict(),
+  CaptureHistoryItemBaseSchema.extend({
+    processingState: z.literal("routed_as_knowledge_source"),
+    derivedKnowledgeSourceId: KnowledgeSourceIdSchema,
+    routedAt: z.iso.datetime({ offset: true }),
+    routedBy: PrincipalIdSchema,
+  }).strict(),
+  CaptureHistoryItemBaseSchema.extend({
+    processingState: z.literal("needs_review"),
+    reviewReason: z.enum(["duplicate", "unsupported"]),
+    duplicateOfCaptureId: CaptureIdSchema.optional(),
+    attentionSignalId: AttentionSignalIdSchema,
+    reviewedAt: z.iso.datetime({ offset: true }),
   }).strict(),
 ]);
 
@@ -814,6 +828,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "renewal_due",
               "relationship_fact_stale",
               "decision_impact_review",
+              "capture_duplicate",
+              "capture_unsupported",
             ]),
             destination: z.discriminatedUnion("kind", [
               z
@@ -829,6 +845,12 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
                 .object({
                   kind: z.literal("document"),
                   documentId: DocumentIdSchema,
+                })
+                .strict(),
+              z
+                .object({
+                  kind: z.literal("capture"),
+                  captureId: CaptureIdSchema,
                 })
                 .strict(),
             ]),

@@ -26,10 +26,12 @@ The repository contains the first durable desktop journey:
   and rollback at both interrupted activation boundaries;
 - one context-preserving desktop shell with bounded Task and Project tabs,
   Back/Forward history, and an attached inspector;
-- Quick Capture from original text to a traceable Task;
+- Universal Quick Capture for text, URLs, and file references, preserving the
+  original before deterministic routing to a traceable Task or knowledge source;
 - Projects, Task relations, status changes, deterministic search, and a weekly
   cockpit projection;
-- Capture History, meaningful activity, audit receipts, and previewed undo;
+- Capture History, duplicate review-by-exception in Attention, meaningful
+  activity, audit receipts, and previewed undo;
 - a shared application command/query boundary behind the desktop UI;
 - packaged verification on macOS and Windows runners;
 - a versioned, capability-tested Data Home contract whose local-only adapter

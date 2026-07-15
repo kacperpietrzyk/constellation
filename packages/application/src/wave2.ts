@@ -60,6 +60,7 @@ import {
   restoreTaskProjectRelation,
   setTaskStatus,
   undoCaptureTaskRoute,
+  undoCaptureKnowledgeRoute,
   updateProjectOutcome,
   type AuditReceipt,
   type DomainEvent,
@@ -73,6 +74,7 @@ import {
   type AttentionSignal,
   type CommentTarget,
   type AttentionDestination,
+  type Capture,
   type KnowledgeSource,
   type NativeDocument,
   type StrategicRecord,
@@ -735,12 +737,14 @@ const taskProjection = (kind: string, task: Task): Record<string, unknown> => ({
 const targetRecord = (
   view: ApplicationWave2ReadView,
   target: AttentionDestination,
-): Task | Project | NativeDocument | undefined =>
+): Task | Project | NativeDocument | Capture | undefined =>
   target.kind === "task"
     ? view.getTask(target.taskId)
     : target.kind === "project"
       ? view.getProject(target.projectId)
-      : view.getDocument(target.documentId);
+      : target.kind === "document"
+        ? view.getDocument(target.documentId)
+        : view.getCapture(target.captureId);
 
 const targetId = (target: CommentTarget): string =>
   target.kind === "task" ? target.taskId : target.projectId;
@@ -3250,6 +3254,27 @@ const descriptorState = (
             reason: "later_change",
           };
     }
+    case "capture.undo_knowledge_route": {
+      const capture = view.getCapture(descriptor.captureId);
+      const source = view.getKnowledgeSource(descriptor.sourceId);
+      return capture?.processingState === "routed_as_knowledge_source" &&
+        capture.version === descriptor.resultingCaptureVersion &&
+        source?.version === descriptor.resultingSourceVersion
+        ? {
+            available: true,
+            recordIds: [capture.id, source.id],
+            versions: {
+              [capture.id]: capture.version,
+              [source.id]: source.version,
+            },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
     case "knowledge.restore_source": {
       const source = view.getKnowledgeSource(descriptor.sourceId);
       return source?.version === descriptor.resultingVersion
@@ -3463,6 +3488,34 @@ const applyUndo = (
     compensatedKinds = {
       [restored.capture.id]: "capture",
       [restored.task.id]: "task",
+    };
+  } else if (descriptor.kind === "capture.undo_knowledge_route") {
+    const capture = transaction.getCapture(descriptor.captureId);
+    const source = transaction.getKnowledgeSource(descriptor.sourceId);
+    if (
+      capture?.processingState !== "routed_as_knowledge_source" ||
+      source === undefined
+    ) {
+      return outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "undo.not_available",
+        currentVersions: state.versions,
+      });
+    }
+    const restored = undoCaptureKnowledgeRoute({
+      capture,
+      source,
+      occurredAt,
+    });
+    transaction.updateCapture(restored.capture, capture.version);
+    transaction.updateKnowledgeSource(restored.source, source.version);
+    compensatedVersions = {
+      [restored.capture.id]: restored.capture.version,
+      [restored.source.id]: restored.source.version,
+    };
+    compensatedKinds = {
+      [restored.capture.id]: "capture",
+      [restored.source.id]: "knowledgeSource",
     };
   } else if (descriptor.kind === "knowledge.restore_source") {
     const source = transaction.getKnowledgeSource(
@@ -3847,7 +3900,8 @@ export const executeWave2Query = (
             id: signal.id,
             reason: signal.reason,
             destination: signal.destination,
-            title: record.title,
+            title:
+              "originalText" in record ? record.originalText : record.title,
             detail:
               signal.reason === "comment_mention"
                 ? "You were mentioned in a comment."
@@ -3861,7 +3915,11 @@ export const executeWave2Query = (
                         ? "A time-sensitive relationship fact needs verification."
                         : signal.reason === "decision_impact_review"
                           ? "A replacement Decision has unresolved consequences."
-                          : "An offline change needs reconciliation.",
+                          : signal.reason === "capture_duplicate"
+                            ? "This capture matches an existing item. Choose its destination or dismiss it."
+                            : signal.reason === "capture_unsupported"
+                              ? "This capture needs a destination before it can be processed."
+                              : "An offline change needs reconciliation.",
             urgency: signal.urgency,
             state: signal.state,
             version: signal.version,

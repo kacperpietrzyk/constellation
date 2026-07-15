@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import type {
+  CaptureOriginal,
   PrincipalId,
   ProjectId,
   RelationId,
@@ -51,7 +52,7 @@ import {
   setWorkspaceMemberAccess,
   setCommentResolved,
   setProjectLifecycle,
-  submitCaptureAsTask,
+  submitQuickCapture,
   undoCommand,
   unrelateTask,
   updateProjectOutcome,
@@ -62,6 +63,7 @@ import {
   createRemoteAgentGrant,
   rotateRemoteAgentCredential,
   revokeRemoteAgentGrant,
+  routeCaptureException,
   type AuditReceiptProjection,
   type DesktopSnapshot,
   type MutationFailure,
@@ -168,7 +170,7 @@ const BrandMark = () => (
   </svg>
 );
 
-const CaptureDialog = ({
+export const CaptureDialog = ({
   busy,
   workspaceName,
   onClose,
@@ -177,9 +179,12 @@ const CaptureDialog = ({
   readonly busy: boolean;
   readonly workspaceName: string;
   readonly onClose: () => void;
-  readonly onSubmit: (text: string) => void;
+  readonly onSubmit: (original: CaptureOriginal) => void;
 }) => {
+  const [mode, setMode] = useState<CaptureOriginal["kind"]>("text");
   const [text, setText] = useState("");
+  const [url, setUrl] = useState("");
+  const [file, setFile] = useState<File>();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -189,8 +194,25 @@ const CaptureDialog = ({
   }, []);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (text.trim() && !busy) onSubmit(text);
+    if (busy) return;
+    if (mode === "text" && text.trim()) onSubmit({ kind: "text", text });
+    if (mode === "url" && url.trim())
+      onSubmit({ kind: "url", url: url.trim() });
+    if (mode === "file" && file !== undefined)
+      onSubmit({
+        kind: "file",
+        displayName: file.name,
+        reference: `external-file:${file.name}:${file.size}:${file.lastModified}`,
+        ...(file.type.length === 0 ? {} : { mediaType: file.type }),
+        sizeBytes: file.size,
+      });
   };
+  const canSubmit =
+    mode === "text"
+      ? text.trim().length > 0
+      : mode === "url"
+        ? url.trim().length > 0
+        : file !== undefined;
   return (
     <dialog
       ref={dialogRef}
@@ -220,22 +242,67 @@ const CaptureDialog = ({
           </button>
         </header>
         <form onSubmit={submit}>
-          <label className="sr-only" htmlFor="capture-text">
-            Treść przechwycenia
-          </label>
-          <textarea
-            id="capture-text"
-            name="capture"
-            ref={inputRef}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder="Myśl, zadanie, link albo coś do sprawdzenia…"
-            maxLength={500}
-            onKeyDown={(event) => {
-              if ((event.metaKey || event.ctrlKey) && event.key === "Enter")
-                submit(event);
-            }}
-          />
+          <div
+            className="capture-kind"
+            role="tablist"
+            aria-label="Rodzaj Capture"
+          >
+            {(["text", "url", "file"] as const).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                role="tab"
+                aria-selected={mode === kind}
+                onClick={() => setMode(kind)}
+              >
+                {kind === "text" ? "Tekst" : kind === "url" ? "Link" : "Plik"}
+              </button>
+            ))}
+          </div>
+          {mode === "text" ? (
+            <>
+              <label className="sr-only" htmlFor="capture-text">
+                Treść przechwycenia
+              </label>
+              <textarea
+                id="capture-text"
+                name="capture"
+                ref={inputRef}
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                placeholder="Myśl, zadanie albo coś do zrobienia…"
+                maxLength={262_144}
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter")
+                    submit(event);
+                }}
+              />
+            </>
+          ) : mode === "url" ? (
+            <label className="capture-field">
+              <span>Adres URL</span>
+              <input
+                type="url"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="https://…"
+                autoFocus
+                required
+              />
+            </label>
+          ) : (
+            <label className="capture-file">
+              <span>{file?.name ?? "Wybierz plik z urządzenia"}</span>
+              <input
+                type="file"
+                onChange={(event) => setFile(event.target.files?.[0])}
+              />
+              <small>
+                Constellation zachowa metadane i prywatne odwołanie, nie kopię
+                zawartości.
+              </small>
+            </label>
+          )}
           <div className="capture-target">
             <div>
               <span>Workspace</span>
@@ -243,7 +310,7 @@ const CaptureDialog = ({
             </div>
             <div>
               <span>Wynik</span>
-              <strong>Zadanie · jawny routing</strong>
+              <strong>Reguła aplikacji · z możliwością cofnięcia</strong>
             </div>
           </div>
           <footer className="capture-footer">
@@ -251,9 +318,9 @@ const CaptureDialog = ({
             <button
               className="primary-button"
               type="submit"
-              disabled={busy || !text.trim()}
+              disabled={busy || !canSubmit}
             >
-              {busy ? "Zapisuję…" : "Zapisz jako zadanie"}
+              {busy ? "Przetwarzam…" : "Zapisz i uporządkuj"}
             </button>
           </footer>
         </form>
@@ -1213,8 +1280,10 @@ export const RealApp = ({
                     project?.title ?? item.title,
                   ),
                 );
-              } else {
+              } else if (destination.kind === "document") {
                 openContext(destinationContext("documents", "Dokumenty"));
+              } else {
+                openContext(destinationContext("history", "Historia Capture"));
               }
               if (client && item.state === "unread") {
                 setAttentionBusy(true);
@@ -1252,6 +1321,36 @@ export const RealApp = ({
                 if (result.kind === "success")
                   await refreshAfter("Sygnał usunięto z uwagi.");
                 else showFailure(result);
+              });
+            }}
+            onRouteCapture={(item, destination) => {
+              if (!client || item.destination.kind !== "capture") return;
+              setAttentionBusy(true);
+              void routeCaptureException(
+                client,
+                state.snapshot,
+                item.destination.captureId,
+                destination,
+              ).then(async (routeResult) => {
+                if (routeResult.kind !== "success") {
+                  setAttentionBusy(false);
+                  showFailure(routeResult);
+                  return;
+                }
+                const dismissResult = await updateAttention(
+                  client,
+                  state.snapshot,
+                  item,
+                  "dismiss",
+                );
+                setAttentionBusy(false);
+                if (dismissResult.kind === "success")
+                  await refreshAfter(
+                    destination === "task"
+                      ? "Capture skierowano do zadań."
+                      : "Capture zapisano jako źródło wiedzy.",
+                  );
+                else showFailure(dismissResult);
               });
             }}
           />
@@ -1684,30 +1783,43 @@ export const RealApp = ({
           busy={capturing}
           workspaceName={bootstrap.workspace.name}
           onClose={() => !capturing && setCaptureOpen(false)}
-          onSubmit={(text) => {
+          onSubmit={(original) => {
             if (!client) return;
             setCapturing(true);
             setNotice(undefined);
-            void submitCaptureAsTask(client, state.snapshot, text).then(
+            void submitQuickCapture(client, state.snapshot, original).then(
               (result) => {
                 setCapturing(false);
                 if (result.kind === "success") {
                   setState({ kind: "ready", snapshot: result.snapshot });
-                  const task = result.snapshot.tasks.find(
-                    (item) => item.id === result.selectedTaskId,
-                  );
-                  openContext(
-                    taskContext(
-                      result.selectedTaskId,
-                      task?.title ?? "Nowe zadanie",
-                    ),
-                  );
-                  setReceipts((current) => ({
-                    ...current,
-                    [result.selectedTaskId]: result.receipt,
-                  }));
+                  const captureResult = result.result;
+                  if (captureResult.kind === "task") {
+                    const task = result.snapshot.tasks.find(
+                      (item) => item.id === captureResult.taskId,
+                    );
+                    openContext(
+                      taskContext(
+                        captureResult.taskId,
+                        task?.title ?? "Nowe zadanie",
+                      ),
+                    );
+                    setReceipts((current) => ({
+                      ...current,
+                      [captureResult.taskId]: result.receipt,
+                    }));
+                  } else if (captureResult.kind === "review") {
+                    openContext(destinationContext("attention", "Do uwagi"));
+                  } else {
+                    openContext(destinationContext("documents", "Dokumenty"));
+                  }
                   setCaptureOpen(false);
-                  setToast("Capture zapisano i utworzono zadanie.");
+                  setToast(
+                    captureResult.kind === "task"
+                      ? "Capture zapisano jako zadanie."
+                      : captureResult.kind === "knowledge_source"
+                        ? "Capture zapisano jako źródło wiedzy."
+                        : "Capture wymaga decyzji i trafił do Attention.",
+                  );
                 } else showFailure(result);
               },
             );

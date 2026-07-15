@@ -656,7 +656,14 @@ export const HistorySurface = ({
                 <header>
                   <Mark kind="capture" />
                   <div>
-                    <p className="eyebrow">Oryginał · Quick Capture</p>
+                    <p className="eyebrow">
+                      Oryginał ·{" "}
+                      {capture.original.kind === "text"
+                        ? "tekst"
+                        : capture.original.kind === "url"
+                          ? "link"
+                          : "plik"}
+                    </p>
                     <h2>{capture.originalText}</h2>
                   </div>
                   <time>
@@ -680,7 +687,12 @@ export const HistorySurface = ({
                       <strong>
                         {capture.processingState === "routed_as_task"
                           ? "Utworzono zadanie"
-                          : "Oczekuje na decyzję"}
+                          : capture.processingState ===
+                              "routed_as_knowledge_source"
+                            ? "Utworzono źródło wiedzy"
+                            : capture.processingState === "needs_review"
+                              ? "Wymaga decyzji w Attention"
+                              : "Oczekuje na przetworzenie"}
                       </strong>
                       <span>{capture.originalText}</span>
                     </div>

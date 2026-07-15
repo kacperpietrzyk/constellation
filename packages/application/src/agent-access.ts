@@ -749,6 +749,8 @@ export const executeAgentAccessQuery = (
             return [descriptor.relationId];
           case "capture.undo_route":
             return [descriptor.captureId, descriptor.taskId];
+          case "capture.undo_knowledge_route":
+            return [descriptor.captureId, descriptor.sourceId];
           case "knowledge.restore_source":
             return [descriptor.sourceId];
           case "knowledge.restore_evidence":

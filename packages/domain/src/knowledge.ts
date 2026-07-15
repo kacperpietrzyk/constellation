@@ -21,15 +21,20 @@ export const createKnowledgeSource = (input: {
   readonly canonicalUrl?: string;
   readonly excerpt?: string;
   readonly availability: KnowledgeSource["availability"];
+  readonly sourceCaptureId?: KnowledgeSource["sourceCaptureId"];
   readonly observedAt: string;
   readonly createdBy: PrincipalId;
   readonly occurredAt: string;
-}): KnowledgeSource => ({
-  ...input,
-  version: 1,
-  createdAt: input.occurredAt,
-  updatedAt: input.occurredAt,
-});
+}): KnowledgeSource => {
+  const { sourceCaptureId, ...base } = input;
+  return {
+    ...base,
+    ...(sourceCaptureId === undefined ? {} : { sourceCaptureId }),
+    version: 1,
+    createdAt: input.occurredAt,
+    updatedAt: input.occurredAt,
+  };
+};
 
 export const updateKnowledgeSource = (
   source: KnowledgeSource,

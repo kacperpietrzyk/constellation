@@ -46,10 +46,14 @@ const context = (principalId: string = ids.principal): ExecutionContext =>
       "workspace.createLocal",
       "workspace.rename",
       "workspace.bootstrapContext",
+      "capture.submit",
+      "capture.process",
       "capture.submitText",
       "capture.routeAsTask",
       "capture.history",
       "task.list",
+      "command.previewUndo",
+      "command.undo",
       "audit.receipt",
     ],
     origin: "desktop",
@@ -97,6 +101,41 @@ const routeCommand = (
   commandName: "capture.routeAsTask",
   expectedVersions: { [captureId]: expectedVersion },
   payload: { captureId, title },
+});
+
+const submitOriginalCommand = (
+  idempotencyKey: string,
+  original:
+    | { readonly kind: "text"; readonly text: string }
+    | { readonly kind: "url"; readonly url: string; readonly title?: string }
+    | {
+        readonly kind: "file";
+        readonly displayName: string;
+        readonly reference: string;
+        readonly mediaType?: string;
+        readonly sizeBytes?: number;
+      },
+) => ({
+  ...commandMetadata(idempotencyKey),
+  commandName: "capture.submit",
+  payload: {
+    spaceId: ids.rootSpace,
+    original,
+    deviceId: "synthetic-test-device",
+    source: "global_quick_capture",
+  },
+});
+
+const processCommand = (
+  captureId: string,
+  idempotencyKey: string,
+  expectedVersion = 1,
+  destination: "auto" | "task" | "knowledge_source" = "auto",
+) => ({
+  ...commandMetadata(idempotencyKey),
+  commandName: "capture.process",
+  expectedVersions: { [captureId]: expectedVersion },
+  payload: { captureId, destination },
 });
 
 const unwrapOutcome = (
@@ -229,7 +268,7 @@ describe("reference kernel conformance", () => {
     assert.equal(snapshot.captures.at(-1)?.originalText, originalText);
     assert.equal(snapshot.events.at(-1)?.type, "capture.submitted");
     assert.deepEqual(snapshot.auditReceipts.at(-1)?.changedFields, [
-      "originalText",
+      "original",
       "deviceId",
       "source",
       "processingState",
@@ -277,6 +316,125 @@ describe("reference kernel conformance", () => {
         false,
       );
     }
+  });
+
+  it("processes typed originals deterministically and sends only duplicates to Attention", () => {
+    const harness = bootstrappedHarness();
+    const submit = (
+      key: string,
+      original: Parameters<typeof submitOriginalCommand>[1],
+    ) => {
+      const outcome = unwrapOutcome(
+        harness.kernel.execute(context(), submitOriginalCommand(key, original)),
+      );
+      assert.equal(outcome.outcome, "success");
+      if (
+        outcome.outcome !== "success" ||
+        outcome.projection.kind !== "capture.stored"
+      ) {
+        throw new Error("Expected a stored typed capture.");
+      }
+      return outcome.projection.captureId;
+    };
+
+    const textCaptureId = submit("typed-text", {
+      kind: "text",
+      text: "Prepare the quarterly review",
+    });
+    const textOutcome = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        processCommand(textCaptureId, "process-text"),
+      ),
+    );
+    assert.equal(textOutcome.diagnosticCode, "capture.routed_as_task");
+
+    const urlCaptureId = submit("typed-url", {
+      kind: "url",
+      url: "https://example.test/research",
+      title: "Quarterly research",
+    });
+    const urlOutcome = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        processCommand(urlCaptureId, "process-url"),
+      ),
+    );
+    assert.equal(
+      urlOutcome.diagnosticCode,
+      "capture.routed_as_knowledge_source",
+    );
+    const urlUndoPreview = unwrapOutcome(
+      harness.kernel.execute(context(), {
+        ...commandMetadata("preview-url-route"),
+        commandName: "command.previewUndo",
+        payload: { targetCommandId: urlOutcome.commandId },
+      }),
+    );
+    assert.equal(urlUndoPreview.outcome, "preview");
+    if (urlUndoPreview.outcome !== "preview")
+      throw new Error("Expected a Knowledge Source undo preview.");
+    assert.equal(urlUndoPreview.projection.available, true);
+
+    const duplicateCaptureId = submit("typed-url-duplicate", {
+      kind: "url",
+      url: "https://example.test/research",
+      title: "Quarterly research",
+    });
+    const duplicateOutcome = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        processCommand(duplicateCaptureId, "process-url-duplicate"),
+      ),
+    );
+    assert.equal(duplicateOutcome.diagnosticCode, "capture.needs_review");
+
+    const snapshot = harness.store.snapshot();
+    const sourceCapture = snapshot.captures.find(
+      (item) => item.id === urlCaptureId,
+    );
+    const duplicateCapture = snapshot.captures.find(
+      (item) => item.id === duplicateCaptureId,
+    );
+    assert.equal(sourceCapture?.processingState, "routed_as_knowledge_source");
+    assert.equal(duplicateCapture?.processingState, "needs_review");
+    assert.equal(snapshot.tasks.length, 1);
+    assert.equal(snapshot.knowledgeSources?.length, 1);
+    assert.equal(snapshot.attentionSignals?.length, 1);
+    assert.deepEqual(snapshot.attentionSignals?.[0]?.destination, {
+      kind: "capture",
+      captureId: duplicateCaptureId,
+    });
+
+    const urlUndo = unwrapOutcome(
+      harness.kernel.execute(context(), {
+        ...commandMetadata("undo-url-route"),
+        expectedVersions: urlUndoPreview.projection.requiredVersions,
+        commandName: "command.undo",
+        payload: { targetCommandId: urlOutcome.commandId },
+      }),
+    );
+    assert.equal(urlUndo.diagnosticCode, "command.undone");
+    assert.equal(
+      harness.store.snapshot().captures.find((item) => item.id === urlCaptureId)
+        ?.processingState,
+      "pending_processing",
+    );
+
+    const resolved = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        processCommand(duplicateCaptureId, "resolve-url-duplicate", 2, "task"),
+      ),
+    );
+    assert.equal(resolved.diagnosticCode, "capture.routed_as_task");
+    assert.equal(
+      harness.store
+        .snapshot()
+        .captures.find((item) => item.id === duplicateCaptureId)
+        ?.processingState,
+      "routed_as_task",
+    );
   });
 
   it("routes a capture to one canonical standalone Task without losing provenance", () => {

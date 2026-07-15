@@ -322,12 +322,17 @@ export const AttentionSurface = ({
   onOpen,
   onRead,
   onDismiss,
+  onRouteCapture,
 }: {
   readonly attention: DataSlice<AttentionInboxProjection>;
   readonly busy: boolean;
   readonly onOpen: (item: AttentionInboxProjection["items"][number]) => void;
   readonly onRead: (item: AttentionInboxProjection["items"][number]) => void;
   readonly onDismiss: (item: AttentionInboxProjection["items"][number]) => void;
+  readonly onRouteCapture: (
+    item: AttentionInboxProjection["items"][number],
+    destination: "task" | "knowledge_source",
+  ) => void;
 }) => (
   <section className="attention-surface" aria-labelledby="surface-title">
     <header className="surface-heading attention-heading">
@@ -374,7 +379,9 @@ export const AttentionSurface = ({
                   ? "Wzmianka"
                   : item.reason === "task_assignment"
                     ? "Odpowiedzialność"
-                    : "Konflikt synchronizacji"}
+                    : item.reason === "capture_duplicate"
+                      ? "Duplikat Capture"
+                      : "Wymaga decyzji"}
               </span>
               <strong>{item.title}</strong>
               <span>
@@ -382,13 +389,32 @@ export const AttentionSurface = ({
                   ? "Wspomniano Cię w komentarzu."
                   : item.reason === "task_assignment"
                     ? "Masz odpowiedzialność za to zadanie."
-                    : "Zmiana offline wymaga uzgodnienia wersji."}
+                    : item.detail}
               </span>
               <time dateTime={item.occurredAt}>
                 {new Date(item.occurredAt).toLocaleString()}
               </time>
             </button>
             <div className="attention-actions">
+              {item.destination.kind === "capture" &&
+                item.reason === "capture_duplicate" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onRouteCapture(item, "task")}
+                      disabled={busy}
+                    >
+                      Utwórz zadanie
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRouteCapture(item, "knowledge_source")}
+                      disabled={busy}
+                    >
+                      Zapisz jako źródło
+                    </button>
+                  </>
+                )}
               {item.state === "unread" && (
                 <button
                   type="button"

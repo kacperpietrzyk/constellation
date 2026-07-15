@@ -226,6 +226,54 @@ export type CaptureSubmitTextCommand = z.infer<
   typeof CaptureSubmitTextCommandSchema
 >;
 
+export const CaptureOriginalSchema = z.discriminatedUnion("kind", [
+  z
+    .object({ kind: z.literal("text"), text: z.string().min(1).max(262_144) })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("url"),
+      url: z.url().max(4_096),
+      title: z.string().trim().min(1).max(500).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("file"),
+      displayName: z.string().trim().min(1).max(500),
+      reference: z.string().trim().min(1).max(4_096),
+      mediaType: z.string().trim().min(1).max(255).optional(),
+      sizeBytes: z.int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+    })
+    .strict(),
+]);
+export type CaptureOriginal = z.infer<typeof CaptureOriginalSchema>;
+
+export const CaptureSubmitCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("capture.submit"),
+  payload: z
+    .object({
+      spaceId: SpaceIdSchema,
+      original: CaptureOriginalSchema,
+      deviceId: DeviceIdSchema,
+      source: z.enum(["global_quick_capture", "in_app_quick_capture"]),
+    })
+    .strict(),
+}).strict();
+export type CaptureSubmitCommand = z.infer<typeof CaptureSubmitCommandSchema>;
+
+export const CaptureProcessCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("capture.process"),
+  payload: z
+    .object({
+      captureId: CaptureIdSchema,
+      destination: z.enum(["auto", "task", "knowledge_source"]),
+      title: z.string().trim().min(1).max(500).optional(),
+    })
+    .strict(),
+}).strict();
+export type CaptureProcessCommand = z.infer<typeof CaptureProcessCommandSchema>;
+
 export const CaptureRouteAsTaskCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("capture.routeAsTask"),
   payload: z
@@ -716,6 +764,8 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   AgentGrantRevokeCommandSchema,
   AgentCheckpointCreateCommandSchema,
   AgentHandoffSubmitCommandSchema,
+  CaptureSubmitCommandSchema,
+  CaptureProcessCommandSchema,
   CaptureSubmitTextCommandSchema,
   CaptureRouteAsTaskCommandSchema,
   ProjectCreateCommandSchema,

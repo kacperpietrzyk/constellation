@@ -19,10 +19,12 @@ import {
 } from "./collaboration-policy.js";
 import {
   AuditReceiptIdSchema,
+  AttentionSignalIdSchema,
   CaptureIdSchema,
   CommandOutcomeSchema,
   EventIdSchema,
   MembershipIdSchema,
+  KnowledgeSourceIdSchema,
   OutboxEntryIdSchema,
   QueryResultSchema,
   TaskIdSchema,
@@ -34,19 +36,27 @@ import {
   type QueryEnvelope,
   type QueryResult,
   type SpaceId,
+  type CaptureOriginal,
+  type CaptureId,
   validateCommandEnvelope,
   validateExecutionContext,
   validateQueryEnvelope,
 } from "@constellation/contracts";
 import {
   createLocalWorkspace,
+  captureDisplayText,
+  createKnowledgeSource,
   renameWorkspace,
+  routeCaptureAsKnowledgeSource,
   routeCaptureAsTask,
   submitCapture,
   type AuditReceipt,
+  type AttentionSignal,
   type DomainEvent,
   type OutboxEntry,
   type WorkspaceMembership,
+  type ReviewCapture,
+  type PendingCapture,
 } from "@constellation/domain";
 
 import {
@@ -55,6 +65,7 @@ import {
   type ApplicationKernelDependencies,
   type ApplicationReadView,
   type ApplicationTransaction,
+  type ApplicationWave2Transaction,
   type CurrentAuthorizationPolicy,
   type CapturePaginationCursor,
   type StoreFreshness,
@@ -218,6 +229,7 @@ const isCurrentlyAuthorized = (
         context,
         command as AgentAccessCommand,
       );
+    case "capture.submit":
     case "capture.submitText": {
       const workspace = view.getWorkspace(command.workspaceId);
       const space = view.getSpace(command.payload.spaceId);
@@ -243,6 +255,7 @@ const isCurrentlyAuthorized = (
         )
       );
     }
+    case "capture.process":
     case "capture.routeAsTask": {
       const capture = view.getCapture(command.payload.captureId);
       const membership = view.getMembership(
@@ -498,6 +511,24 @@ export class ApplicationKernel {
         );
       case "capture.submitText":
         return this.submitTextCapture(
+          transaction,
+          context,
+          command,
+          scope,
+          fingerprint,
+          occurredAt,
+        );
+      case "capture.submit":
+        return this.submitTypedCapture(
+          transaction,
+          context,
+          command,
+          scope,
+          fingerprint,
+          occurredAt,
+        );
+      case "capture.process":
+        return this.processCapture(
           transaction,
           context,
           command,
@@ -842,6 +873,48 @@ export class ApplicationKernel {
     fingerprint: string,
     occurredAt: string,
   ): CommandOutcome {
+    return this.storeCapture(
+      transaction,
+      context,
+      command,
+      { kind: "text", text: command.payload.originalText },
+      scope,
+      fingerprint,
+      occurredAt,
+    );
+  }
+
+  private submitTypedCapture(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<CommandEnvelope, { commandName: "capture.submit" }>,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+  ): CommandOutcome {
+    return this.storeCapture(
+      transaction,
+      context,
+      command,
+      command.payload.original,
+      scope,
+      fingerprint,
+      occurredAt,
+    );
+  }
+
+  private storeCapture(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<
+      CommandEnvelope,
+      { commandName: "capture.submitText" | "capture.submit" }
+    >,
+    original: CaptureOriginal,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+  ): CommandOutcome {
     const workspace = transaction.getWorkspace(command.workspaceId);
     const space = transaction.getSpace(command.payload.spaceId);
     const membership = transaction.getMembership(
@@ -885,7 +958,9 @@ export class ApplicationKernel {
       captureId,
       workspaceId: command.workspaceId,
       spaceId: command.payload.spaceId,
-      originalText: command.payload.originalText,
+      originalText: captureDisplayText(original),
+      original,
+      originalFingerprint: this.dependencies.hasher.fingerprint(original),
       deviceId: command.payload.deviceId,
       source: command.payload.source,
       submittedBy: context.principalId,
@@ -909,7 +984,7 @@ export class ApplicationKernel {
       capture.spaceId,
       [capture.id],
       { [capture.id]: capture.version },
-      ["originalText", "deviceId", "source", "processingState"],
+      ["original", "deviceId", "source", "processingState"],
       occurredAt,
     );
     const outcome = this.outcome(command, occurredAt, {
@@ -948,6 +1023,364 @@ export class ApplicationKernel {
     return outcome;
   }
 
+  private processCapture(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<CommandEnvelope, { commandName: "capture.process" }>,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+  ): CommandOutcome {
+    const capture = transaction.getCapture(command.payload.captureId);
+    const expectedVersion =
+      capture === undefined ? undefined : command.expectedVersions[capture.id];
+    if (
+      capture === undefined ||
+      capture.workspaceId !== command.workspaceId ||
+      !canEditSpace(transaction, context, command.workspaceId, capture.spaceId)
+    ) {
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "authorization.denied",
+      });
+    }
+    if (
+      expectedVersion === undefined ||
+      Object.keys(command.expectedVersions).length !== 1
+    ) {
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    }
+    if (expectedVersion !== capture.version) {
+      return this.outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "record.version_conflict",
+        currentVersions: currentVersionMap(capture.id, capture.version),
+      });
+    }
+    if (
+      capture.processingState !== "pending_processing" &&
+      !(
+        capture.processingState === "needs_review" &&
+        command.payload.destination !== "auto"
+      )
+    ) {
+      return this.outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "capture.already_routed",
+        currentVersions: currentVersionMap(capture.id, capture.version),
+      });
+    }
+    const pendingCapture: PendingCapture =
+      capture.processingState === "pending_processing"
+        ? capture
+        : {
+            id: capture.id,
+            workspaceId: capture.workspaceId,
+            spaceId: capture.spaceId,
+            originalText: capture.originalText,
+            original: capture.original,
+            originalFingerprint: capture.originalFingerprint,
+            deviceId: capture.deviceId,
+            source: capture.source,
+            capturedAt: capture.capturedAt,
+            submittedBy: capture.submittedBy,
+            processingState: "pending_processing",
+            version: capture.version,
+          };
+    const duplicate =
+      capture.processingState === "pending_processing"
+        ? transaction
+            .listCapturesInSpace(capture.workspaceId, capture.spaceId)
+            .find(
+              (candidate) =>
+                candidate.id !== capture.id &&
+                candidate.originalFingerprint === capture.originalFingerprint &&
+                candidate.processingState !== "needs_review",
+            )
+        : undefined;
+    if (duplicate !== undefined) {
+      return this.markCaptureForReview(
+        transaction,
+        context,
+        command,
+        pendingCapture,
+        duplicate.id,
+        scope,
+        fingerprint,
+        occurredAt,
+      );
+    }
+
+    const destination =
+      command.payload.destination === "auto"
+        ? capture.original.kind === "text"
+          ? "task"
+          : "knowledge_source"
+        : command.payload.destination;
+    if (destination === "task") {
+      const title =
+        command.payload.title ??
+        captureDisplayText(pendingCapture.original).trim().slice(0, 500);
+      return this.routePendingCaptureToTask(
+        transaction,
+        context,
+        command,
+        title.length === 0 ? "Captured task" : title,
+        scope,
+        fingerprint,
+        occurredAt,
+        pendingCapture,
+      );
+    }
+    if (!isApplicationWave2Transaction(transaction)) {
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    }
+    return this.routePendingCaptureToKnowledgeSource(
+      transaction,
+      context,
+      command,
+      pendingCapture,
+      expectedVersion,
+      scope,
+      fingerprint,
+      occurredAt,
+    );
+  }
+
+  private markCaptureForReview(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<CommandEnvelope, { commandName: "capture.process" }>,
+    capture: PendingCapture,
+    duplicateOfCaptureId: CaptureId,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+  ): CommandOutcome {
+    const attentionSignalId = AttentionSignalIdSchema.parse(
+      this.dependencies.ids.next("attentionSignal"),
+    );
+    const reviewed: ReviewCapture = {
+      ...capture,
+      processingState: "needs_review",
+      reviewReason: "duplicate",
+      duplicateOfCaptureId,
+      attentionSignalId,
+      reviewedAt: occurredAt,
+      version: capture.version + 1,
+    };
+    const attention: AttentionSignal = {
+      id: attentionSignalId,
+      workspaceId: capture.workspaceId,
+      spaceId: capture.spaceId,
+      targetPrincipalId: capture.submittedBy,
+      reason: "capture_duplicate",
+      destination: { kind: "capture", captureId: capture.id },
+      sourceRecordId: duplicateOfCaptureId,
+      deduplicationKey: `capture:${capture.id}:duplicate`,
+      urgency: "in_app",
+      state: "unread",
+      version: 1,
+      occurredAt,
+      updatedAt: occurredAt,
+    };
+    const eventId = EventIdSchema.parse(this.dependencies.ids.next("event"));
+    const auditReceiptId = AuditReceiptIdSchema.parse(
+      this.dependencies.ids.next("auditReceipt"),
+    );
+    const outboxEntryId = OutboxEntryIdSchema.parse(
+      this.dependencies.ids.next("outboxEntry"),
+    );
+    const event: DomainEvent = {
+      id: eventId,
+      commandId: command.commandId,
+      type: "capture.needs_review",
+      workspaceId: capture.workspaceId,
+      spaceId: capture.spaceId,
+      aggregateId: capture.id,
+      aggregateVersion: reviewed.version,
+      attentionSignalId,
+      reason: "duplicate",
+      occurredAt,
+    };
+    const audit = this.auditReceipt(
+      auditReceiptId,
+      context,
+      command,
+      capture.spaceId,
+      [capture.id, attention.id],
+      { [capture.id]: reviewed.version, [attention.id]: attention.version },
+      ["processingState", "reviewReason", "duplicateOfCaptureId"],
+      occurredAt,
+    );
+    const outcome = this.outcome(command, occurredAt, {
+      outcome: "success",
+      diagnosticCode: "capture.needs_review",
+      affected: [
+        {
+          recordId: capture.id,
+          recordKind: "capture",
+          version: reviewed.version,
+        },
+        { recordId: attention.id, recordKind: "attentionSignal", version: 1 },
+      ],
+      auditReceiptId,
+      projection: {
+        kind: "capture.needs_review",
+        captureId: capture.id,
+        captureVersion: reviewed.version,
+        attentionSignalId,
+        reason: "duplicate",
+      },
+    });
+    if (!transaction.updateCapture(reviewed, capture.version)) {
+      throw new RetryableUnitOfWorkError();
+    }
+    transaction.insertAttentionSignal(attention);
+    transaction.insertEvent(event);
+    transaction.insertAuditReceipt(audit);
+    transaction.insertIdempotency({ scope, fingerprint, outcome });
+    transaction.insertSyncCommand(command);
+    transaction.insertOutbox({
+      id: outboxEntryId,
+      workspaceId: capture.workspaceId,
+      spaceId: capture.spaceId,
+      eventId,
+      topic: "attention.delivery.requested",
+      createdAt: occurredAt,
+    });
+    return outcome;
+  }
+
+  private routePendingCaptureToKnowledgeSource(
+    transaction: ApplicationWave2Transaction,
+    context: ExecutionContext,
+    command: Extract<CommandEnvelope, { commandName: "capture.process" }>,
+    capture: PendingCapture,
+    expectedVersion: number,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+  ): CommandOutcome {
+    const sourceId = KnowledgeSourceIdSchema.parse(
+      this.dependencies.ids.next("knowledgeSource"),
+    );
+    const title =
+      command.payload.title ??
+      captureDisplayText(capture.original).slice(0, 500);
+    const source = createKnowledgeSource({
+      id: sourceId,
+      workspaceId: capture.workspaceId,
+      spaceId: capture.spaceId,
+      sourceKind:
+        capture.original.kind === "text" ? "excerpt" : capture.original.kind,
+      title,
+      ...(capture.original.kind === "url"
+        ? { canonicalUrl: capture.original.url }
+        : {}),
+      ...(capture.original.kind === "text"
+        ? { excerpt: capture.original.text.slice(0, 32_768) }
+        : {}),
+      availability:
+        capture.original.kind === "url" ? "available" : "reference_only",
+      sourceCaptureId: capture.id,
+      observedAt: capture.capturedAt,
+      createdBy: context.principalId,
+      occurredAt,
+    });
+    const routed = routeCaptureAsKnowledgeSource({
+      capture,
+      sourceId,
+      routedBy: context.principalId,
+      occurredAt,
+    });
+    const eventId = EventIdSchema.parse(this.dependencies.ids.next("event"));
+    const auditReceiptId = AuditReceiptIdSchema.parse(
+      this.dependencies.ids.next("auditReceipt"),
+    );
+    const outboxEntryId = OutboxEntryIdSchema.parse(
+      this.dependencies.ids.next("outboxEntry"),
+    );
+    const event: DomainEvent = {
+      id: eventId,
+      commandId: command.commandId,
+      type: "capture.routed_as_knowledge_source",
+      workspaceId: capture.workspaceId,
+      spaceId: capture.spaceId,
+      aggregateId: capture.id,
+      aggregateVersion: routed.version,
+      knowledgeSourceId: source.id,
+      occurredAt,
+    };
+    const audit = this.auditReceipt(
+      auditReceiptId,
+      context,
+      command,
+      capture.spaceId,
+      [capture.id, source.id],
+      { [capture.id]: routed.version, [source.id]: source.version },
+      ["processingState", "derivedKnowledgeSourceId", "source.sourceCaptureId"],
+      occurredAt,
+    );
+    const outcome = this.outcome(command, occurredAt, {
+      outcome: "success",
+      diagnosticCode: "capture.routed_as_knowledge_source",
+      affected: [
+        {
+          recordId: capture.id,
+          recordKind: "capture",
+          version: routed.version,
+        },
+        {
+          recordId: source.id,
+          recordKind: "knowledgeSource",
+          version: source.version,
+        },
+      ],
+      auditReceiptId,
+      projection: {
+        kind: "capture.routed_as_knowledge_source",
+        captureId: capture.id,
+        captureVersion: routed.version,
+        sourceId: source.id,
+        sourceVersion: source.version,
+      },
+    });
+    if (!transaction.updateCapture(routed, expectedVersion)) {
+      throw new RetryableUnitOfWorkError();
+    }
+    transaction.insertKnowledgeSource(source);
+    transaction.insertEvent(event);
+    transaction.insertAuditReceipt(audit);
+    transaction.insertIdempotency({ scope, fingerprint, outcome });
+    transaction.insertSyncCommand(command);
+    transaction.insertOutbox({
+      id: outboxEntryId,
+      workspaceId: capture.workspaceId,
+      spaceId: capture.spaceId,
+      eventId,
+      topic: "work.projection.requested",
+      createdAt: occurredAt,
+    });
+    transaction.insertUndoDescriptor({
+      targetCommandId: command.commandId,
+      workspaceId: capture.workspaceId,
+      spaceId: capture.spaceId,
+      kind: "capture.undo_knowledge_route",
+      captureId: routed.id,
+      sourceId: source.id,
+      resultingCaptureVersion: routed.version,
+      resultingSourceVersion: source.version,
+    });
+    return outcome;
+  }
+
   private routeCaptureToTask(
     transaction: ApplicationTransaction,
     context: ExecutionContext,
@@ -956,8 +1389,33 @@ export class ApplicationKernel {
     fingerprint: string,
     occurredAt: string,
   ): CommandOutcome {
+    return this.routePendingCaptureToTask(
+      transaction,
+      context,
+      command,
+      command.payload.title,
+      scope,
+      fingerprint,
+      occurredAt,
+    );
+  }
+
+  private routePendingCaptureToTask(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<
+      CommandEnvelope,
+      { commandName: "capture.routeAsTask" | "capture.process" }
+    >,
+    title: string,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+    providedCapture?: PendingCapture,
+  ): CommandOutcome {
     const workspace = transaction.getWorkspace(command.workspaceId);
-    const capture = transaction.getCapture(command.payload.captureId);
+    const storedCapture = transaction.getCapture(command.payload.captureId);
+    const capture = providedCapture ?? storedCapture;
     const membership = transaction.getMembership(
       command.workspaceId,
       context.principalId,
@@ -965,6 +1423,7 @@ export class ApplicationKernel {
     if (
       workspace === undefined ||
       capture?.workspaceId !== workspace.id ||
+      storedCapture?.workspaceId !== workspace.id ||
       membership === undefined ||
       !canEditSpace(transaction, context, command.workspaceId, capture.spaceId)
     ) {
@@ -986,18 +1445,24 @@ export class ApplicationKernel {
         diagnosticCode: "command.precondition_failed",
       });
     }
-    if (expectedVersion !== capture.version) {
+    if (expectedVersion !== storedCapture.version) {
       return this.outcome(command, occurredAt, {
         outcome: "conflict",
         diagnosticCode: "record.version_conflict",
-        currentVersions: currentVersionMap(capture.id, capture.version),
+        currentVersions: currentVersionMap(
+          storedCapture.id,
+          storedCapture.version,
+        ),
       });
     }
     if (capture.processingState !== "pending_processing") {
       return this.outcome(command, occurredAt, {
         outcome: "conflict",
         diagnosticCode: "capture.already_routed",
-        currentVersions: currentVersionMap(capture.id, capture.version),
+        currentVersions: currentVersionMap(
+          storedCapture.id,
+          storedCapture.version,
+        ),
       });
     }
 
@@ -1020,7 +1485,7 @@ export class ApplicationKernel {
       capture,
       taskId,
       taskStatusId: taskStatus.id,
-      title: command.payload.title,
+      title,
       routedBy: context.principalId,
       occurredAt,
     });
@@ -1362,30 +1827,38 @@ export class ApplicationKernel {
       },
       projection: {
         kind: "capture.history",
-        items: visibleItems.map((capture) =>
-          capture.processingState === "routed_as_task"
+        items: visibleItems.map((capture) => ({
+          id: capture.id,
+          spaceId: capture.spaceId,
+          originalText: capture.originalText,
+          original: capture.original,
+          source: capture.source,
+          capturedAt: capture.capturedAt,
+          processingState: capture.processingState,
+          ...(capture.processingState === "routed_as_task"
             ? {
-                id: capture.id,
-                spaceId: capture.spaceId,
-                originalText: capture.originalText,
-                source: capture.source,
-                capturedAt: capture.capturedAt,
-                processingState: capture.processingState,
                 derivedTaskId: capture.derivedTaskId,
                 routedAt: capture.routedAt,
                 routedBy: capture.routedBy,
-                version: capture.version,
               }
-            : {
-                id: capture.id,
-                spaceId: capture.spaceId,
-                originalText: capture.originalText,
-                source: capture.source,
-                capturedAt: capture.capturedAt,
-                processingState: capture.processingState,
-                version: capture.version,
-              },
-        ),
+            : capture.processingState === "routed_as_knowledge_source"
+              ? {
+                  derivedKnowledgeSourceId: capture.derivedKnowledgeSourceId,
+                  routedAt: capture.routedAt,
+                  routedBy: capture.routedBy,
+                }
+              : capture.processingState === "needs_review"
+                ? {
+                    reviewReason: capture.reviewReason,
+                    ...(capture.duplicateOfCaptureId === undefined
+                      ? {}
+                      : { duplicateOfCaptureId: capture.duplicateOfCaptureId }),
+                    attentionSignalId: capture.attentionSignalId,
+                    reviewedAt: capture.reviewedAt,
+                  }
+                : {}),
+          version: capture.version,
+        })),
         nextCursor,
       },
     });

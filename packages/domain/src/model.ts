@@ -1,6 +1,7 @@
 import type {
   AuditReceiptId,
   CaptureId,
+  CaptureOriginal,
   CommandId,
   CorrelationId,
   DocumentId,
@@ -156,6 +157,8 @@ interface CaptureBase {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
   readonly originalText: string;
+  readonly original: CaptureOriginal;
+  readonly originalFingerprint: string;
   readonly deviceId: string;
   readonly source: "global_quick_capture" | "in_app_quick_capture";
   readonly capturedAt: string;
@@ -174,7 +177,26 @@ export type RoutedTaskCapture = CaptureBase & {
   readonly routedBy: PrincipalId;
 };
 
-export type Capture = PendingCapture | RoutedTaskCapture;
+export type RoutedKnowledgeSourceCapture = CaptureBase & {
+  readonly processingState: "routed_as_knowledge_source";
+  readonly derivedKnowledgeSourceId: KnowledgeSourceId;
+  readonly routedAt: string;
+  readonly routedBy: PrincipalId;
+};
+
+export type ReviewCapture = CaptureBase & {
+  readonly processingState: "needs_review";
+  readonly reviewReason: "duplicate" | "unsupported";
+  readonly duplicateOfCaptureId?: CaptureId;
+  readonly attentionSignalId: AttentionSignalId;
+  readonly reviewedAt: string;
+};
+
+export type Capture =
+  | PendingCapture
+  | RoutedTaskCapture
+  | RoutedKnowledgeSourceCapture
+  | ReviewCapture;
 
 export interface TaskStatusDefinition {
   readonly id: TaskStatusId;
@@ -224,7 +246,8 @@ export type CommentTarget =
 
 export type AttentionDestination =
   | CommentTarget
-  | { readonly kind: "document"; readonly documentId: DocumentId };
+  | { readonly kind: "document"; readonly documentId: DocumentId }
+  | { readonly kind: "capture"; readonly captureId: CaptureId };
 
 export interface CommentRevision {
   readonly body: string;
@@ -264,7 +287,9 @@ export interface AttentionSignal {
     | "knowledge_evidence_changed"
     | "renewal_due"
     | "relationship_fact_stale"
-    | "decision_impact_review";
+    | "decision_impact_review"
+    | "capture_duplicate"
+    | "capture_unsupported";
   readonly destination: AttentionDestination;
   readonly sourceRecordId: string;
   readonly deduplicationKey: string;
@@ -317,6 +342,7 @@ export interface KnowledgeSource {
   readonly canonicalUrl?: string;
   readonly excerpt?: string;
   readonly availability: "reference_only" | "available" | "unavailable";
+  readonly sourceCaptureId?: CaptureId;
   readonly observedAt: string;
   readonly createdBy: PrincipalId;
   readonly version: number;
@@ -503,6 +529,17 @@ export type UndoDescriptor =
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
+      readonly kind: "capture.undo_knowledge_route";
+      readonly captureId: CaptureId;
+      readonly sourceId: KnowledgeSourceId;
+      readonly resultingCaptureVersion: number;
+      readonly resultingSourceVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
       readonly kind: "task.restore_state";
       readonly taskId: TaskId;
       readonly priorStatusId: TaskStatusId;
@@ -649,6 +686,27 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly aggregateVersion: number;
       readonly taskId: TaskId;
       readonly taskStatusId: TaskStatusId;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "capture.routed_as_knowledge_source";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: CaptureId;
+      readonly aggregateVersion: number;
+      readonly knowledgeSourceId: KnowledgeSourceId;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "capture.needs_review";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: CaptureId;
+      readonly aggregateVersion: number;
+      readonly attentionSignalId: AttentionSignalId;
+      readonly reason: ReviewCapture["reviewReason"];
       readonly occurredAt: string;
     }
   | {

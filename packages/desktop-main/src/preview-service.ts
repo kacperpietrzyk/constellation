@@ -23,6 +23,8 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "workspace.manageAccess",
   "workspace.access",
   "workspace.exportScoped",
+  "capture.submit",
+  "capture.process",
   "capture.submitText",
   "capture.routeAsTask",
   "capture.history",

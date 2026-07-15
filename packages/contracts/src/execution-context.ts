@@ -34,6 +34,8 @@ export const CapabilitySchema = z.enum([
   "workspace.manageAccess",
   "workspace.access",
   "workspace.exportScoped",
+  "capture.submit",
+  "capture.process",
   "capture.submitText",
   "capture.routeAsTask",
   "capture.history",

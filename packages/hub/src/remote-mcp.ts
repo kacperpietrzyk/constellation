@@ -68,6 +68,8 @@ const MAX_CALLS_PER_MINUTE = 120;
 const MAX_CONCURRENT_CALLS = 4;
 
 const REMOTE_AGENT_ALLOWED_CAPABILITIES = new Set<Capability>([
+  "capture.submit",
+  "capture.process",
   "capture.submitText",
   "capture.routeAsTask",
   "capture.history",
