@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -34,6 +35,14 @@ const distributionManifest = () =>
       "utf8",
     ),
   );
+
+const waitForAbsent = async (filename, timeoutMs = 30_000) => {
+  const deadline = Date.now() + timeoutMs;
+  while (fs.existsSync(filename) && Date.now() < deadline) {
+    await delay(250);
+  }
+  return !fs.existsSync(filename);
+};
 
 const build = (version) => {
   const npmCli = process.env.npm_execpath;
@@ -156,7 +165,9 @@ if (process.platform === "win32") {
 } else {
   fs.rmSync(installRoot, { recursive: true, force: true });
 }
-if (fs.existsSync(executable)) throw new Error("APPLICATION_UNINSTALL_FAILED");
+if (!(await waitForAbsent(executable))) {
+  throw new Error("APPLICATION_UNINSTALL_FAILED");
+}
 const preservedWorkspace = path.join(
   smokeStateRoot,
   "user-data",
