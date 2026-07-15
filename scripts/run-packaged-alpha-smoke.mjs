@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -202,6 +202,15 @@ const signalPackagedProcessTree = (child, signal) => {
   if (child.exitCode === null && child.signalCode === null) child.kill(signal);
 };
 
+const signalInstalledAppProcesses = (signal) => {
+  if (process.platform !== "darwin") return;
+  const appBundle = path.dirname(path.dirname(path.dirname(executable)));
+  spawnSync("/usr/bin/pkill", [`-${signal}`, "-f", appBundle], {
+    stdio: "ignore",
+    timeout: 5_000,
+  });
+};
+
 const removeSmokeSingletonArtifacts = () => {
   for (const name of ["SingletonCookie", "SingletonLock", "SingletonSocket"]) {
     fs.rmSync(path.join(userData, name), { force: true, recursive: true });
@@ -223,8 +232,10 @@ const stopPackagedApp = async (client, child) => {
   };
   await waitForExit();
   signalPackagedProcessTree(child, "SIGTERM");
+  signalInstalledAppProcesses("TERM");
   await delay(500);
   signalPackagedProcessTree(child, "SIGKILL");
+  signalInstalledAppProcesses("KILL");
   if (!(await waitForExit())) throw new Error("PACKAGED_ALPHA_DID_NOT_EXIT");
   child.stdout.destroy();
   child.stderr.destroy();
@@ -686,6 +697,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
   } catch (error) {
     if (client !== undefined) client.close();
     signalPackagedProcessTree(packagedProcess, "SIGKILL");
+    signalInstalledAppProcesses("KILL");
     packagedProcess.stdout.destroy();
     packagedProcess.stderr.destroy();
     process.stderr.write(stdout);
