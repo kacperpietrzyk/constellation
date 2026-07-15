@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -27,6 +27,70 @@ const run = (command, args, options = {}) => {
   }
   return result;
 };
+
+const terminateProcessTree = (child) => {
+  if (child.pid === undefined) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+      stdio: "ignore",
+    });
+    return;
+  }
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch {
+    child.kill("SIGKILL");
+  }
+};
+
+const runCaptured = (command, args, options = {}) =>
+  new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: root,
+      detached: process.platform !== "win32",
+      stdio: ["ignore", "pipe", "pipe"],
+      ...options,
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+      process.stdout.write(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+      process.stderr.write(chunk);
+    });
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      terminateProcessTree(child);
+      reject(
+        new Error(`DISTRIBUTION_COMMAND_TIMEOUT_${path.basename(command)}`),
+      );
+    }, 10 * 60_000);
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("close", (status) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (status !== 0) {
+        reject(
+          new Error(`DISTRIBUTION_COMMAND_FAILED_${path.basename(command)}`),
+        );
+        return;
+      }
+      resolve({ stdout, stderr, status });
+    });
+  });
 
 const distributionManifest = () =>
   JSON.parse(
@@ -110,10 +174,10 @@ const install = (manifest) => {
   throw new Error("DISTRIBUTION_PLATFORM_UNSUPPORTED");
 };
 
-const smoke = (executable, workspaceId) => {
+const smoke = async (executable, workspaceId) => {
   if (!fs.existsSync(executable))
     throw new Error("INSTALLED_EXECUTABLE_MISSING");
-  const result = run(
+  const result = await runCaptured(
     process.execPath,
     ["scripts/run-packaged-alpha-smoke.mjs"],
     {
@@ -127,7 +191,6 @@ const smoke = (executable, workspaceId) => {
       },
     },
   );
-  process.stdout.write(result.stdout);
   const lines = result.stdout.trim().split("\n");
   const summary = JSON.parse(lines.at(-1));
   if (summary.status !== "pass") throw new Error("DISTRIBUTION_SMOKE_FAILED");
@@ -141,18 +204,18 @@ let manifest = fs.existsSync(
   : build("0.0.1");
 if (manifest.version !== "0.0.1") manifest = build("0.0.1");
 let executable = install(manifest);
-const installed = smoke(executable);
+const installed = await smoke(executable);
 const workspaceId = installed.backupWorkspaceId;
 if (typeof workspaceId !== "string") throw new Error("WORKSPACE_ID_MISSING");
 
 manifest = build("0.0.2");
 executable = install(manifest);
-const updated = smoke(executable, workspaceId);
+const updated = await smoke(executable, workspaceId);
 if (updated.version !== "0.0.2") throw new Error("UPDATE_VERSION_NOT_ACTIVE");
 
 manifest = build("0.0.1");
 executable = install(manifest);
-const rolledBack = smoke(executable, workspaceId);
+const rolledBack = await smoke(executable, workspaceId);
 if (rolledBack.version !== "0.0.1")
   throw new Error("ROLLBACK_VERSION_NOT_ACTIVE");
 
