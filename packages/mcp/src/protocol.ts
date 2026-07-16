@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   AgentRunIdSchema,
+  CaptureIdSchema,
   CheckpointIdSchema,
   CommandEnvelopeSchema,
   CredentialIdSchema,
@@ -12,6 +13,10 @@ import {
 
 export const MCP_CONTRACT_VERSION = 1 as const;
 export const MAX_IPC_MESSAGE_BYTES = 1_048_576;
+export const MAX_MCP_PAYLOAD_CHUNK_BYTES = 512 * 1024;
+export const MAX_MCP_PAYLOAD_BYTES = 25 * 1024 * 1024;
+export const MCP_PAYLOAD_RESOURCE_TEMPLATE =
+  "constellation://v1/workspaces/{workspaceId}/captures/{captureId}/payload{?agentRunId,hostRunId,hostName}";
 
 export const HostRunMetadataSchema = z
   .object({
@@ -61,6 +66,22 @@ export const McpOperatorInvocationSchema = z.discriminatedUnion("kind", [
     .object({
       contractVersion: z.literal(MCP_CONTRACT_VERSION),
       requestId: z.uuid(),
+      kind: z.literal("payload_read"),
+      run: HostRunMetadataSchema,
+      workspaceId: WorkspaceIdSchema,
+      captureId: CaptureIdSchema,
+      offset: z
+        .number()
+        .int()
+        .nonnegative()
+        .max(MAX_MCP_PAYLOAD_BYTES - 1),
+      length: z.number().int().positive().max(MAX_MCP_PAYLOAD_CHUNK_BYTES),
+    })
+    .strict(),
+  z
+    .object({
+      contractVersion: z.literal(MCP_CONTRACT_VERSION),
+      requestId: z.uuid(),
       kind: z.literal("capabilities"),
     })
     .strict(),
@@ -99,6 +120,19 @@ export const McpOperatorResponseSchema = z
   })
   .strict();
 export type McpOperatorResponse = z.infer<typeof McpOperatorResponseSchema>;
+
+export const McpPayloadChunkResultSchema = z
+  .object({
+    captureId: CaptureIdSchema,
+    displayName: z.string().trim().min(1).max(500),
+    mediaType: z.string().trim().min(1).max(255),
+    byteLength: z.number().int().positive().max(MAX_MCP_PAYLOAD_BYTES),
+    contentSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+    offset: z.number().int().nonnegative(),
+    bytesBase64: z.string().min(1).max(750_000),
+  })
+  .strict();
+export type McpPayloadChunkResult = z.infer<typeof McpPayloadChunkResultSchema>;
 
 export const LocalCredentialDescriptorSchema = z
   .object({

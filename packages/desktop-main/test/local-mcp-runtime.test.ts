@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -6,6 +7,8 @@ import test from "node:test";
 
 import {
   CommandEnvelopeSchema,
+  CaptureOriginalSchema,
+  CaptureIdSchema,
   CheckpointIdSchema,
   CorrelationIdSchema,
   ExecutionContextSchema,
@@ -36,6 +39,8 @@ const ids = {
   membership2: "51000000-0000-4000-8000-000000000014",
   spaceGrant2: "51000000-0000-4000-8000-000000000015",
   run2: "51000000-0000-4000-8000-000000000016",
+  managedCapture: "51000000-0000-4000-8000-000000000017",
+  managedPayload: "51000000-0000-4000-8000-000000000018",
 } as const;
 
 const ownerContext = ExecutionContextSchema.parse({
@@ -138,10 +143,42 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
       },
     }),
   );
+  const managedBytes = Buffer.from("private local MCP payload evidence");
+  const managedDigest = createHash("sha256").update(managedBytes).digest("hex");
+  const managedOriginal = CaptureOriginalSchema.parse({
+    kind: "managed_file",
+    payload: {
+      payloadId: ids.managedPayload,
+      displayName: "evidence.txt",
+      mediaType: "text/plain",
+      byteLength: managedBytes.length,
+      contentSha256: managedDigest,
+      custodyState: "available",
+    },
+  });
+  const managedCaptureId = CaptureIdSchema.parse(ids.managedCapture);
+  store.transact((transaction) =>
+    transaction.insertCapture({
+      id: managedCaptureId,
+      workspaceId: ownerContext.workspaceId,
+      spaceId: ownerContext.spaceScope[0]!,
+      originalText: "evidence.txt",
+      original: managedOriginal,
+      originalFingerprint: managedDigest,
+      deviceId: "mcp-test",
+      source: "in_app_quick_capture",
+      capturedAt: "2026-07-16T18:00:00.000Z",
+      processingState: "pending_processing",
+      submittedBy: ownerContext.principalId,
+      version: 1,
+    }),
+  );
   const runtime = new LocalMcpRuntime({
     stateRoot,
     workspaceId: ownerContext.workspaceId,
     store,
+    readCapturePayload: (original) =>
+      original === managedOriginal ? managedBytes : undefined,
   });
   try {
     const prepared = runtime.credentialCustody.prepare(ids.grant as GrantId);
@@ -243,6 +280,39 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
     });
     assert.equal(capabilities.outcome, "success");
     assert.equal(JSON.stringify(capabilities.result).includes("secret"), false);
+
+    const payload = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "payload_read",
+      run,
+      workspaceId: ownerContext.workspaceId,
+      captureId: managedCaptureId,
+      offset: 0,
+      length: 512 * 1024,
+    });
+    assert.equal(payload.outcome, "success");
+    assert.deepEqual(
+      Buffer.from(
+        (payload.result as { bytesBase64: string }).bytesBase64,
+        "base64",
+      ),
+      managedBytes,
+    );
+    const hiddenPayload = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "payload_read",
+      run,
+      workspaceId: ownerContext.workspaceId,
+      captureId: CaptureIdSchema.parse("51000000-0000-4000-8000-000000000019"),
+      offset: 0,
+      length: 512 * 1024,
+    });
+    assert.equal(hiddenPayload.outcome, "rejected");
+    assert.deepEqual(hiddenPayload.result, {
+      diagnosticCode: "authorization.denied",
+    });
 
     const concurrent = await Promise.all([
       invokeDesktopMcp(descriptor, {

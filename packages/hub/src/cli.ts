@@ -133,7 +133,10 @@ const main = async (): Promise<void> => {
       service,
       attachments,
       realtimeDocuments,
-      remoteMcp: new HubRemoteMcpService(repository),
+      remoteMcp: new HubRemoteMcpService(repository, {
+        readCapturePayloadChunk: (input) =>
+          attachments.readCapturePayloadChunk(input),
+      }),
       host,
       port: Number(process.env.CONSTELLATION_HUB_PORT ?? "4318"),
       ...(tls === undefined

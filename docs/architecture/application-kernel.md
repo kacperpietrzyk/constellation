@@ -126,6 +126,10 @@ knowledge source that points back to its source Capture. A managed original
 contains only an opaque payload ID, digest, byte length, media type, display
 name, and custody state. Bytes and local paths never enter the command, audit,
 outbox, or MCP projection. The original text command remains compatible.
+An explicitly requested MCP payload resource is the only agent byte path. It
+resolves an authorized Capture, reads at most 512 KiB per internal invocation,
+reauthorizes the current grant and Space for every chunk, and returns a blob
+only after the MCP server verifies the complete length and SHA-256 digest.
 For a coordinated Data Home, the trusted Electron adapter reads and verifies
 the staged local bytes, publishes them through the authorized Hub attachment
 transport, and verifies its digest and length before invoking

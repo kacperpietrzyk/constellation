@@ -219,9 +219,11 @@ dropped, or pasted file/screenshot into encrypted local workspace custody before
 routing, without retaining its local path. A coordinated workspace now accepts
 the Capture only after the same bytes are published through the Hub's resumable,
 digest-verified attachment channel; transfer failure keeps the local original
-and a direct retry path, while revoked scope purges it. Remote payload access,
-the remaining exception vocabulary, and voice remain inside the current
-readiness work rather than being claimed complete.
+and a direct retry path, while revoked scope purges it. Authorized local and
+remote MCP hosts can read one managed Capture payload only as a versioned
+resource: bounded internal chunks are reauthorized, reassembled, and verified
+before a blob is returned. The remaining exception vocabulary and voice remain
+inside the current readiness work rather than being claimed complete.
 
 ## Later — desktop ecosystem after product readiness
 

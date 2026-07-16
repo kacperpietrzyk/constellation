@@ -10,6 +10,7 @@ import {
   CommandIdSchema,
   CorrelationIdSchema,
   QueryIdSchema,
+  type CaptureOriginal,
   type ExecutionContext,
   type GrantId,
   type WorkspaceId,
@@ -17,6 +18,8 @@ import {
 import type { AgentAccessGrant, AgentRun } from "@constellation/domain";
 import {
   AuthenticatedIpcRequestSchema,
+  MAX_MCP_PAYLOAD_CHUNK_BYTES,
+  MCP_PAYLOAD_RESOURCE_TEMPLATE,
   MAX_IPC_MESSAGE_BYTES,
   MCP_CONTRACT_VERSION,
   McpOperatorResponseSchema,
@@ -119,6 +122,9 @@ export class LocalMcpRuntime {
       readonly workspaceId: WorkspaceId;
       readonly store: ApplicationStore;
       readonly isEnabled?: () => boolean;
+      readonly readCapturePayload?: (
+        original: CaptureOriginal,
+      ) => Uint8Array | undefined;
     },
   ) {
     this.custody = new LocalMcpCredentialCustody(input.stateRoot);
@@ -274,7 +280,9 @@ export class LocalMcpRuntime {
         ? invocation.query.workspaceId === grant.workspaceId
         : invocation.kind === "command"
           ? invocation.command.workspaceId === grant.workspaceId
-          : true;
+          : invocation.kind === "payload_read"
+            ? invocation.workspaceId === grant.workspaceId
+            : true;
     return workspaceMatches ? grant : undefined;
   }
 
@@ -291,7 +299,10 @@ export class LocalMcpRuntime {
           "constellation.command.v1",
           "constellation.checkpoint.revert.v1",
         ],
-        resources: ["constellation://v1/capabilities"],
+        resources: [
+          "constellation://v1/capabilities",
+          MCP_PAYLOAD_RESOURCE_TEMPLATE,
+        ],
         grant: {
           grantId: grant.id,
           workspaceId: grant.workspaceId,
@@ -304,6 +315,54 @@ export class LocalMcpRuntime {
     }
     const context = this.contextFor(grant, invocation.run);
     this.ensureRun(grant, invocation.run);
+    if (invocation.kind === "payload_read") {
+      const capture = this.input.store.read((view) =>
+        view.getCapture(invocation.captureId),
+      );
+      if (
+        !context.capabilityScope.includes("capture.history") ||
+        capture === undefined ||
+        capture.workspaceId !== grant.workspaceId ||
+        !context.spaceScope.includes(capture.spaceId) ||
+        (capture.original.kind !== "managed_file" &&
+          capture.original.kind !== "screenshot")
+      )
+        return contentSafeResponse(invocation.requestId, "rejected", {
+          diagnosticCode: "authorization.denied",
+        });
+      const bytes = this.input.readCapturePayload?.(capture.original);
+      if (
+        bytes === undefined ||
+        bytes.byteLength !== capture.original.payload.byteLength ||
+        createHash("sha256").update(bytes).digest("hex") !==
+          capture.original.payload.contentSha256 ||
+        invocation.offset >= bytes.byteLength
+      )
+        return contentSafeResponse(invocation.requestId, "rejected", {
+          diagnosticCode: "authorization.denied",
+        });
+      const chunk = bytes.subarray(
+        invocation.offset,
+        Math.min(
+          bytes.byteLength,
+          invocation.offset +
+            Math.min(invocation.length, MAX_MCP_PAYLOAD_CHUNK_BYTES),
+        ),
+      );
+      if (chunk.byteLength === 0)
+        return contentSafeResponse(invocation.requestId, "rejected", {
+          diagnosticCode: "authorization.denied",
+        });
+      return contentSafeResponse(invocation.requestId, "success", {
+        captureId: capture.id,
+        displayName: capture.original.payload.displayName,
+        mediaType: capture.original.payload.mediaType,
+        byteLength: capture.original.payload.byteLength,
+        contentSha256: capture.original.payload.contentSha256,
+        offset: invocation.offset,
+        bytesBase64: Buffer.from(chunk).toString("base64"),
+      });
+    }
     const service = createRuntimeKernelService({
       context,
       store: this.input.store,

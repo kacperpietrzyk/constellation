@@ -109,6 +109,56 @@ export class HubAttachmentService {
     }
   }
 
+  public async readCapturePayloadChunk(input: {
+    readonly workspaceId: WorkspaceId;
+    readonly original: CaptureOriginal;
+    readonly offset: number;
+    readonly length: number;
+  }): Promise<Uint8Array | undefined> {
+    if (
+      (input.original.kind !== "managed_file" &&
+        input.original.kind !== "screenshot") ||
+      !Number.isSafeInteger(input.offset) ||
+      input.offset < 0 ||
+      !Number.isSafeInteger(input.length) ||
+      input.length <= 0 ||
+      input.offset >= input.original.payload.byteLength
+    )
+      return undefined;
+    const registered = await this.pool.query(
+      "SELECT byte_length::text FROM constellation_hub_attachments WHERE workspace_id = $1 AND content_sha256 = $2",
+      [input.workspaceId, input.original.payload.contentSha256],
+    );
+    if (
+      registered.rowCount !== 1 ||
+      Number(
+        (registered.rows[0] as Record<string, unknown> | undefined)
+          ?.byte_length,
+      ) !== input.original.payload.byteLength
+    )
+      return undefined;
+    const target = this.objectPath(
+      input.workspaceId,
+      input.original.payload.contentSha256,
+    );
+    try {
+      const info = await stat(target);
+      if (!info.isFile() || info.size !== input.original.payload.byteLength)
+        return undefined;
+      const size = Math.min(input.length, info.size - input.offset);
+      const bytes = Buffer.alloc(size);
+      const file = await open(target, "r");
+      try {
+        const result = await file.read(bytes, 0, size, input.offset);
+        return result.bytesRead === size ? bytes : undefined;
+      } finally {
+        await file.close();
+      }
+    } catch {
+      return undefined;
+    }
+  }
+
   public async begin(
     credential: string,
     raw: HubAttachmentBeginRequest,
