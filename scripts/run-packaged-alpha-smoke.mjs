@@ -488,6 +488,9 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         mobile: false,
       });
       try {
+        await client.evaluate(`new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve))
+        )`);
         const narrowShell = await client.evaluate(`(() => {
           const shell = document.querySelector(".desktop-shell");
           const work = document.querySelector(".work-surface");
@@ -526,6 +529,69 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         ) {
           throw new Error(
             `PACKAGED_ALPHA_NARROW_SHELL_INVALID:${JSON.stringify(narrowShell)}`,
+          );
+        }
+
+        const narrowSurfaces = await client.evaluate(`(async () => {
+          const results = [];
+          const controlSelector = [
+            "button:not(:disabled)",
+            "a[href]",
+            "input:not(:disabled)",
+            "select:not(:disabled)",
+            "textarea:not(:disabled)",
+            '[tabindex]:not([tabindex="-1"])'
+          ].join(",");
+          const hasAccessibleName = (element) =>
+            Boolean(
+              element.getAttribute("aria-label")?.trim() ||
+              element.getAttribute("aria-labelledby")?.trim() ||
+              element.getAttribute("title")?.trim() ||
+              element.labels?.length ||
+              element.textContent?.trim()
+            );
+          for (const destination of document.querySelectorAll(
+            ".nav-item[data-surface]"
+          )) {
+            destination.click();
+            await new Promise((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(resolve))
+            );
+            const work = document.querySelector(".work-surface");
+            const surface = [...(work?.children ?? [])].find(
+              (element) =>
+                element.getClientRects().length > 0 &&
+                !element.classList.contains("shell-tabbar") &&
+                !element.classList.contains("capture-dock")
+            );
+            const unnamedControls = [...document.querySelectorAll(controlSelector)]
+              .filter(
+                (element) =>
+                  element.getClientRects().length > 0 &&
+                  !hasAccessibleName(element)
+              )
+              .map((element) => element.tagName.toLowerCase());
+            results.push({
+              surface: destination.dataset.surface,
+              documentWidth: document.documentElement.scrollWidth,
+              surfaceWidth: surface?.scrollWidth,
+              surfaceClientWidth: surface?.clientWidth,
+              unnamedControls
+            });
+          }
+          return results;
+        })()`);
+        const invalidNarrowSurface = narrowSurfaces.find(
+          (surface) =>
+            surface.documentWidth > 320 ||
+            surface.surfaceWidth === undefined ||
+            surface.surfaceClientWidth === undefined ||
+            surface.surfaceWidth > surface.surfaceClientWidth + 1 ||
+            surface.unnamedControls.length > 0,
+        );
+        if (invalidNarrowSurface !== undefined) {
+          throw new Error(
+            `PACKAGED_ALPHA_NARROW_SURFACE_INVALID:${JSON.stringify(invalidNarrowSurface)}`,
           );
         }
 

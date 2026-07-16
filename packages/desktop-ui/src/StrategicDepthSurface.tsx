@@ -242,6 +242,7 @@ export const StrategicDepthSurface = ({
               <input
                 value={opportunityNeed}
                 onChange={(event) => setOpportunityNeed(event.target.value)}
+                aria-label="Potwierdzona potrzeba Opportunity"
                 placeholder="Jaka potrzeba jest potwierdzona?"
                 required
               />
