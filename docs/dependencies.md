@@ -1,7 +1,10 @@
 # Dependency inventory
 
 Constellation pins direct dependencies and commits the npm lockfile. CI installs
-with `npm ci --ignore-scripts` and runs `npm audit` as part of lockfile review.
+with `npm ci --ignore-scripts`, runs `npm audit`, and fails the ordinary check
+when any locked package lacks a declared license or uses a license expression
+outside the reviewed allow-list. Workspace links inherit the license from their
+own locked manifest entry rather than bypassing the gate.
 
 ## Runtime
 
