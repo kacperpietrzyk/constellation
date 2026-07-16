@@ -19,6 +19,8 @@ on:
       - packages/hub/**
       - scripts/package-alpha.mjs
       - scripts/package-distribution.mjs
+      - scripts/macos-distribution-signing.mjs
+      - scripts/macos-distribution-signing.test.mjs
       - scripts/run-packaged-alpha-smoke.mjs
       - scripts/run-distribution-continuity.mjs
       - scripts/run-packaged-hub-smoke.mjs

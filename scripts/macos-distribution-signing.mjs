@@ -16,6 +16,15 @@ const requireSuccessfulSecurityCommand = (result, errorCode) => {
   return result;
 };
 
+const parseKeychainSearchList = (stdout) =>
+  stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) =>
+      line.startsWith('"') && line.endsWith('"') ? line.slice(1, -1) : line,
+    );
+
 export const resolveNotarizationOptions = (appPath, env) => {
   if (env.APPLE_API_KEY && env.APPLE_API_KEY_ID && env.APPLE_API_ISSUER) {
     return {
@@ -92,9 +101,17 @@ export const signAndNotarizeMacApp = async ({
   const keychainPath = path.join(temporaryRoot, "release.keychain-db");
   const keychainPassword = crypto.randomBytes(32).toString("hex");
   let keychainCreated = false;
+  let keychainSearchListChanged = false;
+  let originalKeychainSearchList = [];
 
   try {
     writePkcs12(cscLink, certificatePath);
+    originalKeychainSearchList = parseKeychainSearchList(
+      requireSuccessfulSecurityCommand(
+        securityRunner(["list-keychains", "-d", "user"]),
+        "MACOS_SIGNING_KEYCHAIN_LIST_FAILED",
+      ).stdout,
+    );
     requireSuccessfulSecurityCommand(
       securityRunner(["create-keychain", "-p", keychainPassword, keychainPath]),
       "MACOS_SIGNING_KEYCHAIN_CREATE_FAILED",
@@ -104,6 +121,22 @@ export const signAndNotarizeMacApp = async ({
       securityRunner(["unlock-keychain", "-p", keychainPassword, keychainPath]),
       "MACOS_SIGNING_KEYCHAIN_UNLOCK_FAILED",
     );
+    requireSuccessfulSecurityCommand(
+      securityRunner(["set-keychain-settings", keychainPath]),
+      "MACOS_SIGNING_KEYCHAIN_SETTINGS_FAILED",
+    );
+    requireSuccessfulSecurityCommand(
+      securityRunner([
+        "list-keychains",
+        "-d",
+        "user",
+        "-s",
+        keychainPath,
+        ...originalKeychainSearchList,
+      ]),
+      "MACOS_SIGNING_KEYCHAIN_SEARCH_LIST_FAILED",
+    );
+    keychainSearchListChanged = true;
     requireSuccessfulSecurityCommand(
       securityRunner([
         "import",
@@ -121,7 +154,7 @@ export const signAndNotarizeMacApp = async ({
       securityRunner([
         "set-key-partition-list",
         "-S",
-        "apple-tool:,apple:,codesign:",
+        "apple-tool:,apple:",
         "-s",
         "-k",
         keychainPassword,
@@ -149,6 +182,15 @@ export const signAndNotarizeMacApp = async ({
     });
     await notarizer(resolveNotarizationOptions(appPath, env));
   } finally {
+    if (keychainSearchListChanged) {
+      securityRunner([
+        "list-keychains",
+        "-d",
+        "user",
+        "-s",
+        ...originalKeychainSearchList,
+      ]);
+    }
     if (keychainCreated) securityRunner(["delete-keychain", keychainPath]);
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
   }
