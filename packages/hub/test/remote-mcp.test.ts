@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 
 import {
   CommandEnvelopeSchema,
+  CaptureOriginalSchema,
+  CaptureIdSchema,
   AgentRunIdSchema,
   DeviceIdSchema,
   ExecutionContextSchema,
@@ -31,6 +34,8 @@ const ids = {
   credential: "60000000-0000-4000-8000-000000000004",
   grant: "60000000-0000-4000-8000-000000000005",
   device: DeviceIdSchema.parse("60000000-0000-4000-8000-000000000006"),
+  managedCapture: CaptureIdSchema.parse("60000000-0000-4000-8000-000000000007"),
+  managedPayload: "60000000-0000-4000-8000-000000000008",
 } as const;
 
 const managerContext = (): ExecutionContext =>
@@ -57,7 +62,7 @@ let sequence = 10;
 const uuid = (): string =>
   `60000000-0000-4000-8000-${(sequence++).toString().padStart(12, "0")}`;
 
-const snapshot = () => {
+const snapshot = (managedBytes?: Uint8Array) => {
   const harness = createReferenceHarness();
   harness.authorization.register(managerContext());
   const created = harness.kernel.execute(managerContext(), {
@@ -77,10 +82,40 @@ const snapshot = () => {
     },
   });
   assert.equal(created.kind, "command_outcome");
+  if (managedBytes !== undefined) {
+    const digest = createHash("sha256").update(managedBytes).digest("hex");
+    const original = CaptureOriginalSchema.parse({
+      kind: "managed_file",
+      payload: {
+        payloadId: ids.managedPayload,
+        displayName: "remote-evidence.bin",
+        mediaType: "application/octet-stream",
+        byteLength: managedBytes.byteLength,
+        contentSha256: digest,
+        custodyState: "available",
+      },
+    });
+    harness.store.transact((transaction) =>
+      transaction.insertCapture({
+        id: ids.managedCapture,
+        workspaceId: ids.workspace,
+        spaceId: ids.space,
+        originalText: "remote-evidence.bin",
+        original,
+        originalFingerprint: digest,
+        deviceId: "remote-test",
+        source: "global_quick_capture",
+        capturedAt: "2026-07-16T18:00:00.000Z",
+        processingState: "pending_processing",
+        submittedBy: managerContext().principalId,
+        version: 1,
+      }),
+    );
+  }
   return toHubSnapshot(harness.store.snapshot());
 };
 
-const setup = async () => {
+const setup = async (managedBytes?: Uint8Array) => {
   const repository = new InMemoryHubRepository();
   const hub = new HubService(repository, {
     now: () => "2026-07-14T20:00:00.000Z",
@@ -88,7 +123,7 @@ const setup = async () => {
   });
   await hub.createWorkspace({
     workspaceId: ids.workspace,
-    snapshot: snapshot(),
+    snapshot: snapshot(managedBytes),
   });
   const enrollment = await hub.createEnrollment({
     workspaceId: ids.workspace,
@@ -107,6 +142,17 @@ const setup = async () => {
   const remote = new HubRemoteMcpService(repository, {
     now: () => "2026-07-14T20:00:00.000Z",
     randomSecret: () => "r".repeat(43),
+    ...(managedBytes === undefined
+      ? {}
+      : {
+          readCapturePayloadChunk: (input) =>
+            Promise.resolve(
+              managedBytes.subarray(
+                input.offset,
+                Math.min(managedBytes.byteLength, input.offset + input.length),
+              ),
+            ),
+        }),
   });
   return { repository, remote, deviceCredential: device.deviceCredential };
 };
@@ -121,7 +167,12 @@ const createRemoteGrant = async (
     deviceId: ids.device,
     displayName: "Always-on operator",
     preset: "operate",
-    capabilityScope: ["task.list", "capture.submitText", "audit.receipt"],
+    capabilityScope: [
+      "task.list",
+      "capture.submitText",
+      "capture.history",
+      "audit.receipt",
+    ],
     spaces: [{ spaceId: ids.space, access: "edit" }],
     federationScope: {
       crossWorkspaceRead: true,
@@ -291,6 +342,24 @@ describe("remote MCP Hub gateway", () => {
       await remote.isAuthorized(ids.workspace, rotated.bearerToken),
       false,
     );
+    const revokedPayload = await remote.invoke(
+      ids.workspace,
+      rotated.bearerToken,
+      {
+        contractVersion: 1,
+        requestId: uuid(),
+        kind: "payload_read",
+        run,
+        workspaceId: ids.workspace,
+        captureId: ids.managedCapture,
+        offset: 0,
+        length: 512 * 1024,
+      },
+    );
+    assert.equal(revokedPayload.outcome, "rejected");
+    assert.deepEqual(revokedPayload.result, {
+      diagnosticCode: "authorization.denied",
+    });
   });
 
   it("rejects administrative capabilities and rate-limits each remote grant", async () => {
@@ -370,7 +439,11 @@ describe("remote MCP Hub gateway", () => {
   });
 
   it("serves the versioned MCP contract over authenticated stateless Streamable HTTP", async () => {
-    const { remote, deviceCredential } = await setup();
+    const managedBytes = Buffer.concat([
+      Buffer.alloc(512 * 1024, 0x72),
+      Buffer.from("remote tail"),
+    ]);
+    const { remote, deviceCredential } = await setup(managedBytes);
     const created = await createRemoteGrant(remote, deviceCredential);
     const server = await startHubServer({
       service: new HubService(new InMemoryHubRepository()),
@@ -414,6 +487,19 @@ describe("remote MCP Hub gateway", () => {
         },
       });
       assert.equal(result.isError, false);
+      const templates = await client.listResourceTemplates();
+      assert.equal(
+        templates.resourceTemplates[0]?.name,
+        "constellation-capture-payload-v1",
+      );
+      const resource = await client.readResource({
+        uri:
+          `constellation://v1/workspaces/${ids.workspace}/captures/${ids.managedCapture}/payload` +
+          `?agentRunId=${run.agentRunId}&hostRunId=${run.hostRunId}&hostName=${run.hostName}`,
+      });
+      const content = resource.contents[0];
+      assert.ok(content !== undefined && "blob" in content);
+      assert.deepEqual(Buffer.from(content.blob, "base64"), managedBytes);
     } finally {
       await client.close().catch(() => undefined);
       await server.close();

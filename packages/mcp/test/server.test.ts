@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -123,6 +124,110 @@ test("rejects malformed tool arguments before the Application Port", async () =>
       }),
     );
     assert.equal(invoked, false);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("assembles and verifies an authorized Capture payload resource", async () => {
+  const bytes = Buffer.concat([
+    Buffer.alloc(512 * 1024, 0x61),
+    Buffer.from("verified tail"),
+  ]);
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  const captureId = "50000000-0000-4000-8000-000000000005";
+  const workspaceId = "50000000-0000-4000-8000-000000000003";
+  const offsets: number[] = [];
+  const server = createConstellationMcpServer({
+    invoke: (invocation) => {
+      assert.equal(invocation.kind, "payload_read");
+      if (invocation.kind !== "payload_read")
+        throw new Error("Expected payload read.");
+      offsets.push(invocation.offset);
+      const chunk = bytes.subarray(
+        invocation.offset,
+        Math.min(bytes.length, invocation.offset + invocation.length),
+      );
+      return Promise.resolve({
+        contractVersion: 1,
+        requestId: invocation.requestId,
+        outcome: "success",
+        result: {
+          captureId,
+          displayName: "evidence.bin",
+          mediaType: "application/octet-stream",
+          byteLength: bytes.length,
+          contentSha256: digest,
+          offset: invocation.offset,
+          bytesBase64: chunk.toString("base64"),
+        },
+      });
+    },
+  });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "payload-test", version: "1.0.0" });
+  await Promise.all([
+    server.connect(serverTransport),
+    client.connect(clientTransport),
+  ]);
+  try {
+    const templates = await client.listResourceTemplates();
+    assert.deepEqual(
+      templates.resourceTemplates.map((template) => template.name),
+      ["constellation-capture-payload-v1"],
+    );
+    const uri =
+      `constellation://v1/workspaces/${workspaceId}/captures/${captureId}/payload` +
+      `?agentRunId=${run.agentRunId}&hostRunId=${run.hostRunId}&hostName=${run.hostName}`;
+    const resource = await client.readResource({ uri });
+    const content = resource.contents[0];
+    assert.ok(content !== undefined && "blob" in content);
+    assert.deepEqual(Buffer.from(content.blob, "base64"), bytes);
+    assert.deepEqual(offsets, [0, 512 * 1024]);
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("fails the complete resource when payload integrity changes", async () => {
+  const bytes = Buffer.from("corrupt evidence");
+  const server = createConstellationMcpServer({
+    invoke: (invocation) =>
+      Promise.resolve({
+        contractVersion: 1,
+        requestId: invocation.requestId,
+        outcome: "success",
+        result: {
+          captureId: "50000000-0000-4000-8000-000000000005",
+          displayName: "evidence.bin",
+          mediaType: "application/octet-stream",
+          byteLength: bytes.length,
+          contentSha256: "0".repeat(64),
+          offset: 0,
+          bytesBase64: bytes.toString("base64"),
+        },
+      }),
+  });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "corruption-test", version: "1.0.0" });
+  await Promise.all([
+    server.connect(serverTransport),
+    client.connect(clientTransport),
+  ]);
+  try {
+    await assert.rejects(
+      client.readResource({
+        uri:
+          "constellation://v1/workspaces/50000000-0000-4000-8000-000000000003/" +
+          "captures/50000000-0000-4000-8000-000000000005/payload" +
+          `?agentRunId=${run.agentRunId}&hostRunId=${run.hostRunId}&hostName=${run.hostName}`,
+      }),
+      /payload is unavailable/u,
+    );
   } finally {
     await client.close();
     await server.close();

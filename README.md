@@ -193,6 +193,9 @@ record the agent, external host run, correlation, and optional checkpoint.
 Checkpoint revert applies ordinary compensating commands and refuses to erase
 incompatible later work. Query results label record content as untrusted
 evidence so imported text never becomes an instruction to the host.
+Managed file and screenshot bytes remain outside ordinary tool results. An
+authorized Capture-payload resource reads them in bounded chunks and returns a
+blob only after full length and SHA-256 verification at the MCP boundary.
 
 The packaged Alpha contains a stdio adapter tested with Codex CLI and Claude
 Code. Rotation invalidates the previous credential immediately, revocation

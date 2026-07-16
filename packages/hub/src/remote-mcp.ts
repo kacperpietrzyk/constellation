@@ -34,6 +34,7 @@ import {
   SpaceGrantIdSchema,
   TaskIdSchema,
   type Capability,
+  type CaptureOriginal,
   type ExecutionContext,
   type RemoteMcpGrantChangeRequest,
   type RemoteMcpGrantCreateRequest,
@@ -43,6 +44,8 @@ import {
 import type { AgentAccessGrant, AgentRun } from "@constellation/domain";
 import {
   MCP_CONTRACT_VERSION,
+  MAX_MCP_PAYLOAD_CHUNK_BYTES,
+  MCP_PAYLOAD_RESOURCE_TEMPLATE,
   McpOperatorResponseSchema,
   RemoteMcpCredentialSchema,
   type HostRunMetadata,
@@ -354,6 +357,12 @@ export class HubRemoteMcpService {
       readonly randomSecret?: () => string;
       readonly maxCallsPerMinute?: number;
       readonly maxConcurrentCalls?: number;
+      readonly readCapturePayloadChunk?: (input: {
+        readonly workspaceId: WorkspaceId;
+        readonly original: CaptureOriginal;
+        readonly offset: number;
+        readonly length: number;
+      }) => Promise<Uint8Array | undefined>;
     } = {},
   ) {}
 
@@ -752,7 +761,9 @@ export class HubRemoteMcpService {
           (invocation.kind === "query" &&
             invocation.query.workspaceId !== workspaceId) ||
           (invocation.kind === "command" &&
-            invocation.command.workspaceId !== workspaceId)
+            invocation.command.workspaceId !== workspaceId) ||
+          (invocation.kind === "payload_read" &&
+            invocation.workspaceId !== workspaceId)
         )
           return response(invocation.requestId, "rejected", {
             diagnosticCode: "authorization.denied",
@@ -763,6 +774,10 @@ export class HubRemoteMcpService {
             diagnosticCode: "mcp.rate_limited",
             retryAfterMs: 1_000,
           });
+        if (invocation.kind === "payload_read")
+          return this.invokePayloadRead(state, grant, invocation).finally(() =>
+            this.release(grant.id),
+          );
         try {
           const store = new InMemoryReferenceStore(
             undefined,
@@ -787,7 +802,10 @@ export class HubRemoteMcpService {
                 "constellation.command.v1",
                 "constellation.checkpoint.revert.v1",
               ],
-              resources: ["constellation://v1/capabilities"],
+              resources: [
+                "constellation://v1/capabilities",
+                MCP_PAYLOAD_RESOURCE_TEMPLATE,
+              ],
               grant: projection(
                 grant,
                 remote,
@@ -961,6 +979,50 @@ export class HubRemoteMcpService {
     return membership?.role === "owner" || membership?.role === "admin";
   }
 
+  private async invokePayloadRead(
+    state: HubWorkspaceState,
+    grant: AgentAccessGrant,
+    invocation: Extract<McpOperatorInvocation, { kind: "payload_read" }>,
+  ): Promise<McpOperatorResponse> {
+    try {
+      const store = new InMemoryReferenceStore(
+        undefined,
+        mergedSnapshot(state),
+      );
+      const context = this.agentContext(store, grant, invocation.run);
+      if (context === undefined)
+        return response(invocation.requestId, "rejected", {
+          diagnosticCode: "authorization.denied",
+        });
+      this.ensureRun(store, grant, invocation.run);
+      const output = await this.readPayloadChunk(
+        store,
+        context,
+        invocation.requestId,
+        invocation.captureId,
+        invocation.offset,
+        Math.min(invocation.length, MAX_MCP_PAYLOAD_CHUNK_BYTES),
+      );
+      persistSnapshot(state, store.snapshot());
+      const storedGrant = state.remoteAgents?.grants.find(
+        (candidate) => candidate.id === grant.id,
+      );
+      if (storedGrant !== undefined && state.remoteAgents !== undefined) {
+        const index = state.remoteAgents.grants.indexOf(storedGrant);
+        if (index >= 0)
+          state.remoteAgents.grants[index] = {
+            ...storedGrant,
+            lastUsedAt: this.now(),
+          };
+      }
+      return output;
+    } catch {
+      return response(invocation.requestId, "retryable", {
+        diagnosticCode: "mcp.runtime_unavailable",
+      });
+    }
+  }
+
   private execute(
     store: InMemoryReferenceStore,
     context: ExecutionContext,
@@ -999,7 +1061,10 @@ export class HubRemoteMcpService {
     store: InMemoryReferenceStore,
     context: ExecutionContext,
     grant: AgentAccessGrant,
-    invocation: Exclude<McpOperatorInvocation, { kind: "capabilities" }>,
+    invocation: Exclude<
+      McpOperatorInvocation,
+      { kind: "capabilities" | "payload_read" }
+    >,
   ): McpOperatorResponse {
     const service = this.kernel(store, context);
     if (invocation.kind === "query") {
@@ -1026,6 +1091,52 @@ export class HubRemoteMcpService {
       invocation.correlationId,
       invocation.idempotencyKey,
     );
+  }
+
+  private async readPayloadChunk(
+    store: InMemoryReferenceStore,
+    context: ExecutionContext,
+    requestId: string,
+    captureId: ReturnType<typeof CaptureIdSchema.parse>,
+    offset: number,
+    length: number,
+  ): Promise<McpOperatorResponse> {
+    const capture = store.read((view) => view.getCapture(captureId));
+    if (
+      !context.capabilityScope.includes("capture.history") ||
+      capture === undefined ||
+      capture.workspaceId !== context.workspaceId ||
+      !context.spaceScope.includes(capture.spaceId) ||
+      (capture.original.kind !== "managed_file" &&
+        capture.original.kind !== "screenshot") ||
+      offset >= capture.original.payload.byteLength
+    )
+      return response(requestId, "rejected", {
+        diagnosticCode: "authorization.denied",
+      });
+    const bytes = await this.options.readCapturePayloadChunk?.({
+      workspaceId: context.workspaceId,
+      original: capture.original,
+      offset,
+      length,
+    });
+    if (
+      bytes === undefined ||
+      bytes.byteLength === 0 ||
+      bytes.byteLength > length
+    )
+      return response(requestId, "rejected", {
+        diagnosticCode: "authorization.denied",
+      });
+    return response(requestId, "success", {
+      captureId: capture.id,
+      displayName: capture.original.payload.displayName,
+      mediaType: capture.original.payload.mediaType,
+      byteLength: capture.original.payload.byteLength,
+      contentSha256: capture.original.payload.contentSha256,
+      offset,
+      bytesBase64: Buffer.from(bytes).toString("base64"),
+    });
   }
 
   private agentContext(

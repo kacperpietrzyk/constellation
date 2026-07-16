@@ -325,6 +325,15 @@ it(
       await attachmentService.isAvailable(workspaceId, managedOriginal),
       true,
     );
+    assert.deepEqual(
+      await attachmentService.readCapturePayloadChunk({
+        workspaceId,
+        original: managedOriginal,
+        offset: 5,
+        length: 11,
+      }),
+      bytes.subarray(5, 16),
+    );
     const payloadService = new HubService(repository, {
       capturePayloadVerifier: attachmentService,
     });

@@ -993,6 +993,7 @@ const startProductionDesktop = async (): Promise<void> => {
       workspaceId: workspaceRecovery.kernel.identity.workspaceId,
       store: workspaceRecovery.kernel.store,
       isEnabled: () => coordinatedDataHomeProvider === undefined,
+      readCapturePayload: (original) => capturePayloadCustody?.read(original),
     });
     await localMcpRuntime.start();
   }

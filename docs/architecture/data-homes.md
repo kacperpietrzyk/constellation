@@ -95,6 +95,11 @@ does not block ordinary record synchronization.
 Normal projection replacement retains bytes only for still-authorized Capture
 records and current dialog staging. Membership or device revocation purges the
 whole coordinated projection, including managed payload bytes.
+Authorized external agents read a managed payload through the same versioned
+MCP resource contract in either Data Home. Local stdio obtains bounded chunks
+from encrypted custody; remote Streamable HTTP obtains them from the Hub object.
+The MCP server reassembles and verifies the complete digest before returning a
+blob, while revocation or a Space-scope change fails the whole read.
 
 The correctness-first v1 change feed sends a validated logical snapshot after a
 new checkpoint. This is intentionally less bandwidth-efficient than a mature
