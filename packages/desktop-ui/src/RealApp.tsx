@@ -447,6 +447,7 @@ export const CaptureDialog = ({
   const close = () => {
     cancelVoice();
     discardPayload();
+    dialogRef.current?.close();
     onClose();
   };
   const canSubmit =
