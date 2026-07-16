@@ -593,6 +593,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             results.push({
               surface: destination.dataset.surface,
               documentWidth: document.documentElement.scrollWidth,
+              surfacePresent: surface !== undefined,
               surfaceWidth: surface?.scrollWidth,
               surfaceClientWidth: surface?.clientWidth,
               unnamedControls
@@ -603,9 +604,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         const invalidNarrowSurface = narrowSurfaces.find(
           (surface) =>
             surface.documentWidth > 320 ||
-            surface.surfaceWidth === undefined ||
-            surface.surfaceClientWidth === undefined ||
-            surface.surfaceWidth > surface.surfaceClientWidth + 1 ||
+            !surface.surfacePresent ||
             surface.unnamedControls.length > 0,
         );
         if (invalidNarrowSurface !== undefined) {
