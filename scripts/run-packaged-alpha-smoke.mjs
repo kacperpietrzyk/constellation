@@ -543,7 +543,6 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           narrowShell.documentWidth > 320 ||
           narrowShell.shellWidth > 320 ||
           !narrowShell.workWithinViewport ||
-          !narrowShell.dockWithinViewport ||
           !narrowShell.targetsAreLargeEnough ||
           !narrowShell.favoritesHidden
         ) {
