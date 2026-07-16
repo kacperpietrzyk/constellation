@@ -489,20 +489,11 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         `document.querySelector(".capture-dock") !== null && document.querySelectorAll(".nav-item[data-surface]").length === 12`,
         "PACKAGED_ALPHA_OPERATIONAL_SHELL_NOT_READY",
       );
-      const originalViewport = await client.evaluate(`({
-        width: innerWidth,
-        height: innerHeight
-      })`);
       await client.send("Emulation.setDeviceMetricsOverride", {
         width: 320,
         height: 800,
         deviceScaleFactor: 1,
         mobile: false,
-        dontSetVisibleSize: true,
-      });
-      await client.send("Emulation.setVisibleSize", {
-        width: 320,
-        height: 800,
       });
       try {
         await client.evaluate(`new Promise((resolve) =>
@@ -536,6 +527,16 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
               const rect = element.getBoundingClientRect();
               return rect.width >= 44 && rect.height >= 44;
             }),
+            undersizedTargets: targets
+              .map((element) => {
+                const rect = element.getBoundingClientRect();
+                return {
+                  className: element.className,
+                  width: rect.width,
+                  height: rect.height
+                };
+              })
+              .filter(({ width, height }) => width < 44 || height < 44),
             favoritesHidden: favorites.every(
               (element) => element.getClientRects().length === 0
             )
@@ -546,6 +547,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           narrowShell.documentWidth > 320 ||
           narrowShell.shellWidth > 320 ||
           !narrowShell.workWithinViewport ||
+          !narrowShell.dockWithinViewport ||
           !narrowShell.targetsAreLargeEnough ||
           !narrowShell.favoritesHidden
         ) {
@@ -685,7 +687,6 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         }
       } finally {
         await client.send("Emulation.clearDeviceMetricsOverride");
-        await client.send("Emulation.setVisibleSize", originalViewport);
       }
 
       const payloadCustody = await client.evaluate(`(async () => {
