@@ -2,6 +2,7 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 import type {
   ConstellationRendererClient,
+  StarterWorkspaceCounts,
   DesktopWorkspaceEntry,
   ReleaseStatus,
 } from "@constellation/desktop-preload/client";
@@ -61,6 +62,11 @@ export const SettingsSurface = ({
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [workspaceMessage, setWorkspaceMessage] = useState<string>();
   const [importMessage, setImportMessage] = useState<string>();
+  const [importCandidate, setImportCandidate] = useState<{
+    readonly fileName: string;
+    readonly manifest: unknown;
+    readonly counts: StarterWorkspaceCounts;
+  }>();
 
   useEffect(() => {
     if (!client) return;
@@ -143,33 +149,66 @@ export const SettingsSurface = ({
   const importStarter = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file || !client?.importStarterWorkspace) return;
+    if (!file || !client?.previewStarterWorkspace) return;
+    setImportCandidate(undefined);
     if (file.size > 256 * 1024) {
       setImportMessage("Pakiet jest większy niż bezpieczny limit 256 KB.");
       return;
     }
     setBusy(true);
-    setImportMessage("Waliduję pakiet i wykonuję wersjonowane komendy…");
+    setImportMessage("Waliduję pakiet. Nic nie zostało jeszcze zapisane…");
     try {
       const manifest: unknown = JSON.parse(await file.text());
-      const result = await client.importStarterWorkspace(manifest);
+      const result = await client.previewStarterWorkspace(manifest);
+      if (result.outcome === "success") {
+        setImportCandidate({
+          fileName: file.name,
+          manifest,
+          counts: result.counts,
+        });
+        setImportMessage("Podgląd gotowy. Sprawdź zakres i potwierdź import.");
+      } else {
+        setImportMessage(
+          result.code === "manifest_invalid"
+            ? "Plik nie pasuje do ścisłego formatu pakietu startowego."
+            : "Podgląd jest dostępny w trwałej aplikacji desktopowej.",
+        );
+      }
+    } catch {
+      setImportMessage("Plik nie jest poprawnym JSON-em.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmStarterImport = async () => {
+    if (!importCandidate || !client?.importStarterWorkspace) return;
+    setBusy(true);
+    setImportMessage("Wykonuję wersjonowane komendy…");
+    try {
+      const result = await client.importStarterWorkspace(
+        importCandidate.manifest,
+      );
       if (result.outcome === "success") {
         const { areas, initiatives, projects, tasks, links } = result.counts;
+        setImportCandidate(undefined);
         setImportMessage(
-          `Gotowe: ${areas} obsz., ${initiatives} inicj., ${projects} proj., ${tasks} zadań i ${links} powiązań.`,
+          `Gotowe. Obszary: ${areas} · inicjatywy: ${initiatives} · projekty: ${projects} · zadania: ${tasks} · powiązania: ${links}.`,
         );
         await onReload();
       } else {
         setImportMessage(
           result.code === "manifest_invalid"
-            ? "Plik nie pasuje do ścisłego formatu pakietu startowego."
+            ? "Pakiet zmienił się lub nie przeszedł ponownej walidacji. Wybierz go jeszcze raz."
             : result.code === "unavailable"
               ? "Import jest dostępny w trwałej aplikacji desktopowej."
               : "Import zatrzymał się. Zapisane kroki są bezpieczne; ponów ten sam plik, aby dokończyć idempotentnie.",
         );
       }
     } catch {
-      setImportMessage("Plik nie jest poprawnym JSON-em.");
+      setImportMessage(
+        "Import nie został ukończony. Ponowienie tego samego pakietu jest bezpieczne.",
+      );
     } finally {
       setBusy(false);
     }
@@ -417,11 +456,65 @@ export const SettingsSurface = ({
               <input
                 type="file"
                 accept="application/json,.json"
-                disabled={busy || !client?.importStarterWorkspace}
+                disabled={busy || !client?.previewStarterWorkspace}
                 onChange={(event) => void importStarter(event)}
               />
-              <span>Importuj pakiet startowy JSON</span>
+              <span>Wybierz pakiet startowy JSON</span>
             </label>
+            {importCandidate && (
+              <div
+                className="import-preview"
+                role="group"
+                aria-labelledby="import-preview-title"
+              >
+                <strong id="import-preview-title">Zakres przed importem</strong>
+                <span>{importCandidate.fileName}</span>
+                <dl>
+                  <div>
+                    <dt>Obszary</dt>
+                    <dd>{importCandidate.counts.areas}</dd>
+                  </div>
+                  <div>
+                    <dt>Inicjatywy</dt>
+                    <dd>{importCandidate.counts.initiatives}</dd>
+                  </div>
+                  <div>
+                    <dt>Projekty</dt>
+                    <dd>{importCandidate.counts.projects}</dd>
+                  </div>
+                  <div>
+                    <dt>Zadania</dt>
+                    <dd>{importCandidate.counts.tasks}</dd>
+                  </div>
+                  <div>
+                    <dt>Powiązania</dt>
+                    <dd>{importCandidate.counts.links}</dd>
+                  </div>
+                </dl>
+                <div className="import-preview-actions">
+                  <button
+                    type="button"
+                    className="import-preview-confirm"
+                    disabled={busy}
+                    onClick={() => void confirmStarterImport()}
+                  >
+                    Importuj ten zakres
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setImportCandidate(undefined);
+                      setImportMessage(
+                        "Import anulowany. Nic nie zostało zapisane.",
+                      );
+                    }}
+                  >
+                    Anuluj
+                  </button>
+                </div>
+              </div>
+            )}
             {importMessage && <p role="status">{importMessage}</p>}
             <small>
               Reguły cykliczne i zapisane widoki pozostają zwykłymi rekordami

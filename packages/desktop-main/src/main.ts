@@ -219,6 +219,10 @@ void app.whenReady().then(async () => {
           },
         ];
   });
+  ipcMain.handle(DESKTOP_CHANNELS.previewStarterWorkspace, (event) => {
+    assertTrustedSender(event, developmentUrl);
+    return { outcome: "failure", code: "unavailable" } as const;
+  });
   ipcMain.handle(DESKTOP_CHANNELS.importStarterWorkspace, (event) => {
     assertTrustedSender(event, developmentUrl);
     return { outcome: "failure", code: "unavailable" } as const;

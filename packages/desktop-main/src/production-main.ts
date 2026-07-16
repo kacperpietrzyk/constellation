@@ -99,6 +99,8 @@ import {
 import {
   importStarterWorkspace,
   parseStarterWorkspaceManifest,
+  previewStarterWorkspace,
+  type StarterWorkspaceManifest,
 } from "./starter-workspace-import.js";
 import {
   DesktopReleaseService,
@@ -872,20 +874,35 @@ const startProductionDesktop = async (): Promise<void> => {
     }
     return result;
   });
+  const parseStarterWorkspaceInput = (
+    input: unknown,
+  ): StarterWorkspaceManifest | undefined => {
+    try {
+      return Buffer.byteLength(JSON.stringify(input), "utf8") <= 256 * 1024
+        ? parseStarterWorkspaceManifest(input)
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  ipcMain.handle(
+    DESKTOP_CHANNELS.previewStarterWorkspace,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      const manifest = parseStarterWorkspaceInput(input);
+      if (manifest === undefined)
+        return { outcome: "failure", code: "manifest_invalid" } as const;
+      return {
+        outcome: "success",
+        counts: previewStarterWorkspace(manifest),
+      } as const;
+    },
+  );
   ipcMain.handle(
     DESKTOP_CHANNELS.importStarterWorkspace,
     (event, input: unknown) => {
       assertTrustedSender(event);
-      let byteLength: number;
-      try {
-        byteLength = Buffer.byteLength(JSON.stringify(input), "utf8");
-      } catch {
-        return { outcome: "failure", code: "manifest_invalid" } as const;
-      }
-      const manifest =
-        byteLength <= 256 * 1024
-          ? parseStarterWorkspaceManifest(input)
-          : undefined;
+      const manifest = parseStarterWorkspaceInput(input);
       if (manifest === undefined)
         return { outcome: "failure", code: "manifest_invalid" } as const;
       const kernel = workspaceRecovery?.kernel;

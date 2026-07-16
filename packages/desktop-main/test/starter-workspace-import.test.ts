@@ -13,6 +13,7 @@ import { createRuntimeKernelService } from "../src/runtime-kernel-service.js";
 import {
   importStarterWorkspace,
   parseStarterWorkspaceManifest,
+  previewStarterWorkspace,
 } from "../src/starter-workspace-import.js";
 
 const context = ExecutionContextSchema.parse({
@@ -86,6 +87,13 @@ test("starter manifest is strict, referentially valid, and idempotent through pr
   );
   const manifest = parseStarterWorkspaceManifest(manifestValue);
   assert.ok(manifest);
+  assert.deepEqual(previewStarterWorkspace(manifest), {
+    areas: 1,
+    initiatives: 1,
+    projects: 1,
+    tasks: 1,
+    links: 3,
+  });
 
   const service = createRuntimeKernelService({
     context,
@@ -159,4 +167,30 @@ test("starter manifest is strict, referentially valid, and idempotent through pr
     overview.result.projection.tasks[0]?.operationalState,
     "waiting",
   );
+});
+
+test("starter preview is a pure count over the validated manifest", () => {
+  const manifest = parseStarterWorkspaceManifest({
+    ...manifestValue,
+    projects: [
+      manifestValue.projects[0],
+      {
+        key: "without-links",
+        title: "Unlinked project",
+        intendedOutcome: "Remain explicit",
+      },
+    ],
+    tasks: [
+      manifestValue.tasks[0],
+      { key: "unlinked-task", title: "Unlinked task" },
+    ],
+  });
+  assert.ok(manifest);
+  assert.deepEqual(previewStarterWorkspace(manifest), {
+    areas: 1,
+    initiatives: 1,
+    projects: 2,
+    tasks: 2,
+    links: 3,
+  });
 });

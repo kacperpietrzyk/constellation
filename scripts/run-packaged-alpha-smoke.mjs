@@ -435,7 +435,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         (phase === "restore-confirm" ? "recovery_required" : "ready") ||
       boundary.hasNodeRequire ||
       boundary.bridgeKeys.join(",") !==
-        "acknowledgeDocumentUpdates,addMeetingWorkItem,cancelWorkspaceRestore,checkForRelease,configureJamie,confirmCalendarBlocks,confirmWorkspaceRestore,createDocumentRevision,createRemoteAgentGrant,createWorkspace,disconnectJamie,downloadRelease,editMeetingWorkItem,enrollHub,executeCommand,exportHubAuthorization,exportWorkspaceBackup,getBuildInfo,getCrossWorkspaceCockpit,getDataHomeStatus,getJamieStatus,getMeetingLoop,getReleaseStatus,importStarterWorkspace,installRelease,listDocumentRevisions,listRemoteAgentGrants,listWorkspaces,onAttentionActivated,openDetachedSurface,openDocument,persistDocumentUpdate,prepareAgentCredential,prepareWorkspaceRestore,previewCalendarBlocks,requestCalendarAccess,restoreDocumentRevision,revokeRemoteAgentGrant,rotateRemoteAgentGrant,runQuery,switchWorkspace,syncDataHome,syncJamie"
+        "acknowledgeDocumentUpdates,addMeetingWorkItem,cancelWorkspaceRestore,checkForRelease,configureJamie,confirmCalendarBlocks,confirmWorkspaceRestore,createDocumentRevision,createRemoteAgentGrant,createWorkspace,disconnectJamie,downloadRelease,editMeetingWorkItem,enrollHub,executeCommand,exportHubAuthorization,exportWorkspaceBackup,getBuildInfo,getCrossWorkspaceCockpit,getDataHomeStatus,getJamieStatus,getMeetingLoop,getReleaseStatus,importStarterWorkspace,installRelease,listDocumentRevisions,listRemoteAgentGrants,listWorkspaces,onAttentionActivated,openDetachedSurface,openDocument,persistDocumentUpdate,prepareAgentCredential,prepareWorkspaceRestore,previewCalendarBlocks,previewStarterWorkspace,requestCalendarAccess,restoreDocumentRevision,revokeRemoteAgentGrant,rotateRemoteAgentGrant,runQuery,switchWorkspace,syncDataHome,syncJamie"
     ) {
       throw new Error(
         `PACKAGED_ALPHA_PRELOAD_OR_IPC_INVALID:${JSON.stringify(boundary)}`,
@@ -530,6 +530,35 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         `document.querySelectorAll(".task-row").length`,
       );
       if (initialCount !== 0) throw new Error("PACKAGED_ALPHA_NOT_EMPTY");
+      const starterPreview = await client.evaluate(
+        `window.constellation.previewStarterWorkspace(${JSON.stringify({
+          version: 1,
+          importId: "10000000-0000-4000-8000-000000000050",
+          areas: [
+            {
+              key: "preview-only",
+              title: "Preview only",
+              responsibility: "Must not mutate the packaged workspace",
+            },
+          ],
+          initiatives: [],
+          projects: [],
+          tasks: [],
+        })})`,
+      );
+      if (
+        starterPreview.outcome !== "success" ||
+        starterPreview.counts.areas !== 1 ||
+        starterPreview.counts.initiatives !== 0 ||
+        starterPreview.counts.projects !== 0 ||
+        starterPreview.counts.tasks !== 0 ||
+        starterPreview.counts.links !== 0 ||
+        (await client.evaluate(
+          `document.querySelectorAll(".task-row").length`,
+        )) !== 0
+      ) {
+        throw new Error("PACKAGED_ALPHA_STARTER_PREVIEW_MUTATED");
+      }
       await submitCapture(taskTitle);
       backup = await client.evaluate(
         `window.constellation.exportWorkspaceBackup()`,
