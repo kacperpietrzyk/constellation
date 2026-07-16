@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { signAndNotarizeMacApp } from "./macos-distribution-signing.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const releaseRoot = path.join(root, "release");
 const output = path.join(releaseRoot, "distribution");
@@ -55,6 +57,16 @@ if (alphaManifest.releaseTier !== releaseTier) {
 
 fs.rmSync(output, { recursive: true, force: true });
 fs.mkdirSync(path.dirname(buildConfig), { recursive: true });
+if (production && process.platform === "darwin") {
+  if (typeof alphaManifest.appBundle !== "string") {
+    throw new Error("MACOS_APPLICATION_BUNDLE_MISSING");
+  }
+  await signAndNotarizeMacApp({
+    appPath: alphaManifest.appBundle,
+    cscLink: process.env.CSC_LINK,
+    cscPassword: process.env.CSC_KEY_PASSWORD,
+  });
+}
 const config = {
   appId: "io.constellation.local-alpha",
   productName: "Constellation Local Alpha",
@@ -79,7 +91,7 @@ const config = {
     category: "public.app-category.productivity",
     hardenedRuntime: production,
     identity: production ? undefined : null,
-    notarize: production,
+    notarize: false,
     icon: path.join(root, "assets", "app-icon.png"),
   },
   dmg: {
