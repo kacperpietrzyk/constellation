@@ -2273,7 +2273,7 @@ kbd {
     grid-template-columns: 4rem minmax(0, 1fr);
   }
   .sidebar {
-    padding-inline: 0.55rem;
+    padding-inline: 0.25rem;
   }
   .brand-row {
     left: 1.25rem;
@@ -2359,8 +2359,11 @@ kbd {
     justify-self: start;
   }
   .capture-dock {
-    left: calc(4rem + (100vw - 4rem) / 2);
-    width: min(28rem, calc(100vw - 5.5rem));
+    position: absolute;
+    right: 0.75rem;
+    left: 4.75rem;
+    width: auto;
+    transform: none;
   }
   .capture-target {
     grid-template-columns: 1fr;
