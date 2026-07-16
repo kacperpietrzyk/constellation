@@ -199,8 +199,10 @@ command/query and recovery model.
 
 ## Later — public release and ecosystem
 
-- publish the first signed and notarized macOS distribution and signed Windows
-  installer only after the protected release gate has real credential evidence;
+- publish the first signed and notarized macOS distribution from a reviewed
+  GitHub Release draft after the protected gate has real credential evidence;
+- keep Windows build and packaged verification first-class, while deferring its
+  public installer until a future maintainer or sponsor provisions paid signing;
 - expand release drills across schema migrations, provider migration, device
   revocation, and supported upgrade windows;
 - documented stable extension points where the underlying contracts are ready;

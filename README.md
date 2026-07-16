@@ -52,9 +52,14 @@ already solve well:
 ## Project status
 
 Constellation is in **pre-alpha local Alpha work**. There is no published signed
-release yet, and no contract should be considered stable. The repository now
-contains a storage-neutral Application Kernel, a restart-safe encrypted local
-store, an in-memory Electron developer preview, and a packaged Alpha candidate.
+release yet, and no contract should be considered stable. A protected,
+product-owner-reviewed workflow can prepare a signed and notarized macOS GitHub
+Release draft for Apple Silicon and Intel; it never publishes the draft
+automatically. Paid Windows signing and a public Windows release remain
+deferred, while Windows build and packaged behavior continue to be tested. The
+repository now contains a storage-neutral Application Kernel, a restart-safe
+encrypted local store, an in-memory Electron developer preview, and a packaged
+Alpha candidate.
 The implemented desktop journey covers Universal Quick Capture for text, URLs,
 and file references, deterministic routing to Tasks or knowledge sources,
 duplicate review-by-exception in Attention, Project outcome and Task relations,

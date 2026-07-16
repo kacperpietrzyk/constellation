@@ -7,13 +7,17 @@ on:
         description: Exact semver release version
         required: true
         type: string
-      update_origin:
-        description: Public HTTPS origin containing immutable update artifacts
+      include_windows:
+        description: Build a signed Windows release after credentials are provisioned
         required: true
-        type: string
+        default: false
+        type: boolean
 
 permissions:
   contents: read
+
+env:
+  CONSTELLATION_PUBLIC_UPDATE_ORIGIN: https://github.com/kacperpietrzyk/constellation/releases/latest/download
 
 concurrency:
   group: signed-desktop-release-${{ inputs.version }}
@@ -78,7 +82,7 @@ jobs:
           CONSTELLATION_ALPHA_ARCH: ${{ matrix.architecture }}
           CONSTELLATION_RELEASE_VERSION: ${{ inputs.version }}
           CONSTELLATION_RELEASE_TIER: production-signed
-          CONSTELLATION_UPDATE_ORIGIN: ${{ inputs.update_origin }}
+          CONSTELLATION_UPDATE_ORIGIN: ${{ env.CONSTELLATION_PUBLIC_UPDATE_ORIGIN }}
           CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}
           APPLE_API_KEY: ${{ runner.temp }}/AuthKey.p8
@@ -88,13 +92,16 @@ jobs:
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: constellation-${{ inputs.version }}-macos-${{ matrix.architecture }}
-          path: release/distribution
+          path: |
+            release/distribution/*.dmg
+            release/distribution/*.zip
           if-no-files-found: error
           retention-days: 7
 
   windows:
     name: Signed Windows x64
     needs: amalgamation
+    if: ${{ inputs.include_windows }}
     environment: desktop-release
     runs-on: windows-2022
     timeout-minutes: 60
@@ -118,13 +125,65 @@ jobs:
           CONSTELLATION_ALPHA_ARCH: x64
           CONSTELLATION_RELEASE_VERSION: ${{ inputs.version }}
           CONSTELLATION_RELEASE_TIER: production-signed
-          CONSTELLATION_UPDATE_ORIGIN: ${{ inputs.update_origin }}
+          CONSTELLATION_UPDATE_ORIGIN: ${{ env.CONSTELLATION_PUBLIC_UPDATE_ORIGIN }}
           CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
         run: npm run package:distribution
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: constellation-${{ inputs.version }}-windows-x64
-          path: release/distribution
+          path: release/distribution/*.exe
           if-no-files-found: error
           retention-days: 7
+
+  draft-release:
+    name: Prepare protected GitHub Release draft
+    needs: [macos, windows]
+    if: >-
+      ${{ always() && needs.macos.result == 'success' &&
+          (needs.windows.result == 'success' || needs.windows.result == 'skipped') }}
+    environment: desktop-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: constellation-${{ inputs.version }}-macos-*
+          path: release-assets
+          merge-multiple: true
+      - if: ${{ inputs.include_windows }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: constellation-${{ inputs.version }}-windows-x64
+          path: release-assets
+      - name: Create architecture-aware update metadata
+        shell: bash
+        run: |
+          args=(--directory release-assets --version "${{ inputs.version }}")
+          if [[ "${{ inputs.include_windows }}" == "true" ]]; then
+            args+=(--include-windows)
+          fi
+          node scripts/prepare-github-release.mjs "${args[@]}"
+      - name: Refuse to replace an existing version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ inputs.version }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release v${{ inputs.version }} already exists; published versions are immutable." >&2
+            exit 1
+          fi
+      - name: Create reviewable release draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ inputs.version }}" release-assets/* \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "Constellation ${{ inputs.version }}" \
+            --generate-notes \
+            --draft
