@@ -362,6 +362,13 @@ denial without target disclosure, typed opaque pagination, actual freshness,
 and rollback after every Capture update, Task, event, audit, idempotency, and
 outbox boundary.
 
+Retryable storage diagnostics distinguish transient contention from exhausted
+capacity and lost write permission. The owning adapter rolls back first, and
+desktop/MCP callers receive only `storage.unit_of_work_failed`,
+`storage.capacity_exhausted`, or `storage.permission_denied`—never native error
+objects, SQL, content, or local paths. Unknown I/O and corruption failures are
+not mislabeled as safe retries.
+
 Collaboration coverage uses two human principals and two Spaces, including a
 private sentinel. It proves that role does not imply scope, hidden content does
 not appear through direct search or scoped export counts, view-only access

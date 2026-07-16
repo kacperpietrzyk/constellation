@@ -89,6 +89,8 @@ export const DiagnosticCodeSchema = z.enum([
   "undo.not_available",
   "undo.already_applied",
   "storage.unit_of_work_failed",
+  "storage.capacity_exhausted",
+  "storage.permission_denied",
   "operation.partial",
   "external.unknown_reconcile",
 ]);
@@ -987,7 +989,11 @@ export const ConflictOutcomeSchema = OutcomeMetadataSchema.extend({
 
 export const RetryableOutcomeSchema = OutcomeMetadataSchema.extend({
   outcome: z.literal("retryable"),
-  diagnosticCode: z.literal("storage.unit_of_work_failed"),
+  diagnosticCode: z.enum([
+    "storage.unit_of_work_failed",
+    "storage.capacity_exhausted",
+    "storage.permission_denied",
+  ]),
   retryAfterMs: z.int().nonnegative().optional(),
 }).strict();
 

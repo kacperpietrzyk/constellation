@@ -22,9 +22,10 @@ preload bridge.
   their row identity when loaded;
 - malformed JSON, mismatched identity, and unsupported schema versions fail
   closed;
-- the versioned migration chain through schema v6 runs exclusively and
-  backfills event/audit lookup columns plus the local full-text index in the
-  same transaction;
+- the versioned migration chain through schema v15 runs exclusively and
+  backfills the accumulated event/audit, full-text, collaboration, agent,
+  knowledge, strategic, meeting, and managed-payload structures in the same
+  transaction;
 - the FTS5 index carries Workspace and Space scope on every Capture, Task, and
   Project entry; application search still authorizes scopes before reading and
   keeps deterministic ranking in the shared query layer;
@@ -135,7 +136,13 @@ For voice notes, a durable transcript first moves the Capture to
 records `deleted` only after absence is verified; coordinated projection
 replacement also purges pending/deleted voice bytes while preserving unrelated
 dialog staging and explicitly retained audio.
-Remaining recovery gates include real disk-full and permission faults.
+The adapter deterministically injects capacity loss and write-permission loss
+before a transaction and at commit. It maps a safe retry only after rollback
+succeeds or the native connection confirms that no transaction remains, using
+the content-safe `storage.capacity_exhausted` or
+`storage.permission_denied` retry outcome, proves that no partial row remains,
+and then replays successfully after the fault clears. Native VFS drills on both
+packaged platforms remain a separate release-candidate gate.
 Installer/update/compatible-rollback/uninstall mechanics now have a separate
 packaged distribution drill; production signing and notarization remain a
 credential-gated release proof rather than a claim made by ordinary CI. See

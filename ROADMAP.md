@@ -243,6 +243,9 @@ destinations, and dismissing Quick Capture restores keyboard focus to its exact
 invoking control. The initial renderer also keeps the shell and weekly cockpit
 immediately available while loading heavier destinations on intent; a measured
 bundle budget now prevents startup cost from growing unnoticed.
+Local write failures now distinguish exhausted capacity from lost permission,
+confirm rollback before offering retry, and tell the user which environmental
+condition to correct without exposing paths or native errors.
 
 ## Later — desktop ecosystem after product readiness
 

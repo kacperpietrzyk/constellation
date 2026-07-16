@@ -332,6 +332,26 @@ describe("application contracts", () => {
     assert.equal(wave2Result.success, false);
   });
 
+  it("accepts exact retryable storage recovery diagnostics", () => {
+    for (const diagnosticCode of [
+      "storage.unit_of_work_failed",
+      "storage.capacity_exhausted",
+      "storage.permission_denied",
+    ] as const) {
+      assert.equal(
+        CommandOutcomeSchema.safeParse({
+          outcome: "retryable",
+          contractVersion: 1,
+          commandId: ids.command,
+          correlationId: ids.correlation,
+          kernelTime: "2026-07-17T00:00:00.000Z",
+          diagnosticCode,
+        }).success,
+        true,
+      );
+    }
+  });
+
   it("allows a direct Task projection without fabricated Capture provenance", () => {
     const result = QueryResultSchema.safeParse({
       outcome: "success",

@@ -1035,7 +1035,11 @@ const commandFailure = (response: RendererCommandResponse): MutationFailure => {
     return {
       kind: "retry",
       message:
-        "Lokalny store jest chwilowo zajęty. Nic nie zapisano częściowo.",
+        outcome.diagnosticCode === "storage.capacity_exhausted"
+          ? "Brakuje miejsca na bezpieczny zapis. Nic nie zapisano częściowo. Zwolnij miejsce i spróbuj ponownie."
+          : outcome.diagnosticCode === "storage.permission_denied"
+            ? "Workspace nie ma teraz prawa zapisu. Nic nie zapisano częściowo. Przywróć dostęp i spróbuj ponownie."
+            : "Lokalny store jest chwilowo zajęty. Nic nie zapisano częściowo.",
       ...(outcome.retryAfterMs === undefined
         ? {}
         : { retryAfterMs: outcome.retryAfterMs }),

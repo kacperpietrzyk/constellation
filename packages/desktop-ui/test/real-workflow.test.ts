@@ -601,6 +601,40 @@ describe("real Wave 2 renderer workflow", () => {
     assert.equal(snapshot.tasks.length, 1);
   });
 
+  it("explains recoverable capacity and permission failures without partial-save ambiguity", async () => {
+    const { client } = createTypedClient();
+    const snapshot = await loadDesktopSnapshot(client);
+    for (const [diagnosticCode, expectedCopy] of [
+      ["storage.capacity_exhausted", "Zwolnij miejsce"],
+      ["storage.permission_denied", "Przywróć dostęp"],
+    ] as const) {
+      client.executeCommand = async (command) =>
+        ({
+          kind: "command_outcome",
+          outcome: {
+            contractVersion: 1,
+            commandId: command.commandId,
+            correlationId: command.correlationId,
+            kernelTime: "2026-07-17T00:00:00.000Z",
+            outcome: "retryable",
+            diagnosticCode,
+          },
+        }) as Awaited<
+          ReturnType<ConstellationRendererClient["executeCommand"]>
+        >;
+      const result = await createProject(
+        client,
+        snapshot,
+        "Recovery probe",
+        "No partial write",
+      );
+      assert.equal(result.kind, "retry");
+      if (result.kind !== "retry") throw new Error("Expected safe retry.");
+      assert.match(result.message, /Nic nie zapisano częściowo/u);
+      assert.match(result.message, new RegExp(expectedCopy, "u"));
+    }
+  });
+
   it("uses search.global and all Wave 2 mutation commands without local decisions", async () => {
     const { client, commands, queries } = createTypedClient();
     const snapshot = await loadDesktopSnapshot(client);
