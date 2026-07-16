@@ -481,6 +481,11 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     }
 
     if (phase !== "restore-confirm") {
+      await waitFor(
+        client,
+        `document.querySelector(".capture-dock") !== null && document.querySelectorAll(".nav-item[data-surface]").length === 12`,
+        "PACKAGED_ALPHA_OPERATIONAL_SHELL_NOT_READY",
+      );
       await client.send("Emulation.setDeviceMetricsOverride", {
         width: 320,
         height: 800,
@@ -509,6 +514,12 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             shellWidth: shell?.getBoundingClientRect().width,
             workWithinViewport: work ? withinViewport(work) : false,
             dockWithinViewport: dock ? withinViewport(dock) : false,
+            dockRect: dock
+              ? (() => {
+                  const rect = dock.getBoundingClientRect();
+                  return { left: rect.left, right: rect.right, width: rect.width };
+                })()
+              : null,
             targetsAreLargeEnough: targets.every((element) => {
               const rect = element.getBoundingClientRect();
               return rect.width >= 44 && rect.height >= 44;
