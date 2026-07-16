@@ -84,7 +84,9 @@ const client: ConstellationRendererClient = {
         endedAt: "2026-07-14T09:45:00.000Z",
         calendarEventId: "event-previous",
         summaryMarkdown:
-          "## Wynik\nPilot pozostaje za flagą do czasu potwierdzenia recovery.",
+          "## Wynik\n\n- **Pilot pozostaje za flagą** do czasu potwierdzenia recovery.\n- Właściciel wdrożenia zostanie potwierdzony po przeglądzie.",
+        transcriptMarkdown:
+          "## Fragment transkrypcji\n\n**Alex:** Potwierdzę procedurę recovery przed kolejnym spotkaniem.",
         participants: [],
         workItems: [
           {
@@ -113,6 +115,25 @@ const client: ConstellationRendererClient = {
         missingComponents: [],
         version: 1,
         updatedAt: "2026-07-14T10:00:00.000Z",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000213",
+        workspaceId: "00000000-0000-4000-8000-000000000001" as never,
+        spaceId: "00000000-0000-4000-8000-000000000002" as never,
+        connectionId: "jamie-workspace",
+        externalMeetingId: "meeting-weekly-review",
+        title: "Tygodniowy przegląd wdrożenia i otwartych decyzji",
+        startedAt: "2026-07-12T13:30:00.000Z",
+        endedAt: "2026-07-12T14:15:00.000Z",
+        summaryMarkdown:
+          "## Najważniejsze ustalenia\n\n1. Zespół zamyka etap przygotowania.\n2. Następny przegląd obejmie **ryzyko i termin**.\n\n> Decyzja pozostaje jawna i powiązana ze spotkaniem.",
+        participants: [],
+        workItems: [],
+        contentHash: "b".repeat(64),
+        triage: "ready",
+        missingComponents: [],
+        version: 1,
+        updatedAt: "2026-07-12T14:20:00.000Z",
       },
     ],
   }),
