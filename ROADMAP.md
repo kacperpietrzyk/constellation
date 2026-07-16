@@ -240,7 +240,9 @@ The first desktop-quality acceptance correction also removes an obsolete
 minimum shell width: Week, Meetings, Settings, tabs, and Quick Capture now stay
 inside a 320 px desktop window, the collapsed rail keeps non-overlapping 44 px
 destinations, and dismissing Quick Capture restores keyboard focus to its exact
-invoking control.
+invoking control. The initial renderer also keeps the shell and weekly cockpit
+immediately available while loading heavier destinations on intent; a measured
+bundle budget now prevents startup cost from growing unnoticed.
 
 ## Later — desktop ecosystem after product readiness
 
