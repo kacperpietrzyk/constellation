@@ -2,6 +2,7 @@
   "name": "@constellation/mcp",
   "version": "0.0.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "bin": {
     "constellation-mcp": "./dist/bin/stdio.mjs"
