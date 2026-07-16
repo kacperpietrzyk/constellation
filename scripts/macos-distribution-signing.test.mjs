@@ -27,6 +27,12 @@ test("imports one Developer ID identity before signing and notarizing", async ()
   const lifecycle = [];
   const securityRunner = (args) => {
     securityCalls.push(args);
+    if (args[0] === "list-keychains" && !args.includes("-s")) {
+      return {
+        status: 0,
+        stdout: '    "/Users/runner/Library/Keychains/login.keychain-db"\n',
+      };
+    }
     if (args[0] === "find-identity") {
       return {
         status: 0,
@@ -54,14 +60,34 @@ test("imports one Developer ID identity before signing and notarizing", async ()
   assert.deepEqual(
     securityCalls.map((args) => args[0]),
     [
+      "list-keychains",
       "create-keychain",
       "unlock-keychain",
+      "set-keychain-settings",
+      "list-keychains",
       "import",
       "set-key-partition-list",
       "find-identity",
+      "list-keychains",
       "delete-keychain",
     ],
   );
+  const searchListUpdates = securityCalls.filter(
+    (args) => args[0] === "list-keychains" && args.includes("-s"),
+  );
+  assert.equal(searchListUpdates.length, 2);
+  assert.match(searchListUpdates[0][4], /release\.keychain-db$/);
+  assert.equal(
+    searchListUpdates[0][5],
+    "/Users/runner/Library/Keychains/login.keychain-db",
+  );
+  assert.deepEqual(searchListUpdates[1], [
+    "list-keychains",
+    "-d",
+    "user",
+    "-s",
+    "/Users/runner/Library/Keychains/login.keychain-db",
+  ]);
   assert.equal(lifecycle[0][0], "sign");
   assert.equal(
     lifecycle[0][1].identity,
@@ -81,9 +107,11 @@ test("fails closed without one Developer ID identity", async () => {
       securityRunner: (args) => ({
         status: 0,
         stdout:
-          args[0] === "find-identity"
-            ? '  1) ABCDEF123456 "Apple Development: Example (TEAM123456)"\n'
-            : "",
+          args[0] === "list-keychains" && !args.includes("-s")
+            ? '    "/Users/runner/Library/Keychains/login.keychain-db"\n'
+            : args[0] === "find-identity"
+              ? '  1) ABCDEF123456 "Apple Development: Example (TEAM123456)"\n'
+              : "",
       }),
       signer: async () => {},
       notarizer: async () => {},
