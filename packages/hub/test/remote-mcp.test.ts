@@ -36,6 +36,8 @@ const ids = {
   device: DeviceIdSchema.parse("60000000-0000-4000-8000-000000000006"),
   managedCapture: CaptureIdSchema.parse("60000000-0000-4000-8000-000000000007"),
   managedPayload: "60000000-0000-4000-8000-000000000008",
+  voiceCapture: CaptureIdSchema.parse("60000000-0000-4000-8000-000000000009"),
+  voicePayload: "60000000-0000-4000-8000-000000000010",
 } as const;
 
 const managerContext = (): ExecutionContext =>
@@ -95,7 +97,7 @@ const snapshot = (managedBytes?: Uint8Array) => {
         custodyState: "available",
       },
     });
-    harness.store.transact((transaction) =>
+    harness.store.transact((transaction) => {
       transaction.insertCapture({
         id: ids.managedCapture,
         workspaceId: ids.workspace,
@@ -109,8 +111,35 @@ const snapshot = (managedBytes?: Uint8Array) => {
         processingState: "pending_processing",
         submittedBy: managerContext().principalId,
         version: 1,
-      }),
-    );
+      });
+      transaction.insertCapture({
+        id: ids.voiceCapture,
+        workspaceId: ids.workspace,
+        spaceId: ids.space,
+        originalText: "Voice note.webm",
+        original: CaptureOriginalSchema.parse({
+          kind: "voice_note",
+          payload: {
+            payloadId: ids.voicePayload,
+            displayName: "Voice note.webm",
+            mediaType: "audio/webm",
+            byteLength: managedBytes.byteLength,
+            contentSha256: digest,
+            custodyState: "available",
+          },
+          durationMs: 9_000,
+          retentionPolicy: "delete_after_transcript",
+        }),
+        originalFingerprint: digest,
+        deviceId: "remote-test",
+        source: "global_quick_capture",
+        capturedAt: "2026-07-16T18:01:00.000Z",
+        processingState: "awaiting_transcript",
+        awaitingTranscriptSince: "2026-07-16T18:01:01.000Z",
+        submittedBy: managerContext().principalId,
+        version: 2,
+      });
+    });
   }
   return toHubSnapshot(harness.store.snapshot());
 };
@@ -168,6 +197,7 @@ const setup = async (managedBytes?: Uint8Array) => {
 const createRemoteGrant = async (
   remote: HubRemoteMcpService,
   deviceCredential: string,
+  audioRead = false,
 ) => {
   const result = await remote.createGrant(deviceCredential, {
     protocolVersion: 1,
@@ -180,6 +210,7 @@ const createRemoteGrant = async (
       "capture.submitText",
       "capture.process",
       "capture.history",
+      ...(audioRead ? (["capture.audioRead"] as const) : []),
       "audit.receipt",
     ],
     spaces: [{ spaceId: ids.space, access: "edit" }],
@@ -392,6 +423,60 @@ describe("remote MCP Hub gateway", () => {
     });
   });
 
+  it("requires an independent remote grant before exposing voice audio", async () => {
+    const bytes = new TextEncoder().encode("authorized remote voice object");
+    const { remote, deviceCredential } = await setup(bytes);
+    const ordinary = await createRemoteGrant(remote, deviceCredential);
+    const denied = await remote.invoke(ids.workspace, ordinary.bearerToken, {
+      contractVersion: 1,
+      requestId: uuid(),
+      kind: "payload_read",
+      run,
+      workspaceId: ids.workspace,
+      captureId: ids.voiceCapture,
+      offset: 0,
+      length: 512 * 1024,
+    });
+    assert.equal(denied.outcome, "rejected");
+    assert.deepEqual(denied.result, {
+      diagnosticCode: "authorization.denied",
+    });
+
+    const voiceGranted = await createRemoteGrant(
+      remote,
+      deviceCredential,
+      true,
+    );
+    const allowed = await remote.invoke(
+      ids.workspace,
+      voiceGranted.bearerToken,
+      {
+        contractVersion: 1,
+        requestId: uuid(),
+        kind: "payload_read",
+        run: {
+          ...run,
+          agentRunId: AgentRunIdSchema.parse(
+            "60000000-0000-4000-8000-000000000022",
+          ),
+          hostRunId: "remote-voice-run",
+        },
+        workspaceId: ids.workspace,
+        captureId: ids.voiceCapture,
+        offset: 0,
+        length: 512 * 1024,
+      },
+    );
+    assert.equal(allowed.outcome, "success");
+    assert.deepEqual(
+      Buffer.from(
+        (allowed.result as { bytesBase64: string }).bytesBase64,
+        "base64",
+      ),
+      Buffer.from(bytes),
+    );
+  });
+
   it("rotates and revokes immediately with explicit version conflicts", async () => {
     const { remote, deviceCredential } = await setup();
     const created = await createRemoteGrant(remote, deviceCredential);
@@ -589,7 +674,10 @@ describe("remote MCP Hub gateway", () => {
       });
       const content = resource.contents[0];
       assert.ok(content !== undefined && "blob" in content);
-      assert.deepEqual(Buffer.from(content.blob, "base64"), managedBytes);
+      assert.deepEqual(
+        Buffer.from(content.blob, "base64"),
+        Buffer.from(managedBytes),
+      );
     } finally {
       await client.close().catch(() => undefined);
       await server.close();

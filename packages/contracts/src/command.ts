@@ -282,8 +282,35 @@ export const CaptureOriginalSchema = z.discriminatedUnion("kind", [
         .strict(),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal("voice_note"),
+      payload: z
+        .object({
+          payloadId: CapturePayloadIdSchema,
+          displayName: z.string().trim().min(1).max(500),
+          mediaType: z.enum(["audio/webm", "audio/ogg", "audio/mp4"]),
+          byteLength: z.int().positive().max(26_214_400),
+          contentSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+          custodyState: z.literal("available"),
+        })
+        .strict(),
+      durationMs: z.int().positive().max(120_000),
+      retentionPolicy: z.enum(["delete_after_transcript", "retain"]),
+    })
+    .strict(),
 ]);
 export type CaptureOriginal = z.infer<typeof CaptureOriginalSchema>;
+
+export const isCustodiedCaptureOriginal = (
+  original: CaptureOriginal,
+): original is Extract<
+  CaptureOriginal,
+  { kind: "managed_file" | "screenshot" | "voice_note" }
+> =>
+  original.kind === "managed_file" ||
+  original.kind === "screenshot" ||
+  original.kind === "voice_note";
 
 export const CaptureReviewReasonSchema = z.enum([
   "ambiguous",

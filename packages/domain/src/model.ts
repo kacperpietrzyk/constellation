@@ -193,6 +193,11 @@ export type ReviewCapture = CaptureBase & {
   readonly reviewedAt: string;
 };
 
+export type AwaitingTranscriptCapture = CaptureBase & {
+  readonly processingState: "awaiting_transcript";
+  readonly awaitingTranscriptSince: string;
+};
+
 export type UnclassifiedCapture = CaptureBase & {
   readonly processingState: "unclassified";
   readonly unclassifiedAt: string;
@@ -202,6 +207,7 @@ export type UnclassifiedCapture = CaptureBase & {
 
 export type Capture =
   | PendingCapture
+  | AwaitingTranscriptCapture
   | RoutedTaskCapture
   | RoutedKnowledgeSourceCapture
   | ReviewCapture
@@ -796,6 +802,15 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly attentionSignalId: AttentionSignalId;
       readonly action: "retry" | "keep_unclassified" | "replace_payload";
       readonly processingState: "pending_processing" | "unclassified";
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "capture.awaiting_transcript";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: CaptureId;
+      readonly aggregateVersion: number;
       readonly occurredAt: string;
     }
   | {

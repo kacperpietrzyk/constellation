@@ -61,9 +61,13 @@ repository now contains a storage-neutral Application Kernel, a restart-safe
 encrypted local store, an in-memory Electron developer preview, and a packaged
 Alpha candidate.
 The implemented desktop journey covers Universal Quick Capture for text, URLs,
-file references, and one managed file or pasted screenshot whose bytes enter
-the encrypted workspace before deterministic routing to Tasks or knowledge
-sources. In a Hub-backed workspace, the exact bytes must also pass resumable
+file references, one managed file or pasted screenshot, and a short voice note
+whose bytes enter the encrypted workspace before deterministic processing.
+Operating-system dictation remains ordinary text and never stores audio.
+Voice notes are limited to two minutes and 25 MB, wait for an explicitly
+authorized external MCP agent instead of invoking transcription, and freeze a
+per-capture retention choice at recording time. In a Hub-backed workspace, the
+exact payload bytes must also pass resumable
 digest verification before the Capture is accepted; an unavailable transfer
 keeps the encrypted local original ready for retry. The journey also covers a
 closed Capture exception vocabulary in Attention, reason-specific retry,
@@ -314,9 +318,11 @@ Use the Quick Capture button or `Command/Ctrl+Shift+K`. The preview is
 development infrastructure, not a durable local Alpha. Text becomes a Task;
 URLs, selected file references, managed files, and screenshots become knowledge
 sources; exact duplicates remain preserved and appear in Attention for an
-explicit destination choice. Managed payloads are bounded to 25 MB, retain no
-local path in the Capture record, and are included in encrypted workspace
-backup and restore.
+explicit destination choice. Short voice notes remain in Capture History while
+awaiting an external transcript and do not create Attention debt merely because
+no agent is running. Managed payloads are bounded to 25 MB, retain no local path
+in the Capture record, and are included in encrypted workspace backup and
+restore.
 Closing the preview clears its synthetic workspace.
 
 Questions and early product discussion belong in

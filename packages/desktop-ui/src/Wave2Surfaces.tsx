@@ -745,7 +745,9 @@ export const HistorySurface = ({
                             ? "screenshot"
                             : capture.original.kind === "managed_file"
                               ? "zarządzany plik"
-                              : "odwołanie do pliku"}
+                              : capture.original.kind === "voice_note"
+                                ? "notatka głosowa"
+                                : "odwołanie do pliku"}
                     </p>
                     <h2>{capture.originalText}</h2>
                   </div>
@@ -763,7 +765,8 @@ export const HistorySurface = ({
                       <strong>Zapisano oryginał</strong>
                       <span>
                         {capture.original.kind === "managed_file" ||
-                        capture.original.kind === "screenshot"
+                        capture.original.kind === "screenshot" ||
+                        capture.original.kind === "voice_note"
                           ? `Zaszyfrowana kopia · ${Math.ceil(capture.original.payload.byteLength / 1024).toLocaleString("pl-PL")} KB · integralność SHA-256`
                           : "Stan lokalny potwierdzony"}
                       </span>
@@ -780,9 +783,12 @@ export const HistorySurface = ({
                             ? "Utworzono źródło wiedzy"
                             : capture.processingState === "needs_review"
                               ? "Wymaga decyzji w Attention"
-                              : capture.processingState === "unclassified"
-                                ? "Zachowano bez klasyfikacji"
-                                : "Oczekuje na przetworzenie"}
+                              : capture.processingState ===
+                                  "awaiting_transcript"
+                                ? "Oczekuje na transkrypcję agenta"
+                                : capture.processingState === "unclassified"
+                                  ? "Zachowano bez klasyfikacji"
+                                  : "Oczekuje na przetworzenie"}
                       </strong>
                       <span>{capture.originalText}</span>
                     </div>

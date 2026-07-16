@@ -93,6 +93,10 @@ const config = {
     identity: production ? undefined : null,
     notarize: false,
     icon: path.join(root, "assets", "app-icon.png"),
+    extendInfo: {
+      NSMicrophoneUsageDescription:
+        "Constellation records only a short voice note when you explicitly start Quick Capture recording. It never records meetings or transcribes audio itself.",
+    },
   },
   dmg: {
     sign: production,

@@ -79,7 +79,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 15;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -602,6 +602,32 @@ const schemaV14 = `
     ON capture_payloads(workspace_id, created_at, id);
 `;
 
+const schemaV15 = `
+  ALTER TABLE capture_payloads RENAME TO capture_payloads_v14;
+  CREATE TABLE capture_payloads (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    display_name TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    input_kind TEXT NOT NULL CHECK (input_kind IN ('file', 'screenshot', 'voice_note')),
+    content_sha256 TEXT NOT NULL CHECK (length(content_sha256) = 64),
+    byte_length INTEGER NOT NULL CHECK (byte_length > 0 AND byte_length <= 26214400),
+    bytes BLOB NOT NULL,
+    created_at TEXT NOT NULL
+  ) STRICT;
+  INSERT INTO capture_payloads (
+    id, workspace_id, display_name, media_type, input_kind,
+    content_sha256, byte_length, bytes, created_at
+  )
+  SELECT
+    id, workspace_id, display_name, media_type, input_kind,
+    content_sha256, byte_length, bytes, created_at
+  FROM capture_payloads_v14;
+  DROP TABLE capture_payloads_v14;
+  CREATE INDEX capture_payloads_workspace
+    ON capture_payloads(workspace_id, created_at, id);
+`;
+
 export interface LocalCoordinationState {
   readonly workspaceId: WorkspaceId;
   readonly providerInstanceId: string;
@@ -776,6 +802,7 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
     if (currentVersion < 12) database.exec(schemaV12);
     if (currentVersion < 13) database.exec(schemaV13);
     if (currentVersion < 14) database.exec(schemaV14);
+    if (currentVersion < 15) database.exec(schemaV15);
     database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
     database.exec("COMMIT;");
   } catch (error) {
@@ -2524,7 +2551,7 @@ export class SqliteApplicationStore
     readonly workspaceId: WorkspaceId;
     readonly displayName: string;
     readonly mediaType: string;
-    readonly inputKind: "file" | "screenshot";
+    readonly inputKind: "file" | "screenshot" | "voice_note";
     readonly contentSha256: string;
     readonly bytes: Uint8Array;
     readonly createdAt: string;
@@ -2574,7 +2601,7 @@ export class SqliteApplicationStore
     | {
         readonly displayName: string;
         readonly mediaType: string;
-        readonly inputKind: "file" | "screenshot";
+        readonly inputKind: "file" | "screenshot" | "voice_note";
         readonly contentSha256: string;
         readonly bytes: Uint8Array;
       }
@@ -2594,7 +2621,11 @@ export class SqliteApplicationStore
     if (bytes.byteLength !== byteLength)
       throw new LocalStoreCorruptionError("Capture payload length is invalid.");
     const inputKind = stringValue(row, "input_kind", "capture payload");
-    if (inputKind !== "file" && inputKind !== "screenshot")
+    if (
+      inputKind !== "file" &&
+      inputKind !== "screenshot" &&
+      inputKind !== "voice_note"
+    )
       throw new LocalStoreCorruptionError("Capture payload kind is invalid.");
     return {
       displayName: stringValue(row, "display_name", "capture payload"),

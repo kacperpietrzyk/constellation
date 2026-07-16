@@ -452,6 +452,10 @@ const CaptureHistoryItemSchema = z.discriminatedUnion("processingState", [
     processingState: z.literal("pending_processing"),
   }).strict(),
   CaptureHistoryItemBaseSchema.extend({
+    processingState: z.literal("awaiting_transcript"),
+    awaitingTranscriptSince: z.iso.datetime({ offset: true }),
+  }).strict(),
+  CaptureHistoryItemBaseSchema.extend({
     processingState: z.literal("routed_as_task"),
     derivedTaskId: TaskIdSchema,
     routedAt: z.iso.datetime({ offset: true }),

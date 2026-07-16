@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   HubAttachmentBeginRequestSchema,
   HubAttachmentUploadSchema,
+  isCustodiedCaptureOriginal,
   type CaptureOriginal,
   type HubAttachmentBeginRequest,
   type HubAttachmentUpload,
@@ -82,8 +83,7 @@ export class HubAttachmentService {
     workspaceId: WorkspaceId,
     original: CaptureOriginal,
   ): Promise<boolean> {
-    if (original.kind !== "managed_file" && original.kind !== "screenshot")
-      return false;
+    if (!isCustodiedCaptureOriginal(original)) return false;
     const result = await this.pool.query(
       "SELECT storage_key, byte_length::text FROM constellation_hub_attachments WHERE workspace_id = $1 AND content_sha256 = $2",
       [workspaceId, original.payload.contentSha256],
@@ -116,8 +116,7 @@ export class HubAttachmentService {
     readonly length: number;
   }): Promise<Uint8Array | undefined> {
     if (
-      (input.original.kind !== "managed_file" &&
-        input.original.kind !== "screenshot") ||
+      !isCustodiedCaptureOriginal(input.original) ||
       !Number.isSafeInteger(input.offset) ||
       input.offset < 0 ||
       !Number.isSafeInteger(input.length) ||

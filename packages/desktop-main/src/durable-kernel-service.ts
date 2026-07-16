@@ -42,6 +42,7 @@ const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "workspace.exportScoped",
   "capture.submit",
   "capture.process",
+  "capture.audioRead",
   "capture.submitText",
   "capture.routeAsTask",
   "capture.history",

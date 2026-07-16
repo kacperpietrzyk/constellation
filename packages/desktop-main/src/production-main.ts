@@ -1,4 +1,4 @@
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 import {
   closeSync,
@@ -50,6 +50,7 @@ import {
   type DeviceId,
   CalendarBlockDraftSchema,
   CaptureOriginalSchema,
+  isCustodiedCaptureOriginal,
   MeetingWorkItemSchema,
   type ImportedMeeting,
 } from "@constellation/contracts";
@@ -90,6 +91,10 @@ import type { PreparedLocalMcpCredential } from "./local-mcp-credential-custody.
 import { RemoteMcpCredentialCustody } from "./remote-mcp-credential-custody.js";
 import type { DesktopKernelService } from "./runtime-kernel-service.js";
 import { assertTrustedSender, isTrustedRendererUrl } from "./security.js";
+import {
+  allowsAudioMediaCheck,
+  allowsAudioMediaRequest,
+} from "./media-permission.js";
 import {
   WorkspaceKeyCustodyError,
   type AsyncSafeStorage,
@@ -151,6 +156,12 @@ const preloadPath = fileURLToPath(
 const rendererPath = fileURLToPath(
   new URL("../../../desktop-ui/dist/index.html", import.meta.url),
 );
+const packagedRendererUrl = pathToFileURL(rendererPath).toString();
+const isTrustedMediaUrl = (url: string): boolean =>
+  url === "file://" ||
+  url === "file:///" ||
+  url === packagedRendererUrl ||
+  url.startsWith(`${packagedRendererUrl}?`);
 let mainWindow: BrowserWindowType | undefined;
 let workspaceRecovery: WorkspaceRecoveryService | undefined;
 let dataHomeProvider: DataHomeProvider | undefined;
@@ -724,10 +735,33 @@ const createWindow = async (
 };
 
 const startProductionDesktop = async (): Promise<void> => {
-  session.defaultSession.setPermissionCheckHandler(() => false);
+  session.defaultSession.setPermissionCheckHandler(
+    (webContents, permission, requestingOrigin, details) =>
+      allowsAudioMediaCheck(
+        {
+          permission,
+          requestingOrigin,
+          ...(webContents === null
+            ? {}
+            : { webContentsUrl: webContents.getURL() }),
+          details,
+        },
+        isTrustedMediaUrl,
+      ),
+  );
   session.defaultSession.setPermissionRequestHandler(
-    (_webContents, _permission, callback) => {
-      callback(false);
+    (webContents, permission, callback, details) => {
+      callback(
+        "mediaTypes" in details &&
+          allowsAudioMediaRequest(
+            {
+              permission,
+              webContentsUrl: webContents.getURL(),
+              details,
+            },
+            isTrustedMediaUrl,
+          ),
+      );
     },
   );
 
@@ -1301,10 +1335,14 @@ const startProductionDesktop = async (): Promise<void> => {
       const input = raw as Record<string, unknown>;
       if (
         Object.keys(input).sort().join(",") !==
-          "bytes,displayName,inputKind,mediaType" ||
+          (input.inputKind === "voice_note"
+            ? "bytes,displayName,durationMs,inputKind,mediaType,retentionPolicy"
+            : "bytes,displayName,inputKind,mediaType") ||
         typeof input.displayName !== "string" ||
         typeof input.mediaType !== "string" ||
-        (input.inputKind !== "file" && input.inputKind !== "screenshot") ||
+        (input.inputKind !== "file" &&
+          input.inputKind !== "screenshot" &&
+          input.inputKind !== "voice_note") ||
         !(input.bytes instanceof Uint8Array)
       )
         return { outcome: "failure", code: "payload_unsupported" } as const;
@@ -1313,6 +1351,13 @@ const startProductionDesktop = async (): Promise<void> => {
         mediaType: input.mediaType,
         inputKind: input.inputKind,
         bytes: input.bytes,
+        ...(input.inputKind === "voice_note"
+          ? {
+              durationMs: input.durationMs as number,
+              retentionPolicy: input.retentionPolicy as
+                "delete_after_transcript" | "retain",
+            }
+          : {}),
       });
     },
   );
@@ -1339,8 +1384,7 @@ const startProductionDesktop = async (): Promise<void> => {
                 accepted.payload.action === "replace_payload"
               ? accepted.payload.original
               : undefined;
-        return original?.kind === "managed_file" ||
-          original?.kind === "screenshot"
+        return original !== undefined && isCustodiedCaptureOriginal(original)
           ? original
           : undefined;
       })();

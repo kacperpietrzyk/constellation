@@ -84,8 +84,10 @@ response is reconciled by command receipt before retry.
 
 Attachments use resumable, bounded chunks and content-addressed SHA-256 objects.
 The Hub publishes an object only after its complete length and digest match.
-Selecting or dropping a managed Capture payload stages it only inside the
-encrypted local workspace. Immediately before `capture.submit`, the desktop
+Selecting, dropping, pasting, or recording a managed Capture payload stages it
+only inside the encrypted local workspace. A short voice note is bounded to two
+minutes and 25 MB and records its retention choice alongside the encrypted
+audio descriptor. Immediately before `capture.submit`, the desktop
 publishes those exact bytes, verifies digest and length, and only then accepts
 the local Capture command. The Hub independently requires the matching
 published object before accepting its coordinated command, so a descriptor can
@@ -103,7 +105,9 @@ Normal projection replacement retains bytes only for still-authorized Capture
 records and current dialog staging. Membership or device revocation purges the
 whole coordinated projection, including managed payload bytes.
 Authorized external agents read a managed payload through the same versioned
-MCP resource contract in either Data Home. Local stdio obtains bounded chunks
+MCP resource contract in either Data Home. Reading a voice original also needs
+the separate `capture.audioRead` grant; Space and Capture History authorization
+remain mandatory. Local stdio obtains bounded chunks
 from encrypted custody; remote Streamable HTTP obtains them from the Hub object.
 The MCP server reassembles and verifies the complete digest before returning a
 blob, while revocation or a Space-scope change fails the whole read.

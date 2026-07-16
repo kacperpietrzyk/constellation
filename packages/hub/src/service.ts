@@ -25,6 +25,7 @@ import {
   HubReconcileCommandResultSchema,
   HubSyncRequestSchema,
   HubSyncResultSchema,
+  isCustodiedCaptureOriginal,
   TaskIdSchema,
   type ExecutionContext,
   type HubEnrollmentRequest,
@@ -371,7 +372,12 @@ export class HubService {
           const ids = new CommandScopedIdGenerator(hasher);
           ids.begin(command.commandId);
           const parsedCommand = CommandEnvelopeSchema.parse(command);
-          const managedOriginal = (() => {
+          const managedOriginal:
+            | Extract<
+                CaptureOriginal,
+                { kind: "managed_file" | "screenshot" | "voice_note" }
+              >
+            | undefined = (() => {
             const original =
               parsedCommand.commandName === "capture.submit"
                 ? parsedCommand.payload.original
@@ -379,8 +385,13 @@ export class HubService {
                     parsedCommand.payload.action === "replace_payload"
                   ? parsedCommand.payload.original
                   : undefined;
-            return original?.kind === "managed_file" ||
-              original?.kind === "screenshot"
+            if (original === undefined) return undefined;
+            if (parsedCommand.commandName === "capture.submit")
+              return isCustodiedCaptureOriginal(original)
+                ? original
+                : undefined;
+            return original.kind === "managed_file" ||
+              original.kind === "screenshot"
               ? original
               : undefined;
           })();

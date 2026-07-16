@@ -36,6 +36,7 @@ export const CapabilitySchema = z.enum([
   "workspace.exportScoped",
   "capture.submit",
   "capture.process",
+  "capture.audioRead",
   "capture.submitText",
   "capture.routeAsTask",
   "capture.history",

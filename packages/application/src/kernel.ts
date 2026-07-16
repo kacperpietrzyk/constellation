@@ -39,12 +39,14 @@ import {
   type CaptureOriginal,
   type CaptureId,
   type CaptureReviewReason,
+  isCustodiedCaptureOriginal,
   validateCommandEnvelope,
   validateExecutionContext,
   validateQueryEnvelope,
 } from "@constellation/contracts";
 import {
   createLocalWorkspace,
+  awaitVoiceTranscript,
   captureDisplayText,
   captureFingerprintSource,
   createKnowledgeSource,
@@ -987,7 +989,7 @@ export class ApplicationKernel {
       });
     }
     if (
-      (original.kind === "managed_file" || original.kind === "screenshot") &&
+      isCustodiedCaptureOriginal(original) &&
       this.dependencies.capturePayloadVerifier?.isAvailable(
         command.workspaceId,
         original,
@@ -1186,6 +1188,17 @@ export class ApplicationKernel {
       );
     }
 
+    if (pendingCapture.original.kind === "voice_note")
+      return this.markCaptureAwaitingTranscript(
+        transaction,
+        context,
+        command,
+        pendingCapture,
+        scope,
+        fingerprint,
+        occurredAt,
+      );
+
     const destination =
       command.payload.destination === "auto"
         ? capture.original.kind === "text"
@@ -1223,6 +1236,66 @@ export class ApplicationKernel {
       fingerprint,
       occurredAt,
     );
+  }
+
+  private markCaptureAwaitingTranscript(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<CommandEnvelope, { commandName: "capture.process" }>,
+    capture: PendingCapture,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+  ): CommandOutcome {
+    const awaiting = awaitVoiceTranscript({ capture, occurredAt });
+    const eventId = EventIdSchema.parse(this.dependencies.ids.next("event"));
+    const auditReceiptId = AuditReceiptIdSchema.parse(
+      this.dependencies.ids.next("auditReceipt"),
+    );
+    const event: DomainEvent = {
+      id: eventId,
+      commandId: command.commandId,
+      type: "capture.awaiting_transcript",
+      workspaceId: capture.workspaceId,
+      spaceId: capture.spaceId,
+      aggregateId: capture.id,
+      aggregateVersion: awaiting.version,
+      occurredAt,
+    };
+    const audit = this.auditReceipt(
+      auditReceiptId,
+      context,
+      command,
+      capture.spaceId,
+      [capture.id],
+      { [capture.id]: awaiting.version },
+      ["processingState", "awaitingTranscriptSince"],
+      occurredAt,
+    );
+    const outcome = this.outcome(command, occurredAt, {
+      outcome: "success",
+      diagnosticCode: "capture.awaiting_transcript",
+      affected: [
+        {
+          recordId: capture.id,
+          recordKind: "capture",
+          version: awaiting.version,
+        },
+      ],
+      auditReceiptId,
+      projection: {
+        kind: "capture.awaiting_transcript",
+        captureId: capture.id,
+        captureVersion: awaiting.version,
+      },
+    });
+    if (!transaction.updateCapture(awaiting, capture.version))
+      throw new RetryableUnitOfWorkError();
+    transaction.insertEvent(event);
+    transaction.insertAuditReceipt(audit);
+    transaction.insertIdempotency({ scope, fingerprint, outcome });
+    transaction.insertSyncCommand(command);
+    return outcome;
   }
 
   private reportCaptureException(
@@ -1602,6 +1675,11 @@ export class ApplicationKernel {
     fingerprint: string,
     occurredAt: string,
   ): CommandOutcome {
+    if (capture.original.kind === "voice_note")
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
     const storedCapture = transaction.getCapture(capture.id);
     const reviewAttention =
       storedCapture?.processingState === "needs_review"
@@ -2296,13 +2374,17 @@ export class ApplicationKernel {
                     attentionSignalId: capture.attentionSignalId,
                     reviewedAt: capture.reviewedAt,
                   }
-                : capture.processingState === "unclassified"
+                : capture.processingState === "awaiting_transcript"
                   ? {
-                      unclassifiedAt: capture.unclassifiedAt,
-                      unclassifiedBy: capture.unclassifiedBy,
-                      previousReviewReason: capture.previousReviewReason,
+                      awaitingTranscriptSince: capture.awaitingTranscriptSince,
                     }
-                  : {}),
+                  : capture.processingState === "unclassified"
+                    ? {
+                        unclassifiedAt: capture.unclassifiedAt,
+                        unclassifiedBy: capture.unclassifiedBy,
+                        previousReviewReason: capture.previousReviewReason,
+                      }
+                    : {}),
           version: capture.version,
         })),
         nextCursor,

@@ -549,6 +549,69 @@ describe("reference kernel conformance", () => {
     );
   });
 
+  it("preserves a bounded voice note and waits for an external transcript without Attention debt", () => {
+    const harness = bootstrappedHarness();
+    const stored = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        submitOriginalCommand("voice-note", {
+          kind: "voice_note",
+          payload: {
+            payloadId: CapturePayloadIdSchema.parse(
+              "00000000-0000-4000-8000-000000000811",
+            ),
+            displayName: "Voice note.webm",
+            mediaType: "audio/webm",
+            byteLength: 8_192,
+            contentSha256: "8".repeat(64),
+            custodyState: "available",
+          },
+          durationMs: 31_000,
+          retentionPolicy: "delete_after_transcript",
+        }),
+      ),
+    );
+    assert.equal(stored.diagnosticCode, "capture.stored");
+    if (
+      stored.outcome !== "success" ||
+      stored.projection.kind !== "capture.stored"
+    )
+      throw new Error("Expected stored voice note.");
+    const waiting = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        processCommand(stored.projection.captureId, "wait-for-transcript"),
+      ),
+    );
+    assert.equal(waiting.diagnosticCode, "capture.awaiting_transcript");
+    const snapshot = harness.store.snapshot();
+    const capture = snapshot.captures.find(
+      (item) => item.id === stored.projection.captureId,
+    );
+    assert.equal(capture?.processingState, "awaiting_transcript");
+    assert.equal(snapshot.attentionSignals?.length ?? 0, 0);
+    assert.equal(snapshot.events.at(-1)?.type, "capture.awaiting_transcript");
+    const history = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "capture.history",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace, limit: 20 },
+    });
+    assert.equal(history.kind, "query_result");
+    if (
+      history.kind !== "query_result" ||
+      history.result.outcome !== "success" ||
+      history.result.projection.kind !== "capture.history"
+    )
+      throw new Error("Expected Capture History.");
+    assert.equal(
+      history.result.projection.items[0]?.processingState,
+      "awaiting_transcript",
+    );
+  });
+
   it("reports every Capture exception and resolves it with one atomic Attention transition", () => {
     const reasons: readonly Exclude<CaptureReviewReason, "duplicate">[] = [
       "ambiguous",

@@ -256,6 +256,7 @@ const productionDesktopFiles = new Set([
   "local-data-home-provider.js",
   "local-mcp-credential-custody.js",
   "local-mcp-runtime.js",
+  "media-permission.js",
   "production-main.js",
   "release-service.js",
   "remote-mcp-credential-custody.js",
@@ -448,6 +449,8 @@ const packagePaths = await packager({
       ? {
           NSCalendarsFullAccessUsageDescription:
             "Constellation reads upcoming meetings to prepare factual work context and writes only exact work blocks you explicitly confirm.",
+          NSMicrophoneUsageDescription:
+            "Constellation records only a short voice note when you explicitly start Quick Capture recording. It never records meetings or transcribes audio itself.",
         }
       : undefined,
   appCopyright: "Copyright Constellation contributors",
@@ -475,6 +478,34 @@ const resources =
   process.platform === "darwin"
     ? path.join(appBundle, "Contents", "Resources")
     : path.join(packageRoot, "resources");
+if (appBundle !== undefined) {
+  const infoPlist = path.join(appBundle, "Contents", "Info.plist");
+  const plistBuddy = "/usr/libexec/PlistBuddy";
+  const cameraEntry = spawnSync(
+    plistBuddy,
+    ["-c", "Print :NSCameraUsageDescription", infoPlist],
+    { encoding: "utf8", timeout: 10_000 },
+  );
+  if (cameraEntry.status === 0) {
+    const removed = spawnSync(
+      plistBuddy,
+      ["-c", "Delete :NSCameraUsageDescription", infoPlist],
+      { encoding: "utf8", timeout: 10_000 },
+    );
+    if (removed.status !== 0) throw new Error("CAMERA_USAGE_REMOVAL_FAILED");
+  }
+  const microphoneEntry = spawnSync(
+    plistBuddy,
+    ["-c", "Print :NSMicrophoneUsageDescription", infoPlist],
+    { encoding: "utf8", timeout: 10_000 },
+  );
+  if (
+    microphoneEntry.status !== 0 ||
+    !microphoneEntry.stdout.includes("short voice note")
+  ) {
+    throw new Error("MICROPHONE_USAGE_DESCRIPTION_INVALID");
+  }
+}
 fs.writeFileSync(
   path.join(resources, "release-config.json"),
   `${JSON.stringify(

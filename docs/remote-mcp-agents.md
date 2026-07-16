@@ -51,8 +51,9 @@ The endpoint publishes:
 - `constellation.command.v1`;
 - `constellation.checkpoint.revert.v1`;
 - `constellation://v1/capabilities`;
-- `constellation-capture-payload-v1`, a resource template for a managed file or
-  screenshot selected by authorized Workspace and Capture ID.
+- `constellation-capture-payload-v1`, a resource template for a managed file,
+  screenshot, or short voice note selected by authorized Workspace and Capture
+  ID.
 
 Every call resolves the current credential, grant, Workspace membership, Space
 scope, capability scope, expiry, and policy version. Administrative Workspace
@@ -67,7 +68,8 @@ credential digest, and federation-scope state in PostgreSQL. Device projections
 never receive that remote control state or a reusable remote secret.
 
 Payload resources require the current `capture.history` capability and the
-Capture's Space on every bounded chunk. The MCP boundary reassembles the Hub
+Capture's Space on every bounded chunk. Voice audio also requires the
+independent `capture.audioRead` capability. The MCP boundary reassembles the Hub
 object and verifies its complete length and SHA-256 digest before returning one
 `blob`. Missing, revoked, corrupt, and out-of-Space payloads fail without
 revealing which condition occurred. Payload bytes remain absent from ordinary

@@ -68,11 +68,13 @@ The server publishes these versioned tools:
 The `constellation://v1/capabilities` resource reports the active contract and
 authorized scope without credential material.
 
-Managed file and screenshot bytes are exposed only through the versioned
+Managed file, screenshot, and short voice-note bytes are exposed only through the versioned
 `constellation-capture-payload-v1` resource template. Build its URI from the
 Workspace ID and Capture ID returned by an authorized Capture History query,
 plus the current `agentRunId`, `hostRunId`, and `hostName`. The grant must still
-include `capture.history` for that Capture's Space. Constellation reads bounded
+include `capture.history` for that Capture's Space. Voice audio additionally
+requires the independent `capture.audioRead` capability; a grant that can read
+ordinary Capture history cannot silently read microphone data. Constellation reads bounded
 chunks from encrypted custody, reauthorizes every chunk, and returns an MCP
 `blob` only after the complete length and SHA-256 digest match. Bytes never
 enter ordinary query/tool structured results, commands, audit, or logs.
