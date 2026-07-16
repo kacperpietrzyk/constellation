@@ -7,6 +7,8 @@ import type {
 } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
+import { MeetingMarkdown, toPlainMeetingMarkdown } from "./MeetingMarkdown.js";
+
 type MeetingState =
   | { readonly kind: "loading" }
   | { readonly kind: "error"; readonly message: string }
@@ -20,6 +22,52 @@ type JamieState =
       readonly scope?: "personal" | "workspace";
     }
   | { readonly kind: "error" };
+
+type CompletedMeeting = MeetingLoopSurface["completed"][number];
+type MeetingWorkItem = CompletedMeeting["workItems"][number];
+
+const healthLabel = (meeting: CompletedMeeting) => {
+  switch (meeting.triage) {
+    case "ready":
+      return "Gotowe";
+    case "partial":
+      return "Częściowe";
+    case "conflicted":
+      return "Konflikt";
+    case "needs_review":
+      return "Do uwagi";
+  }
+};
+
+const workItemKindLabel = (item: MeetingWorkItem) => {
+  switch (item.kind) {
+    case "task":
+      return "Zadanie";
+    case "decision":
+      return "Decyzja";
+    case "waiting":
+      return "Oczekiwanie";
+    case "note":
+      return "Notatka";
+    case "follow_up":
+      return "Dalszy kontakt";
+  }
+};
+
+const workItemStateLabel = (item: MeetingWorkItem) => {
+  switch (item.state) {
+    case "open":
+      return "Otwarte";
+    case "completed":
+      return "Ukończone";
+    case "dismissed":
+      return "Odrzucone";
+    case "withdrawn":
+      return "Wycofane w Jamie";
+    case "conflicted":
+      return "Konflikt";
+  }
+};
 
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat("pl-PL", {
@@ -183,6 +231,9 @@ export const MeetingsSurface = ({
     "personal",
   );
   const [jamieBusy, setJamieBusy] = useState(false);
+  const [selectedMeetingId, setSelectedMeetingId] = useState<string>();
+  const [visibleTranscriptMeetingId, setVisibleTranscriptMeetingId] =
+    useState<string>();
   const [newItemMeetingId, setNewItemMeetingId] = useState<string>();
   const [newItemKind, setNewItemKind] = useState<
     "task" | "waiting" | "decision" | "note" | "follow_up"
@@ -235,6 +286,9 @@ export const MeetingsSurface = ({
   }
 
   const surface = state.data;
+  const selectedMeeting =
+    surface.completed.find((meeting) => meeting.id === selectedMeetingId) ??
+    surface.completed[0];
   return (
     <section
       className="meeting-surface"
@@ -535,143 +589,267 @@ export const MeetingsSurface = ({
                 duplikaty.
               </p>
             </div>
-          ) : (
-            surface.completed.map((meeting) => (
-              <article className="meeting-result" key={meeting.id}>
-                <header>
+          ) : selectedMeeting ? (
+            <div className="meeting-results-browser">
+              <ol
+                className="meeting-result-list"
+                aria-label="Zaimportowane wyniki Jamie"
+              >
+                {surface.completed.map((meeting) => {
+                  const selected = meeting.id === selectedMeeting.id;
+                  const summary = meeting.summaryMarkdown
+                    ? toPlainMeetingMarkdown(meeting.summaryMarkdown)
+                    : "Brak podsumowania w wyniku Jamie.";
+                  return (
+                    <li key={meeting.id}>
+                      <button
+                        type="button"
+                        className={`meeting-result-row${selected ? " is-selected" : ""}`}
+                        aria-pressed={selected}
+                        aria-controls="meeting-result-detail"
+                        onClick={() => {
+                          setSelectedMeetingId(meeting.id);
+                          setVisibleTranscriptMeetingId(undefined);
+                          setNewItemMeetingId(undefined);
+                          if (window.matchMedia("(max-width: 68rem)").matches) {
+                            requestAnimationFrame(() =>
+                              document
+                                .querySelector("#meeting-result-detail")
+                                ?.scrollIntoView({ block: "start" }),
+                            );
+                          }
+                        }}
+                      >
+                        <span className="meeting-result-row-heading">
+                          <strong>
+                            {meeting.title ?? "Spotkanie bez tytułu"}
+                          </strong>
+                          <span
+                            className={`meeting-health meeting-health--${meeting.triage}`}
+                          >
+                            {healthLabel(meeting)}
+                          </span>
+                        </span>
+                        <time dateTime={meeting.startedAt}>
+                          {formatTime(meeting.startedAt)}
+                        </time>
+                        <span className="meeting-result-row-summary">
+                          {summary}
+                        </span>
+                        <span className="meeting-result-row-meta">
+                          {meeting.workItems.length} działań
+                          <span aria-hidden="true">→</span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+
+              <article
+                className="meeting-result-detail"
+                id="meeting-result-detail"
+                aria-labelledby="meeting-result-detail-title"
+              >
+                <header className="meeting-result-detail-header">
                   <div>
-                    <h3>{meeting.title ?? "Spotkanie bez tytułu"}</h3>
-                    <span>{formatTime(meeting.startedAt)}</span>
+                    <p className="eyebrow">Wynik Jamie</p>
+                    <h3 id="meeting-result-detail-title">
+                      {selectedMeeting.title ?? "Spotkanie bez tytułu"}
+                    </h3>
+                    <p>
+                      <time dateTime={selectedMeeting.startedAt}>
+                        {formatTime(selectedMeeting.startedAt)}
+                      </time>
+                      <span aria-hidden="true"> · </span>
+                      {selectedMeeting.participants.length} uczestników
+                    </p>
                   </div>
                   <strong
-                    className={`meeting-health meeting-health--${meeting.triage}`}
+                    className={`meeting-health meeting-health--${selectedMeeting.triage}`}
                   >
-                    {meeting.triage === "ready"
-                      ? "Gotowe"
-                      : meeting.triage === "partial"
-                        ? "Częściowe"
-                        : meeting.triage === "conflicted"
-                          ? "Konflikt"
-                          : "Do uwagi"}
+                    {healthLabel(selectedMeeting)}
                   </strong>
                 </header>
-                {meeting.summaryMarkdown && (
-                  <p>
-                    {meeting.summaryMarkdown
-                      .replace(/^#+\s*/gm, "")
-                      .slice(0, 240)}
-                  </p>
-                )}
-                <ul>
-                  {meeting.workItems.map((item) => (
-                    <li key={item.id}>
+
+                <section
+                  className="meeting-result-summary"
+                  aria-labelledby="meeting-result-summary-title"
+                >
+                  <h4 id="meeting-result-summary-title">Podsumowanie</h4>
+                  {selectedMeeting.summaryMarkdown ? (
+                    <MeetingMarkdown value={selectedMeeting.summaryMarkdown} />
+                  ) : (
+                    <p className="meeting-result-empty-copy">
+                      Jamie nie zwrócił podsumowania dla tego spotkania.
+                    </p>
+                  )}
+                </section>
+
+                {selectedMeeting.transcriptMarkdown && (
+                  <section
+                    className="meeting-result-transcript"
+                    aria-labelledby="meeting-result-transcript-title"
+                  >
+                    <header>
                       <div>
-                        <span>
-                          {item.kind === "task"
-                            ? "Zadanie"
-                            : item.kind === "decision"
-                              ? "Decyzja"
-                              : item.kind === "waiting"
-                                ? "Oczekiwanie"
-                                : item.kind === "note"
-                                  ? "Notatka"
-                                  : "Dalszy krok"}
-                        </span>
-                        <strong>{item.title}</strong>
+                        <h4 id="meeting-result-transcript-title">
+                          Transkrypcja
+                        </h4>
+                        <p>Oryginalna treść zaimportowana z Jamie.</p>
                       </div>
-                      <div className="meeting-item-actions">
-                        <small>{item.state}</small>
-                        <button
-                          className="quiet-button"
-                          disabled={busyItemId === item.id}
-                          onClick={() => {
-                            setBusyItemId(item.id);
-                            const nextState =
-                              item.state === "open" ? "completed" : "open";
-                            void client
-                              .editMeetingWorkItem({
-                                meetingId: meeting.id,
-                                workItemId: item.id,
-                                expectedVersion: item.version,
-                                title: item.title,
-                                state: nextState,
-                              })
-                              .then((changed) => {
-                                setBusyItemId(undefined);
-                                if (changed) load();
-                                else
-                                  setNotice(
-                                    "Ten wynik zmienił się w międzyczasie. Odświeżono bez nadpisywania nowszej wersji.",
-                                  );
-                              });
-                          }}
-                        >
-                          {item.state === "open"
-                            ? "Ukończ"
-                            : item.state === "conflicted"
-                              ? "Zachowaj lokalne"
-                              : "Przywróć"}
-                        </button>
-                        {item.state === "conflicted" &&
-                          item.sourceValueInConflict && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        aria-expanded={
+                          visibleTranscriptMeetingId === selectedMeeting.id
+                        }
+                        aria-controls="meeting-result-transcript-content"
+                        onClick={() =>
+                          setVisibleTranscriptMeetingId((current) =>
+                            current === selectedMeeting.id
+                              ? undefined
+                              : selectedMeeting.id,
+                          )
+                        }
+                      >
+                        {visibleTranscriptMeetingId === selectedMeeting.id
+                          ? "Ukryj transkrypcję"
+                          : "Pokaż transkrypcję"}
+                      </button>
+                    </header>
+                    {visibleTranscriptMeetingId === selectedMeeting.id && (
+                      <div id="meeting-result-transcript-content">
+                        <MeetingMarkdown
+                          value={selectedMeeting.transcriptMarkdown}
+                        />
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                <section
+                  className="meeting-result-work"
+                  aria-labelledby="meeting-result-work-title"
+                >
+                  <header>
+                    <div>
+                      <h4 id="meeting-result-work-title">Dalsze działania</h4>
+                      <p>
+                        Każdy zapis ma własny stan i pozostaje powiązany ze
+                        spotkaniem.
+                      </p>
+                    </div>
+                    <span>{selectedMeeting.workItems.length}</span>
+                  </header>
+                  {selectedMeeting.workItems.length === 0 ? (
+                    <p className="meeting-result-empty-copy">
+                      W tym wyniku nie ma jeszcze dalszych działań.
+                    </p>
+                  ) : (
+                    <ul className="meeting-work-items">
+                      {selectedMeeting.workItems.map((item) => (
+                        <li className="meeting-work-item" key={item.id}>
+                          <div className="meeting-work-item-copy">
+                            <span>{workItemKindLabel(item)}</span>
+                            <strong>{item.title}</strong>
+                            <small>{workItemStateLabel(item)}</small>
+                          </div>
+                          <div className="meeting-item-actions">
                             <button
                               className="quiet-button"
                               disabled={busyItemId === item.id}
                               onClick={() => {
                                 setBusyItemId(item.id);
+                                const nextState =
+                                  item.state === "open" ? "completed" : "open";
                                 void client
                                   .editMeetingWorkItem({
-                                    meetingId: meeting.id,
+                                    meetingId: selectedMeeting.id,
                                     workItemId: item.id,
                                     expectedVersion: item.version,
-                                    title: item.sourceValueInConflict!,
-                                    state: "open",
+                                    title: item.title,
+                                    state: nextState,
                                   })
                                   .then((changed) => {
                                     setBusyItemId(undefined);
                                     if (changed) load();
                                     else
                                       setNotice(
-                                        "Nie rozstrzygnięto konfliktu, bo istnieje nowsza wersja.",
+                                        "Ten wynik zmienił się w międzyczasie. Odświeżono bez nadpisywania nowszej wersji.",
                                       );
                                   });
                               }}
                             >
-                              Przyjmij Jamie
+                              {item.state === "open"
+                                ? "Ukończ"
+                                : item.state === "conflicted"
+                                  ? "Zachowaj lokalne"
+                                  : "Przywróć"}
                             </button>
-                          )}
-                        {item.state === "open" && (
-                          <button
-                            className="quiet-button"
-                            disabled={busyItemId === item.id}
-                            onClick={() => {
-                              setBusyItemId(item.id);
-                              void client
-                                .editMeetingWorkItem({
-                                  meetingId: meeting.id,
-                                  workItemId: item.id,
-                                  expectedVersion: item.version,
-                                  title: item.title,
-                                  state: "dismissed",
-                                })
-                                .then((changed) => {
-                                  setBusyItemId(undefined);
-                                  if (changed) load();
-                                  else
-                                    setNotice(
-                                      "Nie odrzucono wyniku, bo istnieje nowsza wersja.",
-                                    );
-                                });
-                            }}
-                          >
-                            Odrzuć
-                          </button>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-                {newItemMeetingId === meeting.id ? (
+                            {item.state === "conflicted" &&
+                              item.sourceValueInConflict && (
+                                <button
+                                  className="quiet-button"
+                                  disabled={busyItemId === item.id}
+                                  onClick={() => {
+                                    setBusyItemId(item.id);
+                                    void client
+                                      .editMeetingWorkItem({
+                                        meetingId: selectedMeeting.id,
+                                        workItemId: item.id,
+                                        expectedVersion: item.version,
+                                        title: item.sourceValueInConflict!,
+                                        state: "open",
+                                      })
+                                      .then((changed) => {
+                                        setBusyItemId(undefined);
+                                        if (changed) load();
+                                        else
+                                          setNotice(
+                                            "Nie rozstrzygnięto konfliktu, bo istnieje nowsza wersja.",
+                                          );
+                                      });
+                                  }}
+                                >
+                                  Przyjmij Jamie
+                                </button>
+                              )}
+                            {item.state === "open" && (
+                              <button
+                                className="quiet-button"
+                                disabled={busyItemId === item.id}
+                                onClick={() => {
+                                  setBusyItemId(item.id);
+                                  void client
+                                    .editMeetingWorkItem({
+                                      meetingId: selectedMeeting.id,
+                                      workItemId: item.id,
+                                      expectedVersion: item.version,
+                                      title: item.title,
+                                      state: "dismissed",
+                                    })
+                                    .then((changed) => {
+                                      setBusyItemId(undefined);
+                                      if (changed) load();
+                                      else
+                                        setNotice(
+                                          "Nie odrzucono wyniku, bo istnieje nowsza wersja.",
+                                        );
+                                    });
+                                }}
+                              >
+                                Odrzuć
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+
+                {newItemMeetingId === selectedMeeting.id ? (
                   <form
                     className="meeting-add-item"
                     onSubmit={(event) => {
@@ -679,7 +857,7 @@ export const MeetingsSurface = ({
                       setJamieBusy(true);
                       void client
                         .addMeetingWorkItem({
-                          meetingId: meeting.id,
+                          meetingId: selectedMeeting.id,
                           requestId: crypto.randomUUID(),
                           kind: newItemKind,
                           title: newItemTitle,
@@ -743,20 +921,20 @@ export const MeetingsSurface = ({
                 ) : (
                   <button
                     className="secondary-button meeting-add-trigger"
-                    onClick={() => setNewItemMeetingId(meeting.id)}
+                    onClick={() => setNewItemMeetingId(selectedMeeting.id)}
                   >
                     Dodaj niezależny zapis
                   </button>
                 )}
-                {meeting.missingComponents.length > 0 && (
+                {selectedMeeting.missingComponents.length > 0 && (
                   <p className="inline-warning">
                     Brakuje trwałych identyfikatorów zadań Jamie. Ponowienie
                     uzupełni je bez duplikowania spotkania.
                   </p>
                 )}
               </article>
-            ))
-          )}
+            </div>
+          ) : null}
         </section>
       </div>
       {preview && (
