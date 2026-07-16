@@ -97,8 +97,13 @@ export class HubAttachmentService {
     )
       return false;
     try {
-      const info = await stat(path.join(this.root, row.storage_key));
-      return info.isFile() && info.size === original.payload.byteLength;
+      const target = path.join(this.root, row.storage_key);
+      const info = await stat(target);
+      return (
+        info.isFile() &&
+        info.size === original.payload.byteLength &&
+        (await digestFile(target)) === original.payload.contentSha256
+      );
     } catch {
       return false;
     }

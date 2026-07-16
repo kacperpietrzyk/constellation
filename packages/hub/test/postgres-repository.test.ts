@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { cp, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { it } from "node:test";
@@ -360,6 +360,47 @@ it(
     );
     assert.equal(managedCapture.outcome, "success");
     assert.equal(managedCapture.receipts[0]?.outcome.outcome, "success");
+    await writeFile(crashTarget, Buffer.alloc(bytes.length, 0x78));
+    assert.equal(
+      await attachmentService.isAvailable(workspaceId, managedOriginal),
+      false,
+    );
+    const unavailableCheckpoint = await repository.withWorkspaceLock(
+      workspaceId,
+      (state) => state.checkpoint.toString(),
+    );
+    const unavailableCapture = await payloadService.sync(
+      enrolled.deviceCredential,
+      {
+        protocolVersion: 1,
+        workspaceId,
+        deviceId,
+        checkpoint: unavailableCheckpoint,
+        commands: [
+          CommandEnvelopeSchema.parse({
+            contractVersion: 1,
+            commandName: "capture.submit",
+            commandId: "00000000-0000-4000-8000-000000000924",
+            workspaceId,
+            idempotencyKey: "postgres-corrupt-managed-capture",
+            expectedVersions: {},
+            correlationId: "00000000-0000-4000-8000-000000000925",
+            payload: {
+              spaceId,
+              original: managedOriginal,
+              deviceId: "postgres-device",
+              source: "in_app_quick_capture",
+            },
+          }),
+        ],
+      },
+    );
+    assert.equal(unavailableCapture.outcome, "success");
+    assert.equal(
+      unavailableCapture.receipts[0]?.outcome.diagnosticCode,
+      "capture.payload_unavailable",
+    );
+    await writeFile(crashTarget, bytes);
     const object = await attachmentService.openObject(workspaceId, digest);
     assert.equal(object.byteLength, bytes.length);
     const chunks: Buffer[] = [];
