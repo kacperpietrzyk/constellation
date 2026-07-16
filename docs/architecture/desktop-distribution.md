@@ -14,12 +14,30 @@ compatible application rollback, and data-preserving uninstall, but it is not
 a public release. The application reports that its update channel is disabled.
 
 The manual `Signed desktop release candidate` workflow is the only production
-path. It requires an exact version, a public HTTPS update origin, protected
-platform signing credentials, and the `desktop-release` environment. The build
-fails if signing credentials are absent. macOS must pass Developer ID signing,
-notarization, stapling, Gatekeeper assessment, and signature verification;
-Windows must pass Authenticode verification. Only then does the embedded
-release configuration enable update checks.
+path. It requires an exact stable SemVer version and the protected `desktop-release`
+environment. That environment is limited to `main`, requires product-owner
+review, and holds platform credentials outside the repository. The public
+update origin is fixed to this repository's GitHub Releases rather than entered
+by a workflow caller.
+
+The macOS build must pass Developer ID signing, notarization, stapling,
+Gatekeeper assessment, and signature verification. It produces separate Apple
+Silicon and Intel artifacts, then creates one architecture-aware
+`latest-mac.yml`. The protected workflow creates a draft GitHub Release; a
+human must inspect and publish that draft before it becomes the public update
+channel. Existing versions are immutable and cannot be replaced by the
+workflow.
+
+Prerelease SemVer identifiers are rejected because GitHub's `latest` endpoint
+does not expose prerelease releases. A future alpha/beta channel must introduce
+an explicit channel contract rather than silently producing an unreachable
+update feed.
+
+Windows remains built and tested in ordinary packaged gates, but its production
+release is disabled by default until paid Authenticode credentials are
+provisioned. Enabling the explicit Windows release input without those
+credentials fails closed. No unsigned Windows installer is represented as a
+release.
 
 ## Update behavior
 
@@ -30,14 +48,15 @@ artifact paths, and credentials remain in the main process.
 
 Updates are manual in this slice:
 
-1. the user explicitly checks the configured signed channel;
+1. the user explicitly checks the signed GitHub Releases channel;
 2. an available version is named before download;
 3. the user explicitly downloads and verifies it;
 4. installation begins only after a second explicit restart action.
 
 There is no background download, forced restart, renderer-selected feed URL,
 or silent downgrade. A failed check or download leaves the installed
-application and workspace unchanged.
+application and workspace unchanged. GitHub hosts the public release assets and
+metadata; Constellation does not operate a separate update service.
 
 ## Rollback and uninstall
 

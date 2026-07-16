@@ -29,7 +29,7 @@
     "test:alpha:packaged": "node scripts/run-packaged-alpha-smoke.mjs",
     "test:hub:packaged": "node scripts/run-packaged-hub-smoke.mjs",
     "test:distribution:packaged": "node scripts/run-distribution-continuity.mjs",
-    "test:scripts": "node --test scripts/desktop/packaged-credential-store-policy.test.mjs",
+    "test:scripts": "node --test scripts/desktop/packaged-credential-store-policy.test.mjs scripts/prepare-github-release.test.mjs",
     "test": "npm run clean && npm run build && npm run test:scripts && node scripts/run-tests.mjs",
     "typecheck": "tsc -b --pretty false"
   },
