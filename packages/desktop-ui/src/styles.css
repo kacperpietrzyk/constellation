@@ -590,7 +590,6 @@ kbd {
 
 .desktop-shell {
   position: relative;
-  container-type: inline-size;
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(
       --inspector-width
@@ -1323,18 +1322,19 @@ kbd {
   line-height: var(--leading-normal);
 }
 
-.capture-dock {
-  position: fixed;
+.capture-dock-layer {
+  position: absolute;
   z-index: var(--z-sticky);
-  left: calc(
-    var(--sidebar-width) +
-      (100cqw - var(--sidebar-width) - var(--inspector-width)) / 2
-  );
+  right: var(--inspector-width);
   bottom: var(--space-6);
-  width: min(
-    32rem,
-    calc(100cqw - var(--sidebar-width) - var(--inspector-width) - 3rem)
-  );
+  left: var(--sidebar-width);
+  display: flex;
+  justify-content: center;
+  padding-inline: 1.5rem;
+  pointer-events: none;
+}
+.capture-dock {
+  width: min(32rem, 100%);
   min-height: 3.15rem;
   display: flex;
   align-items: center;
@@ -1349,7 +1349,7 @@ kbd {
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   -webkit-backdrop-filter: blur(var(--glass-blur))
     saturate(var(--glass-saturation));
-  transform: translateX(-50%);
+  pointer-events: auto;
 }
 .capture-dock:hover {
   color: var(--text-primary);
@@ -2056,9 +2056,8 @@ kbd {
   .work-surface::before {
     right: 0;
   }
-  .capture-dock {
-    left: calc(var(--sidebar-width) + (100cqw - var(--sidebar-width)) / 2);
-    width: min(32rem, calc(100cqw - var(--sidebar-width) - 3rem));
+  .capture-dock-layer {
+    right: 0;
   }
   .context-thread {
     display: none;
@@ -2359,9 +2358,12 @@ kbd {
     grid-column: 2;
     justify-self: start;
   }
+  .capture-dock-layer {
+    left: 4rem;
+    padding-inline: 0.75rem;
+  }
   .capture-dock {
-    left: calc(4rem + (100cqw - 4rem) / 2);
-    width: min(28rem, calc(100cqw - 5.5rem));
+    width: min(28rem, 100%);
   }
   .capture-target {
     grid-template-columns: 1fr;
