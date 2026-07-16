@@ -590,6 +590,7 @@ kbd {
 
 .desktop-shell {
   position: relative;
+  container-type: inline-size;
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(
       --inspector-width
@@ -1327,12 +1328,12 @@ kbd {
   z-index: var(--z-sticky);
   left: calc(
     var(--sidebar-width) +
-      (100vw - var(--sidebar-width) - var(--inspector-width)) / 2
+      (100cqw - var(--sidebar-width) - var(--inspector-width)) / 2
   );
   bottom: var(--space-6);
   width: min(
     32rem,
-    calc(100vw - var(--sidebar-width) - var(--inspector-width) - 3rem)
+    calc(100cqw - var(--sidebar-width) - var(--inspector-width) - 3rem)
   );
   min-height: 3.15rem;
   display: flex;
@@ -2056,8 +2057,8 @@ kbd {
     right: 0;
   }
   .capture-dock {
-    left: calc(var(--sidebar-width) + (100vw - var(--sidebar-width)) / 2);
-    width: min(32rem, calc(100vw - var(--sidebar-width) - 3rem));
+    left: calc(var(--sidebar-width) + (100cqw - var(--sidebar-width)) / 2);
+    width: min(32rem, calc(100cqw - var(--sidebar-width) - 3rem));
   }
   .context-thread {
     display: none;
@@ -2359,11 +2360,8 @@ kbd {
     justify-self: start;
   }
   .capture-dock {
-    position: absolute;
-    right: 0.75rem;
-    left: 4.75rem;
-    width: auto;
-    transform: none;
+    left: calc(4rem + (100cqw - 4rem) / 2);
+    width: min(28rem, calc(100cqw - 5.5rem));
   }
   .capture-target {
     grid-template-columns: 1fr;
