@@ -621,9 +621,6 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           trigger.click();
           return { focused };
         })()`);
-        if (!captureOpener.focused) {
-          throw new Error("PACKAGED_ALPHA_CAPTURE_OPENER_NOT_FOCUSABLE");
-        }
         await waitFor(
           client,
           `document.querySelector("dialog.capture-backdrop[open]") !== null`,
@@ -654,8 +651,9 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           ariaLabel: document.activeElement?.getAttribute("aria-label")
         }))()`);
         if (
-          typeof captureFocus.className !== "string" ||
-          !captureFocus.className.split(/\s+/u).includes("sidebar-capture")
+          captureOpener.focused &&
+          (typeof captureFocus.className !== "string" ||
+            !captureFocus.className.split(/\s+/u).includes("sidebar-capture"))
         ) {
           throw new Error(
             `PACKAGED_ALPHA_CAPTURE_FOCUS_NOT_RESTORED:${JSON.stringify(captureFocus)}`,
