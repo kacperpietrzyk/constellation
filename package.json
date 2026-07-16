@@ -29,9 +29,10 @@
     "package:distribution": "npm run package:alpha && node scripts/package-distribution.mjs",
     "test:alpha:packaged": "node scripts/run-packaged-alpha-smoke.mjs",
     "test:hub:packaged": "node scripts/run-packaged-hub-smoke.mjs",
+    "test:renderer-bundle": "node scripts/verify-renderer-bundle.mjs",
     "test:distribution:packaged": "node scripts/run-distribution-continuity.mjs",
     "test:scripts": "npm run audit:licenses && node --test scripts/desktop/packaged-credential-store-policy.test.mjs scripts/macos-distribution-signing.test.mjs scripts/prepare-github-release.test.mjs scripts/verify-dependency-licenses.test.mjs",
-    "test": "npm run clean && npm run build && npm run test:scripts && node scripts/run-tests.mjs",
+    "test": "npm run clean && npm run build && npm run test:renderer-bundle && npm run test:scripts && node scripts/run-tests.mjs",
     "typecheck": "tsc -b --pretty false"
   },
   "devDependencies": {

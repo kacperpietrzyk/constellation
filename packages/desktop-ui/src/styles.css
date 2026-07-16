@@ -1322,18 +1322,20 @@ kbd {
   line-height: var(--leading-normal);
 }
 
-.capture-dock {
-  position: fixed;
+.capture-dock-layer {
+  position: absolute;
   z-index: var(--z-sticky);
-  left: calc(
-    var(--sidebar-width) +
-      (100vw - var(--sidebar-width) - var(--inspector-width)) / 2
-  );
+  right: var(--inspector-width);
   bottom: var(--space-6);
-  width: min(
-    32rem,
-    calc(100vw - var(--sidebar-width) - var(--inspector-width) - 3rem)
-  );
+  left: var(--sidebar-width);
+  display: flex;
+  justify-content: center;
+  padding-inline: 1.5rem;
+  pointer-events: none;
+}
+.capture-dock {
+  width: 100%;
+  max-width: 32rem;
   min-height: 3.15rem;
   display: flex;
   align-items: center;
@@ -1348,7 +1350,7 @@ kbd {
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   -webkit-backdrop-filter: blur(var(--glass-blur))
     saturate(var(--glass-saturation));
-  transform: translateX(-50%);
+  pointer-events: auto;
 }
 .capture-dock:hover {
   color: var(--text-primary);
@@ -1884,6 +1886,24 @@ kbd {
   color: var(--text-tertiary);
   line-height: var(--leading-normal);
 }
+
+.surface-load-state {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  min-height: min(34rem, calc(100vh - 12rem));
+  max-width: 38rem;
+  padding: clamp(2rem, 6vw, 5rem);
+}
+
+.surface-load-state h1 {
+  margin: 0.35rem 0 0.75rem;
+}
+
+.surface-load-state > p:not(.eyebrow) {
+  margin: 0 0 1.25rem;
+  color: var(--text-secondary);
+}
 .recovery-required-state > div:not(.recovery-backdrop) {
   display: flex;
   gap: var(--space-2);
@@ -2037,9 +2057,8 @@ kbd {
   .work-surface::before {
     right: 0;
   }
-  .capture-dock {
-    left: calc(var(--sidebar-width) + (100vw - var(--sidebar-width)) / 2);
-    width: min(32rem, calc(100vw - var(--sidebar-width) - 3rem));
+  .capture-dock-layer {
+    right: 0;
   }
   .context-thread {
     display: none;
@@ -2255,7 +2274,7 @@ kbd {
     grid-template-columns: 4rem minmax(0, 1fr);
   }
   .sidebar {
-    padding-inline: 0.55rem;
+    padding-inline: 0.25rem;
   }
   .brand-row {
     left: 1.25rem;
@@ -2282,14 +2301,21 @@ kbd {
   }
   .search-control,
   .nav-item {
+    width: 2.75rem;
+    min-width: 2.75rem;
     display: grid;
     grid-template-columns: 1fr;
+    justify-self: center;
+    align-self: center;
     place-items: center;
     padding: 0;
   }
   .sidebar-capture {
+    width: 2.75rem;
+    min-width: 2.75rem;
     display: grid;
     grid-template-columns: 1fr;
+    align-self: center;
     place-items: center;
     padding: 0;
   }
@@ -2340,9 +2366,12 @@ kbd {
     grid-column: 2;
     justify-self: start;
   }
+  .capture-dock-layer {
+    left: 4rem;
+    padding-inline: 0.75rem;
+  }
   .capture-dock {
-    left: calc(4rem + (100vw - 4rem) / 2);
-    width: min(28rem, calc(100vw - 5.5rem));
+    max-width: 28rem;
   }
   .capture-target {
     grid-template-columns: 1fr;
