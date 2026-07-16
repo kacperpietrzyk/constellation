@@ -815,6 +815,7 @@ export const RealApp = ({
     useState<PreviewCondition>("ready");
   const navRef = useRef<HTMLElement>(null);
   const tabRef = useRef<HTMLDivElement>(null);
+  const captureReturnFocusRef = useRef<HTMLElement | null>(null);
   const modifierLabel = /Mac|iPhone|iPad/.test(navigator.platform)
     ? "⌘"
     : "Ctrl";
@@ -847,6 +848,23 @@ export const RealApp = ({
 
   const openContext = useCallback((context: ShellContext) => {
     setNavigation((current) => openShellContext(current, context));
+  }, []);
+  const openCapture = useCallback(() => {
+    const activeElement = document.activeElement;
+    captureReturnFocusRef.current =
+      activeElement instanceof HTMLElement && activeElement !== document.body
+        ? activeElement
+        : document.querySelector<HTMLElement>(".sidebar-capture");
+    setCaptureOpen(true);
+  }, []);
+  const dismissCapture = useCallback(() => {
+    setCaptureOpen(false);
+    window.requestAnimationFrame(() => {
+      const returnTarget = captureReturnFocusRef.current;
+      if (returnTarget?.isConnected) returnTarget.focus();
+      else document.querySelector<HTMLElement>(".sidebar-capture")?.focus();
+      captureReturnFocusRef.current = null;
+    });
   }, []);
 
   useEffect(() => {
@@ -1010,7 +1028,7 @@ export const RealApp = ({
         event.code === "KeyK"
       ) {
         event.preventDefault();
-        setCaptureOpen(true);
+        openCapture();
       } else if ((event.metaKey || event.ctrlKey) && event.code === "KeyK") {
         event.preventDefault();
         setSearchOpen(true);
@@ -1059,7 +1077,7 @@ export const RealApp = ({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [navigation.activeKey, navigation.tabs, openContext]);
+  }, [navigation.activeKey, navigation.tabs, openCapture, openContext]);
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(undefined), 5000);
@@ -1415,7 +1433,7 @@ export const RealApp = ({
         <button
           className="sidebar-capture"
           aria-label={`Quick Capture · ${modifierLabel}⇧K`}
-          onClick={() => setCaptureOpen(true)}
+          onClick={openCapture}
         >
           <span className="capture-plus">
             <Icon name="capture" />
@@ -1650,7 +1668,7 @@ export const RealApp = ({
               const task = tasks.find((item) => item.id === id);
               openContext(taskContext(id, task?.title ?? "Zadanie"));
             }}
-            onCapture={() => setCaptureOpen(true)}
+            onCapture={openCapture}
             onSetStatus={(id, statusId) => {
               const task = tasks.find((item) => item.id === id);
               if (!client || !task) return;
@@ -2140,7 +2158,7 @@ export const RealApp = ({
             }}
           />
         )}
-        <button className="capture-dock" onClick={() => setCaptureOpen(true)}>
+        <button className="capture-dock" onClick={openCapture}>
           <span>
             <Icon name="capture" />
             Zapisz myśl, link albo zadanie…
@@ -2464,7 +2482,7 @@ export const RealApp = ({
             bootstrap.workspace.voiceAudioRetentionPolicy
           }
           workspaceName={bootstrap.workspace.name}
-          onClose={() => !capturing && setCaptureOpen(false)}
+          onClose={() => !capturing && dismissCapture()}
           onSubmit={async (original) => {
             if (!client) return "Desktop jest chwilowo niedostępny.";
             setCapturing(true);

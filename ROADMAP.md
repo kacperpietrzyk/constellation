@@ -236,6 +236,11 @@ retains audio explicitly or enters two-phase deletion: reads stop immediately,
 local or Hub custody verifies reference-safe removal, and only then records the
 audio as deleted. Workspace defaults are prospective, per-capture overrides
 remain visible, and retained audio can be deleted later from Capture History.
+The first desktop-quality acceptance correction also removes an obsolete
+minimum shell width: Week, Meetings, Settings, tabs, and Quick Capture now stay
+inside a 320 px desktop window, the collapsed rail keeps non-overlapping 44 px
+destinations, and dismissing Quick Capture restores keyboard focus to its exact
+invoking control.
 
 ## Later — desktop ecosystem after product readiness
 

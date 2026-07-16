@@ -3823,7 +3823,7 @@ kbd {
   transform: translate(-50%, 0);
 }
 .wave2-shell {
-  min-width: 42rem;
+  min-width: 0;
 }
 .wave2-work {
   padding: 0 0 6.5rem;
@@ -6069,7 +6069,22 @@ kbd {
 }
 @media (max-width: 50rem) {
   .wave2-shell {
-    min-width: 32rem;
+    min-width: 0;
+  }
+  .nav-entry {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .nav-favorite-toggle {
+    display: none;
+  }
+  .search-control,
+  .nav-item {
+    height: 2.75rem;
+    min-height: 2.75rem;
+  }
+  .wave2-header h1 {
+    hyphens: auto;
+    overflow-wrap: normal;
   }
   .nav-item kbd {
     display: none;
@@ -6118,6 +6133,9 @@ kbd {
   }
 }
 @media (max-width: 30rem) {
+  .wave2-header h1 {
+    font-size: 1.75rem;
+  }
   .attention-heading {
     align-items: flex-start;
     flex-direction: column;
@@ -6619,6 +6637,27 @@ kbd {
     flex-direction: column;
   }
 
+  .settings-control > div {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-control input[type="text"],
+  .settings-control input:not([type]) {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .settings-control button {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .workspace-registry-list > button {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .workspace-registry-control form > div {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -6668,7 +6707,7 @@ kbd {
 
 @media (max-width: 700px) {
   .settings-sections {
-    margin-inline: 1rem;
+    margin-inline: 0;
   }
 
   .settings-sections > section {

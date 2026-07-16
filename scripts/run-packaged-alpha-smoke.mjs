@@ -481,6 +481,88 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     }
 
     if (phase !== "restore-confirm") {
+      await client.send("Emulation.setDeviceMetricsOverride", {
+        width: 320,
+        height: 800,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      try {
+        const narrowShell = await client.evaluate(`(() => {
+          const shell = document.querySelector(".desktop-shell");
+          const work = document.querySelector(".work-surface");
+          const dock = document.querySelector(".capture-dock");
+          const targets = [...document.querySelectorAll(
+            ".search-control, .nav-item, .sidebar-capture"
+          )].filter((element) => element.getClientRects().length > 0);
+          const favorites = [...document.querySelectorAll(".nav-favorite-toggle")];
+          const withinViewport = (element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.left >= 0 && rect.right <= innerWidth + 1;
+          };
+          return {
+            viewportWidth: innerWidth,
+            documentWidth: document.documentElement.scrollWidth,
+            shellWidth: shell?.getBoundingClientRect().width,
+            workWithinViewport: work ? withinViewport(work) : false,
+            dockWithinViewport: dock ? withinViewport(dock) : false,
+            targetsAreLargeEnough: targets.every((element) => {
+              const rect = element.getBoundingClientRect();
+              return rect.width >= 44 && rect.height >= 44;
+            }),
+            favoritesHidden: favorites.every(
+              (element) => element.getClientRects().length === 0
+            )
+          };
+        })()`);
+        if (
+          narrowShell.viewportWidth !== 320 ||
+          narrowShell.documentWidth > 320 ||
+          narrowShell.shellWidth > 320 ||
+          !narrowShell.workWithinViewport ||
+          !narrowShell.dockWithinViewport ||
+          !narrowShell.targetsAreLargeEnough ||
+          !narrowShell.favoritesHidden
+        ) {
+          throw new Error(
+            `PACKAGED_ALPHA_NARROW_SHELL_INVALID:${JSON.stringify(narrowShell)}`,
+          );
+        }
+
+        await client.evaluate(`(() => {
+          const trigger = document.querySelector(".sidebar-capture");
+          trigger.focus();
+          trigger.click();
+          return true;
+        })()`);
+        await waitFor(
+          client,
+          `document.querySelector("dialog.capture-backdrop[open]") !== null`,
+          "PACKAGED_ALPHA_CAPTURE_DIALOG_MISSING_AT_NARROW_WIDTH",
+        );
+        await client.send("Input.dispatchKeyEvent", {
+          type: "keyDown",
+          key: "Escape",
+          code: "Escape",
+          windowsVirtualKeyCode: 27,
+          nativeVirtualKeyCode: 27,
+        });
+        await client.send("Input.dispatchKeyEvent", {
+          type: "keyUp",
+          key: "Escape",
+          code: "Escape",
+          windowsVirtualKeyCode: 27,
+          nativeVirtualKeyCode: 27,
+        });
+        await waitFor(
+          client,
+          `document.querySelector("dialog.capture-backdrop[open]") === null && document.activeElement?.classList.contains("sidebar-capture") === true`,
+          "PACKAGED_ALPHA_CAPTURE_FOCUS_NOT_RESTORED",
+        );
+      } finally {
+        await client.send("Emulation.clearDeviceMetricsOverride");
+      }
+
       const payloadCustody = await client.evaluate(`(async () => {
         const staged = await window.constellation.stageCapturePayload({
           displayName: "packaged-custody.txt",
