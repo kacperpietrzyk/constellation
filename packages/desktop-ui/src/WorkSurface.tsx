@@ -265,11 +265,13 @@ export const WorkSurface = ({
               <form onSubmit={submitArea}>
                 <input
                   name="title"
+                  aria-label="Nazwa obszaru"
                   placeholder="np. Relacje z klientami"
                   required
                 />
                 <textarea
                   name="responsibility"
+                  aria-label="Stała odpowiedzialność obszaru"
                   placeholder="Za co stale odpowiadasz?"
                   required
                 />
@@ -281,11 +283,13 @@ export const WorkSurface = ({
               <form onSubmit={submitInitiative}>
                 <input
                   name="title"
+                  aria-label="Nazwa inicjatywy"
                   placeholder="np. Interaktywna alfa"
                   required
                 />
                 <textarea
                   name="outcome"
+                  aria-label="Oczekiwany wynik inicjatywy"
                   placeholder="Jaki wynik pozwoli ją zamknąć?"
                   required
                 />

@@ -600,6 +600,7 @@ export const DocumentsSurface = ({
           <input
             name="sourceUrl"
             type="url"
+            aria-label="Adres URL źródła"
             value={sourceUrl}
             onChange={(event) => setSourceUrl(event.target.value)}
             placeholder="https://… (opcjonalnie)"

@@ -108,8 +108,13 @@ export const StrategicCreatePanel = ({
               })
             }
           >
-            <input name="name" placeholder="Imię i nazwisko" required />
-            <select name="organizationId">
+            <input
+              name="name"
+              aria-label="Imię i nazwisko osoby"
+              placeholder="Imię i nazwisko"
+              required
+            />
+            <select name="organizationId" aria-label="Organizacja osoby">
               <option value="">Bez Organization</option>
               {organizations.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -117,8 +122,13 @@ export const StrategicCreatePanel = ({
                 </option>
               ))}
             </select>
-            <input name="role" placeholder="Rola" />
-            <input name="email" type="email" placeholder="E-mail" />
+            <input name="role" aria-label="Rola osoby" placeholder="Rola" />
+            <input
+              name="email"
+              type="email"
+              aria-label="Adres e-mail osoby"
+              placeholder="E-mail"
+            />
             <button disabled={busy}>Dodaj osobę</button>
           </form>
         </details>
@@ -144,7 +154,11 @@ export const StrategicCreatePanel = ({
               })
             }
           >
-            <select name="opportunityId" required>
+            <select
+              name="opportunityId"
+              aria-label="Opportunity dla oferty"
+              required
+            >
               <option value="">Wybierz Opportunity</option>
               {opportunities.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -152,7 +166,11 @@ export const StrategicCreatePanel = ({
                 </option>
               ))}
             </select>
-            <select name="documentId" required>
+            <select
+              name="documentId"
+              aria-label="Deliverable dla oferty"
+              required
+            >
               <option value="">Wybierz Deliverable</option>
               {deliverables.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -160,8 +178,18 @@ export const StrategicCreatePanel = ({
                 </option>
               ))}
             </select>
-            <input name="title" placeholder="Nazwa oferty" required />
-            <input name="nextAction" placeholder="Następny ruch" required />
+            <input
+              name="title"
+              aria-label="Nazwa oferty"
+              placeholder="Nazwa oferty"
+              required
+            />
+            <input
+              name="nextAction"
+              aria-label="Następny ruch dla oferty"
+              placeholder="Następny ruch"
+              required
+            />
             <button
               disabled={
                 busy || opportunities.length === 0 || deliverables.length === 0
@@ -199,7 +227,11 @@ export const StrategicCreatePanel = ({
               })
             }
           >
-            <select name="organizationId" required>
+            <select
+              name="organizationId"
+              aria-label="Organizacja odnowienia"
+              required
+            >
               <option value="">Wybierz Organization</option>
               {organizations.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -207,10 +239,25 @@ export const StrategicCreatePanel = ({
                 </option>
               ))}
             </select>
-            <input name="title" placeholder="Nazwa odnowienia" required />
-            <input name="scope" placeholder="Zakres" required />
-            <input name="expiresAt" type="date" required />
-            <select name="sourceId">
+            <input
+              name="title"
+              aria-label="Nazwa odnowienia"
+              placeholder="Nazwa odnowienia"
+              required
+            />
+            <input
+              name="scope"
+              aria-label="Zakres odnowienia"
+              placeholder="Zakres"
+              required
+            />
+            <input
+              name="expiresAt"
+              type="date"
+              aria-label="Data wygaśnięcia odnowienia"
+              required
+            />
+            <select name="sourceId" aria-label="Źródło odnowienia">
               <option value="">Bez źródła</option>
               {sources.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -245,7 +292,11 @@ export const StrategicCreatePanel = ({
               })
             }
           >
-            <select name="organizationId" required>
+            <select
+              name="organizationId"
+              aria-label="Organizacja opisywana przez fakt"
+              required
+            >
               <option value="">Wybierz Organization</option>
               {organizations.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -253,13 +304,19 @@ export const StrategicCreatePanel = ({
                 </option>
               ))}
             </select>
-            <input name="factType" placeholder="Typ faktu" required />
+            <input
+              name="factType"
+              aria-label="Typ faktu"
+              placeholder="Typ faktu"
+              required
+            />
             <textarea
               name="factValue"
+              aria-label="Potwierdzona wartość faktu"
               placeholder="Potwierdzona wartość"
               required
             />
-            <select name="sourceId" required>
+            <select name="sourceId" aria-label="Źródło faktu" required>
               <option value="">Wybierz źródło</option>
               {sources.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -291,9 +348,19 @@ export const StrategicCreatePanel = ({
               })
             }
           >
-            <input name="title" placeholder="Co zdecydowano?" required />
-            <textarea name="rationale" placeholder="Dlaczego?" required />
-            <select name="sourceId">
+            <input
+              name="title"
+              aria-label="Treść decyzji"
+              placeholder="Co zdecydowano?"
+              required
+            />
+            <textarea
+              name="rationale"
+              aria-label="Uzasadnienie decyzji"
+              placeholder="Dlaczego?"
+              required
+            />
+            <select name="sourceId" aria-label="Źródło decyzji">
               <option value="">Bez źródła</option>
               {sources.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -326,7 +393,11 @@ export const StrategicCreatePanel = ({
               })
             }
           >
-            <select name="decisionId" required>
+            <select
+              name="decisionId"
+              aria-label="Decyzja do zastąpienia"
+              required
+            >
               <option value="">Bieżąca decyzja</option>
               {decisions.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -334,14 +405,21 @@ export const StrategicCreatePanel = ({
                 </option>
               ))}
             </select>
-            <input name="title" placeholder="Nowa decyzja" required />
+            <input
+              name="title"
+              aria-label="Treść nowej decyzji"
+              placeholder="Nowa decyzja"
+              required
+            />
             <textarea
               name="rationale"
+              aria-label="Uzasadnienie nowej decyzji"
               placeholder="Nowe uzasadnienie"
               required
             />
             <input
               name="reason"
+              aria-label="Powód zastąpienia poprzedniej decyzji"
               placeholder="Dlaczego zastępuje poprzednią?"
               required
             />
@@ -370,13 +448,19 @@ export const StrategicCreatePanel = ({
               })
             }
           >
-            <input name="title" placeholder="Nazwa reguły" required />
+            <input
+              name="title"
+              aria-label="Nazwa reguły cyklicznej"
+              placeholder="Nazwa reguły"
+              required
+            />
             <input
               name="taskTitle"
+              aria-label="Tytuł powtarzanego zadania"
               placeholder="Tytuł powtarzanego zadania"
               required
             />
-            <select name="cadence">
+            <select name="cadence" aria-label="Częstotliwość reguły">
               <option value="weekly">Co tydzień</option>
               <option value="monthly">Co miesiąc</option>
               <option value="daily">Codziennie</option>
@@ -404,7 +488,11 @@ export const StrategicCreatePanel = ({
               })
             }
           >
-            <select name="sourceId" required>
+            <select
+              name="sourceId"
+              aria-label="Źródło kandydata Radar"
+              required
+            >
               <option value="">Wybierz źródło</option>
               {sources.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -412,9 +500,15 @@ export const StrategicCreatePanel = ({
                 </option>
               ))}
             </select>
-            <input name="title" placeholder="Co warto przejrzeć?" required />
+            <input
+              name="title"
+              aria-label="Tytuł kandydata Radar"
+              placeholder="Co warto przejrzeć?"
+              required
+            />
             <textarea
               name="relevance"
+              aria-label="Znaczenie kandydata Radar"
               placeholder="Dlaczego to może być istotne?"
               required
             />

@@ -481,6 +481,210 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     }
 
     if (phase !== "restore-confirm") {
+      await waitFor(
+        client,
+        `document.querySelector(".capture-dock") !== null && document.querySelectorAll(".nav-item[data-surface]").length === 12`,
+        "PACKAGED_ALPHA_OPERATIONAL_SHELL_NOT_READY",
+      );
+      const originalViewport = await client.evaluate(`({
+        width: innerWidth,
+        height: innerHeight
+      })`);
+      await client.send("Emulation.setDeviceMetricsOverride", {
+        width: 320,
+        height: 800,
+        deviceScaleFactor: 1,
+        mobile: false,
+        dontSetVisibleSize: true,
+      });
+      await client.send("Emulation.setVisibleSize", {
+        width: 320,
+        height: 800,
+      });
+      try {
+        await client.evaluate(`new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve))
+        )`);
+        const narrowShell = await client.evaluate(`(() => {
+          const shell = document.querySelector(".desktop-shell");
+          const work = document.querySelector(".work-surface");
+          const dock = document.querySelector(".capture-dock");
+          const targets = [...document.querySelectorAll(
+            ".search-control, .nav-item, .sidebar-capture"
+          )].filter((element) => element.getClientRects().length > 0);
+          const favorites = [...document.querySelectorAll(".nav-favorite-toggle")];
+          const withinViewport = (element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.left >= 0 && rect.right <= innerWidth + 1;
+          };
+          return {
+            viewportWidth: innerWidth,
+            documentWidth: document.documentElement.scrollWidth,
+            shellWidth: shell?.getBoundingClientRect().width,
+            workWithinViewport: work ? withinViewport(work) : false,
+            dockWithinViewport: dock ? withinViewport(dock) : false,
+            dockRect: dock
+              ? (() => {
+                  const rect = dock.getBoundingClientRect();
+                  return { left: rect.left, right: rect.right, width: rect.width };
+                })()
+              : null,
+            targetsAreLargeEnough: targets.every((element) => {
+              const rect = element.getBoundingClientRect();
+              return rect.width >= 44 && rect.height >= 44;
+            }),
+            favoritesHidden: favorites.every(
+              (element) => element.getClientRects().length === 0
+            )
+          };
+        })()`);
+        if (
+          narrowShell.viewportWidth !== 320 ||
+          narrowShell.documentWidth > 320 ||
+          narrowShell.shellWidth > 320 ||
+          !narrowShell.workWithinViewport ||
+          !narrowShell.targetsAreLargeEnough ||
+          !narrowShell.favoritesHidden
+        ) {
+          throw new Error(
+            `PACKAGED_ALPHA_NARROW_SHELL_INVALID:${JSON.stringify(narrowShell)}`,
+          );
+        }
+
+        const narrowSurfaces = await client.evaluate(`(async () => {
+          const results = [];
+          const controlSelector = [
+            "button:not(:disabled)",
+            "a[href]",
+            "input:not(:disabled)",
+            "select:not(:disabled)",
+            "textarea:not(:disabled)",
+            '[tabindex]:not([tabindex="-1"])'
+          ].join(",");
+          const hasAccessibleName = (element) =>
+            Boolean(
+              element.getAttribute("aria-label")?.trim() ||
+              element.getAttribute("aria-labelledby")?.trim() ||
+              element.getAttribute("title")?.trim() ||
+              element.labels?.length ||
+              element.textContent?.trim()
+            );
+          for (const destination of document.querySelectorAll(
+            ".nav-item[data-surface]"
+          )) {
+            destination.click();
+            await new Promise((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(resolve))
+            );
+            const work = document.querySelector(".work-surface");
+            const surface = [...(work?.children ?? [])].find(
+              (element) =>
+                element.getClientRects().length > 0 &&
+                !element.classList.contains("shell-tabbar") &&
+                !element.classList.contains("capture-dock")
+            );
+            const unnamedControls = [...document.querySelectorAll(controlSelector)]
+              .filter(
+                (element) =>
+                  element.getClientRects().length > 0 &&
+                  !hasAccessibleName(element)
+              )
+              .map((element) => element.tagName.toLowerCase());
+            results.push({
+              surface: destination.dataset.surface,
+              documentWidth: document.documentElement.scrollWidth,
+              surfacePresent: surface !== undefined,
+              surfaceWidth: surface?.scrollWidth,
+              surfaceClientWidth: surface?.clientWidth,
+              unnamedControls
+            });
+          }
+          return results;
+        })()`);
+        const invalidNarrowSurface = narrowSurfaces.find(
+          (surface) =>
+            surface.documentWidth > 320 ||
+            !surface.surfacePresent ||
+            surface.unnamedControls.length > 0,
+        );
+        if (invalidNarrowSurface !== undefined) {
+          throw new Error(
+            `PACKAGED_ALPHA_NARROW_SURFACE_INVALID:${JSON.stringify(invalidNarrowSurface)}`,
+          );
+        }
+
+        const resetTabCount = await client.evaluate(`(async () => {
+          document.querySelector('.nav-item[data-surface="cockpit"]').click();
+          await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve))
+          );
+          let close = document.querySelector(
+            ".shell-tab:not(.active) .shell-tab-close"
+          );
+          while (close !== null) {
+            close.click();
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            close = document.querySelector(
+              ".shell-tab:not(.active) .shell-tab-close"
+            );
+          }
+          return document.querySelectorAll(".shell-tab").length;
+        })()`);
+        if (resetTabCount !== 1) {
+          throw new Error("PACKAGED_ALPHA_NARROW_SWEEP_STATE_NOT_RESTORED");
+        }
+
+        await client.send("Page.bringToFront");
+        const captureOpener = await client.evaluate(`(() => {
+          const trigger = document.querySelector(".sidebar-capture");
+          trigger.focus();
+          const focused = document.activeElement === trigger;
+          trigger.click();
+          return { focused };
+        })()`);
+        await waitFor(
+          client,
+          `document.querySelector("dialog.capture-backdrop[open]") !== null`,
+          "PACKAGED_ALPHA_CAPTURE_DIALOG_MISSING_AT_NARROW_WIDTH",
+        );
+        await client.send("Input.dispatchKeyEvent", {
+          type: "keyDown",
+          key: "Escape",
+          code: "Escape",
+          windowsVirtualKeyCode: 27,
+          nativeVirtualKeyCode: 27,
+        });
+        await client.send("Input.dispatchKeyEvent", {
+          type: "keyUp",
+          key: "Escape",
+          code: "Escape",
+          windowsVirtualKeyCode: 27,
+          nativeVirtualKeyCode: 27,
+        });
+        await waitFor(
+          client,
+          `document.querySelector("dialog.capture-backdrop[open]") === null`,
+          "PACKAGED_ALPHA_CAPTURE_DIALOG_DID_NOT_CLOSE",
+        );
+        const captureFocus = await client.evaluate(`(() => ({
+          tag: document.activeElement?.tagName,
+          className: document.activeElement?.className,
+          ariaLabel: document.activeElement?.getAttribute("aria-label")
+        }))()`);
+        if (
+          captureOpener.focused &&
+          (typeof captureFocus.className !== "string" ||
+            !captureFocus.className.split(/\s+/u).includes("sidebar-capture"))
+        ) {
+          throw new Error(
+            `PACKAGED_ALPHA_CAPTURE_FOCUS_NOT_RESTORED:${JSON.stringify(captureFocus)}`,
+          );
+        }
+      } finally {
+        await client.send("Emulation.clearDeviceMetricsOverride");
+        await client.send("Emulation.setVisibleSize", originalViewport);
+      }
+
       const payloadCustody = await client.evaluate(`(async () => {
         const staged = await window.constellation.stageCapturePayload({
           displayName: "packaged-custody.txt",
