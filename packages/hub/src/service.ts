@@ -36,6 +36,7 @@ import {
   type HubSyncResult,
   type HubWorkspaceSnapshot,
   type CaptureOriginal,
+  type CaptureId,
   type WorkspaceId,
   type DocumentId,
   type DeviceId,
@@ -141,6 +142,10 @@ export interface HubServiceOptions {
       workspaceId: WorkspaceId,
       original: CaptureOriginal,
     ): Promise<boolean>;
+    deleteCapturePayload?(input: {
+      readonly workspaceId: WorkspaceId;
+      readonly original: CaptureOriginal;
+    }): Promise<boolean>;
   };
 }
 
@@ -334,6 +339,7 @@ export class HubService {
         purgeLocalProjection: authentication.purgeLocalProjection,
       });
     }
+    const pendingVoiceFinalizations: CaptureId[] = [];
     const result = await this.repository.withWorkspaceLock(
       input.workspaceId,
       async (state): Promise<HubSyncResult> => {
@@ -349,6 +355,15 @@ export class HubService {
             purgeLocalProjection: true,
           };
         }
+        pendingVoiceFinalizations.push(
+          ...state.snapshot.captures
+            .filter(
+              (capture) =>
+                capture.processingState === "transcript_ready" &&
+                capture.audioState === "deletion_pending",
+            )
+            .map((capture) => CaptureIdSchema.parse(capture.id)),
+        );
         const requestedCheckpoint = BigInt(input.checkpoint);
         if (requestedCheckpoint > state.checkpoint) {
           return {
@@ -431,6 +446,12 @@ export class HubService {
             );
           }
           const outcome = response.outcome;
+          if (
+            outcome.outcome === "success" &&
+            (parsedCommand.commandName === "capture.writeTranscript" ||
+              parsedCommand.commandName === "capture.requestAudioDeletion")
+          )
+            pendingVoiceFinalizations.push(parsedCommand.payload.captureId);
           let checkpoint: string | undefined;
           if (outcome.outcome === "success") {
             state.checkpoint += 1n;
@@ -489,8 +510,107 @@ export class HubService {
         deviceId: input.deviceId,
         checkpoint: BigInt(result.currentCheckpoint),
       });
+      for (const captureId of pendingVoiceFinalizations)
+        await this.finalizeVoiceAudio(
+          input.workspaceId,
+          captureId,
+          authentication.device.authorization,
+        );
     }
     return result;
+  }
+
+  private async finalizeVoiceAudio(
+    workspaceId: WorkspaceId,
+    captureId: CaptureId,
+    authorization: ExecutionContext,
+  ): Promise<void> {
+    await this.repository.withWorkspaceLock(workspaceId, async (state) => {
+      const currentAuthorization = authorizationForSnapshot(
+        state.snapshot,
+        workspaceId,
+        authorization,
+      );
+      if (currentAuthorization === undefined) return;
+      const store = new InMemoryReferenceStore(
+        undefined,
+        fromHubSnapshot(state.snapshot, workspaceId),
+      );
+      const capture = store.read((view) => view.getCapture(captureId));
+      if (
+        capture?.processingState !== "transcript_ready" ||
+        capture.audioState !== "deletion_pending" ||
+        capture.original.kind !== "voice_note"
+      )
+        return;
+      const voiceOriginal = capture.original;
+      const sharedReadableReference = store
+        .snapshot()
+        .captures.some((candidate) => {
+          if (
+            candidate.id === capture.id ||
+            !isCustodiedCaptureOriginal(candidate.original) ||
+            candidate.original.payload.contentSha256 !==
+              voiceOriginal.payload.contentSha256
+          )
+            return false;
+          return !(
+            candidate.original.kind === "voice_note" &&
+            candidate.processingState === "transcript_ready" &&
+            candidate.audioState !== "retained"
+          );
+        });
+      const deletionVerified =
+        sharedReadableReference ||
+        (await this.capturePayloadVerifier?.deleteCapturePayload?.({
+          workspaceId,
+          original: voiceOriginal,
+        })) === true;
+      if (!deletionVerified) return;
+      const internalAuthorization: ExecutionContext = {
+        ...currentAuthorization,
+        capabilityScope: [
+          ...new Set([
+            ...currentAuthorization.capabilityScope,
+            "capture.audioDeleteConfirm" as const,
+          ]),
+        ],
+        origin: "maintenance",
+      };
+      const hasher = new Sha256Hasher();
+      const ids = new CommandScopedIdGenerator(hasher);
+      const confirmation = CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "capture.confirmAudioDeletion",
+        commandId: randomUUID(),
+        workspaceId,
+        idempotencyKey: `voice-audio-delete:${capture.id}:v${capture.version}`,
+        expectedVersions: { [capture.id]: capture.version },
+        correlationId: randomUUID(),
+        payload: {
+          captureId: capture.id,
+          audioContentSha256: voiceOriginal.payload.contentSha256,
+        },
+      });
+      ids.begin(confirmation.commandId);
+      const kernel = new ApplicationKernel({
+        authorization: new TrustedHubGrant(internalAuthorization),
+        clock: new ServerClock(),
+        cursorCodec: new CursorCodec(),
+        hasher,
+        ids,
+        store,
+      });
+      const result = kernel.execute(internalAuthorization, confirmation);
+      if (
+        result.kind !== "command_outcome" ||
+        result.outcome.outcome !== "success"
+      )
+        return;
+      state.snapshot = toHubSnapshot(store.snapshot());
+      state.snapshotDigest = snapshotDigest(state.snapshot);
+      state.checkpoint += 1n;
+    });
   }
 
   public async bootstrapSnapshot(

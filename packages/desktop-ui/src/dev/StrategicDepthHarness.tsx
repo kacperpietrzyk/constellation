@@ -217,6 +217,7 @@ const snapshot: DesktopSnapshot = {
       name: "Praca",
       timezone: "Europe/Warsaw",
       defaultTaskStatusId: statusId,
+      voiceAudioRetentionPolicy: "delete_after_transcript",
       version: 1,
     },
     spaces: [{ id: spaceId, name: "Praca", version: 1 }],

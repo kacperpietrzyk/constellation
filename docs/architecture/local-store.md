@@ -130,6 +130,11 @@ therefore included in the same closed encrypted export, staged restore, and
 last-known-good rollback boundary. Coordinated snapshot replacement preserves
 current staged bytes and bytes referenced by the newly authorized projection,
 while removed Capture scope and revocation purge the corresponding custody.
+For voice notes, a durable transcript first moves the Capture to
+`deletion_pending`, which revokes payload reads. SQLCipher removes the audio and
+records `deleted` only after absence is verified; coordinated projection
+replacement also purges pending/deleted voice bytes while preserving unrelated
+dialog staging and explicitly retained audio.
 Remaining recovery gates include real disk-full and permission faults.
 Installer/update/compatible-rollback/uninstall mechanics now have a separate
 packaged distribution drill; production signing and notarization remain a

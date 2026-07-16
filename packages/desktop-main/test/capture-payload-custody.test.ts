@@ -120,12 +120,16 @@ describe("Capture payload custody", () => {
     assert.equal(result.original.retentionPolicy, "delete_after_transcript");
     assert.equal(custody.verify(result.original), true);
     assert.deepEqual(custody.read(result.original), bytes);
+    assert.equal(custody.deleteVoiceAudio(result.original), true);
+    assert.equal(custody.verify(result.original), false);
+    assert.equal(custody.read(result.original), undefined);
+    assert.equal(custody.deleteVoiceAudio(result.original), true);
     assert.equal(
       store.readCapturePayload({
         payloadId: result.original.payload.payloadId,
         workspaceId,
-      })?.inputKind,
-      "voice_note",
+      }),
+      undefined,
     );
     assert.deepEqual(
       custody.stage({

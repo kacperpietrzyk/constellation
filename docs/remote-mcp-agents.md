@@ -74,6 +74,16 @@ object and verifies its complete length and SHA-256 digest before returning one
 `blob`. Missing, revoked, corrupt, and out-of-Space payloads fail without
 revealing which condition occurred. Payload bytes remain absent from ordinary
 tool results, commands, receipts, snapshots, and device projections.
+
+Remote transcription uses the same strict `capture.writeTranscript` command as
+local MCP and requires the separately granted `capture.transcriptWrite`
+capability, current Capture version, and exact audio digest. Hub persists the
+attributed transcript before starting reference-safe attachment deletion. Voice
+reads are revoked in the durable pending state; a second locked lifecycle step
+records deletion only after the content-addressed object is removed or proven
+to remain solely for another authorized Capture reference. Constellation does
+not host or invoke a transcription model.
+
 Capture processing grants also expose the strict exception report and resolve
 commands. The Hub validates the same reason/action matrix as the desktop.
 Remote payload replacement cannot introduce arbitrary bytes through a command;

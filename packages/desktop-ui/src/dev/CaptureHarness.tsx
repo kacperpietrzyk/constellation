@@ -46,6 +46,7 @@ export const CaptureHarness = () => {
       </div>
       {open && (
         <CaptureDialog
+          defaultVoiceRetentionPolicy="delete_after_transcript"
           busy={false}
           client={client}
           initialMode={initialMode}

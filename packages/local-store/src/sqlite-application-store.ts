@@ -3441,6 +3441,11 @@ export class SqliteApplicationStore
               FROM captures
               WHERE captures.workspace_id = retained.workspace_id
                 AND json_extract(captures.payload_json, '$.original.payload.payloadId') = retained.id
+                AND NOT (
+                  json_extract(captures.payload_json, '$.original.kind') = 'voice_note'
+                  AND json_extract(captures.payload_json, '$.processingState') = 'transcript_ready'
+                  AND json_extract(captures.payload_json, '$.audioState') IN ('deletion_pending', 'deleted')
+                )
             )
           );
         DROP TABLE retained_capture_payloads;

@@ -67,6 +67,7 @@ const agentCapabilities = [
   "capture.submitText",
   "capture.history",
   "capture.audioRead",
+  "capture.transcriptWrite",
   "project.create",
   "project.updateOutcome",
   "project.list",
@@ -176,6 +177,7 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
     retentionPolicy: "delete_after_transcript",
   });
   const voiceCaptureId = CaptureIdSchema.parse(ids.voiceCapture);
+  const finalizedVoiceCaptures: string[] = [];
   store.transact((transaction) => {
     transaction.insertCapture({
       id: managedCaptureId,
@@ -217,6 +219,7 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
         : original === voiceOriginal
           ? voiceBytes
           : undefined,
+    finalizeVoiceAudio: (captureId) => finalizedVoiceCaptures.push(captureId),
   });
   try {
     const prepared = runtime.credentialCustody.prepare(ids.grant as GrantId);
@@ -357,6 +360,37 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
       ),
       voiceBytes,
     );
+    const transcript = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "command",
+      run,
+      command: CommandEnvelopeSchema.parse({
+        ...commandMetadata("voice-transcript", { [voiceCaptureId]: 2 }),
+        commandName: "capture.writeTranscript",
+        payload: {
+          captureId: voiceCaptureId,
+          audioContentSha256: voiceDigest,
+          transcript: "An external MCP agent wrote this transcript.",
+        },
+      }),
+    });
+    assert.equal(transcript.outcome, "success", JSON.stringify(transcript));
+    assert.deepEqual(finalizedVoiceCaptures, [voiceCaptureId]);
+    const voiceDeniedAfterTranscript = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "payload_read",
+      run,
+      workspaceId: ownerContext.workspaceId,
+      captureId: voiceCaptureId,
+      offset: 0,
+      length: 512 * 1024,
+    });
+    assert.equal(voiceDeniedAfterTranscript.outcome, "rejected");
+    assert.deepEqual(voiceDeniedAfterTranscript.result, {
+      diagnosticCode: "authorization.denied",
+    });
     const voiceDeniedWithoutGrant = await invokeDesktopMcp(descriptor2, {
       contractVersion: 1,
       requestId: crypto.randomUUID(),

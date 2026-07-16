@@ -320,9 +320,13 @@ URLs, selected file references, managed files, and screenshots become knowledge
 sources; exact duplicates remain preserved and appear in Attention for an
 explicit destination choice. Short voice notes remain in Capture History while
 awaiting an external transcript and do not create Attention debt merely because
-no agent is running. Managed payloads are bounded to 25 MB, retain no local path
-in the Capture record, and are included in encrypted workspace backup and
-restore.
+no agent is running. An authorized MCP agent can write a versioned transcript
+only for the exact audio digest; Constellation records its principal and host
+run but never invokes transcription. Audio is deleted by default only after the
+transcript is durable and custody verifies removal, or retained by an explicit
+workspace/per-capture policy. Managed payloads are bounded to 25 MB, retain no
+local path in the Capture record, and are included in encrypted workspace
+backup and restore while retained.
 Closing the preview clears its synthetic workspace.
 
 Questions and early product discussion belong in

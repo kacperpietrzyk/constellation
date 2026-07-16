@@ -97,6 +97,19 @@ export type WorkspaceRenameCommand = z.infer<
   typeof WorkspaceRenameCommandSchema
 >;
 
+export const WorkspaceSetVoiceAudioRetentionCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("workspace.setVoiceAudioRetention"),
+    payload: z
+      .object({
+        retentionPolicy: z.enum(["delete_after_transcript", "retain"]),
+      })
+      .strict(),
+  }).strict();
+export type WorkspaceSetVoiceAudioRetentionCommand = z.infer<
+  typeof WorkspaceSetVoiceAudioRetentionCommandSchema
+>;
+
 const MembershipRoleSchema = z.enum(["admin", "member", "guest"]);
 const SpaceAccessLevelSchema = z.enum(["view", "comment", "edit"]);
 
@@ -390,6 +403,45 @@ export const CaptureResolveExceptionCommandSchema =
   }).strict();
 export type CaptureResolveExceptionCommand = z.infer<
   typeof CaptureResolveExceptionCommandSchema
+>;
+
+export const CaptureWriteTranscriptCommandSchema = CommandMetadataSchema.extend(
+  {
+    commandName: z.literal("capture.writeTranscript"),
+    payload: z
+      .object({
+        captureId: CaptureIdSchema,
+        audioContentSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+        transcript: z.string().trim().min(1).max(262_144),
+      })
+      .strict(),
+  },
+).strict();
+export type CaptureWriteTranscriptCommand = z.infer<
+  typeof CaptureWriteTranscriptCommandSchema
+>;
+
+export const CaptureRequestAudioDeletionCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("capture.requestAudioDeletion"),
+    payload: z.object({ captureId: CaptureIdSchema }).strict(),
+  }).strict();
+export type CaptureRequestAudioDeletionCommand = z.infer<
+  typeof CaptureRequestAudioDeletionCommandSchema
+>;
+
+export const CaptureConfirmAudioDeletionCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("capture.confirmAudioDeletion"),
+    payload: z
+      .object({
+        captureId: CaptureIdSchema,
+        audioContentSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+      })
+      .strict(),
+  }).strict();
+export type CaptureConfirmAudioDeletionCommand = z.infer<
+  typeof CaptureConfirmAudioDeletionCommandSchema
 >;
 
 export const CaptureRouteAsTaskCommandSchema = CommandMetadataSchema.extend({
@@ -953,6 +1005,7 @@ export const CommandUndoSchema = CommandMetadataSchema.extend({
 export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   WorkspaceCreateLocalCommandSchema,
   WorkspaceRenameCommandSchema,
+  WorkspaceSetVoiceAudioRetentionCommandSchema,
   WorkspaceMemberAddCommandSchema,
   WorkspaceMemberSetAccessCommandSchema,
   WorkspaceMemberRevokeCommandSchema,
@@ -965,6 +1018,9 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   CaptureProcessCommandSchema,
   CaptureReportExceptionCommandSchema,
   CaptureResolveExceptionCommandSchema,
+  CaptureWriteTranscriptCommandSchema,
+  CaptureRequestAudioDeletionCommandSchema,
+  CaptureConfirmAudioDeletionCommandSchema,
   CaptureSubmitTextCommandSchema,
   CaptureRouteAsTaskCommandSchema,
   ProjectCreateCommandSchema,

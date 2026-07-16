@@ -23,6 +23,7 @@ import {
   CommandIdSchema,
   CorrelationIdSchema,
   CredentialIdSchema,
+  ExecutionContextSchema,
   GrantIdSchema,
   MembershipIdSchema,
   PrincipalIdSchema,
@@ -75,6 +76,7 @@ const REMOTE_AGENT_ALLOWED_CAPABILITIES = new Set<Capability>([
   "capture.submit",
   "capture.process",
   "capture.audioRead",
+  "capture.transcriptWrite",
   "capture.submitText",
   "capture.routeAsTask",
   "capture.history",
@@ -366,6 +368,10 @@ export class HubRemoteMcpService {
         readonly length: number;
       }) => Promise<Uint8Array | undefined>;
       readonly isCapturePayloadAvailable?: (input: {
+        readonly workspaceId: WorkspaceId;
+        readonly original: CaptureOriginal;
+      }) => Promise<boolean>;
+      readonly deleteCapturePayload?: (input: {
         readonly workspaceId: WorkspaceId;
         readonly original: CaptureOriginal;
       }) => Promise<boolean>;
@@ -746,7 +752,7 @@ export class HubRemoteMcpService {
       });
     const [credentialId, secret] = parsedToken.data.split(".");
     try {
-      return await this.repository.withWorkspaceLock(
+      const output = await this.repository.withWorkspaceLock(
         workspaceId,
         async (state) => {
           const remote = state.remoteAgents ?? emptyHubRemoteAgentState();
@@ -910,6 +916,17 @@ export class HubRemoteMcpService {
           }
         },
       );
+      if (
+        invocation.kind === "command" &&
+        output.outcome === "success" &&
+        (invocation.command.commandName === "capture.writeTranscript" ||
+          invocation.command.commandName === "capture.requestAudioDeletion")
+      )
+        await this.finalizeRepositoryVoiceAudio(
+          workspaceId,
+          invocation.command.payload.captureId,
+        );
+      return output;
     } catch {
       return response(invocation.requestId, "retryable", {
         diagnosticCode: "mcp.runtime_unavailable",
@@ -1131,6 +1148,97 @@ export class HubRemoteMcpService {
     );
   }
 
+  private async finalizeRepositoryVoiceAudio(
+    workspaceId: WorkspaceId,
+    captureId: ReturnType<typeof CaptureIdSchema.parse>,
+  ): Promise<void> {
+    await this.repository.withWorkspaceLock(workspaceId, async (state) => {
+      const store = new InMemoryReferenceStore(
+        undefined,
+        mergedSnapshot(state),
+      );
+      const before = store.read((view) => view.getCapture(captureId));
+      await this.finalizeVoiceAudio(store, captureId);
+      const after = store.read((view) => view.getCapture(captureId));
+      if (before?.version === after?.version) return;
+      persistSnapshot(state, store.snapshot());
+      state.checkpoint += 1n;
+    });
+  }
+
+  private async finalizeVoiceAudio(
+    store: InMemoryReferenceStore,
+    captureId: ReturnType<typeof CaptureIdSchema.parse>,
+  ): Promise<void> {
+    const capture = store.read((view) => view.getCapture(captureId));
+    if (
+      capture?.processingState !== "transcript_ready" ||
+      capture.audioState !== "deletion_pending" ||
+      capture.original.kind !== "voice_note"
+    )
+      return;
+    const digest = capture.original.payload.contentSha256;
+    const snapshot = store.snapshot();
+    const sharedReadableReference = snapshot.captures.some((candidate) => {
+      if (
+        candidate.id === capture.id ||
+        !isCustodiedCaptureOriginal(candidate.original) ||
+        candidate.original.payload.contentSha256 !== digest
+      )
+        return false;
+      return !(
+        candidate.original.kind === "voice_note" &&
+        candidate.processingState === "transcript_ready" &&
+        candidate.audioState !== "retained"
+      );
+    });
+    const deletionVerified =
+      sharedReadableReference ||
+      (await this.options.deleteCapturePayload?.({
+        workspaceId: capture.workspaceId,
+        original: capture.original,
+      })) === true;
+    if (!deletionVerified) return;
+
+    const workspace = snapshot.workspaces.find(
+      (candidate) => candidate.id === capture.workspaceId,
+    );
+    const owner = snapshot.memberships.find(
+      (membership) =>
+        membership.workspaceId === capture.workspaceId &&
+        membership.status !== "revoked" &&
+        membership.role === "owner",
+    );
+    if (workspace === undefined || owner === undefined) return;
+    const internalContext = ExecutionContextSchema.parse({
+      principalId: owner.principalId,
+      principalKind: "human",
+      credentialId: CredentialIdSchema.parse(randomUUID()),
+      grantId: GrantIdSchema.parse(randomUUID()),
+      policyVersion: workspace.policyVersion,
+      workspaceId: capture.workspaceId,
+      spaceScope: [capture.spaceId],
+      capabilityScope: ["capture.audioDeleteConfirm"],
+      origin: "maintenance",
+    });
+    const command = CommandEnvelopeSchema.parse({
+      contractVersion: 1,
+      commandName: "capture.confirmAudioDeletion",
+      commandId: CommandIdSchema.parse(randomUUID()),
+      workspaceId: capture.workspaceId,
+      idempotencyKey: `voice-audio-delete:${capture.id}:v${capture.version}`,
+      expectedVersions: { [capture.id]: capture.version },
+      correlationId: CorrelationIdSchema.parse(randomUUID()),
+      payload: {
+        captureId: capture.id,
+        audioContentSha256: digest,
+      },
+    });
+    const service = this.kernel(store, internalContext);
+    service.ids.begin(command.commandId);
+    service.kernel.execute(internalContext, command);
+  }
+
   private async readPayloadChunk(
     store: InMemoryReferenceStore,
     context: ExecutionContext,
@@ -1146,7 +1254,9 @@ export class HubRemoteMcpService {
       capture.workspaceId !== context.workspaceId ||
       !context.spaceScope.includes(capture.spaceId) ||
       (capture.original.kind === "voice_note" &&
-        !context.capabilityScope.includes("capture.audioRead")) ||
+        (!context.capabilityScope.includes("capture.audioRead") ||
+          (capture.processingState === "transcript_ready" &&
+            capture.audioState !== "retained"))) ||
       !isCustodiedCaptureOriginal(capture.original) ||
       offset >= capture.original.payload.byteLength
     )

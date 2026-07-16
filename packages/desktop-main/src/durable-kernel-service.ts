@@ -43,6 +43,7 @@ const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "capture.submit",
   "capture.process",
   "capture.audioRead",
+  "capture.transcriptWrite",
   "capture.submitText",
   "capture.routeAsTask",
   "capture.history",

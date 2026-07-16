@@ -42,6 +42,7 @@ export const createLocalWorkspace = (
     rootSpaceId: input.rootSpaceId,
     defaultTaskStatusId: input.defaultTaskStatusId,
     policyVersion: 1,
+    voiceAudioRetentionPolicy: "delete_after_transcript",
     version: 1,
     createdAt: input.occurredAt,
     updatedAt: input.occurredAt,
@@ -78,6 +79,17 @@ export const renameWorkspace = (
 ): Workspace => ({
   ...workspace,
   name,
+  version: workspace.version + 1,
+  updatedAt: occurredAt,
+});
+
+export const setWorkspaceVoiceAudioRetention = (
+  workspace: Workspace,
+  voiceAudioRetentionPolicy: "delete_after_transcript" | "retain",
+  occurredAt: string,
+): Workspace => ({
+  ...workspace,
+  voiceAudioRetentionPolicy,
   version: workspace.version + 1,
   updatedAt: occurredAt,
 });

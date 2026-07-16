@@ -1,4 +1,5 @@
 import type {
+  AgentRunId,
   CaptureId,
   CaptureOriginal,
   KnowledgeSourceId,
@@ -13,6 +14,7 @@ import { isCustodiedCaptureOriginal } from "@constellation/contracts";
 import type {
   PendingCapture,
   AwaitingTranscriptCapture,
+  TranscriptReadyCapture,
   RoutedKnowledgeSourceCapture,
   RoutedTaskCapture,
   KnowledgeSource,
@@ -80,6 +82,60 @@ export const awaitVoiceTranscript = (input: {
   ...input.capture,
   processingState: "awaiting_transcript",
   awaitingTranscriptSince: input.occurredAt,
+  version: input.capture.version + 1,
+});
+
+export const writeVoiceTranscript = (input: {
+  readonly capture: AwaitingTranscriptCapture;
+  readonly transcript: string;
+  readonly writtenAt: string;
+  readonly writtenBy: PrincipalId;
+  readonly writtenByKind: "human" | "integration" | "system" | "agent";
+  readonly agentRunId?: AgentRunId;
+  readonly hostRunId?: string;
+}): TranscriptReadyCapture => {
+  if (input.capture.original.kind !== "voice_note")
+    throw new Error("A transcript requires a voice-note Capture.");
+  return {
+    ...input.capture,
+    processingState: "transcript_ready",
+    transcript: {
+      text: input.transcript,
+      audioContentSha256: input.capture.original.payload.contentSha256,
+      writtenAt: input.writtenAt,
+      writtenBy: input.writtenBy,
+      writtenByKind: input.writtenByKind,
+      ...(input.agentRunId === undefined
+        ? {}
+        : { agentRunId: input.agentRunId }),
+      ...(input.hostRunId === undefined ? {} : { hostRunId: input.hostRunId }),
+    },
+    audioState:
+      input.capture.original.retentionPolicy === "retain"
+        ? "retained"
+        : "deletion_pending",
+    audioStateChangedAt: input.writtenAt,
+    version: input.capture.version + 1,
+  };
+};
+
+export const requestVoiceAudioDeletion = (input: {
+  readonly capture: TranscriptReadyCapture;
+  readonly occurredAt: string;
+}): TranscriptReadyCapture => ({
+  ...input.capture,
+  audioState: "deletion_pending",
+  audioStateChangedAt: input.occurredAt,
+  version: input.capture.version + 1,
+});
+
+export const confirmVoiceAudioDeletion = (input: {
+  readonly capture: TranscriptReadyCapture;
+  readonly occurredAt: string;
+}): TranscriptReadyCapture => ({
+  ...input.capture,
+  audioState: "deleted",
+  audioStateChangedAt: input.occurredAt,
   version: input.capture.version + 1,
 });
 

@@ -41,6 +41,7 @@ export interface Workspace {
   readonly rootSpaceId: SpaceId;
   readonly defaultTaskStatusId: TaskStatusId;
   readonly policyVersion?: number;
+  readonly voiceAudioRetentionPolicy?: "delete_after_transcript" | "retain";
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -198,6 +199,23 @@ export type AwaitingTranscriptCapture = CaptureBase & {
   readonly awaitingTranscriptSince: string;
 };
 
+export interface VoiceTranscript {
+  readonly text: string;
+  readonly audioContentSha256: string;
+  readonly writtenAt: string;
+  readonly writtenBy: PrincipalId;
+  readonly writtenByKind: "human" | "integration" | "system" | "agent";
+  readonly agentRunId?: AgentRunId;
+  readonly hostRunId?: string;
+}
+
+export type TranscriptReadyCapture = CaptureBase & {
+  readonly processingState: "transcript_ready";
+  readonly transcript: VoiceTranscript;
+  readonly audioState: "deletion_pending" | "retained" | "deleted";
+  readonly audioStateChangedAt: string;
+};
+
 export type UnclassifiedCapture = CaptureBase & {
   readonly processingState: "unclassified";
   readonly unclassifiedAt: string;
@@ -208,6 +226,7 @@ export type UnclassifiedCapture = CaptureBase & {
 export type Capture =
   | PendingCapture
   | AwaitingTranscriptCapture
+  | TranscriptReadyCapture
   | RoutedTaskCapture
   | RoutedKnowledgeSourceCapture
   | ReviewCapture
@@ -717,7 +736,8 @@ export type DomainEvent = { readonly commandId: CommandId } & (
     }
   | {
       readonly id: EventId;
-      readonly type: "workspace.renamed";
+      readonly type:
+        "workspace.renamed" | "workspace.voice_audio_retention_changed";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: WorkspaceId;
@@ -807,6 +827,18 @@ export type DomainEvent = { readonly commandId: CommandId } & (
   | {
       readonly id: EventId;
       readonly type: "capture.awaiting_transcript";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: CaptureId;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type:
+        | "capture.transcript_written"
+        | "capture.audio_deletion_requested"
+        | "capture.audio_deleted";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: CaptureId;

@@ -32,6 +32,7 @@ import { CaptureReviewReasonSchema, ContractVersionSchema } from "./command.js";
 export const DiagnosticCodeSchema = z.enum([
   "workspace.created",
   "workspace.renamed",
+  "workspace.voice_audio_retention_changed",
   "workspace.member_added",
   "workspace.member_access_changed",
   "workspace.member_revoked",
@@ -44,6 +45,9 @@ export const DiagnosticCodeSchema = z.enum([
   "capture.routed_as_knowledge_source",
   "capture.needs_review",
   "capture.awaiting_transcript",
+  "capture.transcript_written",
+  "capture.audio_deletion_requested",
+  "capture.audio_deleted",
   "capture.exception_resolved",
   "capture.routed_as_task",
   "project.created",
@@ -141,6 +145,15 @@ export const WorkspaceRenamedProjectionSchema = z
   })
   .strict();
 
+export const WorkspaceVoiceAudioRetentionChangedProjectionSchema = z
+  .object({
+    kind: z.literal("workspace.voice_audio_retention_changed"),
+    workspaceId: WorkspaceIdSchema,
+    retentionPolicy: z.enum(["delete_after_transcript", "retain"]),
+    version: z.int().positive(),
+  })
+  .strict();
+
 const MembershipProjectionFields = {
   membershipId: MembershipIdSchema,
   principalId: z.uuid(),
@@ -223,6 +236,31 @@ export const CaptureNeedsReviewProjectionSchema = z
 export const CaptureAwaitingTranscriptProjectionSchema = z
   .object({
     kind: z.literal("capture.awaiting_transcript"),
+    captureId: CaptureIdSchema,
+    captureVersion: z.int().positive(),
+  })
+  .strict();
+
+export const CaptureTranscriptWrittenProjectionSchema = z
+  .object({
+    kind: z.literal("capture.transcript_written"),
+    captureId: CaptureIdSchema,
+    captureVersion: z.int().positive(),
+    audioState: z.enum(["deletion_pending", "retained"]),
+  })
+  .strict();
+
+export const CaptureAudioDeletionRequestedProjectionSchema = z
+  .object({
+    kind: z.literal("capture.audio_deletion_requested"),
+    captureId: CaptureIdSchema,
+    captureVersion: z.int().positive(),
+  })
+  .strict();
+
+export const CaptureAudioDeletedProjectionSchema = z
+  .object({
+    kind: z.literal("capture.audio_deleted"),
     captureId: CaptureIdSchema,
     captureVersion: z.int().positive(),
   })
@@ -572,6 +610,12 @@ const WorkspaceRenamedSuccessOutcomeSchema =
     diagnosticCode: z.literal("workspace.renamed"),
     projection: WorkspaceRenamedProjectionSchema,
   }).strict();
+const WorkspaceVoiceAudioRetentionChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("workspace.voice_audio_retention_changed"),
+    projection: WorkspaceVoiceAudioRetentionChangedProjectionSchema,
+  }).strict();
 
 const WorkspaceMemberAddedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
@@ -626,6 +670,27 @@ const CaptureAwaitingTranscriptSuccessOutcomeSchema =
     outcome: z.literal("success"),
     diagnosticCode: z.literal("capture.awaiting_transcript"),
     projection: CaptureAwaitingTranscriptProjectionSchema,
+  }).strict();
+
+const CaptureTranscriptWrittenSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("capture.transcript_written"),
+    projection: CaptureTranscriptWrittenProjectionSchema,
+  }).strict();
+
+const CaptureAudioDeletionRequestedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("capture.audio_deletion_requested"),
+    projection: CaptureAudioDeletionRequestedProjectionSchema,
+  }).strict();
+
+const CaptureAudioDeletedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("capture.audio_deleted"),
+    projection: CaptureAudioDeletedProjectionSchema,
   }).strict();
 
 const CaptureExceptionResolvedSuccessOutcomeSchema =
@@ -820,6 +885,7 @@ const AgentHandoffSubmittedSuccessOutcomeSchema =
 export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   WorkspaceCreatedSuccessOutcomeSchema,
   WorkspaceRenamedSuccessOutcomeSchema,
+  WorkspaceVoiceAudioRetentionChangedSuccessOutcomeSchema,
   WorkspaceMemberAddedSuccessOutcomeSchema,
   WorkspaceMemberAccessChangedSuccessOutcomeSchema,
   WorkspaceMemberRevokedSuccessOutcomeSchema,
@@ -828,6 +894,9 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   CaptureRoutedAsKnowledgeSourceSuccessOutcomeSchema,
   CaptureNeedsReviewSuccessOutcomeSchema,
   CaptureAwaitingTranscriptSuccessOutcomeSchema,
+  CaptureTranscriptWrittenSuccessOutcomeSchema,
+  CaptureAudioDeletionRequestedSuccessOutcomeSchema,
+  CaptureAudioDeletedSuccessOutcomeSchema,
   CaptureExceptionResolvedSuccessOutcomeSchema,
   ProjectCreatedSuccessOutcomeSchema,
   DocumentCreatedSuccessOutcomeSchema,

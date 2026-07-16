@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import type {
+  CaptureId,
   CommandId,
   PrincipalId,
   ProjectId,
@@ -704,9 +705,13 @@ export const ProjectsSurface = ({
 export const HistorySurface = ({
   snapshot,
   onUndo,
+  onDeleteVoiceAudio,
+  busyCaptureId,
 }: {
   readonly snapshot: DesktopSnapshot;
   readonly onUndo: (targetCommandId: CommandId) => void;
+  readonly onDeleteVoiceAudio: (captureId: CaptureId, version: number) => void;
+  readonly busyCaptureId: CaptureId | undefined;
 }) => {
   const activity =
     snapshot.activity.kind === "ready" ? snapshot.activity.data.items : [];
@@ -786,11 +791,32 @@ export const HistorySurface = ({
                               : capture.processingState ===
                                   "awaiting_transcript"
                                 ? "Oczekuje na transkrypcję agenta"
-                                : capture.processingState === "unclassified"
-                                  ? "Zachowano bez klasyfikacji"
-                                  : "Oczekuje na przetworzenie"}
+                                : capture.processingState === "transcript_ready"
+                                  ? capture.audioState === "retained"
+                                    ? "Transkrypcja gotowa · audio zachowane"
+                                    : capture.audioState === "deleted"
+                                      ? "Transkrypcja gotowa · audio usunięte"
+                                      : "Transkrypcja gotowa · usuwanie audio"
+                                  : capture.processingState === "unclassified"
+                                    ? "Zachowano bez klasyfikacji"
+                                    : "Oczekuje na przetworzenie"}
                       </strong>
-                      <span>{capture.originalText}</span>
+                      <span>
+                        {capture.processingState === "transcript_ready"
+                          ? capture.transcript.text
+                          : capture.originalText}
+                      </span>
+                      {capture.processingState === "transcript_ready" && (
+                        <small>
+                          Zapis: {capture.transcript.writtenByKind} ·{" "}
+                          {new Date(
+                            capture.transcript.writtenAt,
+                          ).toLocaleString("pl-PL")}
+                          {capture.transcript.hostRunId
+                            ? " · przebieg " + capture.transcript.hostRunId
+                            : ""}
+                        </small>
+                      )}
                     </div>
                   </li>
                 </ol>
@@ -809,6 +835,20 @@ export const HistorySurface = ({
                   >
                     Podgląd cofnięcia
                   </button>
+                  {capture.processingState === "transcript_ready" &&
+                    capture.audioState === "retained" && (
+                      <button
+                        className="secondary-button"
+                        disabled={busyCaptureId === capture.id}
+                        onClick={() =>
+                          onDeleteVoiceAudio(capture.id, capture.version)
+                        }
+                      >
+                        {busyCaptureId === capture.id
+                          ? "Usuwanie…"
+                          : "Usuń zachowane audio"}
+                      </button>
+                    )}
                 </footer>
               </article>
             );
@@ -824,6 +864,7 @@ const activityLabels: Record<
   string
 > = {
   capture_routed: "Capture przekształcono w zadanie",
+  capture_transcript_ready: "Zapisano transkrypcję notatki głosowej",
   project_created: "Utworzono projekt",
   project_outcome_changed: "Zmieniono zamierzony wynik projektu",
   task_completed: "Ukończono zadanie",

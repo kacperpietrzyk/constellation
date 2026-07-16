@@ -158,6 +158,45 @@ export class HubAttachmentService {
     }
   }
 
+  public async deleteCapturePayload(input: {
+    readonly workspaceId: WorkspaceId;
+    readonly original: CaptureOriginal;
+  }): Promise<boolean> {
+    if (!isCustodiedCaptureOriginal(input.original)) return false;
+    const digest = input.original.payload.contentSha256;
+    const registered = await this.pool.query(
+      "SELECT storage_key FROM constellation_hub_attachments WHERE workspace_id = $1 AND content_sha256 = $2",
+      [input.workspaceId, digest],
+    );
+    if (registered.rowCount === 0) return true;
+    const storageKey = (
+      registered.rows[0] as Record<string, unknown> | undefined
+    )?.storage_key;
+    if (typeof storageKey !== "string") return false;
+    const target = path.join(this.root, storageKey);
+    await rm(target, { force: true });
+    if (await exists(target)) return false;
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        "DELETE FROM constellation_hub_attachments WHERE workspace_id = $1 AND content_sha256 = $2",
+        [input.workspaceId, digest],
+      );
+      await client.query(
+        "DELETE FROM constellation_hub_attachment_uploads WHERE workspace_id = $1 AND content_sha256 = $2",
+        [input.workspaceId, digest],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+    return !(await this.isAvailable(input.workspaceId, input.original));
+  }
+
   public async begin(
     credential: string,
     raw: HubAttachmentBeginRequest,
