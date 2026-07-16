@@ -613,12 +613,17 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           );
         }
 
-        await client.evaluate(`(() => {
+        await client.send("Page.bringToFront");
+        const captureOpener = await client.evaluate(`(() => {
           const trigger = document.querySelector(".sidebar-capture");
           trigger.focus();
+          const focused = document.activeElement === trigger;
           trigger.click();
-          return true;
+          return { focused };
         })()`);
+        if (!captureOpener.focused) {
+          throw new Error("PACKAGED_ALPHA_CAPTURE_OPENER_NOT_FOCUSABLE");
+        }
         await waitFor(
           client,
           `document.querySelector("dialog.capture-backdrop[open]") !== null`,
