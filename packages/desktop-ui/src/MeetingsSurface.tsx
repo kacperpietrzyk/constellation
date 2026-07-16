@@ -6,6 +6,7 @@ import type {
   MeetingLoopSurface,
 } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
+import { createPortal } from "react-dom";
 
 import { MeetingMarkdown, toPlainMeetingMarkdown } from "./MeetingMarkdown.js";
 
@@ -218,8 +219,12 @@ const CalendarConsentDialog = ({
 
 export const MeetingsSurface = ({
   client,
+  inspectorHost,
+  onInspectorOpen,
 }: {
   readonly client: ConstellationRendererClient;
+  readonly inspectorHost: HTMLElement | null;
+  readonly onInspectorOpen: () => void;
 }) => {
   const [state, setState] = useState<MeetingState>({ kind: "loading" });
   const [preview, setPreview] = useState<CalendarWritePreview>();
@@ -611,13 +616,7 @@ export const MeetingsSurface = ({
                           setSelectedMeetingId(meeting.id);
                           setVisibleTranscriptMeetingId(undefined);
                           setNewItemMeetingId(undefined);
-                          if (window.matchMedia("(max-width: 68rem)").matches) {
-                            requestAnimationFrame(() =>
-                              document
-                                .querySelector("#meeting-result-detail")
-                                ?.scrollIntoView({ block: "start" }),
-                            );
-                          }
+                          onInspectorOpen();
                         }}
                       >
                         <span className="meeting-result-row-heading">
@@ -646,293 +645,305 @@ export const MeetingsSurface = ({
                 })}
               </ol>
 
-              <article
-                className="meeting-result-detail"
-                id="meeting-result-detail"
-                aria-labelledby="meeting-result-detail-title"
-              >
-                <header className="meeting-result-detail-header">
-                  <div>
-                    <p className="eyebrow">Wynik Jamie</p>
-                    <h3 id="meeting-result-detail-title">
-                      {selectedMeeting.title ?? "Spotkanie bez tytułu"}
-                    </h3>
-                    <p>
-                      <time dateTime={selectedMeeting.startedAt}>
-                        {formatTime(selectedMeeting.startedAt)}
-                      </time>
-                      <span aria-hidden="true"> · </span>
-                      {selectedMeeting.participants.length} uczestników
-                    </p>
-                  </div>
-                  <strong
-                    className={`meeting-health meeting-health--${selectedMeeting.triage}`}
+              {inspectorHost &&
+                createPortal(
+                  <article
+                    className="meeting-result-detail"
+                    id="meeting-result-detail"
+                    aria-labelledby="meeting-result-detail-title"
                   >
-                    {healthLabel(selectedMeeting)}
-                  </strong>
-                </header>
-
-                <section
-                  className="meeting-result-summary"
-                  aria-labelledby="meeting-result-summary-title"
-                >
-                  <h4 id="meeting-result-summary-title">Podsumowanie</h4>
-                  {selectedMeeting.summaryMarkdown ? (
-                    <MeetingMarkdown value={selectedMeeting.summaryMarkdown} />
-                  ) : (
-                    <p className="meeting-result-empty-copy">
-                      Jamie nie zwrócił podsumowania dla tego spotkania.
-                    </p>
-                  )}
-                </section>
-
-                {selectedMeeting.transcriptMarkdown && (
-                  <section
-                    className="meeting-result-transcript"
-                    aria-labelledby="meeting-result-transcript-title"
-                  >
-                    <header>
+                    <header className="meeting-result-detail-header">
                       <div>
-                        <h4 id="meeting-result-transcript-title">
-                          Transkrypcja
-                        </h4>
-                        <p>Oryginalna treść zaimportowana z Jamie.</p>
+                        <p className="eyebrow">Wynik Jamie</p>
+                        <h3 id="meeting-result-detail-title">
+                          {selectedMeeting.title ?? "Spotkanie bez tytułu"}
+                        </h3>
+                        <p>
+                          <time dateTime={selectedMeeting.startedAt}>
+                            {formatTime(selectedMeeting.startedAt)}
+                          </time>
+                          <span aria-hidden="true"> · </span>
+                          {selectedMeeting.participants.length} uczestników
+                        </p>
                       </div>
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        aria-expanded={
-                          visibleTranscriptMeetingId === selectedMeeting.id
-                        }
-                        aria-controls="meeting-result-transcript-content"
-                        onClick={() =>
-                          setVisibleTranscriptMeetingId((current) =>
-                            current === selectedMeeting.id
-                              ? undefined
-                              : selectedMeeting.id,
-                          )
-                        }
+                      <strong
+                        className={`meeting-health meeting-health--${selectedMeeting.triage}`}
                       >
-                        {visibleTranscriptMeetingId === selectedMeeting.id
-                          ? "Ukryj transkrypcję"
-                          : "Pokaż transkrypcję"}
-                      </button>
+                        {healthLabel(selectedMeeting)}
+                      </strong>
                     </header>
-                    {visibleTranscriptMeetingId === selectedMeeting.id && (
-                      <div id="meeting-result-transcript-content">
-                        <MeetingMarkdown
-                          value={selectedMeeting.transcriptMarkdown}
-                        />
-                      </div>
-                    )}
-                  </section>
-                )}
 
-                <section
-                  className="meeting-result-work"
-                  aria-labelledby="meeting-result-work-title"
-                >
-                  <header>
-                    <div>
-                      <h4 id="meeting-result-work-title">Dalsze działania</h4>
-                      <p>
-                        Każdy zapis ma własny stan i pozostaje powiązany ze
-                        spotkaniem.
-                      </p>
-                    </div>
-                    <span>{selectedMeeting.workItems.length}</span>
-                  </header>
-                  {selectedMeeting.workItems.length === 0 ? (
-                    <p className="meeting-result-empty-copy">
-                      W tym wyniku nie ma jeszcze dalszych działań.
-                    </p>
-                  ) : (
-                    <ul className="meeting-work-items">
-                      {selectedMeeting.workItems.map((item) => (
-                        <li className="meeting-work-item" key={item.id}>
-                          <div className="meeting-work-item-copy">
-                            <span>{workItemKindLabel(item)}</span>
-                            <strong>{item.title}</strong>
-                            <small>{workItemStateLabel(item)}</small>
+                    <section
+                      className="meeting-result-summary"
+                      aria-labelledby="meeting-result-summary-title"
+                    >
+                      <h4 id="meeting-result-summary-title">Podsumowanie</h4>
+                      {selectedMeeting.summaryMarkdown ? (
+                        <MeetingMarkdown
+                          value={selectedMeeting.summaryMarkdown}
+                        />
+                      ) : (
+                        <p className="meeting-result-empty-copy">
+                          Jamie nie zwrócił podsumowania dla tego spotkania.
+                        </p>
+                      )}
+                    </section>
+
+                    {selectedMeeting.transcriptMarkdown && (
+                      <section
+                        className="meeting-result-transcript"
+                        aria-labelledby="meeting-result-transcript-title"
+                      >
+                        <header>
+                          <div>
+                            <h4 id="meeting-result-transcript-title">
+                              Transkrypcja
+                            </h4>
+                            <p>Oryginalna treść zaimportowana z Jamie.</p>
                           </div>
-                          <div className="meeting-item-actions">
-                            <button
-                              className="quiet-button"
-                              disabled={busyItemId === item.id}
-                              onClick={() => {
-                                setBusyItemId(item.id);
-                                const nextState =
-                                  item.state === "open" ? "completed" : "open";
-                                void client
-                                  .editMeetingWorkItem({
-                                    meetingId: selectedMeeting.id,
-                                    workItemId: item.id,
-                                    expectedVersion: item.version,
-                                    title: item.title,
-                                    state: nextState,
-                                  })
-                                  .then((changed) => {
-                                    setBusyItemId(undefined);
-                                    if (changed) load();
-                                    else
-                                      setNotice(
-                                        "Ten wynik zmienił się w międzyczasie. Odświeżono bez nadpisywania nowszej wersji.",
-                                      );
-                                  });
-                              }}
-                            >
-                              {item.state === "open"
-                                ? "Ukończ"
-                                : item.state === "conflicted"
-                                  ? "Zachowaj lokalne"
-                                  : "Przywróć"}
-                            </button>
-                            {item.state === "conflicted" &&
-                              item.sourceValueInConflict && (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            aria-expanded={
+                              visibleTranscriptMeetingId === selectedMeeting.id
+                            }
+                            aria-controls="meeting-result-transcript-content"
+                            onClick={() =>
+                              setVisibleTranscriptMeetingId((current) =>
+                                current === selectedMeeting.id
+                                  ? undefined
+                                  : selectedMeeting.id,
+                              )
+                            }
+                          >
+                            {visibleTranscriptMeetingId === selectedMeeting.id
+                              ? "Ukryj transkrypcję"
+                              : "Pokaż transkrypcję"}
+                          </button>
+                        </header>
+                        {visibleTranscriptMeetingId === selectedMeeting.id && (
+                          <div id="meeting-result-transcript-content">
+                            <MeetingMarkdown
+                              value={selectedMeeting.transcriptMarkdown}
+                            />
+                          </div>
+                        )}
+                      </section>
+                    )}
+
+                    <section
+                      className="meeting-result-work"
+                      aria-labelledby="meeting-result-work-title"
+                    >
+                      <header>
+                        <div>
+                          <h4 id="meeting-result-work-title">
+                            Dalsze działania
+                          </h4>
+                          <p>
+                            Każdy zapis ma własny stan i pozostaje powiązany ze
+                            spotkaniem.
+                          </p>
+                        </div>
+                        <span>{selectedMeeting.workItems.length}</span>
+                      </header>
+                      {selectedMeeting.workItems.length === 0 ? (
+                        <p className="meeting-result-empty-copy">
+                          W tym wyniku nie ma jeszcze dalszych działań.
+                        </p>
+                      ) : (
+                        <ul className="meeting-work-items">
+                          {selectedMeeting.workItems.map((item) => (
+                            <li className="meeting-work-item" key={item.id}>
+                              <div className="meeting-work-item-copy">
+                                <span>{workItemKindLabel(item)}</span>
+                                <strong>{item.title}</strong>
+                                <small>{workItemStateLabel(item)}</small>
+                              </div>
+                              <div className="meeting-item-actions">
                                 <button
                                   className="quiet-button"
                                   disabled={busyItemId === item.id}
                                   onClick={() => {
                                     setBusyItemId(item.id);
+                                    const nextState =
+                                      item.state === "open"
+                                        ? "completed"
+                                        : "open";
                                     void client
                                       .editMeetingWorkItem({
                                         meetingId: selectedMeeting.id,
                                         workItemId: item.id,
                                         expectedVersion: item.version,
-                                        title: item.sourceValueInConflict!,
-                                        state: "open",
+                                        title: item.title,
+                                        state: nextState,
                                       })
                                       .then((changed) => {
                                         setBusyItemId(undefined);
                                         if (changed) load();
                                         else
                                           setNotice(
-                                            "Nie rozstrzygnięto konfliktu, bo istnieje nowsza wersja.",
+                                            "Ten wynik zmienił się w międzyczasie. Odświeżono bez nadpisywania nowszej wersji.",
                                           );
                                       });
                                   }}
                                 >
-                                  Przyjmij Jamie
+                                  {item.state === "open"
+                                    ? "Ukończ"
+                                    : item.state === "conflicted"
+                                      ? "Zachowaj lokalne"
+                                      : "Przywróć"}
                                 </button>
-                              )}
-                            {item.state === "open" && (
-                              <button
-                                className="quiet-button"
-                                disabled={busyItemId === item.id}
-                                onClick={() => {
-                                  setBusyItemId(item.id);
-                                  void client
-                                    .editMeetingWorkItem({
-                                      meetingId: selectedMeeting.id,
-                                      workItemId: item.id,
-                                      expectedVersion: item.version,
-                                      title: item.title,
-                                      state: "dismissed",
-                                    })
-                                    .then((changed) => {
-                                      setBusyItemId(undefined);
-                                      if (changed) load();
-                                      else
-                                        setNotice(
-                                          "Nie odrzucono wyniku, bo istnieje nowsza wersja.",
-                                        );
-                                    });
-                                }}
-                              >
-                                Odrzuć
-                              </button>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
+                                {item.state === "conflicted" &&
+                                  item.sourceValueInConflict && (
+                                    <button
+                                      className="quiet-button"
+                                      disabled={busyItemId === item.id}
+                                      onClick={() => {
+                                        setBusyItemId(item.id);
+                                        void client
+                                          .editMeetingWorkItem({
+                                            meetingId: selectedMeeting.id,
+                                            workItemId: item.id,
+                                            expectedVersion: item.version,
+                                            title: item.sourceValueInConflict!,
+                                            state: "open",
+                                          })
+                                          .then((changed) => {
+                                            setBusyItemId(undefined);
+                                            if (changed) load();
+                                            else
+                                              setNotice(
+                                                "Nie rozstrzygnięto konfliktu, bo istnieje nowsza wersja.",
+                                              );
+                                          });
+                                      }}
+                                    >
+                                      Przyjmij Jamie
+                                    </button>
+                                  )}
+                                {item.state === "open" && (
+                                  <button
+                                    className="quiet-button"
+                                    disabled={busyItemId === item.id}
+                                    onClick={() => {
+                                      setBusyItemId(item.id);
+                                      void client
+                                        .editMeetingWorkItem({
+                                          meetingId: selectedMeeting.id,
+                                          workItemId: item.id,
+                                          expectedVersion: item.version,
+                                          title: item.title,
+                                          state: "dismissed",
+                                        })
+                                        .then((changed) => {
+                                          setBusyItemId(undefined);
+                                          if (changed) load();
+                                          else
+                                            setNotice(
+                                              "Nie odrzucono wyniku, bo istnieje nowsza wersja.",
+                                            );
+                                        });
+                                    }}
+                                  >
+                                    Odrzuć
+                                  </button>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
 
-                {newItemMeetingId === selectedMeeting.id ? (
-                  <form
-                    className="meeting-add-item"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      setJamieBusy(true);
-                      void client
-                        .addMeetingWorkItem({
-                          meetingId: selectedMeeting.id,
-                          requestId: crypto.randomUUID(),
-                          kind: newItemKind,
-                          title: newItemTitle,
-                        })
-                        .then((created) => {
-                          setJamieBusy(false);
-                          if (created) {
-                            setNewItemTitle("");
-                            setNewItemMeetingId(undefined);
-                            load();
-                          } else
-                            setNotice(
-                              "Nie dodano działania, bo spotkanie zmieniło się w międzyczasie.",
-                            );
-                        });
-                    }}
-                  >
-                    <label>
-                      Typ
-                      <select
-                        value={newItemKind}
-                        onChange={(event) =>
-                          setNewItemKind(
-                            event.target.value as typeof newItemKind,
-                          )
-                        }
+                    {newItemMeetingId === selectedMeeting.id ? (
+                      <form
+                        className="meeting-add-item"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          setJamieBusy(true);
+                          void client
+                            .addMeetingWorkItem({
+                              meetingId: selectedMeeting.id,
+                              requestId: crypto.randomUUID(),
+                              kind: newItemKind,
+                              title: newItemTitle,
+                            })
+                            .then((created) => {
+                              setJamieBusy(false);
+                              if (created) {
+                                setNewItemTitle("");
+                                setNewItemMeetingId(undefined);
+                                load();
+                              } else
+                                setNotice(
+                                  "Nie dodano działania, bo spotkanie zmieniło się w międzyczasie.",
+                                );
+                            });
+                        }}
                       >
-                        <option value="task">Zadanie</option>
-                        <option value="waiting">Oczekiwanie</option>
-                        <option value="decision">Decyzja</option>
-                        <option value="note">Notatka</option>
-                        <option value="follow_up">Dalszy kontakt</option>
-                      </select>
-                    </label>
-                    <label>
-                      Treść
-                      <input
-                        value={newItemTitle}
-                        onChange={(event) =>
-                          setNewItemTitle(event.target.value)
-                        }
-                        maxLength={4_000}
-                        required
-                        autoFocus
-                      />
-                    </label>
-                    <button
-                      className="primary-button"
-                      disabled={jamieBusy || newItemTitle.trim().length === 0}
-                    >
-                      Dodaj niezależnie
-                    </button>
-                    <button
-                      type="button"
-                      className="quiet-button"
-                      onClick={() => setNewItemMeetingId(undefined)}
-                    >
-                      Anuluj
-                    </button>
-                  </form>
-                ) : (
-                  <button
-                    className="secondary-button meeting-add-trigger"
-                    onClick={() => setNewItemMeetingId(selectedMeeting.id)}
-                  >
-                    Dodaj niezależny zapis
-                  </button>
+                        <label>
+                          Typ
+                          <select
+                            value={newItemKind}
+                            onChange={(event) =>
+                              setNewItemKind(
+                                event.target.value as typeof newItemKind,
+                              )
+                            }
+                          >
+                            <option value="task">Zadanie</option>
+                            <option value="waiting">Oczekiwanie</option>
+                            <option value="decision">Decyzja</option>
+                            <option value="note">Notatka</option>
+                            <option value="follow_up">Dalszy kontakt</option>
+                          </select>
+                        </label>
+                        <label>
+                          Treść
+                          <input
+                            value={newItemTitle}
+                            onChange={(event) =>
+                              setNewItemTitle(event.target.value)
+                            }
+                            maxLength={4_000}
+                            required
+                            autoFocus
+                          />
+                        </label>
+                        <button
+                          className="primary-button"
+                          disabled={
+                            jamieBusy || newItemTitle.trim().length === 0
+                          }
+                        >
+                          Dodaj niezależnie
+                        </button>
+                        <button
+                          type="button"
+                          className="quiet-button"
+                          onClick={() => setNewItemMeetingId(undefined)}
+                        >
+                          Anuluj
+                        </button>
+                      </form>
+                    ) : (
+                      <button
+                        className="secondary-button meeting-add-trigger"
+                        onClick={() => setNewItemMeetingId(selectedMeeting.id)}
+                      >
+                        Dodaj niezależny zapis
+                      </button>
+                    )}
+                    {selectedMeeting.missingComponents.length > 0 && (
+                      <p className="inline-warning">
+                        Brakuje trwałych identyfikatorów zadań Jamie. Ponowienie
+                        uzupełni je bez duplikowania spotkania.
+                      </p>
+                    )}
+                  </article>,
+                  inspectorHost,
                 )}
-                {selectedMeeting.missingComponents.length > 0 && (
-                  <p className="inline-warning">
-                    Brakuje trwałych identyfikatorów zadań Jamie. Ponowienie
-                    uzupełni je bez duplikowania spotkania.
-                  </p>
-                )}
-              </article>
             </div>
           ) : null}
         </section>

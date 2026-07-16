@@ -398,6 +398,9 @@ export const RealApp = ({
   const [capturing, setCapturing] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<TaskId>();
   const [selectedProjectId, setSelectedProjectId] = useState<ProjectId>();
+  const [meetingInspectorHost, setMeetingInspectorHost] =
+    useState<HTMLElement | null>(null);
+  const [meetingInspectorOpen, setMeetingInspectorOpen] = useState(false);
   const [projectOverview, setProjectOverview] =
     useState<ProjectOverviewProjection>();
   const [busyTaskId, setBusyTaskId] = useState<TaskId>();
@@ -463,6 +466,10 @@ export const RealApp = ({
     setSelectedTaskId(activeContext.taskId);
     setSelectedProjectId(activeContext.projectId);
   }, [activeContext.projectId, activeContext.taskId]);
+
+  useEffect(() => {
+    if (surface !== "meetings") setMeetingInspectorOpen(false);
+  }, [surface]);
 
   const snapshot = state.kind === "ready" ? state.snapshot : undefined;
   useEffect(() => {
@@ -847,7 +854,9 @@ export const RealApp = ({
     ? `${state.snapshot.dataHome?.descriptor.displayName ?? "Hub"} · skoordynowany`
     : "Local only · dane na tym urządzeniu";
   return (
-    <main className="desktop-shell wave2-shell">
+    <main
+      className={`desktop-shell wave2-shell${surface === "meetings" ? " meeting-context-shell" : ""}`}
+    >
       <a className="skip-link" href="#main-content">
         Przejdź do treści
       </a>
@@ -1211,7 +1220,11 @@ export const RealApp = ({
           />
         )}
         {surface === "meetings" && client && (
-          <MeetingsSurface client={client} />
+          <MeetingsSurface
+            client={client}
+            inspectorHost={meetingInspectorHost}
+            onInspectorOpen={() => setMeetingInspectorOpen(true)}
+          />
         )}
         {surface === "relationships" && (
           <StrategicDepthSurface
@@ -1681,7 +1694,7 @@ export const RealApp = ({
       </section>
 
       <aside
-        className={`inspector ${selectedTask || selectedProject ? "open" : ""}`}
+        className={`inspector${surface === "meetings" ? " inspector--meeting" : ""}${selectedTask || selectedProject || (surface === "meetings" && meetingInspectorOpen) ? " open" : ""}`}
         aria-label="Podgląd kontekstu"
       >
         <header className="inspector-header">
@@ -1692,7 +1705,9 @@ export const RealApp = ({
                 ? "Zadanie"
                 : selectedProject
                   ? "Projekt"
-                  : "Workspace"}
+                  : surface === "meetings"
+                    ? "Wynik Jamie"
+                    : "Workspace"}
             </small>
           </div>
           {(selectedTask || selectedProject) && (
@@ -1708,8 +1723,22 @@ export const RealApp = ({
               <Icon name="close" />
             </button>
           )}
+          {surface === "meetings" && (
+            <button
+              className="icon-button meeting-inspector-close"
+              aria-label="Zamknij szczegóły spotkania"
+              onClick={() => setMeetingInspectorOpen(false)}
+            >
+              <Icon name="close" />
+            </button>
+          )}
         </header>
-        {selectedTask ? (
+        {surface === "meetings" ? (
+          <div
+            className="meeting-inspector-host"
+            ref={setMeetingInspectorHost}
+          />
+        ) : selectedTask ? (
           <div className="inspector-body">
             <span className="record-status">
               <i />
@@ -1968,7 +1997,7 @@ export const RealApp = ({
         )}
       </aside>
 
-      {(selectedTask || selectedProject) && (
+      {(selectedTask || selectedProject || surface === "meetings") && (
         <span className="context-thread" aria-hidden="true" />
       )}
       {captureOpen && (
