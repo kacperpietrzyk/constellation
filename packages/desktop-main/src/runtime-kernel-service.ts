@@ -18,6 +18,8 @@ import {
   CommandEnvelopeSchema,
   TaskIdSchema,
   type ExecutionContext,
+  type CaptureOriginal,
+  type WorkspaceId,
 } from "@constellation/contracts";
 
 export interface DesktopKernelService {
@@ -127,6 +129,9 @@ class FixedDesktopGrant implements CurrentAuthorizationPolicy {
 export const createRuntimeKernelService = (input: {
   readonly context: ExecutionContext;
   readonly store: ApplicationStore;
+  readonly capturePayloadVerifier?: {
+    isAvailable(workspaceId: WorkspaceId, original: CaptureOriginal): boolean;
+  };
 }): DesktopKernelService => {
   const hasher = new Sha256SemanticHasher();
   const ids = new CommandScopedIdGenerator(hasher);
@@ -137,6 +142,9 @@ export const createRuntimeKernelService = (input: {
     hasher,
     ids,
     store: input.store,
+    ...(input.capturePayloadVerifier === undefined
+      ? {}
+      : { capturePayloadVerifier: input.capturePayloadVerifier }),
   });
   const currentContext = (): ExecutionContext =>
     input.store.read((view) => {

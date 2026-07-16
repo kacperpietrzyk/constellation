@@ -1,9 +1,13 @@
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import {
+  closeSync,
+  constants as fsConstants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   rmSync,
 } from "node:fs";
@@ -45,6 +49,7 @@ import {
   RemoteMcpGrantProjectionSchema,
   type DeviceId,
   CalendarBlockDraftSchema,
+  CaptureOriginalSchema,
   MeetingWorkItemSchema,
   type ImportedMeeting,
 } from "@constellation/contracts";
@@ -53,6 +58,10 @@ import { RemoteMcpCredentialSchema } from "@constellation/mcp/protocol";
 
 import { createBetterSqlite3Factory } from "./better-sqlite3-factory.js";
 import { AttentionNotificationCoordinator } from "./attention-notification.js";
+import {
+  CapturePayloadCustody,
+  MAX_CAPTURE_PAYLOAD_BYTES,
+} from "./capture-payload-custody.js";
 import { createDesktopMeetingLoopRuntime } from "./calendar-meeting-loop.js";
 import { JamieApiClient, JamieConnectionCustody } from "./jamie-integration.js";
 import { CoordinatedDataHomeProvider } from "./coordinated-data-home-provider.js";
@@ -1201,9 +1210,151 @@ const startProductionDesktop = async (): Promise<void> => {
           store: workspaceRecovery.kernel.store,
           connection: () => activeHubConnection,
         });
+  const capturePayloadCustody =
+    workspaceRecovery?.kernel === undefined
+      ? undefined
+      : new CapturePayloadCustody(
+          workspaceRecovery.kernel.identity.workspaceId,
+          workspaceRecovery.kernel.store,
+        );
+  capturePayloadCustody?.reconcile();
+  const mediaTypeForFilename = (filename: string): string => {
+    switch (path.extname(filename).toLowerCase()) {
+      case ".png":
+        return "image/png";
+      case ".jpg":
+      case ".jpeg":
+        return "image/jpeg";
+      case ".webp":
+        return "image/webp";
+      case ".gif":
+        return "image/gif";
+      case ".pdf":
+        return "application/pdf";
+      case ".txt":
+      case ".md":
+        return "text/plain";
+      default:
+        return "application/octet-stream";
+    }
+  };
+  ipcMain.handle(DESKTOP_CHANNELS.selectCapturePayload, async (event) => {
+    assertTrustedSender(event);
+    if (
+      capturePayloadCustody === undefined ||
+      coordinatedDataHomeProvider !== undefined
+    )
+      return {
+        outcome: "failure",
+        code:
+          coordinatedDataHomeProvider === undefined
+            ? "payload_unavailable"
+            : "payload_transfer_unavailable",
+      } as const;
+    const selected = await dialog.showOpenDialog({
+      title: "Choose a file to preserve in Constellation",
+      properties: ["openFile"],
+    });
+    const filename = selected.filePaths[0];
+    if (selected.canceled || filename === undefined)
+      return { outcome: "failure", code: "cancelled" } as const;
+    let descriptor: number | undefined;
+    try {
+      const info = lstatSync(filename);
+      if (!info.isFile() || info.isSymbolicLink())
+        return { outcome: "failure", code: "payload_unsupported" } as const;
+      if (info.size < 1)
+        return { outcome: "failure", code: "payload_empty" } as const;
+      if (info.size > MAX_CAPTURE_PAYLOAD_BYTES)
+        return { outcome: "failure", code: "payload_too_large" } as const;
+      descriptor = openSync(
+        filename,
+        fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW,
+      );
+      const openedInfo = fstatSync(descriptor);
+      if (
+        !openedInfo.isFile() ||
+        openedInfo.size !== info.size ||
+        openedInfo.dev !== info.dev ||
+        openedInfo.ino !== info.ino
+      )
+        return {
+          outcome: "failure",
+          code: "payload_integrity_failed",
+        } as const;
+      const mediaType = mediaTypeForFilename(filename);
+      return capturePayloadCustody.stage({
+        displayName: path.basename(filename),
+        mediaType,
+        inputKind: mediaType.startsWith("image/") ? "screenshot" : "file",
+        bytes: readFileSync(descriptor),
+      });
+    } catch {
+      return { outcome: "failure", code: "payload_unavailable" } as const;
+    } finally {
+      if (descriptor !== undefined) closeSync(descriptor);
+    }
+  });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.stageCapturePayload,
+    (event, raw: unknown) => {
+      assertTrustedSender(event);
+      if (
+        capturePayloadCustody === undefined ||
+        coordinatedDataHomeProvider !== undefined ||
+        typeof raw !== "object" ||
+        raw === null ||
+        Array.isArray(raw)
+      )
+        return {
+          outcome: "failure",
+          code:
+            coordinatedDataHomeProvider === undefined
+              ? "payload_unavailable"
+              : "payload_transfer_unavailable",
+        } as const;
+      const input = raw as Record<string, unknown>;
+      if (
+        Object.keys(input).sort().join(",") !==
+          "bytes,displayName,inputKind,mediaType" ||
+        typeof input.displayName !== "string" ||
+        typeof input.mediaType !== "string" ||
+        (input.inputKind !== "file" && input.inputKind !== "screenshot") ||
+        !(input.bytes instanceof Uint8Array)
+      )
+        return { outcome: "failure", code: "payload_unsupported" } as const;
+      return capturePayloadCustody.stage({
+        displayName: input.displayName,
+        mediaType: input.mediaType,
+        inputKind: input.inputKind,
+        bytes: input.bytes,
+      });
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.discardCapturePayload,
+    (event, raw: unknown) => {
+      assertTrustedSender(event);
+      const original = CaptureOriginalSchema.safeParse(raw);
+      if (original.success) capturePayloadCustody?.discard(original.data);
+    },
+  );
   ipcMain.handle(DESKTOP_CHANNELS.executeCommand, (event, command: unknown) => {
     assertTrustedSender(event);
     const parsedCommand = CommandEnvelopeSchema.safeParse(command);
+    const managedOriginal =
+      parsedCommand.success &&
+      parsedCommand.data.commandName === "capture.submit" &&
+      (parsedCommand.data.payload.original.kind === "managed_file" ||
+        parsedCommand.data.payload.original.kind === "screenshot")
+        ? parsedCommand.data.payload.original
+        : undefined;
+    if (
+      managedOriginal !== undefined &&
+      (capturePayloadCustody === undefined ||
+        !capturePayloadCustody.verify(managedOriginal))
+    )
+      throw new Error("CAPTURE_PAYLOAD_INTEGRITY_FAILED");
     if (
       parsedCommand.success &&
       coordinatedDataHomeProvider !== undefined &&

@@ -120,16 +120,21 @@ developer preview remains an explicit in-memory adapter. A local workspace
 starts with one versioned
 default Task status whose display label is data and whose broad operational
 semantics are `actionable`. The generic Capture contract preserves typed text,
-URL, or file-reference originals before a separate deterministic processing
-command creates one canonical standalone Task or knowledge source that points
-back to its source Capture. The original text command remains compatible.
+URL, file-reference, managed-file, or screenshot originals before a separate
+deterministic processing command creates one canonical standalone Task or
+knowledge source that points back to its source Capture. A managed original
+contains only an opaque payload ID, digest, byte length, media type, display
+name, and custody state. Bytes and local paths never enter the command, audit,
+outbox, or MCP projection. The original text command remains compatible.
 
 Capture provenance is optional on the core Task model. A routed Task records
 its source Capture, while future direct `task.create` commands will not invent
 one.
 
 The application-owned rule is deliberately narrow: text becomes a Task, while
-URLs and file references become knowledge sources. Exact duplicates remain
+URLs, file references, managed files, and screenshots become knowledge
+sources. Managed payload duplicates use exact content digest and byte length;
+no similarity model is involved. Exact duplicates remain
 durable and create a scoped Attention signal instead of a second domain record;
 an explicit follow-up can choose a different destination. The rules never start
 an AI executor. The current slice has a runnable desktop flow,

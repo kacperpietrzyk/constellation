@@ -3,6 +3,7 @@ import type {
   AuditReceiptId,
   Capability,
   CaptureId,
+  CaptureOriginal,
   CommandOutcome,
   DocumentId,
   EventId,
@@ -369,6 +370,9 @@ export interface ApplicationKernelDependencies {
   readonly hasher: SemanticHasher;
   readonly ids: IdGenerator;
   readonly store: ApplicationStore;
+  readonly capturePayloadVerifier?: {
+    isAvailable(workspaceId: WorkspaceId, original: CaptureOriginal): boolean;
+  };
 }
 
 export class RetryableUnitOfWorkError extends Error {

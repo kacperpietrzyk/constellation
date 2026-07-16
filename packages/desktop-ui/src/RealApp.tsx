@@ -16,6 +16,7 @@ import type {
   TaskId,
 } from "@constellation/contracts";
 import type {
+  CapturePayloadResponse,
   ConstellationRendererClient,
   DesktopBuildInfo,
 } from "@constellation/desktop-preload/client";
@@ -178,19 +179,23 @@ const BrandMark = () => (
 
 export const CaptureDialog = ({
   busy,
+  client,
   workspaceName,
   onClose,
   onSubmit,
 }: {
   readonly busy: boolean;
+  readonly client: ConstellationRendererClient | undefined;
   readonly workspaceName: string;
   readonly onClose: () => void;
   readonly onSubmit: (original: CaptureOriginal) => void;
 }) => {
-  const [mode, setMode] = useState<CaptureOriginal["kind"]>("text");
+  const [mode, setMode] = useState<"text" | "url" | "file">("text");
   const [text, setText] = useState("");
   const [url, setUrl] = useState("");
-  const [file, setFile] = useState<File>();
+  const [managedOriginal, setManagedOriginal] = useState<CaptureOriginal>();
+  const [payloadBusy, setPayloadBusy] = useState(false);
+  const [payloadError, setPayloadError] = useState<string>();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -204,21 +209,102 @@ export const CaptureDialog = ({
     if (mode === "text" && text.trim()) onSubmit({ kind: "text", text });
     if (mode === "url" && url.trim())
       onSubmit({ kind: "url", url: url.trim() });
-    if (mode === "file" && file !== undefined)
-      onSubmit({
-        kind: "file",
-        displayName: file.name,
-        reference: `external-file:${file.name}:${file.size}:${file.lastModified}`,
-        ...(file.type.length === 0 ? {} : { mediaType: file.type }),
-        sizeBytes: file.size,
-      });
+    if (mode === "file" && managedOriginal !== undefined)
+      onSubmit(managedOriginal);
+  };
+  const payloadFailure = (code: string): string => {
+    switch (code) {
+      case "payload_empty":
+        return "Ten plik jest pusty. Wybierz inny plik.";
+      case "payload_too_large":
+        return "Plik przekracza limit 25 MB. Zachowaj mniejszą wersję.";
+      case "payload_unsupported":
+        return "Tego pliku nie można bezpiecznie przejąć.";
+      case "payload_transfer_unavailable":
+        return "Pliki w workspace z Hubem będą dostępne po włączeniu bezpiecznego transferu. Tekst i linki działają nadal.";
+      case "cancelled":
+        return "";
+      default:
+        return "Nie udało się zachować pliku. Spróbuj ponownie.";
+    }
+  };
+  const acceptPayload = (result: CapturePayloadResponse) => {
+    setPayloadBusy(false);
+    if (result.outcome === "success") {
+      if (managedOriginal !== undefined)
+        void client?.discardCapturePayload?.(managedOriginal);
+      setManagedOriginal(result.original);
+      setPayloadError(undefined);
+    } else {
+      const message = payloadFailure(result.code);
+      setPayloadError(message || undefined);
+    }
+  };
+  const stageFile = async (
+    nextFile: File,
+    inputKind: "file" | "screenshot",
+  ) => {
+    if (client?.stageCapturePayload === undefined) {
+      setPayloadError("Zarządzane pliki są niedostępne w tym uruchomieniu.");
+      return;
+    }
+    if (nextFile.size === 0) {
+      setPayloadError(payloadFailure("payload_empty"));
+      return;
+    }
+    if (nextFile.size > 25 * 1024 * 1024) {
+      setPayloadError(payloadFailure("payload_too_large"));
+      return;
+    }
+    setPayloadBusy(true);
+    setPayloadError(undefined);
+    try {
+      acceptPayload(
+        await client.stageCapturePayload({
+          displayName:
+            nextFile.name ||
+            `Screenshot ${new Date().toLocaleString("pl-PL")}.png`,
+          mediaType: nextFile.type || "application/octet-stream",
+          inputKind,
+          bytes: new Uint8Array(await nextFile.arrayBuffer()),
+        }),
+      );
+    } catch {
+      setPayloadBusy(false);
+      setPayloadError(
+        "Nie udało się odczytać pliku. Sprawdź uprawnienia i spróbuj ponownie.",
+      );
+    }
+  };
+  const choosePayload = async () => {
+    if (client?.selectCapturePayload === undefined) {
+      setPayloadError("Wybór zarządzanego pliku jest niedostępny.");
+      return;
+    }
+    setPayloadBusy(true);
+    setPayloadError(undefined);
+    try {
+      acceptPayload(await client.selectCapturePayload());
+    } catch {
+      setPayloadBusy(false);
+      setPayloadError("Nie udało się otworzyć pliku. Spróbuj ponownie.");
+    }
+  };
+  const discardPayload = () => {
+    if (managedOriginal !== undefined)
+      void client?.discardCapturePayload?.(managedOriginal);
+    setManagedOriginal(undefined);
+  };
+  const close = () => {
+    discardPayload();
+    onClose();
   };
   const canSubmit =
     mode === "text"
       ? text.trim().length > 0
       : mode === "url"
         ? url.trim().length > 0
-        : file !== undefined;
+        : managedOriginal !== undefined;
   return (
     <dialog
       ref={dialogRef}
@@ -226,11 +312,21 @@ export const CaptureDialog = ({
       aria-labelledby="capture-title"
       onCancel={(event) => {
         event.preventDefault();
-        if (!busy) onClose();
+        if (!busy && !payloadBusy) close();
       }}
       onMouseDown={(event) =>
-        event.target === event.currentTarget && !busy && onClose()
+        event.target === event.currentTarget && !busy && !payloadBusy && close()
       }
+      onPaste={(event) => {
+        if (mode !== "file") return;
+        const image = [...event.clipboardData.files].find((item) =>
+          item.type.startsWith("image/"),
+        );
+        if (image !== undefined) {
+          event.preventDefault();
+          void stageFile(image, "screenshot");
+        }
+      }}
     >
       <section className="capture-dialog">
         <header className="capture-header">
@@ -241,8 +337,8 @@ export const CaptureDialog = ({
           <button
             className="icon-button"
             aria-label="Zamknij Quick Capture"
-            disabled={busy}
-            onClick={onClose}
+            disabled={busy || payloadBusy}
+            onClick={close}
           >
             <Icon name="close" />
           </button>
@@ -297,17 +393,49 @@ export const CaptureDialog = ({
               />
             </label>
           ) : (
-            <label className="capture-file">
-              <span>{file?.name ?? "Wybierz plik z urządzenia"}</span>
-              <input
-                type="file"
-                onChange={(event) => setFile(event.target.files?.[0])}
-              />
+            <div
+              className="capture-file"
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "copy";
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const dropped = event.dataTransfer.files[0];
+                if (dropped !== undefined)
+                  void stageFile(
+                    dropped,
+                    dropped.type.startsWith("image/") ? "screenshot" : "file",
+                  );
+              }}
+              aria-busy={payloadBusy}
+            >
+              <strong>
+                {managedOriginal?.kind === "managed_file" ||
+                managedOriginal?.kind === "screenshot"
+                  ? managedOriginal.payload.displayName
+                  : payloadBusy
+                    ? "Szyfruję i zachowuję…"
+                    : "Upuść plik lub wklej screenshot"}
+              </strong>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={payloadBusy}
+                onClick={() => void choosePayload()}
+              >
+                {managedOriginal === undefined ? "Wybierz plik" : "Zmień plik"}
+              </button>
               <small>
-                Constellation zachowa metadane i prywatne odwołanie, nie kopię
-                zawartości.
+                Constellation zachowa zaszyfrowaną kopię w tym workspace przed
+                uporządkowaniem. Lokalna ścieżka nie zostanie zapisana.
               </small>
-            </label>
+              {payloadError && (
+                <p className="capture-payload-error" role="alert">
+                  {payloadError}
+                </p>
+              )}
+            </div>
           )}
           <div className="capture-target">
             <div>
@@ -324,7 +452,7 @@ export const CaptureDialog = ({
             <button
               className="primary-button"
               type="submit"
-              disabled={busy || !canSubmit}
+              disabled={busy || payloadBusy || !canSubmit}
             >
               {busy ? "Przetwarzam…" : "Zapisz i uporządkuj"}
             </button>
@@ -2003,6 +2131,7 @@ export const RealApp = ({
       {captureOpen && (
         <CaptureDialog
           busy={capturing}
+          client={client}
           workspaceName={bootstrap.workspace.name}
           onClose={() => !capturing && setCaptureOpen(false)}
           onSubmit={(original) => {

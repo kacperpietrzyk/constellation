@@ -5,8 +5,10 @@ import type { ApplicationCommandResponse } from "@constellation/application";
 import {
   AgentRunIdSchema,
   CheckpointIdSchema,
+  CapturePayloadIdSchema,
   ExecutionContextSchema,
   type CaptureId,
+  type CaptureOriginal,
   type CommandOutcome,
   type ExecutionContext,
 } from "@constellation/contracts";
@@ -105,16 +107,7 @@ const routeCommand = (
 
 const submitOriginalCommand = (
   idempotencyKey: string,
-  original:
-    | { readonly kind: "text"; readonly text: string }
-    | { readonly kind: "url"; readonly url: string; readonly title?: string }
-    | {
-        readonly kind: "file";
-        readonly displayName: string;
-        readonly reference: string;
-        readonly mediaType?: string;
-        readonly sizeBytes?: number;
-      },
+  original: CaptureOriginal,
 ) => ({
   ...commandMetadata(idempotencyKey),
   commandName: "capture.submit",
@@ -250,6 +243,91 @@ describe("reference kernel conformance", () => {
         }
       }
     }
+  });
+
+  it("deduplicates managed payloads by exact bytes instead of staging identity", () => {
+    const harness = bootstrappedHarness();
+    const submit = (key: string, payloadId: string) => {
+      const outcome = unwrapOutcome(
+        harness.kernel.execute(
+          context(),
+          submitOriginalCommand(key, {
+            kind: "managed_file",
+            payload: {
+              payloadId: CapturePayloadIdSchema.parse(payloadId),
+              displayName: "brief.pdf",
+              mediaType: "application/pdf",
+              byteLength: 4_096,
+              contentSha256: "a".repeat(64),
+              custodyState: "available",
+            },
+          }),
+        ),
+      );
+      if (
+        outcome.outcome !== "success" ||
+        outcome.projection.kind !== "capture.stored"
+      )
+        throw new Error("Expected stored managed Capture.");
+      return outcome.projection.captureId;
+    };
+    const firstId = submit(
+      "managed-first",
+      "00000000-0000-4000-8000-000000000081",
+    );
+    assert.equal(
+      unwrapOutcome(
+        harness.kernel.execute(
+          context(),
+          processCommand(firstId, "managed-first-process"),
+        ),
+      ).diagnosticCode,
+      "capture.routed_as_knowledge_source",
+    );
+    const secondId = submit(
+      "managed-second",
+      "00000000-0000-4000-8000-000000000082",
+    );
+    assert.equal(
+      unwrapOutcome(
+        harness.kernel.execute(
+          context(),
+          processCommand(secondId, "managed-second-process"),
+        ),
+      ).diagnosticCode,
+      "capture.needs_review",
+    );
+  });
+
+  it("rejects a managed descriptor when the current runtime cannot prove custody", () => {
+    const harness = createReferenceHarness({ capturePayloadsAvailable: false });
+    harness.authorization.register(context());
+    assert.equal(
+      unwrapOutcome(harness.kernel.execute(context(), workspaceCommand()))
+        .outcome,
+      "success",
+    );
+    const outcome = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        submitOriginalCommand("managed-without-custody", {
+          kind: "screenshot",
+          payload: {
+            payloadId: CapturePayloadIdSchema.parse(
+              "00000000-0000-4000-8000-000000000083",
+            ),
+            displayName: "Screenshot.png",
+            mediaType: "image/png",
+            byteLength: 128,
+            contentSha256: "b".repeat(64),
+            custodyState: "available",
+          },
+        }),
+      ),
+    );
+    assert.equal(outcome.outcome, "rejected");
+    assert.equal(outcome.diagnosticCode, "capture.payload_unavailable");
+    assert.equal(harness.store.snapshot().captures.length, 0);
   });
 
   it("commits capture original, event, audit, idempotency, and outbox together", () => {

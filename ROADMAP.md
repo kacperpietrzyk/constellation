@@ -214,6 +214,12 @@ Desktop product readiness does not require a managed Constellation backend, a
 public extension API, or paid Windows signing. Those capabilities must not
 weaken local-only and self-hosted operation if introduced later.
 
+The first bounded Universal Capture readiness slice now places one selected,
+dropped, or pasted file/screenshot into encrypted local workspace custody before
+routing, without retaining its local path. Coordinated transfer, remote payload
+access, revocation purge, the remaining exception vocabulary, and voice remain
+inside the current readiness work rather than being claimed complete.
+
 ## Later — desktop ecosystem after product readiness
 
 - a signed public Windows installer when a maintainer or sponsor provisions a

@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   CausationIdSchema,
   CaptureIdSchema,
+  CapturePayloadIdSchema,
   CheckpointIdSchema,
   CommandIdSchema,
   CorrelationIdSchema,
@@ -244,6 +245,41 @@ export const CaptureOriginalSchema = z.discriminatedUnion("kind", [
       reference: z.string().trim().min(1).max(4_096),
       mediaType: z.string().trim().min(1).max(255).optional(),
       sizeBytes: z.int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("managed_file"),
+      payload: z
+        .object({
+          payloadId: CapturePayloadIdSchema,
+          displayName: z.string().trim().min(1).max(500),
+          mediaType: z.string().trim().min(1).max(255),
+          byteLength: z.int().positive().max(26_214_400),
+          contentSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+          custodyState: z.literal("available"),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("screenshot"),
+      payload: z
+        .object({
+          payloadId: CapturePayloadIdSchema,
+          displayName: z.string().trim().min(1).max(500),
+          mediaType: z.enum([
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "image/gif",
+          ]),
+          byteLength: z.int().positive().max(26_214_400),
+          contentSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+          custodyState: z.literal("available"),
+        })
+        .strict(),
     })
     .strict(),
 ]);

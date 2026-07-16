@@ -242,6 +242,7 @@ const desktopMainSource = path.join(
 const productionDesktopFiles = new Set([
   "attention-notification.js",
   "calendar-meeting-loop.js",
+  "capture-payload-custody.js",
   "jamie-integration.js",
   "better-sqlite3-factory.js",
   "coordinated-data-home-provider.js",

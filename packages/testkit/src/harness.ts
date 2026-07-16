@@ -9,7 +9,9 @@ import {
 import { InMemoryReferenceStore } from "./reference-store.js";
 import { InMemoryAuthorizationPolicy } from "./authorization.js";
 
-export const createReferenceHarness = () => {
+export const createReferenceHarness = (
+  options: { readonly capturePayloadsAvailable?: boolean } = {},
+) => {
   const clock = new TickingClock();
   const ids = new DeterministicIdGenerator();
   const store = new InMemoryReferenceStore();
@@ -21,6 +23,9 @@ export const createReferenceHarness = () => {
     hasher: new Sha256SemanticHasher(),
     ids,
     store,
+    capturePayloadVerifier: {
+      isAvailable: () => options.capturePayloadsAvailable !== false,
+    },
   });
   return { authorization, clock, ids, kernel, store };
 };

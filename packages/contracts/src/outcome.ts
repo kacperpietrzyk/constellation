@@ -76,6 +76,7 @@ export const DiagnosticCodeSchema = z.enum([
   "record.already_exists",
   "record.version_conflict",
   "capture.already_routed",
+  "capture.payload_unavailable",
   "task.already_completed",
   "task.already_open",
   "relation.already_exists",
@@ -886,6 +887,7 @@ export const RejectedOutcomeSchema = OutcomeMetadataSchema.extend({
   diagnosticCode: z.enum([
     "authorization.denied",
     "command.precondition_failed",
+    "capture.payload_unavailable",
   ]),
 }).strict();
 

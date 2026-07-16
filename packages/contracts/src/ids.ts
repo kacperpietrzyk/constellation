@@ -38,6 +38,9 @@ export type CheckpointId = z.infer<typeof CheckpointIdSchema>;
 export const CaptureIdSchema = opaqueId<"CaptureId">();
 export type CaptureId = z.infer<typeof CaptureIdSchema>;
 
+export const CapturePayloadIdSchema = opaqueId<"CapturePayloadId">();
+export type CapturePayloadId = z.infer<typeof CapturePayloadIdSchema>;
+
 export const TaskIdSchema = opaqueId<"TaskId">();
 export type TaskId = z.infer<typeof TaskIdSchema>;
 
