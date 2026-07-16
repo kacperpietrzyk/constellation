@@ -1334,7 +1334,8 @@ kbd {
   pointer-events: none;
 }
 .capture-dock {
-  width: min(32rem, 100%);
+  width: 100%;
+  max-width: 32rem;
   min-height: 3.15rem;
   display: flex;
   align-items: center;
@@ -2300,14 +2301,21 @@ kbd {
   }
   .search-control,
   .nav-item {
+    width: 2.75rem;
+    min-width: 2.75rem;
     display: grid;
     grid-template-columns: 1fr;
+    justify-self: center;
+    align-self: center;
     place-items: center;
     padding: 0;
   }
   .sidebar-capture {
+    width: 2.75rem;
+    min-width: 2.75rem;
     display: grid;
     grid-template-columns: 1fr;
+    align-self: center;
     place-items: center;
     padding: 0;
   }
@@ -2363,7 +2371,7 @@ kbd {
     padding-inline: 0.75rem;
   }
   .capture-dock {
-    width: min(28rem, 100%);
+    max-width: 28rem;
   }
   .capture-target {
     grid-template-columns: 1fr;
