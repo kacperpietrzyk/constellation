@@ -641,9 +641,22 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         });
         await waitFor(
           client,
-          `document.querySelector("dialog.capture-backdrop[open]") === null && document.activeElement?.classList.contains("sidebar-capture") === true`,
-          "PACKAGED_ALPHA_CAPTURE_FOCUS_NOT_RESTORED",
+          `document.querySelector("dialog.capture-backdrop[open]") === null`,
+          "PACKAGED_ALPHA_CAPTURE_DIALOG_DID_NOT_CLOSE",
         );
+        const captureFocus = await client.evaluate(`(() => ({
+          tag: document.activeElement?.tagName,
+          className: document.activeElement?.className,
+          ariaLabel: document.activeElement?.getAttribute("aria-label")
+        }))()`);
+        if (
+          typeof captureFocus.className !== "string" ||
+          !captureFocus.className.split(/\s+/u).includes("sidebar-capture")
+        ) {
+          throw new Error(
+            `PACKAGED_ALPHA_CAPTURE_FOCUS_NOT_RESTORED:${JSON.stringify(captureFocus)}`,
+          );
+        }
       } finally {
         await client.send("Emulation.clearDeviceMetricsOverride");
         await client.send("Emulation.setVisibleSize", originalViewport);
