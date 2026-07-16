@@ -6,6 +6,7 @@ import path from "node:path";
 import { it } from "node:test";
 
 import {
+  CaptureOriginalSchema,
   CommandEnvelopeSchema,
   CorrelationIdSchema,
   DeviceIdSchema,
@@ -65,6 +66,7 @@ it(
       capabilityScope: [
         "workspace.createLocal",
         "workspace.bootstrapContext",
+        "capture.submit",
         "capture.submitText",
         "capture.history",
         "document.create",
@@ -271,6 +273,16 @@ it(
       byteLength: bytes.length,
     });
     assert.equal(resumed.receivedBytes, 17);
+    await assert.rejects(
+      attachmentService.begin(enrolled.deviceCredential, {
+        workspaceId,
+        deviceId,
+        contentSha256: digest,
+        byteLength: bytes.length + 1,
+      }),
+      (error) =>
+        error instanceof HubAttachmentError && error.code === "length_mismatch",
+    );
     await attachmentService.append({
       credential: enrolled.deviceCredential,
       workspaceId,
@@ -298,6 +310,56 @@ it(
       uploadId: upload.uploadId,
     });
     assert.equal(published.state, "published");
+    const managedOriginal = CaptureOriginalSchema.parse({
+      kind: "managed_file",
+      payload: {
+        payloadId: "00000000-0000-4000-8000-000000000921",
+        displayName: "resumed.txt",
+        mediaType: "text/plain",
+        byteLength: bytes.length,
+        contentSha256: digest,
+        custodyState: "available",
+      },
+    });
+    assert.equal(
+      await attachmentService.isAvailable(workspaceId, managedOriginal),
+      true,
+    );
+    const payloadService = new HubService(repository, {
+      capturePayloadVerifier: attachmentService,
+    });
+    const hubCheckpoint = await repository.withWorkspaceLock(
+      workspaceId,
+      (state) => state.checkpoint.toString(),
+    );
+    const managedCapture = await payloadService.sync(
+      enrolled.deviceCredential,
+      {
+        protocolVersion: 1,
+        workspaceId,
+        deviceId,
+        checkpoint: hubCheckpoint,
+        commands: [
+          CommandEnvelopeSchema.parse({
+            contractVersion: 1,
+            commandName: "capture.submit",
+            commandId: "00000000-0000-4000-8000-000000000922",
+            workspaceId,
+            idempotencyKey: "postgres-managed-capture",
+            expectedVersions: {},
+            correlationId: "00000000-0000-4000-8000-000000000923",
+            payload: {
+              spaceId,
+              original: managedOriginal,
+              deviceId: "postgres-device",
+              source: "in_app_quick_capture",
+            },
+          }),
+        ],
+      },
+    );
+    assert.equal(managedCapture.outcome, "success");
+    assert.equal(managedCapture.receipts[0]?.outcome.outcome, "success");
     const object = await attachmentService.openObject(workspaceId, digest);
     assert.equal(object.byteLength, bytes.length);
     const chunks: Buffer[] = [];

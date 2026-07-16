@@ -84,7 +84,17 @@ response is reconciled by command receipt before retry.
 
 Attachments use resumable, bounded chunks and content-addressed SHA-256 objects.
 The Hub publishes an object only after its complete length and digest match.
-Record synchronization remains available when attachment transfer fails.
+Selecting or dropping a managed Capture payload stages it only inside the
+encrypted local workspace. Immediately before `capture.submit`, the desktop
+publishes those exact bytes, verifies digest and length, and only then accepts
+the local Capture command. The Hub independently requires the matching
+published object before accepting its coordinated command, so a descriptor can
+never advance the authoritative projection without its bytes. A failed
+transfer creates no Capture, keeps local staging for an explicit retry, and
+does not block ordinary record synchronization.
+Normal projection replacement retains bytes only for still-authorized Capture
+records and current dialog staging. Membership or device revocation purges the
+whole coordinated projection, including managed payload bytes.
 
 The correctness-first v1 change feed sends a validated logical snapshot after a
 new checkpoint. This is intentionally less bandwidth-efficient than a mature

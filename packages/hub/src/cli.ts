@@ -117,7 +117,10 @@ const main = async (): Promise<void> => {
     const storageRoot = required("CONSTELLATION_HUB_STORAGE_ROOT");
     await mkdir(storageRoot, { recursive: true, mode: 0o700 });
     const pool = new Pool({ connectionString: databaseUrl, max: 10 });
-    const service = new HubService(repository);
+    const attachments = new HubAttachmentService(pool, repository, storageRoot);
+    const service = new HubService(repository, {
+      capturePayloadVerifier: attachments,
+    });
     const realtimeDocuments = new RealtimeDocumentGateway(service, repository);
     const certificatePath = process.env.CONSTELLATION_HUB_TLS_CERT;
     const privateKeyPath = process.env.CONSTELLATION_HUB_TLS_KEY;
@@ -128,7 +131,7 @@ const main = async (): Promise<void> => {
     const host = process.env.CONSTELLATION_HUB_HOST ?? "127.0.0.1";
     const server = await startHubServer({
       service,
-      attachments: new HubAttachmentService(pool, repository, storageRoot),
+      attachments,
       realtimeDocuments,
       remoteMcp: new HubRemoteMcpService(repository),
       host,

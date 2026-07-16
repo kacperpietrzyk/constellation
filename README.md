@@ -62,7 +62,10 @@ encrypted local store, an in-memory Electron developer preview, and a packaged
 Alpha candidate.
 The implemented desktop journey covers Universal Quick Capture for text, URLs,
 file references, and one managed file or pasted screenshot whose bytes enter
-the encrypted workspace before deterministic routing to Tasks or knowledge sources,
+the encrypted workspace before deterministic routing to Tasks or knowledge
+sources. In a Hub-backed workspace, the exact bytes must also pass resumable
+digest verification before the Capture is accepted; an unavailable transfer
+keeps the encrypted local original ready for retry. The journey also covers
 duplicate review-by-exception in Attention, Project outcome and Task relations,
 and a Work destination that connects Areas, Initiatives, Projects, dependencies,
 waiting direction, and saved deterministic views without imposing a mandatory

@@ -3367,10 +3367,53 @@ export class SqliteApplicationStore
       );
     }
     this.transact(() => {
+      this.database.exec("DROP TABLE IF EXISTS retained_capture_payloads;");
+      this.database.exec(`
+        CREATE TABLE retained_capture_payloads AS
+        SELECT
+          payload.*,
+          EXISTS (
+            SELECT 1
+            FROM captures
+            WHERE captures.workspace_id = payload.workspace_id
+              AND json_extract(captures.payload_json, '$.original.payload.payloadId') = payload.id
+          ) AS was_referenced
+        FROM capture_payloads AS payload;
+      `);
       for (const table of COORDINATED_PROJECTION_TABLES) {
         this.database.exec(`DELETE FROM ${table};`);
       }
       this.insertProjection(snapshot);
+      this.database.exec(`
+        INSERT INTO capture_payloads (
+          id, workspace_id, display_name, media_type, input_kind,
+          content_sha256, byte_length, bytes, created_at
+        )
+        SELECT
+          retained.id,
+          retained.workspace_id,
+          retained.display_name,
+          retained.media_type,
+          retained.input_kind,
+          retained.content_sha256,
+          retained.byte_length,
+          retained.bytes,
+          retained.created_at
+        FROM retained_capture_payloads AS retained
+        WHERE EXISTS (
+          SELECT 1 FROM workspaces WHERE workspaces.id = retained.workspace_id
+        )
+          AND (
+            retained.was_referenced = 0
+            OR EXISTS (
+              SELECT 1
+              FROM captures
+              WHERE captures.workspace_id = retained.workspace_id
+                AND json_extract(captures.payload_json, '$.original.payload.payloadId') = retained.id
+            )
+          );
+        DROP TABLE retained_capture_payloads;
+      `);
       this.updateCoordinationState(coordination);
     });
   }

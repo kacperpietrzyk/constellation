@@ -111,6 +111,16 @@ export class CapturePayloadCustody {
     );
   }
 
+  public read(original: CaptureOriginal): Uint8Array | undefined {
+    if (original.kind !== "managed_file" && original.kind !== "screenshot")
+      return undefined;
+    if (!this.verify(original)) return undefined;
+    return this.store.readCapturePayload({
+      payloadId: original.payload.payloadId,
+      workspaceId: this.workspaceId,
+    })?.bytes;
+  }
+
   public discard(original: CaptureOriginal): void {
     if (original.kind !== "managed_file" && original.kind !== "screenshot")
       return;

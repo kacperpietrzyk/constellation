@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "node:test";
 
@@ -25,6 +26,7 @@ import {
 
 import {
   CoordinatedSyncEngine,
+  HttpHubTransport,
   createHubWorkspaceSnapshot,
   type HubTransport,
 } from "../src/coordinated-sync-engine.js";
@@ -119,6 +121,94 @@ class ServiceTransport implements HubTransport {
 }
 
 describe("coordinated desktop projection", () => {
+  it("uploads resumable attachment bytes and verifies downloaded content", async () => {
+    const bytes = new TextEncoder().encode("encrypted custody transfer");
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const uploadId = "00000000-0000-4000-8000-000000001090";
+    const requests: Array<{
+      readonly url: string;
+      readonly init?: RequestInit;
+    }> = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      const url = String(input);
+      requests.push({ url, ...(init === undefined ? {} : { init }) });
+      if (url.endsWith("/v1/attachments/uploads")) {
+        return Response.json({
+          uploadId,
+          contentSha256: digest,
+          byteLength: bytes.byteLength,
+          receivedBytes: 0,
+          state: "staging",
+        });
+      }
+      if (url.includes(`/v1/attachments/uploads/${uploadId}?`)) {
+        return Response.json({
+          uploadId,
+          contentSha256: digest,
+          byteLength: bytes.byteLength,
+          receivedBytes: bytes.byteLength,
+          state: "staging",
+        });
+      }
+      if (url.endsWith(`/v1/attachments/uploads/${uploadId}/publish`)) {
+        return Response.json({
+          uploadId,
+          contentSha256: digest,
+          byteLength: bytes.byteLength,
+          receivedBytes: bytes.byteLength,
+          state: "published",
+        });
+      }
+      if (url.includes(`/v1/attachments/${digest}?`)) {
+        return new Response(bytes);
+      }
+      return new Response(undefined, { status: 404 });
+    };
+    const transport = new HttpHubTransport("https://hub.example.test", fetcher);
+
+    assert.deepEqual(
+      await transport.uploadAttachment({
+        credential: "c".repeat(43),
+        workspaceId: ids.workspace,
+        deviceId: ids.deviceA,
+        bytes,
+      }),
+      { digest, byteLength: bytes.byteLength },
+    );
+    assert.deepEqual(
+      await transport.downloadAttachment({
+        credential: "c".repeat(43),
+        workspaceId: ids.workspace,
+        deviceId: ids.deviceA,
+        digest,
+      }),
+      bytes,
+    );
+    assert.equal(requests.length, 4);
+    assert.equal(requests[1]?.init?.method, "PUT");
+    assert.equal(
+      new Headers(requests[1]?.init?.headers).get("upload-offset"),
+      "0",
+    );
+  });
+
+  it("rejects attachment downloads whose bytes do not match the digest", async () => {
+    const expected = createHash("sha256").update("expected").digest("hex");
+    const transport = new HttpHubTransport(
+      "https://hub.example.test",
+      async () => new Response("tampered"),
+    );
+    await assert.rejects(
+      transport.downloadAttachment({
+        credential: "c".repeat(43),
+        workspaceId: ids.workspace,
+        deviceId: ids.deviceA,
+        digest: expected,
+      }),
+      /digest does not match/u,
+    );
+  });
+
   it("keeps device-local agent control-plane tables out of Hub snapshots", () => {
     const device = createDevice();
     try {
