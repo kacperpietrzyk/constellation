@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -816,6 +817,7 @@ export const RealApp = ({
   const navRef = useRef<HTMLElement>(null);
   const tabRef = useRef<HTMLDivElement>(null);
   const captureReturnFocusRef = useRef<HTMLElement | null>(null);
+  const captureRestoreFocusPendingRef = useRef(false);
   const modifierLabel = /Mac|iPhone|iPad/.test(navigator.platform)
     ? "⌘"
     : "Ctrl";
@@ -858,14 +860,17 @@ export const RealApp = ({
     setCaptureOpen(true);
   }, []);
   const dismissCapture = useCallback(() => {
+    captureRestoreFocusPendingRef.current = true;
     setCaptureOpen(false);
-    window.requestAnimationFrame(() => {
-      const returnTarget = captureReturnFocusRef.current;
-      if (returnTarget?.isConnected) returnTarget.focus();
-      else document.querySelector<HTMLElement>(".sidebar-capture")?.focus();
-      captureReturnFocusRef.current = null;
-    });
   }, []);
+  useLayoutEffect(() => {
+    if (captureOpen || !captureRestoreFocusPendingRef.current) return;
+    captureRestoreFocusPendingRef.current = false;
+    const returnTarget = captureReturnFocusRef.current;
+    if (returnTarget?.isConnected) returnTarget.focus();
+    else document.querySelector<HTMLElement>(".sidebar-capture")?.focus();
+    captureReturnFocusRef.current = null;
+  }, [captureOpen]);
 
   useEffect(() => {
     setSelectedTaskId(activeContext.taskId);
