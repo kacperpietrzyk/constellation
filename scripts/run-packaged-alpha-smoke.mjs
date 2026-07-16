@@ -435,7 +435,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         (phase === "restore-confirm" ? "recovery_required" : "ready") ||
       boundary.hasNodeRequire ||
       boundary.bridgeKeys.join(",") !==
-        "acknowledgeDocumentUpdates,addMeetingWorkItem,cancelWorkspaceRestore,checkForRelease,configureJamie,confirmCalendarBlocks,confirmWorkspaceRestore,createDocumentRevision,createRemoteAgentGrant,createWorkspace,disconnectJamie,downloadRelease,editMeetingWorkItem,enrollHub,executeCommand,exportHubAuthorization,exportWorkspaceBackup,getBuildInfo,getCrossWorkspaceCockpit,getDataHomeStatus,getJamieStatus,getMeetingLoop,getReleaseStatus,importStarterWorkspace,installRelease,listDocumentRevisions,listRemoteAgentGrants,listWorkspaces,onAttentionActivated,openDetachedSurface,openDocument,persistDocumentUpdate,prepareAgentCredential,prepareWorkspaceRestore,previewCalendarBlocks,previewStarterWorkspace,requestCalendarAccess,restoreDocumentRevision,revokeRemoteAgentGrant,rotateRemoteAgentGrant,runQuery,switchWorkspace,syncDataHome,syncJamie"
+        "acknowledgeDocumentUpdates,addMeetingWorkItem,cancelWorkspaceRestore,checkForRelease,configureJamie,confirmCalendarBlocks,confirmWorkspaceRestore,createDocumentRevision,createRemoteAgentGrant,createWorkspace,discardCapturePayload,disconnectJamie,downloadRelease,editMeetingWorkItem,enrollHub,executeCommand,exportHubAuthorization,exportWorkspaceBackup,getBuildInfo,getCrossWorkspaceCockpit,getDataHomeStatus,getJamieStatus,getMeetingLoop,getReleaseStatus,importStarterWorkspace,installRelease,listDocumentRevisions,listRemoteAgentGrants,listWorkspaces,onAttentionActivated,openDetachedSurface,openDocument,persistDocumentUpdate,prepareAgentCredential,prepareWorkspaceRestore,previewCalendarBlocks,previewStarterWorkspace,requestCalendarAccess,restoreDocumentRevision,revokeRemoteAgentGrant,rotateRemoteAgentGrant,runQuery,selectCapturePayload,stageCapturePayload,switchWorkspace,syncDataHome,syncJamie"
     ) {
       throw new Error(
         `PACKAGED_ALPHA_PRELOAD_OR_IPC_INVALID:${JSON.stringify(boundary)}`,
@@ -467,7 +467,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       dataHome.descriptor.capabilities.ordered_changes.support !==
         "unsupported" ||
       dataHome.descriptor.capabilities.tombstones.support !== "unsupported" ||
-      dataHome.descriptor.capabilities.attachments.support !== "unsupported" ||
+      dataHome.descriptor.capabilities.attachments.support !== "supported" ||
       dataHome.descriptor.capabilities.quota.support !== "unsupported" ||
       dataHome.descriptor.capabilities.device_revocation.support !==
         "unsupported" ||
@@ -478,6 +478,31 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         : dataHome.descriptor.workspaceId !== boundary.build.initialWorkspaceId)
     ) {
       throw new Error("PACKAGED_ALPHA_DATA_HOME_CONTRACT_INVALID");
+    }
+
+    if (phase !== "restore-confirm") {
+      const payloadCustody = await client.evaluate(`(async () => {
+        const staged = await window.constellation.stageCapturePayload({
+          displayName: "packaged-custody.txt",
+          mediaType: "text/plain",
+          inputKind: "file",
+          bytes: new Uint8Array([82, 49, 49, 46, 50])
+        });
+        if (staged.outcome === "success") {
+          await window.constellation.discardCapturePayload(staged.original);
+        }
+        return staged;
+      })()`);
+      if (
+        payloadCustody.outcome !== "success" ||
+        payloadCustody.original.kind !== "managed_file" ||
+        payloadCustody.original.payload.byteLength !== 5 ||
+        payloadCustody.original.payload.custodyState !== "available"
+      ) {
+        throw new Error(
+          `PACKAGED_ALPHA_CAPTURE_PAYLOAD_CUSTODY_INVALID:${JSON.stringify(payloadCustody)}`,
+        );
+      }
     }
 
     const submitCapture = async (title) => {
