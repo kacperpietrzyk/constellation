@@ -2252,6 +2252,9 @@ export const RealApp = ({
             }}
           />
         )}
+      </section>
+
+      <div className="capture-dock-layer">
         <button className="capture-dock" onClick={openCapture}>
           <span>
             <Icon name="capture" />
@@ -2259,7 +2262,7 @@ export const RealApp = ({
           </span>
           <kbd>{modifierLabel}⇧K</kbd>
         </button>
-      </section>
+      </div>
 
       <aside
         className={`inspector${surface === "meetings" ? " inspector--meeting" : ""}${selectedTask || selectedProject || (surface === "meetings" && meetingInspectorOpen) ? " open" : ""}`}
