@@ -24,6 +24,7 @@ import type {
   CalendarWritePreview,
   MeetingLoopSurface,
   MeetingWorkItem,
+  CaptureOriginal,
 } from "@constellation/contracts";
 
 export type {
@@ -81,6 +82,9 @@ export const DESKTOP_CHANNELS = {
   getCrossWorkspaceCockpit: "constellation:workspace:cockpit",
   previewStarterWorkspace: "constellation:workspace:preview-starter",
   importStarterWorkspace: "constellation:workspace:import-starter",
+  selectCapturePayload: "constellation:capture:select-payload",
+  stageCapturePayload: "constellation:capture:stage-payload",
+  discardCapturePayload: "constellation:capture:discard-payload",
 } as const;
 
 export type DesktopSurface =
@@ -139,6 +143,20 @@ export type StarterWorkspaceImportResponse =
   | {
       readonly outcome: "failure";
       readonly code: "manifest_invalid" | "import_failed" | "unavailable";
+    };
+
+export type CapturePayloadResponse =
+  | { readonly outcome: "success"; readonly original: CaptureOriginal }
+  | {
+      readonly outcome: "failure";
+      readonly code:
+        | "cancelled"
+        | "payload_empty"
+        | "payload_too_large"
+        | "payload_unsupported"
+        | "payload_unavailable"
+        | "payload_integrity_failed"
+        | "payload_transfer_unavailable";
     };
 
 export type ReleaseStatus =
@@ -235,6 +253,14 @@ export interface DesktopBuildInfo {
 }
 
 export interface ConstellationRendererClient {
+  selectCapturePayload?(): Promise<CapturePayloadResponse>;
+  stageCapturePayload?(input: {
+    readonly displayName: string;
+    readonly mediaType: string;
+    readonly inputKind: "file" | "screenshot";
+    readonly bytes: Uint8Array;
+  }): Promise<CapturePayloadResponse>;
+  discardCapturePayload?(original: CaptureOriginal): Promise<void>;
   openDetachedSurface?(surface: DesktopSurface): Promise<void>;
   listWorkspaces?(): Promise<readonly DesktopWorkspaceEntry[]>;
   createWorkspace?(input: {
@@ -420,6 +446,17 @@ export type DesktopInvoke = (
 export const createRendererClient = (
   invoke: DesktopInvoke,
 ): ConstellationRendererClient => ({
+  selectCapturePayload: () =>
+    invoke(
+      DESKTOP_CHANNELS.selectCapturePayload,
+    ) as Promise<CapturePayloadResponse>,
+  stageCapturePayload: (input) =>
+    invoke(
+      DESKTOP_CHANNELS.stageCapturePayload,
+      input,
+    ) as Promise<CapturePayloadResponse>,
+  discardCapturePayload: (original) =>
+    invoke(DESKTOP_CHANNELS.discardCapturePayload, original) as Promise<void>,
   openDetachedSurface: (surface) =>
     invoke(DESKTOP_CHANNELS.openDetachedSurface, { surface }) as Promise<void>,
   listWorkspaces: () =>

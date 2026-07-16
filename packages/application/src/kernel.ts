@@ -45,6 +45,7 @@ import {
 import {
   createLocalWorkspace,
   captureDisplayText,
+  captureFingerprintSource,
   createKnowledgeSource,
   renameWorkspace,
   routeCaptureAsKnowledgeSource,
@@ -953,6 +954,18 @@ export class ApplicationKernel {
         diagnosticCode: "command.precondition_failed",
       });
     }
+    if (
+      (original.kind === "managed_file" || original.kind === "screenshot") &&
+      this.dependencies.capturePayloadVerifier?.isAvailable(
+        command.workspaceId,
+        original,
+      ) !== true
+    ) {
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "capture.payload_unavailable",
+      });
+    }
 
     const captureId = CaptureIdSchema.parse(
       this.dependencies.ids.next("capture"),
@@ -970,7 +983,9 @@ export class ApplicationKernel {
       spaceId: command.payload.spaceId,
       originalText: captureDisplayText(original),
       original,
-      originalFingerprint: this.dependencies.hasher.fingerprint(original),
+      originalFingerprint: this.dependencies.hasher.fingerprint(
+        captureFingerprintSource(original),
+      ),
       deviceId: command.payload.deviceId,
       source: command.payload.source,
       submittedBy: context.principalId,
@@ -1289,7 +1304,11 @@ export class ApplicationKernel {
       workspaceId: capture.workspaceId,
       spaceId: capture.spaceId,
       sourceKind:
-        capture.original.kind === "text" ? "excerpt" : capture.original.kind,
+        capture.original.kind === "text"
+          ? "excerpt"
+          : capture.original.kind === "managed_file"
+            ? "file"
+            : capture.original.kind,
       title,
       ...(capture.original.kind === "url"
         ? { canonicalUrl: capture.original.url }
@@ -1298,7 +1317,11 @@ export class ApplicationKernel {
         ? { excerpt: capture.original.text.slice(0, 32_768) }
         : {}),
       availability:
-        capture.original.kind === "url" ? "available" : "reference_only",
+        capture.original.kind === "url" ||
+        capture.original.kind === "managed_file" ||
+        capture.original.kind === "screenshot"
+          ? "available"
+          : "reference_only",
       sourceCaptureId: capture.id,
       observedAt: capture.capturedAt,
       createdBy: context.principalId,

@@ -37,9 +37,7 @@ export const LOCAL_ONLY_DATA_HOME_CAPABILITIES: DataHomeCapabilities = {
   tombstones: unsupported(
     "Tombstone propagation applies only to coordinated providers.",
   ),
-  attachments: unsupported(
-    "Managed attachment payloads are not implemented in the local Alpha.",
-  ),
+  attachments: supported,
   quota: unsupported(
     "Constellation does not infer a provider quota from a local filesystem volume.",
   ),

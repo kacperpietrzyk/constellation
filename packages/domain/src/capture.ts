@@ -53,7 +53,22 @@ export const captureDisplayText = (original: CaptureOriginal): string => {
       return original.title ?? original.url;
     case "file":
       return original.displayName;
+    case "managed_file":
+    case "screenshot":
+      return original.payload.displayName;
   }
+};
+
+export const captureFingerprintSource = (
+  original: CaptureOriginal,
+): unknown => {
+  if (original.kind !== "managed_file" && original.kind !== "screenshot")
+    return original;
+  return {
+    kind: original.kind,
+    contentSha256: original.payload.contentSha256,
+    byteLength: original.payload.byteLength,
+  };
 };
 
 export const routeCaptureAsKnowledgeSource = (input: {

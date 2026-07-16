@@ -61,7 +61,8 @@ repository now contains a storage-neutral Application Kernel, a restart-safe
 encrypted local store, an in-memory Electron developer preview, and a packaged
 Alpha candidate.
 The implemented desktop journey covers Universal Quick Capture for text, URLs,
-and file references, deterministic routing to Tasks or knowledge sources,
+file references, and one managed file or pasted screenshot whose bytes enter
+the encrypted workspace before deterministic routing to Tasks or knowledge sources,
 duplicate review-by-exception in Attention, Project outcome and Task relations,
 and a Work destination that connects Areas, Initiatives, Projects, dependencies,
 waiting direction, and saved deterministic views without imposing a mandatory
@@ -303,8 +304,11 @@ npm run dev:desktop
 
 Use the Quick Capture button or `Command/Ctrl+Shift+K`. The preview is
 development infrastructure, not a durable local Alpha. Text becomes a Task;
-URLs and selected file references become knowledge sources; exact duplicates
-remain preserved and appear in Attention for an explicit destination choice.
+URLs, selected file references, managed files, and screenshots become knowledge
+sources; exact duplicates remain preserved and appear in Attention for an
+explicit destination choice. Managed payloads are bounded to 25 MB, retain no
+local path in the Capture record, and are included in encrypted workspace
+backup and restore.
 Closing the preview clears its synthetic workspace.
 
 Questions and early product discussion belong in

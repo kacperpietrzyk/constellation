@@ -53,6 +53,7 @@ describe("local-only Data Home provider", () => {
       providerKind: "local_only",
       storageRole: "canonical",
       supportedCapabilities: [
+        "attachments",
         "checkpoints",
         "portable_export",
         "portable_import",

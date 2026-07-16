@@ -42,8 +42,10 @@ handles, keys, and recovery secrets are not provider status.
   permissions and is never derived from hardware identifiers;
 - encrypted portable export, verified preview, staged restore, provider
   migration, retained-previous rollback, and checkpoints are supported;
-- ordered remote changes, tombstone propagation, managed attachments, provider
-  quota, and remote device revocation are explicitly unsupported;
+- bounded managed Capture payloads are supported inside the local encrypted
+  workspace and portable backup/restore boundary;
+- ordered remote changes, tombstone propagation, provider quota, and remote
+  device revocation are explicitly unsupported;
 - sync state is `not_configured`, not an offline error.
 
 The desktop Data Home surface presents these facts beside export and restore.

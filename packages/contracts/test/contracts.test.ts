@@ -127,7 +127,7 @@ describe("application contracts", () => {
     );
   });
 
-  it("accepts text, URL, and file originals while rejecting file content", () => {
+  it("accepts references and managed payload descriptors while rejecting file content", () => {
     const submitText = validateCommandEnvelope({
       ...submitUrlCommand,
       payload: {
@@ -160,10 +160,47 @@ describe("application contracts", () => {
         },
       },
     });
+    const managedFile = validateCommandEnvelope({
+      ...submitUrlCommand,
+      payload: {
+        ...submitUrlCommand.payload,
+        original: {
+          kind: "managed_file",
+          payload: {
+            payloadId: "00000000-0000-4000-8000-000000000009",
+            displayName: "brief.pdf",
+            mediaType: "application/pdf",
+            byteLength: 42_000,
+            contentSha256: "a".repeat(64),
+            custodyState: "available",
+          },
+        },
+      },
+    });
+    const screenshotWithPath = validateCommandEnvelope({
+      ...submitUrlCommand,
+      payload: {
+        ...submitUrlCommand.payload,
+        original: {
+          kind: "screenshot",
+          payload: {
+            payloadId: "00000000-0000-4000-8000-000000000009",
+            displayName: "Screenshot.png",
+            mediaType: "image/png",
+            byteLength: 200,
+            contentSha256: "b".repeat(64),
+            custodyState: "available",
+            path: "/private/customer/Screenshot.png",
+          },
+        },
+      },
+    });
 
     assert.equal(submitText.ok, true);
     assert.equal(submitFile.ok, true);
+    assert.equal(managedFile.ok, true);
     assert.equal(fileWithContent.ok, false);
+    assert.equal(screenshotWithPath.ok, false);
   });
 
   it("rejects unknown route and task-list fields at strict boundaries", () => {

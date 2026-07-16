@@ -31,6 +31,7 @@ import {
   type AsyncSafeStorage,
   type WorkspaceBootstrapIdentity,
 } from "./workspace-key-custody.js";
+import { CapturePayloadCustody } from "./capture-payload-custody.js";
 
 const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "workspace.createLocal",
@@ -256,9 +257,18 @@ export const createDurableKernelService = async (input: {
       capabilityScope: LOCAL_ALPHA_CAPABILITIES,
       origin: "desktop",
     });
+    const payloadCustody = new CapturePayloadCustody(
+      bundle.identity.workspaceId,
+      opened.store,
+    );
     const service = createRuntimeKernelService({
       context,
       store: opened.store,
+      capturePayloadVerifier: {
+        isAvailable: (workspaceId, original) =>
+          workspaceId === bundle.identity.workspaceId &&
+          payloadCustody.verify(original),
+      },
     });
     const workspace = opened.store.read((view) =>
       view.getWorkspace(bundle.identity.workspaceId),

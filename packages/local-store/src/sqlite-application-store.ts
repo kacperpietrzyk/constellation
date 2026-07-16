@@ -27,6 +27,7 @@ import {
   type CommandEnvelope,
   type AuditReceiptId,
   type CaptureId,
+  type CapturePayloadId,
   type PrincipalId,
   type ProjectId,
   type RelationId,
@@ -78,7 +79,8 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
+const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
   checkpoint: null,
@@ -584,6 +586,22 @@ const schemaV13 = `
   WHERE json_type(payload_json, '$.operationalState') IS NULL;
 `;
 
+const schemaV14 = `
+  CREATE TABLE capture_payloads (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    display_name TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    input_kind TEXT NOT NULL CHECK (input_kind IN ('file', 'screenshot')),
+    content_sha256 TEXT NOT NULL CHECK (length(content_sha256) = 64),
+    byte_length INTEGER NOT NULL CHECK (byte_length > 0 AND byte_length <= 26214400),
+    bytes BLOB NOT NULL,
+    created_at TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX capture_payloads_workspace
+    ON capture_payloads(workspace_id, created_at, id);
+`;
+
 export interface LocalCoordinationState {
   readonly workspaceId: WorkspaceId;
   readonly providerInstanceId: string;
@@ -757,6 +775,7 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
     if (currentVersion < 11) database.exec(schemaV11);
     if (currentVersion < 12) database.exec(schemaV12);
     if (currentVersion < 13) database.exec(schemaV13);
+    if (currentVersion < 14) database.exec(schemaV14);
     database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
     database.exec("COMMIT;");
   } catch (error) {
@@ -2498,6 +2517,110 @@ export class SqliteApplicationStore
 
   public read<Result>(read: (view: ApplicationReadView) => Result): Result {
     return read(new SqliteReadView(this.database));
+  }
+
+  public storeCapturePayload(input: {
+    readonly payloadId: CapturePayloadId;
+    readonly workspaceId: WorkspaceId;
+    readonly displayName: string;
+    readonly mediaType: string;
+    readonly inputKind: "file" | "screenshot";
+    readonly contentSha256: string;
+    readonly bytes: Uint8Array;
+    readonly createdAt: string;
+  }): void {
+    if (
+      input.bytes.byteLength < 1 ||
+      input.bytes.byteLength > MAX_CAPTURE_PAYLOAD_BYTES ||
+      !/^[0-9a-f]{64}$/u.test(input.contentSha256) ||
+      input.displayName.trim().length < 1 ||
+      input.displayName.length > 500 ||
+      input.mediaType.trim().length < 1 ||
+      input.mediaType.length > 255 ||
+      !Number.isFinite(Date.parse(input.createdAt))
+    ) {
+      throw new Error("Capture payload metadata is invalid.");
+    }
+    if (
+      this.database
+        .prepare("SELECT 1 FROM workspaces WHERE id = ?")
+        .get(input.workspaceId) === undefined
+    ) {
+      throw new LocalStoreCorruptionError(
+        "Capture payload workspace is missing.",
+      );
+    }
+    this.database
+      .prepare(
+        "INSERT INTO capture_payloads (id, workspace_id, display_name, media_type, input_kind, content_sha256, byte_length, bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        input.payloadId,
+        input.workspaceId,
+        input.displayName,
+        input.mediaType,
+        input.inputKind,
+        input.contentSha256,
+        input.bytes.byteLength,
+        input.bytes,
+        input.createdAt,
+      );
+  }
+
+  public readCapturePayload(input: {
+    readonly payloadId: CapturePayloadId;
+    readonly workspaceId: WorkspaceId;
+  }):
+    | {
+        readonly displayName: string;
+        readonly mediaType: string;
+        readonly inputKind: "file" | "screenshot";
+        readonly contentSha256: string;
+        readonly bytes: Uint8Array;
+      }
+    | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, display_name, media_type, input_kind, content_sha256, byte_length, bytes FROM capture_payloads WHERE id = ?",
+      )
+      .get(input.payloadId);
+    if (row === undefined) return undefined;
+    if (
+      stringValue(row, "workspace_id", "capture payload") !== input.workspaceId
+    )
+      throw new LocalStoreCorruptionError("Capture payload scope is invalid.");
+    const bytes = bytesValue(row, "bytes", "capture payload");
+    const byteLength = numberValue(row, "byte_length", "capture payload");
+    if (bytes.byteLength !== byteLength)
+      throw new LocalStoreCorruptionError("Capture payload length is invalid.");
+    const inputKind = stringValue(row, "input_kind", "capture payload");
+    if (inputKind !== "file" && inputKind !== "screenshot")
+      throw new LocalStoreCorruptionError("Capture payload kind is invalid.");
+    return {
+      displayName: stringValue(row, "display_name", "capture payload"),
+      mediaType: stringValue(row, "media_type", "capture payload"),
+      inputKind,
+      contentSha256: stringValue(row, "content_sha256", "capture payload"),
+      bytes,
+    };
+  }
+
+  public deleteCapturePayload(input: {
+    readonly payloadId: CapturePayloadId;
+    readonly workspaceId: WorkspaceId;
+  }): void {
+    this.database
+      .prepare("DELETE FROM capture_payloads WHERE id = ? AND workspace_id = ?")
+      .run(input.payloadId, input.workspaceId);
+  }
+
+  public purgeUnreferencedCapturePayloads(workspaceId: WorkspaceId): number {
+    const result = this.database
+      .prepare(
+        "DELETE FROM capture_payloads WHERE workspace_id = ? AND NOT EXISTS (SELECT 1 FROM captures WHERE captures.workspace_id = capture_payloads.workspace_id AND json_extract(captures.payload_json, '$.original.payload.payloadId') = capture_payloads.id)",
+      )
+      .run(workspaceId);
+    return Number(result.changes);
   }
 
   public load(workspaceId: WorkspaceId): MeetingLoopState {

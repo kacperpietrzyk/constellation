@@ -741,7 +741,11 @@ export const HistorySurface = ({
                         ? "tekst"
                         : capture.original.kind === "url"
                           ? "link"
-                          : "plik"}
+                          : capture.original.kind === "screenshot"
+                            ? "screenshot"
+                            : capture.original.kind === "managed_file"
+                              ? "zarządzany plik"
+                              : "odwołanie do pliku"}
                     </p>
                     <h2>{capture.originalText}</h2>
                   </div>
@@ -757,7 +761,12 @@ export const HistorySurface = ({
                     <i />
                     <div>
                       <strong>Zapisano oryginał</strong>
-                      <span>Stan lokalny potwierdzony</span>
+                      <span>
+                        {capture.original.kind === "managed_file" ||
+                        capture.original.kind === "screenshot"
+                          ? `Zaszyfrowana kopia · ${Math.ceil(capture.original.payload.byteLength / 1024).toLocaleString("pl-PL")} KB · integralność SHA-256`
+                          : "Stan lokalny potwierdzony"}
+                      </span>
                     </div>
                   </li>
                   <li className="current">
