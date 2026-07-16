@@ -613,6 +613,27 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           );
         }
 
+        const resetTabCount = await client.evaluate(`(async () => {
+          document.querySelector('.nav-item[data-surface="cockpit"]').click();
+          await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve))
+          );
+          let close = document.querySelector(
+            ".shell-tab:not(.active) .shell-tab-close"
+          );
+          while (close !== null) {
+            close.click();
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            close = document.querySelector(
+              ".shell-tab:not(.active) .shell-tab-close"
+            );
+          }
+          return document.querySelectorAll(".shell-tab").length;
+        })()`);
+        if (resetTabCount !== 1) {
+          throw new Error("PACKAGED_ALPHA_NARROW_SWEEP_STATE_NOT_RESTORED");
+        }
+
         await client.send("Page.bringToFront");
         const captureOpener = await client.evaluate(`(() => {
           const trigger = document.querySelector(".sidebar-capture");
