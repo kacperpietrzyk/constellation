@@ -27,6 +27,9 @@ const taskTitle = "Verify packaged UI, preload, IPC, and persistence";
 const mutationTitle = "This mutation must disappear after restore";
 const projectTitle = "Verify packaged Project context";
 const projectOutcome = "Project inspector preserves the intended outcome";
+// A freshly mounted ad-hoc macOS app can briefly stall CDP while OS services
+// attach. The journey-level waits remain bounded separately.
+const CDP_COMMAND_TIMEOUT_MS = 15_000;
 if (continuityWorkspaceId === undefined) {
   fs.rmSync(stateRoot, { recursive: true, force: true });
 }
@@ -147,7 +150,7 @@ class CdpClient {
       const timeout = setTimeout(() => {
         if (!this.#pending.delete(id)) return;
         reject(new Error(`CDP_${method}_TIMEOUT`));
-      }, 5_000);
+      }, CDP_COMMAND_TIMEOUT_MS);
       this.#pending.set(id, { resolve, reject, timeout });
     });
     this.#sendRaw(
