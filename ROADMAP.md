@@ -55,21 +55,8 @@ The repository contains the first durable desktop journey:
   command queues, one-use enrollment, revocation, resumable attachments, and a
   packaged two-device convergence gate on macOS and Windows.
 
-This is a pre-alpha engineering foundation, not a distributed desktop release.
-
-## Continuing local workspace depth
-
-Turn the initial journey into a coherent application that can be used for real
-personal work without depending on a server:
-
-- expand capture into review-by-exception handling, deterministic routing, and
-  durable support for links and files before broader input types;
-- deepen Tasks, Projects, Areas, Initiatives, relations, saved views, and the
-  weekly cockpit without losing the common command/query model;
-- deepen structured local search into saved views and the remaining record
-  types without adding generated answers to the desktop UI;
-- finish accessibility, platform behavior, and the release-quality Visual Atlas
-  contract for every changed surface.
+These foundations now support the coherent desktop Alpha described below; they
+are not by themselves a published desktop release.
 
 ## Delivered foundation — collaboration-safe workspaces
 
@@ -181,33 +168,70 @@ without adding generated answers to the desktop application. These records use
 the same deterministic search, activity, export, audit, recovery, MCP, local
 store, and Space-scoped Hub projection rules as the earlier graph.
 
-## Current — desktop distribution continuity and coherent local depth
+## Delivered foundation — coherent desktop Alpha and release candidate
 
-Turn the packaged engineering Alpha into installable macOS and Windows
-artifacts with an explicit, fail-closed path to platform signing and
-notarization. Prove install, manual update, compatible application rollback,
-clean uninstall, encrypted key continuity, and recovery before publishing a
-desktop release. Unsigned or ad-hoc artifacts remain mechanism-only evidence
-and cannot be labeled as releases.
+The desktop application is now one coherent, recoverable product surface rather
+than a collection of architectural demonstrations. Universal Capture handles
+text, URLs, and file references; Work connects Areas, Initiatives, Projects,
+dependencies, waiting direction, next actions, and saved deterministic views;
+and the relationship surface directly operates People, Offers, Renewals,
+sourced facts, Decisions, recurrences, and finite Radar review. Onboarding,
+Settings, independent encrypted workspaces, cross-workspace focus, restored
+navigation, detached windows, and starter imports complete the current Alpha.
 
-The coherent-depth slices now connect Areas, Initiatives, Projects,
-dependencies, waiting direction, next actions, and saved deterministic views in
-one Work destination. The relationship thread also exposes direct operations
-for People, Offers, Renewals, sourced facts, Decisions, recurrences, and finite
-Radar review. Continue workspace operation without weakening the shared
-command/query and recovery model.
+Hosted macOS and Windows gates prove the application, Hub, collaboration,
+recovery, update, compatible rollback, and uninstall journeys. A protected
+workflow has also produced an unpublished `0.1.0` GitHub Release draft whose
+Apple Silicon and Intel artifacts are Developer ID signed, notarized, stapled,
+and Gatekeeper accepted. Windows remains built and packaged as a first-class
+target, while paid Windows production signing is intentionally deferred.
 
-## Later — public release and ecosystem
+This is a dogfoodable desktop Alpha and a release candidate, not yet the final
+desktop product or a published release.
 
-- publish the first signed and notarized macOS distribution from a reviewed
-  GitHub Release draft after the protected gate has real credential evidence;
-- keep Windows build and packaged verification first-class, while deferring its
-  public installer until a future maintainer or sponsor provisions paid signing;
-- expand release drills across schema migrations, provider migration, device
-  revocation, and supported upgrade windows;
-- documented stable extension points where the underlying contracts are ready;
-- a focused mobile capture and review companion using the same product truth,
-  developed as a separate client rather than another independent feature stack.
+## Current — desktop product readiness
+
+Close the remaining difference between a verified Alpha and a desktop product
+that can carry real daily work:
+
+1. dogfood representative personal work through onboarding, capture, planning,
+   meetings, knowledge, relationships, recovery, and weekly review; convert
+   observed friction into bounded fixes without committing private work data;
+2. complete Universal Capture on desktop with managed file payloads,
+   screenshots, dictation, encrypted short voice notes, explicit retention, and
+   the full ambiguity/failure/permission/conflict recovery vocabulary;
+3. close daily-use gaps exposed by dogfooding while preserving the shared
+   command/query, authorization, audit, sync, and recovery boundaries;
+4. finish Visual Atlas review plus keyboard, screen-reader, contrast,
+   transparency, motion, narrow-window, macOS, and Windows quality gates;
+5. prove supported upgrades, backup/restore, Hub recovery, performance, and
+   clean-checkout reliability at the release candidate;
+6. publish a reviewed signed and notarized macOS release only after those gates
+   pass, while retaining Windows functional and packaged parity without calling
+   an unsigned Windows artifact a production release.
+
+Desktop product readiness does not require a managed Constellation backend, a
+public extension API, or paid Windows signing. Those capabilities must not
+weaken local-only and self-hosted operation if introduced later.
+
+## Later — desktop ecosystem after product readiness
+
+- a signed public Windows installer when a maintainer or sponsor provisions a
+  suitable paid signing identity;
+- stable extension points and compatibility policy after the underlying
+  contracts earn stability through real use;
+- an optional managed Data Home without weakening local-only or self-hosted
+  paths;
+- broader release operations such as staged channels, additional provider
+  migrations, and longer supported upgrade windows when evidence justifies
+  their maintenance cost.
+
+## Outside the current roadmap — mobile client
+
+A mobile capture and review companion remains compatible with the long-term
+product direction, but it is explicitly outside the current scope. No mobile
+implementation work is planned until the product owner brings it back into
+scope after desktop product readiness.
 
 ## What will not change silently
 
