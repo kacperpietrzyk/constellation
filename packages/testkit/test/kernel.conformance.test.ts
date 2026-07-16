@@ -9,6 +9,7 @@ import {
   ExecutionContextSchema,
   type CaptureId,
   type CaptureOriginal,
+  type CaptureReviewReason,
   type CommandOutcome,
   type ExecutionContext,
 } from "@constellation/contracts";
@@ -129,6 +130,35 @@ const processCommand = (
   commandName: "capture.process",
   expectedVersions: { [captureId]: expectedVersion },
   payload: { captureId, destination },
+});
+
+const reportCaptureExceptionCommand = (
+  captureId: string,
+  reason: Exclude<CaptureReviewReason, "duplicate">,
+  idempotencyKey: string,
+  expectedVersion = 1,
+) => ({
+  ...commandMetadata(idempotencyKey),
+  commandName: "capture.reportException",
+  expectedVersions: { [captureId]: expectedVersion },
+  payload: { captureId, reason },
+});
+
+const resolveCaptureExceptionCommand = (
+  captureId: string,
+  attentionSignalId: string,
+  action: "retry" | "keep_unclassified",
+  idempotencyKey: string,
+  captureVersion = 2,
+  attentionVersion = 1,
+) => ({
+  ...commandMetadata(idempotencyKey),
+  commandName: "capture.resolveException",
+  expectedVersions: {
+    [captureId]: captureVersion,
+    [attentionSignalId]: attentionVersion,
+  },
+  payload: { captureId, action },
 });
 
 const unwrapOutcome = (
@@ -512,6 +542,289 @@ describe("reference kernel conformance", () => {
         .captures.find((item) => item.id === duplicateCaptureId)
         ?.processingState,
       "routed_as_task",
+    );
+    assert.equal(
+      harness.store.snapshot().attentionSignals?.[0]?.state,
+      "dismissed",
+    );
+  });
+
+  it("reports every Capture exception and resolves it with one atomic Attention transition", () => {
+    const reasons: readonly Exclude<CaptureReviewReason, "duplicate">[] = [
+      "ambiguous",
+      "unsupported",
+      "parsing_failure",
+      "permission_failure",
+      "stale_conflict",
+      "missing_target",
+      "missing_payload",
+      "partial_payload_transfer",
+      "unknown_reconcile",
+    ];
+    for (const reason of reasons) {
+      const harness = bootstrappedHarness();
+      const captureId = submitCaptureAndGetId(
+        harness,
+        `report-${reason}`,
+        `Preserved ${reason}`,
+      );
+      const reported = unwrapOutcome(
+        harness.kernel.execute(
+          context(),
+          reportCaptureExceptionCommand(
+            captureId,
+            reason,
+            `report-command-${reason}`,
+          ),
+        ),
+      );
+      assert.equal(reported.diagnosticCode, "capture.needs_review");
+      if (
+        reported.outcome !== "success" ||
+        reported.projection.kind !== "capture.needs_review"
+      )
+        throw new Error("Expected a Capture review projection.");
+      assert.equal(reported.projection.reason, reason);
+      const attentionId = reported.projection.attentionSignalId;
+      const resolved = unwrapOutcome(
+        harness.kernel.execute(
+          context(),
+          resolveCaptureExceptionCommand(
+            captureId,
+            attentionId,
+            "keep_unclassified",
+            `keep-${reason}`,
+          ),
+        ),
+      );
+      assert.equal(resolved.diagnosticCode, "capture.exception_resolved");
+      const snapshot = harness.store.snapshot();
+      const capture = snapshot.captures.find((item) => item.id === captureId);
+      const attention = snapshot.attentionSignals?.find(
+        (item) => item.id === attentionId,
+      );
+      assert.equal(capture?.processingState, "unclassified");
+      if (capture?.processingState === "unclassified")
+        assert.equal(capture.previousReviewReason, reason);
+      assert.equal(attention?.state, "dismissed");
+      assert.equal(snapshot.events.at(-1)?.type, "capture.exception_resolved");
+      assert.deepEqual(snapshot.auditReceipts.at(-1)?.recordVersions, {
+        [captureId]: 3,
+        [attentionId]: 2,
+      });
+    }
+  });
+
+  it("enforces the reason-specific retry and destination recovery matrix", () => {
+    const setup = (reason: Exclude<CaptureReviewReason, "duplicate">) => {
+      const harness = bootstrappedHarness();
+      const captureId = submitCaptureAndGetId(
+        harness,
+        `matrix-${reason}`,
+        `Matrix ${reason}`,
+      );
+      const reported = unwrapOutcome(
+        harness.kernel.execute(
+          context(),
+          reportCaptureExceptionCommand(
+            captureId,
+            reason,
+            `matrix-report-${reason}`,
+          ),
+        ),
+      );
+      if (
+        reported.outcome !== "success" ||
+        reported.projection.kind !== "capture.needs_review"
+      )
+        throw new Error("Expected a Capture review projection.");
+      return {
+        harness,
+        captureId,
+        attentionId: reported.projection.attentionSignalId,
+      };
+    };
+
+    for (const reason of [
+      "parsing_failure",
+      "permission_failure",
+      "stale_conflict",
+      "missing_payload",
+      "partial_payload_transfer",
+      "unknown_reconcile",
+    ] as const) {
+      const { harness, captureId, attentionId } = setup(reason);
+      const retried = unwrapOutcome(
+        harness.kernel.execute(
+          context(),
+          resolveCaptureExceptionCommand(
+            captureId,
+            attentionId,
+            "retry",
+            `retry-${reason}`,
+          ),
+        ),
+      );
+      assert.equal(retried.diagnosticCode, "capture.exception_resolved");
+      assert.equal(
+        harness.store.snapshot().captures.find((item) => item.id === captureId)
+          ?.processingState,
+        "pending_processing",
+      );
+    }
+
+    const retryDenied = setup("ambiguous");
+    assert.equal(
+      unwrapOutcome(
+        retryDenied.harness.kernel.execute(
+          context(),
+          resolveCaptureExceptionCommand(
+            retryDenied.captureId,
+            retryDenied.attentionId,
+            "retry",
+            "retry-ambiguous-denied",
+          ),
+        ),
+      ).diagnosticCode,
+      "command.precondition_failed",
+    );
+    const routeAllowed = setup("missing_target");
+    assert.equal(
+      unwrapOutcome(
+        routeAllowed.harness.kernel.execute(
+          context(),
+          processCommand(
+            routeAllowed.captureId,
+            "route-missing-target",
+            2,
+            "task",
+          ),
+        ),
+      ).diagnosticCode,
+      "capture.routed_as_task",
+    );
+    assert.equal(
+      routeAllowed.harness.store.snapshot().attentionSignals?.[0]?.state,
+      "dismissed",
+    );
+    const routeDenied = setup("parsing_failure");
+    assert.equal(
+      unwrapOutcome(
+        routeDenied.harness.kernel.execute(
+          context(),
+          processCommand(
+            routeDenied.captureId,
+            "route-parsing-denied",
+            2,
+            "task",
+          ),
+        ),
+      ).diagnosticCode,
+      "command.precondition_failed",
+    );
+  });
+
+  it("replaces a missing managed payload only after fail-closed custody proof", () => {
+    const replacement = {
+      kind: "managed_file",
+      payload: {
+        payloadId: "00000000-0000-4000-8000-000000000901",
+        displayName: "replacement.pdf",
+        mediaType: "application/pdf",
+        byteLength: 32,
+        contentSha256: "9".repeat(64),
+        custodyState: "available",
+      },
+    } as const;
+    const setup = (capturePayloadsAvailable: boolean) => {
+      const harness = createReferenceHarness({ capturePayloadsAvailable });
+      harness.authorization.register(context());
+      assert.equal(
+        unwrapOutcome(harness.kernel.execute(context(), workspaceCommand()))
+          .outcome,
+        "success",
+      );
+      const captureId = submitCaptureAndGetId(
+        harness,
+        `replace-source-${capturePayloadsAvailable}`,
+        "Preserved original awaiting replacement",
+      );
+      const reported = unwrapOutcome(
+        harness.kernel.execute(
+          context(),
+          reportCaptureExceptionCommand(
+            captureId,
+            "missing_payload",
+            `replace-report-${capturePayloadsAvailable}`,
+          ),
+        ),
+      );
+      if (
+        reported.outcome !== "success" ||
+        reported.projection.kind !== "capture.needs_review"
+      )
+        throw new Error("Expected missing-payload review.");
+      return {
+        harness,
+        captureId,
+        attentionId: reported.projection.attentionSignalId,
+      };
+    };
+
+    const available = setup(true);
+    const replaced = unwrapOutcome(
+      available.harness.kernel.execute(context(), {
+        ...commandMetadata("replace-payload-success"),
+        commandName: "capture.resolveException",
+        expectedVersions: {
+          [available.captureId]: 2,
+          [available.attentionId]: 1,
+        },
+        payload: {
+          captureId: available.captureId,
+          action: "replace_payload",
+          original: replacement,
+        },
+      }),
+    );
+    assert.equal(replaced.diagnosticCode, "capture.exception_resolved");
+    const replacedCapture = available.harness.store
+      .snapshot()
+      .captures.find((item) => item.id === available.captureId);
+    assert.equal(replacedCapture?.processingState, "pending_processing");
+    assert.deepEqual(replacedCapture?.original, replacement);
+    assert.equal(
+      available.harness.store.snapshot().attentionSignals?.[0]?.state,
+      "dismissed",
+    );
+
+    const unavailable = setup(false);
+    const denied = unwrapOutcome(
+      unavailable.harness.kernel.execute(context(), {
+        ...commandMetadata("replace-payload-denied"),
+        commandName: "capture.resolveException",
+        expectedVersions: {
+          [unavailable.captureId]: 2,
+          [unavailable.attentionId]: 1,
+        },
+        payload: {
+          captureId: unavailable.captureId,
+          action: "replace_payload",
+          original: replacement,
+        },
+      }),
+    );
+    assert.equal(denied.diagnosticCode, "capture.payload_unavailable");
+    assert.equal(
+      unavailable.harness.store
+        .snapshot()
+        .captures.find((item) => item.id === unavailable.captureId)
+        ?.processingState,
+      "needs_review",
+    );
+    assert.equal(
+      unavailable.harness.store.snapshot().attentionSignals?.[0]?.state,
+      "unread",
     );
   });
 

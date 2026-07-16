@@ -1329,13 +1329,21 @@ const startProductionDesktop = async (): Promise<void> => {
     async (event, command: unknown) => {
       assertTrustedSender(event);
       const parsedCommand = CommandEnvelopeSchema.safeParse(command);
-      const managedOriginal =
-        parsedCommand.success &&
-        parsedCommand.data.commandName === "capture.submit" &&
-        (parsedCommand.data.payload.original.kind === "managed_file" ||
-          parsedCommand.data.payload.original.kind === "screenshot")
-          ? parsedCommand.data.payload.original
+      const managedOriginal = (() => {
+        if (!parsedCommand.success) return undefined;
+        const accepted = parsedCommand.data;
+        const original =
+          accepted.commandName === "capture.submit"
+            ? accepted.payload.original
+            : accepted.commandName === "capture.resolveException" &&
+                accepted.payload.action === "replace_payload"
+              ? accepted.payload.original
+              : undefined;
+        return original?.kind === "managed_file" ||
+          original?.kind === "screenshot"
+          ? original
           : undefined;
+      })();
       if (
         managedOriginal !== undefined &&
         (capturePayloadCustody === undefined ||
@@ -1434,6 +1442,12 @@ const startProductionDesktop = async (): Promise<void> => {
         result.kind === "command_outcome" &&
         result.outcome.outcome === "success"
       ) {
+        if (
+          parsedCommand.success &&
+          parsedCommand.data.commandName === "capture.resolveException" &&
+          parsedCommand.data.payload.action === "replace_payload"
+        )
+          capturePayloadCustody?.reconcile();
         if (
           parsedCommand.success &&
           parsedCommand.data.commandName === "workspace.rename"

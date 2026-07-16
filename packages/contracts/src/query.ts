@@ -23,7 +23,11 @@ import {
   DocumentRevisionIdSchema,
   StrategicRecordIdSchema,
 } from "./ids.js";
-import { CaptureOriginalSchema, ContractVersionSchema } from "./command.js";
+import {
+  CaptureOriginalSchema,
+  CaptureReviewReasonSchema,
+  ContractVersionSchema,
+} from "./command.js";
 import { RequestOriginSchema } from "./execution-context.js";
 import { ImportedMeetingSchema } from "./meeting-loop.js";
 
@@ -461,10 +465,16 @@ const CaptureHistoryItemSchema = z.discriminatedUnion("processingState", [
   }).strict(),
   CaptureHistoryItemBaseSchema.extend({
     processingState: z.literal("needs_review"),
-    reviewReason: z.enum(["duplicate", "unsupported"]),
+    reviewReason: CaptureReviewReasonSchema,
     duplicateOfCaptureId: CaptureIdSchema.optional(),
     attentionSignalId: AttentionSignalIdSchema,
     reviewedAt: z.iso.datetime({ offset: true }),
+  }).strict(),
+  CaptureHistoryItemBaseSchema.extend({
+    processingState: z.literal("unclassified"),
+    unclassifiedAt: z.iso.datetime({ offset: true }),
+    unclassifiedBy: PrincipalIdSchema,
+    previousReviewReason: CaptureReviewReasonSchema,
   }).strict(),
 ]);
 
@@ -968,6 +978,14 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "decision_impact_review",
               "capture_duplicate",
               "capture_unsupported",
+              "capture_ambiguous",
+              "capture_parsing_failure",
+              "capture_permission_failure",
+              "capture_stale_conflict",
+              "capture_missing_target",
+              "capture_missing_payload",
+              "capture_partial_payload_transfer",
+              "capture_unknown_reconcile",
             ]),
             destination: z.discriminatedUnion("kind", [
               z

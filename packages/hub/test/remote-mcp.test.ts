@@ -152,6 +152,14 @@ const setup = async (managedBytes?: Uint8Array) => {
                 Math.min(managedBytes.byteLength, input.offset + input.length),
               ),
             ),
+          isCapturePayloadAvailable: ({ original }) =>
+            Promise.resolve(
+              (original.kind === "managed_file" ||
+                original.kind === "screenshot") &&
+                original.payload.byteLength === managedBytes.byteLength &&
+                original.payload.contentSha256 ===
+                  createHash("sha256").update(managedBytes).digest("hex"),
+            ),
         }),
   });
   return { repository, remote, deviceCredential: device.deviceCredential };
@@ -170,6 +178,7 @@ const createRemoteGrant = async (
     capabilityScope: [
       "task.list",
       "capture.submitText",
+      "capture.process",
       "capture.history",
       "audit.receipt",
     ],
@@ -299,6 +308,87 @@ describe("remote MCP Hub gateway", () => {
       assert.equal(state.remoteAgents?.runs.length, 1);
       assert.equal(state.receipts.has(command.commandId), true);
       assert.equal(state.checkpoint, 2n);
+    });
+  });
+
+  it("replaces a Capture payload only after the Hub proves the published object", async () => {
+    const bytes = new TextEncoder().encode("verified replacement object");
+    const { repository, remote, deviceCredential } = await setup(bytes);
+    const created = await createRemoteGrant(remote, deviceCredential);
+    const captureId = ids.managedCapture;
+    const reported = await remote.invoke(ids.workspace, created.bearerToken, {
+      contractVersion: 1,
+      requestId: uuid(),
+      kind: "command",
+      run,
+      command: CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "capture.reportException",
+        commandId: uuid(),
+        workspaceId: ids.workspace,
+        idempotencyKey: "remote-report-missing-payload",
+        expectedVersions: { [captureId]: 1 },
+        correlationId: uuid(),
+        payload: { captureId, reason: "missing_payload" },
+      }),
+    });
+    assert.equal(reported.outcome, "success");
+    const reportedResult = reported.result as {
+      kind: "command_outcome";
+      outcome: {
+        projection: {
+          kind: "capture.needs_review";
+          attentionSignalId: string;
+        };
+      };
+    };
+    const attentionSignalId =
+      reportedResult.outcome.projection.attentionSignalId;
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const resolved = await remote.invoke(ids.workspace, created.bearerToken, {
+      contractVersion: 1,
+      requestId: uuid(),
+      kind: "command",
+      run,
+      command: CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "capture.resolveException",
+        commandId: uuid(),
+        workspaceId: ids.workspace,
+        idempotencyKey: "remote-replace-missing-payload",
+        expectedVersions: { [captureId]: 2, [attentionSignalId]: 1 },
+        correlationId: uuid(),
+        payload: {
+          captureId,
+          action: "replace_payload",
+          original: {
+            kind: "managed_file",
+            payload: {
+              payloadId: ids.managedPayload,
+              displayName: "verified.bin",
+              mediaType: "application/octet-stream",
+              byteLength: bytes.byteLength,
+              contentSha256: digest,
+              custodyState: "available",
+            },
+          },
+        },
+      }),
+    });
+    assert.equal(resolved.outcome, "success");
+    await repository.withWorkspaceLock(ids.workspace, (state) => {
+      const capture = state.snapshot.captures.find(
+        (candidate) => candidate.id === captureId,
+      );
+      const attention = state.snapshot.attentionSignals.find(
+        (candidate) => candidate.id === attentionSignalId,
+      );
+      assert.equal(capture?.processingState, "pending_processing");
+      assert.equal(
+        CaptureOriginalSchema.parse(capture?.original).kind,
+        "managed_file",
+      );
+      assert.equal(attention?.state, "dismissed");
     });
   });
 

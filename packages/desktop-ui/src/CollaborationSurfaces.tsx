@@ -316,6 +316,67 @@ export const CommentsPanel = ({
   );
 };
 
+type AttentionItem = AttentionInboxProjection["items"][number];
+
+const captureReasonLabel = (reason: AttentionItem["reason"]): string => {
+  switch (reason) {
+    case "capture_duplicate":
+      return "Duplikat Capture";
+    case "capture_ambiguous":
+      return "Niejasny kierunek";
+    case "capture_unsupported":
+      return "Nieobsługiwany oryginał";
+    case "capture_parsing_failure":
+      return "Błąd odczytu";
+    case "capture_permission_failure":
+      return "Brak uprawnienia";
+    case "capture_stale_conflict":
+      return "Nieaktualna wersja";
+    case "capture_missing_target":
+      return "Brak celu";
+    case "capture_missing_payload":
+      return "Brak oryginału";
+    case "capture_partial_payload_transfer":
+      return "Niepełny transfer";
+    case "capture_unknown_reconcile":
+      return "Wynik nieznany";
+    default:
+      return "Wymaga decyzji";
+  }
+};
+
+export const captureRecoveryActions = (
+  reason: AttentionItem["reason"],
+): readonly ("route" | "retry" | "replace_payload" | "keep_unclassified")[] => {
+  if (!reason.startsWith("capture_")) return [];
+  const actions: (
+    "route" | "retry" | "replace_payload" | "keep_unclassified"
+  )[] = [];
+  if (
+    reason === "capture_ambiguous" ||
+    reason === "capture_duplicate" ||
+    reason === "capture_unsupported" ||
+    reason === "capture_missing_target"
+  )
+    actions.push("route");
+  if (
+    reason === "capture_parsing_failure" ||
+    reason === "capture_permission_failure" ||
+    reason === "capture_stale_conflict" ||
+    reason === "capture_missing_payload" ||
+    reason === "capture_partial_payload_transfer" ||
+    reason === "capture_unknown_reconcile"
+  )
+    actions.push("retry");
+  if (
+    reason === "capture_missing_payload" ||
+    reason === "capture_partial_payload_transfer"
+  )
+    actions.push("replace_payload");
+  actions.push("keep_unclassified");
+  return actions;
+};
+
 export const AttentionSurface = ({
   attention,
   busy,
@@ -323,6 +384,9 @@ export const AttentionSurface = ({
   onRead,
   onDismiss,
   onRouteCapture,
+  onRetryCapture,
+  onKeepCapture,
+  onReplaceCapturePayload,
 }: {
   readonly attention: DataSlice<AttentionInboxProjection>;
   readonly busy: boolean;
@@ -333,6 +397,9 @@ export const AttentionSurface = ({
     item: AttentionInboxProjection["items"][number],
     destination: "task" | "knowledge_source",
   ) => void;
+  readonly onRetryCapture: (item: AttentionItem) => void;
+  readonly onKeepCapture: (item: AttentionItem) => void;
+  readonly onReplaceCapturePayload: (item: AttentionItem) => void;
 }) => (
   <section className="attention-surface" aria-labelledby="surface-title">
     <header className="surface-heading attention-heading">
@@ -379,9 +446,7 @@ export const AttentionSurface = ({
                   ? "Wzmianka"
                   : item.reason === "task_assignment"
                     ? "Odpowiedzialność"
-                    : item.reason === "capture_duplicate"
-                      ? "Duplikat Capture"
-                      : "Wymaga decyzji"}
+                    : captureReasonLabel(item.reason)}
               </span>
               <strong>{item.title}</strong>
               <span>
@@ -397,7 +462,7 @@ export const AttentionSurface = ({
             </button>
             <div className="attention-actions">
               {item.destination.kind === "capture" &&
-                item.reason === "capture_duplicate" && (
+                captureRecoveryActions(item.reason).includes("route") && (
                   <>
                     <button
                       type="button"
@@ -414,6 +479,40 @@ export const AttentionSurface = ({
                       Zapisz jako źródło
                     </button>
                   </>
+                )}
+              {item.destination.kind === "capture" &&
+                captureRecoveryActions(item.reason).includes("retry") && (
+                  <button
+                    type="button"
+                    onClick={() => onRetryCapture(item)}
+                    disabled={busy}
+                  >
+                    Spróbuj ponownie
+                  </button>
+                )}
+              {item.destination.kind === "capture" &&
+                captureRecoveryActions(item.reason).includes(
+                  "replace_payload",
+                ) && (
+                  <button
+                    type="button"
+                    onClick={() => onReplaceCapturePayload(item)}
+                    disabled={busy}
+                  >
+                    Zastąp oryginał
+                  </button>
+                )}
+              {item.destination.kind === "capture" &&
+                captureRecoveryActions(item.reason).includes(
+                  "keep_unclassified",
+                ) && (
+                  <button
+                    type="button"
+                    onClick={() => onKeepCapture(item)}
+                    disabled={busy}
+                  >
+                    Zachowaj bez klasyfikacji
+                  </button>
                 )}
               {item.state === "unread" && (
                 <button

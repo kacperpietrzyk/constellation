@@ -68,6 +68,7 @@ import {
   rotateRemoteAgentCredential,
   revokeRemoteAgentGrant,
   routeCaptureException,
+  resolveCaptureException,
   type AuditReceiptProjection,
   type DesktopSnapshot,
   type MutationFailure,
@@ -1673,25 +1674,78 @@ export const RealApp = ({
                 item.destination.captureId,
                 destination,
               ).then(async (routeResult) => {
-                if (routeResult.kind !== "success") {
-                  setAttentionBusy(false);
-                  showFailure(routeResult);
-                  return;
-                }
-                const dismissResult = await updateAttention(
-                  client,
-                  state.snapshot,
-                  item,
-                  "dismiss",
-                );
                 setAttentionBusy(false);
-                if (dismissResult.kind === "success")
+                if (routeResult.kind === "success")
                   await refreshAfter(
                     destination === "task"
                       ? "Capture skierowano do zadań."
                       : "Capture zapisano jako źródło wiedzy.",
                   );
-                else showFailure(dismissResult);
+                else showFailure(routeResult);
+              });
+            }}
+            onRetryCapture={(item) => {
+              if (!client) return;
+              setAttentionBusy(true);
+              void resolveCaptureException(
+                client,
+                state.snapshot,
+                item,
+                "retry",
+              ).then(async (result) => {
+                setAttentionBusy(false);
+                if (result.kind === "success")
+                  await refreshAfter(
+                    "Capture wrócił do bezpiecznej kolejki przetwarzania.",
+                  );
+                else showFailure(result);
+              });
+            }}
+            onKeepCapture={(item) => {
+              if (!client) return;
+              setAttentionBusy(true);
+              void resolveCaptureException(
+                client,
+                state.snapshot,
+                item,
+                "keep_unclassified",
+              ).then(async (result) => {
+                setAttentionBusy(false);
+                if (result.kind === "success")
+                  await refreshAfter(
+                    "Oryginał zachowano bez wymuszonej klasyfikacji.",
+                  );
+                else showFailure(result);
+              });
+            }}
+            onReplaceCapturePayload={(item) => {
+              if (!client?.selectCapturePayload) {
+                setToast("Wybór pliku jest chwilowo niedostępny.");
+                return;
+              }
+              setAttentionBusy(true);
+              void client.selectCapturePayload().then(async (selected) => {
+                if (selected.outcome !== "success") {
+                  setAttentionBusy(false);
+                  if (selected.code !== "cancelled")
+                    setToast(
+                      "Nie udało się przygotować bezpiecznego pliku zastępczego.",
+                    );
+                  return;
+                }
+                const result = await resolveCaptureException(
+                  client,
+                  state.snapshot,
+                  item,
+                  "replace_payload",
+                  selected.original,
+                );
+                setAttentionBusy(false);
+                if (result.kind === "success")
+                  await refreshAfter(
+                    "Oryginał zastąpiono i skierowano do ponownego przetwarzania.",
+                  );
+                else showFailure(result);
               });
             }}
           />

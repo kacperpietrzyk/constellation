@@ -780,7 +780,9 @@ export const HistorySurface = ({
                             ? "Utworzono źródło wiedzy"
                             : capture.processingState === "needs_review"
                               ? "Wymaga decyzji w Attention"
-                              : "Oczekuje na przetworzenie"}
+                              : capture.processingState === "unclassified"
+                                ? "Zachowano bez klasyfikacji"
+                                : "Oczekuje na przetworzenie"}
                       </strong>
                       <span>{capture.originalText}</span>
                     </div>

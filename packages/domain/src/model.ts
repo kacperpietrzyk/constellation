@@ -2,6 +2,7 @@ import type {
   AuditReceiptId,
   CaptureId,
   CaptureOriginal,
+  CaptureReviewReason,
   CommandId,
   CorrelationId,
   DocumentId,
@@ -186,17 +187,25 @@ export type RoutedKnowledgeSourceCapture = CaptureBase & {
 
 export type ReviewCapture = CaptureBase & {
   readonly processingState: "needs_review";
-  readonly reviewReason: "duplicate" | "unsupported";
+  readonly reviewReason: CaptureReviewReason;
   readonly duplicateOfCaptureId?: CaptureId;
   readonly attentionSignalId: AttentionSignalId;
   readonly reviewedAt: string;
+};
+
+export type UnclassifiedCapture = CaptureBase & {
+  readonly processingState: "unclassified";
+  readonly unclassifiedAt: string;
+  readonly unclassifiedBy: PrincipalId;
+  readonly previousReviewReason: CaptureReviewReason;
 };
 
 export type Capture =
   | PendingCapture
   | RoutedTaskCapture
   | RoutedKnowledgeSourceCapture
-  | ReviewCapture;
+  | ReviewCapture
+  | UnclassifiedCapture;
 
 export interface TaskStatusDefinition {
   readonly id: TaskStatusId;
@@ -295,7 +304,15 @@ export interface AttentionSignal {
     | "relationship_fact_stale"
     | "decision_impact_review"
     | "capture_duplicate"
-    | "capture_unsupported";
+    | "capture_unsupported"
+    | "capture_ambiguous"
+    | "capture_parsing_failure"
+    | "capture_permission_failure"
+    | "capture_stale_conflict"
+    | "capture_missing_target"
+    | "capture_missing_payload"
+    | "capture_partial_payload_transfer"
+    | "capture_unknown_reconcile";
   readonly destination: AttentionDestination;
   readonly sourceRecordId: string;
   readonly deduplicationKey: string;
@@ -767,6 +784,18 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly aggregateVersion: number;
       readonly attentionSignalId: AttentionSignalId;
       readonly reason: ReviewCapture["reviewReason"];
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "capture.exception_resolved";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: CaptureId;
+      readonly aggregateVersion: number;
+      readonly attentionSignalId: AttentionSignalId;
+      readonly action: "retry" | "keep_unclassified" | "replace_payload";
+      readonly processingState: "pending_processing" | "unclassified";
       readonly occurredAt: string;
     }
   | {

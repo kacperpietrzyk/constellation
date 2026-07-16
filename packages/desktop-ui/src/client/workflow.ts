@@ -2037,6 +2037,51 @@ export const routeCaptureException = (
   );
 };
 
+export const resolveCaptureException = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  signal: AttentionInboxProjection["items"][number],
+  action: "retry" | "keep_unclassified" | "replace_payload",
+  original?: CaptureOriginal,
+) => {
+  if (signal.destination.kind !== "capture")
+    return Promise.resolve<MutationResult<never>>({
+      kind: "error",
+      message: "Ten sygnał nie prowadzi do Capture.",
+    });
+  const captureId = signal.destination.captureId;
+  const capture = snapshot.captures.find((item) => item.id === captureId);
+  if (capture === undefined)
+    return Promise.resolve<MutationResult<never>>({
+      kind: "error",
+      message: "Nie znaleziono zachowanego Capture.",
+    });
+  if (action === "replace_payload" && original === undefined)
+    return Promise.resolve<MutationResult<never>>({
+      kind: "error",
+      message: "Wybierz plik zastępczy przed wykonaniem tej operacji.",
+    });
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [capture.id]: capture.version,
+        [signal.id]: signal.version,
+      }),
+      commandName: "capture.resolveException",
+      payload:
+        action === "replace_payload"
+          ? { captureId: capture.id, action, original: original! }
+          : { captureId: capture.id, action },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "capture.exception_resolved"
+        ? response.outcome.projection
+        : undefined,
+  );
+};
+
 export const resolveRadarCandidate = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,

@@ -35,6 +35,8 @@ Commands:
 - `agent.handoffSubmit`
 - `capture.submit`
 - `capture.process`
+- `capture.reportException`
+- `capture.resolveException`
 - `capture.submitText`
 - `capture.routeAsTask`
 - `project.create`
@@ -138,6 +140,14 @@ same staged original can be retried. The kernel still rejects any managed
 descriptor whose encrypted local custody is missing or inconsistent. The Hub
 performs the equivalent check against its published content-addressed object
 before accepting the queued command into the authoritative projection.
+`capture.reportException` records one closed reason code without accepting
+renderer-authored diagnostic text. `capture.resolveException` permits only the
+reason-specific retry, keep-unclassified, or verified payload-replacement
+actions. An explicit `capture.process` destination resolves ambiguity,
+duplicate, unsupported input, or a missing target. A successful resolution
+updates the Capture and dismisses its exact recipient-only Attention signal in
+one unit of work; keeping an original unclassified removes inbox debt without
+discarding or falsely routing it.
 
 Capture provenance is optional on the core Task model. A routed Task records
 its source Capture, while future direct `task.create` commands will not invent
@@ -147,13 +157,16 @@ The application-owned rule is deliberately narrow: text becomes a Task, while
 URLs, file references, managed files, and screenshots become knowledge
 sources. Managed payload duplicates use exact content digest and byte length;
 no similarity model is involved. Exact duplicates remain
-durable and create a scoped Attention signal instead of a second domain record;
-an explicit follow-up can choose a different destination. The rules never start
-an AI executor. The current slice has a runnable desktop flow,
+durable and create a scoped Attention signal instead of a second domain record.
+The same review state distinguishes ambiguity, unsupported input, parsing,
+permission, stale conflict, missing target, missing payload, partial payload
+transfer, and unknown reconciliation. Recovery actions are validated in the
+kernel rather than inferred by the renderer. The rules never start an AI
+executor. The current slice has a runnable desktop flow,
 typed Project relations, status/completion, scoped search, explainable cockpit,
 meaningful activity, version-safe undo, contextual comments, and durable
-recipient attention. It does not yet claim generalized Attention rules,
-editable workflow configuration, or a federated cross-Workspace copy command.
+recipient attention. It does not yet claim editable workflow configuration or
+a federated cross-Workspace copy command.
 
 Task responsibility is a separate versioned collaboration record rather than a
 free-form Task field. An editor can assign one active Workspace member or guest
@@ -254,6 +267,11 @@ Radar behavior are domain rules rather than UI or MCP special cases. See
 - Capture processing requires the exact current Capture version. Repeating a
   committed route with the same idempotency input returns its original result;
   a distinct attempt cannot create a second Task or knowledge source.
+- Capture exception recovery requires the exact Capture and Attention versions.
+  A route closes its associated signal in the same transaction. Payload
+  replacement first passes current local or Hub custody proof, then replaces
+  the path-free descriptor and fingerprint; failed proof changes neither
+  record.
 - Record changes, domain events, audit receipts, idempotency outcomes, and outbox
   entries share one unit of work. Success is returned only after that unit commits.
 - Audit, events, outbox records, validation issues, and diagnostics omit capture
