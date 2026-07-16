@@ -40,6 +40,7 @@ class CdpClient {
   #issues = [];
   #pending = new Map();
   #sessionId;
+  #targetId;
   #closeTransport;
   #sendRaw;
 
@@ -177,8 +178,22 @@ class CdpClient {
       targetId: page.targetId,
       flatten: true,
     });
+    this.#targetId = page.targetId;
     this.#sessionId = sessionId;
     return true;
+  }
+
+  async getWindowBounds() {
+    if (this.#targetId === undefined) {
+      throw new Error("CDP_PAGE_TARGET_MISSING");
+    }
+    return this.sendBrowser("Browser.getWindowForTarget", {
+      targetId: this.#targetId,
+    });
+  }
+
+  async setWindowBounds(windowId, bounds) {
+    await this.sendBrowser("Browser.setWindowBounds", { windowId, bounds });
   }
 
   async evaluate(expression) {
@@ -486,13 +501,24 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         `document.querySelector(".capture-dock") !== null && document.querySelectorAll(".nav-item[data-surface]").length === 12`,
         "PACKAGED_ALPHA_OPERATIONAL_SHELL_NOT_READY",
       );
-      await client.send("Emulation.setDeviceMetricsOverride", {
+      const originalWindow = await client.getWindowBounds();
+      await client.setWindowBounds(originalWindow.windowId, {
+        windowState: "normal",
+      });
+      await client.setWindowBounds(originalWindow.windowId, {
         width: 320,
         height: 800,
-        deviceScaleFactor: 1,
-        mobile: false,
       });
       try {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const viewportWidth = await client.evaluate("innerWidth");
+          if (viewportWidth === 320) break;
+          const currentWindow = await client.getWindowBounds();
+          await client.setWindowBounds(originalWindow.windowId, {
+            width: currentWindow.bounds.width + (320 - viewportWidth),
+            height: currentWindow.bounds.height,
+          });
+        }
         await client.evaluate(`new Promise((resolve) =>
           requestAnimationFrame(() => requestAnimationFrame(resolve))
         )`);
@@ -637,7 +663,10 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           "PACKAGED_ALPHA_CAPTURE_FOCUS_NOT_RESTORED",
         );
       } finally {
-        await client.send("Emulation.clearDeviceMetricsOverride");
+        await client.setWindowBounds(
+          originalWindow.windowId,
+          originalWindow.bounds,
+        );
       }
 
       const payloadCustody = await client.evaluate(`(async () => {
