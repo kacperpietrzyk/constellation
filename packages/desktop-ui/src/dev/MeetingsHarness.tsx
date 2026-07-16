@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import { MeetingsSurface } from "../MeetingsSurface.js";
@@ -153,4 +155,35 @@ const client: ConstellationRendererClient = {
   }),
 };
 
-export const MeetingsHarness = () => <MeetingsSurface client={client} />;
+export const MeetingsHarness = () => {
+  const [inspectorHost, setInspectorHost] = useState<HTMLElement | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  return (
+    <main className="meetings-harness-shell">
+      <MeetingsSurface
+        client={client}
+        inspectorHost={inspectorHost}
+        onInspectorOpen={() => setInspectorOpen(true)}
+      />
+      <aside
+        className={`inspector inspector--meeting${inspectorOpen ? " open" : ""}`}
+        aria-label="Podgląd kontekstu"
+      >
+        <header className="inspector-header">
+          <div>
+            <span>Podgląd kontekstu</span>
+            <small>Wynik Jamie</small>
+          </div>
+          <button
+            className="icon-button meeting-inspector-close"
+            aria-label="Zamknij szczegóły spotkania"
+            onClick={() => setInspectorOpen(false)}
+          >
+            ×
+          </button>
+        </header>
+        <div className="meeting-inspector-host" ref={setInspectorHost} />
+      </aside>
+    </main>
+  );
+};
