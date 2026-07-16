@@ -52,7 +52,8 @@ export const normalizeJamieApiMeeting = (input: {
       ? {}
       : { summaryMarkdown: meeting.data.summary.markdown }),
     ...(meeting.data.transcript === null ||
-    meeting.data.transcript === undefined
+    meeting.data.transcript === undefined ||
+    meeting.data.transcriptInfo?.truncated === true
       ? {}
       : { transcriptMarkdown: meeting.data.transcript }),
     participants: meeting.data.participants.map((participant) => ({

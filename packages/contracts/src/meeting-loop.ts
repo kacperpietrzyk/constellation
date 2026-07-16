@@ -154,6 +154,7 @@ export const JamieApiMeetingSchema = z
     generatedTitle: z.string().trim().min(1).max(500).nullable().optional(),
     startTime: z.iso.datetime({ offset: true }),
     endTime: z.iso.datetime({ offset: true }).nullable(),
+    locked: z.boolean().optional(),
     summary: z
       .object({
         markdown: z.string().max(1_000_000),
@@ -164,6 +165,16 @@ export const JamieApiMeetingSchema = z
       .nullable()
       .optional(),
     transcript: z.string().max(5_000_000).nullable().optional(),
+    transcriptInfo: z
+      .object({
+        truncated: z.boolean(),
+        totalBytes: z.int().nonnegative().optional(),
+        returnedBytes: z.int().nonnegative().optional(),
+        nextCursor: z.string().nullable().optional(),
+        hint: z.string().max(2_000).optional(),
+      })
+      .strict()
+      .optional(),
     participants: z
       .array(
         z

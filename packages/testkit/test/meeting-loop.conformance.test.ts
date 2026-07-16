@@ -146,6 +146,13 @@ const jamieApiMeeting = {
     short: "Summary",
   },
   transcript: "**Alex**\nReady.",
+  transcriptInfo: {
+    truncated: true,
+    totalBytes: 12_000,
+    returnedBytes: 10_000,
+    nextCursor: "next-page",
+    hint: "Read the remaining transcript sequentially.",
+  },
   participants: [{ id: "p1", name: "Alex", email: "alex@example.com" }],
   tasks: [{ content: "Fallback task", completed: false, assignee: null }],
   tags: [],
@@ -182,6 +189,7 @@ test("normalizes the current Jamie API meeting and stable task-list identities",
   assert.ok(normalized);
   assert.equal(normalized.calendarEventId, "event-external");
   assert.equal(normalized.actionItems[0]?.externalTaskId, "task-stable-1");
+  assert.equal(normalized.transcriptMarkdown, undefined);
   assert.match(normalized.contentHash, /^[a-f0-9]{64}$/);
 });
 

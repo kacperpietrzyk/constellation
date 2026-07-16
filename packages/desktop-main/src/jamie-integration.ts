@@ -158,11 +158,12 @@ const MeetingListSchema = z
           .object({
             id: z.string().trim().min(1).max(500),
             title: z.string(),
-            generatedTitle: z.string().nullable(),
+            generatedTitle: z.string().nullable().optional(),
             startTime: z.iso.datetime({ offset: true }),
             endTime: z.iso.datetime({ offset: true }).nullable(),
             calendarEventId: z.string().nullable(),
             userId: z.string(),
+            isShared: z.boolean().optional(),
           })
           .strict(),
       )
