@@ -126,6 +126,14 @@ knowledge source that points back to its source Capture. A managed original
 contains only an opaque payload ID, digest, byte length, media type, display
 name, and custody state. Bytes and local paths never enter the command, audit,
 outbox, or MCP projection. The original text command remains compatible.
+For a coordinated Data Home, the trusted Electron adapter reads and verifies
+the staged local bytes, publishes them through the authorized Hub attachment
+transport, and verifies its digest and length before invoking
+`capture.submit`. Transfer failure therefore has no domain side effect and the
+same staged original can be retried. The kernel still rejects any managed
+descriptor whose encrypted local custody is missing or inconsistent. The Hub
+performs the equivalent check against its published content-addressed object
+before accepting the queued command into the authoritative projection.
 
 Capture provenance is optional on the core Task model. A routed Task records
 its source Capture, while future direct `task.create` commands will not invent

@@ -216,9 +216,12 @@ weaken local-only and self-hosted operation if introduced later.
 
 The first bounded Universal Capture readiness slice now places one selected,
 dropped, or pasted file/screenshot into encrypted local workspace custody before
-routing, without retaining its local path. Coordinated transfer, remote payload
-access, revocation purge, the remaining exception vocabulary, and voice remain
-inside the current readiness work rather than being claimed complete.
+routing, without retaining its local path. A coordinated workspace now accepts
+the Capture only after the same bytes are published through the Hub's resumable,
+digest-verified attachment channel; transfer failure keeps the local original
+and a direct retry path, while revoked scope purges it. Remote payload access,
+the remaining exception vocabulary, and voice remain inside the current
+readiness work rather than being claimed complete.
 
 ## Later — desktop ecosystem after product readiness
 

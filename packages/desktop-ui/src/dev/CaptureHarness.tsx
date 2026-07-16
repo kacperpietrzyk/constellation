@@ -10,6 +10,8 @@ import { CaptureDialog } from "../RealApp.js";
 
 export const CaptureHarness = () => {
   const [submitted, setSubmitted] = useState<CaptureOriginal>();
+  const transferFails =
+    new URLSearchParams(window.location.search).get("transfer") === "failed";
   const client = {
     selectCapturePayload: async () => ({
       outcome: "success" as const,
@@ -41,7 +43,12 @@ export const CaptureHarness = () => {
         client={client}
         workspaceName="Personal"
         onClose={() => undefined}
-        onSubmit={setSubmitted}
+        onSubmit={async (original) => {
+          if (transferFails)
+            return "Nie udało się przesłać pliku do Data Home. Plik pozostaje przygotowany lokalnie — spróbuj ponownie.";
+          setSubmitted(original);
+          return undefined;
+        }}
       />
     </main>
   );

@@ -1240,17 +1240,8 @@ const startProductionDesktop = async (): Promise<void> => {
   };
   ipcMain.handle(DESKTOP_CHANNELS.selectCapturePayload, async (event) => {
     assertTrustedSender(event);
-    if (
-      capturePayloadCustody === undefined ||
-      coordinatedDataHomeProvider !== undefined
-    )
-      return {
-        outcome: "failure",
-        code:
-          coordinatedDataHomeProvider === undefined
-            ? "payload_unavailable"
-            : "payload_transfer_unavailable",
-      } as const;
+    if (capturePayloadCustody === undefined)
+      return { outcome: "failure", code: "payload_unavailable" } as const;
     const selected = await dialog.showOpenDialog({
       title: "Choose a file to preserve in Constellation",
       properties: ["openFile"],
@@ -1301,18 +1292,11 @@ const startProductionDesktop = async (): Promise<void> => {
       assertTrustedSender(event);
       if (
         capturePayloadCustody === undefined ||
-        coordinatedDataHomeProvider !== undefined ||
         typeof raw !== "object" ||
         raw === null ||
         Array.isArray(raw)
       )
-        return {
-          outcome: "failure",
-          code:
-            coordinatedDataHomeProvider === undefined
-              ? "payload_unavailable"
-              : "payload_transfer_unavailable",
-        } as const;
+        return { outcome: "failure", code: "payload_unavailable" } as const;
       const input = raw as Record<string, unknown>;
       if (
         Object.keys(input).sort().join(",") !==
@@ -1339,98 +1323,131 @@ const startProductionDesktop = async (): Promise<void> => {
       if (original.success) capturePayloadCustody?.discard(original.data);
     },
   );
-  ipcMain.handle(DESKTOP_CHANNELS.executeCommand, (event, command: unknown) => {
-    assertTrustedSender(event);
-    const parsedCommand = CommandEnvelopeSchema.safeParse(command);
-    const managedOriginal =
-      parsedCommand.success &&
-      parsedCommand.data.commandName === "capture.submit" &&
-      (parsedCommand.data.payload.original.kind === "managed_file" ||
-        parsedCommand.data.payload.original.kind === "screenshot")
-        ? parsedCommand.data.payload.original
-        : undefined;
-    if (
-      managedOriginal !== undefined &&
-      (capturePayloadCustody === undefined ||
-        !capturePayloadCustody.verify(managedOriginal))
-    )
-      throw new Error("CAPTURE_PAYLOAD_INTEGRITY_FAILED");
-    if (
-      parsedCommand.success &&
-      coordinatedDataHomeProvider !== undefined &&
-      (parsedCommand.data.commandName === "agent.grantCreate" ||
-        parsedCommand.data.commandName === "agent.grantRotateCredential")
-    )
-      throw new Error("Local MCP grants require a local-only Data Home.");
-    const pendingAgentCredential =
-      parsedCommand.success &&
-      (parsedCommand.data.commandName === "agent.grantCreate" ||
-        parsedCommand.data.commandName === "agent.grantRotateCredential")
-        ? pendingAgentCredentials.get(parsedCommand.data.payload.credentialId)
-        : undefined;
-    if (
-      parsedCommand.success &&
-      (parsedCommand.data.commandName === "agent.grantCreate" ||
-        parsedCommand.data.commandName === "agent.grantRotateCredential") &&
-      (pendingAgentCredential === undefined ||
-        pendingAgentCredential.expiresAt <= Date.now() ||
-        pendingAgentCredential.grantId !== parsedCommand.data.payload.grantId ||
-        pendingAgentCredential.prepared.credentialDigest !==
-          parsedCommand.data.payload.credentialDigest)
-    )
-      throw new Error(
-        "Local MCP credential preparation is invalid or expired.",
-      );
-    const result = runtime.service.execute(command);
-    if (
-      result.kind === "command_outcome" &&
-      result.outcome.outcome === "success" &&
-      parsedCommand.success &&
-      localMcpRuntime !== undefined
-    ) {
-      const accepted = parsedCommand.data;
+  ipcMain.handle(
+    DESKTOP_CHANNELS.executeCommand,
+    async (event, command: unknown) => {
+      assertTrustedSender(event);
+      const parsedCommand = CommandEnvelopeSchema.safeParse(command);
+      const managedOriginal =
+        parsedCommand.success &&
+        parsedCommand.data.commandName === "capture.submit" &&
+        (parsedCommand.data.payload.original.kind === "managed_file" ||
+          parsedCommand.data.payload.original.kind === "screenshot")
+          ? parsedCommand.data.payload.original
+          : undefined;
       if (
-        accepted.commandName === "agent.grantCreate" ||
-        accepted.commandName === "agent.grantRotateCredential"
-      ) {
-        if (pendingAgentCredential === undefined)
-          throw new Error("Prepared local MCP credential is unavailable.");
-        localMcpRuntime.credentialCustody.publish({
-          workspaceId: accepted.workspaceId,
-          grantId: accepted.payload.grantId,
-          endpoint: localMcpRuntime.endpoint,
-          credential: pendingAgentCredential.prepared,
-        });
-        pendingAgentCredentials.delete(accepted.payload.credentialId);
-      } else if (accepted.commandName === "agent.grantRevoke") {
-        localMcpRuntime.credentialCustody.revoke(accepted.payload.grantId);
+        managedOriginal !== undefined &&
+        (capturePayloadCustody === undefined ||
+          !capturePayloadCustody.verify(managedOriginal))
+      )
+        throw new Error("CAPTURE_PAYLOAD_INTEGRITY_FAILED");
+      if (managedOriginal !== undefined && activeHubConnection !== undefined) {
+        const bytes = capturePayloadCustody?.read(managedOriginal);
+        if (bytes === undefined)
+          throw new Error("CAPTURE_PAYLOAD_INTEGRITY_FAILED");
+        try {
+          const transferred = await new HttpHubTransport(
+            activeHubConnection.origin,
+          ).uploadAttachment({
+            credential: activeHubConnection.deviceCredential,
+            workspaceId: activeHubConnection.workspaceId,
+            deviceId: activeHubConnection.deviceId,
+            bytes,
+          });
+          if (
+            transferred.digest !== managedOriginal.payload.contentSha256 ||
+            transferred.byteLength !== managedOriginal.payload.byteLength
+          )
+            throw new Error("CAPTURE_PAYLOAD_INTEGRITY_FAILED");
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            error.message === "CAPTURE_PAYLOAD_INTEGRITY_FAILED"
+          )
+            throw error;
+          throw new Error(
+            "Nie udało się przesłać pliku do Data Home. Plik pozostaje przygotowany lokalnie — spróbuj ponownie.",
+          );
+        }
       }
-    }
-    if (
-      result.kind === "command_outcome" &&
-      result.outcome.outcome === "success" &&
-      coordinatedDataHomeProvider !== undefined
-    ) {
-      scheduleHubSync(0);
-    }
-    if (
-      result.kind === "command_outcome" &&
-      result.outcome.outcome === "success"
-    ) {
       if (
         parsedCommand.success &&
-        parsedCommand.data.commandName === "workspace.rename"
-      ) {
-        renameRegisteredWorkspace(
-          baseRoot,
-          parsedCommand.data.workspaceId,
-          parsedCommand.data.payload.name,
+        coordinatedDataHomeProvider !== undefined &&
+        (parsedCommand.data.commandName === "agent.grantCreate" ||
+          parsedCommand.data.commandName === "agent.grantRotateCredential")
+      )
+        throw new Error("Local MCP grants require a local-only Data Home.");
+      const pendingAgentCredential =
+        parsedCommand.success &&
+        (parsedCommand.data.commandName === "agent.grantCreate" ||
+          parsedCommand.data.commandName === "agent.grantRotateCredential")
+          ? pendingAgentCredentials.get(parsedCommand.data.payload.credentialId)
+          : undefined;
+      if (
+        parsedCommand.success &&
+        (parsedCommand.data.commandName === "agent.grantCreate" ||
+          parsedCommand.data.commandName === "agent.grantRotateCredential") &&
+        (pendingAgentCredential === undefined ||
+          pendingAgentCredential.expiresAt <= Date.now() ||
+          pendingAgentCredential.grantId !==
+            parsedCommand.data.payload.grantId ||
+          pendingAgentCredential.prepared.credentialDigest !==
+            parsedCommand.data.payload.credentialDigest)
+      )
+        throw new Error(
+          "Local MCP credential preparation is invalid or expired.",
         );
+      const result = runtime.service.execute(command);
+      if (
+        result.kind === "command_outcome" &&
+        result.outcome.outcome === "success" &&
+        parsedCommand.success &&
+        localMcpRuntime !== undefined
+      ) {
+        const accepted = parsedCommand.data;
+        if (
+          accepted.commandName === "agent.grantCreate" ||
+          accepted.commandName === "agent.grantRotateCredential"
+        ) {
+          if (pendingAgentCredential === undefined)
+            throw new Error("Prepared local MCP credential is unavailable.");
+          localMcpRuntime.credentialCustody.publish({
+            workspaceId: accepted.workspaceId,
+            grantId: accepted.payload.grantId,
+            endpoint: localMcpRuntime.endpoint,
+            credential: pendingAgentCredential.prepared,
+          });
+          pendingAgentCredentials.delete(accepted.payload.credentialId);
+        } else if (accepted.commandName === "agent.grantRevoke") {
+          localMcpRuntime.credentialCustody.revoke(accepted.payload.grantId);
+        }
       }
-      deliverUrgentAttention(runtime.service);
-    }
-    return result;
-  });
+      if (
+        result.kind === "command_outcome" &&
+        result.outcome.outcome === "success" &&
+        coordinatedDataHomeProvider !== undefined
+      ) {
+        scheduleHubSync(0);
+      }
+      if (
+        result.kind === "command_outcome" &&
+        result.outcome.outcome === "success"
+      ) {
+        if (
+          parsedCommand.success &&
+          parsedCommand.data.commandName === "workspace.rename"
+        ) {
+          renameRegisteredWorkspace(
+            baseRoot,
+            parsedCommand.data.workspaceId,
+            parsedCommand.data.payload.name,
+          );
+        }
+        deliverUrgentAttention(runtime.service);
+      }
+      return result;
+    },
+  );
   ipcMain.handle(DESKTOP_CHANNELS.runQuery, (event, query: unknown) => {
     assertTrustedSender(event);
     return runtime.service.query(query);

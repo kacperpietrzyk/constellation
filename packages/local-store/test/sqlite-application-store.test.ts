@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -15,6 +16,7 @@ import {
 import {
   CommandEnvelopeSchema,
   CorrelationIdSchema,
+  CapturePayloadIdSchema,
   DeviceIdSchema,
   ExecutionContextSchema,
   QueryEnvelopeSchema,
@@ -1413,6 +1415,143 @@ describe("SQLite ApplicationStore", () => {
     );
     sourceDatabase.close();
     targetDatabase.close();
+  });
+
+  it("retains authorized and staged payloads across sync, then purges removed or revoked bytes", () => {
+    const database = new DatabaseSync(":memory:");
+    const { kernel, store } = createKernel(database);
+    assert.equal(
+      unwrap(kernel.execute(context(), workspaceCommand)).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(kernel.execute(context(), captureCommand)).outcome,
+      "success",
+    );
+    const captured = store.snapshot().captures[0];
+    if (captured === undefined) throw new Error("Expected Capture fixture.");
+    const referencedPayloadId = CapturePayloadIdSchema.parse(
+      "00000000-0000-4000-8000-000000000151",
+    );
+    const stagedPayloadId = CapturePayloadIdSchema.parse(
+      "00000000-0000-4000-8000-000000000152",
+    );
+    const referencedBytes = new TextEncoder().encode("referenced payload");
+    const stagedBytes = new TextEncoder().encode("dialog staging");
+    const storePayload = (
+      payloadId: typeof referencedPayloadId,
+      displayName: string,
+      bytes: Uint8Array,
+    ) =>
+      store.storeCapturePayload({
+        payloadId,
+        workspaceId: context().workspaceId,
+        displayName,
+        mediaType: "text/plain",
+        inputKind: "file",
+        contentSha256: createHash("sha256").update(bytes).digest("hex"),
+        bytes,
+        createdAt: "2026-07-16T17:00:00.000Z",
+      });
+    storePayload(referencedPayloadId, "referenced.txt", referencedBytes);
+    storePayload(stagedPayloadId, "staged.txt", stagedBytes);
+    database.prepare("UPDATE captures SET payload_json = ? WHERE id = ?").run(
+      JSON.stringify({
+        ...captured,
+        originalText: "referenced.txt",
+        original: {
+          kind: "managed_file",
+          payload: {
+            payloadId: referencedPayloadId,
+            displayName: "referenced.txt",
+            mediaType: "text/plain",
+            byteLength: referencedBytes.byteLength,
+            contentSha256: createHash("sha256")
+              .update(referencedBytes)
+              .digest("hex"),
+            custodyState: "available",
+          },
+        },
+      }),
+      captured.id,
+    );
+    const managedSnapshot = store.snapshot();
+    store.configureCoordination({
+      workspaceId: context().workspaceId,
+      providerInstanceId: "constellation.hub:payload-retention",
+      hubOrigin: "https://hub.example.test",
+      checkpoint: "1",
+      snapshotDigest: "a".repeat(64),
+      configuredAt: "2026-07-16T17:01:00.000Z",
+    });
+    store.replaceProjection(managedSnapshot, {
+      checkpoint: "2",
+      snapshotDigest: "b".repeat(64),
+      syncState: "current",
+      updatedAt: "2026-07-16T17:02:00.000Z",
+    });
+    assert.deepEqual(
+      store.readCapturePayload({
+        payloadId: referencedPayloadId,
+        workspaceId: context().workspaceId,
+      })?.bytes,
+      referencedBytes,
+    );
+    assert.deepEqual(
+      store.readCapturePayload({
+        payloadId: stagedPayloadId,
+        workspaceId: context().workspaceId,
+      })?.bytes,
+      stagedBytes,
+    );
+
+    store.replaceProjection(
+      {
+        ...managedSnapshot,
+        captures: managedSnapshot.captures.map((capture) => ({
+          ...capture,
+          originalText: "payload no longer authorized",
+          original: {
+            kind: "text" as const,
+            text: "payload no longer authorized",
+          },
+        })),
+      },
+      {
+        checkpoint: "3",
+        snapshotDigest: "c".repeat(64),
+        syncState: "current",
+        updatedAt: "2026-07-16T17:03:00.000Z",
+      },
+    );
+    assert.equal(
+      store.readCapturePayload({
+        payloadId: referencedPayloadId,
+        workspaceId: context().workspaceId,
+      }),
+      undefined,
+    );
+    assert.notEqual(
+      store.readCapturePayload({
+        payloadId: stagedPayloadId,
+        workspaceId: context().workspaceId,
+      }),
+      undefined,
+    );
+    store.purgeProjection({
+      checkpoint: "3",
+      snapshotDigest: "c".repeat(64),
+      updatedAt: "2026-07-16T17:04:00.000Z",
+      errorCode: "device_revoked",
+    });
+    assert.equal(
+      store.readCapturePayload({
+        payloadId: stagedPayloadId,
+        workspaceId: context().workspaceId,
+      }),
+      undefined,
+    );
+    database.close();
   });
 
   it("atomically purges coordinated records, FTS, and queued commands after access revocation", () => {

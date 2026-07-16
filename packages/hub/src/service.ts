@@ -34,6 +34,7 @@ import {
   type HubSyncRequest,
   type HubSyncResult,
   type HubWorkspaceSnapshot,
+  type CaptureOriginal,
   type WorkspaceId,
   type DocumentId,
   type DeviceId,
@@ -134,11 +135,18 @@ class CursorCodec implements PaginationCursorCodec {
 export interface HubServiceOptions {
   readonly now?: () => string;
   readonly randomSecret?: () => string;
+  readonly capturePayloadVerifier?: {
+    isAvailable(
+      workspaceId: WorkspaceId,
+      original: CaptureOriginal,
+    ): Promise<boolean>;
+  };
 }
 
 export class HubService {
   private readonly now: () => string;
   private readonly randomSecret: () => string;
+  private readonly capturePayloadVerifier?: HubServiceOptions["capturePayloadVerifier"];
 
   public constructor(
     private readonly repository: HubRepository,
@@ -147,6 +155,7 @@ export class HubService {
     this.now = options.now ?? (() => new Date().toISOString());
     this.randomSecret =
       options.randomSecret ?? (() => randomBytes(32).toString("base64url"));
+    this.capturePayloadVerifier = options.capturePayloadVerifier;
   }
 
   public async createWorkspace(input: {
@@ -326,7 +335,7 @@ export class HubService {
     }
     const result = await this.repository.withWorkspaceLock(
       input.workspaceId,
-      (state): HubSyncResult => {
+      async (state): Promise<HubSyncResult> => {
         let currentAuthorization = authorizationForSnapshot(
           state.snapshot,
           input.workspaceId,
@@ -361,6 +370,20 @@ export class HubService {
           const hasher = new Sha256Hasher();
           const ids = new CommandScopedIdGenerator(hasher);
           ids.begin(command.commandId);
+          const parsedCommand = CommandEnvelopeSchema.parse(command);
+          const managedOriginal =
+            parsedCommand.commandName === "capture.submit" &&
+            (parsedCommand.payload.original.kind === "managed_file" ||
+              parsedCommand.payload.original.kind === "screenshot")
+              ? parsedCommand.payload.original
+              : undefined;
+          const managedPayloadAvailable =
+            managedOriginal === undefined
+              ? false
+              : (await this.capturePayloadVerifier?.isAvailable(
+                  input.workspaceId,
+                  managedOriginal,
+                )) === true;
           const kernel = new ApplicationKernel({
             authorization: new TrustedHubGrant(currentAuthorization),
             clock: new ServerClock(),
@@ -368,11 +391,22 @@ export class HubService {
             hasher,
             ids,
             store,
+            ...(managedOriginal === undefined
+              ? {}
+              : {
+                  capturePayloadVerifier: {
+                    isAvailable: (workspaceId, original) =>
+                      workspaceId === input.workspaceId &&
+                      original.kind === managedOriginal.kind &&
+                      original.payload.contentSha256 ===
+                        managedOriginal.payload.contentSha256 &&
+                      original.payload.byteLength ===
+                        managedOriginal.payload.byteLength &&
+                      managedPayloadAvailable,
+                  },
+                }),
           });
-          const response = kernel.execute(
-            currentAuthorization,
-            CommandEnvelopeSchema.parse(command),
-          );
+          const response = kernel.execute(currentAuthorization, parsedCommand);
           if (response.kind !== "command_outcome") {
             throw new Error(
               "A parsed Hub command was rejected by the contract boundary.",

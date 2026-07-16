@@ -6,8 +6,10 @@ import path from "node:path";
 import {
   HubAttachmentBeginRequestSchema,
   HubAttachmentUploadSchema,
+  type CaptureOriginal,
   type HubAttachmentBeginRequest,
   type HubAttachmentUpload,
+  type WorkspaceId,
 } from "@constellation/contracts";
 import type { Pool } from "pg";
 
@@ -76,6 +78,37 @@ export class HubAttachmentService {
     );
   }
 
+  public async isAvailable(
+    workspaceId: WorkspaceId,
+    original: CaptureOriginal,
+  ): Promise<boolean> {
+    if (original.kind !== "managed_file" && original.kind !== "screenshot")
+      return false;
+    const result = await this.pool.query(
+      "SELECT storage_key, byte_length::text FROM constellation_hub_attachments WHERE workspace_id = $1 AND content_sha256 = $2",
+      [workspaceId, original.payload.contentSha256],
+    );
+    if (result.rowCount !== 1) return false;
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+    if (
+      row === undefined ||
+      Number(row.byte_length) !== original.payload.byteLength ||
+      typeof row.storage_key !== "string"
+    )
+      return false;
+    try {
+      const target = path.join(this.root, row.storage_key);
+      const info = await stat(target);
+      return (
+        info.isFile() &&
+        info.size === original.payload.byteLength &&
+        (await digestFile(target)) === original.payload.contentSha256
+      );
+    } catch {
+      return false;
+    }
+  }
+
   public async begin(
     credential: string,
     raw: HubAttachmentBeginRequest,
@@ -86,7 +119,12 @@ export class HubAttachmentService {
       "SELECT upload_id::text, content_sha256, byte_length::text, received_bytes::text, state FROM constellation_hub_attachment_uploads WHERE workspace_id = $1 AND content_sha256 = $2 AND state IN ('staging', 'published')",
       [input.workspaceId, input.contentSha256],
     );
-    if (existing.rowCount === 1) return this.parseUpload(existing.rows[0]);
+    if (existing.rowCount === 1) {
+      const upload = this.parseUpload(existing.rows[0]);
+      if (upload.byteLength !== input.byteLength)
+        throw new HubAttachmentError("length_mismatch");
+      return upload;
+    }
     const uploadId = randomUUID();
     await mkdir(path.dirname(this.stagingPath(uploadId)), {
       recursive: true,

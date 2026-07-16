@@ -188,7 +188,7 @@ export const CaptureDialog = ({
   readonly client: ConstellationRendererClient | undefined;
   readonly workspaceName: string;
   readonly onClose: () => void;
-  readonly onSubmit: (original: CaptureOriginal) => void;
+  readonly onSubmit: (original: CaptureOriginal) => Promise<string | undefined>;
 }) => {
   const [mode, setMode] = useState<"text" | "url" | "file">("text");
   const [text, setText] = useState("");
@@ -203,14 +203,21 @@ export const CaptureDialog = ({
     inputRef.current?.focus();
     return () => dialogRef.current?.close();
   }, []);
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (busy) return;
-    if (mode === "text" && text.trim()) onSubmit({ kind: "text", text });
-    if (mode === "url" && url.trim())
-      onSubmit({ kind: "url", url: url.trim() });
-    if (mode === "file" && managedOriginal !== undefined)
-      onSubmit(managedOriginal);
+    const original =
+      mode === "text" && text.trim()
+        ? ({ kind: "text", text } as const)
+        : mode === "url" && url.trim()
+          ? ({ kind: "url", url: url.trim() } as const)
+          : mode === "file" && managedOriginal !== undefined
+            ? managedOriginal
+            : undefined;
+    if (original === undefined) return;
+    setPayloadError(undefined);
+    const error = await onSubmit(original);
+    if (error !== undefined) setPayloadError(error);
   };
   const payloadFailure = (code: string): string => {
     switch (code) {
@@ -2134,46 +2141,50 @@ export const RealApp = ({
           client={client}
           workspaceName={bootstrap.workspace.name}
           onClose={() => !capturing && setCaptureOpen(false)}
-          onSubmit={(original) => {
-            if (!client) return;
+          onSubmit={async (original) => {
+            if (!client) return "Desktop jest chwilowo niedostępny.";
             setCapturing(true);
             setNotice(undefined);
-            void submitQuickCapture(client, state.snapshot, original).then(
-              (result) => {
-                setCapturing(false);
-                if (result.kind === "success") {
-                  setState({ kind: "ready", snapshot: result.snapshot });
-                  const captureResult = result.result;
-                  if (captureResult.kind === "task") {
-                    const task = result.snapshot.tasks.find(
-                      (item) => item.id === captureResult.taskId,
-                    );
-                    openContext(
-                      taskContext(
-                        captureResult.taskId,
-                        task?.title ?? "Nowe zadanie",
-                      ),
-                    );
-                    setReceipts((current) => ({
-                      ...current,
-                      [captureResult.taskId]: result.receipt,
-                    }));
-                  } else if (captureResult.kind === "review") {
-                    openContext(destinationContext("attention", "Do uwagi"));
-                  } else {
-                    openContext(destinationContext("documents", "Dokumenty"));
-                  }
-                  setCaptureOpen(false);
-                  setToast(
-                    captureResult.kind === "task"
-                      ? "Capture zapisano jako zadanie."
-                      : captureResult.kind === "knowledge_source"
-                        ? "Capture zapisano jako źródło wiedzy."
-                        : "Capture wymaga decyzji i trafił do Attention.",
-                  );
-                } else showFailure(result);
-              },
+            const result = await submitQuickCapture(
+              client,
+              state.snapshot,
+              original,
             );
+            setCapturing(false);
+            if (result.kind !== "success") {
+              showFailure(result);
+              return result.message;
+            }
+            setState({ kind: "ready", snapshot: result.snapshot });
+            const captureResult = result.result;
+            if (captureResult.kind === "task") {
+              const task = result.snapshot.tasks.find(
+                (item) => item.id === captureResult.taskId,
+              );
+              openContext(
+                taskContext(
+                  captureResult.taskId,
+                  task?.title ?? "Nowe zadanie",
+                ),
+              );
+              setReceipts((current) => ({
+                ...current,
+                [captureResult.taskId]: result.receipt,
+              }));
+            } else if (captureResult.kind === "review") {
+              openContext(destinationContext("attention", "Do uwagi"));
+            } else {
+              openContext(destinationContext("documents", "Dokumenty"));
+            }
+            setCaptureOpen(false);
+            setToast(
+              captureResult.kind === "task"
+                ? "Capture zapisano jako zadanie."
+                : captureResult.kind === "knowledge_source"
+                  ? "Capture zapisano jako źródło wiedzy."
+                  : "Capture wymaga decyzji i trafił do Attention.",
+            );
+            return undefined;
           }}
         />
       )}

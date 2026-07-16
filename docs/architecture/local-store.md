@@ -127,12 +127,14 @@ macOS arm64, macOS x64, and Windows x64 jobs are required. Each macOS binding is
 a matching native runner; Rosetta is not a build or verification dependency.
 Managed Capture payload bytes now live in a dedicated SQLCipher table and are
 therefore included in the same closed encrypted export, staged restore, and
-last-known-good rollback boundary. Remaining recovery gates include real
-disk-full and permission faults plus coordinated payload transfer and
-revocation purge. Installer/update/compatible-rollback/uninstall mechanics
-now have a separate packaged distribution drill; production signing and
-notarization remain a credential-gated release proof rather than a claim made
-by ordinary CI. See [Desktop distribution](desktop-distribution.md).
+last-known-good rollback boundary. Coordinated snapshot replacement preserves
+current staged bytes and bytes referenced by the newly authorized projection,
+while removed Capture scope and revocation purge the corresponding custody.
+Remaining recovery gates include real disk-full and permission faults.
+Installer/update/compatible-rollback/uninstall mechanics now have a separate
+packaged distribution drill; production signing and notarization remain a
+credential-gated release proof rather than a claim made by ordinary CI. See
+[Desktop distribution](desktop-distribution.md).
 
 The packaged journey also validates the safe Data Home status route, stable
 installation-generated device identity, honest capability matrix, and verified

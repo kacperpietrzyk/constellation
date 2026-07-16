@@ -56,6 +56,10 @@ describe("Capture payload custody", () => {
     assert.equal(result.original.kind, "managed_file");
     assert.equal(JSON.stringify(result.original).includes("/private/"), false);
     assert.equal(custody.verify(result.original), true);
+    assert.equal(
+      new TextDecoder().decode(custody.read(result.original)),
+      "bounded private fixture",
+    );
     if (result.original.kind !== "managed_file") return;
     const stored = store.readCapturePayload({
       payloadId: result.original.payload.payloadId,
