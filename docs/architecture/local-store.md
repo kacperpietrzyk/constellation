@@ -26,6 +26,10 @@ preload bridge.
   backfills the accumulated event/audit, full-text, collaboration, agent,
   knowledge, strategic, meeting, and managed-payload structures in the same
   transaction;
+- this build opens and upgrades every historical local schema from v1 through
+  the current v15; it refuses v16 or newer before changing the database and
+  does not support opening a v15 workspace with an older build unless that
+  build's documented schema window includes v15;
 - the FTS5 index carries Workspace and Space scope on every Capture, Task, and
   Project entry; application search still authorizes scopes before reading and
   keeps deterministic ranking in the shared query layer;
@@ -33,7 +37,8 @@ preload bridge.
   search/cockpit/activity/undo state and idempotent replay survive a database
   restart;
 - injected exceptions roll back both the original Capture slice and Wave 2
-  records, while indexed-scope corruption fails closed.
+  records, while an injected v14-to-v15 migration failure stays at v14 and can
+  be retried successfully; indexed-scope corruption fails closed.
 - Task assignments have their own optimistic version and a partial unique index
   allowing at most one active assignment per Task.
 - Comments and per-principal Attention signals use separate scoped indexes;
