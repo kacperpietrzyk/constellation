@@ -492,9 +492,9 @@ it(
     });
     assert.equal(replay.outcome, "success");
     if (replay.outcome !== "success") throw new Error("Restart pull failed.");
-    assert.equal(replay.currentCheckpoint, "2");
+    assert.equal(replay.currentCheckpoint, "3");
     assert.equal(replay.receipts[0]?.commandId, command.commandId);
-    assert.equal(replay.change?.snapshot.captures.length, 1);
+    assert.equal(replay.change?.snapshot.captures.length, 2);
     const restartedDocument = await restartedRepository.loadDocumentState({
       workspaceId,
       documentId,
