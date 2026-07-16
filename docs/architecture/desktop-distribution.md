@@ -75,3 +75,18 @@ the encrypted packaged journey, replace it with `0.0.2`, reinstall compatible
 `0.0.1`, and remove the application. Every phase must reopen the same workspace
 identity and final uninstall must leave both the encrypted database and
 protected key wrapper in place.
+
+## Privacy-safe support report
+
+Settings can save a versioned JSON support report to a location selected by the
+user. Saving is explicit, cancellation creates no file, and Constellation does
+not upload the report. The file contains only application, operating-system,
+architecture, Electron, Data Home, recovery, and release state values from a
+fixed allowlist.
+
+The report excludes workspace content, names, stable identifiers, filesystem
+paths, service addresses, credentials, environment variables, record counts,
+logs, stack traces, and raw error messages. The main process constructs the
+report and writes a private file atomically without replacing an existing file;
+the renderer never receives a local destination path. Users are reminded to
+inspect the resulting JSON before sharing it.

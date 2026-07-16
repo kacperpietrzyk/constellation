@@ -28,6 +28,7 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "enrollHub",
     "executeCommand",
     "exportHubAuthorization",
+    "exportSupportReport",
     "exportWorkspaceBackup",
     "getBuildInfo",
     "getCrossWorkspaceCockpit",

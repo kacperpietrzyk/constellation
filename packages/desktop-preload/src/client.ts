@@ -72,6 +72,7 @@ export const DESKTOP_CHANNELS = {
   syncJamie: "constellation:jamie:sync",
   disconnectJamie: "constellation:jamie:disconnect",
   getReleaseStatus: "constellation:release:status",
+  exportSupportReport: "constellation:support-report:export",
   checkForRelease: "constellation:release:check",
   downloadRelease: "constellation:release:download",
   installRelease: "constellation:release:install",
@@ -204,6 +205,10 @@ export type ReleaseStatus =
       readonly message: string;
     };
 
+export type SupportReportExportResult =
+  | { readonly outcome: "success"; readonly fileLabel: string }
+  | { readonly outcome: "cancelled" | "failure" };
+
 export interface RendererDocumentRevision {
   readonly id: DocumentRevisionId;
   readonly name: string;
@@ -253,6 +258,7 @@ export interface DesktopBuildInfo {
 }
 
 export interface ConstellationRendererClient {
+  exportSupportReport?(): Promise<SupportReportExportResult>;
   selectCapturePayload?(): Promise<CapturePayloadResponse>;
   stageCapturePayload?(input: {
     readonly displayName: string;
@@ -491,6 +497,10 @@ export const createRendererClient = (
     ) as Promise<StarterWorkspaceImportResponse>,
   getReleaseStatus: () =>
     invoke(DESKTOP_CHANNELS.getReleaseStatus) as Promise<ReleaseStatus>,
+  exportSupportReport: () =>
+    invoke(
+      DESKTOP_CHANNELS.exportSupportReport,
+    ) as Promise<SupportReportExportResult>,
   checkForRelease: () =>
     invoke(DESKTOP_CHANNELS.checkForRelease) as Promise<ReleaseStatus>,
   downloadRelease: () =>

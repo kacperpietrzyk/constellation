@@ -63,6 +63,7 @@ export const SettingsSurface = ({
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [workspaceMessage, setWorkspaceMessage] = useState<string>();
   const [importMessage, setImportMessage] = useState<string>();
+  const [supportMessage, setSupportMessage] = useState<string>();
   const [importCandidate, setImportCandidate] = useState<{
     readonly fileName: string;
     readonly manifest: unknown;
@@ -259,6 +260,30 @@ export const SettingsSurface = ({
     });
   };
 
+  const exportSupportReport = async () => {
+    if (!client?.exportSupportReport) return;
+    setBusy(true);
+    setSupportMessage(
+      "Przygotowuję raport bez treści i danych identyfikujących…",
+    );
+    try {
+      const result = await client.exportSupportReport();
+      setSupportMessage(
+        result.outcome === "success"
+          ? `Zapisano ${result.fileLabel}. Sprawdź plik przed udostępnieniem.`
+          : result.outcome === "cancelled"
+            ? "Anulowano. Żaden raport nie został zapisany."
+            : "Nie udało się zapisać raportu. Dane aplikacji pozostały bez zmian.",
+      );
+    } catch {
+      setSupportMessage(
+        "Raport jest chwilowo niedostępny. Dane aplikacji pozostały bez zmian.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="surface-scroll settings-surface">
       <header className="surface-header wave2-header">
@@ -407,6 +432,29 @@ export const SettingsSurface = ({
             <button type="button" onClick={onOpenRecovery}>
               Otwórz Data Home
             </button>
+          </div>
+        </section>
+
+        <section>
+          <div className="settings-copy">
+            <p className="eyebrow">Support</p>
+            <h2>Raport diagnostyczny bez prywatnych danych</h2>
+            <p>
+              Raport zawiera wersje aplikacji i środowiska oraz nazwane stany
+              Data Home, odzyskiwania i aktualizacji. Nie zawiera treści, nazw,
+              identyfikatorów, ścieżek, adresów usług, liczby rekordów,
+              poświadczeń, logów, stosów błędów ani surowych komunikatów.
+            </p>
+          </div>
+          <div className="settings-control">
+            <button
+              type="button"
+              disabled={busy || !client?.exportSupportReport}
+              onClick={() => void exportSupportReport()}
+            >
+              Zapisz raport wsparcia
+            </button>
+            {supportMessage && <p role="status">{supportMessage}</p>}
           </div>
         </section>
 

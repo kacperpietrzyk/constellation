@@ -8,3 +8,4 @@ export * from "./coordinated-data-home-provider.js";
 export * from "./document-collaboration.js";
 export * from "./hub-connection-custody.js";
 export * from "./hub-authorization-export.js";
+export * from "./support-report.js";
