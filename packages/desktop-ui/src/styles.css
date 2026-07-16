@@ -1884,6 +1884,24 @@ kbd {
   color: var(--text-tertiary);
   line-height: var(--leading-normal);
 }
+
+.surface-load-state {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  min-height: min(34rem, calc(100vh - 12rem));
+  max-width: 38rem;
+  padding: clamp(2rem, 6vw, 5rem);
+}
+
+.surface-load-state h1 {
+  margin: 0.35rem 0 0.75rem;
+}
+
+.surface-load-state > p:not(.eyebrow) {
+  margin: 0 0 1.25rem;
+  color: var(--text-secondary);
+}
 .recovery-required-state > div:not(.recovery-backdrop) {
   display: flex;
   gap: var(--space-2);

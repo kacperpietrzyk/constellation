@@ -1,4 +1,7 @@
 import {
+  Component,
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -7,6 +10,7 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
 } from "react";
 
 import type {
@@ -25,11 +29,7 @@ import type {
 
 import { AccessSurface } from "./AccessSurface.js";
 import { AttentionSurface, CommentsPanel } from "./CollaborationSurfaces.js";
-import { DocumentsSurface } from "./DocumentsSurface.js";
-import { MeetingsSurface } from "./MeetingsSurface.js";
 import { StrategicDepthSurface } from "./StrategicDepthSurface.js";
-import { WorkSurface } from "./WorkSurface.js";
-import { SettingsSurface } from "./SettingsSurface.js";
 import { OnboardingFlow } from "./OnboardingFlow.js";
 
 import {
@@ -114,6 +114,74 @@ type LoadState =
   | { readonly kind: "recovery"; readonly build: DesktopBuildInfo }
   | { readonly kind: "unavailable" | "error"; readonly message: string }
   | { readonly kind: "ready"; readonly snapshot: DesktopSnapshot };
+
+const loadDocumentsSurface = () => import("./DocumentsSurface.js");
+const DocumentsSurface = lazy(() =>
+  loadDocumentsSurface().then((module) => ({
+    default: module.DocumentsSurface,
+  })),
+);
+const loadMeetingsSurface = () => import("./MeetingsSurface.js");
+const MeetingsSurface = lazy(() =>
+  loadMeetingsSurface().then((module) => ({ default: module.MeetingsSurface })),
+);
+const loadSettingsSurface = () => import("./SettingsSurface.js");
+const SettingsSurface = lazy(() =>
+  loadSettingsSurface().then((module) => ({ default: module.SettingsSurface })),
+);
+const loadWorkSurface = () => import("./WorkSurface.js");
+const WorkSurface = lazy(() =>
+  loadWorkSurface().then((module) => ({ default: module.WorkSurface })),
+);
+
+const preloadSurface = (surface: SurfaceId) => {
+  if (surface === "documents")
+    void loadDocumentsSurface().catch(() => undefined);
+  if (surface === "meetings") void loadMeetingsSurface().catch(() => undefined);
+  if (surface === "settings") void loadSettingsSurface().catch(() => undefined);
+  if (surface === "work") void loadWorkSurface().catch(() => undefined);
+};
+
+class LazySurfaceBoundary extends Component<
+  { readonly children: ReactNode; readonly label: string },
+  { readonly failed: boolean }
+> {
+  override state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  override render() {
+    if (this.state.failed) {
+      return (
+        <section className="surface-load-state" role="alert">
+          <p className="eyebrow">{this.props.label}</p>
+          <h1>Nie udało się otworzyć tej części aplikacji</h1>
+          <p>
+            Dane nie zostały zmienione. Odśwież aplikację i spróbuj ponownie.
+          </p>
+          <button
+            className="secondary-button"
+            onClick={() => window.location.reload()}
+          >
+            Spróbuj ponownie
+          </button>
+        </section>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+const SurfaceLoadingState = ({ label }: { readonly label: string }) => (
+  <section className="surface-load-state" aria-busy="true" aria-live="polite">
+    <p className="eyebrow">{label}</p>
+    <h1>Otwieram tę część aplikacji…</h1>
+    <p>Ładuję bieżącą zawartość workspace.</p>
+  </section>
+);
 
 type IconName =
   | "capture"
@@ -1324,6 +1392,8 @@ export const RealApp = ({
                     key={`favorite:${item.id}`}
                     className={`nav-item nav-favorite ${surface === item.id ? "active" : ""}`}
                     aria-current={surface === item.id ? "page" : undefined}
+                    onFocus={() => preloadSurface(item.id)}
+                    onMouseEnter={() => preloadSurface(item.id)}
                     onClick={() =>
                       openContext(destinationContext(item.id, item.label))
                     }
@@ -1373,6 +1443,8 @@ export const RealApp = ({
                     : item.label
                 }
                 aria-current={surface === item.id ? "page" : undefined}
+                onFocus={() => preloadSurface(item.id)}
+                onMouseEnter={() => preloadSurface(item.id)}
                 onClick={() =>
                   openContext(destinationContext(item.id, item.label))
                 }
@@ -1631,11 +1703,15 @@ export const RealApp = ({
           />
         )}
         {surface === "meetings" && client && (
-          <MeetingsSurface
-            client={client}
-            inspectorHost={meetingInspectorHost}
-            onInspectorOpen={() => setMeetingInspectorOpen(true)}
-          />
+          <LazySurfaceBoundary label="Spotkania">
+            <Suspense fallback={<SurfaceLoadingState label="Spotkania" />}>
+              <MeetingsSurface
+                client={client}
+                inspectorHost={meetingInspectorHost}
+                onInspectorOpen={() => setMeetingInspectorOpen(true)}
+              />
+            </Suspense>
+          </LazySurfaceBoundary>
         )}
         {surface === "relationships" && (
           <StrategicDepthSurface
@@ -1646,24 +1722,32 @@ export const RealApp = ({
           />
         )}
         {surface === "work" && (
-          <WorkSurface
-            client={client}
-            snapshot={state.snapshot}
-            onReload={reload}
-            onFailure={showFailure}
-          />
+          <LazySurfaceBoundary label="Praca">
+            <Suspense fallback={<SurfaceLoadingState label="Praca" />}>
+              <WorkSurface
+                client={client}
+                snapshot={state.snapshot}
+                onReload={reload}
+                onFailure={showFailure}
+              />
+            </Suspense>
+          </LazySurfaceBoundary>
         )}
         {surface === "settings" && (
-          <SettingsSurface
-            client={client}
-            snapshot={state.snapshot}
-            onReload={reload}
-            onFailure={showFailure}
-            onOpenRecovery={() => setRecoveryOpen(true)}
-            onNavigate={(next, label) =>
-              openContext(destinationContext(next, label))
-            }
-          />
+          <LazySurfaceBoundary label="Ustawienia">
+            <Suspense fallback={<SurfaceLoadingState label="Ustawienia" />}>
+              <SettingsSurface
+                client={client}
+                snapshot={state.snapshot}
+                onReload={reload}
+                onFailure={showFailure}
+                onOpenRecovery={() => setRecoveryOpen(true)}
+                onNavigate={(next, label) =>
+                  openContext(destinationContext(next, label))
+                }
+              />
+            </Suspense>
+          </LazySurfaceBoundary>
         )}
         {surface === "tasks" && (
           <TasksSurface
@@ -1741,12 +1825,16 @@ export const RealApp = ({
           />
         )}
         {surface === "documents" && (
-          <DocumentsSurface
-            client={client}
-            snapshot={state.snapshot}
-            onReload={reload}
-            onFailure={showFailure}
-          />
+          <LazySurfaceBoundary label="Dokumenty">
+            <Suspense fallback={<SurfaceLoadingState label="Dokumenty" />}>
+              <DocumentsSurface
+                client={client}
+                snapshot={state.snapshot}
+                onReload={reload}
+                onFailure={showFailure}
+              />
+            </Suspense>
+          </LazySurfaceBoundary>
         )}
         {surface === "projects" && (
           <ProjectsSurface
