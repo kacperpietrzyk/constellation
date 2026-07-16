@@ -51,6 +51,7 @@ const context = (principalId: string = ids.principal): ExecutionContext =>
       "workspace.bootstrapContext",
       "capture.submit",
       "capture.process",
+      "capture.transcriptWrite",
       "capture.submitText",
       "capture.routeAsTask",
       "capture.history",
@@ -130,6 +131,42 @@ const processCommand = (
   commandName: "capture.process",
   expectedVersions: { [captureId]: expectedVersion },
   payload: { captureId, destination },
+});
+
+const writeTranscriptCommand = (
+  captureId: string,
+  audioContentSha256: string,
+  transcript: string,
+  idempotencyKey: string,
+  expectedVersion = 2,
+) => ({
+  ...commandMetadata(idempotencyKey),
+  commandName: "capture.writeTranscript",
+  expectedVersions: { [captureId]: expectedVersion },
+  payload: { captureId, audioContentSha256, transcript },
+});
+
+const requestAudioDeletionCommand = (
+  captureId: string,
+  idempotencyKey: string,
+  expectedVersion = 3,
+) => ({
+  ...commandMetadata(idempotencyKey),
+  commandName: "capture.requestAudioDeletion",
+  expectedVersions: { [captureId]: expectedVersion },
+  payload: { captureId },
+});
+
+const confirmAudioDeletionCommand = (
+  captureId: string,
+  audioContentSha256: string,
+  idempotencyKey: string,
+  expectedVersion = 3,
+) => ({
+  ...commandMetadata(idempotencyKey),
+  commandName: "capture.confirmAudioDeletion",
+  expectedVersions: { [captureId]: expectedVersion },
+  payload: { captureId, audioContentSha256 },
 });
 
 const reportCaptureExceptionCommand = (
@@ -273,6 +310,46 @@ describe("reference kernel conformance", () => {
         }
       }
     }
+  });
+
+  it("versions the workspace voice retention default without changing existing captures", () => {
+    const harness = bootstrappedHarness();
+    assert.equal(
+      harness.store.snapshot().workspaces[0]?.voiceAudioRetentionPolicy,
+      "delete_after_transcript",
+    );
+    const changed = unwrapOutcome(
+      harness.kernel.execute(context(), {
+        ...commandMetadata("workspace-voice-retention"),
+        commandName: "workspace.setVoiceAudioRetention",
+        expectedVersions: { [ids.workspace]: 1 },
+        payload: { retentionPolicy: "retain" },
+      }),
+    );
+    assert.equal(
+      changed.diagnosticCode,
+      "workspace.voice_audio_retention_changed",
+    );
+    const response = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "workspace.bootstrapContext",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: {},
+    });
+    assert.equal(response.kind, "query_result");
+    if (
+      response.kind !== "query_result" ||
+      response.result.outcome !== "success" ||
+      response.result.projection.kind !== "workspace.bootstrapContext"
+    )
+      throw new Error("Expected workspace bootstrap context.");
+    assert.equal(
+      response.result.projection.workspace.voiceAudioRetentionPolicy,
+      "retain",
+    );
+    assert.equal(response.result.projection.workspace.version, 2);
   });
 
   it("deduplicates managed payloads by exact bytes instead of staging identity", () => {
@@ -609,6 +686,220 @@ describe("reference kernel conformance", () => {
     assert.equal(
       history.result.projection.items[0]?.processingState,
       "awaiting_transcript",
+    );
+  });
+
+  it("attributes an external transcript to the exact audio and freezes retention before deletion", () => {
+    const harness = bootstrappedHarness();
+    const digest = "9".repeat(64);
+    const stored = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        submitOriginalCommand("voice-transcript-source", {
+          kind: "voice_note",
+          payload: {
+            payloadId: CapturePayloadIdSchema.parse(
+              "00000000-0000-4000-8000-000000000812",
+            ),
+            displayName: "External transcript.webm",
+            mediaType: "audio/webm",
+            byteLength: 4_096,
+            contentSha256: digest,
+            custodyState: "available",
+          },
+          durationMs: 18_000,
+          retentionPolicy: "delete_after_transcript",
+        }),
+      ),
+    );
+    if (
+      stored.outcome !== "success" ||
+      stored.projection.kind !== "capture.stored"
+    )
+      throw new Error("Expected stored voice note.");
+    const captureId = stored.projection.captureId;
+    unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        processCommand(captureId, "voice-transcript-wait"),
+      ),
+    );
+
+    const agentRunId = AgentRunIdSchema.parse(
+      "00000000-0000-4000-8000-000000000813",
+    );
+    const agentContext = ExecutionContextSchema.parse({
+      ...context(),
+      origin: "mcp",
+      hostRun: {
+        runId: "external-transcriber-run-42",
+        agentRunId,
+      },
+    });
+    const deniedContext = ExecutionContextSchema.parse({
+      ...agentContext,
+      capabilityScope: agentContext.capabilityScope.filter(
+        (capability) => capability !== "capture.transcriptWrite",
+      ),
+    });
+    const denied = unwrapOutcome(
+      harness.kernel.execute(
+        deniedContext,
+        writeTranscriptCommand(
+          captureId,
+          digest,
+          "Not authorized",
+          "voice-transcript-denied",
+        ),
+      ),
+    );
+    assert.equal(denied.diagnosticCode, "authorization.denied");
+    const mismatched = unwrapOutcome(
+      harness.kernel.execute(
+        agentContext,
+        writeTranscriptCommand(
+          captureId,
+          "a".repeat(64),
+          "Wrong source",
+          "voice-transcript-wrong-digest",
+        ),
+      ),
+    );
+    assert.equal(mismatched.diagnosticCode, "command.precondition_failed");
+
+    const command = writeTranscriptCommand(
+      captureId,
+      digest,
+      "Decyzja została zapisana przez zewnętrznego agenta.",
+      "voice-transcript-write",
+    );
+    const written = unwrapOutcome(
+      harness.kernel.execute(agentContext, command),
+    );
+    assert.equal(written.diagnosticCode, "capture.transcript_written");
+    assert.deepEqual(
+      unwrapOutcome(harness.kernel.execute(agentContext, command)),
+      written,
+    );
+    const capture = harness.store
+      .snapshot()
+      .captures.find((item) => item.id === captureId);
+    assert.equal(capture?.processingState, "transcript_ready");
+    if (capture?.processingState !== "transcript_ready")
+      throw new Error("Expected transcript-ready Capture.");
+    assert.equal(capture.audioState, "deletion_pending");
+    assert.equal(capture.transcript.audioContentSha256, digest);
+    assert.equal(capture.transcript.writtenByKind, "human");
+    assert.equal(capture.transcript.agentRunId, agentRunId);
+    assert.equal(capture.transcript.hostRunId, "external-transcriber-run-42");
+    assert.equal(capture.version, 3);
+  });
+
+  it("keeps retained voice audio readable until a user requests and custody confirms deletion", () => {
+    const harness = bootstrappedHarness();
+    const digest = "7".repeat(64);
+    const stored = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        submitOriginalCommand("retained-voice-source", {
+          kind: "voice_note",
+          payload: {
+            payloadId: CapturePayloadIdSchema.parse(
+              "00000000-0000-4000-8000-000000000814",
+            ),
+            displayName: "Retained voice.webm",
+            mediaType: "audio/webm",
+            byteLength: 2_048,
+            contentSha256: digest,
+            custodyState: "available",
+          },
+          durationMs: 9_000,
+          retentionPolicy: "retain",
+        }),
+      ),
+    );
+    if (
+      stored.outcome !== "success" ||
+      stored.projection.kind !== "capture.stored"
+    )
+      throw new Error("Expected stored voice note.");
+    const captureId = stored.projection.captureId;
+    unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        processCommand(captureId, "retained-voice-wait"),
+      ),
+    );
+    const written = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        writeTranscriptCommand(
+          captureId,
+          digest,
+          "Audio remains retained.",
+          "retained-voice-transcript",
+        ),
+      ),
+    );
+    assert.equal(written.diagnosticCode, "capture.transcript_written");
+    if (
+      written.outcome !== "success" ||
+      written.projection.kind !== "capture.transcript_written"
+    )
+      throw new Error("Expected transcript result.");
+    assert.equal(written.projection.audioState, "retained");
+
+    const maintenanceContext = ExecutionContextSchema.parse({
+      ...context(),
+      credentialId: "00000000-0000-4000-8000-000000000815",
+      grantId: "00000000-0000-4000-8000-000000000816",
+      capabilityScope: ["capture.audioDeleteConfirm"],
+      origin: "maintenance",
+    });
+    harness.authorization.register(maintenanceContext);
+
+    const requested = unwrapOutcome(
+      harness.kernel.execute(
+        context(),
+        requestAudioDeletionCommand(captureId, "retained-voice-delete"),
+      ),
+    );
+    assert.equal(requested.diagnosticCode, "capture.audio_deletion_requested");
+    const wrongConfirmation = unwrapOutcome(
+      harness.kernel.execute(
+        maintenanceContext,
+        confirmAudioDeletionCommand(
+          captureId,
+          "6".repeat(64),
+          "retained-voice-wrong-confirm",
+          4,
+        ),
+      ),
+    );
+    assert.equal(
+      wrongConfirmation.diagnosticCode,
+      "command.precondition_failed",
+    );
+    const confirmed = unwrapOutcome(
+      harness.kernel.execute(
+        maintenanceContext,
+        confirmAudioDeletionCommand(
+          captureId,
+          digest,
+          "retained-voice-confirm",
+          4,
+        ),
+      ),
+    );
+    assert.equal(confirmed.diagnosticCode, "capture.audio_deleted");
+    const capture = harness.store
+      .snapshot()
+      .captures.find((item) => item.id === captureId);
+    assert.equal(
+      capture?.processingState === "transcript_ready"
+        ? capture.audioState
+        : undefined,
+      "deleted",
     );
   });
 

@@ -48,6 +48,7 @@ import {
   RemoteMcpGrantListRequestSchema,
   RemoteMcpGrantProjectionSchema,
   type DeviceId,
+  type CaptureId,
   CalendarBlockDraftSchema,
   CaptureOriginalSchema,
   isCustodiedCaptureOriginal,
@@ -87,6 +88,7 @@ import {
 } from "./hub-connection-custody.js";
 import { LocalOnlyDataHomeProvider } from "./local-data-home-provider.js";
 import { LocalMcpRuntime } from "./local-mcp-runtime.js";
+import { createRuntimeKernelService } from "./runtime-kernel-service.js";
 import type { PreparedLocalMcpCredential } from "./local-mcp-credential-custody.js";
 import { RemoteMcpCredentialCustody } from "./remote-mcp-credential-custody.js";
 import type { DesktopKernelService } from "./runtime-kernel-service.js";
@@ -1018,6 +1020,75 @@ const startProductionDesktop = async (): Promise<void> => {
     electronSafeStorage,
   );
   const jamieApi = new JamieApiClient();
+  const recoveredKernel = workspaceRecovery?.kernel;
+  const capturePayloadCustody =
+    recoveredKernel === undefined
+      ? undefined
+      : new CapturePayloadCustody(
+          recoveredKernel.identity.workspaceId,
+          recoveredKernel.store,
+        );
+  const voiceLifecycleService =
+    recoveredKernel === undefined
+      ? undefined
+      : createRuntimeKernelService({
+          context: {
+            ...recoveredKernel.context,
+            capabilityScope: [
+              ...new Set([
+                ...recoveredKernel.context.capabilityScope,
+                "capture.audioDeleteConfirm" as const,
+              ]),
+            ],
+            origin: "maintenance",
+          },
+          store: recoveredKernel.store,
+        });
+  const finalizeVoiceAudio = (captureId: CaptureId): void => {
+    if (capturePayloadCustody === undefined || recoveredKernel === undefined)
+      return;
+    const capture = recoveredKernel.store.read((view) =>
+      view.getCapture(captureId),
+    );
+    if (
+      capture?.processingState !== "transcript_ready" ||
+      capture.audioState !== "deletion_pending" ||
+      capture.original.kind !== "voice_note" ||
+      !capturePayloadCustody.deleteVoiceAudio(capture.original)
+    )
+      return;
+    voiceLifecycleService?.execute({
+      contractVersion: 1,
+      commandName: "capture.confirmAudioDeletion",
+      commandId: randomUUID(),
+      workspaceId: capture.workspaceId,
+      idempotencyKey: `voice-audio-delete:${capture.id}:v${capture.version}`,
+      expectedVersions: { [capture.id]: capture.version },
+      correlationId: randomUUID(),
+      payload: {
+        captureId: capture.id,
+        audioContentSha256: capture.original.payload.contentSha256,
+      },
+    });
+  };
+  capturePayloadCustody?.reconcile();
+  recoveredKernel?.store
+    .read((view) =>
+      view
+        .listSpaces(recoveredKernel.identity.workspaceId)
+        .flatMap((space) =>
+          view.listCapturesInSpace(
+            recoveredKernel.identity.workspaceId,
+            space.id,
+          ),
+        ),
+    )
+    .filter(
+      (capture) =>
+        capture.processingState === "transcript_ready" &&
+        capture.audioState === "deletion_pending",
+    )
+    .forEach((capture) => finalizeVoiceAudio(capture.id));
   if (
     workspaceRecovery?.kernel !== undefined &&
     coordinatedDataHomeProvider === undefined
@@ -1028,6 +1099,7 @@ const startProductionDesktop = async (): Promise<void> => {
       store: workspaceRecovery.kernel.store,
       isEnabled: () => coordinatedDataHomeProvider === undefined,
       readCapturePayload: (original) => capturePayloadCustody?.read(original),
+      finalizeVoiceAudio,
     });
     await localMcpRuntime.start();
   }
@@ -1245,14 +1317,6 @@ const startProductionDesktop = async (): Promise<void> => {
           store: workspaceRecovery.kernel.store,
           connection: () => activeHubConnection,
         });
-  const capturePayloadCustody =
-    workspaceRecovery?.kernel === undefined
-      ? undefined
-      : new CapturePayloadCustody(
-          workspaceRecovery.kernel.identity.workspaceId,
-          workspaceRecovery.kernel.store,
-        );
-  capturePayloadCustody?.reconcile();
   const mediaTypeForFilename = (filename: string): string => {
     switch (path.extname(filename).toLowerCase()) {
       case ".png":
@@ -1486,6 +1550,13 @@ const startProductionDesktop = async (): Promise<void> => {
         result.kind === "command_outcome" &&
         result.outcome.outcome === "success"
       ) {
+        if (
+          activeHubConnection === undefined &&
+          parsedCommand.success &&
+          (parsedCommand.data.commandName === "capture.writeTranscript" ||
+            parsedCommand.data.commandName === "capture.requestAudioDeletion")
+        )
+          finalizeVoiceAudio(parsedCommand.data.payload.captureId);
         if (
           parsedCommand.success &&
           parsedCommand.data.commandName === "capture.resolveException" &&

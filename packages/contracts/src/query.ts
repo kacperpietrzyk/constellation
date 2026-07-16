@@ -15,6 +15,7 @@ import {
   TaskAssignmentIdSchema,
   CommentIdSchema,
   AttentionSignalIdSchema,
+  AgentRunIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
   CheckpointIdSchema,
@@ -456,6 +457,22 @@ const CaptureHistoryItemSchema = z.discriminatedUnion("processingState", [
     awaitingTranscriptSince: z.iso.datetime({ offset: true }),
   }).strict(),
   CaptureHistoryItemBaseSchema.extend({
+    processingState: z.literal("transcript_ready"),
+    transcript: z
+      .object({
+        text: z.string(),
+        audioContentSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+        writtenAt: z.iso.datetime({ offset: true }),
+        writtenBy: PrincipalIdSchema,
+        writtenByKind: z.enum(["human", "integration", "system", "agent"]),
+        agentRunId: AgentRunIdSchema.optional(),
+        hostRunId: z.string().optional(),
+      })
+      .strict(),
+    audioState: z.enum(["deletion_pending", "retained", "deleted"]),
+    audioStateChangedAt: z.iso.datetime({ offset: true }),
+  }).strict(),
+  CaptureHistoryItemBaseSchema.extend({
     processingState: z.literal("routed_as_task"),
     derivedTaskId: TaskIdSchema,
     routedAt: z.iso.datetime({ offset: true }),
@@ -738,6 +755,10 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           name: z.string(),
           timezone: z.string(),
           defaultTaskStatusId: TaskStatusIdSchema,
+          voiceAudioRetentionPolicy: z.enum([
+            "delete_after_transcript",
+            "retain",
+          ]),
           version: z.int().positive(),
         })
         .strict(),
@@ -1201,6 +1222,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             targetCommandId: CommandIdSchema,
             activityType: z.enum([
               "capture_routed",
+              "capture_transcript_ready",
               "project_created",
               "project_outcome_changed",
               "task_completed",

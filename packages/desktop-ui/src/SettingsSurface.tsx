@@ -9,6 +9,7 @@ import type {
 
 import {
   renameWorkspace,
+  setWorkspaceVoiceAudioRetention,
   type DesktopSnapshot,
   type MutationFailure,
 } from "./client/workflow.js";
@@ -242,6 +243,22 @@ export const SettingsSurface = ({
     });
   };
 
+  const changeVoiceRetention = (event: ChangeEvent<HTMLSelectElement>) => {
+    if (!client) return;
+    const retentionPolicy = event.target.value as
+      "delete_after_transcript" | "retain";
+    setBusy(true);
+    void setWorkspaceVoiceAudioRetention(
+      client,
+      snapshot,
+      retentionPolicy,
+    ).then(async (result) => {
+      setBusy(false);
+      if (result.kind === "success") await onReload();
+      else onFailure(result);
+    });
+  };
+
   return (
     <div className="surface-scroll settings-surface">
       <header className="surface-header wave2-header">
@@ -285,6 +302,29 @@ export const SettingsSurface = ({
               </button>
             </div>
           </form>
+        </section>
+
+        <section>
+          <div className="settings-copy">
+            <p className="eyebrow">Voice custody</p>
+            <h2>Domyślna retencja audio</h2>
+            <p>
+              Nowe notatki głosowe dziedziczą tę decyzję. W Quick Capture możesz
+              ją zmienić dla pojedynczego nagrania.
+            </p>
+          </div>
+          <div className="settings-control">
+            <label htmlFor="voice-audio-retention">Po transkrypcji</label>
+            <select
+              id="voice-audio-retention"
+              disabled={busy || !client}
+              value={snapshot.bootstrap.workspace.voiceAudioRetentionPolicy}
+              onChange={changeVoiceRetention}
+            >
+              <option value="delete_after_transcript">Usuń audio</option>
+              <option value="retain">Zachowaj audio</option>
+            </select>
+          </div>
         </section>
 
         <section>

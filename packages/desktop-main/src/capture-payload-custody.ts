@@ -154,6 +154,12 @@ export class CapturePayloadCustody {
     });
   }
 
+  public deleteVoiceAudio(original: CaptureOriginal): boolean {
+    if (original.kind !== "voice_note") return false;
+    this.discard(original);
+    return !this.verify(original);
+  }
+
   public reconcile(): number {
     return this.store.purgeUnreferencedCapturePayloads(this.workspaceId);
   }

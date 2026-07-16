@@ -5054,6 +5054,7 @@ export const executeWave2Query = (
   }
   const activityMap: Partial<Record<DomainEvent["type"], string>> = {
     "capture.routed_as_task": "capture_routed",
+    "capture.transcript_written": "capture_transcript_ready",
     "project.created": "project_created",
     "project.outcome_updated": "project_outcome_changed",
     "task.completed": "task_completed",

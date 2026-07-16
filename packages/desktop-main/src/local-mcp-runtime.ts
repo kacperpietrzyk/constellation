@@ -12,6 +12,7 @@ import {
   QueryIdSchema,
   isCustodiedCaptureOriginal,
   type CaptureOriginal,
+  type CaptureId,
   type ExecutionContext,
   type GrantId,
   type WorkspaceId,
@@ -126,6 +127,7 @@ export class LocalMcpRuntime {
       readonly readCapturePayload?: (
         original: CaptureOriginal,
       ) => Uint8Array | undefined;
+      readonly finalizeVoiceAudio?: (captureId: CaptureId) => void;
     },
   ) {
     this.custody = new LocalMcpCredentialCustody(input.stateRoot);
@@ -326,7 +328,9 @@ export class LocalMcpRuntime {
         capture.workspaceId !== grant.workspaceId ||
         !context.spaceScope.includes(capture.spaceId) ||
         (capture.original.kind === "voice_note" &&
-          !context.capabilityScope.includes("capture.audioRead")) ||
+          (!context.capabilityScope.includes("capture.audioRead") ||
+            (capture.processingState === "transcript_ready" &&
+              capture.audioState !== "retained"))) ||
         !isCustodiedCaptureOriginal(capture.original)
       )
         return contentSafeResponse(invocation.requestId, "rejected", {
@@ -389,6 +393,13 @@ export class LocalMcpRuntime {
     }
     if (invocation.kind === "command") {
       const result = service.execute(invocation.command);
+      if (
+        result.kind === "command_outcome" &&
+        result.outcome.outcome === "success" &&
+        (invocation.command.commandName === "capture.writeTranscript" ||
+          invocation.command.commandName === "capture.requestAudioDeletion")
+      )
+        this.input.finalizeVoiceAudio?.(invocation.command.payload.captureId);
       return contentSafeResponse(
         invocation.requestId,
         responseOutcome(result),

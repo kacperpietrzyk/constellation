@@ -79,6 +79,16 @@ chunks from encrypted custody, reauthorizes every chunk, and returns an MCP
 `blob` only after the complete length and SHA-256 digest match. Bytes never
 enter ordinary query/tool structured results, commands, audit, or logs.
 
+Voice transcription is a separate mutation boundary. An operate/full-access
+grant may receive `capture.transcriptWrite`; `capture.writeTranscript` requires
+the current Capture version, the exact audio SHA-256, and non-empty transcript
+text. The transcript records the agent principal, agent run, and host run.
+Constellation never sends audio to a model or transcription provider. After a
+default-policy transcript commits, audio reads fail immediately while encrypted
+custody deletes and verifies the source. Explicitly retained audio remains
+readable only with `capture.audioRead` and can later be deleted by a human from
+Capture History.
+
 ## Safety and recovery
 
 - Rotate a credential whenever the descriptor may have been copied or exposed.

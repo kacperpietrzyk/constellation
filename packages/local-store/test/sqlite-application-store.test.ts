@@ -1505,6 +1505,61 @@ describe("SQLite ApplicationStore", () => {
       stagedBytes,
     );
 
+    const transcriptReadySnapshot = {
+      ...managedSnapshot,
+      captures: managedSnapshot.captures.map((capture) => ({
+        ...capture,
+        originalText: "Voice note.webm",
+        original: {
+          kind: "voice_note" as const,
+          payload: {
+            payloadId: referencedPayloadId,
+            displayName: "Voice note.webm",
+            mediaType: "audio/webm" as const,
+            byteLength: referencedBytes.byteLength,
+            contentSha256: createHash("sha256")
+              .update(referencedBytes)
+              .digest("hex"),
+            custodyState: "available" as const,
+          },
+          durationMs: 4_000,
+          retentionPolicy: "delete_after_transcript" as const,
+        },
+        processingState: "transcript_ready" as const,
+        transcript: {
+          text: "Transcript retained without source audio.",
+          audioContentSha256: createHash("sha256")
+            .update(referencedBytes)
+            .digest("hex"),
+          writtenAt: "2026-07-16T17:02:30.000Z",
+          writtenBy: context().principalId,
+          writtenByKind: "human" as const,
+        },
+        audioState: "deleted" as const,
+        audioStateChangedAt: "2026-07-16T17:02:31.000Z",
+      })),
+    };
+    store.replaceProjection(transcriptReadySnapshot, {
+      checkpoint: "3",
+      snapshotDigest: "c".repeat(64),
+      syncState: "current",
+      updatedAt: "2026-07-16T17:02:32.000Z",
+    });
+    assert.equal(
+      store.readCapturePayload({
+        payloadId: referencedPayloadId,
+        workspaceId: context().workspaceId,
+      }),
+      undefined,
+    );
+    assert.deepEqual(
+      store.readCapturePayload({
+        payloadId: stagedPayloadId,
+        workspaceId: context().workspaceId,
+      })?.bytes,
+      stagedBytes,
+    );
+
     store.replaceProjection(
       {
         ...managedSnapshot,
@@ -1518,8 +1573,8 @@ describe("SQLite ApplicationStore", () => {
         })),
       },
       {
-        checkpoint: "3",
-        snapshotDigest: "c".repeat(64),
+        checkpoint: "4",
+        snapshotDigest: "d".repeat(64),
         syncState: "current",
         updatedAt: "2026-07-16T17:03:00.000Z",
       },

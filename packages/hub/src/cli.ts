@@ -138,6 +138,8 @@ const main = async (): Promise<void> => {
           attachments.readCapturePayloadChunk(input),
         isCapturePayloadAvailable: ({ workspaceId, original }) =>
           attachments.isAvailable(workspaceId, original),
+        deleteCapturePayload: (input) =>
+          attachments.deleteCapturePayload(input),
       }),
       host,
       port: Number(process.env.CONSTELLATION_HUB_PORT ?? "4318"),

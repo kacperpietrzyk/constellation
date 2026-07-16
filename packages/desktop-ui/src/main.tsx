@@ -93,6 +93,15 @@ const render = async (): Promise<void> => {
   }
   if (
     import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("surface") ===
+      "voice-history"
+  ) {
+    const { VoiceHistoryHarness } =
+      await import("./dev/VoiceHistoryHarness.js");
+    content = <VoiceHistoryHarness />;
+  }
+  if (
+    import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get("surface") === "onboarding"
   ) {
     const { OnboardingHarness } = await import("./dev/OnboardingHarness.js");

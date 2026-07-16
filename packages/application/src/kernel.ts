@@ -47,10 +47,14 @@ import {
 import {
   createLocalWorkspace,
   awaitVoiceTranscript,
+  writeVoiceTranscript,
+  requestVoiceAudioDeletion,
+  confirmVoiceAudioDeletion,
   captureDisplayText,
   captureFingerprintSource,
   createKnowledgeSource,
   renameWorkspace,
+  setWorkspaceVoiceAudioRetention,
   routeCaptureAsKnowledgeSource,
   routeCaptureAsTask,
   submitCapture,
@@ -63,6 +67,7 @@ import {
   type ReviewCapture,
   type PendingCapture,
   type UnclassifiedCapture,
+  type TranscriptReadyCapture,
 } from "@constellation/domain";
 
 import {
@@ -172,7 +177,8 @@ const isCurrentlyAuthorized = (
         command.workspaceId === command.payload.workspaceId &&
         canUseSpace(context, command.workspaceId, command.payload.rootSpaceId)
       );
-    case "workspace.rename": {
+    case "workspace.rename":
+    case "workspace.setVoiceAudioRetention": {
       const workspace = view.getWorkspace(command.workspaceId);
       const membership = view.getMembership(
         command.workspaceId,
@@ -182,7 +188,7 @@ const isCurrentlyAuthorized = (
         workspace !== undefined &&
         authorization.authorize({
           context,
-          capability: command.commandName,
+          capability: "workspace.rename",
           workspaceId: command.workspaceId,
           spaceId: workspace.rootSpaceId,
         }) &&
@@ -264,7 +270,18 @@ const isCurrentlyAuthorized = (
     case "capture.process":
     case "capture.reportException":
     case "capture.resolveException":
+    case "capture.writeTranscript":
+    case "capture.requestAudioDeletion":
+    case "capture.confirmAudioDeletion":
     case "capture.routeAsTask": {
+      if (
+        (command.commandName === "capture.requestAudioDeletion" &&
+          context.principalKind !== "human") ||
+        (command.commandName === "capture.confirmAudioDeletion" &&
+          (context.principalKind !== "human" ||
+            context.origin !== "maintenance"))
+      )
+        return false;
       const capture = view.getCapture(command.payload.captureId);
       const membership = view.getMembership(
         command.workspaceId,
@@ -279,7 +296,13 @@ const isCurrentlyAuthorized = (
             command.commandName === "capture.reportException" ||
             command.commandName === "capture.resolveException"
               ? "capture.process"
-              : command.commandName,
+              : command.commandName === "capture.writeTranscript"
+                ? "capture.transcriptWrite"
+                : command.commandName === "capture.requestAudioDeletion"
+                  ? "capture.process"
+                  : command.commandName === "capture.confirmAudioDeletion"
+                    ? "capture.audioDeleteConfirm"
+                    : command.commandName,
           workspaceId: command.workspaceId,
           spaceId: capture.spaceId,
         }) &&
@@ -507,6 +530,15 @@ export class ApplicationKernel {
           fingerprint,
           occurredAt,
         );
+      case "workspace.setVoiceAudioRetention":
+        return this.setWorkspaceVoiceAudioRetention(
+          transaction,
+          context,
+          command,
+          scope,
+          fingerprint,
+          occurredAt,
+        );
       case "workspace.memberAdd":
       case "workspace.memberSetAccess":
       case "workspace.memberRevoke":
@@ -569,6 +601,33 @@ export class ApplicationKernel {
         );
       case "capture.resolveException":
         return this.resolveCaptureException(
+          transaction,
+          context,
+          command,
+          scope,
+          fingerprint,
+          occurredAt,
+        );
+      case "capture.writeTranscript":
+        return this.writeCaptureTranscript(
+          transaction,
+          context,
+          command,
+          scope,
+          fingerprint,
+          occurredAt,
+        );
+      case "capture.requestAudioDeletion":
+        return this.requestCaptureAudioDeletion(
+          transaction,
+          context,
+          command,
+          scope,
+          fingerprint,
+          occurredAt,
+        );
+      case "capture.confirmAudioDeletion":
+        return this.confirmCaptureAudioDeletion(
           transaction,
           context,
           command,
@@ -907,6 +966,107 @@ export class ApplicationKernel {
     transaction.insertIdempotency({ scope, fingerprint, outcome });
     transaction.insertSyncCommand(command);
     transaction.insertOutbox(outbox);
+    return outcome;
+  }
+
+  private setWorkspaceVoiceAudioRetention(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<
+      CommandEnvelope,
+      { commandName: "workspace.setVoiceAudioRetention" }
+    >,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+  ): CommandOutcome {
+    const workspace = transaction.getWorkspace(command.workspaceId);
+    const membership = transaction.getMembership(
+      command.workspaceId,
+      context.principalId,
+    );
+    if (
+      workspace === undefined ||
+      !canEditSpace(
+        transaction,
+        context,
+        command.workspaceId,
+        workspace.rootSpaceId,
+      ) ||
+      !isWorkspaceAdministrator(membership)
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "authorization.denied",
+      });
+    const expectedVersion = command.expectedVersions[workspace.id];
+    if (
+      expectedVersion === undefined ||
+      Object.keys(command.expectedVersions).length !== 1
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    if (expectedVersion !== workspace.version)
+      return this.outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "record.version_conflict",
+        currentVersions: currentVersionMap(workspace.id, workspace.version),
+      });
+    const updated = setWorkspaceVoiceAudioRetention(
+      workspace,
+      command.payload.retentionPolicy,
+      occurredAt,
+    );
+    const eventId = EventIdSchema.parse(this.dependencies.ids.next("event"));
+    const auditReceiptId = AuditReceiptIdSchema.parse(
+      this.dependencies.ids.next("auditReceipt"),
+    );
+    const event: DomainEvent = {
+      id: eventId,
+      commandId: command.commandId,
+      type: "workspace.voice_audio_retention_changed",
+      workspaceId: workspace.id,
+      spaceId: workspace.rootSpaceId,
+      aggregateId: workspace.id,
+      aggregateVersion: updated.version,
+      occurredAt,
+    };
+    const audit = this.auditReceipt(
+      auditReceiptId,
+      context,
+      command,
+      workspace.rootSpaceId,
+      [workspace.id],
+      { [workspace.id]: updated.version },
+      ["voiceAudioRetentionPolicy"],
+      occurredAt,
+    );
+    const outcome = this.outcome(command, occurredAt, {
+      outcome: "success",
+      diagnosticCode: "workspace.voice_audio_retention_changed",
+      affected: [
+        {
+          recordId: updated.id,
+          recordKind: "workspace",
+          version: updated.version,
+        },
+      ],
+      auditReceiptId,
+      projection: {
+        kind: "workspace.voice_audio_retention_changed",
+        workspaceId: updated.id,
+        retentionPolicy: command.payload.retentionPolicy,
+        version: updated.version,
+      },
+    });
+    if (!transaction.updateWorkspace(updated, expectedVersion))
+      throw new RetryableUnitOfWorkError();
+    transaction.insertEvent(event);
+    transaction.insertAuditReceipt(audit);
+    transaction.insertIdempotency({ scope, fingerprint, outcome });
+    transaction.insertSyncCommand(command);
     return outcome;
   }
 
@@ -1290,6 +1450,271 @@ export class ApplicationKernel {
       },
     });
     if (!transaction.updateCapture(awaiting, capture.version))
+      throw new RetryableUnitOfWorkError();
+    transaction.insertEvent(event);
+    transaction.insertAuditReceipt(audit);
+    transaction.insertIdempotency({ scope, fingerprint, outcome });
+    transaction.insertSyncCommand(command);
+    return outcome;
+  }
+
+  private writeCaptureTranscript(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<
+      CommandEnvelope,
+      { commandName: "capture.writeTranscript" }
+    >,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+  ): CommandOutcome {
+    const capture = transaction.getCapture(command.payload.captureId);
+    const expectedVersion =
+      capture === undefined ? undefined : command.expectedVersions[capture.id];
+    if (
+      capture === undefined ||
+      capture.workspaceId !== command.workspaceId ||
+      capture.processingState !== "awaiting_transcript" ||
+      capture.original.kind !== "voice_note"
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    if (
+      expectedVersion === undefined ||
+      Object.keys(command.expectedVersions).length !== 1 ||
+      command.payload.audioContentSha256 !==
+        capture.original.payload.contentSha256
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    if (expectedVersion !== capture.version)
+      return this.outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "record.version_conflict",
+        currentVersions: currentVersionMap(capture.id, capture.version),
+      });
+
+    const updated = writeVoiceTranscript({
+      capture,
+      transcript: command.payload.transcript,
+      writtenAt: occurredAt,
+      writtenBy: context.principalId,
+      writtenByKind: context.principalKind,
+      ...(context.hostRun?.agentRunId === undefined
+        ? {}
+        : { agentRunId: context.hostRun.agentRunId }),
+      ...(context.hostRun?.runId === undefined
+        ? {}
+        : { hostRunId: context.hostRun.runId }),
+    });
+    return this.commitCaptureLifecycleMutation(
+      transaction,
+      context,
+      command,
+      capture.version,
+      updated,
+      "capture.transcript_written",
+      ["processingState", "transcript", "audioState", "audioStateChangedAt"],
+      {
+        kind: "capture.transcript_written",
+        captureId: capture.id,
+        captureVersion: updated.version,
+        audioState:
+          capture.original.retentionPolicy === "retain"
+            ? "retained"
+            : "deletion_pending",
+      },
+      scope,
+      fingerprint,
+      occurredAt,
+    );
+  }
+
+  private requestCaptureAudioDeletion(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<
+      CommandEnvelope,
+      { commandName: "capture.requestAudioDeletion" }
+    >,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+  ): CommandOutcome {
+    const capture = transaction.getCapture(command.payload.captureId);
+    const expectedVersion =
+      capture === undefined ? undefined : command.expectedVersions[capture.id];
+    if (
+      capture === undefined ||
+      capture.workspaceId !== command.workspaceId ||
+      capture.processingState !== "transcript_ready" ||
+      capture.audioState !== "retained" ||
+      expectedVersion === undefined ||
+      Object.keys(command.expectedVersions).length !== 1
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    if (expectedVersion !== capture.version)
+      return this.outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "record.version_conflict",
+        currentVersions: currentVersionMap(capture.id, capture.version),
+      });
+    const updated = requestVoiceAudioDeletion({ capture, occurredAt });
+    return this.commitCaptureLifecycleMutation(
+      transaction,
+      context,
+      command,
+      capture.version,
+      updated,
+      "capture.audio_deletion_requested",
+      ["audioState", "audioStateChangedAt"],
+      {
+        kind: "capture.audio_deletion_requested",
+        captureId: capture.id,
+        captureVersion: updated.version,
+      },
+      scope,
+      fingerprint,
+      occurredAt,
+    );
+  }
+
+  private confirmCaptureAudioDeletion(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<
+      CommandEnvelope,
+      { commandName: "capture.confirmAudioDeletion" }
+    >,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+  ): CommandOutcome {
+    const capture = transaction.getCapture(command.payload.captureId);
+    const expectedVersion =
+      capture === undefined ? undefined : command.expectedVersions[capture.id];
+    if (
+      capture === undefined ||
+      capture.workspaceId !== command.workspaceId ||
+      capture.processingState !== "transcript_ready" ||
+      capture.audioState !== "deletion_pending" ||
+      capture.original.kind !== "voice_note" ||
+      command.payload.audioContentSha256 !==
+        capture.original.payload.contentSha256 ||
+      expectedVersion === undefined ||
+      Object.keys(command.expectedVersions).length !== 1
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    if (expectedVersion !== capture.version)
+      return this.outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "record.version_conflict",
+        currentVersions: currentVersionMap(capture.id, capture.version),
+      });
+    const updated = confirmVoiceAudioDeletion({ capture, occurredAt });
+    return this.commitCaptureLifecycleMutation(
+      transaction,
+      context,
+      command,
+      capture.version,
+      updated,
+      "capture.audio_deleted",
+      ["audioState", "audioStateChangedAt"],
+      {
+        kind: "capture.audio_deleted",
+        captureId: capture.id,
+        captureVersion: updated.version,
+      },
+      scope,
+      fingerprint,
+      occurredAt,
+    );
+  }
+
+  private commitCaptureLifecycleMutation(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<
+      CommandEnvelope,
+      {
+        commandName:
+          | "capture.writeTranscript"
+          | "capture.requestAudioDeletion"
+          | "capture.confirmAudioDeletion";
+      }
+    >,
+    expectedVersion: number,
+    capture: TranscriptReadyCapture,
+    diagnosticCode:
+      | "capture.transcript_written"
+      | "capture.audio_deletion_requested"
+      | "capture.audio_deleted",
+    changedFields: readonly string[],
+    projection:
+      | {
+          readonly kind: "capture.transcript_written";
+          readonly captureId: CaptureId;
+          readonly captureVersion: number;
+          readonly audioState: "deletion_pending" | "retained";
+        }
+      | {
+          readonly kind:
+            "capture.audio_deletion_requested" | "capture.audio_deleted";
+          readonly captureId: CaptureId;
+          readonly captureVersion: number;
+        },
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+  ): CommandOutcome {
+    const event: DomainEvent = {
+      id: EventIdSchema.parse(this.dependencies.ids.next("event")),
+      commandId: command.commandId,
+      type: diagnosticCode,
+      workspaceId: capture.workspaceId,
+      spaceId: capture.spaceId,
+      aggregateId: capture.id,
+      aggregateVersion: capture.version,
+      occurredAt,
+    };
+    const auditReceiptId = AuditReceiptIdSchema.parse(
+      this.dependencies.ids.next("auditReceipt"),
+    );
+    const audit = this.auditReceipt(
+      auditReceiptId,
+      context,
+      command,
+      capture.spaceId,
+      [capture.id],
+      { [capture.id]: capture.version },
+      changedFields,
+      occurredAt,
+    );
+    const outcome = this.outcome(command, occurredAt, {
+      outcome: "success",
+      diagnosticCode,
+      affected: [
+        {
+          recordId: capture.id,
+          recordKind: "capture",
+          version: capture.version,
+        },
+      ],
+      auditReceiptId,
+      projection,
+    } as OutcomeBody);
+    if (!transaction.updateCapture(capture, expectedVersion))
       throw new RetryableUnitOfWorkError();
     transaction.insertEvent(event);
     transaction.insertAuditReceipt(audit);
@@ -2251,6 +2676,8 @@ export class ApplicationKernel {
           name: workspace.name,
           timezone: workspace.timezone,
           defaultTaskStatusId: workspace.defaultTaskStatusId,
+          voiceAudioRetentionPolicy:
+            workspace.voiceAudioRetentionPolicy ?? "delete_after_transcript",
           version: workspace.version,
         },
         spaces: spaces.map((space) => ({
@@ -2378,13 +2805,19 @@ export class ApplicationKernel {
                   ? {
                       awaitingTranscriptSince: capture.awaitingTranscriptSince,
                     }
-                  : capture.processingState === "unclassified"
+                  : capture.processingState === "transcript_ready"
                     ? {
-                        unclassifiedAt: capture.unclassifiedAt,
-                        unclassifiedBy: capture.unclassifiedBy,
-                        previousReviewReason: capture.previousReviewReason,
+                        transcript: capture.transcript,
+                        audioState: capture.audioState,
+                        audioStateChangedAt: capture.audioStateChangedAt,
                       }
-                    : {}),
+                    : capture.processingState === "unclassified"
+                      ? {
+                          unclassifiedAt: capture.unclassifiedAt,
+                          unclassifiedBy: capture.unclassifiedBy,
+                          previousReviewReason: capture.previousReviewReason,
+                        }
+                      : {}),
           version: capture.version,
         })),
         nextCursor,

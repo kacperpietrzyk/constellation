@@ -229,9 +229,13 @@ Attention signal atomically; a missing managed payload can be replaced only
 after the runtime proves the new bytes. Quick Capture now also records a bounded
 short voice note through an audio-only desktop permission, preserves it in the
 same encrypted custody, waits without Attention debt, and exposes its bytes only
-to an MCP grant with the separate `capture.audioRead` capability. Durable
-transcript attribution and post-transcript deletion or retention remain inside
-the current readiness work rather than being claimed complete.
+to an MCP grant with the separate `capture.audioRead` capability. A separately
+granted, expected-version transcript command binds durable text and agent-run
+provenance to the exact audio digest. The frozen Capture policy then either
+retains audio explicitly or enters two-phase deletion: reads stop immediately,
+local or Hub custody verifies reference-safe removal, and only then records the
+audio as deleted. Workspace defaults are prospective, per-capture overrides
+remain visible, and retained audio can be deleted later from Capture History.
 
 ## Later — desktop ecosystem after product readiness
 

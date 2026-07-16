@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import type {
+  CaptureId,
   CaptureOriginal,
   PrincipalId,
   ProjectId,
@@ -68,6 +69,7 @@ import {
   rotateRemoteAgentCredential,
   revokeRemoteAgentGrant,
   routeCaptureException,
+  requestVoiceAudioDeletion,
   resolveCaptureException,
   type AuditReceiptProjection,
   type DesktopSnapshot,
@@ -187,6 +189,7 @@ export const CaptureDialog = ({
   busy,
   client,
   initialMode = "text",
+  defaultVoiceRetentionPolicy,
   workspaceName,
   onClose,
   onSubmit,
@@ -194,6 +197,7 @@ export const CaptureDialog = ({
   readonly busy: boolean;
   readonly client: ConstellationRendererClient | undefined;
   readonly initialMode?: "text" | "url" | "file" | "voice";
+  readonly defaultVoiceRetentionPolicy: "delete_after_transcript" | "retain";
   readonly workspaceName: string;
   readonly onClose: () => void;
   readonly onSubmit: (original: CaptureOriginal) => Promise<string | undefined>;
@@ -210,7 +214,9 @@ export const CaptureDialog = ({
     "idle" | "requesting" | "recording" | "staging"
   >("idle");
   const [voiceElapsedMs, setVoiceElapsedMs] = useState(0);
-  const [retainVoice, setRetainVoice] = useState(false);
+  const [retainVoice, setRetainVoice] = useState(
+    defaultVoiceRetentionPolicy === "retain",
+  );
   const voiceSessionRef = useRef<VoiceRecordingSession | undefined>(undefined);
   const voiceGenerationRef = useRef(0);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -788,6 +794,7 @@ export const RealApp = ({
   const [accessBusy, setAccessBusy] = useState(false);
   const [commentBusy, setCommentBusy] = useState(false);
   const [attentionBusy, setAttentionBusy] = useState(false);
+  const [historyBusyCaptureId, setHistoryBusyCaptureId] = useState<CaptureId>();
   const [comments, setComments] = useState<DataSlice<CommentListProjection>>({
     kind: "unavailable",
     message: "Wybierz Task albo Project.",
@@ -1832,6 +1839,22 @@ export const RealApp = ({
           <HistorySurface
             snapshot={state.snapshot}
             onUndo={(id) => void openUndo(id)}
+            busyCaptureId={historyBusyCaptureId}
+            onDeleteVoiceAudio={(captureId, version) => {
+              if (!client) return;
+              setHistoryBusyCaptureId(captureId);
+              void requestVoiceAudioDeletion(
+                client,
+                state.snapshot,
+                captureId,
+                version,
+              ).then(async (result) => {
+                setHistoryBusyCaptureId(undefined);
+                if (result.kind === "success")
+                  await refreshAfter("Zachowane audio zostało usunięte.");
+                else showFailure(result);
+              });
+            }}
           />
         )}
         {surface === "activity" && (
@@ -2437,6 +2460,9 @@ export const RealApp = ({
         <CaptureDialog
           busy={capturing}
           client={client}
+          defaultVoiceRetentionPolicy={
+            bootstrap.workspace.voiceAudioRetentionPolicy
+          }
           workspaceName={bootstrap.workspace.name}
           onClose={() => !capturing && setCaptureOpen(false)}
           onSubmit={async (original) => {

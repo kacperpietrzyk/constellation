@@ -676,6 +676,7 @@ const agentCapabilities = (
     ...AGENT_QUERY_CAPABILITIES,
     "capture.submit",
     "capture.process",
+    "capture.transcriptWrite",
     "capture.submitText",
     "capture.routeAsTask",
     "project.create",
@@ -1127,6 +1128,28 @@ export const renameWorkspace = (
     (response) =>
       response.outcome.outcome === "success" &&
       response.outcome.projection.kind === "workspace.renamed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const setWorkspaceVoiceAudioRetention = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  retentionPolicy: "delete_after_transcript" | "retain",
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [snapshot.bootstrap.workspace.id]: snapshot.bootstrap.workspace.version,
+      }),
+      commandName: "workspace.setVoiceAudioRetention",
+      payload: { retentionPolicy },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind ===
+        "workspace.voice_audio_retention_changed"
         ? response.outcome.projection
         : undefined,
   );
@@ -2454,6 +2477,28 @@ export const submitQuickCapture = async (
     };
   }
 };
+
+export const requestVoiceAudioDeletion = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  captureId: CaptureId,
+  expectedVersion: number,
+): Promise<MutationResult<CaptureId>> =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [captureId]: expectedVersion,
+      }),
+      commandName: "capture.requestAudioDeletion",
+      payload: { captureId },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "capture.audio_deletion_requested"
+        ? captureId
+        : undefined,
+  );
 
 export const submitCaptureAsTask = async (
   client: ConstellationRendererClient,

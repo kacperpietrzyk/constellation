@@ -14,6 +14,7 @@ import {
   WorkspaceIdSchema,
   type ExecutionContext,
 } from "@constellation/contracts";
+import type { Capture } from "@constellation/domain";
 import { createReferenceHarness } from "@constellation/testkit";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -209,6 +210,7 @@ const createRemoteGrant = async (
       "task.list",
       "capture.submitText",
       "capture.process",
+      "capture.transcriptWrite",
       "capture.history",
       ...(audioRead ? (["capture.audioRead"] as const) : []),
       "audit.receipt",
@@ -425,7 +427,7 @@ describe("remote MCP Hub gateway", () => {
 
   it("requires an independent remote grant before exposing voice audio", async () => {
     const bytes = new TextEncoder().encode("authorized remote voice object");
-    const { remote, deviceCredential } = await setup(bytes);
+    const { repository, remote, deviceCredential } = await setup(bytes);
     const ordinary = await createRemoteGrant(remote, deviceCredential);
     const denied = await remote.invoke(ids.workspace, ordinary.bearerToken, {
       contractVersion: 1,
@@ -447,6 +449,13 @@ describe("remote MCP Hub gateway", () => {
       deviceCredential,
       true,
     );
+    const voiceRun = {
+      ...run,
+      agentRunId: AgentRunIdSchema.parse(
+        "60000000-0000-4000-8000-000000000022",
+      ),
+      hostRunId: "remote-voice-run",
+    };
     const allowed = await remote.invoke(
       ids.workspace,
       voiceGranted.bearerToken,
@@ -454,13 +463,7 @@ describe("remote MCP Hub gateway", () => {
         contractVersion: 1,
         requestId: uuid(),
         kind: "payload_read",
-        run: {
-          ...run,
-          agentRunId: AgentRunIdSchema.parse(
-            "60000000-0000-4000-8000-000000000022",
-          ),
-          hostRunId: "remote-voice-run",
-        },
+        run: voiceRun,
         workspaceId: ids.workspace,
         captureId: ids.voiceCapture,
         offset: 0,
@@ -475,6 +478,58 @@ describe("remote MCP Hub gateway", () => {
       ),
       Buffer.from(bytes),
     );
+    const transcript = await remote.invoke(
+      ids.workspace,
+      voiceGranted.bearerToken,
+      {
+        contractVersion: 1,
+        requestId: uuid(),
+        kind: "command",
+        run: voiceRun,
+        command: CommandEnvelopeSchema.parse({
+          contractVersion: 1,
+          commandName: "capture.writeTranscript",
+          commandId: uuid(),
+          workspaceId: ids.workspace,
+          idempotencyKey: "remote-voice-transcript",
+          expectedVersions: { [ids.voiceCapture]: 2 },
+          correlationId: uuid(),
+          payload: {
+            captureId: ids.voiceCapture,
+            audioContentSha256: createHash("sha256")
+              .update(bytes)
+              .digest("hex"),
+            transcript: "Remote agent transcript.",
+          },
+        }),
+      },
+    );
+    assert.equal(transcript.outcome, "success", JSON.stringify(transcript));
+    const deniedAfterTranscript = await remote.invoke(
+      ids.workspace,
+      voiceGranted.bearerToken,
+      {
+        contractVersion: 1,
+        requestId: uuid(),
+        kind: "payload_read",
+        run: voiceRun,
+        workspaceId: ids.workspace,
+        captureId: ids.voiceCapture,
+        offset: 0,
+        length: 512 * 1024,
+      },
+    );
+    assert.equal(deniedAfterTranscript.outcome, "rejected");
+    await repository.withWorkspaceLock(ids.workspace, (state) => {
+      const capture = state.snapshot.captures.find(
+        (candidate) => candidate.id === ids.voiceCapture,
+      ) as Capture | undefined;
+      assert.equal(capture?.processingState, "transcript_ready");
+      if (capture?.processingState !== "transcript_ready") return;
+      assert.equal(capture.audioState, "deleted");
+      assert.equal(capture.transcript.writtenByKind, "agent");
+      assert.equal(capture.transcript.hostRunId, "remote-voice-run");
+    });
   });
 
   it("rotates and revokes immediately with explicit version conflicts", async () => {
