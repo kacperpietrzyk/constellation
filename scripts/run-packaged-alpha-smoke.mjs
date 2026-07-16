@@ -30,6 +30,8 @@ const projectOutcome = "Project inspector preserves the intended outcome";
 // A freshly mounted ad-hoc macOS app can briefly stall CDP while OS services
 // attach. The journey-level waits remain bounded separately.
 const CDP_COMMAND_TIMEOUT_MS = 15_000;
+const PACKAGED_STARTUP_BUDGET_MS = 30_000;
+const PACKAGED_INTERACTION_BUDGET_MS = 10_000;
 if (continuityWorkspaceId === undefined) {
   fs.rmSync(stateRoot, { recursive: true, force: true });
 }
@@ -365,6 +367,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
   removeSmokeSingletonArtifacts(browserUserData);
   let stdout = "";
   let stderr = "";
+  const launchedAt = performance.now();
   const packagedProcess = spawn(
     executable,
     [
@@ -419,6 +422,10 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       `document.querySelector(".desktop-shell, .recovery-required-state") !== null`,
       "PACKAGED_ALPHA_UI_NOT_READY",
     );
+    const shellReadyMs = performance.now() - launchedAt;
+    if (shellReadyMs > PACKAGED_STARTUP_BUDGET_MS) {
+      throw new Error(`PACKAGED_ALPHA_STARTUP_BUDGET_EXCEEDED_${shellReadyMs}`);
+    }
     const boundary = await client.evaluate(`(async () => {
       const build = await window.constellation.getBuildInfo();
       const dataHome = await window.constellation.getDataHomeStatus();
@@ -714,6 +721,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     }
 
     const submitCapture = async (title) => {
+      const startedAt = performance.now();
       await client.evaluate(`(() => {
         document.querySelector(".sidebar-capture").click();
         return true;
@@ -754,10 +762,17 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         `document.querySelector('.shell-tab.active [data-shell-tab^="task:"]') !== null`,
         "PACKAGED_ALPHA_CAPTURE_CONTEXT_TAB_MISSING",
       );
+      const durationMs = performance.now() - startedAt;
+      if (durationMs > PACKAGED_INTERACTION_BUDGET_MS) {
+        throw new Error(`PACKAGED_ALPHA_CAPTURE_BUDGET_EXCEEDED_${durationMs}`);
+      }
+      return durationMs;
     };
 
     let backup;
     let restorePreview;
+    let captureCommitMs;
+    let searchMs;
     if (phase === "created") {
       const initialCount = await client.evaluate(
         `document.querySelectorAll(".task-row").length`,
@@ -792,7 +807,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       ) {
         throw new Error("PACKAGED_ALPHA_STARTER_PREVIEW_MUTATED");
       }
-      await submitCapture(taskTitle);
+      captureCommitMs = await submitCapture(taskTitle);
       backup = await client.evaluate(
         `window.constellation.exportWorkspaceBackup()`,
       );
@@ -845,6 +860,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         `document.querySelector('#global-search') !== null`,
         "PACKAGED_ALPHA_SEARCH_MISSING",
       );
+      const searchStartedAt = performance.now();
       await client.evaluate(`(() => {
         const input = document.querySelector('#global-search');
         const setter = Object.getOwnPropertyDescriptor(
@@ -862,6 +878,10 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         )`,
         "PACKAGED_ALPHA_LOCAL_SEARCH_RESULT_MISSING",
       );
+      searchMs = performance.now() - searchStartedAt;
+      if (searchMs > PACKAGED_INTERACTION_BUDGET_MS) {
+        throw new Error(`PACKAGED_ALPHA_SEARCH_BUDGET_EXCEEDED_${searchMs}`);
+      }
       await client.evaluate(`(() => {
         const result = [...document.querySelectorAll('.search-results button')].find(
           (button) => button.querySelector('small')?.textContent?.startsWith('task ·')
@@ -1108,6 +1128,13 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       preload: "context-isolated",
       transport: "renderer-preload-ipc",
       version: boundary.build.version,
+      performance: {
+        shellReadyMs: Math.round(shellReadyMs),
+        ...(captureCommitMs === undefined
+          ? {}
+          : { captureCommitMs: Math.round(captureCommitMs) }),
+        ...(searchMs === undefined ? {} : { searchMs: Math.round(searchMs) }),
+      },
     };
   } catch (error) {
     if (client !== undefined) client.close();
@@ -1131,6 +1158,7 @@ if (continuityWorkspaceId !== undefined) {
       workspaceId: continuityWorkspaceId,
       taskCount: continuity.taskCount,
       encryptedContinuity: true,
+      performance: continuity.performance,
     })}\n`,
   );
   process.exit(0);
@@ -1209,6 +1237,22 @@ await new Promise((resolve, reject) => {
       dataHomeProvider: "constellation.local-only/v1",
       stableDeviceIdentity: true,
       restoreCounts: restoreConfirmed.restorePreview.counts,
+      performance: {
+        startupMsByPhase: [
+          created,
+          interruptedAfterRetention,
+          recoveredAfterRetention,
+          interruptedAfterActivation,
+          recoveredAfterActivation,
+          restoreConfirmed,
+          restored,
+        ].map((result) => ({
+          phase: result.phase,
+          milliseconds: result.performance.shellReadyMs,
+        })),
+        captureCommitMs: created.performance.captureCommitMs,
+        searchMs: created.performance.searchMs,
+      },
     })}\n`,
     (error) => {
       if (error === null || error === undefined) resolve();
