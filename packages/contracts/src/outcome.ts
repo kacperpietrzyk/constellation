@@ -43,6 +43,7 @@ export const DiagnosticCodeSchema = z.enum([
   "capture.stored",
   "capture.routed_as_knowledge_source",
   "capture.needs_review",
+  "capture.awaiting_transcript",
   "capture.exception_resolved",
   "capture.routed_as_task",
   "project.created",
@@ -216,6 +217,14 @@ export const CaptureNeedsReviewProjectionSchema = z
     captureVersion: z.int().positive(),
     attentionSignalId: AttentionSignalIdSchema,
     reason: CaptureReviewReasonSchema,
+  })
+  .strict();
+
+export const CaptureAwaitingTranscriptProjectionSchema = z
+  .object({
+    kind: z.literal("capture.awaiting_transcript"),
+    captureId: CaptureIdSchema,
+    captureVersion: z.int().positive(),
   })
   .strict();
 
@@ -502,6 +511,7 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   CaptureRoutedAsTaskProjectionSchema,
   CaptureRoutedAsKnowledgeSourceProjectionSchema,
   CaptureNeedsReviewProjectionSchema,
+  CaptureAwaitingTranscriptProjectionSchema,
   CaptureExceptionResolvedProjectionSchema,
   ProjectCreatedProjectionSchema,
   DocumentCreatedProjectionSchema,
@@ -609,6 +619,13 @@ const CaptureNeedsReviewSuccessOutcomeSchema =
     outcome: z.literal("success"),
     diagnosticCode: z.literal("capture.needs_review"),
     projection: CaptureNeedsReviewProjectionSchema,
+  }).strict();
+
+const CaptureAwaitingTranscriptSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("capture.awaiting_transcript"),
+    projection: CaptureAwaitingTranscriptProjectionSchema,
   }).strict();
 
 const CaptureExceptionResolvedSuccessOutcomeSchema =
@@ -810,6 +827,7 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   CaptureRoutedAsTaskSuccessOutcomeSchema,
   CaptureRoutedAsKnowledgeSourceSuccessOutcomeSchema,
   CaptureNeedsReviewSuccessOutcomeSchema,
+  CaptureAwaitingTranscriptSuccessOutcomeSchema,
   CaptureExceptionResolvedSuccessOutcomeSchema,
   ProjectCreatedSuccessOutcomeSchema,
   DocumentCreatedSuccessOutcomeSchema,

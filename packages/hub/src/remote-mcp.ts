@@ -33,6 +33,7 @@ import {
   RemoteMcpGrantProjectionSchema,
   SpaceGrantIdSchema,
   TaskIdSchema,
+  isCustodiedCaptureOriginal,
   type Capability,
   type CaptureOriginal,
   type ExecutionContext,
@@ -73,6 +74,7 @@ const MAX_CONCURRENT_CALLS = 4;
 const REMOTE_AGENT_ALLOWED_CAPABILITIES = new Set<Capability>([
   "capture.submit",
   "capture.process",
+  "capture.audioRead",
   "capture.submitText",
   "capture.routeAsTask",
   "capture.history",
@@ -1143,8 +1145,9 @@ export class HubRemoteMcpService {
       capture === undefined ||
       capture.workspaceId !== context.workspaceId ||
       !context.spaceScope.includes(capture.spaceId) ||
-      (capture.original.kind !== "managed_file" &&
-        capture.original.kind !== "screenshot") ||
+      (capture.original.kind === "voice_note" &&
+        !context.capabilityScope.includes("capture.audioRead")) ||
+      !isCustodiedCaptureOriginal(capture.original) ||
       offset >= capture.original.payload.byteLength
     )
       return response(requestId, "rejected", {

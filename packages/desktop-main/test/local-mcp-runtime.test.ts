@@ -41,6 +41,8 @@ const ids = {
   run2: "51000000-0000-4000-8000-000000000016",
   managedCapture: "51000000-0000-4000-8000-000000000017",
   managedPayload: "51000000-0000-4000-8000-000000000018",
+  voiceCapture: "51000000-0000-4000-8000-000000000020",
+  voicePayload: "51000000-0000-4000-8000-000000000021",
 } as const;
 
 const ownerContext = ExecutionContextSchema.parse({
@@ -64,6 +66,7 @@ const ownerContext = ExecutionContextSchema.parse({
 const agentCapabilities = [
   "capture.submitText",
   "capture.history",
+  "capture.audioRead",
   "project.create",
   "project.updateOutcome",
   "project.list",
@@ -157,7 +160,23 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
     },
   });
   const managedCaptureId = CaptureIdSchema.parse(ids.managedCapture);
-  store.transact((transaction) =>
+  const voiceBytes = Buffer.from("encrypted local voice fixture");
+  const voiceDigest = createHash("sha256").update(voiceBytes).digest("hex");
+  const voiceOriginal = CaptureOriginalSchema.parse({
+    kind: "voice_note",
+    payload: {
+      payloadId: ids.voicePayload,
+      displayName: "Voice note.webm",
+      mediaType: "audio/webm",
+      byteLength: voiceBytes.length,
+      contentSha256: voiceDigest,
+      custodyState: "available",
+    },
+    durationMs: 8_000,
+    retentionPolicy: "delete_after_transcript",
+  });
+  const voiceCaptureId = CaptureIdSchema.parse(ids.voiceCapture);
+  store.transact((transaction) => {
     transaction.insertCapture({
       id: managedCaptureId,
       workspaceId: ownerContext.workspaceId,
@@ -171,14 +190,33 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
       processingState: "pending_processing",
       submittedBy: ownerContext.principalId,
       version: 1,
-    }),
-  );
+    });
+    transaction.insertCapture({
+      id: voiceCaptureId,
+      workspaceId: ownerContext.workspaceId,
+      spaceId: ownerContext.spaceScope[0]!,
+      originalText: "Voice note.webm",
+      original: voiceOriginal,
+      originalFingerprint: voiceDigest,
+      deviceId: "mcp-test",
+      source: "in_app_quick_capture",
+      capturedAt: "2026-07-16T18:01:00.000Z",
+      processingState: "awaiting_transcript",
+      awaitingTranscriptSince: "2026-07-16T18:01:01.000Z",
+      submittedBy: ownerContext.principalId,
+      version: 2,
+    });
+  });
   const runtime = new LocalMcpRuntime({
     stateRoot,
     workspaceId: ownerContext.workspaceId,
     store,
     readCapturePayload: (original) =>
-      original === managedOriginal ? managedBytes : undefined,
+      original === managedOriginal
+        ? managedBytes
+        : original === voiceOriginal
+          ? voiceBytes
+          : undefined,
   });
   try {
     const prepared = runtime.credentialCustody.prepare(ids.grant as GrantId);
@@ -219,7 +257,9 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
             agentPrincipalId: ids.agent2,
             displayName: "Claude local",
             preset: "full_access",
-            capabilityScope: agentCapabilities,
+            capabilityScope: agentCapabilities.filter(
+              (capability) => capability !== "capture.audioRead",
+            ),
             spaces: [
               {
                 spaceGrantId: ids.spaceGrant2,
@@ -299,6 +339,42 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
       ),
       managedBytes,
     );
+    const voicePayload = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "payload_read",
+      run,
+      workspaceId: ownerContext.workspaceId,
+      captureId: voiceCaptureId,
+      offset: 0,
+      length: 512 * 1024,
+    });
+    assert.equal(voicePayload.outcome, "success");
+    assert.deepEqual(
+      Buffer.from(
+        (voicePayload.result as { bytesBase64: string }).bytesBase64,
+        "base64",
+      ),
+      voiceBytes,
+    );
+    const voiceDeniedWithoutGrant = await invokeDesktopMcp(descriptor2, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "payload_read",
+      run: HostRunMetadataSchema.parse({
+        agentRunId: ids.run2,
+        hostRunId: "claude-run-42",
+        hostName: "Claude Code",
+      }),
+      workspaceId: ownerContext.workspaceId,
+      captureId: voiceCaptureId,
+      offset: 0,
+      length: 512 * 1024,
+    });
+    assert.equal(voiceDeniedWithoutGrant.outcome, "rejected");
+    assert.deepEqual(voiceDeniedWithoutGrant.result, {
+      diagnosticCode: "authorization.denied",
+    });
     const hiddenPayload = await invokeDesktopMcp(descriptor, {
       contractVersion: 1,
       requestId: crypto.randomUUID(),

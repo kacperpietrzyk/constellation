@@ -100,6 +100,11 @@ import {
   type SurfaceId,
 } from "./client/wave2-fixtures.js";
 import { WorkspaceRecovery } from "./WorkspaceRecovery.js";
+import {
+  MAX_VOICE_NOTE_BYTES,
+  startVoiceRecording,
+  type VoiceRecordingSession,
+} from "./voice-recorder.js";
 
 type LoadState =
   | { readonly kind: "loading" }
@@ -181,22 +186,33 @@ const BrandMark = () => (
 export const CaptureDialog = ({
   busy,
   client,
+  initialMode = "text",
   workspaceName,
   onClose,
   onSubmit,
 }: {
   readonly busy: boolean;
   readonly client: ConstellationRendererClient | undefined;
+  readonly initialMode?: "text" | "url" | "file" | "voice";
   readonly workspaceName: string;
   readonly onClose: () => void;
   readonly onSubmit: (original: CaptureOriginal) => Promise<string | undefined>;
 }) => {
-  const [mode, setMode] = useState<"text" | "url" | "file">("text");
+  const [mode, setMode] = useState<"text" | "url" | "file" | "voice">(
+    initialMode,
+  );
   const [text, setText] = useState("");
   const [url, setUrl] = useState("");
   const [managedOriginal, setManagedOriginal] = useState<CaptureOriginal>();
   const [payloadBusy, setPayloadBusy] = useState(false);
   const [payloadError, setPayloadError] = useState<string>();
+  const [voiceState, setVoiceState] = useState<
+    "idle" | "requesting" | "recording" | "staging"
+  >("idle");
+  const [voiceElapsedMs, setVoiceElapsedMs] = useState(0);
+  const [retainVoice, setRetainVoice] = useState(false);
+  const voiceSessionRef = useRef<VoiceRecordingSession | undefined>(undefined);
+  const voiceGenerationRef = useRef(0);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -204,6 +220,22 @@ export const CaptureDialog = ({
     inputRef.current?.focus();
     return () => dialogRef.current?.close();
   }, []);
+  useEffect(() => {
+    if (voiceState !== "recording") return;
+    const timer = window.setInterval(() => {
+      const startedAt = voiceSessionRef.current?.startedAt;
+      if (startedAt !== undefined)
+        setVoiceElapsedMs(Math.min(120_000, Date.now() - startedAt));
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [voiceState]);
+  useEffect(
+    () => () => {
+      voiceGenerationRef.current += 1;
+      voiceSessionRef.current?.cancel();
+    },
+    [],
+  );
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (busy) return;
@@ -212,9 +244,13 @@ export const CaptureDialog = ({
         ? ({ kind: "text", text } as const)
         : mode === "url" && url.trim()
           ? ({ kind: "url", url: url.trim() } as const)
-          : mode === "file" && managedOriginal !== undefined
+          : mode === "file" &&
+              (managedOriginal?.kind === "managed_file" ||
+                managedOriginal?.kind === "screenshot")
             ? managedOriginal
-            : undefined;
+            : mode === "voice" && managedOriginal?.kind === "voice_note"
+              ? managedOriginal
+              : undefined;
     if (original === undefined) return;
     setPayloadError(undefined);
     const error = await onSubmit(original);
@@ -298,12 +334,111 @@ export const CaptureDialog = ({
       setPayloadError("Nie udało się otworzyć pliku. Spróbuj ponownie.");
     }
   };
+  const voiceFailure = (code: string): string => {
+    switch (code) {
+      case "unsupported":
+        return "Nagrywanie krótkiej notatki głosowej nie jest wspierane w tym uruchomieniu.";
+      case "permission_denied":
+        return "Brak dostępu do mikrofonu. Zezwól Constellation na mikrofon w ustawieniach systemu i spróbuj ponownie.";
+      case "device_unavailable":
+        return "Mikrofon jest niedostępny lub używany przez inną aplikację.";
+      default:
+        return "Nagranie nie zostało zachowane. Spróbuj ponownie.";
+    }
+  };
+  const startVoice = async () => {
+    if (client?.stageCapturePayload === undefined) {
+      setPayloadError("Szyfrowane notatki głosowe są niedostępne.");
+      return;
+    }
+    if (managedOriginal !== undefined) discardPayload();
+    const generation = voiceGenerationRef.current + 1;
+    voiceGenerationRef.current = generation;
+    setVoiceState("requesting");
+    setVoiceElapsedMs(0);
+    setPayloadError(undefined);
+    const started = await startVoiceRecording();
+    if (voiceGenerationRef.current !== generation) {
+      if ("finished" in started) started.cancel();
+      return;
+    }
+    if (!("finished" in started)) {
+      setVoiceState("idle");
+      if (started.outcome === "failure")
+        setPayloadError(voiceFailure(started.code));
+      return;
+    }
+    voiceSessionRef.current = started;
+    setVoiceState("recording");
+    const retentionPolicy = retainVoice ? "retain" : "delete_after_transcript";
+    void started.finished.then(async (finished) => {
+      if (voiceGenerationRef.current !== generation) return;
+      voiceSessionRef.current = undefined;
+      if (finished.outcome === "cancelled") {
+        setVoiceState("idle");
+        setVoiceElapsedMs(0);
+        return;
+      }
+      if (finished.outcome === "failure") {
+        setVoiceState("idle");
+        setPayloadError(voiceFailure(finished.code));
+        return;
+      }
+      if (finished.bytes.byteLength > MAX_VOICE_NOTE_BYTES) {
+        setVoiceState("idle");
+        setPayloadError(
+          "Nagranie przekroczyło limit 25 MB i nie zostało zapisane.",
+        );
+        return;
+      }
+      setVoiceState("staging");
+      setPayloadBusy(true);
+      const extension =
+        finished.mediaType === "audio/mp4"
+          ? "m4a"
+          : finished.mediaType === "audio/ogg"
+            ? "ogg"
+            : "webm";
+      try {
+        acceptPayload(
+          await client.stageCapturePayload!({
+            displayName: `Notatka głosowa ${new Date().toLocaleString("pl-PL")}.${extension}`,
+            mediaType: finished.mediaType,
+            inputKind: "voice_note",
+            bytes: finished.bytes,
+            durationMs: finished.durationMs,
+            retentionPolicy,
+          }),
+        );
+        setVoiceElapsedMs(finished.durationMs);
+        setVoiceState("idle");
+        if (finished.automaticallyStopped)
+          setPayloadError(
+            "Osiągnięto limit 2 minut. Nagranie jest gotowe do zapisania.",
+          );
+      } catch {
+        setPayloadBusy(false);
+        setVoiceState("idle");
+        setPayloadError(
+          "Nie udało się zaszyfrować nagrania. Spróbuj ponownie.",
+        );
+      }
+    });
+  };
+  const cancelVoice = () => {
+    voiceGenerationRef.current += 1;
+    voiceSessionRef.current?.cancel();
+    voiceSessionRef.current = undefined;
+    setVoiceState("idle");
+    setVoiceElapsedMs(0);
+  };
   const discardPayload = () => {
     if (managedOriginal !== undefined)
       void client?.discardCapturePayload?.(managedOriginal);
     setManagedOriginal(undefined);
   };
   const close = () => {
+    cancelVoice();
     discardPayload();
     onClose();
   };
@@ -312,7 +447,10 @@ export const CaptureDialog = ({
       ? text.trim().length > 0
       : mode === "url"
         ? url.trim().length > 0
-        : managedOriginal !== undefined;
+        : mode === "file"
+          ? managedOriginal?.kind === "managed_file" ||
+            managedOriginal?.kind === "screenshot"
+          : managedOriginal?.kind === "voice_note";
   return (
     <dialog
       ref={dialogRef}
@@ -357,15 +495,24 @@ export const CaptureDialog = ({
             role="tablist"
             aria-label="Rodzaj Capture"
           >
-            {(["text", "url", "file"] as const).map((kind) => (
+            {(["text", "url", "file", "voice"] as const).map((kind) => (
               <button
                 key={kind}
                 type="button"
                 role="tab"
                 aria-selected={mode === kind}
-                onClick={() => setMode(kind)}
+                onClick={() => {
+                  if (mode === "voice" && kind !== "voice") cancelVoice();
+                  setMode(kind);
+                }}
               >
-                {kind === "text" ? "Tekst" : kind === "url" ? "Link" : "Plik"}
+                {kind === "text"
+                  ? "Tekst"
+                  : kind === "url"
+                    ? "Link"
+                    : kind === "file"
+                      ? "Plik"
+                      : "Głos"}
               </button>
             ))}
           </div>
@@ -387,6 +534,10 @@ export const CaptureDialog = ({
                     submit(event);
                 }}
               />
+              <small className="capture-mode-note">
+                Dyktowanie systemowe działa w tym polu jak zwykły tekst —
+                Constellation nie zachowuje wtedy audio.
+              </small>
             </>
           ) : mode === "url" ? (
             <label className="capture-field">
@@ -400,6 +551,99 @@ export const CaptureDialog = ({
                 required
               />
             </label>
+          ) : mode === "voice" ? (
+            <div className="capture-voice" aria-busy={voiceState === "staging"}>
+              <div className="capture-voice-status" aria-live="polite">
+                <span
+                  className={
+                    voiceState === "recording"
+                      ? "voice-indicator is-recording"
+                      : "voice-indicator"
+                  }
+                  aria-hidden="true"
+                />
+                <div>
+                  <strong>
+                    {managedOriginal?.kind === "voice_note"
+                      ? "Nagranie zaszyfrowane i gotowe"
+                      : voiceState === "requesting"
+                        ? "Czekam na zgodę systemu…"
+                        : voiceState === "recording"
+                          ? "Nagrywanie"
+                          : voiceState === "staging"
+                            ? "Szyfruję i zachowuję…"
+                            : "Krótka notatka głosowa"}
+                  </strong>
+                  <span>
+                    {managedOriginal?.kind === "voice_note"
+                      ? `${Math.ceil(managedOriginal.durationMs / 1000)} s · ${Math.ceil(managedOriginal.payload.byteLength / 1024).toLocaleString("pl-PL")} KB`
+                      : `${Math.floor(voiceElapsedMs / 60_000)}:${Math.floor(
+                          (voiceElapsedMs % 60_000) / 1000,
+                        )
+                          .toString()
+                          .padStart(2, "0")} / 2:00`}
+                  </span>
+                </div>
+              </div>
+              <div className="capture-voice-actions">
+                {voiceState === "recording" ? (
+                  <>
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={() => voiceSessionRef.current?.stop()}
+                    >
+                      Zatrzymaj
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={cancelVoice}
+                    >
+                      Anuluj nagranie
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={
+                      voiceState === "requesting" || voiceState === "staging"
+                    }
+                    onClick={() => void startVoice()}
+                  >
+                    {managedOriginal?.kind === "voice_note"
+                      ? "Nagraj ponownie"
+                      : "Rozpocznij nagrywanie"}
+                  </button>
+                )}
+              </div>
+              <label className="capture-voice-retention">
+                <input
+                  type="checkbox"
+                  checked={retainVoice}
+                  disabled={
+                    voiceState !== "idle" ||
+                    managedOriginal?.kind === "voice_note"
+                  }
+                  onChange={(event) => setRetainVoice(event.target.checked)}
+                />
+                <span>
+                  Zachowaj audio po transkrypcji. Domyślnie zostanie usunięte
+                  dopiero po trwałym zapisie transkryptu przez zewnętrznego
+                  agenta MCP.
+                </span>
+              </label>
+              <small>
+                Constellation nie transkrybuje i nie nagrywa spotkań. Mikrofon
+                działa wyłącznie podczas widocznego nagrywania w tym oknie.
+              </small>
+              {payloadError && (
+                <p className="capture-payload-error" role="alert">
+                  {payloadError}
+                </p>
+              )}
+            </div>
           ) : (
             <div
               className="capture-file"
@@ -2227,6 +2471,8 @@ export const RealApp = ({
               }));
             } else if (captureResult.kind === "review") {
               openContext(destinationContext("attention", "Do uwagi"));
+            } else if (captureResult.kind === "voice_note") {
+              openContext(destinationContext("history", "Historia Capture"));
             } else {
               openContext(destinationContext("documents", "Dokumenty"));
             }
@@ -2236,7 +2482,9 @@ export const RealApp = ({
                 ? "Capture zapisano jako zadanie."
                 : captureResult.kind === "knowledge_source"
                   ? "Capture zapisano jako źródło wiedzy."
-                  : "Capture wymaga decyzji i trafił do Attention.",
+                  : captureResult.kind === "voice_note"
+                    ? "Notatka głosowa jest bezpieczna i czeka na transkrypcję agenta."
+                    : "Capture wymaga decyzji i trafił do Attention.",
             );
             return undefined;
           }}

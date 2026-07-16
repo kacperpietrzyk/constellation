@@ -102,6 +102,44 @@ describe("Capture payload custody", () => {
     );
   });
 
+  it("preserves voice identity, duration, retention, and exact audio bytes", () => {
+    const { custody, store } = fixture();
+    const bytes = new Uint8Array([26, 45, 223, 163, 66, 134]);
+    const result = custody.stage({
+      displayName: "Voice note.webm",
+      mediaType: "audio/webm",
+      inputKind: "voice_note",
+      bytes,
+      durationMs: 12_400,
+      retentionPolicy: "delete_after_transcript",
+    });
+    assert.equal(result.outcome, "success");
+    if (result.outcome !== "success" || result.original.kind !== "voice_note")
+      return;
+    assert.equal(result.original.durationMs, 12_400);
+    assert.equal(result.original.retentionPolicy, "delete_after_transcript");
+    assert.equal(custody.verify(result.original), true);
+    assert.deepEqual(custody.read(result.original), bytes);
+    assert.equal(
+      store.readCapturePayload({
+        payloadId: result.original.payload.payloadId,
+        workspaceId,
+      })?.inputKind,
+      "voice_note",
+    );
+    assert.deepEqual(
+      custody.stage({
+        displayName: "Too long.webm",
+        mediaType: "audio/webm",
+        inputKind: "voice_note",
+        bytes,
+        durationMs: 120_001,
+        retentionPolicy: "retain",
+      }),
+      { outcome: "failure", code: "payload_unsupported" },
+    );
+  });
+
   it("fails integrity after byte tampering and removes abandoned staging rows", () => {
     const { custody, database } = fixture();
     const result = custody.stage({

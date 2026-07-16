@@ -122,13 +122,18 @@ developer preview remains an explicit in-memory adapter. A local workspace
 starts with one versioned
 default Task status whose display label is data and whose broad operational
 semantics are `actionable`. The generic Capture contract preserves typed text,
-URL, file-reference, managed-file, or screenshot originals before a separate
+URL, file-reference, managed-file, screenshot, or short voice-note originals before a separate
 deterministic processing command creates one canonical standalone Task or
-knowledge source that points back to its source Capture. A managed original
+knowledge source that points back to its source Capture. Voice notes take a
+distinct deterministic path to `awaiting_transcript`: lack of an external agent
+is normal work-in-progress, not an Attention exception. A managed original
 contains only an opaque payload ID, digest, byte length, media type, display
-name, and custody state. Bytes and local paths never enter the command, audit,
+name, and custody state. A voice original additionally freezes bounded duration
+and the chosen post-transcript retention policy. Bytes and local paths never enter the command, audit,
 outbox, or MCP projection. The original text command remains compatible.
-An explicitly requested MCP payload resource is the only agent byte path. It
+An explicitly requested MCP payload resource is the only agent byte path. Voice
+audio additionally requires the independent `capture.audioRead` capability;
+ordinary managed files and screenshots do not imply access to microphone data. It
 resolves an authorized Capture, reads at most 512 KiB per internal invocation,
 reauthorizes the current grant and Space for every chunk, and returns a blob
 only after the MCP server verifies the complete length and SHA-256 digest.

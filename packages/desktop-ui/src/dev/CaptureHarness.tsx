@@ -9,9 +9,11 @@ import type { ConstellationRendererClient } from "@constellation/desktop-preload
 import { CaptureDialog } from "../RealApp.js";
 
 export const CaptureHarness = () => {
+  const [open, setOpen] = useState(true);
   const [submitted, setSubmitted] = useState<CaptureOriginal>();
-  const transferFails =
-    new URLSearchParams(window.location.search).get("transfer") === "failed";
+  const parameters = new URLSearchParams(window.location.search);
+  const transferFails = parameters.get("transfer") === "failed";
+  const initialMode = parameters.get("mode") === "voice" ? "voice" : "text";
   const client = {
     selectCapturePayload: async () => ({
       outcome: "success" as const,
@@ -29,6 +31,10 @@ export const CaptureHarness = () => {
         },
       },
     }),
+    stageCapturePayload: async () => ({
+      outcome: "failure" as const,
+      code: "payload_unavailable" as const,
+    }),
     discardCapturePayload: async () => undefined,
   } as unknown as ConstellationRendererClient;
   return (
@@ -38,18 +44,21 @@ export const CaptureHarness = () => {
           ? "Harness Universal Capture"
           : `Zapisano: ${submitted.kind}`}
       </div>
-      <CaptureDialog
-        busy={false}
-        client={client}
-        workspaceName="Personal"
-        onClose={() => undefined}
-        onSubmit={async (original) => {
-          if (transferFails)
-            return "Nie udało się przesłać pliku do Data Home. Plik pozostaje przygotowany lokalnie — spróbuj ponownie.";
-          setSubmitted(original);
-          return undefined;
-        }}
-      />
+      {open && (
+        <CaptureDialog
+          busy={false}
+          client={client}
+          initialMode={initialMode}
+          workspaceName="Personal"
+          onClose={() => setOpen(false)}
+          onSubmit={async (original) => {
+            if (transferFails)
+              return "Nie udało się przesłać pliku do Data Home. Plik pozostaje przygotowany lokalnie — spróbuj ponownie.";
+            setSubmitted(original);
+            return undefined;
+          }}
+        />
+      )}
     </main>
   );
 };

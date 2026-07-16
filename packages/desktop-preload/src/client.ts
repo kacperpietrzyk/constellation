@@ -257,8 +257,10 @@ export interface ConstellationRendererClient {
   stageCapturePayload?(input: {
     readonly displayName: string;
     readonly mediaType: string;
-    readonly inputKind: "file" | "screenshot";
+    readonly inputKind: "file" | "screenshot" | "voice_note";
     readonly bytes: Uint8Array;
+    readonly durationMs?: number;
+    readonly retentionPolicy?: "delete_after_transcript" | "retain";
   }): Promise<CapturePayloadResponse>;
   discardCapturePayload?(original: CaptureOriginal): Promise<void>;
   openDetachedSurface?(surface: DesktopSurface): Promise<void>;

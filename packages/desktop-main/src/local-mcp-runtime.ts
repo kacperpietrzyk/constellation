@@ -10,6 +10,7 @@ import {
   CommandIdSchema,
   CorrelationIdSchema,
   QueryIdSchema,
+  isCustodiedCaptureOriginal,
   type CaptureOriginal,
   type ExecutionContext,
   type GrantId,
@@ -324,8 +325,9 @@ export class LocalMcpRuntime {
         capture === undefined ||
         capture.workspaceId !== grant.workspaceId ||
         !context.spaceScope.includes(capture.spaceId) ||
-        (capture.original.kind !== "managed_file" &&
-          capture.original.kind !== "screenshot")
+        (capture.original.kind === "voice_note" &&
+          !context.capabilityScope.includes("capture.audioRead")) ||
+        !isCustodiedCaptureOriginal(capture.original)
       )
         return contentSafeResponse(invocation.requestId, "rejected", {
           diagnosticCode: "authorization.denied",

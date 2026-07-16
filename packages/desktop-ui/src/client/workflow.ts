@@ -23,6 +23,7 @@ import {
   type GrantId,
   type StrategicRecordId,
   type CaptureOriginal,
+  type CaptureId,
   type PrincipalId as AgentPrincipalId,
 } from "@constellation/contracts";
 import type {
@@ -116,7 +117,8 @@ export type QuickCaptureResult =
         | {
             readonly kind: "review";
             readonly attentionSignalId: AttentionSignalId;
-          };
+          }
+        | { readonly kind: "voice_note"; readonly captureId: CaptureId };
       readonly snapshot: DesktopSnapshot;
     }
   | MutationFailure;
@@ -708,7 +710,7 @@ const agentCapabilities = (
     "agent.checkpoint.revert",
     "agent.handoff.submit",
   ];
-  return operate;
+  return preset === "full_access" ? [...operate, "capture.audioRead"] : operate;
 };
 
 export const createAgentGrant = async (
@@ -2432,9 +2434,16 @@ export const submitQuickCapture = async (
                   attentionSignalId:
                     routed.outcome.projection.attentionSignalId,
                 }
-              : (() => {
-                  throw new Error("Nieoczekiwany wynik przetwarzania Capture.");
-                })(),
+              : routed.outcome.projection.kind === "capture.awaiting_transcript"
+                ? {
+                    kind: "voice_note",
+                    captureId: routed.outcome.projection.captureId,
+                  }
+                : (() => {
+                    throw new Error(
+                      "Nieoczekiwany wynik przetwarzania Capture.",
+                    );
+                  })(),
       snapshot: nextSnapshot,
     };
   } catch (error) {

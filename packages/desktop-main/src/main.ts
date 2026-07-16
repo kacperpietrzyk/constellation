@@ -1,4 +1,4 @@
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   app,
@@ -23,6 +23,10 @@ import {
 } from "./durable-kernel-service.js";
 import type { DesktopKernelService } from "./runtime-kernel-service.js";
 import { assertTrustedSender, isTrustedRendererUrl } from "./security.js";
+import {
+  allowsAudioMediaCheck,
+  allowsAudioMediaRequest,
+} from "./media-permission.js";
 import type { AsyncSafeStorage } from "./workspace-key-custody.js";
 
 const developmentUrl = process.env.CONSTELLATION_RENDERER_URL;
@@ -32,6 +36,14 @@ const preloadPath = fileURLToPath(
 const rendererPath = fileURLToPath(
   new URL("../../../desktop-ui/dist/index.html", import.meta.url),
 );
+const packagedRendererUrl = pathToFileURL(rendererPath).toString();
+const isTrustedMediaUrl = (url: string): boolean =>
+  developmentUrl !== undefined
+    ? isTrustedRendererUrl(url, developmentUrl)
+    : url === "file://" ||
+      url === "file:///" ||
+      url === packagedRendererUrl ||
+      url.startsWith(`${packagedRendererUrl}?`);
 let mainWindow: BrowserWindow | undefined;
 let durableKernel: DurableKernelService | undefined;
 
@@ -155,10 +167,33 @@ const createWindow = async (destination?: string): Promise<BrowserWindow> => {
 };
 
 void app.whenReady().then(async () => {
-  session.defaultSession.setPermissionCheckHandler(() => false);
+  session.defaultSession.setPermissionCheckHandler(
+    (webContents, permission, requestingOrigin, details) =>
+      allowsAudioMediaCheck(
+        {
+          permission,
+          requestingOrigin,
+          ...(webContents === null
+            ? {}
+            : { webContentsUrl: webContents.getURL() }),
+          details,
+        },
+        isTrustedMediaUrl,
+      ),
+  );
   session.defaultSession.setPermissionRequestHandler(
-    (_webContents, _permission, callback) => {
-      callback(false);
+    (webContents, permission, callback, details) => {
+      callback(
+        "mediaTypes" in details &&
+          allowsAudioMediaRequest(
+            {
+              permission,
+              webContentsUrl: webContents.getURL(),
+              details,
+            },
+            isTrustedMediaUrl,
+          ),
+      );
     },
   );
 

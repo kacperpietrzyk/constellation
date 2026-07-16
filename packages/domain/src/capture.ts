@@ -8,9 +8,11 @@ import type {
   TaskStatusId,
   WorkspaceId,
 } from "@constellation/contracts";
+import { isCustodiedCaptureOriginal } from "@constellation/contracts";
 
 import type {
   PendingCapture,
+  AwaitingTranscriptCapture,
   RoutedKnowledgeSourceCapture,
   RoutedTaskCapture,
   KnowledgeSource,
@@ -55,6 +57,7 @@ export const captureDisplayText = (original: CaptureOriginal): string => {
       return original.displayName;
     case "managed_file":
     case "screenshot":
+    case "voice_note":
       return original.payload.displayName;
   }
 };
@@ -62,14 +65,23 @@ export const captureDisplayText = (original: CaptureOriginal): string => {
 export const captureFingerprintSource = (
   original: CaptureOriginal,
 ): unknown => {
-  if (original.kind !== "managed_file" && original.kind !== "screenshot")
-    return original;
+  if (!isCustodiedCaptureOriginal(original)) return original;
   return {
     kind: original.kind,
     contentSha256: original.payload.contentSha256,
     byteLength: original.payload.byteLength,
   };
 };
+
+export const awaitVoiceTranscript = (input: {
+  readonly capture: PendingCapture;
+  readonly occurredAt: string;
+}): AwaitingTranscriptCapture => ({
+  ...input.capture,
+  processingState: "awaiting_transcript",
+  awaitingTranscriptSince: input.occurredAt,
+  version: input.capture.version + 1,
+});
 
 export const routeCaptureAsKnowledgeSource = (input: {
   readonly capture: PendingCapture;

@@ -226,8 +226,12 @@ before a blob is returned. Capture exceptions now use an explicit
 ambiguity/duplicate/parsing/permission/conflict/missing/partial/unknown
 vocabulary. Resolving one exception changes the Capture and closes its exact
 Attention signal atomically; a missing managed payload can be replaced only
-after the runtime proves the new bytes. Voice remains inside the current
-readiness work rather than being claimed complete.
+after the runtime proves the new bytes. Quick Capture now also records a bounded
+short voice note through an audio-only desktop permission, preserves it in the
+same encrypted custody, waits without Attention debt, and exposes its bytes only
+to an MCP grant with the separate `capture.audioRead` capability. Durable
+transcript attribution and post-transcript deletion or retention remain inside
+the current readiness work rather than being claimed complete.
 
 ## Later — desktop ecosystem after product readiness
 

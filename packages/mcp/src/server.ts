@@ -289,7 +289,7 @@ export const createConstellationMcpServer = (
         name: "constellation-capture-payload-v1",
         title: "Authorized Constellation Capture payload",
         description:
-          "Read one managed file or screenshot from an authorized Capture. The current grant must include capture history access to the Capture's Space.",
+          "Read one managed file, screenshot, or short voice note from an authorized Capture. Voice audio additionally requires capture.audioRead; all payloads require capture history access to the Capture's Space.",
       },
     ],
   }));
