@@ -59,6 +59,21 @@ export interface StarterWorkspaceImportResult {
   readonly links: number;
 }
 
+export const previewStarterWorkspace = (
+  manifest: StarterWorkspaceManifest,
+): StarterWorkspaceImportResult => ({
+  areas: manifest.areas.length,
+  initiatives: manifest.initiatives.length,
+  projects: manifest.projects.length,
+  tasks: manifest.tasks.length,
+  links:
+    manifest.projects.filter((project) => project.areaKey !== undefined)
+      .length +
+    manifest.projects.filter((project) => project.initiativeKey !== undefined)
+      .length +
+    manifest.tasks.filter((task) => task.projectKey !== undefined).length,
+});
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 

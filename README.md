@@ -84,7 +84,9 @@ The desktop can create and switch independent workspaces without sharing their
 database, key, Data Home, Hub credential, or local MCP endpoint. A personal
 Cockpit may read a bounded focus summary from locally authorized workspace
 projections, but it never joins their records. Settings also accepts a strict,
-bounded starter-workspace JSON manifest; the example at
+bounded starter-workspace JSON manifest. Selecting a file first shows a
+main-process-validated, read-only count preview; a separate confirmation is
+required before any command runs. The example at
 [`docs/examples/starter-workspace.json`](docs/examples/starter-workspace.json)
 creates Areas, Initiatives, Projects, Tasks, and explicit links through the same
 idempotent, audited commands used by the UI and MCP.

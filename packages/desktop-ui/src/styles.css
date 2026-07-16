@@ -5995,6 +5995,8 @@ kbd {
 }
 
 .settings-actions {
+  align-items: flex-start;
+  flex-direction: column;
   justify-content: flex-start;
 }
 
@@ -6008,6 +6010,18 @@ kbd {
   font-weight: 650;
   padding: 0.58rem 0.72rem;
   position: relative;
+}
+
+.settings-control label.file-action {
+  color: var(--action-primary-text);
+}
+
+.file-action:hover:not(.disabled) {
+  background: var(--action-primary-hover);
+}
+
+.file-action:active:not(.disabled) {
+  background: var(--action-primary-pressed);
 }
 
 .file-action:focus-within {
@@ -6031,6 +6045,64 @@ kbd {
 .settings-actions > small {
   color: var(--text-secondary);
   margin: 0;
+}
+
+.settings-control > .import-preview {
+  background: var(--panel-reading-bg);
+  border: 1px solid var(--panel-reading-border);
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.import-preview > span {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.import-preview dl {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  margin: 0;
+}
+
+.import-preview dl > div {
+  display: grid;
+  gap: 4px;
+}
+
+.import-preview dt {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.import-preview dd {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+.settings-control > .import-preview-actions,
+.import-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-control .import-preview-confirm {
+  background: var(--action-primary-bg);
+  color: var(--action-primary-text);
+}
+
+.settings-control .import-preview-confirm:hover:not(:disabled) {
+  background: var(--action-primary-hover);
+}
+
+.settings-control .import-preview-confirm:active:not(:disabled) {
+  background: var(--action-primary-pressed);
 }
 
 .workspace-registry-control {

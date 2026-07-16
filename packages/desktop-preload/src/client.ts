@@ -79,6 +79,7 @@ export const DESKTOP_CHANNELS = {
   createWorkspace: "constellation:workspace:create",
   switchWorkspace: "constellation:workspace:switch",
   getCrossWorkspaceCockpit: "constellation:workspace:cockpit",
+  previewStarterWorkspace: "constellation:workspace:preview-starter",
   importStarterWorkspace: "constellation:workspace:import-starter",
 } as const;
 
@@ -115,16 +116,25 @@ export interface DesktopWorkspaceCockpitEntry extends DesktopWorkspaceEntry {
   readonly firstFocus?: string;
 }
 
+export interface StarterWorkspaceCounts {
+  readonly areas: number;
+  readonly initiatives: number;
+  readonly projects: number;
+  readonly tasks: number;
+  readonly links: number;
+}
+
+export type StarterWorkspacePreviewResponse =
+  | { readonly outcome: "success"; readonly counts: StarterWorkspaceCounts }
+  | {
+      readonly outcome: "failure";
+      readonly code: "manifest_invalid" | "unavailable";
+    };
+
 export type StarterWorkspaceImportResponse =
   | {
       readonly outcome: "success";
-      readonly counts: {
-        readonly areas: number;
-        readonly initiatives: number;
-        readonly projects: number;
-        readonly tasks: number;
-        readonly links: number;
-      };
+      readonly counts: StarterWorkspaceCounts;
     }
   | {
       readonly outcome: "failure";
@@ -234,6 +244,9 @@ export interface ConstellationRendererClient {
     readonly workspaceId: WorkspaceId;
   }): Promise<DesktopWorkspaceOperationResult>;
   getCrossWorkspaceCockpit?(): Promise<readonly DesktopWorkspaceCockpitEntry[]>;
+  previewStarterWorkspace?(
+    manifest: unknown,
+  ): Promise<StarterWorkspacePreviewResponse>;
   importStarterWorkspace?(
     manifest: unknown,
   ): Promise<StarterWorkspaceImportResponse>;
@@ -427,6 +440,11 @@ export const createRendererClient = (
     invoke(DESKTOP_CHANNELS.getCrossWorkspaceCockpit) as Promise<
       readonly DesktopWorkspaceCockpitEntry[]
     >,
+  previewStarterWorkspace: (manifest) =>
+    invoke(
+      DESKTOP_CHANNELS.previewStarterWorkspace,
+      manifest,
+    ) as Promise<StarterWorkspacePreviewResponse>,
   importStarterWorkspace: (manifest) =>
     invoke(
       DESKTOP_CHANNELS.importStarterWorkspace,

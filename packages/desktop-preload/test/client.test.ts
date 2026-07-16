@@ -46,6 +46,7 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "prepareAgentCredential",
     "prepareWorkspaceRestore",
     "previewCalendarBlocks",
+    "previewStarterWorkspace",
     "requestCalendarAccess",
     "restoreDocumentRevision",
     "revokeRemoteAgentGrant",
@@ -71,6 +72,8 @@ test("renderer client exposes only semantic application and recovery routes", ()
   assert.equal(calls[6]?.channel, DESKTOP_CHANNELS.listWorkspaces);
   void client.getCrossWorkspaceCockpit?.();
   assert.equal(calls[7]?.channel, DESKTOP_CHANNELS.getCrossWorkspaceCockpit);
+  void client.previewStarterWorkspace?.({});
+  assert.equal(calls[8]?.channel, DESKTOP_CHANNELS.previewStarterWorkspace);
   void client.importStarterWorkspace?.({});
-  assert.equal(calls[8]?.channel, DESKTOP_CHANNELS.importStarterWorkspace);
+  assert.equal(calls[9]?.channel, DESKTOP_CHANNELS.importStarterWorkspace);
 });
