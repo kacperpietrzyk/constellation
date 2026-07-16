@@ -92,6 +92,11 @@ enter ordinary query/tool structured results, commands, audit, or logs.
 - Treat a payload resource failure as unavailable evidence. Re-query Capture
   History after scope, credential, or workspace changes; the server does not
   reveal whether a missing resource exists outside the active grant.
+- Capture processing grants also authorize the strict
+  `capture.reportException` and `capture.resolveException` commands. Use reason
+  and action codes only; arbitrary diagnostics and local paths are rejected.
+  Missing-payload replacement succeeds only when the desktop runtime already
+  holds and verifies the referenced staged bytes.
 
 Multiple full-access agents may run concurrently. Their principal, grant,
 external run, idempotency scope, audit receipts, and checkpoints remain distinct.

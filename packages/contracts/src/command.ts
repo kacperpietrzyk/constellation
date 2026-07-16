@@ -285,6 +285,20 @@ export const CaptureOriginalSchema = z.discriminatedUnion("kind", [
 ]);
 export type CaptureOriginal = z.infer<typeof CaptureOriginalSchema>;
 
+export const CaptureReviewReasonSchema = z.enum([
+  "ambiguous",
+  "duplicate",
+  "unsupported",
+  "parsing_failure",
+  "permission_failure",
+  "stale_conflict",
+  "missing_target",
+  "missing_payload",
+  "partial_payload_transfer",
+  "unknown_reconcile",
+]);
+export type CaptureReviewReason = z.infer<typeof CaptureReviewReasonSchema>;
+
 export const CaptureSubmitCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("capture.submit"),
   payload: z
@@ -309,6 +323,47 @@ export const CaptureProcessCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 export type CaptureProcessCommand = z.infer<typeof CaptureProcessCommandSchema>;
+
+export const CaptureReportExceptionCommandSchema = CommandMetadataSchema.extend(
+  {
+    commandName: z.literal("capture.reportException"),
+    payload: z
+      .object({
+        captureId: CaptureIdSchema,
+        reason: CaptureReviewReasonSchema.exclude(["duplicate"]),
+      })
+      .strict(),
+  },
+).strict();
+export type CaptureReportExceptionCommand = z.infer<
+  typeof CaptureReportExceptionCommandSchema
+>;
+
+export const CaptureResolveExceptionCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("capture.resolveException"),
+    payload: z.discriminatedUnion("action", [
+      z
+        .object({ captureId: CaptureIdSchema, action: z.literal("retry") })
+        .strict(),
+      z
+        .object({
+          captureId: CaptureIdSchema,
+          action: z.literal("keep_unclassified"),
+        })
+        .strict(),
+      z
+        .object({
+          captureId: CaptureIdSchema,
+          action: z.literal("replace_payload"),
+          original: CaptureOriginalSchema,
+        })
+        .strict(),
+    ]),
+  }).strict();
+export type CaptureResolveExceptionCommand = z.infer<
+  typeof CaptureResolveExceptionCommandSchema
+>;
 
 export const CaptureRouteAsTaskCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("capture.routeAsTask"),
@@ -881,6 +936,8 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   AgentHandoffSubmitCommandSchema,
   CaptureSubmitCommandSchema,
   CaptureProcessCommandSchema,
+  CaptureReportExceptionCommandSchema,
+  CaptureResolveExceptionCommandSchema,
   CaptureSubmitTextCommandSchema,
   CaptureRouteAsTaskCommandSchema,
   ProjectCreateCommandSchema,

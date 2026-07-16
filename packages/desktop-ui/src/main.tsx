@@ -25,6 +25,15 @@ const render = async (): Promise<void> => {
   }
   if (
     import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("surface") ===
+      "capture-recovery"
+  ) {
+    const { CaptureRecoveryHarness } =
+      await import("./dev/CaptureRecoveryHarness.js");
+    content = <CaptureRecoveryHarness />;
+  }
+  if (
+    import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get("surface") === "data-home"
   ) {
     const { DataHomeHarness } = await import("./dev/DataHomeHarness.js");

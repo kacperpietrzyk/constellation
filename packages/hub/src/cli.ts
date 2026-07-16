@@ -136,6 +136,8 @@ const main = async (): Promise<void> => {
       remoteMcp: new HubRemoteMcpService(repository, {
         readCapturePayloadChunk: (input) =>
           attachments.readCapturePayloadChunk(input),
+        isCapturePayloadAvailable: ({ workspaceId, original }) =>
+          attachments.isAvailable(workspaceId, original),
       }),
       host,
       port: Number(process.env.CONSTELLATION_HUB_PORT ?? "4318"),

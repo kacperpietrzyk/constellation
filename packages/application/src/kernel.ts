@@ -38,6 +38,7 @@ import {
   type SpaceId,
   type CaptureOriginal,
   type CaptureId,
+  type CaptureReviewReason,
   validateCommandEnvelope,
   validateExecutionContext,
   validateQueryEnvelope,
@@ -51,6 +52,7 @@ import {
   routeCaptureAsKnowledgeSource,
   routeCaptureAsTask,
   submitCapture,
+  setAttentionState,
   type AuditReceipt,
   type AttentionSignal,
   type DomainEvent,
@@ -58,6 +60,7 @@ import {
   type WorkspaceMembership,
   type ReviewCapture,
   type PendingCapture,
+  type UnclassifiedCapture,
 } from "@constellation/domain";
 
 import {
@@ -257,6 +260,8 @@ const isCurrentlyAuthorized = (
       );
     }
     case "capture.process":
+    case "capture.reportException":
+    case "capture.resolveException":
     case "capture.routeAsTask": {
       const capture = view.getCapture(command.payload.captureId);
       const membership = view.getMembership(
@@ -268,7 +273,11 @@ const isCurrentlyAuthorized = (
         membership !== undefined &&
         authorization.authorize({
           context,
-          capability: command.commandName,
+          capability:
+            command.commandName === "capture.reportException" ||
+            command.commandName === "capture.resolveException"
+              ? "capture.process"
+              : command.commandName,
           workspaceId: command.workspaceId,
           spaceId: capture.spaceId,
         }) &&
@@ -335,6 +344,11 @@ const currentVersionMap = (
   recordId: string,
   version: number,
 ): Record<string, number> => ({ [recordId]: version });
+
+const captureAttentionReason = (
+  reason: CaptureReviewReason,
+): AttentionSignal["reason"] =>
+  reason === "duplicate" ? "capture_duplicate" : `capture_${reason}`;
 
 export class ApplicationKernel {
   public constructor(
@@ -535,6 +549,24 @@ export class ApplicationKernel {
         );
       case "capture.process":
         return this.processCapture(
+          transaction,
+          context,
+          command,
+          scope,
+          fingerprint,
+          occurredAt,
+        );
+      case "capture.reportException":
+        return this.reportCaptureException(
+          transaction,
+          context,
+          command,
+          scope,
+          fingerprint,
+          occurredAt,
+        );
+      case "capture.resolveException":
+        return this.resolveCaptureException(
           transaction,
           context,
           command,
@@ -1098,6 +1130,20 @@ export class ApplicationKernel {
         currentVersions: currentVersionMap(capture.id, capture.version),
       });
     }
+    if (
+      capture.processingState === "needs_review" &&
+      command.payload.destination !== "auto" &&
+      !new Set<CaptureReviewReason>([
+        "ambiguous",
+        "duplicate",
+        "unsupported",
+        "missing_target",
+      ]).has(capture.reviewReason)
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
     const pendingCapture: PendingCapture =
       capture.processingState === "pending_processing"
         ? capture
@@ -1132,10 +1178,11 @@ export class ApplicationKernel {
         context,
         command,
         pendingCapture,
-        duplicate.id,
+        "duplicate",
         scope,
         fingerprint,
         occurredAt,
+        duplicate.id,
       );
     }
 
@@ -1178,15 +1225,277 @@ export class ApplicationKernel {
     );
   }
 
-  private markCaptureForReview(
+  private reportCaptureException(
     transaction: ApplicationTransaction,
     context: ExecutionContext,
-    command: Extract<CommandEnvelope, { commandName: "capture.process" }>,
-    capture: PendingCapture,
-    duplicateOfCaptureId: CaptureId,
+    command: Extract<
+      CommandEnvelope,
+      { commandName: "capture.reportException" }
+    >,
     scope: string,
     fingerprint: string,
     occurredAt: string,
+  ): CommandOutcome {
+    const capture = transaction.getCapture(command.payload.captureId);
+    if (
+      capture === undefined ||
+      capture.workspaceId !== command.workspaceId ||
+      capture.processingState !== "pending_processing" ||
+      !canEditSpace(transaction, context, command.workspaceId, capture.spaceId)
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    if (
+      Object.keys(command.expectedVersions).length !== 1 ||
+      command.expectedVersions[capture.id] === undefined
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    if (command.expectedVersions[capture.id] !== capture.version)
+      return this.outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "record.version_conflict",
+        currentVersions: currentVersionMap(capture.id, capture.version),
+      });
+    return this.markCaptureForReview(
+      transaction,
+      context,
+      command,
+      capture,
+      command.payload.reason,
+      scope,
+      fingerprint,
+      occurredAt,
+    );
+  }
+
+  private resolveCaptureException(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<
+      CommandEnvelope,
+      { commandName: "capture.resolveException" }
+    >,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+  ): CommandOutcome {
+    const capture = transaction.getCapture(command.payload.captureId);
+    if (
+      capture === undefined ||
+      capture.workspaceId !== command.workspaceId ||
+      capture.processingState !== "needs_review" ||
+      !canEditSpace(transaction, context, command.workspaceId, capture.spaceId)
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    const attention = transaction.getAttentionSignal(capture.attentionSignalId);
+    if (
+      attention === undefined ||
+      attention.destination.kind !== "capture" ||
+      attention.destination.captureId !== capture.id
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    const expected = command.expectedVersions;
+    if (
+      Object.keys(expected).length !== 2 ||
+      expected[capture.id] === undefined ||
+      expected[attention.id] === undefined
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    if (
+      expected[capture.id] !== capture.version ||
+      expected[attention.id] !== attention.version
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "record.version_conflict",
+        currentVersions: {
+          [capture.id]: capture.version,
+          [attention.id]: attention.version,
+        },
+      });
+    const retryableReasons = new Set<CaptureReviewReason>([
+      "parsing_failure",
+      "permission_failure",
+      "stale_conflict",
+      "missing_payload",
+      "partial_payload_transfer",
+      "unknown_reconcile",
+    ]);
+    if (
+      command.payload.action === "retry" &&
+      !retryableReasons.has(capture.reviewReason)
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    if (command.payload.action === "replace_payload") {
+      if (
+        capture.reviewReason !== "missing_payload" &&
+        capture.reviewReason !== "partial_payload_transfer"
+      )
+        return this.outcome(command, occurredAt, {
+          outcome: "rejected",
+          diagnosticCode: "command.precondition_failed",
+        });
+      const original = command.payload.original;
+      if (
+        (original.kind !== "managed_file" && original.kind !== "screenshot") ||
+        this.dependencies.capturePayloadVerifier?.isAvailable(
+          command.workspaceId,
+          original,
+        ) !== true
+      )
+        return this.outcome(command, occurredAt, {
+          outcome: "rejected",
+          diagnosticCode: "capture.payload_unavailable",
+        });
+    }
+
+    const base = {
+      id: capture.id,
+      workspaceId: capture.workspaceId,
+      spaceId: capture.spaceId,
+      originalText: capture.originalText,
+      original: capture.original,
+      originalFingerprint: capture.originalFingerprint,
+      deviceId: capture.deviceId,
+      source: capture.source,
+      capturedAt: capture.capturedAt,
+      submittedBy: capture.submittedBy,
+      version: capture.version + 1,
+    };
+    const updatedCapture: PendingCapture | UnclassifiedCapture =
+      command.payload.action === "keep_unclassified"
+        ? {
+            ...base,
+            processingState: "unclassified",
+            unclassifiedAt: occurredAt,
+            unclassifiedBy: context.principalId,
+            previousReviewReason: capture.reviewReason,
+          }
+        : command.payload.action === "replace_payload"
+          ? {
+              ...base,
+              originalText: captureDisplayText(command.payload.original),
+              original: command.payload.original,
+              originalFingerprint: this.dependencies.hasher.fingerprint(
+                captureFingerprintSource(command.payload.original),
+              ),
+              processingState: "pending_processing",
+            }
+          : { ...base, processingState: "pending_processing" };
+    const updatedAttention = setAttentionState(
+      attention,
+      "dismissed",
+      occurredAt,
+    );
+    const eventId = EventIdSchema.parse(this.dependencies.ids.next("event"));
+    const auditReceiptId = AuditReceiptIdSchema.parse(
+      this.dependencies.ids.next("auditReceipt"),
+    );
+    const event: DomainEvent = {
+      id: eventId,
+      commandId: command.commandId,
+      type: "capture.exception_resolved",
+      workspaceId: capture.workspaceId,
+      spaceId: capture.spaceId,
+      aggregateId: capture.id,
+      aggregateVersion: updatedCapture.version,
+      attentionSignalId: attention.id,
+      action: command.payload.action,
+      processingState: updatedCapture.processingState,
+      occurredAt,
+    };
+    const audit = this.auditReceipt(
+      auditReceiptId,
+      context,
+      command,
+      capture.spaceId,
+      [capture.id, attention.id],
+      {
+        [capture.id]: updatedCapture.version,
+        [attention.id]: updatedAttention.version,
+      },
+      ["processingState", "reviewReason", "attention.state"],
+      occurredAt,
+    );
+    const outcome = this.outcome(command, occurredAt, {
+      outcome: "success",
+      diagnosticCode: "capture.exception_resolved",
+      affected: [
+        {
+          recordId: capture.id,
+          recordKind: "capture",
+          version: updatedCapture.version,
+        },
+        {
+          recordId: attention.id,
+          recordKind: "attentionSignal",
+          version: updatedAttention.version,
+        },
+      ],
+      auditReceiptId,
+      projection: {
+        kind: "capture.exception_resolved",
+        captureId: capture.id,
+        captureVersion: updatedCapture.version,
+        attentionSignalId: attention.id,
+        attentionVersion: updatedAttention.version,
+        action: command.payload.action,
+        processingState: updatedCapture.processingState,
+      },
+    });
+    if (!transaction.updateCapture(updatedCapture, capture.version))
+      throw new RetryableUnitOfWorkError();
+    if (!transaction.updateAttentionSignal(updatedAttention, attention.version))
+      throw new RetryableUnitOfWorkError();
+    transaction.insertEvent(event);
+    transaction.insertAuditReceipt(audit);
+    transaction.insertIdempotency({ scope, fingerprint, outcome });
+    transaction.insertSyncCommand(command);
+    if (updatedCapture.processingState === "pending_processing") {
+      transaction.insertOutbox({
+        id: OutboxEntryIdSchema.parse(
+          this.dependencies.ids.next("outboxEntry"),
+        ),
+        workspaceId: capture.workspaceId,
+        spaceId: capture.spaceId,
+        eventId,
+        topic: "capture.processing.requested",
+        createdAt: occurredAt,
+      });
+    }
+    return outcome;
+  }
+
+  private markCaptureForReview(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<
+      CommandEnvelope,
+      { commandName: "capture.process" | "capture.reportException" }
+    >,
+    capture: PendingCapture,
+    reviewReason: CaptureReviewReason,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+    duplicateOfCaptureId?: CaptureId,
   ): CommandOutcome {
     const attentionSignalId = AttentionSignalIdSchema.parse(
       this.dependencies.ids.next("attentionSignal"),
@@ -1194,8 +1503,8 @@ export class ApplicationKernel {
     const reviewed: ReviewCapture = {
       ...capture,
       processingState: "needs_review",
-      reviewReason: "duplicate",
-      duplicateOfCaptureId,
+      reviewReason,
+      ...(duplicateOfCaptureId === undefined ? {} : { duplicateOfCaptureId }),
       attentionSignalId,
       reviewedAt: occurredAt,
       version: capture.version + 1,
@@ -1205,10 +1514,10 @@ export class ApplicationKernel {
       workspaceId: capture.workspaceId,
       spaceId: capture.spaceId,
       targetPrincipalId: capture.submittedBy,
-      reason: "capture_duplicate",
+      reason: captureAttentionReason(reviewReason),
       destination: { kind: "capture", captureId: capture.id },
-      sourceRecordId: duplicateOfCaptureId,
-      deduplicationKey: `capture:${capture.id}:duplicate`,
+      sourceRecordId: duplicateOfCaptureId ?? capture.id,
+      deduplicationKey: `capture:${capture.id}:${reviewReason}`,
       urgency: "in_app",
       state: "unread",
       version: 1,
@@ -1231,7 +1540,7 @@ export class ApplicationKernel {
       aggregateId: capture.id,
       aggregateVersion: reviewed.version,
       attentionSignalId,
-      reason: "duplicate",
+      reason: reviewReason,
       occurredAt,
     };
     const audit = this.auditReceipt(
@@ -1261,7 +1570,7 @@ export class ApplicationKernel {
         captureId: capture.id,
         captureVersion: reviewed.version,
         attentionSignalId,
-        reason: "duplicate",
+        reason: reviewReason,
       },
     });
     if (!transaction.updateCapture(reviewed, capture.version)) {
@@ -1293,6 +1602,25 @@ export class ApplicationKernel {
     fingerprint: string,
     occurredAt: string,
   ): CommandOutcome {
+    const storedCapture = transaction.getCapture(capture.id);
+    const reviewAttention =
+      storedCapture?.processingState === "needs_review"
+        ? transaction.getAttentionSignal(storedCapture.attentionSignalId)
+        : undefined;
+    if (
+      storedCapture?.processingState === "needs_review" &&
+      (reviewAttention === undefined ||
+        reviewAttention.destination.kind !== "capture" ||
+        reviewAttention.destination.captureId !== storedCapture.id)
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    const dismissedAttention =
+      reviewAttention === undefined
+        ? undefined
+        : setAttentionState(reviewAttention, "dismissed", occurredAt);
     const sourceId = KnowledgeSourceIdSchema.parse(
       this.dependencies.ids.next("knowledgeSource"),
     );
@@ -1356,9 +1684,24 @@ export class ApplicationKernel {
       context,
       command,
       capture.spaceId,
-      [capture.id, source.id],
-      { [capture.id]: routed.version, [source.id]: source.version },
-      ["processingState", "derivedKnowledgeSourceId", "source.sourceCaptureId"],
+      [
+        capture.id,
+        source.id,
+        ...(dismissedAttention === undefined ? [] : [dismissedAttention.id]),
+      ],
+      {
+        [capture.id]: routed.version,
+        [source.id]: source.version,
+        ...(dismissedAttention === undefined
+          ? {}
+          : { [dismissedAttention.id]: dismissedAttention.version }),
+      },
+      [
+        "processingState",
+        "derivedKnowledgeSourceId",
+        "source.sourceCaptureId",
+        ...(dismissedAttention === undefined ? [] : ["attention.state"]),
+      ],
       occurredAt,
     );
     const outcome = this.outcome(command, occurredAt, {
@@ -1375,6 +1718,15 @@ export class ApplicationKernel {
           recordKind: "knowledgeSource",
           version: source.version,
         },
+        ...(dismissedAttention === undefined
+          ? []
+          : [
+              {
+                recordId: dismissedAttention.id,
+                recordKind: "attentionSignal" as const,
+                version: dismissedAttention.version,
+              },
+            ]),
       ],
       auditReceiptId,
       projection: {
@@ -1388,6 +1740,15 @@ export class ApplicationKernel {
     if (!transaction.updateCapture(routed, expectedVersion)) {
       throw new RetryableUnitOfWorkError();
     }
+    if (
+      dismissedAttention !== undefined &&
+      reviewAttention !== undefined &&
+      !transaction.updateAttentionSignal(
+        dismissedAttention,
+        reviewAttention.version,
+      )
+    )
+      throw new RetryableUnitOfWorkError();
     transaction.insertKnowledgeSource(source);
     transaction.insertEvent(event);
     transaction.insertAuditReceipt(audit);
@@ -1506,6 +1867,25 @@ export class ApplicationKernel {
       );
     }
 
+    const reviewAttention =
+      storedCapture.processingState === "needs_review"
+        ? transaction.getAttentionSignal(storedCapture.attentionSignalId)
+        : undefined;
+    if (
+      storedCapture.processingState === "needs_review" &&
+      (reviewAttention === undefined ||
+        reviewAttention.destination.kind !== "capture" ||
+        reviewAttention.destination.captureId !== storedCapture.id)
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    const dismissedAttention =
+      reviewAttention === undefined
+        ? undefined
+        : setAttentionState(reviewAttention, "dismissed", occurredAt);
+
     const taskId = TaskIdSchema.parse(this.dependencies.ids.next("task"));
     const eventId = EventIdSchema.parse(this.dependencies.ids.next("event"));
     const auditReceiptId = AuditReceiptIdSchema.parse(
@@ -1539,10 +1919,17 @@ export class ApplicationKernel {
       context,
       command,
       capture.spaceId,
-      [routed.capture.id, routed.task.id],
+      [
+        routed.capture.id,
+        routed.task.id,
+        ...(dismissedAttention === undefined ? [] : [dismissedAttention.id]),
+      ],
       {
         [routed.capture.id]: routed.capture.version,
         [routed.task.id]: routed.task.version,
+        ...(dismissedAttention === undefined
+          ? {}
+          : { [dismissedAttention.id]: dismissedAttention.version }),
       },
       [
         "processingState",
@@ -1550,6 +1937,7 @@ export class ApplicationKernel {
         "task.title",
         "task.statusId",
         "task.sourceCaptureId",
+        ...(dismissedAttention === undefined ? [] : ["attention.state"]),
       ],
       occurredAt,
     );
@@ -1567,6 +1955,15 @@ export class ApplicationKernel {
           recordKind: "task",
           version: routed.task.version,
         },
+        ...(dismissedAttention === undefined
+          ? []
+          : [
+              {
+                recordId: dismissedAttention.id,
+                recordKind: "attentionSignal" as const,
+                version: dismissedAttention.version,
+              },
+            ]),
       ],
       auditReceiptId,
       projection: {
@@ -1598,6 +1995,15 @@ export class ApplicationKernel {
             : currentVersionMap(current.id, current.version),
       });
     }
+    if (
+      dismissedAttention !== undefined &&
+      reviewAttention !== undefined &&
+      !transaction.updateAttentionSignal(
+        dismissedAttention,
+        reviewAttention.version,
+      )
+    )
+      throw new RetryableUnitOfWorkError();
     transaction.insertTask(routed.task);
     transaction.insertEvent(event);
     transaction.insertAuditReceipt(audit);
@@ -1890,7 +2296,13 @@ export class ApplicationKernel {
                     attentionSignalId: capture.attentionSignalId,
                     reviewedAt: capture.reviewedAt,
                   }
-                : {}),
+                : capture.processingState === "unclassified"
+                  ? {
+                      unclassifiedAt: capture.unclassifiedAt,
+                      unclassifiedBy: capture.unclassifiedBy,
+                      previousReviewReason: capture.previousReviewReason,
+                    }
+                  : {}),
           version: capture.version,
         })),
         nextCursor,

@@ -92,6 +92,13 @@ published object before accepting its coordinated command, so a descriptor can
 never advance the authoritative projection without its bytes. A failed
 transfer creates no Capture, keeps local staging for an explicit retry, and
 does not block ordinary record synchronization.
+Replacing a missing or partially transferred Capture payload follows the same
+gate. The replacement bytes are staged and, for a coordinated workspace,
+published before `capture.resolveException`; the kernel then replaces the
+descriptor and dismisses the exact Attention signal atomically. A failed
+transfer, digest check, authorization check, or version precondition preserves
+the previous Capture and its Attention state. Only after success may local
+reconciliation purge bytes that no Capture references.
 Normal projection replacement retains bytes only for still-authorized Capture
 records and current dialog staging. Membership or device revocation purges the
 whole coordinated projection, including managed payload bytes.

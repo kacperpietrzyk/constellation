@@ -222,8 +222,12 @@ digest-verified attachment channel; transfer failure keeps the local original
 and a direct retry path, while revoked scope purges it. Authorized local and
 remote MCP hosts can read one managed Capture payload only as a versioned
 resource: bounded internal chunks are reauthorized, reassembled, and verified
-before a blob is returned. The remaining exception vocabulary and voice remain
-inside the current readiness work rather than being claimed complete.
+before a blob is returned. Capture exceptions now use an explicit
+ambiguity/duplicate/parsing/permission/conflict/missing/partial/unknown
+vocabulary. Resolving one exception changes the Capture and closes its exact
+Attention signal atomically; a missing managed payload can be replaced only
+after the runtime proves the new bytes. Voice remains inside the current
+readiness work rather than being claimed complete.
 
 ## Later — desktop ecosystem after product readiness
 

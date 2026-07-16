@@ -363,6 +363,10 @@ export class HubRemoteMcpService {
         readonly offset: number;
         readonly length: number;
       }) => Promise<Uint8Array | undefined>;
+      readonly isCapturePayloadAvailable?: (input: {
+        readonly workspaceId: WorkspaceId;
+        readonly original: CaptureOriginal;
+      }) => Promise<boolean>;
     } = {},
   ) {}
 
@@ -740,150 +744,170 @@ export class HubRemoteMcpService {
       });
     const [credentialId, secret] = parsedToken.data.split(".");
     try {
-      return await this.repository.withWorkspaceLock(workspaceId, (state) => {
-        const remote = state.remoteAgents ?? emptyHubRemoteAgentState();
-        const grant = remote.grants.find(
-          (candidate) => candidate.credentialId === credentialId,
-        );
-        if (
-          grant === undefined ||
-          grant.status !== "active" ||
-          (grant.expiresAt !== undefined &&
-            Date.parse(grant.expiresAt) <= Date.parse(this.now())) ||
-          !sameDigest(
-            grant.credentialDigest,
-            remoteMcpCredentialDigest({
-              grantId: grant.id,
-              credentialId: grant.credentialId,
-              secret: secret ?? "",
-            }),
-          ) ||
-          (invocation.kind === "query" &&
-            invocation.query.workspaceId !== workspaceId) ||
-          (invocation.kind === "command" &&
-            invocation.command.workspaceId !== workspaceId) ||
-          (invocation.kind === "payload_read" &&
-            invocation.workspaceId !== workspaceId)
-        )
-          return response(invocation.requestId, "rejected", {
-            diagnosticCode: "authorization.denied",
-          });
-        const rate = this.acquire(grant.id);
-        if (!rate)
-          return response(invocation.requestId, "retryable", {
-            diagnosticCode: "mcp.rate_limited",
-            retryAfterMs: 1_000,
-          });
-        if (invocation.kind === "payload_read")
-          return this.invokePayloadRead(state, grant, invocation).finally(() =>
-            this.release(grant.id),
+      return await this.repository.withWorkspaceLock(
+        workspaceId,
+        async (state) => {
+          const remote = state.remoteAgents ?? emptyHubRemoteAgentState();
+          const grant = remote.grants.find(
+            (candidate) => candidate.credentialId === credentialId,
           );
-        try {
-          const store = new InMemoryReferenceStore(
-            undefined,
-            mergedSnapshot(state),
-          );
-          const context = this.agentContext(
-            store,
-            grant,
-            invocation.kind === "capabilities" ? undefined : invocation.run,
-          );
-          if (context === undefined)
+          if (
+            grant === undefined ||
+            grant.status !== "active" ||
+            (grant.expiresAt !== undefined &&
+              Date.parse(grant.expiresAt) <= Date.parse(this.now())) ||
+            !sameDigest(
+              grant.credentialDigest,
+              remoteMcpCredentialDigest({
+                grantId: grant.id,
+                credentialId: grant.credentialId,
+                secret: secret ?? "",
+              }),
+            ) ||
+            (invocation.kind === "query" &&
+              invocation.query.workspaceId !== workspaceId) ||
+            (invocation.kind === "command" &&
+              invocation.command.workspaceId !== workspaceId) ||
+            (invocation.kind === "payload_read" &&
+              invocation.workspaceId !== workspaceId)
+          )
             return response(invocation.requestId, "rejected", {
               diagnosticCode: "authorization.denied",
             });
-          if (invocation.kind === "capabilities") {
-            return response(invocation.requestId, "success", {
-              server: "constellation-hub",
-              contractVersion: MCP_CONTRACT_VERSION,
-              transport: "streamable_http",
-              tools: [
-                "constellation.query.v1",
-                "constellation.command.v1",
-                "constellation.checkpoint.revert.v1",
-              ],
-              resources: [
-                "constellation://v1/capabilities",
-                MCP_PAYLOAD_RESOURCE_TEMPLATE,
-              ],
-              grant: projection(
-                grant,
-                remote,
-                this.now(),
-                new Map(
-                  state.snapshot.spaces.map((space) => [
-                    String(space.id),
-                    String(space.name),
-                  ]),
-                ),
-              ),
+          const rate = this.acquire(grant.id);
+          if (!rate)
+            return response(invocation.requestId, "retryable", {
+              diagnosticCode: "mcp.rate_limited",
+              retryAfterMs: 1_000,
             });
-          }
-          this.ensureRun(store, grant, invocation.run);
-          const output = this.invokeApplication(
-            store,
-            context,
-            grant,
-            invocation,
-          );
-          const after = store.snapshot();
-          persistSnapshot(state, after);
-          const storedGrant = state.remoteAgents?.grants.find(
-            (candidate) => candidate.id === grant.id,
-          );
-          if (storedGrant !== undefined) {
-            const index = state.remoteAgents?.grants.indexOf(storedGrant) ?? -1;
-            if (index >= 0 && state.remoteAgents !== undefined)
-              state.remoteAgents.grants[index] = {
-                ...storedGrant,
-                lastUsedAt: this.now(),
-              };
-          }
-          if (
-            invocation.kind === "command" &&
-            state.receipts.has(invocation.command.commandId)
-          ) {
-            const stored = state.receipts.get(invocation.command.commandId)!;
-            return response(
-              invocation.requestId,
-              nestedOutcome({
-                kind: "command_outcome",
-                outcome: stored.outcome,
-              }),
-              { kind: "command_outcome", outcome: stored.outcome },
+          if (invocation.kind === "payload_read")
+            return this.invokePayloadRead(state, grant, invocation).finally(
+              () => this.release(grant.id),
             );
-          }
-          if (invocation.kind === "command" && output.outcome === "success") {
-            state.checkpoint += 1n;
-            const result = output.result as {
-              kind?: unknown;
-              outcome?: { commandId?: unknown };
-            };
-            const commandId = invocation.command.commandId;
-            const kernelOutcome =
-              result.kind === "command_outcome" ? result.outcome : undefined;
-            if (kernelOutcome !== undefined) {
-              state.receipts.set(commandId, {
-                commandId,
-                checkpoint: state.checkpoint.toString(),
-                outcome: kernelOutcome as HubStoredReceipt["outcome"],
+          try {
+            const store = new InMemoryReferenceStore(
+              undefined,
+              mergedSnapshot(state),
+            );
+            const context = this.agentContext(
+              store,
+              grant,
+              invocation.kind === "capabilities" ? undefined : invocation.run,
+            );
+            if (context === undefined)
+              return response(invocation.requestId, "rejected", {
+                diagnosticCode: "authorization.denied",
+              });
+            if (invocation.kind === "capabilities") {
+              return response(invocation.requestId, "success", {
+                server: "constellation-hub",
+                contractVersion: MCP_CONTRACT_VERSION,
+                transport: "streamable_http",
+                tools: [
+                  "constellation.query.v1",
+                  "constellation.command.v1",
+                  "constellation.checkpoint.revert.v1",
+                ],
+                resources: [
+                  "constellation://v1/capabilities",
+                  MCP_PAYLOAD_RESOURCE_TEMPLATE,
+                ],
+                grant: projection(
+                  grant,
+                  remote,
+                  this.now(),
+                  new Map(
+                    state.snapshot.spaces.map((space) => [
+                      String(space.id),
+                      String(space.name),
+                    ]),
+                  ),
+                ),
               });
             }
+            this.ensureRun(store, grant, invocation.run);
+            const replacementOriginal =
+              invocation.kind === "command" &&
+              invocation.command.commandName === "capture.resolveException" &&
+              invocation.command.payload.action === "replace_payload"
+                ? invocation.command.payload.original
+                : undefined;
+            const replacementAvailable =
+              replacementOriginal === undefined
+                ? undefined
+                : (replacementOriginal.kind === "managed_file" ||
+                    replacementOriginal.kind === "screenshot") &&
+                  (await this.options.isCapturePayloadAvailable?.({
+                    workspaceId,
+                    original: replacementOriginal,
+                  })) === true;
+            const output = this.invokeApplication(
+              store,
+              context,
+              grant,
+              invocation,
+              replacementAvailable,
+            );
+            const after = store.snapshot();
+            persistSnapshot(state, after);
+            const storedGrant = state.remoteAgents?.grants.find(
+              (candidate) => candidate.id === grant.id,
+            );
+            if (storedGrant !== undefined) {
+              const index =
+                state.remoteAgents?.grants.indexOf(storedGrant) ?? -1;
+              if (index >= 0 && state.remoteAgents !== undefined)
+                state.remoteAgents.grants[index] = {
+                  ...storedGrant,
+                  lastUsedAt: this.now(),
+                };
+            }
+            if (
+              invocation.kind === "command" &&
+              state.receipts.has(invocation.command.commandId)
+            ) {
+              const stored = state.receipts.get(invocation.command.commandId)!;
+              return response(
+                invocation.requestId,
+                nestedOutcome({
+                  kind: "command_outcome",
+                  outcome: stored.outcome,
+                }),
+                { kind: "command_outcome", outcome: stored.outcome },
+              );
+            }
+            if (invocation.kind === "command" && output.outcome === "success") {
+              state.checkpoint += 1n;
+              const result = output.result as {
+                kind?: unknown;
+                outcome?: { commandId?: unknown };
+              };
+              const commandId = invocation.command.commandId;
+              const kernelOutcome =
+                result.kind === "command_outcome" ? result.outcome : undefined;
+              if (kernelOutcome !== undefined) {
+                state.receipts.set(commandId, {
+                  commandId,
+                  checkpoint: state.checkpoint.toString(),
+                  outcome: kernelOutcome as HubStoredReceipt["outcome"],
+                });
+              }
+            }
+            if (
+              invocation.kind === "checkpoint_revert" &&
+              (output.outcome === "success" || output.outcome === "partial")
+            )
+              state.checkpoint += 1n;
+            return output;
+          } catch {
+            return response(invocation.requestId, "retryable", {
+              diagnosticCode: "mcp.runtime_unavailable",
+            });
+          } finally {
+            this.release(grant.id);
           }
-          if (
-            invocation.kind === "checkpoint_revert" &&
-            (output.outcome === "success" || output.outcome === "partial")
-          )
-            state.checkpoint += 1n;
-          return output;
-        } catch {
-          return response(invocation.requestId, "retryable", {
-            diagnosticCode: "mcp.runtime_unavailable",
-          });
-        } finally {
-          this.release(grant.id);
-        }
-      });
+        },
+      );
     } catch {
       return response(invocation.requestId, "retryable", {
         diagnosticCode: "mcp.runtime_unavailable",
@@ -1041,7 +1065,11 @@ export class HubRemoteMcpService {
     }).execute(context, command);
   }
 
-  private kernel(store: InMemoryReferenceStore, context: ExecutionContext) {
+  private kernel(
+    store: InMemoryReferenceStore,
+    context: ExecutionContext,
+    capturePayloadAvailable?: boolean,
+  ) {
     const hasher = new Sha256Hasher();
     const ids = new CommandScopedIdGenerator(hasher);
     return {
@@ -1053,6 +1081,13 @@ export class HubRemoteMcpService {
         hasher,
         ids,
         store,
+        ...(capturePayloadAvailable === undefined
+          ? {}
+          : {
+              capturePayloadVerifier: {
+                isAvailable: () => capturePayloadAvailable,
+              },
+            }),
       }),
     };
   }
@@ -1065,8 +1100,9 @@ export class HubRemoteMcpService {
       McpOperatorInvocation,
       { kind: "capabilities" | "payload_read" }
     >,
+    capturePayloadAvailable?: boolean,
   ): McpOperatorResponse {
-    const service = this.kernel(store, context);
+    const service = this.kernel(store, context, capturePayloadAvailable);
     if (invocation.kind === "query") {
       const result = service.kernel.query(context, invocation.query);
       return response(invocation.requestId, nestedOutcome(result), result, {

@@ -72,6 +72,11 @@ object and verifies its complete length and SHA-256 digest before returning one
 `blob`. Missing, revoked, corrupt, and out-of-Space payloads fail without
 revealing which condition occurred. Payload bytes remain absent from ordinary
 tool results, commands, receipts, snapshots, and device projections.
+Capture processing grants also expose the strict exception report and resolve
+commands. The Hub validates the same reason/action matrix as the desktop.
+Remote payload replacement cannot introduce arbitrary bytes through a command;
+the referenced content-addressed object must already be published and verified
+by the Hub attachment boundary.
 
 ## Credential and recovery practice
 

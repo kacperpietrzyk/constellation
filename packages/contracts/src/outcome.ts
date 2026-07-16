@@ -27,7 +27,7 @@ import {
   DocumentRevisionIdSchema,
   StrategicRecordIdSchema,
 } from "./ids.js";
-import { ContractVersionSchema } from "./command.js";
+import { CaptureReviewReasonSchema, ContractVersionSchema } from "./command.js";
 
 export const DiagnosticCodeSchema = z.enum([
   "workspace.created",
@@ -43,6 +43,7 @@ export const DiagnosticCodeSchema = z.enum([
   "capture.stored",
   "capture.routed_as_knowledge_source",
   "capture.needs_review",
+  "capture.exception_resolved",
   "capture.routed_as_task",
   "project.created",
   "document.created",
@@ -214,7 +215,19 @@ export const CaptureNeedsReviewProjectionSchema = z
     captureId: CaptureIdSchema,
     captureVersion: z.int().positive(),
     attentionSignalId: AttentionSignalIdSchema,
-    reason: z.enum(["duplicate", "unsupported"]),
+    reason: CaptureReviewReasonSchema,
+  })
+  .strict();
+
+export const CaptureExceptionResolvedProjectionSchema = z
+  .object({
+    kind: z.literal("capture.exception_resolved"),
+    captureId: CaptureIdSchema,
+    captureVersion: z.int().positive(),
+    attentionSignalId: AttentionSignalIdSchema,
+    attentionVersion: z.int().positive(),
+    action: z.enum(["retry", "keep_unclassified", "replace_payload"]),
+    processingState: z.enum(["pending_processing", "unclassified"]),
   })
   .strict();
 
@@ -489,6 +502,7 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   CaptureRoutedAsTaskProjectionSchema,
   CaptureRoutedAsKnowledgeSourceProjectionSchema,
   CaptureNeedsReviewProjectionSchema,
+  CaptureExceptionResolvedProjectionSchema,
   ProjectCreatedProjectionSchema,
   DocumentCreatedProjectionSchema,
   KnowledgeSourceMutationProjectionSchema,
@@ -595,6 +609,13 @@ const CaptureNeedsReviewSuccessOutcomeSchema =
     outcome: z.literal("success"),
     diagnosticCode: z.literal("capture.needs_review"),
     projection: CaptureNeedsReviewProjectionSchema,
+  }).strict();
+
+const CaptureExceptionResolvedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("capture.exception_resolved"),
+    projection: CaptureExceptionResolvedProjectionSchema,
   }).strict();
 
 const ProjectCreatedSuccessOutcomeSchema =
@@ -789,6 +810,7 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   CaptureRoutedAsTaskSuccessOutcomeSchema,
   CaptureRoutedAsKnowledgeSourceSuccessOutcomeSchema,
   CaptureNeedsReviewSuccessOutcomeSchema,
+  CaptureExceptionResolvedSuccessOutcomeSchema,
   ProjectCreatedSuccessOutcomeSchema,
   DocumentCreatedSuccessOutcomeSchema,
   KnowledgeSourceCreatedSuccessOutcomeSchema,

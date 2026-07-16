@@ -65,8 +65,10 @@ file references, and one managed file or pasted screenshot whose bytes enter
 the encrypted workspace before deterministic routing to Tasks or knowledge
 sources. In a Hub-backed workspace, the exact bytes must also pass resumable
 digest verification before the Capture is accepted; an unavailable transfer
-keeps the encrypted local original ready for retry. The journey also covers
-duplicate review-by-exception in Attention, Project outcome and Task relations,
+keeps the encrypted local original ready for retry. The journey also covers a
+closed Capture exception vocabulary in Attention, reason-specific retry,
+destination, keep-unclassified, dismiss, and verified missing-payload
+replacement actions, Project outcome and Task relations,
 and a Work destination that connects Areas, Initiatives, Projects, dependencies,
 waiting direction, and saved deterministic views without imposing a mandatory
 containment tree. The same work-composition commands and query are available to

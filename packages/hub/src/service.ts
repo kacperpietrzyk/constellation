@@ -371,12 +371,19 @@ export class HubService {
           const ids = new CommandScopedIdGenerator(hasher);
           ids.begin(command.commandId);
           const parsedCommand = CommandEnvelopeSchema.parse(command);
-          const managedOriginal =
-            parsedCommand.commandName === "capture.submit" &&
-            (parsedCommand.payload.original.kind === "managed_file" ||
-              parsedCommand.payload.original.kind === "screenshot")
-              ? parsedCommand.payload.original
+          const managedOriginal = (() => {
+            const original =
+              parsedCommand.commandName === "capture.submit"
+                ? parsedCommand.payload.original
+                : parsedCommand.commandName === "capture.resolveException" &&
+                    parsedCommand.payload.action === "replace_payload"
+                  ? parsedCommand.payload.original
+                  : undefined;
+            return original?.kind === "managed_file" ||
+              original?.kind === "screenshot"
+              ? original
               : undefined;
+          })();
           const managedPayloadAvailable =
             managedOriginal === undefined
               ? false

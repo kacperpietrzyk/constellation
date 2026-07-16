@@ -6033,9 +6033,28 @@ kbd {
   }
   .attention-actions {
     padding: 0 var(--space-4) var(--space-3);
+    flex-wrap: wrap;
+  }
+  .attention-actions button {
+    flex: 1 1 7rem;
+    white-space: normal;
   }
   .comment-reply {
     margin-left: var(--space-2);
+  }
+}
+@media (max-width: 30rem) {
+  .attention-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .attention-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .attention-main time {
+    grid-column: 1;
+    grid-row: auto;
   }
 }
 @media (prefers-reduced-transparency: reduce) {

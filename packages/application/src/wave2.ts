@@ -773,6 +773,45 @@ const targetRecord = (
         ? view.getDocument(target.documentId)
         : view.getCapture(target.captureId);
 
+const attentionDetail = (reason: AttentionSignal["reason"]): string => {
+  switch (reason) {
+    case "comment_mention":
+      return "You were mentioned in a comment.";
+    case "task_assignment":
+      return "You are responsible for this Task.";
+    case "knowledge_evidence_changed":
+      return "Source evidence changed after the latest named version.";
+    case "renewal_due":
+      return "A date-aware renewal has one follow-up ready for review.";
+    case "relationship_fact_stale":
+      return "A time-sensitive relationship fact needs verification.";
+    case "decision_impact_review":
+      return "A replacement Decision has unresolved consequences.";
+    case "capture_duplicate":
+      return "This capture matches an existing item. Choose its destination, keep it unclassified, or dismiss the signal.";
+    case "capture_ambiguous":
+      return "Deterministic rules cannot choose a destination. Choose one or keep the original unclassified.";
+    case "capture_unsupported":
+      return "The original is preserved but this input cannot be processed automatically.";
+    case "capture_parsing_failure":
+      return "The preserved original could not be parsed. Retry or keep it unclassified.";
+    case "capture_permission_failure":
+      return "Processing lacks current permission. Restore access and retry, or keep the original unclassified.";
+    case "capture_stale_conflict":
+      return "The destination changed during processing. Retry against the current version.";
+    case "capture_missing_target":
+      return "The intended destination no longer exists. Choose another destination or keep the original unclassified.";
+    case "capture_missing_payload":
+      return "The managed original is unavailable. Replace it with verified bytes or keep the Capture unclassified.";
+    case "capture_partial_payload_transfer":
+      return "Only part of the managed original reached the Data Home. Retry or replace it without losing the local original.";
+    case "capture_unknown_reconcile":
+      return "The external result is unknown. Reconcile and retry without creating a second record.";
+    case "sync_conflict":
+      return "An offline change needs reconciliation.";
+  }
+};
+
 const targetId = (target: CommentTarget): string =>
   target.kind === "task" ? target.taskId : target.projectId;
 
@@ -4383,24 +4422,7 @@ export const executeWave2Query = (
             destination: signal.destination,
             title:
               "originalText" in record ? record.originalText : record.title,
-            detail:
-              signal.reason === "comment_mention"
-                ? "You were mentioned in a comment."
-                : signal.reason === "task_assignment"
-                  ? "You are responsible for this Task."
-                  : signal.reason === "knowledge_evidence_changed"
-                    ? "Source evidence changed after the latest named version."
-                    : signal.reason === "renewal_due"
-                      ? "A date-aware renewal has one follow-up ready for review."
-                      : signal.reason === "relationship_fact_stale"
-                        ? "A time-sensitive relationship fact needs verification."
-                        : signal.reason === "decision_impact_review"
-                          ? "A replacement Decision has unresolved consequences."
-                          : signal.reason === "capture_duplicate"
-                            ? "This capture matches an existing item. Choose its destination or dismiss it."
-                            : signal.reason === "capture_unsupported"
-                              ? "This capture needs a destination before it can be processed."
-                              : "An offline change needs reconciliation.",
+            detail: attentionDetail(signal.reason),
             urgency: signal.urgency,
             state: signal.state,
             version: signal.version,
