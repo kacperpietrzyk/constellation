@@ -119,7 +119,7 @@ export const CockpitSurface = ({
             ? `${cockpit.data.weekStart} – ${cockpit.data.weekEnd}`
             : "Widok tygodnia"
         }
-        title="Tydzień oparty na aktualnych danych"
+        title="Tydzień"
         description="Deterministyczna kolejność otwartych zadań i aktywnych projektów. Bez generowanych rekomendacji."
       />
       {workspaceFocus.length > 1 && (
@@ -718,8 +718,8 @@ export const HistorySurface = ({
   return (
     <div className="surface-scroll">
       <SurfaceHeader
-        kicker="Capture History"
-        title="Każdy oryginał ma dalszy ślad"
+        kicker="Zachowane oryginały"
+        title="Historia Capture"
         description="Udane przetworzenie pozostaje sprawdzalne i odwracalne, jeśli bieżące wersje na to pozwalają."
       />
       {snapshot.captures.length === 0 ? (
@@ -895,7 +895,7 @@ export const ActivitySurface = ({
   <div className="surface-scroll">
     <SurfaceHeader
       kicker="Znacząca aktywność"
-      title="Historia pracy, nie log techniczny"
+      title="Aktywność"
       description="Timeline pokazuje potwierdzone zmiany. Atrybucja i pełny receipt pozostają w audycie."
     />
     <section

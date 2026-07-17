@@ -27,6 +27,20 @@ type JamieState =
 type CompletedMeeting = MeetingLoopSurface["completed"][number];
 type MeetingWorkItem = CompletedMeeting["workItems"][number];
 
+const countLabel = (
+  count: number,
+  one: string,
+  few: string,
+  many: string,
+) => {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (count === 1) return `1 ${one}`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14))
+    return `${count} ${few}`;
+  return `${count} ${many}`;
+};
+
 const healthLabel = (meeting: CompletedMeeting) => {
   switch (meeting.triage) {
     case "ready":
@@ -490,7 +504,14 @@ export const MeetingsSurface = ({
         <section className="meeting-upcoming" aria-labelledby="upcoming-title">
           <header>
             <h2 id="upcoming-title">Nadchodzące</h2>
-            <span>{surface.upcoming.length}</span>
+            <span>
+              {countLabel(
+                surface.upcoming.length,
+                "wydarzenie",
+                "wydarzenia",
+                "wydarzeń",
+              )}
+            </span>
           </header>
           {surface.upcoming.length === 0 ? (
             <div className="meeting-empty">
@@ -605,7 +626,14 @@ export const MeetingsSurface = ({
         >
           <header>
             <h2 id="completed-title">Wyniki Jamie</h2>
-            <span>{surface.completed.length}</span>
+            <span>
+              {countLabel(
+                surface.completed.length,
+                "wynik",
+                "wyniki",
+                "wyników",
+              )}
+            </span>
           </header>
           {surface.completed.length === 0 ? (
             <div className="meeting-empty meeting-empty--compact">
@@ -767,7 +795,14 @@ export const MeetingsSurface = ({
                             spotkaniem.
                           </p>
                         </div>
-                        <span>{selectedMeeting.workItems.length}</span>
+                        <span>
+                          {countLabel(
+                            selectedMeeting.workItems.length,
+                            "zapis",
+                            "zapisy",
+                            "zapisów",
+                          )}
+                        </span>
                       </header>
                       {selectedMeeting.workItems.length === 0 ? (
                         <p className="meeting-result-empty-copy">

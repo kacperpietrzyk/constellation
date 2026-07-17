@@ -568,8 +568,8 @@ export const DocumentsSurface = ({
       <aside className="knowledge-library" aria-label="Biblioteka wiedzy">
         <header>
           <div>
-            <p className="surface-eyebrow">Wiedza</p>
-            <h1>Źródła i rezultaty</h1>
+            <p className="surface-eyebrow">Źródła i rezultaty</p>
+            <h1>Dokumenty</h1>
           </div>
           <span className="library-count">
             {(knowledge?.sources.length ?? 0) + items.length}

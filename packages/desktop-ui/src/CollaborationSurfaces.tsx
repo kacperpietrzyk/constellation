@@ -404,8 +404,8 @@ export const AttentionSurface = ({
   <section className="attention-surface" aria-labelledby="surface-title">
     <header className="surface-heading attention-heading">
       <div>
-        <p className="eyebrow">Do uwagi</p>
-        <h1 id="surface-title">Tylko sygnały wymagające reakcji</h1>
+        <p className="eyebrow">Sygnały wymagające reakcji</p>
+        <h1 id="surface-title">Do uwagi</h1>
         <p>
           To nie jest dziennik aktywności. Każdy wpis ma powód i prowadzi do
           dokładnego kontekstu.

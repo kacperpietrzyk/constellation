@@ -20,6 +20,19 @@ type Record = RelationshipWorkspaceProjection["records"][number];
 type Radar = Extract<Record, { kind: "radar_candidate" }>;
 type Review = Extract<Record, { kind: "impact_review" }>;
 
+const recordKindLabels: { readonly [kind: string]: string } = {
+  commitment: "Zobowiązanie",
+  decision: "Decyzja",
+  offer: "Oferta",
+  opportunity: "Szansa",
+  organization: "Organizacja",
+  project: "Projekt",
+  task: "Zadanie",
+  fact: "Fakt",
+  renewal: "Odnowienie",
+  person: "Osoba",
+};
+
 const stateLabels: { readonly [state: string]: string } = {
   active: "Aktywne",
   pursued: "W toku",
@@ -172,7 +185,7 @@ export const StrategicDepthSurface = ({
       <header className="surface-header strategic-header">
         <div>
           <p className="eyebrow">Relacje i przeglądy</p>
-          <h1 id="surface-title">Jedna nić od relacji do następnego ruchu</h1>
+          <h1 id="surface-title">Relacje</h1>
           <p>
             Szanse, oferty, odnowienia, decyzje i wiedza zachowują źródła oraz
             historię. Aplikacja pokazuje skutki, ale nie podejmuje decyzji za
@@ -181,7 +194,17 @@ export const StrategicDepthSurface = ({
         </div>
         <div className="strategic-summary" aria-label="Stan przeglądu">
           <strong>{radar.length + openConsequences.length}</strong>
-          <span>elementów wymagających decyzji</span>
+          <span>
+            {(() => {
+              const count = radar.length + openConsequences.length;
+              const mod10 = count % 10;
+              const mod100 = count % 100;
+              if (count === 1) return "element wymaga decyzji";
+              if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14))
+                return "elementy wymagają decyzji";
+              return "elementów wymaga decyzji";
+            })()}
+          </span>
         </div>
       </header>
 
@@ -192,7 +215,7 @@ export const StrategicDepthSurface = ({
         >
           <form onSubmit={submitOrganization}>
             <div>
-              <strong>Dodaj Organization</strong>
+              <strong>Dodaj organizację</strong>
             </div>
             <label>
               <span>Nazwa</span>
@@ -220,10 +243,10 @@ export const StrategicDepthSurface = ({
           </form>
           <form onSubmit={submitOpportunity}>
             <div>
-              <strong>Dodaj Opportunity</strong>
+              <strong>Dodaj szansę</strong>
             </div>
             <label>
-              <span>Organization</span>
+              <span>Organizacja</span>
               <select
                 value={opportunityOrganizationId}
                 onChange={(event) =>
@@ -323,7 +346,7 @@ export const StrategicDepthSurface = ({
             >
               <header className="section-heading">
                 <div>
-                  <h2 id="thread-title">Od Organization do Projectu</h2>
+                  <h2 id="thread-title">Od organizacji do projektu</h2>
                 </div>
                 <span>{opportunities.length} aktywnych wątków</span>
               </header>
@@ -519,7 +542,7 @@ export const StrategicDepthSurface = ({
                     disabled={busyId === candidate.id}
                     onClick={() => dismissRadar(candidate)}
                   >
-                    {busyId === candidate.id ? "Zapisuję…" : "Odrzuć kandydat"}
+                    {busyId === candidate.id ? "Zapisuję…" : "Odrzuć kandydata"}
                   </button>
                 </div>
               </article>
@@ -529,8 +552,8 @@ export const StrategicDepthSurface = ({
                 key={`${review.id}:${item.recordId}`}
                 className="review-item"
               >
-                <span className="review-type">Decision impact</span>
-                <strong>{item.recordKind}</strong>
+                <span className="review-type">Skutek decyzji</span>
+                <strong>{recordKindLabels[item.recordKind] ?? item.recordKind}</strong>
                 <p>{review.reason}</p>
                 <button
                   className="secondary-button compact"

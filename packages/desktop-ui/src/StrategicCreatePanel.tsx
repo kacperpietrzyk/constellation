@@ -114,7 +114,7 @@ export const StrategicCreatePanel = ({
               required
             />
             <select name="organizationId" aria-label="Organizacja osoby">
-              <option value="">Bez Organization</option>
+              <option value="">Bez organizacji</option>
               {organizations.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
@@ -155,10 +155,10 @@ export const StrategicCreatePanel = ({
           >
             <select
               name="opportunityId"
-              aria-label="Opportunity dla oferty"
+              aria-label="Szansa dla oferty"
               required
             >
-              <option value="">Wybierz Opportunity</option>
+              <option value="">Wybierz szansę</option>
               {opportunities.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.title}
@@ -231,7 +231,7 @@ export const StrategicCreatePanel = ({
               aria-label="Organizacja odnowienia"
               required
             >
-              <option value="">Wybierz Organization</option>
+              <option value="">Wybierz organizację</option>
               {organizations.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
@@ -296,7 +296,7 @@ export const StrategicCreatePanel = ({
               aria-label="Organizacja opisywana przez fakt"
               required
             >
-              <option value="">Wybierz Organization</option>
+              <option value="">Wybierz organizację</option>
               {organizations.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}

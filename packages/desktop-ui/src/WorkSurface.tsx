@@ -178,7 +178,7 @@ export const WorkSurface = ({
       <header className="surface-header wave2-header work-header">
         <div>
           <p className="eyebrow">Obszar → inicjatywa → projekt → działanie</p>
-          <h1 id="surface-title">Praca bez utraty kontekstu</h1>
+          <h1 id="surface-title">Praca</h1>
           <p>
             Trwała odpowiedzialność jest oddzielona od wyniku do osiągnięcia.
             Zadania pokazują, co można zrobić teraz, a co czeka albo jest

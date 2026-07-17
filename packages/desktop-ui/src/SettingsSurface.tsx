@@ -287,7 +287,7 @@ export const SettingsSurface = ({
       <header className="surface-header wave2-header">
         <div>
           <p className="eyebrow">Workspace</p>
-          <h1 id="surface-title">Ustawienia bez panelu administracyjnego</h1>
+          <h1 id="surface-title">Ustawienia</h1>
           <p>
             Tożsamość, dane, wygląd, dostęp, połączenia i wydanie w jednym
             spokojnym miejscu.
