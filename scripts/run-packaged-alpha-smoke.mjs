@@ -62,6 +62,34 @@ fs.mkdirSync(stateRoot, { recursive: true });
 const delay = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+const clearSystemClipboard = () => {
+  let cleared;
+  if (process.platform === "darwin") {
+    cleared = spawnSync("/usr/bin/pbcopy", [], {
+      input: "",
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+  } else if (process.platform === "win32") {
+    cleared = spawnSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-STA",
+        "-Command",
+        "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::Clear()",
+      ],
+      { encoding: "utf8", timeout: 10_000 },
+    );
+  } else {
+    throw new Error("PACKAGED_ALPHA_CLIPBOARD_PLATFORM_UNSUPPORTED");
+  }
+  if (cleared.error !== undefined || cleared.status !== 0) {
+    throw new Error("PACKAGED_ALPHA_CLIPBOARD_CLEAR_FAILED");
+  }
+};
+
 class CdpClient {
   #id = 0;
   #issues = [];
@@ -467,7 +495,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         (phase === "restore-confirm" ? "recovery_required" : "ready") ||
       boundary.hasNodeRequire ||
       boundary.bridgeKeys.join(",") !==
-        "acknowledgeDocumentUpdates,addMeetingWorkItem,cancelWorkspaceRestore,checkForRelease,configureJamie,confirmCalendarBlocks,confirmWorkspaceRestore,createDocumentRevision,createRemoteAgentGrant,createWorkspace,discardCapturePayload,disconnectJamie,downloadRelease,editMeetingWorkItem,enrollHub,executeCommand,exportHubAuthorization,exportSupportReport,exportWorkspaceBackup,getBuildInfo,getCrossWorkspaceCockpit,getDataHomeStatus,getJamieStatus,getMeetingLoop,getReleaseStatus,importStarterWorkspace,installRelease,listDocumentRevisions,listRemoteAgentGrants,listWorkspaces,onAttentionActivated,openDetachedSurface,openDocument,persistDocumentUpdate,prepareAgentCredential,prepareWorkspaceRestore,previewCalendarBlocks,previewStarterWorkspace,requestCalendarAccess,restoreDocumentRevision,revokeRemoteAgentGrant,rotateRemoteAgentGrant,runQuery,selectCapturePayload,stageCapturePayload,switchWorkspace,syncDataHome,syncJamie"
+        "acknowledgeDocumentUpdates,addMeetingWorkItem,cancelWorkspaceRestore,checkForRelease,configureJamie,confirmCalendarBlocks,confirmWorkspaceRestore,copyWorkspaceRecoveryCode,createDocumentRevision,createRemoteAgentGrant,createWorkspace,discardCapturePayload,disconnectJamie,downloadRelease,editMeetingWorkItem,enrollHub,executeCommand,exportHubAuthorization,exportSupportReport,exportWorkspaceBackup,getBuildInfo,getCrossWorkspaceCockpit,getDataHomeStatus,getJamieStatus,getMeetingLoop,getReleaseStatus,importStarterWorkspace,installRelease,listDocumentRevisions,listRemoteAgentGrants,listWorkspaces,onAttentionActivated,openDetachedSurface,openDocument,persistDocumentUpdate,prepareAgentCredential,prepareWorkspaceRestore,previewCalendarBlocks,previewStarterWorkspace,requestCalendarAccess,restoreDocumentRevision,revokeRemoteAgentGrant,rotateRemoteAgentGrant,runQuery,selectCapturePayload,stageCapturePayload,switchWorkspace,syncDataHome,syncJamie"
     ) {
       throw new Error(
         `PACKAGED_ALPHA_PRELOAD_OR_IPC_INVALID:${JSON.stringify(boundary)}`,
@@ -841,6 +869,17 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         throw new Error(
           `PACKAGED_ALPHA_BACKUP_EXPORT_FAILED_${backup.outcome}_${backup.code ?? "no-code"}_${backup.metadata?.workspaceId ?? "no-workspace"}_${boundary.build.initialWorkspaceId}`,
         );
+      }
+      let clipboardCopy;
+      try {
+        clipboardCopy = await client.evaluate(
+          `window.constellation.copyWorkspaceRecoveryCode({ recoveryCode: ${JSON.stringify(backup.recoveryCode)} })`,
+        );
+      } finally {
+        clearSystemClipboard();
+      }
+      if (clipboardCopy.outcome !== "success") {
+        throw new Error("PACKAGED_ALPHA_RECOVERY_CODE_COPY_FAILED");
       }
       const checkpointStatus = await client.evaluate(
         `window.constellation.getDataHomeStatus()`,
