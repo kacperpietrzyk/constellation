@@ -290,9 +290,20 @@ export const MeetingsSurface = ({
   if (state.kind === "error") {
     return (
       <section className="meeting-surface state-panel state-panel--error">
+        <span className="empty-glyph" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          >
+            <path d="M12 5v8M12 17v.5" />
+          </svg>
+        </span>
         <h1>Spotkania są chwilowo niedostępne</h1>
         <p>{state.message}</p>
-        <button className="secondary-button" onClick={load}>
+        <button className="primary-button" onClick={load}>
           Spróbuj ponownie
         </button>
       </section>

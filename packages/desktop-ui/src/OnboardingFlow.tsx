@@ -183,7 +183,7 @@ export const OnboardingFlow = ({
           <div className="onboarding-forward">
             <button
               type="button"
-              className="text-button"
+              className="quiet-button"
               disabled={busy}
               onClick={() => void skip()}
             >

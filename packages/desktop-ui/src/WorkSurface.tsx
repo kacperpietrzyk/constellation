@@ -26,7 +26,17 @@ const WorkEmpty = ({
   readonly detail: string;
 }) => (
   <div className="work-empty" role="status">
-    <span aria-hidden="true">○</span>
+    <span className="empty-glyph" aria-hidden="true">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      >
+        <path d="M5 12h14" />
+      </svg>
+    </span>
     <div>
       <strong>{title}</strong>
       <p>{detail}</p>

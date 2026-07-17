@@ -20,10 +20,20 @@ type Record = RelationshipWorkspaceProjection["records"][number];
 type Radar = Extract<Record, { kind: "radar_candidate" }>;
 type Review = Extract<Record, { kind: "impact_review" }>;
 
+const stateLabels: { readonly [state: string]: string } = {
+  active: "Aktywne",
+  pursued: "W toku",
+  stale: "Wygasłe",
+  watching: "Obserwowane",
+  open: "Otwarte",
+  resolved: "Rozstrzygnięte",
+  renewed: "Odnowione",
+};
+
 const StateMark = ({ state }: { readonly state: string }) => (
   <span className={`strategic-state strategic-state--${state}`}>
     <i aria-hidden="true" />
-    {state.replaceAll("_", " ")}
+    {stateLabels[state] ?? state.replaceAll("_", " ")}
   </span>
 );
 
@@ -377,7 +387,7 @@ export const StrategicDepthSurface = ({
               {[...renewals, ...facts].map((record) => (
                 <div className="ledger-row" key={record.id}>
                   <span className="record-kind">
-                    {record.kind === "renewal" ? "Renewal" : "Fact"}
+                    {record.kind === "renewal" ? "Odnowienie" : "Fakt"}
                   </span>
                   <div>
                     <strong>
@@ -434,7 +444,7 @@ export const StrategicDepthSurface = ({
               </header>
               {people.map((person) => (
                 <div className="ledger-row" key={person.id}>
-                  <span className="record-kind">Person</span>
+                  <span className="record-kind">Osoba</span>
                   <div>
                     <strong>{person.name}</strong>
                     <small>
@@ -448,7 +458,7 @@ export const StrategicDepthSurface = ({
               ))}
               {decisions.map((decision) => (
                 <div className="ledger-row" key={decision.id}>
-                  <span className="record-kind">Decision</span>
+                  <span className="record-kind">Decyzja</span>
                   <div>
                     <strong>{decision.title}</strong>
                     <small>{decision.rationale}</small>
@@ -458,7 +468,7 @@ export const StrategicDepthSurface = ({
               ))}
               {recurrences.map((recurrence) => (
                 <div className="ledger-row" key={recurrence.id}>
-                  <span className="record-kind">Recurrence</span>
+                  <span className="record-kind">Cykl</span>
                   <div>
                     <strong>{recurrence.title}</strong>
                     <small>
@@ -500,7 +510,7 @@ export const StrategicDepthSurface = ({
             </header>
             {radar.map((candidate) => (
               <article key={candidate.id} className="review-item">
-                <span className="review-type">Knowledge Radar</span>
+                <span className="review-type">Radar wiedzy</span>
                 <strong>{candidate.title}</strong>
                 <p>{candidate.relevance}</p>
                 <div>

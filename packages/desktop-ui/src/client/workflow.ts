@@ -143,9 +143,13 @@ const queryProjection = async <Kind extends QueryProjection["kind"]>(
 ): Promise<Projection<Kind>> => {
   const response: RendererQueryResponse = await client.runQuery(query);
   if (response.kind === "contract_rejected")
-    throw new Error("The desktop boundary rejected an invalid query.");
+    throw new Error(
+      "Aplikacja odrzuciła nieprawidłowe zapytanie. Odśwież i spróbuj ponownie.",
+    );
   if (response.result.outcome !== "success")
-    throw new Error(`Query unavailable: ${response.result.diagnosticCode}`);
+    throw new Error(
+      "Dane tego widoku są chwilowo niedostępne. Spróbuj ponownie.",
+    );
   if (response.result.projection.kind !== kind)
     throw new Error(
       `Unexpected projection: ${response.result.projection.kind}`,
@@ -160,7 +164,9 @@ const optionalProjection = async <Kind extends QueryProjection["kind"]>(
     return { kind: "ready", data: await promise };
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Query unavailable.";
+      error instanceof Error
+        ? error.message
+        : "Dane tego widoku są chwilowo niedostępne.";
     return { kind: "unavailable", message };
   }
 };
