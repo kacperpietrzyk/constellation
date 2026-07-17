@@ -294,13 +294,13 @@ subshell restores the previous Keychain configuration even when a smoke test
 fails:
 
 ```sh
-npm run package:alpha
 (
   set -eu
   export CONSTELLATION_ALLOW_LOCAL_KEYCHAIN_TEST=true
   export CONSTELLATION_KEYCHAIN_TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/constellation-keychain.XXXXXX")"
   trap 'node scripts/desktop/restore-ci-macos-keychain.mjs; rm -rf "$CONSTELLATION_KEYCHAIN_TEST_ROOT"' EXIT
   node scripts/desktop/prepare-ci-macos-keychain.mjs
+  npm run package:alpha
   npm run test:alpha:packaged
   npm run test:hub:packaged
 )

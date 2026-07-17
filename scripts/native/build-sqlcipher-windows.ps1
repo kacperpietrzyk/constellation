@@ -27,7 +27,7 @@ if (-not [Environment]::Is64BitOperatingSystem) {
   throw "The Windows x64 application build requires a 64-bit runner."
 }
 
-foreach ($RequiredFile in @("sqlite3.c", "sqlite3.h")) {
+foreach ($RequiredFile in @("sqlite3.c", "sqlite3.h", "SQLCipher-LICENSE.md")) {
   if (-not (Test-Path (Join-Path $Amalgamation $RequiredFile))) {
     throw "Missing SQLCipher amalgamation file: $RequiredFile"
   }
@@ -98,6 +98,8 @@ finally {
 
 $Binding = Join-Path $ModuleRoot "build\Release\better_sqlite3.node"
 if (-not (Test-Path $Binding)) { throw "Native binding output is missing." }
+Copy-Item (Join-Path $Amalgamation "SQLCipher-LICENSE.md") (Join-Path $ModuleRoot "SQLCipher-LICENSE.md") -Force
+Copy-Item (Join-Path $SourceRoot "LICENSE.txt") (Join-Path $ModuleRoot "OpenSSL-LICENSE.txt") -Force
 
 $Dump = Join-Path $RunnerTemp "better-sqlite3-dependencies.txt"
 Invoke-DeveloperCommand "dumpbin /headers `"$Binding`" > `"$Dump`" && dumpbin /dependents `"$Binding`" >> `"$Dump`""
