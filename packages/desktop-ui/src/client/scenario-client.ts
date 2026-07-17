@@ -67,6 +67,7 @@ export const createScenarioClient = (
     detailCode: "scenario_unconfigured",
   }),
   editMeetingWorkItem: async () => false,
+  correctMeetingWorkItemResponsibility: async () => false,
   addMeetingWorkItem: async () => false,
   getMeetingLoop: async () => ({
     capability: {

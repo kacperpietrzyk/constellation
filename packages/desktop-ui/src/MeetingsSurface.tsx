@@ -71,9 +71,11 @@ const workItemStateLabel = (item: MeetingWorkItem) => {
 };
 
 const workItemMetadata = (item: MeetingWorkItem) =>
-  item.assignee === undefined
-    ? workItemStateLabel(item)
-    : `${workItemStateLabel(item)} · Odpowiedzialność: ${item.assignee.name}`;
+  item.responsibilityOverride !== undefined
+    ? `${workItemStateLabel(item)} · Odpowiedzialność: ${item.responsibilityOverride.name} · korekta lokalna`
+    : item.assignee === undefined
+      ? workItemStateLabel(item)
+      : `${workItemStateLabel(item)} · Jamie: ${item.assignee.name}`;
 
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat("pl-PL", {
@@ -235,6 +237,8 @@ export const MeetingsSurface = ({
   const [preview, setPreview] = useState<CalendarWritePreview>();
   const [notice, setNotice] = useState<string>();
   const [busyItemId, setBusyItemId] = useState<string>();
+  const [responsibilityItemId, setResponsibilityItemId] = useState<string>();
+  const [responsibilityName, setResponsibilityName] = useState("");
   const [jamie, setJamie] = useState<JamieState>({ kind: "loading" });
   const [jamieApiKey, setJamieApiKey] = useState("");
   const [jamieScope, setJamieScope] = useState<"personal" | "workspace">(
@@ -854,7 +858,130 @@ export const MeetingsSurface = ({
                                     Odrzuć
                                   </button>
                                 )}
+                                {(item.kind === "task" ||
+                                  item.kind === "waiting" ||
+                                  item.kind === "follow_up") && (
+                                  <button
+                                    className="quiet-button"
+                                    disabled={busyItemId === item.id}
+                                    onClick={() => {
+                                      setResponsibilityItemId(item.id);
+                                      setResponsibilityName(
+                                        item.responsibilityOverride?.name ??
+                                          item.assignee?.name ??
+                                          "",
+                                      );
+                                    }}
+                                  >
+                                    {item.responsibilityOverride ===
+                                      undefined && item.assignee === undefined
+                                      ? "Ustaw osobę"
+                                      : "Zmień osobę"}
+                                  </button>
+                                )}
                               </div>
+                              {responsibilityItemId === item.id && (
+                                <form
+                                  className="meeting-responsibility-form"
+                                  onSubmit={(event) => {
+                                    event.preventDefault();
+                                    setBusyItemId(item.id);
+                                    void client
+                                      .correctMeetingWorkItemResponsibility({
+                                        meetingId: selectedMeeting.id,
+                                        workItemId: item.id,
+                                        expectedVersion: item.version,
+                                        name: responsibilityName.trim(),
+                                      })
+                                      .then((changed) => {
+                                        setBusyItemId(undefined);
+                                        if (changed) {
+                                          setResponsibilityItemId(undefined);
+                                          setResponsibilityName("");
+                                          load();
+                                        } else
+                                          setNotice(
+                                            "Nie zapisano odpowiedzialności, bo wynik zmienił się w międzyczasie.",
+                                          );
+                                      });
+                                  }}
+                                >
+                                  <label>
+                                    Odpowiedzialność za to działanie
+                                    <input
+                                      autoFocus
+                                      maxLength={300}
+                                      required
+                                      value={responsibilityName}
+                                      onChange={(event) =>
+                                        setResponsibilityName(
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                    {item.assignee !== undefined && (
+                                      <small>
+                                        Jamie wskazuje: {item.assignee.name}
+                                      </small>
+                                    )}
+                                  </label>
+                                  <button
+                                    className="primary-button"
+                                    disabled={
+                                      busyItemId === item.id ||
+                                      responsibilityName.trim().length === 0
+                                    }
+                                    type="submit"
+                                  >
+                                    Zapisz korektę
+                                  </button>
+                                  {item.responsibilityOverride !==
+                                    undefined && (
+                                    <button
+                                      className="quiet-button"
+                                      disabled={busyItemId === item.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setBusyItemId(item.id);
+                                        void client
+                                          .correctMeetingWorkItemResponsibility(
+                                            {
+                                              meetingId: selectedMeeting.id,
+                                              workItemId: item.id,
+                                              expectedVersion: item.version,
+                                              name: null,
+                                            },
+                                          )
+                                          .then((changed) => {
+                                            setBusyItemId(undefined);
+                                            if (changed) {
+                                              setResponsibilityItemId(
+                                                undefined,
+                                              );
+                                              setResponsibilityName("");
+                                              load();
+                                            } else
+                                              setNotice(
+                                                "Nie przywrócono odpowiedzialności z Jamie, bo wynik zmienił się w międzyczasie.",
+                                              );
+                                          });
+                                      }}
+                                    >
+                                      Przywróć Jamie
+                                    </button>
+                                  )}
+                                  <button
+                                    className="quiet-button"
+                                    type="button"
+                                    onClick={() => {
+                                      setResponsibilityItemId(undefined);
+                                      setResponsibilityName("");
+                                    }}
+                                  >
+                                    Anuluj
+                                  </button>
+                                </form>
+                              )}
                             </li>
                           ))}
                         </ul>

@@ -65,6 +65,8 @@ export const DESKTOP_CHANNELS = {
   getMeetingLoop: "constellation:meeting-loop:get",
   requestCalendarAccess: "constellation:calendar:request-access",
   editMeetingWorkItem: "constellation:meeting-loop:edit-work-item",
+  correctMeetingWorkItemResponsibility:
+    "constellation:meeting-loop:correct-work-item-responsibility",
   addMeetingWorkItem: "constellation:meeting-loop:add-work-item",
   previewCalendarBlocks: "constellation:calendar-blocks:preview",
   confirmCalendarBlocks: "constellation:calendar-blocks:confirm",
@@ -314,6 +316,12 @@ export interface ConstellationRendererClient {
     readonly title: string;
     readonly state: MeetingWorkItem["state"];
   }): Promise<boolean>;
+  correctMeetingWorkItemResponsibility(input: {
+    readonly meetingId: string;
+    readonly workItemId: string;
+    readonly expectedVersion: number;
+    readonly name: string | null;
+  }): Promise<boolean>;
   addMeetingWorkItem(input: {
     readonly meetingId: string;
     readonly requestId: string;
@@ -534,6 +542,13 @@ export const createRendererClient = (
   editMeetingWorkItem: (input) =>
     invoke(DESKTOP_CHANNELS.editMeetingWorkItem, input) as ReturnType<
       ConstellationRendererClient["editMeetingWorkItem"]
+    >,
+  correctMeetingWorkItemResponsibility: (input) =>
+    invoke(
+      DESKTOP_CHANNELS.correctMeetingWorkItemResponsibility,
+      input,
+    ) as ReturnType<
+      ConstellationRendererClient["correctMeetingWorkItemResponsibility"]
     >,
   addMeetingWorkItem: (input) =>
     invoke(DESKTOP_CHANNELS.addMeetingWorkItem, input) as ReturnType<

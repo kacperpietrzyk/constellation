@@ -249,6 +249,12 @@ export const MeetingWorkItemAssigneeSchema = z
   })
   .strict();
 
+export const MeetingWorkItemResponsibilityOverrideSchema = z
+  .object({
+    name: z.string().trim().min(1).max(300),
+  })
+  .strict();
+
 export const MeetingWorkItemSchema = z
   .object({
     id: z.uuid(),
@@ -265,6 +271,8 @@ export const MeetingWorkItemSchema = z
     sourceControlled: z.boolean(),
     locallyModified: z.boolean(),
     assignee: MeetingWorkItemAssigneeSchema.optional(),
+    responsibilityOverride:
+      MeetingWorkItemResponsibilityOverrideSchema.optional(),
     sourceValueInConflict: z.string().max(4000).optional(),
     taskId: TaskIdSchema.optional(),
     projectId: ProjectIdSchema.optional(),

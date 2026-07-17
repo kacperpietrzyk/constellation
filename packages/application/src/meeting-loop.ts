@@ -4,6 +4,7 @@ import {
   FactualMeetingBriefSchema,
   JamieApiMeetingSchema,
   JamieApiTaskSchema,
+  MeetingWorkItemResponsibilityOverrideSchema,
   MeetingLoopSurfaceSchema,
   NormalizedJamieMeetingSchema,
   type CalendarBlockDraft,
@@ -657,6 +658,78 @@ export class MeetingLoopService {
       updatedAt: this.dependencies.clock.now(),
     };
     const next = {
+      ...state,
+      revision: state.revision + 1,
+      meetings: state.meetings.map((value) =>
+        value.id === meeting.id ? updated : value,
+      ),
+      audits: [
+        ...state.audits,
+        this.workAudit({
+          authorization: input.authorization,
+          meetingId: meeting.id,
+          workItemId: item.id,
+          action: "edited",
+          fromVersion: item.version,
+          toVersion: item.version + 1,
+        }),
+      ],
+    };
+    return this.dependencies.repository.save(
+      input.authorization.workspaceId,
+      state.revision,
+      next,
+    )
+      ? updated
+      : undefined;
+  }
+
+  public correctWorkItemResponsibility(input: {
+    readonly authorization: MeetingLoopAuthorization;
+    readonly meetingId: string;
+    readonly workItemId: string;
+    readonly expectedVersion: number;
+    readonly name?: string;
+  }): ImportedMeeting | undefined {
+    const override =
+      input.name === undefined
+        ? undefined
+        : MeetingWorkItemResponsibilityOverrideSchema.safeParse({
+            name: input.name,
+          });
+    if (override !== undefined && !override.success) return undefined;
+    const state = this.dependencies.repository.load(
+      input.authorization.workspaceId,
+    );
+    const meeting = state.meetings.find((item) => item.id === input.meetingId);
+    if (
+      meeting === undefined ||
+      !input.authorization.editableSpaceIds.includes(meeting.spaceId)
+    )
+      return undefined;
+    const item = meeting.workItems.find(
+      (value) => value.id === input.workItemId,
+    );
+    if (
+      item?.version !== input.expectedVersion ||
+      item.kind === "decision" ||
+      item.kind === "note"
+    )
+      return undefined;
+    const workItems = meeting.workItems.map((value): MeetingWorkItem => {
+      if (value.id !== item.id) return value;
+      const next = { ...value };
+      if (override === undefined) delete next.responsibilityOverride;
+      else next.responsibilityOverride = override.data;
+      return { ...next, version: value.version + 1 };
+    });
+    const updated: ImportedMeeting = {
+      ...meeting,
+      workItems,
+      version: meeting.version + 1,
+      updatedAt: this.dependencies.clock.now(),
+    };
+    const next: MeetingLoopState = {
       ...state,
       revision: state.revision + 1,
       meetings: state.meetings.map((value) =>

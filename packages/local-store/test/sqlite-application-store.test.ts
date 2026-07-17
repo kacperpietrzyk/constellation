@@ -199,6 +199,7 @@ describe("meeting loop persistence", () => {
             name: "Antek",
             email: "antek@example.com",
           },
+          responsibilityOverride: { name: "Alex" },
           version: 1,
         },
       ],

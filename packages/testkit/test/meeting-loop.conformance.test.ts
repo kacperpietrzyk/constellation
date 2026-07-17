@@ -323,6 +323,108 @@ test("backfills source responsibility once without turning it into a workspace a
   assert.equal(redelivered.meeting.version, corrected.meeting.version);
 });
 
+test("keeps an audited local responsibility correction across Jamie reconciliation", () => {
+  const { service, repository } = createHarness();
+  const fromJamie = source({
+    hash: "8".repeat(64),
+    taskId: "task-1",
+    assigneeName: "Kacper Pietrzyk",
+    assigneeEmail: "kacper@example.com",
+  });
+  const imported = service.importJamie({
+    authorization,
+    spaceId,
+    source: fromJamie,
+  });
+  assert.equal(imported.outcome, "applied");
+  const importedTask = imported.meeting.workItems.find(
+    (item) => item.sourceExternalId === "task-1",
+  )!;
+  const decision = imported.meeting.workItems.find(
+    (item) => item.kind === "decision",
+  )!;
+  assert.equal(
+    service.correctWorkItemResponsibility({
+      authorization,
+      meetingId: imported.meeting.id,
+      workItemId: decision.id,
+      expectedVersion: decision.version,
+      name: "Antek",
+    }),
+    undefined,
+  );
+
+  const corrected = service.correctWorkItemResponsibility({
+    authorization,
+    meetingId: imported.meeting.id,
+    workItemId: importedTask.id,
+    expectedVersion: importedTask.version,
+    name: " Antek ",
+  });
+  const correctedTask = corrected?.workItems.find(
+    (item) => item.id === importedTask.id,
+  );
+  assert.deepEqual(correctedTask?.assignee, {
+    name: "Kacper Pietrzyk",
+    email: "kacper@example.com",
+  });
+  assert.deepEqual(correctedTask?.responsibilityOverride, { name: "Antek" });
+  assert.equal(correctedTask?.state, "open");
+
+  const redelivered = service.importJamie({
+    authorization,
+    spaceId,
+    source: fromJamie,
+  });
+  assert.equal(redelivered.outcome, "no_change");
+  assert.deepEqual(
+    redelivered.meeting.workItems.find((item) => item.id === importedTask.id)
+      ?.responsibilityOverride,
+    { name: "Antek" },
+  );
+
+  const sourceCorrected = service.importJamie({
+    authorization,
+    spaceId,
+    source: source({
+      hash: "7".repeat(64),
+      taskId: "task-1",
+      assigneeName: "Kacper P.",
+    }),
+  });
+  assert.equal(sourceCorrected.outcome, "corrected");
+  const reconciledTask = sourceCorrected.meeting.workItems.find(
+    (item) => item.id === importedTask.id,
+  )!;
+  assert.equal(reconciledTask.assignee?.name, "Kacper P.");
+  assert.deepEqual(reconciledTask.responsibilityOverride, { name: "Antek" });
+  assert.equal(
+    service.correctWorkItemResponsibility({
+      authorization,
+      meetingId: imported.meeting.id,
+      workItemId: importedTask.id,
+      expectedVersion: importedTask.version,
+    }),
+    undefined,
+  );
+
+  const cleared = service.correctWorkItemResponsibility({
+    authorization,
+    meetingId: imported.meeting.id,
+    workItemId: importedTask.id,
+    expectedVersion: reconciledTask.version,
+  });
+  assert.equal(
+    cleared?.workItems.find((item) => item.id === importedTask.id)
+      ?.responsibilityOverride,
+    undefined,
+  );
+  assert.deepEqual(
+    repository.load(workspaceId).audits.map((audit) => audit.action),
+    ["edited", "edited"],
+  );
+});
+
 test("Jamie correction preserves a locally edited work item and exposes conflict", () => {
   const { service } = createHarness();
   const applied = service.importJamie({
