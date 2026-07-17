@@ -110,9 +110,10 @@ const client: ConstellationRendererClient = {
             sourceControlled: true,
             locallyModified: false,
             assignee: {
-              name: "Antek",
-              email: "antek@example.com",
+              name: "Kacper Pietrzyk",
+              email: "kacper@example.com",
             },
+            responsibilityOverride: { name: "Antek" },
             version: 1,
           },
         ],

@@ -1447,6 +1447,9 @@ kbd {
 .inspector .meeting-add-item {
   grid-template-columns: 1fr;
 }
+.inspector .meeting-responsibility-form {
+  grid-template-columns: 1fr;
+}
 .inspector .meeting-result-transcript > div {
   max-height: none;
   overflow: visible;
@@ -2989,6 +2992,35 @@ kbd {
 .meeting-item-actions .quiet-button {
   min-height: 2.75rem;
 }
+.meeting-responsibility-form {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) auto auto auto;
+  gap: var(--space-2);
+  align-items: end;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-subtle);
+}
+.meeting-responsibility-form label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+}
+.meeting-responsibility-form label small {
+  color: var(--text-quaternary);
+}
+.meeting-responsibility-form input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--control-bg);
+  color: var(--text-primary);
+}
 .meeting-result-empty-copy {
   margin: 0;
   color: var(--text-quaternary);
@@ -3202,6 +3234,9 @@ kbd {
     flex-wrap: wrap;
   }
   .meeting-add-item {
+    grid-template-columns: 1fr;
+  }
+  .meeting-responsibility-form {
     grid-template-columns: 1fr;
   }
   .evidence-thread {

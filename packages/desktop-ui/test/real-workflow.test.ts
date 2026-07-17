@@ -212,6 +212,7 @@ const createTypedClient = () => {
       detailCode: "test_unconfigured",
     }),
     editMeetingWorkItem: async () => false,
+    correctMeetingWorkItemResponsibility: async () => false,
     addMeetingWorkItem: async () => false,
     getMeetingLoop: async () => ({
       capability: {

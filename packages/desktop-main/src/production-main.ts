@@ -53,6 +53,7 @@ import {
   CalendarBlockDraftSchema,
   CaptureOriginalSchema,
   isCustodiedCaptureOriginal,
+  MeetingWorkItemResponsibilityOverrideSchema,
   MeetingWorkItemSchema,
   type ImportedMeeting,
 } from "@constellation/contracts";
@@ -1759,6 +1760,42 @@ const startProductionDesktop = async (): Promise<void> => {
         expectedVersion: candidate.expectedVersion,
         title: candidate.title,
         state,
+      });
+      if (updated === undefined) return false;
+      publishMeetingToCommandFeed(updated);
+      return true;
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.correctMeetingWorkItemResponsibility,
+    (event, raw: unknown) => {
+      assertTrustedSender(event);
+      if (meetingLoop === undefined)
+        throw new Error("Meeting loop is unavailable.");
+      if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+        throw new Error("Invalid meeting responsibility correction.");
+      const candidate = raw as Record<string, unknown>;
+      if (
+        Object.keys(candidate).sort().join(",") !==
+          "expectedVersion,meetingId,name,workItemId" ||
+        typeof candidate.meetingId !== "string" ||
+        typeof candidate.workItemId !== "string" ||
+        typeof candidate.expectedVersion !== "number" ||
+        (candidate.name !== null && typeof candidate.name !== "string")
+      )
+        throw new Error("Invalid meeting responsibility correction.");
+      const override =
+        candidate.name === null
+          ? undefined
+          : MeetingWorkItemResponsibilityOverrideSchema.parse({
+              name: candidate.name,
+            });
+      const updated = meetingLoop.service.correctWorkItemResponsibility({
+        authorization: meetingLoop.authorization(),
+        meetingId: candidate.meetingId,
+        workItemId: candidate.workItemId,
+        expectedVersion: candidate.expectedVersion,
+        ...(override === undefined ? {} : { name: override.name }),
       });
       if (updated === undefined) return false;
       publishMeetingToCommandFeed(updated);

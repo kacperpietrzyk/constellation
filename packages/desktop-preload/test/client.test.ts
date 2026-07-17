@@ -19,6 +19,7 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "confirmCalendarBlocks",
     "confirmWorkspaceRestore",
     "copyWorkspaceRecoveryCode",
+    "correctMeetingWorkItemResponsibility",
     "createDocumentRevision",
     "createRemoteAgentGrant",
     "createWorkspace",
