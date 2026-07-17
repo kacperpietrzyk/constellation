@@ -80,7 +80,6 @@ export const StrategicCreatePanel = ({
     >
       <header>
         <div>
-          <p className="eyebrow">Direct manipulation</p>
           <h2 id="strategic-create-title">
             Dodaj rekord tam, gdzie ma konsekwencje
           </h2>

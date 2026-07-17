@@ -52,6 +52,7 @@ export const AccessSurface = ({
   readonly onAgentRotate: (grant: AgentGrant) => void;
   readonly onAgentRevoke: (grant: AgentGrant) => void;
 }) => {
+  const [confirmRevoke, setConfirmRevoke] = useState<string>();
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<"admin" | "member" | "guest">("member");
   const [spaceAccess, setSpaceAccess] = useState<"view" | "comment" | "edit">(
@@ -286,14 +287,40 @@ export const AccessSurface = ({
                         <option value="edit">Może edytować</option>
                       </select>
                     </label>
-                    <button
-                      className="quiet-danger-button"
-                      type="button"
-                      onClick={() => onRevoke(member)}
-                      disabled={busy}
-                    >
-                      Cofnij dostęp
-                    </button>
+                    {confirmRevoke === `member-${member.membershipId}` ? (
+                      <>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => setConfirmRevoke(undefined)}
+                          disabled={busy}
+                        >
+                          Anuluj
+                        </button>
+                        <button
+                          className="quiet-danger-button"
+                          type="button"
+                          onClick={() => {
+                            setConfirmRevoke(undefined);
+                            onRevoke(member);
+                          }}
+                          disabled={busy}
+                        >
+                          Potwierdź cofnięcie
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="quiet-danger-button"
+                        type="button"
+                        onClick={() =>
+                          setConfirmRevoke(`member-${member.membershipId}`)
+                        }
+                        disabled={busy}
+                      >
+                        Cofnij dostęp
+                      </button>
+                    )}
                   </div>
                 )}
             </article>
@@ -557,14 +584,40 @@ export const AccessSurface = ({
                           >
                             Obróć poświadczenie
                           </button>
-                          <button
-                            className="quiet-danger-button"
-                            type="button"
-                            onClick={() => onAgentRevoke(grant)}
-                            disabled={busy}
-                          >
-                            Cofnij dostęp
-                          </button>
+                          {confirmRevoke === `agent-${grant.grantId}` ? (
+                            <>
+                              <button
+                                className="secondary-button"
+                                type="button"
+                                onClick={() => setConfirmRevoke(undefined)}
+                                disabled={busy}
+                              >
+                                Anuluj
+                              </button>
+                              <button
+                                className="quiet-danger-button"
+                                type="button"
+                                onClick={() => {
+                                  setConfirmRevoke(undefined);
+                                  onAgentRevoke(grant);
+                                }}
+                                disabled={busy}
+                              >
+                                Potwierdź cofnięcie
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              className="quiet-danger-button"
+                              type="button"
+                              onClick={() =>
+                                setConfirmRevoke(`agent-${grant.grantId}`)
+                              }
+                              disabled={busy}
+                            >
+                              Cofnij dostęp
+                            </button>
+                          )}
                         </div>
                       )}
                   </article>

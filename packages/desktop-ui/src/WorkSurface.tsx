@@ -219,7 +219,6 @@ export const WorkSurface = ({
         >
           <div className="work-section-heading">
             <div>
-              <p className="eyebrow">Dlaczego ta praca istnieje</p>
               <h2 id="work-context-title">Kontekst odpowiedzialności</h2>
             </div>
             <span>
@@ -305,7 +304,6 @@ export const WorkSurface = ({
         >
           <div className="work-section-heading">
             <div>
-              <p className="eyebrow">Co dowozi wynik</p>
               <h2 id="work-delivery-title">Projekty i następne działania</h2>
             </div>
             <span>

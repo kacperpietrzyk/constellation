@@ -1,5 +1,6 @@
 import {
   Component,
+  Fragment,
   Suspense,
   lazy,
   useCallback,
@@ -197,6 +198,95 @@ type IconName =
   | "documents"
   | "meetings"
   | "relationships";
+type AgentGrantDetails = {
+  readonly title: string;
+  readonly descriptorLabel: string;
+  readonly descriptorPath: string;
+  readonly connectionLabel: string;
+  readonly connectionValue: string;
+};
+
+const AgentGrantDetailsDialog = ({
+  details,
+  onClose,
+}: {
+  readonly details: AgentGrantDetails;
+  readonly onClose: () => void;
+}) => {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [copied, setCopied] = useState<string>();
+  useEffect(() => {
+    dialogRef.current?.showModal();
+    return () => dialogRef.current?.close();
+  }, []);
+  const copy = async (label: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(label);
+    } catch {
+      setCopied(undefined);
+    }
+  };
+  return (
+    <dialog
+      ref={dialogRef}
+      className="capture-backdrop"
+      aria-labelledby="agent-grant-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <section className="capture-dialog agent-grant-dialog">
+        <header className="capture-header">
+          <div>
+            <p className="eyebrow">MCP</p>
+            <h2 id="agent-grant-title">{details.title}</h2>
+          </div>
+          <button
+            className="icon-button"
+            aria-label="Zamknij szczegóły dostępu"
+            onClick={onClose}
+          >
+            <Icon name="close" />
+          </button>
+        </header>
+        <dl className="agent-grant-details">
+          <div>
+            <dt>{details.descriptorLabel}</dt>
+            <dd className="mono">{details.descriptorPath}</dd>
+            <button
+              className="secondary-button"
+              onClick={() => void copy("descriptor", details.descriptorPath)}
+            >
+              {copied === "descriptor" ? "Skopiowano" : "Kopiuj"}
+            </button>
+          </div>
+          <div>
+            <dt>{details.connectionLabel}</dt>
+            <dd className="mono">{details.connectionValue}</dd>
+            <button
+              className="secondary-button"
+              onClick={() => void copy("connection", details.connectionValue)}
+            >
+              {copied === "connection" ? "Skopiowano" : "Kopiuj"}
+            </button>
+          </div>
+        </dl>
+        <footer className="capture-footer">
+          <span>
+            Skopiuj wartości teraz — poda je host MCP przy konfiguracji.
+          </span>
+          <button className="primary-button" onClick={onClose}>
+            Gotowe
+          </button>
+        </footer>
+      </section>
+    </dialog>
+  );
+};
+
 const Icon = ({ name }: { readonly name: IconName }) => {
   const paths = {
     capture: <path d="M12 5v14M5 12h14" />,
@@ -286,6 +376,7 @@ export const CaptureDialog = ({
   const [retainVoice, setRetainVoice] = useState(
     defaultVoiceRetentionPolicy === "retain",
   );
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const voiceSessionRef = useRef<VoiceRecordingSession | undefined>(undefined);
   const voiceGenerationRef = useRef(0);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -518,6 +609,19 @@ export const CaptureDialog = ({
     dialogRef.current?.close();
     onClose();
   };
+  const dirty =
+    text.trim().length > 0 ||
+    url.trim().length > 0 ||
+    managedOriginal !== undefined ||
+    voiceState === "recording";
+  const requestClose = () => {
+    if (busy || payloadBusy) return;
+    if (dirty) {
+      setConfirmDiscard(true);
+      return;
+    }
+    close();
+  };
   const canSubmit =
     mode === "text"
       ? text.trim().length > 0
@@ -534,10 +638,14 @@ export const CaptureDialog = ({
       aria-labelledby="capture-title"
       onCancel={(event) => {
         event.preventDefault();
-        if (!busy && !payloadBusy) close();
+        if (confirmDiscard) {
+          setConfirmDiscard(false);
+          return;
+        }
+        requestClose();
       }}
       onMouseDown={(event) =>
-        event.target === event.currentTarget && !busy && !payloadBusy && close()
+        event.target === event.currentTarget && requestClose()
       }
       onPaste={(event) => {
         if (mode !== "file") return;
@@ -560,7 +668,7 @@ export const CaptureDialog = ({
             className="icon-button"
             aria-label="Zamknij Quick Capture"
             disabled={busy || payloadBusy}
-            onClick={close}
+            onClick={requestClose}
           >
             <Icon name="close" />
           </button>
@@ -568,15 +676,14 @@ export const CaptureDialog = ({
         <form onSubmit={submit}>
           <div
             className="capture-kind"
-            role="tablist"
+            role="group"
             aria-label="Rodzaj Capture"
           >
             {(["text", "url", "file", "voice"] as const).map((kind) => (
               <button
                 key={kind}
                 type="button"
-                role="tab"
-                aria-selected={mode === kind}
+                aria-pressed={mode === kind}
                 onClick={() => {
                   if (mode === "voice" && kind !== "voice") cancelVoice();
                   setMode(kind);
@@ -775,6 +882,28 @@ export const CaptureDialog = ({
               <strong>Reguła aplikacji · z możliwością cofnięcia</strong>
             </div>
           </div>
+          {confirmDiscard && (
+            <div className="capture-discard-confirm" role="alert">
+              <span>Masz niezapisaną treść. Odrzucić ją?</span>
+              <div>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  autoFocus
+                  onClick={() => setConfirmDiscard(false)}
+                >
+                  Wróć do edycji
+                </button>
+                <button
+                  type="button"
+                  className="quiet-danger-button"
+                  onClick={close}
+                >
+                  Odrzuć treść
+                </button>
+              </div>
+            </div>
+          )}
           <footer className="capture-footer">
             <span>Oryginał zostanie zachowany i powiązany z wynikiem.</span>
             <button
@@ -791,24 +920,92 @@ export const CaptureDialog = ({
   );
 };
 
+const navGroups = ["Praca", "Wiedza", "Administracja"] as const;
+type NavGroup = (typeof navGroups)[number];
+
 const navItems: readonly {
   id: SurfaceId;
   label: string;
   icon: IconName;
   shortcut?: string;
+  group: NavGroup;
 }[] = [
-  { id: "cockpit", label: "Tydzień", icon: "cockpit", shortcut: "1" },
-  { id: "meetings", label: "Spotkania", icon: "meetings", shortcut: "2" },
-  { id: "relationships", label: "Relacje", icon: "relationships" },
-  { id: "work", label: "Praca", icon: "project", shortcut: "3" },
-  { id: "tasks", label: "Zadania", icon: "tasks", shortcut: "4" },
-  { id: "projects", label: "Projekty", icon: "project", shortcut: "5" },
-  { id: "history", label: "Historia Capture", icon: "history", shortcut: "6" },
-  { id: "activity", label: "Aktywność", icon: "activity", shortcut: "7" },
-  { id: "attention", label: "Do uwagi", icon: "attention", shortcut: "8" },
-  { id: "access", label: "Dostęp", icon: "access", shortcut: "9" },
-  { id: "documents", label: "Dokumenty", icon: "documents" },
-  { id: "settings", label: "Ustawienia", icon: "access" },
+  {
+    id: "cockpit",
+    label: "Tydzień",
+    icon: "cockpit",
+    shortcut: "1",
+    group: "Praca",
+  },
+  {
+    id: "meetings",
+    label: "Spotkania",
+    icon: "meetings",
+    shortcut: "2",
+    group: "Praca",
+  },
+  {
+    id: "relationships",
+    label: "Relacje",
+    icon: "relationships",
+    group: "Wiedza",
+  },
+  {
+    id: "work",
+    label: "Praca",
+    icon: "project",
+    shortcut: "3",
+    group: "Praca",
+  },
+  {
+    id: "tasks",
+    label: "Zadania",
+    icon: "tasks",
+    shortcut: "4",
+    group: "Praca",
+  },
+  {
+    id: "projects",
+    label: "Projekty",
+    icon: "project",
+    shortcut: "5",
+    group: "Praca",
+  },
+  {
+    id: "history",
+    label: "Historia Capture",
+    icon: "history",
+    shortcut: "6",
+    group: "Wiedza",
+  },
+  {
+    id: "activity",
+    label: "Aktywność",
+    icon: "activity",
+    shortcut: "7",
+    group: "Administracja",
+  },
+  {
+    id: "attention",
+    label: "Do uwagi",
+    icon: "attention",
+    shortcut: "8",
+    group: "Administracja",
+  },
+  {
+    id: "access",
+    label: "Dostęp",
+    icon: "access",
+    shortcut: "9",
+    group: "Administracja",
+  },
+  { id: "documents", label: "Dokumenty", icon: "documents", group: "Wiedza" },
+  {
+    id: "settings",
+    label: "Ustawienia",
+    icon: "access",
+    group: "Administracja",
+  },
 ];
 
 export const RealApp = ({
@@ -881,6 +1078,8 @@ export const RealApp = ({
   >({});
   const [notice, setNotice] = useState<MutationFailure>();
   const [toast, setToast] = useState<string>();
+  const [agentGrantDetails, setAgentGrantDetails] =
+    useState<AgentGrantDetails>();
   const [previewCondition, setPreviewCondition] =
     useState<PreviewCondition>("ready");
   const navRef = useRef<HTMLElement>(null);
@@ -1431,60 +1630,66 @@ export const RealApp = ({
               })}
             </>
           )}
-          <p className="nav-label">Wszystkie</p>
-          {navItems.map((item) => (
-            <div className="nav-entry" key={item.id}>
-              <button
-                data-surface={item.id}
-                className={`nav-item ${surface === item.id ? "active" : ""}`}
-                aria-label={
-                  item.id === "tasks"
-                    ? `${item.label} · ${tasks.length}`
-                    : item.label
-                }
-                aria-current={surface === item.id ? "page" : undefined}
-                onFocus={() => preloadSurface(item.id)}
-                onMouseEnter={() => preloadSurface(item.id)}
-                onClick={() =>
-                  openContext(destinationContext(item.id, item.label))
-                }
-              >
-                <Icon name={item.icon} />
-                <span>{item.label}</span>
-                {item.id === "tasks" ? (
-                  <span className="nav-count">{tasks.length}</span>
-                ) : item.id === "attention" &&
-                  state.snapshot.attention.kind === "ready" &&
-                  state.snapshot.attention.data.unreadCount > 0 ? (
-                  <span
-                    className="nav-count"
-                    aria-label={`${state.snapshot.attention.data.unreadCount} nieprzeczytanych`}
-                  >
-                    {state.snapshot.attention.data.unreadCount}
-                  </span>
-                ) : item.shortcut !== undefined ? (
-                  <kbd>
-                    {modifierLabel}
-                    {item.shortcut}
-                  </kbd>
-                ) : null}
-              </button>
-              <button
-                type="button"
-                className="nav-favorite-toggle"
-                aria-label={`${favorites.includes(item.id) ? "Usuń" : "Dodaj"} ${item.label} ${favorites.includes(item.id) ? "z" : "do"} ulubionych`}
-                aria-pressed={favorites.includes(item.id)}
-                onClick={() =>
-                  setFavorites((current) =>
-                    current.includes(item.id)
-                      ? current.filter((id) => id !== item.id)
-                      : [...current, item.id],
-                  )
-                }
-              >
-                {favorites.includes(item.id) ? "★" : "☆"}
-              </button>
-            </div>
+          {navGroups.map((group) => (
+            <Fragment key={group}>
+              <p className="nav-label">{group}</p>
+              {navItems
+                .filter((item) => item.group === group)
+                .map((item) => (
+                  <div className="nav-entry" key={item.id}>
+                    <button
+                      data-surface={item.id}
+                      className={`nav-item ${surface === item.id ? "active" : ""}`}
+                      aria-label={
+                        item.id === "tasks"
+                          ? `${item.label} · ${tasks.length}`
+                          : item.label
+                      }
+                      aria-current={surface === item.id ? "page" : undefined}
+                      onFocus={() => preloadSurface(item.id)}
+                      onMouseEnter={() => preloadSurface(item.id)}
+                      onClick={() =>
+                        openContext(destinationContext(item.id, item.label))
+                      }
+                    >
+                      <Icon name={item.icon} />
+                      <span>{item.label}</span>
+                      {item.id === "tasks" ? (
+                        <span className="nav-count">{tasks.length}</span>
+                      ) : item.id === "attention" &&
+                        state.snapshot.attention.kind === "ready" &&
+                        state.snapshot.attention.data.unreadCount > 0 ? (
+                        <span
+                          className="nav-count"
+                          aria-label={`${state.snapshot.attention.data.unreadCount} nieprzeczytanych`}
+                        >
+                          {state.snapshot.attention.data.unreadCount}
+                        </span>
+                      ) : item.shortcut !== undefined ? (
+                        <kbd>
+                          {modifierLabel}
+                          {item.shortcut}
+                        </kbd>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      className="nav-favorite-toggle"
+                      aria-label={`${favorites.includes(item.id) ? "Usuń" : "Dodaj"} ${item.label} ${favorites.includes(item.id) ? "z" : "do"} ulubionych`}
+                      aria-pressed={favorites.includes(item.id)}
+                      onClick={() =>
+                        setFavorites((current) =>
+                          current.includes(item.id)
+                            ? current.filter((id) => id !== item.id)
+                            : [...current, item.id],
+                        )
+                      }
+                    >
+                      {favorites.includes(item.id) ? "★" : "☆"}
+                    </button>
+                  </div>
+                ))}
+            </Fragment>
           ))}
         </nav>
         <div className="sidebar-spacer" />
@@ -1531,9 +1736,9 @@ export const RealApp = ({
             </strong>
             <span>
               {coordinatedDataHome
-                ? "Hub + szyfrowana projekcja"
+                ? "Hub + zaszyfrowana kopia robocza"
                 : build.persistence === "encrypted-local"
-                  ? "Szyfrowany local store"
+                  ? "Zaszyfrowany zapis lokalny"
                   : "Pamięć sesji"}{" "}
               · {build.version}
             </span>
@@ -1654,6 +1859,18 @@ export const RealApp = ({
             role={notice.kind === "error" ? "alert" : "status"}
           >
             <span>{notice.message}</span>
+            {notice.kind !== "retry" && (
+              <button
+                className="text-button"
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(`${notice.kind}: ${notice.message}`)
+                    .catch(() => undefined)
+                }
+              >
+                Kopiuj szczegóły
+              </button>
+            )}
             <button
               className="icon-button"
               aria-label="Zamknij komunikat"
@@ -2197,13 +2414,26 @@ export const RealApp = ({
                   : createAgentGrant(client, state.snapshot, input)
               ).then(async (result) => {
                 setAccessBusy(false);
-                if (result.kind === "success")
-                  await refreshAfter(
+                if (result.kind === "success") {
+                  await reload();
+                  setAgentGrantDetails(
                     "endpoint" in result.data
-                      ? `Zdalny dostęp MCP utworzono. Chroniony plik konfiguracji: ${result.data.descriptorPath}. Endpoint: ${result.data.endpoint}`
-                      : `Dostęp MCP utworzono. Plik dostępu: ${result.data.descriptorPath}. Adapter hosta: ${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                      ? {
+                          title: "Zdalny dostęp MCP utworzono",
+                          descriptorLabel: "Chroniony plik konfiguracji",
+                          descriptorPath: result.data.descriptorPath,
+                          connectionLabel: "Endpoint",
+                          connectionValue: result.data.endpoint,
+                        }
+                      : {
+                          title: "Dostęp MCP utworzono",
+                          descriptorLabel: "Plik dostępu",
+                          descriptorPath: result.data.descriptorPath,
+                          connectionLabel: "Adapter hosta",
+                          connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                        },
                   );
-                else showFailure(result);
+                } else showFailure(result);
               });
             }}
             onAgentRotate={(grant) => {
@@ -2219,13 +2449,26 @@ export const RealApp = ({
                   : rotateAgentCredential(client, state.snapshot, grant)
               ).then(async (result) => {
                 setAccessBusy(false);
-                if (result.kind === "success")
-                  await refreshAfter(
+                if (result.kind === "success") {
+                  await reload();
+                  setAgentGrantDetails(
                     "endpoint" in result.data
-                      ? `Zdalne poświadczenie obrócono. Chroniony plik konfiguracji: ${result.data.descriptorPath}. Endpoint: ${result.data.endpoint}`
-                      : `Poświadczenie obrócono. Plik dostępu: ${result.data.descriptorPath}. Adapter hosta: ${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                      ? {
+                          title: "Zdalne poświadczenie obrócono",
+                          descriptorLabel: "Chroniony plik konfiguracji",
+                          descriptorPath: result.data.descriptorPath,
+                          connectionLabel: "Endpoint",
+                          connectionValue: result.data.endpoint,
+                        }
+                      : {
+                          title: "Poświadczenie obrócono",
+                          descriptorLabel: "Plik dostępu",
+                          descriptorPath: result.data.descriptorPath,
+                          connectionLabel: "Adapter hosta",
+                          connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                        },
                   );
-                else showFailure(result);
+                } else showFailure(result);
               });
             }}
             onAgentRevoke={(grant) => {
@@ -2333,7 +2576,7 @@ export const RealApp = ({
               </p>
             </section>
             <section className="inspector-section provenance-block">
-              <p className="section-label">Capture provenance</p>
+              <p className="section-label">Pochodzenie z Capture</p>
               {sourceCapture ? (
                 <>
                   <blockquote>{sourceCapture.originalText}</blockquote>
@@ -2357,7 +2600,10 @@ export const RealApp = ({
                   </div>
                 </dl>
               ) : (
-                <p>Pełny receipt pozostaje w Kernelu.</p>
+                <p>
+                  Pełne potwierdzenie operacji pozostaje w lokalnym rdzeniu
+                  danych.
+                </p>
               )}
             </section>
             <CommentsPanel
@@ -2553,9 +2799,9 @@ export const RealApp = ({
                 <dt>Tryb</dt>
                 <dd>
                   {coordinatedDataHome
-                    ? "Hub + szyfrowana projekcja"
+                    ? "Hub + zaszyfrowana kopia robocza"
                     : build.persistence === "encrypted-local"
-                      ? "Szyfrowany local store"
+                      ? "Zaszyfrowany zapis lokalny"
                       : "Podgląd deweloperski"}
                 </dd>
               </div>
@@ -2718,6 +2964,12 @@ export const RealApp = ({
             openContext(destinationContext("cockpit", "Tydzień"));
             setToast("Workspace przywrócono i otwarto ponownie.");
           }}
+        />
+      )}
+      {agentGrantDetails && (
+        <AgentGrantDetailsDialog
+          details={agentGrantDetails}
+          onClose={() => setAgentGrantDetails(undefined)}
         />
       )}
       {toast && (

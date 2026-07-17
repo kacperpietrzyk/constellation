@@ -161,7 +161,7 @@ export const StrategicDepthSurface = ({
     <div className="surface-scroll strategic-surface">
       <header className="surface-header strategic-header">
         <div>
-          <p className="eyebrow">Relationships and reviews</p>
+          <p className="eyebrow">Relacje i przeglądy</p>
           <h1 id="surface-title">Jedna nić od relacji do następnego ruchu</h1>
           <p>
             Szanse, oferty, odnowienia, decyzje i wiedza zachowują źródła oraz
@@ -182,7 +182,6 @@ export const StrategicDepthSurface = ({
         >
           <form onSubmit={submitOrganization}>
             <div>
-              <p className="eyebrow">New relationship</p>
               <strong>Dodaj Organization</strong>
             </div>
             <label>
@@ -211,7 +210,6 @@ export const StrategicDepthSurface = ({
           </form>
           <form onSubmit={submitOpportunity}>
             <div>
-              <p className="eyebrow">New opportunity</p>
               <strong>Dodaj Opportunity</strong>
             </div>
             <label>
@@ -315,7 +313,6 @@ export const StrategicDepthSurface = ({
             >
               <header className="section-heading">
                 <div>
-                  <p className="eyebrow">Commercial thread</p>
                   <h2 id="thread-title">Od Organization do Projectu</h2>
                 </div>
                 <span>{opportunities.length} aktywnych wątków</span>
@@ -374,7 +371,6 @@ export const StrategicDepthSurface = ({
             >
               <header className="section-heading">
                 <div>
-                  <p className="eyebrow">Time-aware records</p>
                   <h2 id="ledger-title">Odnowienia i świeżość faktów</h2>
                 </div>
               </header>
@@ -433,7 +429,6 @@ export const StrategicDepthSurface = ({
             >
               <header className="section-heading">
                 <div>
-                  <p className="eyebrow">People, decisions, recurrence</p>
                   <h2 id="supporting-title">Rekordy wspierające nić</h2>
                 </div>
               </header>
@@ -500,7 +495,6 @@ export const StrategicDepthSurface = ({
 
           <aside className="strategic-review" aria-labelledby="review-title">
             <header>
-              <p className="eyebrow">Finite review</p>
               <h2 id="review-title">Do rozstrzygnięcia</h2>
               <span>Lista nie rozszerza się podczas przeglądu.</span>
             </header>

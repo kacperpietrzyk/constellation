@@ -1185,6 +1185,27 @@ export const SearchOverlay = ({
   );
 };
 
+const compensationCopy: Record<string, string> = {
+  "project.restore_outcome": "Przywrócenie poprzedniego wyniku projektu",
+  "task.restore_state": "Przywrócenie poprzedniego stanu zadania",
+  "task.restore_operational_state":
+    "Przywrócenie poprzedniego stanu operacyjnego zadania",
+  "work_link.restore_state": "Przywrócenie poprzedniego powiązania pracy",
+  "relation.remove": "Usunięcie dodanej relacji",
+  "relation.restore": "Przywrócenie usuniętej relacji",
+  "capture.undo_route": "Cofnięcie uporządkowania Capture",
+  "capture.undo_knowledge_route": "Cofnięcie skierowania Capture do wiedzy",
+  "knowledge.restore_source": "Przywrócenie poprzedniego źródła",
+  "knowledge.restore_evidence": "Przywrócenie poprzedniego zestawu dowodów",
+  "knowledge.void_named_version": "Unieważnienie nazwanej wersji",
+};
+
+const unavailableReasonCopy: Record<string, string> = {
+  unsupported: "To polecenie nie obsługuje cofnięcia",
+  already_undone: "To polecenie zostało już cofnięte",
+  later_change: "Późniejsza zmiana blokuje bezpieczne cofnięcie",
+};
+
 export const UndoDialog = ({
   preview,
   busy,
@@ -1246,9 +1267,14 @@ export const UndoDialog = ({
           <div>
             <dt>Kompensacja</dt>
             <dd>
-              {preview.recovery.compensationKind ??
-                preview.recovery.unavailableReason ??
-                "Niedostępna"}
+              {preview.recovery.compensationKind !== undefined
+                ? (compensationCopy[preview.recovery.compensationKind] ??
+                  "Przywrócenie poprzedniego stanu")
+                : preview.recovery.unavailableReason !== undefined
+                  ? (unavailableReasonCopy[
+                      preview.recovery.unavailableReason
+                    ] ?? "Niedostępna")
+                  : "Niedostępna"}
             </dd>
           </div>
         </dl>

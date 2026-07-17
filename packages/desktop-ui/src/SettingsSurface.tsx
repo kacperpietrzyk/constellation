@@ -286,7 +286,7 @@ export const SettingsSurface = ({
     <div className="surface-scroll settings-surface">
       <header className="surface-header wave2-header">
         <div>
-          <p className="eyebrow">Workspace operation</p>
+          <p className="eyebrow">Workspace</p>
           <h1 id="surface-title">Ustawienia bez panelu administracyjnego</h1>
           <p>
             Tożsamość, dane, wygląd, dostęp, połączenia i wydanie w jednym
@@ -298,7 +298,6 @@ export const SettingsSurface = ({
       <div className="settings-sections">
         <section>
           <div className="settings-copy">
-            <p className="eyebrow">Workspace</p>
             <h2>Tożsamość</h2>
             <p>
               Nazwa jest wersjonowaną zmianą widoczną dla tych samych operatorów
@@ -329,7 +328,6 @@ export const SettingsSurface = ({
 
         <section>
           <div className="settings-copy">
-            <p className="eyebrow">Voice custody</p>
             <h2>Domyślna retencja audio</h2>
             <p>
               Nowe notatki głosowe dziedziczą tę decyzję. W Quick Capture możesz
@@ -352,7 +350,6 @@ export const SettingsSurface = ({
 
         <section>
           <div className="settings-copy">
-            <p className="eyebrow">Workspace switcher</p>
             <h2>Osobne granice danych</h2>
             <p>
               Każdy workspace ma własną szyfrowaną bazę, Data Home,
@@ -414,7 +411,6 @@ export const SettingsSurface = ({
 
         <section>
           <div className="settings-copy">
-            <p className="eyebrow">Data Home</p>
             <h2>Dane, backup i odzyskiwanie</h2>
             <p>
               {snapshot.dataHome?.descriptor.displayName ??
@@ -435,7 +431,6 @@ export const SettingsSurface = ({
 
         <section className="support-report-section">
           <div className="settings-copy">
-            <p className="eyebrow">Wsparcie</p>
             <h2>Raport wsparcia</h2>
             <p>
               Zapisz plik diagnostyczny, gdy prosisz o pomoc. Pokazuje stan
@@ -474,7 +469,6 @@ export const SettingsSurface = ({
 
         <section>
           <div className="settings-copy">
-            <p className="eyebrow">Appearance</p>
             <h2>Wygląd</h2>
             <p>
               Motyw jest lokalną preferencją urządzenia. Kontrast,
@@ -505,7 +499,6 @@ export const SettingsSurface = ({
 
         <section>
           <div className="settings-copy">
-            <p className="eyebrow">Authority</p>
             <h2>Dostęp i agenci</h2>
             <p>
               Rola, zakres Space i możliwości agentów pozostają niezależnymi
@@ -524,7 +517,6 @@ export const SettingsSurface = ({
 
         <section>
           <div className="settings-copy">
-            <p className="eyebrow">Connectors</p>
             <h2>Kalendarz i Jamie</h2>
             <p>
               Constellation czyta Kalendarz i importuje wyniki Jamie; nie
@@ -543,7 +535,6 @@ export const SettingsSurface = ({
 
         <section>
           <div className="settings-copy">
-            <p className="eyebrow">Rules &amp; templates</p>
             <h2>Powtarzalny start bez ukrytych zapisów</h2>
             <p>
               Pakiet startowy tworzy Areas, Initiatives, Projects, Tasks i jawne
@@ -627,7 +618,6 @@ export const SettingsSurface = ({
 
         <section>
           <div className="settings-copy">
-            <p className="eyebrow">Release</p>
             <h2>Aktualizacja aplikacji</h2>
             <p>{releaseCopy(release)}</p>
           </div>

@@ -37,6 +37,12 @@ const roleCopy = {
   deliverable: "Rezultat",
 } as const;
 
+const roleAccusativeCopy = {
+  note: "notatkę",
+  document: "dokument",
+  deliverable: "rezultat",
+} as const;
+
 const milestoneCopy = {
   finalized: "Sfinalizowana",
   delivered: "Dostarczona",
@@ -345,7 +351,7 @@ const KnowledgeEditor = ({
                   onChange={(event) => setRevisionName(event.target.value)}
                   placeholder="np. Raport dla klienta · 15 lipca"
                 />
-                <button disabled={busy}>
+                <button className="primary-button" disabled={busy}>
                   {busy ? "Zamrażam…" : "Zamroź wersję"}
                 </button>
               </div>
@@ -605,7 +611,9 @@ export const DocumentsSurface = ({
             onChange={(event) => setSourceUrl(event.target.value)}
             placeholder="https://… (opcjonalnie)"
           />
-          <button disabled={creating}>Zachowaj źródło</button>
+          <button className="primary-button" disabled={creating}>
+            Zachowaj źródło
+          </button>
         </form>
 
         <section className="library-section" aria-labelledby="sources-title">
@@ -692,8 +700,8 @@ export const DocumentsSurface = ({
                 ),
               )}
             </div>
-            <button disabled={creating}>
-              Utwórz {roleCopy[newRole].toLowerCase()}
+            <button className="primary-button" disabled={creating}>
+              Utwórz {roleAccusativeCopy[newRole]}
             </button>
           </form>
           {snapshot.documents.kind === "unavailable" ? (

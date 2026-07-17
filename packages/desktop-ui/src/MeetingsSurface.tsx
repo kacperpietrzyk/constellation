@@ -347,125 +347,127 @@ export const MeetingsSurface = ({
         </div>
       </header>
 
-      <section className="meeting-integration" aria-labelledby="jamie-title">
-        <div>
-          <p className="eyebrow">Źródło wyników</p>
-          <h2 id="jamie-title">Jamie</h2>
-          <p>
-            Jamie zachowuje odpowiedzialność za nagranie, transkrypcję i
-            inteligencję spotkania. Constellation importuje wynik oraz trwałe
-            identyfikatory zadań.
-          </p>
-        </div>
-        {jamie.kind === "loading" ? (
-          <span className="meeting-integration-status">Sprawdzam…</span>
-        ) : jamie.kind === "error" ? (
-          <button className="secondary-button" onClick={loadJamieStatus}>
-            Ponów sprawdzenie
-          </button>
-        ) : jamie.configured ? (
-          <div className="meeting-integration-actions">
-            <span className="meeting-integration-status">
-              Połączono klucz{" "}
-              {jamie.scope === "workspace" ? "zespołu" : "osobisty"}
-            </span>
-            <button
-              className="primary-button"
-              disabled={jamieBusy}
-              onClick={() => {
-                setJamieBusy(true);
-                void client
-                  .syncJamie()
-                  .then((result) => {
+      <div className="meeting-integration-wrap">
+        <section className="meeting-integration" aria-labelledby="jamie-title">
+          <div>
+            <p className="eyebrow">Źródło wyników</p>
+            <h2 id="jamie-title">Jamie</h2>
+            <p>
+              Jamie zachowuje odpowiedzialność za nagranie, transkrypcję i
+              inteligencję spotkania. Constellation importuje wynik oraz trwałe
+              identyfikatory zadań.
+            </p>
+          </div>
+          {jamie.kind === "loading" ? (
+            <span className="meeting-integration-status">Sprawdzam…</span>
+          ) : jamie.kind === "error" ? (
+            <button className="secondary-button" onClick={loadJamieStatus}>
+              Ponów sprawdzenie
+            </button>
+          ) : jamie.configured ? (
+            <div className="meeting-integration-actions">
+              <span className="meeting-integration-status">
+                Połączono klucz{" "}
+                {jamie.scope === "workspace" ? "zespołu" : "osobisty"}
+              </span>
+              <button
+                className="primary-button"
+                disabled={jamieBusy}
+                onClick={() => {
+                  setJamieBusy(true);
+                  void client
+                    .syncJamie()
+                    .then((result) => {
+                      setJamieBusy(false);
+                      setNotice(
+                        `Jamie: ${result.applied + result.corrected} nowych lub poprawionych, ${result.noChange} bez zmian, ${result.partial} częściowych${result.failed ? `, ${result.failed} błędów` : ""}.`,
+                      );
+                      load();
+                    })
+                    .catch(() => {
+                      setJamieBusy(false);
+                      setNotice(
+                        "Nie udało się zsynchronizować Jamie. Dotychczasowe wyniki pozostały bez zmian.",
+                      );
+                    });
+                }}
+              >
+                {jamieBusy ? "Synchronizuję…" : "Synchronizuj ostatnie 90 dni"}
+              </button>
+              <button
+                className="quiet-button"
+                disabled={jamieBusy}
+                onClick={() => {
+                  setJamieBusy(true);
+                  void client.disconnectJamie().then(() => {
                     setJamieBusy(false);
                     setNotice(
-                      `Jamie: ${result.applied + result.corrected} nowych lub poprawionych, ${result.noChange} bez zmian, ${result.partial} częściowych${result.failed ? `, ${result.failed} błędów` : ""}.`,
+                      "Odłączono klucz Jamie. Zaimportowane wyniki zachowano.",
                     );
-                    load();
+                    loadJamieStatus();
+                  });
+                }}
+              >
+                Odłącz
+              </button>
+            </div>
+          ) : (
+            <form
+              className="meeting-integration-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setJamieBusy(true);
+                void client
+                  .configureJamie({ apiKey: jamieApiKey, scope: jamieScope })
+                  .then(() => {
+                    setJamieApiKey("");
+                    setJamieBusy(false);
+                    setNotice(
+                      "Klucz Jamie zapisano w ochronie poświadczeń systemu operacyjnego.",
+                    );
+                    loadJamieStatus();
                   })
                   .catch(() => {
                     setJamieBusy(false);
                     setNotice(
-                      "Nie udało się zsynchronizować Jamie. Dotychczasowe wyniki pozostały bez zmian.",
+                      "Nie zapisano klucza Jamie. Sprawdź format i ochronę poświadczeń systemu.",
                     );
                   });
               }}
             >
-              {jamieBusy ? "Synchronizuję…" : "Synchronizuj ostatnie 90 dni"}
-            </button>
-            <button
-              className="quiet-button"
-              disabled={jamieBusy}
-              onClick={() => {
-                setJamieBusy(true);
-                void client.disconnectJamie().then(() => {
-                  setJamieBusy(false);
-                  setNotice(
-                    "Odłączono klucz Jamie. Zaimportowane wyniki zachowano.",
-                  );
-                  loadJamieStatus();
-                });
-              }}
-            >
-              Odłącz
-            </button>
-          </div>
-        ) : (
-          <form
-            className="meeting-integration-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setJamieBusy(true);
-              void client
-                .configureJamie({ apiKey: jamieApiKey, scope: jamieScope })
-                .then(() => {
-                  setJamieApiKey("");
-                  setJamieBusy(false);
-                  setNotice(
-                    "Klucz Jamie zapisano w ochronie poświadczeń systemu operacyjnego.",
-                  );
-                  loadJamieStatus();
-                })
-                .catch(() => {
-                  setJamieBusy(false);
-                  setNotice(
-                    "Nie zapisano klucza Jamie. Sprawdź format i ochronę poświadczeń systemu.",
-                  );
-                });
-            }}
-          >
-            <label>
-              Zakres klucza
-              <select
-                value={jamieScope}
-                onChange={(event) =>
-                  setJamieScope(event.target.value as typeof jamieScope)
-                }
+              <label>
+                Zakres klucza
+                <select
+                  value={jamieScope}
+                  onChange={(event) =>
+                    setJamieScope(event.target.value as typeof jamieScope)
+                  }
+                >
+                  <option value="personal">Osobisty</option>
+                  <option value="workspace">Workspace</option>
+                </select>
+              </label>
+              <label>
+                Klucz API
+                <input
+                  type="password"
+                  autoComplete="off"
+                  value={jamieApiKey}
+                  onChange={(event) => setJamieApiKey(event.target.value)}
+                  placeholder="jk_…"
+                  required
+                />
+              </label>
+              <button
+                className="primary-button"
+                disabled={jamieBusy || jamieApiKey.trim().length < 19}
               >
-                <option value="personal">Osobisty</option>
-                <option value="workspace">Workspace</option>
-              </select>
-            </label>
-            <label>
-              Klucz API
-              <input
-                type="password"
-                autoComplete="off"
-                value={jamieApiKey}
-                onChange={(event) => setJamieApiKey(event.target.value)}
-                placeholder="jk_…"
-                required
-              />
-            </label>
-            <button
-              className="primary-button"
-              disabled={jamieBusy || jamieApiKey.trim().length < 19}
-            >
-              {jamieBusy ? "Zabezpieczam…" : "Połącz Jamie"}
-            </button>
-          </form>
-        )}
-      </section>
+                {jamieBusy ? "Zabezpieczam…" : "Połącz Jamie"}
+              </button>
+            </form>
+          )}
+        </section>
+      </div>
 
       {notice && (
         <p className="meeting-notice" role="status">

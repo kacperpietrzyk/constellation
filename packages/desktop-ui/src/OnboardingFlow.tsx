@@ -32,16 +32,7 @@ export const OnboardingFlow = ({
     titleRef.current?.focus();
   }, [step]);
 
-  const finish = async () => {
-    setBusy(true);
-    if (name.trim() !== snapshot.bootstrap.workspace.name) {
-      const result = await renameWorkspace(client, snapshot, name.trim());
-      if (result.kind !== "success") {
-        setBusy(false);
-        onFailure(result);
-        return;
-      }
-    }
+  const complete = async () => {
     localStorage.setItem(
       `constellation.onboarded:${snapshot.bootstrap.workspace.id}`,
       "1",
@@ -62,12 +53,34 @@ export const OnboardingFlow = ({
     }
   };
 
+  const finish = async () => {
+    setBusy(true);
+    if (name.trim() !== snapshot.bootstrap.workspace.name) {
+      const result = await renameWorkspace(client, snapshot, name.trim());
+      if (result.kind !== "success") {
+        setBusy(false);
+        onFailure(result);
+        return;
+      }
+    }
+    await complete();
+  };
+
+  const skip = async () => {
+    if (busy) return;
+    setBusy(true);
+    await complete();
+  };
+
   return (
     <dialog
       ref={dialogRef}
       className="onboarding-backdrop"
       aria-labelledby="onboarding-title"
-      onCancel={(event) => event.preventDefault()}
+      onCancel={(event) => {
+        event.preventDefault();
+        void skip();
+      }}
     >
       <section className="onboarding-card">
         <header>
@@ -85,12 +98,15 @@ export const OnboardingFlow = ({
               projekty, zadania, dokumenty, spotkania i relacje pozostają
               typowanymi rekordami jednego grafu.
             </p>
-            <div className="onboarding-thread" aria-hidden="true">
-              <span>Capture</span>
-              <i>→</i>
-              <span>Praca</span>
-              <i>→</i>
-              <span>Wynik</span>
+            <div
+              className="onboarding-thread evidence-thread"
+              aria-hidden="true"
+            >
+              <span className="evidence-node">Capture</span>
+              <i aria-hidden="true" />
+              <span className="evidence-node">Praca</span>
+              <i aria-hidden="true" />
+              <span className="evidence-node">Wynik</span>
             </div>
           </div>
         )}
@@ -114,7 +130,7 @@ export const OnboardingFlow = ({
             </label>
             <aside>
               <strong>
-                {snapshot.dataHome?.descriptor.displayName ?? "Local only"}
+                {snapshot.dataHome?.descriptor.displayName ?? "Tylko lokalnie"}
               </strong>
               <span>
                 {snapshot.dataHome === undefined
@@ -164,23 +180,35 @@ export const OnboardingFlow = ({
           >
             Wstecz
           </button>
-          {step < 2 ? (
+          <div className="onboarding-forward">
             <button
               type="button"
-              disabled={step === 1 && !name.trim()}
-              onClick={() => setStep((current) => current + 1)}
+              className="text-button"
+              disabled={busy}
+              onClick={() => void skip()}
             >
-              Dalej
+              Pomiń wprowadzenie
             </button>
-          ) : (
-            <button
-              type="button"
-              disabled={busy || !name.trim()}
-              onClick={() => void finish()}
-            >
-              {busy ? "Przygotowuję…" : "Otwórz workspace"}
-            </button>
-          )}
+            {step < 2 ? (
+              <button
+                type="button"
+                className="primary-button"
+                disabled={step === 1 && !name.trim()}
+                onClick={() => setStep((current) => current + 1)}
+              >
+                Dalej
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="primary-button"
+                disabled={busy || !name.trim()}
+                onClick={() => void finish()}
+              >
+                {busy ? "Przygotowuję…" : "Otwórz workspace"}
+              </button>
+            )}
+          </div>
         </footer>
       </section>
     </dialog>
