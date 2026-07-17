@@ -46,6 +46,7 @@ export const DESKTOP_CHANNELS = {
   syncDataHome: "constellation:data-home:sync-now",
   runQuery: "constellation:query:run",
   exportWorkspaceBackup: "constellation:workspace-backup:export",
+  copyWorkspaceRecoveryCode: "constellation:workspace-backup:copy-code",
   prepareWorkspaceRestore: "constellation:workspace-backup:prepare-restore",
   confirmWorkspaceRestore: "constellation:workspace-backup:confirm-restore",
   cancelWorkspaceRestore: "constellation:workspace-backup:cancel-restore",
@@ -387,6 +388,9 @@ export interface ConstellationRendererClient {
     ) => void,
   ): () => void;
   cancelWorkspaceRestore(input: { readonly restoreId: string }): Promise<void>;
+  copyWorkspaceRecoveryCode(input: {
+    readonly recoveryCode: string;
+  }): Promise<{ readonly outcome: "success" | "failure" }>;
   confirmWorkspaceRestore(input: {
     readonly restoreId: string;
   }): Promise<WorkspaceRestoreResult>;
@@ -573,6 +577,10 @@ export const createRendererClient = (
   onAttentionActivated: () => () => undefined,
   cancelWorkspaceRestore: (input) =>
     invoke(DESKTOP_CHANNELS.cancelWorkspaceRestore, input) as Promise<void>,
+  copyWorkspaceRecoveryCode: (input) =>
+    invoke(DESKTOP_CHANNELS.copyWorkspaceRecoveryCode, input) as ReturnType<
+      ConstellationRendererClient["copyWorkspaceRecoveryCode"]
+    >,
   confirmWorkspaceRestore: (input) =>
     invoke(
       DESKTOP_CHANNELS.confirmWorkspaceRestore,

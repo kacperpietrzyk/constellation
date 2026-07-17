@@ -16,6 +16,7 @@ import path from "node:path";
 import type {
   App,
   BrowserWindow as BrowserWindowType,
+  Clipboard,
   Dialog,
   GlobalShortcut,
   IpcMain,
@@ -126,6 +127,7 @@ import {
   createPrivacySafeSupportReport,
   writePrivacySafeSupportReport,
 } from "./support-report.js";
+import { copyRecoveryCodeToClipboard } from "./recovery-code-clipboard.js";
 
 // Electron's ESM namespace materializes lazy exports before the application is
 // ready. On macOS that can initialize safeStorage early and block on Keychain.
@@ -133,6 +135,7 @@ import {
 interface ElectronRuntime {
   readonly app: App;
   readonly BrowserWindow: typeof BrowserWindowType;
+  readonly clipboard: Clipboard;
   readonly dialog: Dialog;
   readonly globalShortcut: GlobalShortcut;
   readonly ipcMain: IpcMain;
@@ -153,8 +156,16 @@ interface ElectronUpdaterRuntime {
 }
 
 const electron = createRequire(import.meta.url)("electron") as ElectronRuntime;
-const { app, BrowserWindow, dialog, globalShortcut, ipcMain, session, shell } =
-  electron;
+const {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  globalShortcut,
+  ipcMain,
+  session,
+  shell,
+} = electron;
 
 const preloadPath = fileURLToPath(
   new URL("../../../desktop-preload/build/preload.cjs", import.meta.url),
@@ -2155,6 +2166,13 @@ const startProductionDesktop = async (): Promise<void> => {
       Promise.resolve({ outcome: "failure", code: "io_failed" as const })
     );
   });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.copyWorkspaceRecoveryCode,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      return copyRecoveryCodeToClipboard(clipboard, input);
+    },
+  );
   ipcMain.handle(DESKTOP_CHANNELS.exportHubAuthorization, async (event) => {
     assertTrustedSender(event);
     if (workspaceRecovery?.kernel === undefined) return { outcome: "failure" };

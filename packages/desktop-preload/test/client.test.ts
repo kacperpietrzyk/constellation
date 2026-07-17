@@ -18,6 +18,7 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "configureJamie",
     "confirmCalendarBlocks",
     "confirmWorkspaceRestore",
+    "copyWorkspaceRecoveryCode",
     "createDocumentRevision",
     "createRemoteAgentGrant",
     "createWorkspace",
@@ -80,4 +81,10 @@ test("renderer client exposes only semantic application and recovery routes", ()
   assert.equal(calls[8]?.channel, DESKTOP_CHANNELS.previewStarterWorkspace);
   void client.importStarterWorkspace?.({});
   assert.equal(calls[9]?.channel, DESKTOP_CHANNELS.importStarterWorkspace);
+  const recoveryCode = `cst1_${Buffer.alloc(32, 3).toString("base64url")}`;
+  void client.copyWorkspaceRecoveryCode({ recoveryCode });
+  assert.deepEqual(calls[10], {
+    channel: DESKTOP_CHANNELS.copyWorkspaceRecoveryCode,
+    payload: { recoveryCode },
+  });
 });
