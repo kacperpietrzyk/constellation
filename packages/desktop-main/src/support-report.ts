@@ -117,7 +117,8 @@ export const writePrivacySafeSupportReport = (
       flag: "wx",
       mode: 0o600,
     });
-    const temporaryHandle = openSync(temporary, "r");
+    // Windows FlushFileBuffers requires a handle opened with write access.
+    const temporaryHandle = openSync(temporary, "r+");
     try {
       fsyncSync(temporaryHandle);
     } finally {
