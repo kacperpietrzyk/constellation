@@ -197,7 +197,8 @@ type IconName =
   | "access"
   | "documents"
   | "meetings"
-  | "relationships";
+  | "relationships"
+  | "settings";
 type AgentGrantDetails = {
   readonly title: string;
   readonly descriptorLabel: string;
@@ -309,6 +310,9 @@ const Icon = ({ name }: { readonly name: IconName }) => {
     meetings: <path d="M5 5h14v14H5zM8 3v5M16 3v5M5 10h14M8 14h3M13 14h3" />,
     relationships: (
       <path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM16.5 10a2.5 2.5 0 1 0 0-5M3 20c0-4 2-6 5-6s5 2 5 6M14 14c3 0 5 2 5 6M11 8h3" />
+    ),
+    settings: (
+      <path d="M4 7h7M17 7h3M4 17h2M12 17h8M16 7a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM11 17a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" />
     ),
   } as const;
   return (
@@ -1003,7 +1007,7 @@ const navItems: readonly {
   {
     id: "settings",
     label: "Ustawienia",
-    icon: "access",
+    icon: "settings",
     group: "Administracja",
   },
 ];
@@ -1097,7 +1101,11 @@ export const RealApp = ({
     .slice(0, navigation.historyIndex + 1)
     .reverse()
     .reduce<ShellContext[]>((items, key) => {
-      if (key === activeContext.key || items.some((item) => item.key === key))
+      if (
+        key === activeContext.key ||
+        key.startsWith("destination:") ||
+        items.some((item) => item.key === key)
+      )
         return items;
       const context = navigation.tabs.find((item) => item.key === key);
       if (context) items.push(context);
@@ -1310,7 +1318,9 @@ export const RealApp = ({
         shortcutIndex !== undefined
       ) {
         event.preventDefault();
-        const item = navItems[shortcutIndex];
+        const item = navItems.find(
+          (entry) => entry.shortcut === String(shortcutIndex + 1),
+        );
         if (item) openContext(destinationContext(item.id, item.label));
       } else if (event.altKey && event.key === "ArrowLeft") {
         event.preventDefault();
@@ -1653,7 +1663,9 @@ export const RealApp = ({
                   >
                     <Icon name={item?.icon ?? "project"} />
                     <span>{recent.label}</span>
-                    <small>{item?.label}</small>
+                    {item !== undefined && item.label !== recent.label && (
+                      <small>{item.label}</small>
+                    )}
                   </button>
                 );
               })}
@@ -1723,8 +1735,8 @@ export const RealApp = ({
         </nav>
         <div className="sidebar-spacer" />
         {isPreview && (
-          <label className="fixture-condition">
-            <span>Stan podglądu</span>
+          <details className="fixture-condition">
+            <summary>Stan podglądu</summary>
             <select
               value={previewCondition}
               onChange={(event) =>
@@ -1740,7 +1752,7 @@ export const RealApp = ({
               <option value="permission">Uprawnienia</option>
               <option value="recovery">Recovery</option>
             </select>
-          </label>
+          </details>
         )}
         <button
           className="sidebar-capture"
