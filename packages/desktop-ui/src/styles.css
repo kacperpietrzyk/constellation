@@ -614,6 +614,7 @@ kbd {
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(
       --inspector-width
     );
+  grid-template-rows: minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -626,6 +627,7 @@ kbd {
 .meetings-harness-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 26rem;
+  grid-template-rows: minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -648,9 +650,17 @@ kbd {
 }
 
 .sidebar nav {
+  flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+.sidebar > .workspace-switcher,
+.sidebar > .search-control,
+.sidebar > .sidebar-capture,
+.sidebar > .preview-identity,
+.sidebar > .fixture-condition {
+  flex: none;
 }
 .window-drag {
   position: absolute;
@@ -918,39 +928,30 @@ kbd {
   font-size: 0.625rem;
 }
 
+.work-column {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  background:
+    radial-gradient(ellipse at 50% 0%, var(--white-a055), transparent 68%) top /
+      100% 12rem no-repeat,
+    var(--surface-canvas);
+}
 .work-surface {
   position: relative;
   min-width: 0;
   overflow: auto;
-  padding: 0 clamp(var(--space-5), 4vw, var(--space-10)) 6.5rem;
+  padding: 0 clamp(var(--space-5), 4vw, var(--space-10)) var(--space-8);
   background: var(--surface-canvas);
   scrollbar-color: var(--border-default) transparent;
 }
-.work-surface::before {
-  content: "";
-  position: fixed;
-  z-index: -1;
-  inset: 0 var(--inspector-width) auto var(--sidebar-width);
-  height: 12rem;
-  pointer-events: none;
-  background: radial-gradient(
-    ellipse at 50% 0%,
-    var(--white-a055),
-    transparent 68%
-  );
-  opacity: 0.7;
-}
 .shell-tabbar {
-  position: sticky;
-  z-index: var(--z-raised);
-  top: 0;
   min-width: 0;
   height: calc(var(--titlebar-height) + 2.55rem);
   display: flex;
   align-items: flex-end;
   gap: var(--space-2);
-  margin: 0 calc(-1 * clamp(var(--space-5), 4vw, var(--space-10)))
-    var(--space-8);
   padding: var(--titlebar-height) var(--space-3) 0;
   border-bottom: 1px solid var(--shell-border);
   background: var(--shell-sidebar-bg);
@@ -983,6 +984,21 @@ kbd {
 }
 .shell-tabs::-webkit-scrollbar {
   display: none;
+}
+.shell-tabs[data-overflow-left="true"] {
+  mask-image: linear-gradient(to right, transparent, black 2rem);
+}
+.shell-tabs[data-overflow-right="true"] {
+  mask-image: linear-gradient(to left, transparent, black 2rem);
+}
+.shell-tabs[data-overflow-left="true"][data-overflow-right="true"] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 2rem,
+    black calc(100% - 2rem),
+    transparent
+  );
 }
 .shell-detach {
   background: transparent;
@@ -1352,15 +1368,9 @@ kbd {
 }
 
 .capture-dock-layer {
-  position: absolute;
-  z-index: var(--z-sticky);
-  right: var(--inspector-width);
-  bottom: var(--space-6);
-  left: var(--sidebar-width);
   display: flex;
   justify-content: center;
-  padding-inline: 1.5rem;
-  pointer-events: none;
+  padding: var(--space-3) 1.5rem var(--space-4);
 }
 .capture-dock {
   width: 100%;
@@ -1379,7 +1389,6 @@ kbd {
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   -webkit-backdrop-filter: blur(var(--glass-blur))
     saturate(var(--glass-saturation));
-  pointer-events: auto;
 }
 .capture-dock:hover {
   color: var(--text-primary);
@@ -1566,18 +1575,17 @@ kbd {
   font-family: var(--font-mono);
 }
 .inspector-empty {
-  height: calc(100% - var(--titlebar-height) - var(--space-4));
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: var(--space-3);
-  padding: var(--space-8);
+  padding: var(--space-6) var(--space-5);
   text-align: center;
 }
 .inspector-empty .brand-mark {
-  width: 2.75rem;
-  height: 2.75rem;
+  width: 2rem;
+  height: 2rem;
   color: var(--text-disabled);
 }
 .inspector-empty p {
@@ -2097,7 +2105,7 @@ kbd {
   }
 }
 
-@media (max-width: 72rem) {
+@media (max-width: 75rem) {
   .desktop-shell {
     grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   }
@@ -2127,12 +2135,6 @@ kbd {
   }
   .meeting-inspector-close {
     display: grid;
-  }
-  .work-surface::before {
-    right: 0;
-  }
-  .capture-dock-layer {
-    right: 0;
   }
   .context-thread {
     display: none;
@@ -3381,7 +3383,7 @@ kbd {
   gap: var(--space-6);
   width: min(100%, 58rem);
   margin: 0 auto;
-  padding: var(--space-8) var(--space-6) 8rem;
+  padding: var(--space-6) var(--space-6) var(--space-10);
 }
 
 .access-heading {
@@ -3987,12 +3989,13 @@ kbd {
   min-width: 0;
 }
 .wave2-work {
-  padding: 0 0 6.5rem;
+  padding: 0;
+  background: transparent;
 }
 .surface-scroll {
   min-height: 100%;
-  padding: calc(var(--titlebar-height) + var(--space-8))
-    clamp(var(--space-5), 4vw, var(--space-10)) var(--space-10);
+  padding: var(--space-6) clamp(var(--space-5), 4vw, var(--space-10))
+    var(--space-10);
 }
 .wave2-header {
   margin-bottom: var(--space-6);
@@ -4053,7 +4056,7 @@ kbd {
 .condition-banner {
   position: sticky;
   z-index: var(--z-sticky);
-  top: var(--titlebar-height);
+  top: var(--space-2);
   max-width: 58rem;
   min-height: 3.4rem;
   display: grid;
@@ -5394,7 +5397,7 @@ kbd {
 .knowledge-layout {
   display: grid;
   grid-template-columns: minmax(17rem, 20rem) minmax(0, 1fr);
-  min-height: calc(100vh - 7.5rem);
+  min-height: 100%;
   background: var(--surface-window);
 }
 .knowledge-library {

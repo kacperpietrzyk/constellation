@@ -1357,6 +1357,35 @@ export const RealApp = ({
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    const element = tabRef.current;
+    if (!element) return;
+    const update = () => {
+      const overflowing = element.scrollWidth - element.clientWidth > 1;
+      element.dataset.overflowLeft = String(
+        overflowing && element.scrollLeft > 1,
+      );
+      element.dataset.overflowRight = String(
+        overflowing &&
+          element.scrollLeft + element.clientWidth < element.scrollWidth - 1,
+      );
+    };
+    update();
+    element.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => {
+      element.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, [navigation.tabs.length]);
+
+  useEffect(() => {
+    tabRef.current
+      ?.querySelector(`[data-shell-tab="${CSS.escape(navigation.activeKey)}"]`)
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [navigation.activeKey]);
+
   const selectedTask = useMemo(
     () => snapshot?.tasks.find((task) => task.id === selectedTaskId),
     [selectedTaskId, snapshot],
@@ -1746,11 +1775,7 @@ export const RealApp = ({
         </div>
       </aside>
 
-      <section
-        className="work-surface wave2-work"
-        id="main-content"
-        aria-labelledby="surface-title"
-      >
+      <section className="work-column" aria-labelledby="surface-title">
         <div className="shell-tabbar" aria-label="Otwarte konteksty">
           <div
             className="shell-history-controls"
@@ -1853,659 +1878,667 @@ export const RealApp = ({
             {detachedWindow ? "Dołącz z powrotem" : "Osobne okno"}
           </button>
         </div>
-        {notice && (
-          <div
-            className={`notice notice-${notice.kind}`}
-            role={notice.kind === "error" ? "alert" : "status"}
-          >
-            <span>{notice.message}</span>
-            {notice.kind !== "retry" && (
+        <div className="work-surface wave2-work" id="main-content">
+          {notice && (
+            <div
+              className={`notice notice-${notice.kind}`}
+              role={notice.kind === "error" ? "alert" : "status"}
+            >
+              <span>{notice.message}</span>
+              {notice.kind !== "retry" && (
+                <button
+                  className="text-button"
+                  onClick={() =>
+                    void navigator.clipboard
+                      .writeText(`${notice.kind}: ${notice.message}`)
+                      .catch(() => undefined)
+                  }
+                >
+                  Kopiuj szczegóły
+                </button>
+              )}
               <button
-                className="text-button"
-                onClick={() =>
-                  void navigator.clipboard
-                    .writeText(`${notice.kind}: ${notice.message}`)
-                    .catch(() => undefined)
-                }
+                className="icon-button"
+                aria-label="Zamknij komunikat"
+                onClick={() => setNotice(undefined)}
               >
-                Kopiuj szczegóły
+                <Icon name="close" />
               </button>
-            )}
-            <button
-              className="icon-button"
-              aria-label="Zamknij komunikat"
-              onClick={() => setNotice(undefined)}
-            >
-              <Icon name="close" />
-            </button>
-          </div>
-        )}
-        {isPreview && previewCondition !== "ready" && (
-          <div
-            className={`condition-banner tone-${conditionCopy[previewCondition].tone}`}
-            role="status"
-          >
-            <span className="condition-symbol" aria-hidden="true">
-              i
-            </span>
-            <div>
-              <strong>{conditionCopy[previewCondition].title}</strong>
-              <span>{conditionCopy[previewCondition].detail}</span>
             </div>
-            <button
-              className="secondary-button compact"
-              onClick={() => setPreviewCondition("ready")}
+          )}
+          {isPreview && previewCondition !== "ready" && (
+            <div
+              className={`condition-banner tone-${conditionCopy[previewCondition].tone}`}
+              role="status"
             >
-              {conditionCopy[previewCondition].action}
-            </button>
-          </div>
-        )}
-        {surface === "cockpit" && (
-          <CockpitSurface
-            client={client}
-            snapshot={state.snapshot}
-            onOpenProject={(id) => {
-              const project =
-                state.snapshot.projects.kind === "ready"
-                  ? state.snapshot.projects.data.items.find(
-                      (item) => item.id === id,
-                    )
-                  : undefined;
-              openContext(projectContext(id, project?.title ?? "Projekt"));
-            }}
-            onSelectTask={(id) => {
-              const task = tasks.find((item) => item.id === id);
-              openContext(taskContext(id, task?.title ?? "Zadanie"));
-            }}
-          />
-        )}
-        {surface === "meetings" && client && (
-          <LazySurfaceBoundary label="Spotkania">
-            <Suspense fallback={<SurfaceLoadingState label="Spotkania" />}>
-              <MeetingsSurface
-                client={client}
-                inspectorHost={meetingInspectorHost}
-                onInspectorOpen={() => setMeetingInspectorOpen(true)}
-              />
-            </Suspense>
-          </LazySurfaceBoundary>
-        )}
-        {surface === "relationships" && (
-          <StrategicDepthSurface
-            client={client}
-            snapshot={state.snapshot}
-            onReload={reload}
-            onFailure={showFailure}
-          />
-        )}
-        {surface === "work" && (
-          <LazySurfaceBoundary label="Praca">
-            <Suspense fallback={<SurfaceLoadingState label="Praca" />}>
-              <WorkSurface
-                client={client}
-                snapshot={state.snapshot}
-                onReload={reload}
-                onFailure={showFailure}
-              />
-            </Suspense>
-          </LazySurfaceBoundary>
-        )}
-        {surface === "settings" && (
-          <LazySurfaceBoundary label="Ustawienia">
-            <Suspense fallback={<SurfaceLoadingState label="Ustawienia" />}>
-              <SettingsSurface
-                client={client}
-                snapshot={state.snapshot}
-                onReload={reload}
-                onFailure={showFailure}
-                onOpenRecovery={() => setRecoveryOpen(true)}
-                onNavigate={(next, label) =>
-                  openContext(destinationContext(next, label))
-                }
-              />
-            </Suspense>
-          </LazySurfaceBoundary>
-        )}
-        {surface === "tasks" && (
-          <TasksSurface
-            snapshot={state.snapshot}
-            selectedTaskId={selectedTaskId}
-            busyTaskId={busyTaskId}
-            onSelectTask={(id) => {
-              const task = tasks.find((item) => item.id === id);
-              openContext(taskContext(id, task?.title ?? "Zadanie"));
-            }}
-            onCapture={openCapture}
-            onSetStatus={(id, statusId) => {
-              const task = tasks.find((item) => item.id === id);
-              if (!client || !task) return;
-              setBusyTaskId(id);
-              void setTaskStatus(
-                client,
-                state.snapshot,
-                id,
-                task.version,
-                statusId,
-              ).then(async (result) => {
-                setBusyTaskId(undefined);
-                if (result.kind === "success")
-                  await refreshAfter("Status zadania zaktualizowano.");
-                else showFailure(result);
-              });
-            }}
-            onSetCompleted={(id, completed) => {
-              const task = tasks.find((item) => item.id === id);
-              if (!client || !task) return;
-              setBusyTaskId(id);
-              void setTaskCompletion(
-                client,
-                state.snapshot,
-                id,
-                task.version,
-                completed,
-              ).then(async (result) => {
-                setBusyTaskId(undefined);
-                if (result.kind === "success")
-                  await refreshAfter(
-                    completed
-                      ? "Zadanie ukończono."
-                      : "Zadanie otwarto ponownie.",
-                  );
-                else showFailure(result);
-              });
-            }}
-            onSetAssignment={(
-              id: TaskId,
-              principalId: PrincipalId | undefined,
-            ) => {
-              const task = tasks.find((item) => item.id === id);
-              if (!client || !task) return;
-              if (principalId === undefined && task.assignment === undefined)
-                return;
-              setBusyTaskId(id);
-              void setTaskAssignment(
-                client,
-                state.snapshot,
-                task,
-                principalId,
-              ).then(async (result) => {
-                setBusyTaskId(undefined);
-                if (result.kind === "success")
-                  await refreshAfter(
-                    principalId === undefined
-                      ? "Odpowiedzialność usunięto."
-                      : "Odpowiedzialność przypisano.",
-                  );
-                else showFailure(result);
-              });
-            }}
-          />
-        )}
-        {surface === "documents" && (
-          <LazySurfaceBoundary label="Dokumenty">
-            <Suspense fallback={<SurfaceLoadingState label="Dokumenty" />}>
-              <DocumentsSurface
-                client={client}
-                snapshot={state.snapshot}
-                onReload={reload}
-                onFailure={showFailure}
-              />
-            </Suspense>
-          </LazySurfaceBoundary>
-        )}
-        {surface === "projects" && (
-          <ProjectsSurface
-            snapshot={state.snapshot}
-            selectedProjectId={selectedProjectId}
-            overview={projectOverview}
-            relation={sessionRelation}
-            busy={projectBusy}
-            onSelectProject={(id) => {
-              const project =
-                state.snapshot.projects.kind === "ready"
-                  ? state.snapshot.projects.data.items.find(
-                      (item) => item.id === id,
-                    )
-                  : undefined;
-              openContext(projectContext(id, project?.title ?? "Projekt"));
-            }}
-            onCreate={async (title, outcome) => {
-              if (!client) return false;
-              setProjectBusy(true);
-              const result = await createProject(
-                client,
-                state.snapshot,
-                title,
-                outcome,
-              );
-              setProjectBusy(false);
-              if (result.kind === "success") {
-                openContext(
-                  projectContext(result.data.projectId, title.trim()),
-                );
-                await refreshAfter("Projekt utworzono.");
-                return true;
-              }
-              showFailure(result);
-              return false;
-            }}
-            onUpdateOutcome={(outcome) => {
-              if (!client || !projectOverview) return;
-              setProjectBusy(true);
-              void updateProjectOutcome(
-                client,
-                state.snapshot,
-                projectOverview.project,
-                outcome,
-              ).then(async (result) => {
-                setProjectBusy(false);
-                if (result.kind === "success")
-                  await refreshAfter("Zamierzony wynik zaktualizowano.");
-                else showFailure(result);
-              });
-            }}
-            onSetLifecycle={(lifecycle) => {
-              if (!client || !projectOverview) return;
-              setProjectBusy(true);
-              void setProjectLifecycle(
-                client,
-                state.snapshot,
-                projectOverview.project,
-                lifecycle,
-              ).then(async (result) => {
-                setProjectBusy(false);
-                if (result.kind === "success")
-                  await refreshAfter(
-                    lifecycle === "closed"
-                      ? "Projekt zamknięto; historia i otwarte zadania pozostały bez zmian."
-                      : "Projekt otwarto ponownie.",
-                  );
-                else showFailure(result);
-              });
-            }}
-            onRelate={(taskId) => {
-              const task = tasks.find((item) => item.id === taskId);
-              if (!client || !task || !projectOverview) return;
-              setProjectBusy(true);
-              void relateTask(
-                client,
-                state.snapshot,
-                task.id,
-                task.version,
-                projectOverview.project.id,
-                projectOverview.project.version,
-              ).then(async (result) => {
-                setProjectBusy(false);
-                if (result.kind === "success") {
-                  setSessionRelation({
-                    id: result.data.relationId,
-                    version: result.data.version,
-                    taskId,
-                  });
-                  await refreshAfter("Zadanie powiązano z projektem.");
-                } else showFailure(result);
-              });
-            }}
-            onUnrelate={() => {
-              if (!client || !sessionRelation) return;
-              setProjectBusy(true);
-              void unrelateTask(
-                client,
-                state.snapshot,
-                sessionRelation.id,
-                sessionRelation.version,
-              ).then(async (result) => {
-                setProjectBusy(false);
-                if (result.kind === "success") {
-                  setSessionRelation(undefined);
-                  await refreshAfter("Powiązanie usunięto.");
-                } else showFailure(result);
-              });
-            }}
-          />
-        )}
-        {surface === "history" && (
-          <HistorySurface
-            snapshot={state.snapshot}
-            onUndo={(id) => void openUndo(id)}
-            busyCaptureId={historyBusyCaptureId}
-            onDeleteVoiceAudio={(captureId, version) => {
-              if (!client) return;
-              setHistoryBusyCaptureId(captureId);
-              void requestVoiceAudioDeletion(
-                client,
-                state.snapshot,
-                captureId,
-                version,
-              ).then(async (result) => {
-                setHistoryBusyCaptureId(undefined);
-                if (result.kind === "success")
-                  await refreshAfter("Zachowane audio zostało usunięte.");
-                else showFailure(result);
-              });
-            }}
-          />
-        )}
-        {surface === "activity" && (
-          <ActivitySurface
-            activity={state.snapshot.activity}
-            onUndo={(id) => void openUndo(id)}
-          />
-        )}
-        {surface === "attention" && (
-          <AttentionSurface
-            attention={state.snapshot.attention}
-            busy={attentionBusy}
-            onOpen={(item) => {
-              const destination = item.destination;
-              if (destination.kind === "task") {
-                const task = tasks.find(
-                  (candidate) => candidate.id === destination.taskId,
-                );
-                openContext(
-                  taskContext(destination.taskId, task?.title ?? item.title),
-                );
-              } else if (destination.kind === "project") {
+              <span className="condition-symbol" aria-hidden="true">
+                i
+              </span>
+              <div>
+                <strong>{conditionCopy[previewCondition].title}</strong>
+                <span>{conditionCopy[previewCondition].detail}</span>
+              </div>
+              <button
+                className="secondary-button compact"
+                onClick={() => setPreviewCondition("ready")}
+              >
+                {conditionCopy[previewCondition].action}
+              </button>
+            </div>
+          )}
+          {surface === "cockpit" && (
+            <CockpitSurface
+              client={client}
+              snapshot={state.snapshot}
+              onOpenProject={(id) => {
                 const project =
                   state.snapshot.projects.kind === "ready"
                     ? state.snapshot.projects.data.items.find(
-                        (candidate) => candidate.id === destination.projectId,
+                        (item) => item.id === id,
                       )
                     : undefined;
-                openContext(
-                  projectContext(
-                    destination.projectId,
-                    project?.title ?? item.title,
-                  ),
+                openContext(projectContext(id, project?.title ?? "Projekt"));
+              }}
+              onSelectTask={(id) => {
+                const task = tasks.find((item) => item.id === id);
+                openContext(taskContext(id, task?.title ?? "Zadanie"));
+              }}
+            />
+          )}
+          {surface === "meetings" && client && (
+            <LazySurfaceBoundary label="Spotkania">
+              <Suspense fallback={<SurfaceLoadingState label="Spotkania" />}>
+                <MeetingsSurface
+                  client={client}
+                  inspectorHost={meetingInspectorHost}
+                  onInspectorOpen={() => setMeetingInspectorOpen(true)}
+                />
+              </Suspense>
+            </LazySurfaceBoundary>
+          )}
+          {surface === "relationships" && (
+            <StrategicDepthSurface
+              client={client}
+              snapshot={state.snapshot}
+              onReload={reload}
+              onFailure={showFailure}
+            />
+          )}
+          {surface === "work" && (
+            <LazySurfaceBoundary label="Praca">
+              <Suspense fallback={<SurfaceLoadingState label="Praca" />}>
+                <WorkSurface
+                  client={client}
+                  snapshot={state.snapshot}
+                  onReload={reload}
+                  onFailure={showFailure}
+                />
+              </Suspense>
+            </LazySurfaceBoundary>
+          )}
+          {surface === "settings" && (
+            <LazySurfaceBoundary label="Ustawienia">
+              <Suspense fallback={<SurfaceLoadingState label="Ustawienia" />}>
+                <SettingsSurface
+                  client={client}
+                  snapshot={state.snapshot}
+                  onReload={reload}
+                  onFailure={showFailure}
+                  onOpenRecovery={() => setRecoveryOpen(true)}
+                  onNavigate={(next, label) =>
+                    openContext(destinationContext(next, label))
+                  }
+                />
+              </Suspense>
+            </LazySurfaceBoundary>
+          )}
+          {surface === "tasks" && (
+            <TasksSurface
+              snapshot={state.snapshot}
+              selectedTaskId={selectedTaskId}
+              busyTaskId={busyTaskId}
+              onSelectTask={(id) => {
+                const task = tasks.find((item) => item.id === id);
+                openContext(taskContext(id, task?.title ?? "Zadanie"));
+              }}
+              onCapture={openCapture}
+              onSetStatus={(id, statusId) => {
+                const task = tasks.find((item) => item.id === id);
+                if (!client || !task) return;
+                setBusyTaskId(id);
+                void setTaskStatus(
+                  client,
+                  state.snapshot,
+                  id,
+                  task.version,
+                  statusId,
+                ).then(async (result) => {
+                  setBusyTaskId(undefined);
+                  if (result.kind === "success")
+                    await refreshAfter("Status zadania zaktualizowano.");
+                  else showFailure(result);
+                });
+              }}
+              onSetCompleted={(id, completed) => {
+                const task = tasks.find((item) => item.id === id);
+                if (!client || !task) return;
+                setBusyTaskId(id);
+                void setTaskCompletion(
+                  client,
+                  state.snapshot,
+                  id,
+                  task.version,
+                  completed,
+                ).then(async (result) => {
+                  setBusyTaskId(undefined);
+                  if (result.kind === "success")
+                    await refreshAfter(
+                      completed
+                        ? "Zadanie ukończono."
+                        : "Zadanie otwarto ponownie.",
+                    );
+                  else showFailure(result);
+                });
+              }}
+              onSetAssignment={(
+                id: TaskId,
+                principalId: PrincipalId | undefined,
+              ) => {
+                const task = tasks.find((item) => item.id === id);
+                if (!client || !task) return;
+                if (principalId === undefined && task.assignment === undefined)
+                  return;
+                setBusyTaskId(id);
+                void setTaskAssignment(
+                  client,
+                  state.snapshot,
+                  task,
+                  principalId,
+                ).then(async (result) => {
+                  setBusyTaskId(undefined);
+                  if (result.kind === "success")
+                    await refreshAfter(
+                      principalId === undefined
+                        ? "Odpowiedzialność usunięto."
+                        : "Odpowiedzialność przypisano.",
+                    );
+                  else showFailure(result);
+                });
+              }}
+            />
+          )}
+          {surface === "documents" && (
+            <LazySurfaceBoundary label="Dokumenty">
+              <Suspense fallback={<SurfaceLoadingState label="Dokumenty" />}>
+                <DocumentsSurface
+                  client={client}
+                  snapshot={state.snapshot}
+                  onReload={reload}
+                  onFailure={showFailure}
+                />
+              </Suspense>
+            </LazySurfaceBoundary>
+          )}
+          {surface === "projects" && (
+            <ProjectsSurface
+              snapshot={state.snapshot}
+              selectedProjectId={selectedProjectId}
+              overview={projectOverview}
+              relation={sessionRelation}
+              busy={projectBusy}
+              onSelectProject={(id) => {
+                const project =
+                  state.snapshot.projects.kind === "ready"
+                    ? state.snapshot.projects.data.items.find(
+                        (item) => item.id === id,
+                      )
+                    : undefined;
+                openContext(projectContext(id, project?.title ?? "Projekt"));
+              }}
+              onCreate={async (title, outcome) => {
+                if (!client) return false;
+                setProjectBusy(true);
+                const result = await createProject(
+                  client,
+                  state.snapshot,
+                  title,
+                  outcome,
                 );
-              } else if (destination.kind === "document") {
-                openContext(destinationContext("documents", "Dokumenty"));
-              } else {
-                openContext(destinationContext("history", "Historia Capture"));
-              }
-              if (client && item.state === "unread") {
+                setProjectBusy(false);
+                if (result.kind === "success") {
+                  openContext(
+                    projectContext(result.data.projectId, title.trim()),
+                  );
+                  await refreshAfter("Projekt utworzono.");
+                  return true;
+                }
+                showFailure(result);
+                return false;
+              }}
+              onUpdateOutcome={(outcome) => {
+                if (!client || !projectOverview) return;
+                setProjectBusy(true);
+                void updateProjectOutcome(
+                  client,
+                  state.snapshot,
+                  projectOverview.project,
+                  outcome,
+                ).then(async (result) => {
+                  setProjectBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter("Zamierzony wynik zaktualizowano.");
+                  else showFailure(result);
+                });
+              }}
+              onSetLifecycle={(lifecycle) => {
+                if (!client || !projectOverview) return;
+                setProjectBusy(true);
+                void setProjectLifecycle(
+                  client,
+                  state.snapshot,
+                  projectOverview.project,
+                  lifecycle,
+                ).then(async (result) => {
+                  setProjectBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter(
+                      lifecycle === "closed"
+                        ? "Projekt zamknięto; historia i otwarte zadania pozostały bez zmian."
+                        : "Projekt otwarto ponownie.",
+                    );
+                  else showFailure(result);
+                });
+              }}
+              onRelate={(taskId) => {
+                const task = tasks.find((item) => item.id === taskId);
+                if (!client || !task || !projectOverview) return;
+                setProjectBusy(true);
+                void relateTask(
+                  client,
+                  state.snapshot,
+                  task.id,
+                  task.version,
+                  projectOverview.project.id,
+                  projectOverview.project.version,
+                ).then(async (result) => {
+                  setProjectBusy(false);
+                  if (result.kind === "success") {
+                    setSessionRelation({
+                      id: result.data.relationId,
+                      version: result.data.version,
+                      taskId,
+                    });
+                    await refreshAfter("Zadanie powiązano z projektem.");
+                  } else showFailure(result);
+                });
+              }}
+              onUnrelate={() => {
+                if (!client || !sessionRelation) return;
+                setProjectBusy(true);
+                void unrelateTask(
+                  client,
+                  state.snapshot,
+                  sessionRelation.id,
+                  sessionRelation.version,
+                ).then(async (result) => {
+                  setProjectBusy(false);
+                  if (result.kind === "success") {
+                    setSessionRelation(undefined);
+                    await refreshAfter("Powiązanie usunięto.");
+                  } else showFailure(result);
+                });
+              }}
+            />
+          )}
+          {surface === "history" && (
+            <HistorySurface
+              snapshot={state.snapshot}
+              onUndo={(id) => void openUndo(id)}
+              busyCaptureId={historyBusyCaptureId}
+              onDeleteVoiceAudio={(captureId, version) => {
+                if (!client) return;
+                setHistoryBusyCaptureId(captureId);
+                void requestVoiceAudioDeletion(
+                  client,
+                  state.snapshot,
+                  captureId,
+                  version,
+                ).then(async (result) => {
+                  setHistoryBusyCaptureId(undefined);
+                  if (result.kind === "success")
+                    await refreshAfter("Zachowane audio zostało usunięte.");
+                  else showFailure(result);
+                });
+              }}
+            />
+          )}
+          {surface === "activity" && (
+            <ActivitySurface
+              activity={state.snapshot.activity}
+              onUndo={(id) => void openUndo(id)}
+            />
+          )}
+          {surface === "attention" && (
+            <AttentionSurface
+              attention={state.snapshot.attention}
+              busy={attentionBusy}
+              onOpen={(item) => {
+                const destination = item.destination;
+                if (destination.kind === "task") {
+                  const task = tasks.find(
+                    (candidate) => candidate.id === destination.taskId,
+                  );
+                  openContext(
+                    taskContext(destination.taskId, task?.title ?? item.title),
+                  );
+                } else if (destination.kind === "project") {
+                  const project =
+                    state.snapshot.projects.kind === "ready"
+                      ? state.snapshot.projects.data.items.find(
+                          (candidate) => candidate.id === destination.projectId,
+                        )
+                      : undefined;
+                  openContext(
+                    projectContext(
+                      destination.projectId,
+                      project?.title ?? item.title,
+                    ),
+                  );
+                } else if (destination.kind === "document") {
+                  openContext(destinationContext("documents", "Dokumenty"));
+                } else {
+                  openContext(
+                    destinationContext("history", "Historia Capture"),
+                  );
+                }
+                if (client && item.state === "unread") {
+                  setAttentionBusy(true);
+                  void updateAttention(
+                    client,
+                    state.snapshot,
+                    item,
+                    "read",
+                  ).then(async (result) => {
+                    setAttentionBusy(false);
+                    if (result.kind === "success") await reload();
+                    else showFailure(result);
+                  });
+                }
+              }}
+              onRead={(item) => {
+                if (!client) return;
                 setAttentionBusy(true);
                 void updateAttention(client, state.snapshot, item, "read").then(
                   async (result) => {
                     setAttentionBusy(false);
-                    if (result.kind === "success") await reload();
+                    if (result.kind === "success")
+                      await refreshAfter("Sygnał oznaczono jako przeczytany.");
                     else showFailure(result);
                   },
                 );
-              }
-            }}
-            onRead={(item) => {
-              if (!client) return;
-              setAttentionBusy(true);
-              void updateAttention(client, state.snapshot, item, "read").then(
-                async (result) => {
-                  setAttentionBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter("Sygnał oznaczono jako przeczytany.");
-                  else showFailure(result);
-                },
-              );
-            }}
-            onDismiss={(item) => {
-              if (!client) return;
-              setAttentionBusy(true);
-              void updateAttention(
-                client,
-                state.snapshot,
-                item,
-                "dismiss",
-              ).then(async (result) => {
-                setAttentionBusy(false);
-                if (result.kind === "success")
-                  await refreshAfter("Sygnał usunięto z uwagi.");
-                else showFailure(result);
-              });
-            }}
-            onRouteCapture={(item, destination) => {
-              if (!client || item.destination.kind !== "capture") return;
-              setAttentionBusy(true);
-              void routeCaptureException(
-                client,
-                state.snapshot,
-                item.destination.captureId,
-                destination,
-              ).then(async (routeResult) => {
-                setAttentionBusy(false);
-                if (routeResult.kind === "success")
-                  await refreshAfter(
-                    destination === "task"
-                      ? "Capture skierowano do zadań."
-                      : "Capture zapisano jako źródło wiedzy.",
-                  );
-                else showFailure(routeResult);
-              });
-            }}
-            onRetryCapture={(item) => {
-              if (!client) return;
-              setAttentionBusy(true);
-              void resolveCaptureException(
-                client,
-                state.snapshot,
-                item,
-                "retry",
-              ).then(async (result) => {
-                setAttentionBusy(false);
-                if (result.kind === "success")
-                  await refreshAfter(
-                    "Capture wrócił do bezpiecznej kolejki przetwarzania.",
-                  );
-                else showFailure(result);
-              });
-            }}
-            onKeepCapture={(item) => {
-              if (!client) return;
-              setAttentionBusy(true);
-              void resolveCaptureException(
-                client,
-                state.snapshot,
-                item,
-                "keep_unclassified",
-              ).then(async (result) => {
-                setAttentionBusy(false);
-                if (result.kind === "success")
-                  await refreshAfter(
-                    "Oryginał zachowano bez wymuszonej klasyfikacji.",
-                  );
-                else showFailure(result);
-              });
-            }}
-            onReplaceCapturePayload={(item) => {
-              if (!client?.selectCapturePayload) {
-                setToast("Wybór pliku jest chwilowo niedostępny.");
-                return;
-              }
-              setAttentionBusy(true);
-              void client.selectCapturePayload().then(async (selected) => {
-                if (selected.outcome !== "success") {
-                  setAttentionBusy(false);
-                  if (selected.code !== "cancelled")
-                    setToast(
-                      "Nie udało się przygotować bezpiecznego pliku zastępczego.",
-                    );
-                  return;
-                }
-                const result = await resolveCaptureException(
+              }}
+              onDismiss={(item) => {
+                if (!client) return;
+                setAttentionBusy(true);
+                void updateAttention(
                   client,
                   state.snapshot,
                   item,
-                  "replace_payload",
-                  selected.original,
-                );
-                setAttentionBusy(false);
-                if (result.kind === "success")
-                  await refreshAfter(
-                    "Oryginał zastąpiono i skierowano do ponownego przetwarzania.",
+                  "dismiss",
+                ).then(async (result) => {
+                  setAttentionBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter("Sygnał usunięto z uwagi.");
+                  else showFailure(result);
+                });
+              }}
+              onRouteCapture={(item, destination) => {
+                if (!client || item.destination.kind !== "capture") return;
+                setAttentionBusy(true);
+                void routeCaptureException(
+                  client,
+                  state.snapshot,
+                  item.destination.captureId,
+                  destination,
+                ).then(async (routeResult) => {
+                  setAttentionBusy(false);
+                  if (routeResult.kind === "success")
+                    await refreshAfter(
+                      destination === "task"
+                        ? "Capture skierowano do zadań."
+                        : "Capture zapisano jako źródło wiedzy.",
+                    );
+                  else showFailure(routeResult);
+                });
+              }}
+              onRetryCapture={(item) => {
+                if (!client) return;
+                setAttentionBusy(true);
+                void resolveCaptureException(
+                  client,
+                  state.snapshot,
+                  item,
+                  "retry",
+                ).then(async (result) => {
+                  setAttentionBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter(
+                      "Capture wrócił do bezpiecznej kolejki przetwarzania.",
+                    );
+                  else showFailure(result);
+                });
+              }}
+              onKeepCapture={(item) => {
+                if (!client) return;
+                setAttentionBusy(true);
+                void resolveCaptureException(
+                  client,
+                  state.snapshot,
+                  item,
+                  "keep_unclassified",
+                ).then(async (result) => {
+                  setAttentionBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter(
+                      "Oryginał zachowano bez wymuszonej klasyfikacji.",
+                    );
+                  else showFailure(result);
+                });
+              }}
+              onReplaceCapturePayload={(item) => {
+                if (!client?.selectCapturePayload) {
+                  setToast("Wybór pliku jest chwilowo niedostępny.");
+                  return;
+                }
+                setAttentionBusy(true);
+                void client.selectCapturePayload().then(async (selected) => {
+                  if (selected.outcome !== "success") {
+                    setAttentionBusy(false);
+                    if (selected.code !== "cancelled")
+                      setToast(
+                        "Nie udało się przygotować bezpiecznego pliku zastępczego.",
+                      );
+                    return;
+                  }
+                  const result = await resolveCaptureException(
+                    client,
+                    state.snapshot,
+                    item,
+                    "replace_payload",
+                    selected.original,
                   );
-                else showFailure(result);
-              });
-            }}
-          />
-        )}
-        {surface === "access" && (
-          <AccessSurface
-            access={state.snapshot.access}
-            agentAccess={state.snapshot.agentAccess}
-            agentTransport={
-              state.snapshot.dataHome?.descriptor.providerKind === "coordinated"
-                ? "remote_hub"
-                : "local"
-            }
-            spaces={state.snapshot.bootstrap.spaces}
-            busy={accessBusy}
-            onAdd={(input) => {
-              if (!client) return;
-              setAccessBusy(true);
-              setNotice(undefined);
-              void addWorkspaceMember(client, state.snapshot, input).then(
-                async (result) => {
+                  setAttentionBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter(
+                      "Oryginał zastąpiono i skierowano do ponownego przetwarzania.",
+                    );
+                  else showFailure(result);
+                });
+              }}
+            />
+          )}
+          {surface === "access" && (
+            <AccessSurface
+              access={state.snapshot.access}
+              agentAccess={state.snapshot.agentAccess}
+              agentTransport={
+                state.snapshot.dataHome?.descriptor.providerKind ===
+                "coordinated"
+                  ? "remote_hub"
+                  : "local"
+              }
+              spaces={state.snapshot.bootstrap.spaces}
+              busy={accessBusy}
+              onAdd={(input) => {
+                if (!client) return;
+                setAccessBusy(true);
+                setNotice(undefined);
+                void addWorkspaceMember(client, state.snapshot, input).then(
+                  async (result) => {
+                    setAccessBusy(false);
+                    if (result.kind === "success")
+                      await refreshAfter("Dostęp utworzono.");
+                    else showFailure(result);
+                  },
+                );
+              }}
+              onSetAccess={(member, access) => {
+                if (!client) return;
+                setAccessBusy(true);
+                setNotice(undefined);
+                void setWorkspaceMemberAccess(
+                  client,
+                  state.snapshot,
+                  member,
+                  access,
+                ).then(async (result) => {
                   setAccessBusy(false);
                   if (result.kind === "success")
-                    await refreshAfter("Dostęp utworzono.");
+                    await refreshAfter("Zakres dostępu zaktualizowano.");
                   else showFailure(result);
-                },
-              );
-            }}
-            onSetAccess={(member, access) => {
-              if (!client) return;
-              setAccessBusy(true);
-              setNotice(undefined);
-              void setWorkspaceMemberAccess(
-                client,
-                state.snapshot,
-                member,
-                access,
-              ).then(async (result) => {
-                setAccessBusy(false);
-                if (result.kind === "success")
-                  await refreshAfter("Zakres dostępu zaktualizowano.");
-                else showFailure(result);
-              });
-            }}
-            onRevoke={(member) => {
-              if (!client) return;
-              setAccessBusy(true);
-              setNotice(undefined);
-              void revokeWorkspaceMember(client, state.snapshot, member).then(
-                async (result) => {
+                });
+              }}
+              onRevoke={(member) => {
+                if (!client) return;
+                setAccessBusy(true);
+                setNotice(undefined);
+                void revokeWorkspaceMember(client, state.snapshot, member).then(
+                  async (result) => {
+                    setAccessBusy(false);
+                    if (result.kind === "success")
+                      await refreshAfter(
+                        "Dostęp cofnięto. Urządzenia usuną projekcję po synchronizacji.",
+                      );
+                    else showFailure(result);
+                  },
+                );
+              }}
+              onAgentAdd={(input) => {
+                if (!client) return;
+                setAccessBusy(true);
+                setNotice(undefined);
+                const remote =
+                  state.snapshot.dataHome?.descriptor.providerKind ===
+                  "coordinated";
+                void (
+                  remote
+                    ? createRemoteAgentGrant(client, input)
+                    : createAgentGrant(client, state.snapshot, input)
+                ).then(async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success") {
+                    await reload();
+                    setAgentGrantDetails(
+                      "endpoint" in result.data
+                        ? {
+                            title: "Zdalny dostęp MCP utworzono",
+                            descriptorLabel: "Chroniony plik konfiguracji",
+                            descriptorPath: result.data.descriptorPath,
+                            connectionLabel: "Endpoint",
+                            connectionValue: result.data.endpoint,
+                          }
+                        : {
+                            title: "Dostęp MCP utworzono",
+                            descriptorLabel: "Plik dostępu",
+                            descriptorPath: result.data.descriptorPath,
+                            connectionLabel: "Adapter hosta",
+                            connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                          },
+                    );
+                  } else showFailure(result);
+                });
+              }}
+              onAgentRotate={(grant) => {
+                if (!client) return;
+                setAccessBusy(true);
+                setNotice(undefined);
+                const remote =
+                  state.snapshot.dataHome?.descriptor.providerKind ===
+                  "coordinated";
+                void (
+                  remote
+                    ? rotateRemoteAgentCredential(client, grant)
+                    : rotateAgentCredential(client, state.snapshot, grant)
+                ).then(async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success") {
+                    await reload();
+                    setAgentGrantDetails(
+                      "endpoint" in result.data
+                        ? {
+                            title: "Zdalne poświadczenie obrócono",
+                            descriptorLabel: "Chroniony plik konfiguracji",
+                            descriptorPath: result.data.descriptorPath,
+                            connectionLabel: "Endpoint",
+                            connectionValue: result.data.endpoint,
+                          }
+                        : {
+                            title: "Poświadczenie obrócono",
+                            descriptorLabel: "Plik dostępu",
+                            descriptorPath: result.data.descriptorPath,
+                            connectionLabel: "Adapter hosta",
+                            connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                          },
+                    );
+                  } else showFailure(result);
+                });
+              }}
+              onAgentRevoke={(grant) => {
+                if (!client) return;
+                setAccessBusy(true);
+                setNotice(undefined);
+                const remote =
+                  state.snapshot.dataHome?.descriptor.providerKind ===
+                  "coordinated";
+                void (
+                  remote
+                    ? revokeRemoteAgentGrant(client, grant)
+                    : revokeAgentGrant(client, state.snapshot, grant)
+                ).then(async (result) => {
                   setAccessBusy(false);
                   if (result.kind === "success")
                     await refreshAfter(
-                      "Dostęp cofnięto. Urządzenia usuną projekcję po synchronizacji.",
+                      remote
+                        ? "Zdalny dostęp agenta cofnięto, a chroniony plik konfiguracji usunięto."
+                        : "Dostęp agenta cofnięto, a lokalne poświadczenie usunięto.",
                     );
                   else showFailure(result);
-                },
-              );
-            }}
-            onAgentAdd={(input) => {
-              if (!client) return;
-              setAccessBusy(true);
-              setNotice(undefined);
-              const remote =
-                state.snapshot.dataHome?.descriptor.providerKind ===
-                "coordinated";
-              void (
-                remote
-                  ? createRemoteAgentGrant(client, input)
-                  : createAgentGrant(client, state.snapshot, input)
-              ).then(async (result) => {
-                setAccessBusy(false);
-                if (result.kind === "success") {
-                  await reload();
-                  setAgentGrantDetails(
-                    "endpoint" in result.data
-                      ? {
-                          title: "Zdalny dostęp MCP utworzono",
-                          descriptorLabel: "Chroniony plik konfiguracji",
-                          descriptorPath: result.data.descriptorPath,
-                          connectionLabel: "Endpoint",
-                          connectionValue: result.data.endpoint,
-                        }
-                      : {
-                          title: "Dostęp MCP utworzono",
-                          descriptorLabel: "Plik dostępu",
-                          descriptorPath: result.data.descriptorPath,
-                          connectionLabel: "Adapter hosta",
-                          connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
-                        },
-                  );
-                } else showFailure(result);
-              });
-            }}
-            onAgentRotate={(grant) => {
-              if (!client) return;
-              setAccessBusy(true);
-              setNotice(undefined);
-              const remote =
-                state.snapshot.dataHome?.descriptor.providerKind ===
-                "coordinated";
-              void (
-                remote
-                  ? rotateRemoteAgentCredential(client, grant)
-                  : rotateAgentCredential(client, state.snapshot, grant)
-              ).then(async (result) => {
-                setAccessBusy(false);
-                if (result.kind === "success") {
-                  await reload();
-                  setAgentGrantDetails(
-                    "endpoint" in result.data
-                      ? {
-                          title: "Zdalne poświadczenie obrócono",
-                          descriptorLabel: "Chroniony plik konfiguracji",
-                          descriptorPath: result.data.descriptorPath,
-                          connectionLabel: "Endpoint",
-                          connectionValue: result.data.endpoint,
-                        }
-                      : {
-                          title: "Poświadczenie obrócono",
-                          descriptorLabel: "Plik dostępu",
-                          descriptorPath: result.data.descriptorPath,
-                          connectionLabel: "Adapter hosta",
-                          connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
-                        },
-                  );
-                } else showFailure(result);
-              });
-            }}
-            onAgentRevoke={(grant) => {
-              if (!client) return;
-              setAccessBusy(true);
-              setNotice(undefined);
-              const remote =
-                state.snapshot.dataHome?.descriptor.providerKind ===
-                "coordinated";
-              void (
-                remote
-                  ? revokeRemoteAgentGrant(client, grant)
-                  : revokeAgentGrant(client, state.snapshot, grant)
-              ).then(async (result) => {
-                setAccessBusy(false);
-                if (result.kind === "success")
-                  await refreshAfter(
-                    remote
-                      ? "Zdalny dostęp agenta cofnięto, a chroniony plik konfiguracji usunięto."
-                      : "Dostęp agenta cofnięto, a lokalne poświadczenie usunięto.",
-                  );
-                else showFailure(result);
-              });
-            }}
-          />
-        )}
-      </section>
+                });
+              }}
+            />
+          )}
+        </div>
 
-      <div className="capture-dock-layer">
-        <button className="capture-dock" onClick={openCapture}>
-          <span>
-            <Icon name="capture" />
-            Zapisz myśl, link albo zadanie…
-          </span>
-          <kbd>{modifierLabel}⇧K</kbd>
-        </button>
-      </div>
+        <div className="capture-dock-layer">
+          <button className="capture-dock" onClick={openCapture}>
+            <span>
+              <Icon name="capture" />
+              Zapisz myśl, link albo zadanie…
+            </span>
+            <kbd>{modifierLabel}⇧K</kbd>
+          </button>
+        </div>
+      </section>
 
       <aside
         className={`inspector${surface === "meetings" ? " inspector--meeting" : ""}${selectedTask || selectedProject || (surface === "meetings" && meetingInspectorOpen) ? " open" : ""}`}
