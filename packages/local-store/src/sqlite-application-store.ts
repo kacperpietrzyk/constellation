@@ -79,7 +79,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-const SCHEMA_VERSION = 15;
+export const LOCAL_STORE_SCHEMA_VERSION = 15;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -628,6 +628,24 @@ const schemaV15 = `
     ON capture_payloads(workspace_id, created_at, id);
 `;
 
+const localStoreMigrations = [
+  schemaV1,
+  schemaV2,
+  schemaV3,
+  schemaV4,
+  schemaV5,
+  schemaV6,
+  schemaV7,
+  schemaV8,
+  schemaV9,
+  schemaV10,
+  schemaV11,
+  schemaV12,
+  schemaV13,
+  schemaV14,
+  schemaV15,
+] as const;
+
 export interface LocalCoordinationState {
   readonly workspaceId: WorkspaceId;
   readonly providerInstanceId: string;
@@ -817,35 +835,37 @@ const retryableStorageFailure = (
 const transactionIsClosed = (database: SqliteDatabase): boolean =>
   database.inTransaction === false || database.isTransaction === false;
 
-export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
+const migrateLocalStoreSchema = (
+  database: SqliteDatabase,
+  targetVersion: number,
+): void => {
   database.exec("PRAGMA foreign_keys = ON;");
   const versionRow = database.prepare("PRAGMA user_version").get();
   const currentVersion = numberValue(versionRow, "user_version", "schema");
-  if (currentVersion > SCHEMA_VERSION) {
+  if (
+    !Number.isInteger(targetVersion) ||
+    targetVersion < 1 ||
+    targetVersion > LOCAL_STORE_SCHEMA_VERSION
+  ) {
+    throw new RangeError(`Invalid local-store target schema ${targetVersion}.`);
+  }
+  if (currentVersion > targetVersion) {
     throw new LocalStoreCorruptionError(
       `Unsupported local-store schema version ${currentVersion}.`,
     );
   }
-  if (currentVersion === SCHEMA_VERSION) return;
+  if (currentVersion === targetVersion) return;
 
   database.exec("BEGIN EXCLUSIVE;");
   try {
-    if (currentVersion === 0) database.exec(schemaV1);
-    if (currentVersion < 2) database.exec(schemaV2);
-    if (currentVersion < 3) database.exec(schemaV3);
-    if (currentVersion < 4) database.exec(schemaV4);
-    if (currentVersion < 5) database.exec(schemaV5);
-    if (currentVersion < 6) database.exec(schemaV6);
-    if (currentVersion < 7) database.exec(schemaV7);
-    if (currentVersion < 8) database.exec(schemaV8);
-    if (currentVersion < 9) database.exec(schemaV9);
-    if (currentVersion < 10) database.exec(schemaV10);
-    if (currentVersion < 11) database.exec(schemaV11);
-    if (currentVersion < 12) database.exec(schemaV12);
-    if (currentVersion < 13) database.exec(schemaV13);
-    if (currentVersion < 14) database.exec(schemaV14);
-    if (currentVersion < 15) database.exec(schemaV15);
-    database.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`);
+    for (
+      let version = currentVersion + 1;
+      version <= targetVersion;
+      version += 1
+    ) {
+      database.exec(localStoreMigrations[version - 1]!);
+    }
+    database.exec(`PRAGMA user_version = ${targetVersion};`);
     database.exec("COMMIT;");
   } catch (error) {
     try {
@@ -856,6 +876,15 @@ export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
     throw error;
   }
 };
+
+export const initializeLocalStoreSchema = (database: SqliteDatabase): void =>
+  migrateLocalStoreSchema(database, LOCAL_STORE_SCHEMA_VERSION);
+
+/** @internal Historical fixture support; not exported by the package root. */
+export const initializeLocalStoreSchemaForVersion = (
+  database: SqliteDatabase,
+  targetVersion: number,
+): void => migrateLocalStoreSchema(database, targetVersion);
 
 class SqliteReadView implements ApplicationWave2ReadView {
   public constructor(protected readonly database: SqliteDatabase) {}

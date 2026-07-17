@@ -139,6 +139,32 @@ export const readInitialHubMigration = async (): Promise<string> => {
   throw new Error("The Hub PostgreSQL migration is unavailable.");
 };
 
+export const HUB_SCHEMA_VERSION = 2;
+
+const HUB_MIGRATION_ADVISORY_LOCK = "734584493293639104";
+
+const readHubSchemaVersion = async (
+  client: PoolClient,
+): Promise<number | undefined> => {
+  const relation = await client.query<{ meta_table: string | null }>(
+    "SELECT to_regclass('public.constellation_hub_meta')::text AS meta_table",
+  );
+  if (relation.rows[0]?.meta_table === null) return undefined;
+
+  const result = await client.query<{ schema_version: number }>(
+    "SELECT schema_version FROM constellation_hub_meta WHERE singleton = true",
+  );
+  const version = result.rows[0]?.schema_version;
+  if (
+    result.rowCount !== 1 ||
+    !Number.isSafeInteger(version) ||
+    version === undefined
+  ) {
+    throw new Error("Constellation Hub schema metadata is invalid.");
+  }
+  return version;
+};
+
 export class PostgresHubRepository implements HubRepository {
   public constructor(private readonly pool: Pool) {}
 
@@ -155,17 +181,52 @@ export class PostgresHubRepository implements HubRepository {
 
   public async migrate(): Promise<void> {
     const client = await this.pool.connect();
+    let locked = false;
+    let reusable = true;
+    let failure: unknown;
     try {
+      await client.query("SELECT pg_advisory_lock($1::bigint)", [
+        HUB_MIGRATION_ADVISORY_LOCK,
+      ]);
+      locked = true;
+      const sourceVersion = await readHubSchemaVersion(client);
+      if (
+        sourceVersion !== undefined &&
+        (sourceVersion < 1 || sourceVersion > HUB_SCHEMA_VERSION)
+      ) {
+        throw new Error(
+          `Unsupported Constellation Hub schema version ${sourceVersion}; this build supports versions 1 through ${HUB_SCHEMA_VERSION}.`,
+        );
+      }
       await client.query(await readInitialHubMigration());
-      const result = await client.query(
-        "SELECT schema_version FROM constellation_hub_meta WHERE singleton = true",
-      );
-      if (result.rowCount !== 1 || result.rows[0]?.schema_version !== 2) {
+      const migratedVersion = await readHubSchemaVersion(client);
+      if (migratedVersion !== HUB_SCHEMA_VERSION) {
         throw new Error("Unsupported Constellation Hub schema version.");
       }
-    } finally {
-      client.release();
+    } catch (error) {
+      failure = error;
+      try {
+        // The migration file owns its transaction. If any statement fails,
+        // PostgreSQL keeps the session aborted until an explicit rollback;
+        // preserve the original migration error while making unlock possible.
+        await client.query("ROLLBACK");
+      } catch {
+        reusable = false;
+      }
     }
+    try {
+      if (locked) {
+        await client.query("SELECT pg_advisory_unlock($1::bigint)", [
+          HUB_MIGRATION_ADVISORY_LOCK,
+        ]);
+      }
+    } catch (error) {
+      reusable = false;
+      if (failure === undefined) failure = error;
+    } finally {
+      client.release(!reusable);
+    }
+    if (failure !== undefined) throw failure;
   }
 
   public async close(): Promise<void> {

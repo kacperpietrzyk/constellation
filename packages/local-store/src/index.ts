@@ -1,5 +1,6 @@
 export {
   LocalStoreCorruptionError,
+  LOCAL_STORE_SCHEMA_VERSION,
   SqliteApplicationStore,
   initializeLocalStoreSchema,
 } from "./sqlite-application-store.js";

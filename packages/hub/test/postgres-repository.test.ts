@@ -91,6 +91,112 @@ it(
       DROP TABLE IF EXISTS constellation_hub_meta CASCADE;
     `);
     const repository = new PostgresHubRepository(pool);
+
+    await pool.query(`
+      CREATE TABLE constellation_hub_meta (
+        singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+        schema_version integer NOT NULL CHECK (schema_version > 0),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      INSERT INTO constellation_hub_meta (singleton, schema_version)
+      VALUES (true, 3);
+    `);
+    await assert.rejects(
+      repository.migrate(),
+      /supports versions 1 through 2/u,
+    );
+    const futureSchema = await pool.query(
+      "SELECT schema_version FROM constellation_hub_meta WHERE singleton = true",
+    );
+    assert.equal(futureSchema.rows[0]?.schema_version, 3);
+    const futureWorkspaceTable = await pool.query(
+      "SELECT to_regclass('public.constellation_hub_workspaces')::text AS table_name",
+    );
+    assert.equal(futureWorkspaceTable.rows[0]?.table_name, null);
+
+    await pool.query(`
+      DROP TABLE constellation_hub_meta;
+      CREATE TABLE constellation_hub_meta (
+        singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+        schema_version integer NOT NULL CHECK (schema_version > 0),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      INSERT INTO constellation_hub_meta (singleton, schema_version)
+      VALUES (true, 1);
+      CREATE TABLE constellation_hub_workspaces (
+        workspace_id uuid PRIMARY KEY,
+        checkpoint bigint NOT NULL DEFAULT 0 CHECK (checkpoint >= 0),
+        snapshot jsonb NOT NULL,
+        snapshot_digest char(64) NOT NULL CHECK (snapshot_digest ~ '^[0-9a-f]{64}$'),
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      INSERT INTO constellation_hub_workspaces
+        (workspace_id, checkpoint, snapshot, snapshot_digest)
+      VALUES
+        ('00000000-0000-4000-8000-000000000900', 7, '{"sentinel":true}'::jsonb, repeat('0', 64));
+      CREATE FUNCTION constellation_fail_schema_update() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        RAISE EXCEPTION 'injected migration failure';
+      END;
+      $$;
+      CREATE TRIGGER constellation_fail_schema_update
+      BEFORE UPDATE ON constellation_hub_meta
+      FOR EACH ROW EXECUTE FUNCTION constellation_fail_schema_update();
+    `);
+    await assert.rejects(repository.migrate(), /injected migration failure/u);
+    const interruptedSchema = await pool.query(
+      "SELECT schema_version FROM constellation_hub_meta WHERE singleton = true",
+    );
+    assert.equal(interruptedSchema.rows[0]?.schema_version, 1);
+    const interruptedWorkspace = await pool.query(
+      "SELECT checkpoint::text, snapshot FROM constellation_hub_workspaces WHERE workspace_id = '00000000-0000-4000-8000-000000000900'",
+    );
+    assert.equal(interruptedWorkspace.rows[0]?.checkpoint, "7");
+    assert.deepEqual(interruptedWorkspace.rows[0]?.snapshot, {
+      sentinel: true,
+    });
+    const interruptedColumn = await pool.query(
+      "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'constellation_hub_workspaces' AND column_name = 'remote_agent_state'",
+    );
+    assert.equal(interruptedColumn.rowCount, 0);
+
+    await pool.query(`
+      DROP TRIGGER constellation_fail_schema_update ON constellation_hub_meta;
+      DROP FUNCTION constellation_fail_schema_update();
+    `);
+    await repository.migrate();
+    const recoveredSchema = await pool.query(
+      "SELECT schema_version FROM constellation_hub_meta WHERE singleton = true",
+    );
+    assert.equal(recoveredSchema.rows[0]?.schema_version, 2);
+    const recoveredWorkspace = await pool.query(
+      "SELECT checkpoint::text, snapshot, remote_agent_state FROM constellation_hub_workspaces WHERE workspace_id = '00000000-0000-4000-8000-000000000900'",
+    );
+    assert.equal(recoveredWorkspace.rows[0]?.checkpoint, "7");
+    assert.deepEqual(recoveredWorkspace.rows[0]?.snapshot, { sentinel: true });
+    assert.deepEqual(recoveredWorkspace.rows[0]?.remote_agent_state, {
+      grants: [],
+      memberships: [],
+      spaceGrants: [],
+      runs: [],
+      checkpoints: [],
+      handoffs: [],
+      federationScopes: {},
+    });
+
+    await pool.query(`
+      DROP TABLE IF EXISTS constellation_hub_document_revisions CASCADE;
+      DROP TABLE IF EXISTS constellation_hub_documents CASCADE;
+      DROP TABLE IF EXISTS constellation_hub_attachments CASCADE;
+      DROP TABLE IF EXISTS constellation_hub_attachment_uploads CASCADE;
+      DROP TABLE IF EXISTS constellation_hub_command_receipts CASCADE;
+      DROP TABLE IF EXISTS constellation_hub_devices CASCADE;
+      DROP TABLE IF EXISTS constellation_hub_enrollments CASCADE;
+      DROP TABLE IF EXISTS constellation_hub_workspaces CASCADE;
+      DROP TABLE IF EXISTS constellation_hub_meta CASCADE;
+    `);
     await repository.migrate();
 
     const harness = createReferenceHarness();

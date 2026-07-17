@@ -42,9 +42,12 @@ import {
 
 import {
   LocalStoreCorruptionError,
+  LOCAL_STORE_SCHEMA_VERSION,
   SqliteApplicationStore,
+  initializeLocalStoreSchema,
   type SqliteDatabase,
 } from "../src/index.js";
+import { initializeLocalStoreSchemaForVersion } from "../src/sqlite-application-store.js";
 
 const ids = {
   workspace: "00000000-0000-4000-8000-000000000001",
@@ -1001,6 +1004,196 @@ describe("SQLite ApplicationStore", () => {
         }>
       ).map((row) => row.record_id),
       [taskId],
+    );
+    database.close();
+  });
+
+  it("migrates every supported historical schema to the current version", () => {
+    for (
+      let sourceVersion = 1;
+      sourceVersion <= LOCAL_STORE_SCHEMA_VERSION;
+      sourceVersion += 1
+    ) {
+      withDatabase((filename) => {
+        const historical = new DatabaseSync(filename);
+        initializeLocalStoreSchemaForVersion(
+          sqlitePort(historical),
+          sourceVersion,
+        );
+        const taskId = "00000000-0000-4000-8000-000000000090" as TaskId;
+        const createdAt = "2026-07-13T09:00:00.000Z";
+        historical
+          .prepare(
+            "INSERT INTO workspaces(id, version, payload_json) VALUES (?, 1, ?)",
+          )
+          .run(
+            ids.workspace,
+            JSON.stringify({ id: ids.workspace, version: 1 }),
+          );
+        historical
+          .prepare(
+            "INSERT INTO spaces(id, workspace_id, version, payload_json) VALUES (?, ?, 1, ?)",
+          )
+          .run(
+            ids.rootSpace,
+            ids.workspace,
+            JSON.stringify({
+              id: ids.rootSpace,
+              workspaceId: ids.workspace,
+              version: 1,
+            }),
+          );
+        const task = {
+          id: taskId,
+          workspaceId: ids.workspace,
+          spaceId: ids.rootSpace,
+          title: `Schema ${sourceVersion} migration evidence`,
+          statusId: "00000000-0000-4000-8000-000000000091",
+          recordState: "active",
+          completionState: "open",
+          operationalState: "actionable",
+          createdBy: ids.principal,
+          version: 1,
+          createdAt,
+          updatedAt: createdAt,
+        };
+        if (sourceVersion === 1) {
+          historical
+            .prepare(
+              "INSERT INTO tasks(id, workspace_id, space_id, created_at, version, payload_json) VALUES (?, ?, ?, ?, 1, ?)",
+            )
+            .run(
+              taskId,
+              ids.workspace,
+              ids.rootSpace,
+              createdAt,
+              JSON.stringify(task),
+            );
+        } else {
+          historical
+            .prepare(
+              "INSERT INTO tasks(id, workspace_id, space_id, created_at, version, payload_json, record_state, completion_state, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)",
+            )
+            .run(
+              taskId,
+              ids.workspace,
+              ids.rootSpace,
+              createdAt,
+              JSON.stringify(task),
+              task.recordState,
+              task.completionState,
+              task.updatedAt,
+            );
+        }
+        historical.close();
+
+        const reopened = new DatabaseSync(filename);
+        const store = new SqliteApplicationStore(sqlitePort(reopened));
+        assert.equal(
+          (
+            reopened.prepare("PRAGMA user_version").get() as {
+              user_version: number;
+            }
+          ).user_version,
+          LOCAL_STORE_SCHEMA_VERSION,
+          `source schema ${sourceVersion}`,
+        );
+        assert.equal(
+          store.read((view) => view.getTask(taskId))?.title,
+          task.title,
+          `source schema ${sourceVersion}`,
+        );
+        assert.match(
+          (
+            reopened
+              .prepare(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'capture_payloads'",
+              )
+              .get() as { sql: string }
+          ).sql,
+          /voice_note/u,
+          `source schema ${sourceVersion}`,
+        );
+        reopened.close();
+      });
+    }
+  });
+
+  it("rolls back an interrupted migration and retries from the same source", () => {
+    const database = new DatabaseSync(":memory:");
+    initializeLocalStoreSchemaForVersion(sqlitePort(database), 14);
+    let failMigration = true;
+    const failure = new Error("injected schema 15 failure");
+    const delegated: SqliteDatabase = {
+      exec(sql) {
+        if (
+          failMigration &&
+          sql.includes("ALTER TABLE capture_payloads RENAME TO")
+        ) {
+          throw failure;
+        }
+        database.exec(sql);
+      },
+      prepare: (sql) => sqlitePort(database).prepare(sql),
+    };
+
+    assert.throws(() => initializeLocalStoreSchema(delegated), failure);
+    assert.equal(
+      (
+        database.prepare("PRAGMA user_version").get() as {
+          user_version: number;
+        }
+      ).user_version,
+      14,
+    );
+    assert.equal(
+      (
+        database
+          .prepare(
+            "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'capture_payloads_v14'",
+          )
+          .get() as { count: number }
+      ).count,
+      0,
+    );
+
+    failMigration = false;
+    initializeLocalStoreSchema(delegated);
+    assert.equal(
+      (
+        database.prepare("PRAGMA user_version").get() as {
+          user_version: number;
+        }
+      ).user_version,
+      LOCAL_STORE_SCHEMA_VERSION,
+    );
+    database.close();
+  });
+
+  it("fails closed without modifying a future local-store schema", () => {
+    const database = new DatabaseSync(":memory:");
+    database.exec(`PRAGMA user_version = ${LOCAL_STORE_SCHEMA_VERSION + 1};`);
+    assert.throws(
+      () => initializeLocalStoreSchema(sqlitePort(database)),
+      LocalStoreCorruptionError,
+    );
+    assert.equal(
+      (
+        database.prepare("PRAGMA user_version").get() as {
+          user_version: number;
+        }
+      ).user_version,
+      LOCAL_STORE_SCHEMA_VERSION + 1,
+    );
+    assert.equal(
+      (
+        database
+          .prepare(
+            "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table'",
+          )
+          .get() as { count: number }
+      ).count,
+      0,
     );
     database.close();
   });

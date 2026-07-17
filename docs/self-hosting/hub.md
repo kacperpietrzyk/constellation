@@ -89,13 +89,19 @@ Dropbox, iCloud Drive, OneDrive, or a generic synchronized folder.
 1. Check the target release notes and back up both stores.
 2. Stop the Hub while leaving PostgreSQL available.
 3. Run the new image's `migrate` command. Migrations are transactional and the
-   process refuses an unsupported schema version.
+   current image supports a fresh database plus schema v1 and v2, upgrading v1
+   to the current v2. It refuses v3 or newer before applying migration SQL.
 4. Start one Hub instance and require `/readyz` to return HTTP 200.
 5. Let one test device synchronize before restoring normal access.
 
 Do not roll the application image back after a schema migration unless that
 release explicitly documents backward compatibility. Restore the pre-upgrade
 database and attachment backup together instead.
+
+Migration startup is serialized with a PostgreSQL advisory lock. A failed v1
+to v2 migration rolls back its schema and data changes; after correcting the
+cause, rerunning `migrate` is the supported recovery path. Release checks inject
+such a failure, verify the v1 data remains intact, then prove a clean retry.
 
 ## Backup and restore
 
