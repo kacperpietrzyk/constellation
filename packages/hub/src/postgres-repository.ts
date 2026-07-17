@@ -182,6 +182,8 @@ export class PostgresHubRepository implements HubRepository {
   public async migrate(): Promise<void> {
     const client = await this.pool.connect();
     let locked = false;
+    let reusable = true;
+    let failure: unknown;
     try {
       await client.query("SELECT pg_advisory_lock($1::bigint)", [
         HUB_MIGRATION_ADVISORY_LOCK,
@@ -201,17 +203,30 @@ export class PostgresHubRepository implements HubRepository {
       if (migratedVersion !== HUB_SCHEMA_VERSION) {
         throw new Error("Unsupported Constellation Hub schema version.");
       }
-    } finally {
+    } catch (error) {
+      failure = error;
       try {
-        if (locked) {
-          await client.query("SELECT pg_advisory_unlock($1::bigint)", [
-            HUB_MIGRATION_ADVISORY_LOCK,
-          ]);
-        }
-      } finally {
-        client.release();
+        // The migration file owns its transaction. If any statement fails,
+        // PostgreSQL keeps the session aborted until an explicit rollback;
+        // preserve the original migration error while making unlock possible.
+        await client.query("ROLLBACK");
+      } catch {
+        reusable = false;
       }
     }
+    try {
+      if (locked) {
+        await client.query("SELECT pg_advisory_unlock($1::bigint)", [
+          HUB_MIGRATION_ADVISORY_LOCK,
+        ]);
+      }
+    } catch (error) {
+      reusable = false;
+      if (failure === undefined) failure = error;
+    } finally {
+      client.release(!reusable);
+    }
+    if (failure !== undefined) throw failure;
   }
 
   public async close(): Promise<void> {
