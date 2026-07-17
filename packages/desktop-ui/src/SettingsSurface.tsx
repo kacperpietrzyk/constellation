@@ -263,17 +263,15 @@ export const SettingsSurface = ({
   const exportSupportReport = async () => {
     if (!client?.exportSupportReport) return;
     setBusy(true);
-    setSupportMessage(
-      "Przygotowuję raport bez treści i danych identyfikujących…",
-    );
+    setSupportMessage("Otwieram zapis raportu…");
     try {
       const result = await client.exportSupportReport();
       setSupportMessage(
         result.outcome === "success"
-          ? `Zapisano ${result.fileLabel}. Sprawdź plik przed udostępnieniem.`
+          ? `Raport zapisany jako ${result.fileLabel}. Sprawdź plik przed udostępnieniem.`
           : result.outcome === "cancelled"
             ? "Anulowano. Żaden raport nie został zapisany."
-            : "Nie udało się zapisać raportu. Dane aplikacji pozostały bez zmian.",
+            : "Nie udało się zapisać raportu. Spróbuj ponownie. Dane aplikacji pozostały bez zmian.",
       );
     } catch {
       setSupportMessage(
@@ -435,25 +433,41 @@ export const SettingsSurface = ({
           </div>
         </section>
 
-        <section>
+        <section className="support-report-section">
           <div className="settings-copy">
-            <p className="eyebrow">Support</p>
-            <h2>Raport diagnostyczny bez prywatnych danych</h2>
+            <p className="eyebrow">Wsparcie</p>
+            <h2>Raport wsparcia</h2>
             <p>
-              Raport zawiera wersje aplikacji i środowiska oraz nazwane stany
-              Data Home, odzyskiwania i aktualizacji. Nie zawiera treści, nazw,
-              identyfikatorów, ścieżek, adresów usług, liczby rekordów,
-              poświadczeń, logów, stosów błędów ani surowych komunikatów.
+              Zapisz plik diagnostyczny, gdy prosisz o pomoc. Pokazuje stan
+              aplikacji, ale nie treść pracy ani dane identyfikujące.
             </p>
+            <details className="support-report-details">
+              <summary>Co znajdzie się w raporcie?</summary>
+              <div>
+                <p>
+                  <strong>Zawiera:</strong> wersje aplikacji i systemu oraz
+                  nazwane stany Data Home, odzyskiwania i aktualizacji.
+                </p>
+                <p>
+                  <strong>Nie zawiera:</strong> treści, nazw, identyfikatorów,
+                  ścieżek, adresów usług, liczby rekordów, poświadczeń, logów,
+                  stosów błędów ani surowych komunikatów.
+                </p>
+              </div>
+            </details>
           </div>
-          <div className="settings-control">
+          <div className="settings-control support-report-action">
             <button
               type="button"
               disabled={busy || !client?.exportSupportReport}
               onClick={() => void exportSupportReport()}
             >
-              Zapisz raport wsparcia
+              Zapisz raport…
             </button>
+            <p className="support-report-privacy-note">
+              Plik zostaje na Twoim urządzeniu. Nic nie jest wysyłane
+              automatycznie.
+            </p>
             {supportMessage && <p role="status">{supportMessage}</p>}
           </div>
         </section>
