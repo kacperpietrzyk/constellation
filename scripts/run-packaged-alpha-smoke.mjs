@@ -993,6 +993,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         failpoint,
         restorePreview,
         dataHomeDeviceId: boundary.dataHome.descriptor.deviceId,
+        performance: { shellReadyMs: Math.round(shellReadyMs) },
         termination:
           packagedProcess.signalCode ?? `exit-${packagedProcess.exitCode}`,
       };
@@ -1047,6 +1048,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         phase,
         restorePreview,
         dataHomeDeviceId: boundary.dataHome.descriptor.deviceId,
+        performance: { shellReadyMs: Math.round(shellReadyMs) },
         connectionClosed,
         termination:
           packagedProcess.signalCode ?? `exit-${packagedProcess.exitCode}`,

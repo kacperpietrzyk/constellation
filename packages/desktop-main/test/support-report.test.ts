@@ -83,7 +83,11 @@ test("support report writer is private and refuses to overwrite", () => {
       createPrivacySafeSupportReport(input),
     );
     assert.match(readFileSync(destination, "utf8"), /support-report/);
-    assert.equal(statSync(destination).mode & 0o777, 0o600);
+    // Windows does not expose POSIX permission bits through stat. The writer's
+    // exclusive publication contract is still covered on every platform.
+    if (process.platform !== "win32") {
+      assert.equal(statSync(destination).mode & 0o777, 0o600);
+    }
     writeFileSync(destination, "preserve me", { encoding: "utf8" });
     assert.throws(() =>
       writePrivacySafeSupportReport(
