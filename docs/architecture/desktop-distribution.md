@@ -75,3 +75,37 @@ the encrypted packaged journey, replace it with `0.0.2`, reinstall compatible
 `0.0.1`, and remove the application. Every phase must reopen the same workspace
 identity and final uninstall must leave both the encrypted database and
 protected key wrapper in place.
+
+## Privacy-safe support report
+
+Settings can save a versioned JSON support report to a location selected by the
+user. Saving is explicit, cancellation creates no file, and Constellation does
+not upload the report. The file contains only application, operating-system,
+architecture, Electron, Data Home, recovery, and release state values from a
+fixed allowlist.
+
+The report excludes workspace content, names, stable identifiers, filesystem
+paths, service addresses, credentials, environment variables, record counts,
+logs, stack traces, and raw error messages. The main process constructs the
+report and writes a private file atomically without replacing an existing file;
+the renderer never receives a local destination path. Users are reminded to
+inspect the resulting JSON before sharing it.
+
+## Release performance budgets
+
+The ordinary test gate builds a deterministic 250-Task workspace through the
+real Capture command path and measures the complete seed, Capture-to-Task p95,
+Task list, local search, weekly Cockpit, and heap-growth journeys. The release
+guardrails are 15 seconds for the full seed, 100 ms for Capture p95, one second
+for each representative query, and 256 MiB of heap growth. A local reference
+run completed the seed in 48.45 ms, Capture p95 in 0.27 ms, Task list in 2.06
+ms, search in 1.05 ms, Cockpit in 0.61 ms, and grew the heap by 2.47 MiB.
+
+The packaged macOS and Windows journey separately caps each cold or encrypted
+relaunch at 30 seconds and the complete Capture and search UI interactions at
+10 seconds. It emits the measured startup value for every create, interrupted
+recovery, recovery, restore, and restored phase so hosted variance remains
+visible instead of being hidden behind a single pass/fail timeout. Workspace
+switch uses the same encrypted close-and-relaunch boundary and therefore shares
+the packaged startup budget. These are release regression ceilings with
+cross-platform headroom, not claims that a 30-second launch is desirable.

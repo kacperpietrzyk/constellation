@@ -122,6 +122,10 @@ import {
   DesktopReleaseService,
   type DesktopUpdaterAdapter,
 } from "./release-service.js";
+import {
+  createPrivacySafeSupportReport,
+  writePrivacySafeSupportReport,
+} from "./support-report.js";
 
 // Electron's ESM namespace materializes lazy exports before the application is
 // ready. On macOS that can initialize safeStorage early and block on Keychain.
@@ -1913,6 +1917,44 @@ const startProductionDesktop = async (): Promise<void> => {
   ipcMain.handle(DESKTOP_CHANNELS.getReleaseStatus, (event) => {
     assertTrustedSender(event);
     return releaseService.getStatus();
+  });
+  ipcMain.handle(DESKTOP_CHANNELS.exportSupportReport, async (event) => {
+    assertTrustedSender(event);
+    const result = await dialog.showSaveDialog({
+      title: "Save privacy-safe support report",
+      defaultPath: "constellation-support-report.json",
+      filters: [{ name: "JSON", extensions: ["json"] }],
+      properties: ["createDirectory", "showOverwriteConfirmation"],
+    });
+    if (result.canceled || result.filePath === undefined)
+      return { outcome: "cancelled" } as const;
+    let dataHome;
+    try {
+      dataHome = await dataHomeProvider?.getStatus();
+    } catch {
+      dataHome = undefined;
+    }
+    try {
+      writePrivacySafeSupportReport(
+        result.filePath,
+        createPrivacySafeSupportReport({
+          generatedAt: new Date().toISOString(),
+          build: runtime.buildInfo,
+          packaged: app.isPackaged,
+          platform: process.platform,
+          architecture: process.arch,
+          electronVersion: process.versions.electron ?? "unknown",
+          ...(dataHome === undefined ? {} : { dataHome }),
+          release: releaseService.getStatus(),
+        }),
+      );
+      return {
+        outcome: "success",
+        fileLabel: path.basename(result.filePath),
+      } as const;
+    } catch {
+      return { outcome: "failure" } as const;
+    }
   });
   ipcMain.handle(DESKTOP_CHANNELS.checkForRelease, (event) => {
     assertTrustedSender(event);

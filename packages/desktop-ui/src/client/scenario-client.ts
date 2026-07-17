@@ -26,6 +26,7 @@ export interface ScenarioFixtures {
 export const createScenarioClient = (
   fixtures: ScenarioFixtures,
 ): ConstellationRendererClient => ({
+  exportSupportReport: async () => ({ outcome: "cancelled" }),
   getReleaseStatus: async () => ({
     kind: "unavailable",
     currentVersion: "0.0.0-m1",
