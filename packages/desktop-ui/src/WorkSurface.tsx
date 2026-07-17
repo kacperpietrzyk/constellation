@@ -18,6 +18,15 @@ const stateLabel = {
   blocked: "Zablokowane",
 } as const;
 
+const countLabel = (count: number, one: string, few: string, many: string) => {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (count === 1) return `1 ${one}`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14))
+    return `${count} ${few}`;
+  return `${count} ${many}`;
+};
+
 const WorkEmpty = ({
   title,
   detail,
@@ -232,7 +241,12 @@ export const WorkSurface = ({
               <h2 id="work-context-title">Kontekst odpowiedzialności</h2>
             </div>
             <span>
-              {projection.areas.length + projection.initiatives.length}
+              {countLabel(
+                projection.areas.length + projection.initiatives.length,
+                "wpis",
+                "wpisy",
+                "wpisów",
+              )}
             </span>
           </div>
           {projection.areas.map((area) => (
@@ -317,7 +331,19 @@ export const WorkSurface = ({
               <h2 id="work-delivery-title">Projekty i następne działania</h2>
             </div>
             <span>
-              {projection.projects.length} / {projection.tasks.length}
+              {countLabel(
+                projection.projects.length,
+                "projekt",
+                "projekty",
+                "projektów",
+              )}{" "}
+              ·{" "}
+              {countLabel(
+                projection.tasks.length,
+                "zadanie",
+                "zadania",
+                "zadań",
+              )}
             </span>
           </div>
           {projection.projects.map((project) => (
