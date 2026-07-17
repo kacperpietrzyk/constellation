@@ -158,7 +158,7 @@ export const collectDesktopRuntimeNotices = ({
     }
   }
   return [...packages.values()].sort((left, right) =>
-    left.key.localeCompare(right.key, "en"),
+    left.key < right.key ? -1 : left.key > right.key ? 1 : 0,
   );
 };
 
