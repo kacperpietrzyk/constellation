@@ -62,3 +62,36 @@ test("desktop runtime notice collection fails closed without a license file", ()
     fs.rmSync(fixture, { recursive: true, force: true });
   }
 });
+
+test("desktop runtime notices reject terminal control characters", () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "desktop-notices-"));
+  try {
+    fs.writeFileSync(
+      path.join(fixture, "package.json"),
+      JSON.stringify({ name: "fixture", private: true }),
+    );
+    const dependency = path.join(fixture, "node_modules", "unsafe-license");
+    fs.mkdirSync(dependency, { recursive: true });
+    fs.writeFileSync(
+      path.join(dependency, "package.json"),
+      JSON.stringify({
+        name: "unsafe-license",
+        version: "1.0.0",
+        license: "MIT",
+        main: "index.js",
+      }),
+    );
+    fs.writeFileSync(path.join(dependency, "index.js"), "export {};\n");
+    fs.writeFileSync(path.join(dependency, "LICENSE"), "MIT\u001b[2J\n");
+    assert.throws(
+      () =>
+        collectDesktopRuntimeNotices({
+          root: fixture,
+          packageRoots: ["unsafe-license"],
+        }),
+      /DESKTOP_NOTICE_LICENSE_CONTROL_CHAR:unsafe-license@1\.0\.0/u,
+    );
+  } finally {
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});

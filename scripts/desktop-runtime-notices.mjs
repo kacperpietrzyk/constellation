@@ -19,6 +19,8 @@ const LICENSE_FILE = /^(?:licen[cs]e|copying|notice)(?:[.-].*)?$/iu;
 const MAX_LICENSE_BYTES = 512 * 1024;
 const MAX_NOTICE_PACKAGES = 1_000;
 const MAX_NOTICE_BUNDLE_BYTES = 10 * 1024 * 1024;
+const SAFE_METADATA = /^[A-Za-z0-9@/_.+-]+$/u;
+const UNSAFE_TEXT_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 
 const LAZY_VAL_MIT = `The MIT License (MIT)
 
@@ -82,7 +84,13 @@ const licenseTexts = (packageDirectory, packageKey, manifest) => {
     if (stat.size > MAX_LICENSE_BYTES) {
       throw new Error(`DESKTOP_NOTICE_LICENSE_TOO_LARGE:${packageKey}:${name}`);
     }
-    return { name, text: fs.readFileSync(filename, "utf8").trim() };
+    const text = fs.readFileSync(filename, "utf8").trim();
+    if (UNSAFE_TEXT_CONTROL.test(text)) {
+      throw new Error(
+        `DESKTOP_NOTICE_LICENSE_CONTROL_CHAR:${packageKey}:${name}`,
+      );
+    }
+    return { name, text };
   });
 };
 
@@ -106,6 +114,8 @@ export const collectDesktopRuntimeNotices = ({
     if (
       typeof manifest.version !== "string" ||
       typeof manifest.license !== "string" ||
+      !SAFE_METADATA.test(manifest.name) ||
+      !SAFE_METADATA.test(manifest.version) ||
       !ACCEPTED_LICENSE_EXPRESSIONS.has(manifest.license)
     ) {
       throw new Error(`DESKTOP_NOTICE_METADATA_INVALID:${next.name}`);
