@@ -330,7 +330,8 @@ const withSourceAssignee = (
   item: MeetingWorkItem,
   assignee: MeetingWorkItem["assignee"],
 ): MeetingWorkItem => {
-  const { assignee: _currentAssignee, ...withoutAssignee } = item;
+  const withoutAssignee = { ...item };
+  delete withoutAssignee.assignee;
   return assignee === undefined
     ? withoutAssignee
     : { ...withoutAssignee, assignee };
