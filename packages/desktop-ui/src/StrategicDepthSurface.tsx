@@ -241,67 +241,69 @@ export const StrategicDepthSurface = ({
               {busyId === "new-organization" ? "Zapisuję…" : "Dodaj relację"}
             </button>
           </form>
-          <form onSubmit={submitOpportunity}>
-            <div>
-              <strong>Dodaj szansę</strong>
-            </div>
-            <label>
-              <span>Organizacja</span>
-              <select
-                value={opportunityOrganizationId}
-                onChange={(event) =>
-                  setOpportunityOrganizationId(event.target.value)
+          {organizations.length > 0 && (
+            <form onSubmit={submitOpportunity}>
+              <div>
+                <strong>Dodaj szansę</strong>
+              </div>
+              <label>
+                <span>Organizacja</span>
+                <select
+                  value={opportunityOrganizationId}
+                  onChange={(event) =>
+                    setOpportunityOrganizationId(event.target.value)
+                  }
+                  required
+                >
+                  <option value="">Wybierz relację</option>
+                  {organizations.map((organization) => (
+                    <option key={organization.id} value={organization.id}>
+                      {organization.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Tytuł i potrzeba</span>
+                <input
+                  value={opportunityTitle}
+                  onChange={(event) => setOpportunityTitle(event.target.value)}
+                  placeholder="Nazwa szansy"
+                  required
+                />
+                <input
+                  value={opportunityNeed}
+                  onChange={(event) => setOpportunityNeed(event.target.value)}
+                  aria-label="Potwierdzona potrzeba Opportunity"
+                  placeholder="Jaka potrzeba jest potwierdzona?"
+                  required
+                />
+              </label>
+              <label>
+                <span>Następny ruch</span>
+                <input
+                  value={opportunityAction}
+                  onChange={(event) => setOpportunityAction(event.target.value)}
+                  placeholder="Jedna konkretna czynność"
+                  required
+                />
+              </label>
+              <button
+                className="secondary-button compact"
+                disabled={
+                  !client ||
+                  organizations.length === 0 ||
+                  busyId === "new-opportunity"
                 }
-                required
               >
-                <option value="">Wybierz relację</option>
-                {organizations.map((organization) => (
-                  <option key={organization.id} value={organization.id}>
-                    {organization.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Tytuł i potrzeba</span>
-              <input
-                value={opportunityTitle}
-                onChange={(event) => setOpportunityTitle(event.target.value)}
-                placeholder="Nazwa szansy"
-                required
-              />
-              <input
-                value={opportunityNeed}
-                onChange={(event) => setOpportunityNeed(event.target.value)}
-                aria-label="Potwierdzona potrzeba Opportunity"
-                placeholder="Jaka potrzeba jest potwierdzona?"
-                required
-              />
-            </label>
-            <label>
-              <span>Następny ruch</span>
-              <input
-                value={opportunityAction}
-                onChange={(event) => setOpportunityAction(event.target.value)}
-                placeholder="Jedna konkretna czynność"
-                required
-              />
-            </label>
-            <button
-              className="secondary-button compact"
-              disabled={
-                !client ||
-                organizations.length === 0 ||
-                busyId === "new-opportunity"
-              }
-            >
-              {busyId === "new-opportunity" ? "Zapisuję…" : "Dodaj szansę"}
-            </button>
-          </form>
+                {busyId === "new-opportunity" ? "Zapisuję…" : "Dodaj szansę"}
+              </button>
+            </form>
+          )}
         </section>
       )}
 
-      {snapshot.relationships.kind === "ready" && (
+      {snapshot.relationships.kind === "ready" && records.length > 0 && (
         <StrategicCreatePanel
           client={client}
           snapshot={snapshot}
@@ -330,10 +332,12 @@ export const StrategicDepthSurface = ({
         <section className="strategic-empty" role="status">
           <span aria-hidden="true">◇</span>
           <div>
-            <h2>Brak relacji i przeglądów w tym Space</h2>
+            <h2>Zbuduj pierwszą relację</h2>
             <p>
-              Zacznij od Organization powyżej. Użytkownik i uprawniony agent
-              zapisują ją przez ten sam kontrakt poleceń i wspólny audyt.
+              Relacja łączy organizację z potwierdzoną potrzebą, ofertą,
+              projektem, odnowieniem i decyzją — każdy krok zachowuje źródło i
+              historię. Dodaj pierwszą organizację w formularzu powyżej; szanse
+              i pozostałe rekordy pojawią się, gdy będzie je do czego podłączyć.
             </p>
           </div>
         </section>

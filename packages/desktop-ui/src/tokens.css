@@ -206,6 +206,9 @@
   --sidebar-width: 13.75rem;
   --inspector-width: 20rem;
   --titlebar-height: 2.875rem;
+  /* Height of the tab/header band below the titlebar. The work-column tabbar
+     and the inspector header share it so their bottom borders form one seam. */
+  --header-band-height: 2.55rem;
 }
 
 [data-theme="light"] {

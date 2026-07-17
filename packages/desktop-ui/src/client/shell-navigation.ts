@@ -202,6 +202,37 @@ export const openShellContext = (
   };
 };
 
+export const navigateShellContext = (
+  state: ShellNavigationState,
+  context: ShellContext,
+): ShellNavigationState => {
+  const existing = state.tabs.findIndex((tab) => tab.key === context.key);
+  if (existing >= 0) {
+    const tabs = state.tabs.map((tab, index) =>
+      index === existing ? context : tab,
+    );
+    return {
+      ...state,
+      ...appendHistory(state, context.key),
+      tabs,
+      activeKey: context.key,
+    };
+  }
+  const activeIndex = state.tabs.findIndex(
+    (tab) => tab.key === state.activeKey,
+  );
+  if (activeIndex < 0) return openShellContext(state, context);
+  const tabs = state.tabs.map((tab, index) =>
+    index === activeIndex ? context : tab,
+  );
+  return {
+    ...state,
+    ...appendHistory(state, context.key),
+    tabs,
+    activeKey: context.key,
+  };
+};
+
 export const activateShellContext = (
   state: ShellNavigationState,
   key: string,

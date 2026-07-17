@@ -11,6 +11,7 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 
@@ -90,6 +91,7 @@ import {
   destinationShortcutIndex,
   destinationContext,
   moveShellHistory,
+  navigateShellContext,
   openShellContext,
   projectContext,
   pruneInaccessibleShellContexts,
@@ -1048,6 +1050,14 @@ export const RealApp = ({
       return ["cockpit", "work"];
     }
   });
+  const [inspectorWidth, setInspectorWidth] = useState<number>(() => {
+    const stored = Number(
+      localStorage.getItem("constellation.inspector-width"),
+    );
+    return Number.isFinite(stored) && stored >= 280 && stored <= 640
+      ? stored
+      : 320;
+  });
   const [captureOpen, setCaptureOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
@@ -1124,15 +1134,73 @@ export const RealApp = ({
     localStorage.setItem("constellation.favorites", JSON.stringify(favorites));
   }, [favorites]);
 
+  useEffect(() => {
+    localStorage.setItem(
+      "constellation.inspector-width",
+      String(inspectorWidth),
+    );
+  }, [inspectorWidth]);
+
+  const startInspectorResize = (event: ReactMouseEvent) => {
+    event.preventDefault();
+    const onMove = (moveEvent: globalThis.MouseEvent) => {
+      setInspectorWidth(
+        Math.min(640, Math.max(280, window.innerWidth - moveEvent.clientX)),
+      );
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   const openContext = useCallback((context: ShellContext) => {
+    setNavigation((current) => navigateShellContext(current, context));
+  }, []);
+  const openContextInNewTab = useCallback((context: ShellContext) => {
     setNavigation((current) => openShellContext(current, context));
   }, []);
+  const [navMenu, setNavMenu] = useState<{
+    readonly x: number;
+    readonly y: number;
+    readonly context: ShellContext;
+  }>();
+  const navHandlers = (context: ShellContext) => ({
+    onClick: (event: ReactMouseEvent) => {
+      if (event.metaKey || event.ctrlKey) {
+        event.preventDefault();
+        openContextInNewTab(context);
+      } else {
+        openContext(context);
+      }
+    },
+    onAuxClick: (event: ReactMouseEvent) => {
+      if (event.button === 1) {
+        event.preventDefault();
+        openContextInNewTab(context);
+      }
+    },
+    onContextMenu: (event: ReactMouseEvent) => {
+      event.preventDefault();
+      setNavMenu({
+        x: Math.min(event.clientX, window.innerWidth - 208),
+        y: Math.min(event.clientY, window.innerHeight - 96),
+        context,
+      });
+    },
+  });
   const openCapture = useCallback(() => {
     const activeElement = document.activeElement;
     captureReturnFocusRef.current =
       activeElement instanceof HTMLElement && activeElement !== document.body
         ? activeElement
-        : document.querySelector<HTMLElement>(".sidebar-capture");
+        : document.querySelector<HTMLElement>(".capture-dock");
     setCaptureOpen(true);
   }, []);
   const dismissCapture = useCallback(() => {
@@ -1144,7 +1212,7 @@ export const RealApp = ({
     captureRestoreFocusPendingRef.current = false;
     const returnTarget = captureReturnFocusRef.current;
     if (returnTarget?.isConnected) returnTarget.focus();
-    else document.querySelector<HTMLElement>(".sidebar-capture")?.focus();
+    else document.querySelector<HTMLElement>(".capture-dock")?.focus();
     captureReturnFocusRef.current = null;
   }, [captureOpen]);
 
@@ -1356,6 +1424,7 @@ export const RealApp = ({
       } else if (event.key === "Escape") {
         setSearchOpen(false);
         setUndoPreview(undefined);
+        setNavMenu(undefined);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -1570,9 +1639,13 @@ export const RealApp = ({
   const dataHomeLabel = coordinatedDataHome
     ? `${state.snapshot.dataHome?.descriptor.displayName ?? "Hub"} · skoordynowany`
     : "Local only · dane na tym urządzeniu";
+  const inspectorVisible = Boolean(
+    selectedTask || selectedProject || surface === "meetings",
+  );
   return (
     <main
-      className={`desktop-shell wave2-shell${surface === "meetings" ? " meeting-context-shell" : ""}`}
+      className={`desktop-shell wave2-shell${surface === "meetings" ? " meeting-context-shell" : ""}${inspectorVisible ? "" : " no-inspector"}`}
+      style={{ ["--inspector-width" as string]: `${inspectorWidth}px` }}
     >
       <a className="skip-link" href="#main-content">
         Przejdź do treści
@@ -1632,9 +1705,7 @@ export const RealApp = ({
                     aria-current={surface === item.id ? "page" : undefined}
                     onFocus={() => preloadSurface(item.id)}
                     onMouseEnter={() => preloadSurface(item.id)}
-                    onClick={() =>
-                      openContext(destinationContext(item.id, item.label))
-                    }
+                    {...navHandlers(destinationContext(item.id, item.label))}
                   >
                     <Icon name={item.icon} />
                     <span>{item.label}</span>
@@ -1689,9 +1760,7 @@ export const RealApp = ({
                       aria-current={surface === item.id ? "page" : undefined}
                       onFocus={() => preloadSurface(item.id)}
                       onMouseEnter={() => preloadSurface(item.id)}
-                      onClick={() =>
-                        openContext(destinationContext(item.id, item.label))
-                      }
+                      {...navHandlers(destinationContext(item.id, item.label))}
                     >
                       <Icon name={item.icon} />
                       <span>{item.label}</span>
@@ -1754,17 +1823,6 @@ export const RealApp = ({
             </select>
           </details>
         )}
-        <button
-          className="sidebar-capture"
-          aria-label={`Quick Capture · ${modifierLabel}⇧K`}
-          onClick={openCapture}
-        >
-          <span className="capture-plus">
-            <Icon name="capture" />
-          </span>
-          <span>Quick Capture</span>
-          <kbd>{modifierLabel}⇧K</kbd>
-        </button>
         <div className="preview-identity">
           <span className="status-dot" />
           <div>
@@ -2552,312 +2610,331 @@ export const RealApp = ({
         </div>
       </section>
 
-      <aside
-        className={`inspector${surface === "meetings" ? " inspector--meeting" : ""}${selectedTask || selectedProject || (surface === "meetings" && meetingInspectorOpen) ? " open" : ""}`}
-        aria-label="Podgląd kontekstu"
-      >
-        <header className="inspector-header">
-          <div>
-            <span>Podgląd kontekstu</span>
-            <small>
-              {selectedTask
-                ? "Zadanie"
-                : selectedProject
-                  ? "Projekt"
-                  : surface === "meetings"
-                    ? "Wynik Jamie"
-                    : "Workspace"}
-            </small>
-          </div>
-          {(selectedTask || selectedProject) && (
-            <button
-              className="icon-button"
-              aria-label="Zamknij inspector"
-              onClick={() =>
-                setNavigation((current) =>
-                  closeShellContext(current, current.activeKey),
-                )
-              }
-            >
-              <Icon name="close" />
-            </button>
-          )}
-          {surface === "meetings" && (
-            <button
-              className="icon-button meeting-inspector-close"
-              aria-label="Zamknij szczegóły spotkania"
-              onClick={() => setMeetingInspectorOpen(false)}
-            >
-              <Icon name="close" />
-            </button>
-          )}
-        </header>
-        {surface === "meetings" ? (
+      {inspectorVisible && (
+        <aside
+          className={`inspector${surface === "meetings" ? " inspector--meeting" : ""}${selectedTask || selectedProject || (surface === "meetings" && meetingInspectorOpen) ? " open" : ""}`}
+          aria-label="Podgląd kontekstu"
+        >
           <div
-            className="meeting-inspector-host"
-            ref={setMeetingInspectorHost}
+            className="inspector-resize"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Zmień szerokość panelu podglądu"
+            tabIndex={0}
+            onMouseDown={startInspectorResize}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                setInspectorWidth((width) => Math.min(640, width + 16));
+              } else if (event.key === "ArrowRight") {
+                event.preventDefault();
+                setInspectorWidth((width) => Math.max(280, width - 16));
+              }
+            }}
           />
-        ) : selectedTask ? (
-          <div className="inspector-body">
-            <span className="record-status">
-              <i />
-              {selectedTask.completionState === "completed"
-                ? "Ukończone"
-                : selectedTask.status.label}
-            </span>
-            <h2>{selectedTask.title}</h2>
-            <p className="record-summary">
-              {sourceCapture
-                ? "Utworzone z zachowanego Capture."
-                : "Zadanie w aktywnym workspace."}
-            </p>
-            <section className="inspector-section assignment-block">
-              <p className="section-label">Odpowiedzialność</p>
-              <p>
-                {selectedTask.assignment?.displayName ?? "Nieprzypisane"}
-                {selectedTask.assignment?.availability === "former_member"
-                  ? " · dostęp cofnięty"
-                  : ""}
+          <header className="inspector-header">
+            <div>
+              <span>Podgląd kontekstu</span>
+              <small>
+                {selectedTask
+                  ? "Zadanie"
+                  : selectedProject
+                    ? "Projekt"
+                    : surface === "meetings"
+                      ? "Wynik Jamie"
+                      : "Workspace"}
+              </small>
+            </div>
+            {(selectedTask || selectedProject) && (
+              <button
+                className="icon-button"
+                aria-label="Zamknij inspector"
+                onClick={() =>
+                  setNavigation((current) =>
+                    closeShellContext(current, current.activeKey),
+                  )
+                }
+              >
+                <Icon name="close" />
+              </button>
+            )}
+            {surface === "meetings" && (
+              <button
+                className="icon-button meeting-inspector-close"
+                aria-label="Zamknij szczegóły spotkania"
+                onClick={() => setMeetingInspectorOpen(false)}
+              >
+                <Icon name="close" />
+              </button>
+            )}
+          </header>
+          {surface === "meetings" ? (
+            <div
+              className="meeting-inspector-host"
+              ref={setMeetingInspectorHost}
+            />
+          ) : selectedTask ? (
+            <div className="inspector-body">
+              <span className="record-status">
+                <i />
+                {selectedTask.completionState === "completed"
+                  ? "Ukończone"
+                  : selectedTask.status.label}
+              </span>
+              <h2>{selectedTask.title}</h2>
+              <p className="record-summary">
+                {sourceCapture
+                  ? "Utworzone z zachowanego Capture."
+                  : "Zadanie w aktywnym workspace."}
               </p>
-            </section>
-            <section className="inspector-section provenance-block">
-              <p className="section-label">Pochodzenie z Capture</p>
-              {sourceCapture ? (
-                <>
-                  <blockquote>{sourceCapture.originalText}</blockquote>
-                  <p>Quick Capture · oryginał zachowany</p>
-                </>
-              ) : (
-                <p>Brak powiązanego źródła Capture.</p>
-              )}
-            </section>
-            <section className="inspector-section audit-block">
-              <p className="section-label">Ślad audytowy</p>
-              {receipt ? (
-                <dl>
+              <section className="inspector-section assignment-block">
+                <p className="section-label">Odpowiedzialność</p>
+                <p>
+                  {selectedTask.assignment?.displayName ?? "Nieprzypisane"}
+                  {selectedTask.assignment?.availability === "former_member"
+                    ? " · dostęp cofnięty"
+                    : ""}
+                </p>
+              </section>
+              <section className="inspector-section provenance-block">
+                <p className="section-label">Pochodzenie z Capture</p>
+                {sourceCapture ? (
+                  <>
+                    <blockquote>{sourceCapture.originalText}</blockquote>
+                    <p>Quick Capture · oryginał zachowany</p>
+                  </>
+                ) : (
+                  <p>Brak powiązanego źródła Capture.</p>
+                )}
+              </section>
+              <section className="inspector-section audit-block">
+                <p className="section-label">Ślad audytowy</p>
+                {receipt ? (
+                  <dl>
+                    <div>
+                      <dt>Polecenie</dt>
+                      <dd>{receipt.commandName}</dd>
+                    </div>
+                    <div>
+                      <dt>Receipt</dt>
+                      <dd className="mono">{receipt.id.slice(0, 18)}…</dd>
+                    </div>
+                  </dl>
+                ) : (
+                  <p>
+                    Pełne potwierdzenie operacji pozostaje w lokalnym rdzeniu
+                    danych.
+                  </p>
+                )}
+              </section>
+              <CommentsPanel
+                comments={comments}
+                candidates={state.snapshot.mentionCandidates}
+                currentPrincipalId={currentPrincipalId}
+                canComment={Boolean(canComment)}
+                canResolve={Boolean(canResolveComments)}
+                busy={commentBusy}
+                onAdd={(body, mentions, parent) => {
+                  if (!client) return;
+                  setCommentBusy(true);
+                  void addComment(
+                    client,
+                    state.snapshot,
+                    { kind: "task", taskId: selectedTask.id },
+                    selectedTask.version,
+                    body,
+                    mentions,
+                    parent,
+                  ).then(async (result) => {
+                    setCommentBusy(false);
+                    if (result.kind === "success") {
+                      const data = await loadComments(client, state.snapshot, {
+                        kind: "task",
+                        taskId: selectedTask.id,
+                      });
+                      setComments({ kind: "ready", data });
+                      setToast("Komentarz zapisano.");
+                    } else showFailure(result);
+                  });
+                }}
+                onEdit={(comment, body) => {
+                  if (!client) return;
+                  setCommentBusy(true);
+                  void editComment(
+                    client,
+                    state.snapshot,
+                    comment.id,
+                    comment.version,
+                    body,
+                    comment.mentionPrincipalIds,
+                  ).then(async (result) => {
+                    setCommentBusy(false);
+                    if (result.kind === "success") {
+                      const data = await loadComments(client, state.snapshot, {
+                        kind: "task",
+                        taskId: selectedTask.id,
+                      });
+                      setComments({ kind: "ready", data });
+                    } else showFailure(result);
+                  });
+                }}
+                onResolve={(comment, resolved) => {
+                  if (!client) return;
+                  setCommentBusy(true);
+                  void setCommentResolved(
+                    client,
+                    state.snapshot,
+                    comment,
+                    resolved,
+                  ).then(async (result) => {
+                    setCommentBusy(false);
+                    if (result.kind === "success") {
+                      const data = await loadComments(client, state.snapshot, {
+                        kind: "task",
+                        taskId: selectedTask.id,
+                      });
+                      setComments({ kind: "ready", data });
+                    } else showFailure(result);
+                  });
+                }}
+              />
+            </div>
+          ) : selectedProject ? (
+            <div className="inspector-body">
+              <span className="record-status">
+                <i />
+                {selectedProject.lifecycle === "active"
+                  ? "Aktywny"
+                  : selectedProject.lifecycle}
+              </span>
+              <h2>{selectedProject.title}</h2>
+              <p className="record-summary">
+                Projekt w aktywnym workspace i bieżącym zakresie Space.
+              </p>
+              <section className="inspector-section provenance-block">
+                <p className="section-label">Zamierzony wynik</p>
+                <blockquote>{selectedProject.intendedOutcome}</blockquote>
+                <p>Wynik pozostaje częścią wersjonowanego rekordu Projektu.</p>
+              </section>
+              <section className="inspector-section">
+                <p className="section-label">Kontekst pracy</p>
+                <dl className="record-fields">
                   <div>
-                    <dt>Polecenie</dt>
-                    <dd>{receipt.commandName}</dd>
+                    <dt>Otwarte</dt>
+                    <dd>{selectedProject.relatedOpenTaskCount} zadań</dd>
                   </div>
                   <div>
-                    <dt>Receipt</dt>
-                    <dd className="mono">{receipt.id.slice(0, 18)}…</dd>
+                    <dt>Wersja</dt>
+                    <dd>
+                      {projectOverview?.project.version ??
+                        selectedProject.version}
+                    </dd>
                   </div>
                 </dl>
-              ) : (
-                <p>
-                  Pełne potwierdzenie operacji pozostaje w lokalnym rdzeniu
-                  danych.
-                </p>
-              )}
-            </section>
-            <CommentsPanel
-              comments={comments}
-              candidates={state.snapshot.mentionCandidates}
-              currentPrincipalId={currentPrincipalId}
-              canComment={Boolean(canComment)}
-              canResolve={Boolean(canResolveComments)}
-              busy={commentBusy}
-              onAdd={(body, mentions, parent) => {
-                if (!client) return;
-                setCommentBusy(true);
-                void addComment(
-                  client,
-                  state.snapshot,
-                  { kind: "task", taskId: selectedTask.id },
-                  selectedTask.version,
-                  body,
-                  mentions,
-                  parent,
-                ).then(async (result) => {
-                  setCommentBusy(false);
-                  if (result.kind === "success") {
-                    const data = await loadComments(client, state.snapshot, {
-                      kind: "task",
-                      taskId: selectedTask.id,
-                    });
-                    setComments({ kind: "ready", data });
-                    setToast("Komentarz zapisano.");
-                  } else showFailure(result);
-                });
-              }}
-              onEdit={(comment, body) => {
-                if (!client) return;
-                setCommentBusy(true);
-                void editComment(
-                  client,
-                  state.snapshot,
-                  comment.id,
-                  comment.version,
-                  body,
-                  comment.mentionPrincipalIds,
-                ).then(async (result) => {
-                  setCommentBusy(false);
-                  if (result.kind === "success") {
-                    const data = await loadComments(client, state.snapshot, {
-                      kind: "task",
-                      taskId: selectedTask.id,
-                    });
-                    setComments({ kind: "ready", data });
-                  } else showFailure(result);
-                });
-              }}
-              onResolve={(comment, resolved) => {
-                if (!client) return;
-                setCommentBusy(true);
-                void setCommentResolved(
-                  client,
-                  state.snapshot,
-                  comment,
-                  resolved,
-                ).then(async (result) => {
-                  setCommentBusy(false);
-                  if (result.kind === "success") {
-                    const data = await loadComments(client, state.snapshot, {
-                      kind: "task",
-                      taskId: selectedTask.id,
-                    });
-                    setComments({ kind: "ready", data });
-                  } else showFailure(result);
-                });
-              }}
-            />
-          </div>
-        ) : selectedProject ? (
-          <div className="inspector-body">
-            <span className="record-status">
-              <i />
-              {selectedProject.lifecycle === "active"
-                ? "Aktywny"
-                : selectedProject.lifecycle}
-            </span>
-            <h2>{selectedProject.title}</h2>
-            <p className="record-summary">
-              Projekt w aktywnym workspace i bieżącym zakresie Space.
-            </p>
-            <section className="inspector-section provenance-block">
-              <p className="section-label">Zamierzony wynik</p>
-              <blockquote>{selectedProject.intendedOutcome}</blockquote>
-              <p>Wynik pozostaje częścią wersjonowanego rekordu Projektu.</p>
-            </section>
-            <section className="inspector-section">
-              <p className="section-label">Kontekst pracy</p>
-              <dl className="record-fields">
+              </section>
+              <CommentsPanel
+                comments={comments}
+                candidates={state.snapshot.mentionCandidates}
+                currentPrincipalId={currentPrincipalId}
+                canComment={Boolean(canComment)}
+                canResolve={Boolean(canResolveComments)}
+                busy={commentBusy}
+                onAdd={(body, mentions, parent) => {
+                  if (!client) return;
+                  setCommentBusy(true);
+                  void addComment(
+                    client,
+                    state.snapshot,
+                    { kind: "project", projectId: selectedProject.id },
+                    projectOverview?.project.version ?? selectedProject.version,
+                    body,
+                    mentions,
+                    parent,
+                  ).then(async (result) => {
+                    setCommentBusy(false);
+                    if (result.kind === "success") {
+                      const data = await loadComments(client, state.snapshot, {
+                        kind: "project",
+                        projectId: selectedProject.id,
+                      });
+                      setComments({ kind: "ready", data });
+                      setToast("Komentarz zapisano.");
+                    } else showFailure(result);
+                  });
+                }}
+                onEdit={(comment, body) => {
+                  if (!client) return;
+                  setCommentBusy(true);
+                  void editComment(
+                    client,
+                    state.snapshot,
+                    comment.id,
+                    comment.version,
+                    body,
+                    comment.mentionPrincipalIds,
+                  ).then(async (result) => {
+                    setCommentBusy(false);
+                    if (result.kind === "success") {
+                      const data = await loadComments(client, state.snapshot, {
+                        kind: "project",
+                        projectId: selectedProject.id,
+                      });
+                      setComments({ kind: "ready", data });
+                    } else showFailure(result);
+                  });
+                }}
+                onResolve={(comment, resolved) => {
+                  if (!client) return;
+                  setCommentBusy(true);
+                  void setCommentResolved(
+                    client,
+                    state.snapshot,
+                    comment,
+                    resolved,
+                  ).then(async (result) => {
+                    setCommentBusy(false);
+                    if (result.kind === "success") {
+                      const data = await loadComments(client, state.snapshot, {
+                        kind: "project",
+                        projectId: selectedProject.id,
+                      });
+                      setComments({ kind: "ready", data });
+                    } else showFailure(result);
+                  });
+                }}
+              />
+            </div>
+          ) : (
+            <div className="inspector-empty workspace-context">
+              <BrandMark />
+              <p className="eyebrow">Aktywny kontekst</p>
+              <h2>{bootstrap.workspace.name}</h2>
+              <p>
+                Root Space ·{" "}
+                {coordinatedDataHome
+                  ? "skoordynowany Data Home"
+                  : "lokalne źródło danych"}
+              </p>
+              <dl>
                 <div>
-                  <dt>Otwarte</dt>
-                  <dd>{selectedProject.relatedOpenTaskCount} zadań</dd>
-                </div>
-                <div>
-                  <dt>Wersja</dt>
+                  <dt>Tryb</dt>
                   <dd>
-                    {projectOverview?.project.version ??
-                      selectedProject.version}
+                    {coordinatedDataHome
+                      ? "Hub + zaszyfrowana kopia robocza"
+                      : build.persistence === "encrypted-local"
+                        ? "Zaszyfrowany zapis lokalny"
+                        : "Podgląd deweloperski"}
                   </dd>
                 </div>
+                <div>
+                  <dt>Stan</dt>
+                  <dd>Gotowy</dd>
+                </div>
               </dl>
-            </section>
-            <CommentsPanel
-              comments={comments}
-              candidates={state.snapshot.mentionCandidates}
-              currentPrincipalId={currentPrincipalId}
-              canComment={Boolean(canComment)}
-              canResolve={Boolean(canResolveComments)}
-              busy={commentBusy}
-              onAdd={(body, mentions, parent) => {
-                if (!client) return;
-                setCommentBusy(true);
-                void addComment(
-                  client,
-                  state.snapshot,
-                  { kind: "project", projectId: selectedProject.id },
-                  projectOverview?.project.version ?? selectedProject.version,
-                  body,
-                  mentions,
-                  parent,
-                ).then(async (result) => {
-                  setCommentBusy(false);
-                  if (result.kind === "success") {
-                    const data = await loadComments(client, state.snapshot, {
-                      kind: "project",
-                      projectId: selectedProject.id,
-                    });
-                    setComments({ kind: "ready", data });
-                    setToast("Komentarz zapisano.");
-                  } else showFailure(result);
-                });
-              }}
-              onEdit={(comment, body) => {
-                if (!client) return;
-                setCommentBusy(true);
-                void editComment(
-                  client,
-                  state.snapshot,
-                  comment.id,
-                  comment.version,
-                  body,
-                  comment.mentionPrincipalIds,
-                ).then(async (result) => {
-                  setCommentBusy(false);
-                  if (result.kind === "success") {
-                    const data = await loadComments(client, state.snapshot, {
-                      kind: "project",
-                      projectId: selectedProject.id,
-                    });
-                    setComments({ kind: "ready", data });
-                  } else showFailure(result);
-                });
-              }}
-              onResolve={(comment, resolved) => {
-                if (!client) return;
-                setCommentBusy(true);
-                void setCommentResolved(
-                  client,
-                  state.snapshot,
-                  comment,
-                  resolved,
-                ).then(async (result) => {
-                  setCommentBusy(false);
-                  if (result.kind === "success") {
-                    const data = await loadComments(client, state.snapshot, {
-                      kind: "project",
-                      projectId: selectedProject.id,
-                    });
-                    setComments({ kind: "ready", data });
-                  } else showFailure(result);
-                });
-              }}
-            />
-          </div>
-        ) : (
-          <div className="inspector-empty workspace-context">
-            <BrandMark />
-            <p className="eyebrow">Aktywny kontekst</p>
-            <h2>{bootstrap.workspace.name}</h2>
-            <p>
-              Root Space ·{" "}
-              {coordinatedDataHome
-                ? "skoordynowany Data Home"
-                : "lokalne źródło danych"}
-            </p>
-            <dl>
-              <div>
-                <dt>Tryb</dt>
-                <dd>
-                  {coordinatedDataHome
-                    ? "Hub + zaszyfrowana kopia robocza"
-                    : build.persistence === "encrypted-local"
-                      ? "Zaszyfrowany zapis lokalny"
-                      : "Podgląd deweloperski"}
-                </dd>
-              </div>
-              <div>
-                <dt>Stan</dt>
-                <dd>Gotowy</dd>
-              </div>
-            </dl>
-          </div>
-        )}
-      </aside>
+            </div>
+          )}
+        </aside>
+      )}
 
       {(selectedTask || selectedProject || surface === "meetings") && (
         <span className="context-thread" aria-hidden="true" />
@@ -3016,6 +3093,44 @@ export const RealApp = ({
           details={agentGrantDetails}
           onClose={() => setAgentGrantDetails(undefined)}
         />
+      )}
+      {navMenu && (
+        <div
+          className="context-menu-layer"
+          onMouseDown={() => setNavMenu(undefined)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setNavMenu(undefined);
+          }}
+        >
+          <div
+            className="context-menu"
+            role="menu"
+            style={{ left: navMenu.x, top: navMenu.y }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                openContext(navMenu.context);
+                setNavMenu(undefined);
+              }}
+            >
+              Otwórz
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                openContextInNewTab(navMenu.context);
+                setNavMenu(undefined);
+              }}
+            >
+              Otwórz w nowej karcie
+            </button>
+          </div>
+        </div>
       )}
       {toast && (
         <div className="undo-toast" role="status">
