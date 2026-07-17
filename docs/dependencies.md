@@ -72,3 +72,13 @@ telemetry SDK, model-provider client, or post-install build step.
 disabled in developer and mechanism-only builds and never enters the renderer.
 Ad-hoc macOS and unsigned Windows installers are Alpha evidence, not a
 production release.
+
+Every desktop package also carries an external `resources/licenses` directory.
+It contains Constellation's Apache-2.0 license, a deterministic notice bundle
+for the complete external desktop runtime dependency closure, and the pinned
+SQLCipher license. Windows packages additionally include the license for the
+statically linked OpenSSL build. Packaging fails closed when a dependency has
+no reviewable license notice or when a required native-component license is
+missing; the packaged macOS and Windows journey verifies the exact file set.
+Electron's own license and Chromium notice remain alongside these files in the
+standard Electron package root.

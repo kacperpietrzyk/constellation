@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-const ACCEPTED_LICENSE_EXPRESSIONS = new Set([
+export const ACCEPTED_LICENSE_EXPRESSIONS = new Set([
   "0BSD",
   "Apache-2.0",
   "BSD-2-Clause",

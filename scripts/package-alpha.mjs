@@ -8,10 +8,13 @@ import { fileURLToPath } from "node:url";
 import { listPackage } from "@electron/asar";
 import { packager } from "@electron/packager";
 
+import { writeDesktopLicenseBundle } from "./desktop-runtime-notices.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const stage = path.join(root, "build", "local-alpha-stage");
 const output = path.join(root, "release");
 const electronZipDir = path.join(root, "build", "electron-zips");
+const licenseBundle = path.join(root, "build", "desktop-license-bundle");
 const appName = "Constellation Local Alpha";
 const bundleId = "io.constellation.local-alpha";
 const architecture = process.env.CONSTELLATION_ALPHA_ARCH ?? process.arch;
@@ -394,6 +397,10 @@ const nativeBinding = path.join(
   "better_sqlite3.node",
 );
 if (!fs.existsSync(nativeBinding)) throw new Error("NATIVE_BINDING_MISSING");
+const licenseBundleResult = writeDesktopLicenseBundle({
+  root,
+  destination: licenseBundle,
+});
 
 const calendarHelperBuild = path.join(
   root,
@@ -479,6 +486,14 @@ const resources =
   process.platform === "darwin"
     ? path.join(appBundle, "Contents", "Resources")
     : path.join(packageRoot, "resources");
+const packagedLicenses = path.join(resources, "licenses");
+copy(licenseBundle, packagedLicenses);
+if (
+  fs.readdirSync(packagedLicenses).sort().join("\0") !==
+  licenseBundleResult.files.join("\0")
+) {
+  throw new Error("PACKAGED_LICENSE_SET_INVALID");
+}
 if (appBundle !== undefined) {
   const infoPlist = path.join(appBundle, "Contents", "Info.plist");
   const plistBuddy = "/usr/libexec/PlistBuddy";
@@ -685,6 +700,8 @@ const manifest = {
   productionEntrypoint:
     "bootstrap.cjs -> @constellation/desktop-main/dist/src/production-main.js",
   runtimePackages: [...expectedRuntimePackages].sort(),
+  licenseFiles: licenseBundleResult.files,
+  licensedRuntimePackages: licenseBundleResult.packageCount,
   nativeBindingSha256: digest,
   mcpEntrypoint: packagedMcpEntrypoint,
   mcpEntrypointSha256: await digestFile(packagedMcpEntrypoint),

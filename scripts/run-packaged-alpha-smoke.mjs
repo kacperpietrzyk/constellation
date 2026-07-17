@@ -32,6 +32,28 @@ const projectOutcome = "Project inspector preserves the intended outcome";
 const CDP_COMMAND_TIMEOUT_MS = 15_000;
 const PACKAGED_STARTUP_BUDGET_MS = 30_000;
 const PACKAGED_INTERACTION_BUDGET_MS = 10_000;
+const packagedResources =
+  manifest.platform === "darwin"
+    ? path.join(manifest.appBundle, "Contents", "Resources")
+    : path.join(manifest.packageRoot, "resources");
+const packagedLicenseRoot = path.join(packagedResources, "licenses");
+const packagedLicenseFiles = fs.readdirSync(packagedLicenseRoot).sort();
+if (
+  packagedLicenseFiles.join("\0") !== manifest.licenseFiles.join("\0") ||
+  !packagedLicenseFiles.includes("CONSTELLATION-LICENSE.txt") ||
+  !packagedLicenseFiles.includes("SQLCipher-LICENSE.md") ||
+  !packagedLicenseFiles.includes("THIRD-PARTY-NOTICES.txt") ||
+  (manifest.platform === "win32" &&
+    !packagedLicenseFiles.includes("OpenSSL-LICENSE.txt")) ||
+  !fs
+    .readFileSync(
+      path.join(packagedLicenseRoot, "THIRD-PARTY-NOTICES.txt"),
+      "utf8",
+    )
+    .includes("electron-updater 6.8.9 — MIT")
+) {
+  throw new Error("PACKAGED_ALPHA_LICENSE_NOTICES_INVALID");
+}
 if (continuityWorkspaceId === undefined) {
   fs.rmSync(stateRoot, { recursive: true, force: true });
 }

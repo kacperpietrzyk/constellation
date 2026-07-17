@@ -40,6 +40,7 @@ ARCH_FLAGS="-arch $TARGET_ARCH"
 
 test -f "$AMALGAMATION_DIR/sqlite3.c"
 test -f "$AMALGAMATION_DIR/sqlite3.h"
+test -f "$AMALGAMATION_DIR/SQLCipher-LICENSE.md"
 
 node "$SCRIPT_ROOT/scripts/native/patch-better-sqlite3.mjs" "$ROOT"
 
@@ -60,3 +61,4 @@ node "$SCRIPT_ROOT/scripts/native/patch-better-sqlite3.mjs" "$ROOT"
 
 test -f "$ROOT/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
 file "$ROOT/node_modules/better-sqlite3/build/Release/better_sqlite3.node" | grep -q "$TARGET_ARCH"
+cp "$AMALGAMATION_DIR/SQLCipher-LICENSE.md" "$ROOT/node_modules/better-sqlite3/SQLCipher-LICENSE.md"

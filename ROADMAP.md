@@ -246,6 +246,9 @@ bundle budget now prevents startup cost from growing unnoticed.
 Local write failures now distinguish exhausted capacity from lost permission,
 confirm rollback before offering retry, and tell the user which environmental
 condition to correct without exposing paths or native errors.
+Release packaging also preserves Constellation, runtime dependency, SQLCipher,
+and platform-native license notices as externally inspectable files and fails
+closed if the required notice set is incomplete.
 
 ## Later — desktop ecosystem after product readiness
 
