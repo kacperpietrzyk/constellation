@@ -27,12 +27,7 @@ type JamieState =
 type CompletedMeeting = MeetingLoopSurface["completed"][number];
 type MeetingWorkItem = CompletedMeeting["workItems"][number];
 
-const countLabel = (
-  count: number,
-  one: string,
-  few: string,
-  many: string,
-) => {
+const countLabel = (count: number, one: string, few: string, many: string) => {
   const mod10 = count % 10;
   const mod100 = count % 100;
   if (count === 1) return `1 ${one}`;

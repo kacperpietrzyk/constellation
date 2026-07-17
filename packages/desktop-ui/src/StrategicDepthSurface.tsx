@@ -553,7 +553,9 @@ export const StrategicDepthSurface = ({
                 className="review-item"
               >
                 <span className="review-type">Skutek decyzji</span>
-                <strong>{recordKindLabels[item.recordKind] ?? item.recordKind}</strong>
+                <strong>
+                  {recordKindLabels[item.recordKind] ?? item.recordKind}
+                </strong>
                 <p>{review.reason}</p>
                 <button
                   className="secondary-button compact"
