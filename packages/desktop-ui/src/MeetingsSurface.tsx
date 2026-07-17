@@ -70,6 +70,11 @@ const workItemStateLabel = (item: MeetingWorkItem) => {
   }
 };
 
+const workItemMetadata = (item: MeetingWorkItem) =>
+  item.assignee === undefined
+    ? workItemStateLabel(item)
+    : `${workItemStateLabel(item)} · Odpowiedzialność: ${item.assignee.name}`;
+
 const formatTime = (value: string) =>
   new Intl.DateTimeFormat("pl-PL", {
     weekday: "short",
@@ -758,7 +763,7 @@ export const MeetingsSurface = ({
                               <div className="meeting-work-item-copy">
                                 <span>{workItemKindLabel(item)}</span>
                                 <strong>{item.title}</strong>
-                                <small>{workItemStateLabel(item)}</small>
+                                <small>{workItemMetadata(item)}</small>
                               </div>
                               <div className="meeting-item-actions">
                                 <button

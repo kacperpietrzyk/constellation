@@ -242,6 +242,13 @@ export const JamieApiTaskSchema = z
   .strict();
 export type JamieApiTask = z.infer<typeof JamieApiTaskSchema>;
 
+export const MeetingWorkItemAssigneeSchema = z
+  .object({
+    name: z.string().trim().min(1).max(300),
+    email: z.email().optional(),
+  })
+  .strict();
+
 export const MeetingWorkItemSchema = z
   .object({
     id: z.uuid(),
@@ -257,6 +264,7 @@ export const MeetingWorkItemSchema = z
     ]),
     sourceControlled: z.boolean(),
     locallyModified: z.boolean(),
+    assignee: MeetingWorkItemAssigneeSchema.optional(),
     sourceValueInConflict: z.string().max(4000).optional(),
     taskId: TaskIdSchema.optional(),
     projectId: ProjectIdSchema.optional(),
