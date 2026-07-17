@@ -174,11 +174,23 @@ const recoverInterruptedRestore = (
   );
 
   if (journal.state === "prepared") {
-    if (!existsSync(activeRoot) || !existsSync(candidateRoot)) {
+    const activeExists = existsSync(activeRoot);
+    const retainedExists = existsSync(retainedRoot);
+    const candidateExists = existsSync(candidateRoot);
+    if (activeExists && candidateExists && !retainedExists) {
+      rmSync(journalPath, { force: true });
+      return "none";
+    }
+    if (!activeExists && retainedExists && candidateExists) {
+      renameSync(retainedRoot, activeRoot);
+      rmSync(journalPath, { force: true });
+      syncDirectory(stateRoot);
+      return "previous_workspace_restored";
+    }
+    if (!activeExists || !candidateExists) {
       throw new Error("WORKSPACE_RESTORE_PREPARED_STATE_INVALID");
     }
-    rmSync(journalPath, { force: true });
-    return "none";
+    throw new Error("WORKSPACE_RESTORE_PREPARED_STATE_AMBIGUOUS");
   }
 
   if (!existsSync(retainedRoot)) {

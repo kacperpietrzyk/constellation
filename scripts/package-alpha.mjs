@@ -262,6 +262,7 @@ const productionDesktopFiles = new Set([
   "media-permission.js",
   "production-main.js",
   "release-service.js",
+  "recovery-code-clipboard.js",
   "remote-mcp-credential-custody.js",
   "runtime-kernel-service.js",
   "security.js",

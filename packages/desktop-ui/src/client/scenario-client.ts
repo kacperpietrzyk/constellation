@@ -116,6 +116,7 @@ export const createScenarioClient = (
   }),
   onAttentionActivated: () => () => undefined,
   cancelWorkspaceRestore: async () => undefined,
+  copyWorkspaceRecoveryCode: async () => ({ outcome: "success" }),
   confirmWorkspaceRestore: async () => ({
     outcome: "failure",
     code: "io_failed",

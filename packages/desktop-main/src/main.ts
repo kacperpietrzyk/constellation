@@ -3,6 +3,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   app,
   BrowserWindow,
+  clipboard,
   globalShortcut,
   ipcMain,
   safeStorage,
@@ -28,6 +29,7 @@ import {
   allowsAudioMediaRequest,
 } from "./media-permission.js";
 import type { AsyncSafeStorage } from "./workspace-key-custody.js";
+import { copyRecoveryCodeToClipboard } from "./recovery-code-clipboard.js";
 
 const developmentUrl = process.env.CONSTELLATION_RENDERER_URL;
 const preloadPath = fileURLToPath(
@@ -224,6 +226,13 @@ void app.whenReady().then(async () => {
     assertTrustedSender(event, developmentUrl);
     return runtime.buildInfo;
   });
+  ipcMain.handle(
+    DESKTOP_CHANNELS.copyWorkspaceRecoveryCode,
+    (event, input: unknown) => {
+      assertTrustedSender(event, developmentUrl);
+      return copyRecoveryCodeToClipboard(clipboard, input);
+    },
+  );
   ipcMain.handle(DESKTOP_CHANNELS.listWorkspaces, (event) => {
     assertTrustedSender(event, developmentUrl);
     const workspaceId = runtime.buildInfo.initialWorkspaceId;

@@ -748,9 +748,15 @@ export const WorkspaceRecovery = ({
                 <button
                   className="secondary-button compact"
                   onClick={() => {
-                    void navigator.clipboard
-                      .writeText(state.result.recoveryCode)
-                      .then(() => setCopyStatus("copied"))
+                    void client
+                      .copyWorkspaceRecoveryCode({
+                        recoveryCode: state.result.recoveryCode,
+                      })
+                      .then((result) =>
+                        setCopyStatus(
+                          result.outcome === "success" ? "copied" : "failed",
+                        ),
+                      )
                       .catch(() => setCopyStatus("failed"));
                   }}
                 >
