@@ -109,6 +109,10 @@ const client: ConstellationRendererClient = {
             state: "open",
             sourceControlled: true,
             locallyModified: false,
+            assignee: {
+              name: "Antek",
+              email: "antek@example.com",
+            },
             version: 1,
           },
         ],

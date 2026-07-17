@@ -297,6 +297,16 @@ const sourceItems = (
       state: item.completed ? ("completed" as const) : ("open" as const),
       sourceControlled: true,
       locallyModified: false,
+      ...(item.assigneeName === undefined
+        ? {}
+        : {
+            assignee: {
+              name: item.assigneeName,
+              ...(item.assigneeEmail === undefined
+                ? {}
+                : { email: item.assigneeEmail }),
+            },
+          }),
       version: 1,
     })),
   ...source.decisions.map((decision) => ({
@@ -311,9 +321,56 @@ const sourceItems = (
   })),
 ];
 
+const sameAssignee = (
+  left: MeetingWorkItem["assignee"],
+  right: MeetingWorkItem["assignee"],
+): boolean => left?.name === right?.name && left?.email === right?.email;
+
+const withSourceAssignee = (
+  item: MeetingWorkItem,
+  assignee: MeetingWorkItem["assignee"],
+): MeetingWorkItem => {
+  const withoutAssignee = { ...item };
+  delete withoutAssignee.assignee;
+  return assignee === undefined
+    ? withoutAssignee
+    : { ...withoutAssignee, assignee };
+};
+
+const sourceProjectionIsCurrent = (
+  current: readonly MeetingWorkItem[],
+  incoming: readonly MeetingWorkItem[],
+): boolean => {
+  const incomingKeys = new Set(
+    incoming.map((item) => `${item.kind}:${item.sourceExternalId}`),
+  );
+  const incomingMatches = incoming.every((source) => {
+    const prior = current.find(
+      (item) =>
+        item.kind === source.kind &&
+        item.sourceExternalId === source.sourceExternalId,
+    );
+    if (prior === undefined || !sameAssignee(prior.assignee, source.assignee))
+      return false;
+    return (
+      prior.locallyModified ||
+      (prior.title === source.title && prior.state === source.state)
+    );
+  });
+  if (!incomingMatches) return false;
+  return current.every(
+    (item) =>
+      !item.sourceControlled ||
+      incomingKeys.has(`${item.kind}:${item.sourceExternalId}`) ||
+      item.locallyModified ||
+      item.state === "withdrawn",
+  );
+};
+
 const reconcileItems = (
   current: readonly MeetingWorkItem[],
   incoming: readonly MeetingWorkItem[],
+  preserveLocalModifications = false,
 ): {
   readonly items: readonly MeetingWorkItem[];
   readonly conflicts: boolean;
@@ -330,10 +387,19 @@ const reconcileItems = (
       next.push(source);
       continue;
     }
+    if (preserveLocalModifications && prior.locallyModified) {
+      next.push({
+        ...withSourceAssignee(prior, source.assignee),
+        version: sameAssignee(prior.assignee, source.assignee)
+          ? prior.version
+          : prior.version + 1,
+      });
+      continue;
+    }
     if (prior.locallyModified && prior.title !== source.title) {
       conflicts = true;
       next.push({
-        ...prior,
+        ...withSourceAssignee(prior, source.assignee),
         state: "conflicted",
         sourceValueInConflict: source.title,
         version: prior.version + 1,
@@ -341,11 +407,13 @@ const reconcileItems = (
       continue;
     }
     next.push({
-      ...prior,
+      ...withSourceAssignee(prior, source.assignee),
       title: source.title,
       state: source.state,
       version:
-        prior.title === source.title && prior.state === source.state
+        prior.title === source.title &&
+        prior.state === source.state &&
+        sameAssignee(prior.assignee, source.assignee)
           ? prior.version
           : prior.version + 1,
     });
@@ -441,14 +509,6 @@ export class MeetingLoopService {
       const current = state.meetings.find((meeting) =>
         sameSourceKey(meeting, source),
       );
-      if (current?.contentHash === source.contentHash) {
-        this.appendReceipt(input.authorization.workspaceId, state, {
-          source,
-          outcome: "no_change",
-          changedRecordIds: [],
-        });
-        return { outcome: "no_change", meeting: current };
-      }
       const now = this.dependencies.clock.now();
       const meetingId =
         current?.id ??
@@ -465,9 +525,21 @@ export class MeetingLoopService {
         meetingId,
         this.dependencies.ids,
       );
+      if (
+        current?.contentHash === source.contentHash &&
+        sourceProjectionIsCurrent(current.workItems, incomingItems)
+      ) {
+        this.appendReceipt(input.authorization.workspaceId, state, {
+          source,
+          outcome: "no_change",
+          changedRecordIds: [],
+        });
+        return { outcome: "no_change", meeting: current };
+      }
       const reconciled = reconcileItems(
         current?.workItems ?? [],
         incomingItems,
+        current?.contentHash === source.contentHash,
       );
       const triage = reconciled.conflicts
         ? "conflicted"

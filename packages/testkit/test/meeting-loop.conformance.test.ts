@@ -50,6 +50,8 @@ const source = (input: {
   readonly hash: string;
   readonly taskId?: string;
   readonly taskTitle?: string;
+  readonly assigneeName?: string;
+  readonly assigneeEmail?: string;
 }): NormalizedJamieMeeting => ({
   schemaVersion: 1,
   connectionId: "jamie-workspace",
@@ -68,6 +70,12 @@ const source = (input: {
       ...(input.taskId === undefined ? {} : { externalTaskId: input.taskId }),
       content: input.taskTitle ?? "Confirm rollout owner",
       completed: false,
+      ...(input.assigneeName === undefined
+        ? {}
+        : { assigneeName: input.assigneeName }),
+      ...(input.assigneeEmail === undefined
+        ? {}
+        : { assigneeEmail: input.assigneeEmail }),
     },
   ],
   actionItemsComplete: true,
@@ -259,6 +267,60 @@ test("exact Jamie redelivery is a no-op and does not churn meeting versions", ()
   assert.equal(second.outcome, "no_change");
   assert.equal(second.meeting.id, first.meeting.id);
   assert.equal(second.meeting.version, first.meeting.version);
+});
+
+test("backfills source responsibility once without turning it into a workspace assignment", () => {
+  const { service } = createHarness();
+  const hash = "9".repeat(64);
+  const legacy = service.importJamie({
+    authorization,
+    spaceId,
+    source: source({ hash, taskId: "task-1" }),
+  });
+  assert.equal(legacy.outcome, "applied");
+  const legacyTask = legacy.meeting.workItems.find(
+    (item) => item.sourceExternalId === "task-1",
+  )!;
+  const edited = service.editWorkItem({
+    authorization,
+    meetingId: legacy.meeting.id,
+    workItemId: legacyTask.id,
+    expectedVersion: legacyTask.version,
+    title: "Call IT Card after the RFI review",
+    state: "open",
+  });
+  assert.ok(edited);
+
+  const withResponsibility = source({
+    hash,
+    taskId: "task-1",
+    assigneeName: "Antek",
+    assigneeEmail: "antek@example.com",
+  });
+  const corrected = service.importJamie({
+    authorization,
+    spaceId,
+    source: withResponsibility,
+  });
+  assert.equal(corrected.outcome, "corrected");
+  const task = corrected.meeting.workItems.find(
+    (item) => item.sourceExternalId === "task-1",
+  );
+  assert.deepEqual(task?.assignee, {
+    name: "Antek",
+    email: "antek@example.com",
+  });
+  assert.equal(task?.title, "Call IT Card after the RFI review");
+  assert.equal(corrected.meeting.triage, "ready");
+  assert.equal(task?.taskId, undefined);
+
+  const redelivered = service.importJamie({
+    authorization,
+    spaceId,
+    source: withResponsibility,
+  });
+  assert.equal(redelivered.outcome, "no_change");
+  assert.equal(redelivered.meeting.version, corrected.meeting.version);
 });
 
 test("Jamie correction preserves a locally edited work item and exposes conflict", () => {

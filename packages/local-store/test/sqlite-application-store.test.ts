@@ -195,6 +195,10 @@ describe("meeting loop persistence", () => {
           state: "open" as const,
           sourceControlled: false,
           locallyModified: true,
+          assignee: {
+            name: "Antek",
+            email: "antek@example.com",
+          },
           version: 1,
         },
       ],
