@@ -27,6 +27,7 @@ import type {
   KnowledgeSourceId,
   NamedDocumentVersionId,
   StrategicRecordId,
+  DiagnosticCode,
 } from "@constellation/contracts";
 import type {
   AuditReceipt,
@@ -376,7 +377,15 @@ export interface ApplicationKernelDependencies {
 }
 
 export class RetryableUnitOfWorkError extends Error {
-  public constructor(message = "The unit of work did not commit.") {
+  public constructor(
+    message = "The unit of work did not commit.",
+    public readonly diagnosticCode: Extract<
+      DiagnosticCode,
+      | "storage.unit_of_work_failed"
+      | "storage.capacity_exhausted"
+      | "storage.permission_denied"
+    > = "storage.unit_of_work_failed",
+  ) {
     super(message);
     this.name = "RetryableUnitOfWorkError";
   }

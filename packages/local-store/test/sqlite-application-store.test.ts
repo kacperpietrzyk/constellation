@@ -309,10 +309,9 @@ const unwrap = (response: ApplicationCommandResponse): CommandOutcome => {
   return response.outcome;
 };
 
-const createKernel = (database: DatabaseSync) => {
+const createKernelWithStore = (store: SqliteApplicationStore) => {
   const authorization = new InMemoryAuthorizationPolicy();
   authorization.register(context());
-  const store = new SqliteApplicationStore(sqlitePort(database));
   const kernel = new ApplicationKernel({
     authorization,
     clock: new TickingClock(),
@@ -323,6 +322,9 @@ const createKernel = (database: DatabaseSync) => {
   });
   return { kernel, store };
 };
+
+const createKernel = (database: DatabaseSync) =>
+  createKernelWithStore(new SqliteApplicationStore(sqlitePort(database)));
 
 const routeCommand = (captureId: CaptureId): CommandEnvelope =>
   CommandEnvelopeSchema.parse({
@@ -611,7 +613,7 @@ describe("SQLite ApplicationStore", () => {
     });
   });
 
-  it("maps only SQLite busy failures to a retryable unit of work", () => {
+  it("maps only known safe SQLite write failures to exact retry outcomes", () => {
     for (const code of ["SQLITE_BUSY", "SQLITE_BUSY_SNAPSHOT"] as const) {
       const database = new DatabaseSync(":memory:");
       const delegated: SqliteDatabase = {
@@ -626,14 +628,44 @@ describe("SQLite ApplicationStore", () => {
       const store = new SqliteApplicationStore(delegated);
       assert.throws(
         () => store.transact(() => undefined),
-        RetryableUnitOfWorkError,
+        (error) => {
+          assert.ok(error instanceof RetryableUnitOfWorkError);
+          assert.equal(error.diagnosticCode, "storage.unit_of_work_failed");
+          return true;
+        },
+      );
+      database.close();
+    }
+
+    for (const [code, diagnosticCode] of [
+      ["SQLITE_FULL", "storage.capacity_exhausted"],
+      ["SQLITE_READONLY_DIRECTORY", "storage.permission_denied"],
+      ["SQLITE_PERM", "storage.permission_denied"],
+      ["SQLITE_AUTH", "storage.permission_denied"],
+    ] as const) {
+      const database = new DatabaseSync(":memory:");
+      const delegated: SqliteDatabase = {
+        exec(sql) {
+          if (sql === "BEGIN IMMEDIATE;")
+            throw Object.assign(new Error(code), { code });
+          database.exec(sql);
+        },
+        prepare: (sql) => sqlitePort(database).prepare(sql),
+      };
+      const store = new SqliteApplicationStore(delegated);
+      assert.throws(
+        () => store.transact(() => undefined),
+        (error) => {
+          assert.ok(error instanceof RetryableUnitOfWorkError);
+          assert.equal(error.diagnosticCode, diagnosticCode);
+          return true;
+        },
       );
       database.close();
     }
 
     for (const code of [
       "SQLITE_LOCKED",
-      "SQLITE_FULL",
       "SQLITE_IOERR",
       "SQLITE_CANTOPEN",
     ] as const) {
@@ -657,6 +689,185 @@ describe("SQLite ApplicationStore", () => {
       );
       database.close();
     }
+  });
+
+  it("rolls back a capacity failure at commit before a successful replay", () => {
+    const database = new DatabaseSync(":memory:");
+    let failCommit = false;
+    const delegated: SqliteDatabase = {
+      exec(sql) {
+        if (sql === "COMMIT;" && failCommit) {
+          throw Object.assign(new Error("SQLITE_FULL"), {
+            code: "SQLITE_FULL",
+          });
+        }
+        database.exec(sql);
+      },
+      prepare: (sql) => sqlitePort(database).prepare(sql),
+    };
+    const store = new SqliteApplicationStore(delegated);
+    const { kernel } = createKernelWithStore(store);
+    assert.equal(
+      unwrap(kernel.execute(context(), workspaceCommand)).outcome,
+      "success",
+    );
+    failCommit = true;
+
+    const failed = unwrap(kernel.execute(context(), captureCommand));
+    assert.equal(failed.outcome, "retryable");
+    assert.equal(failed.diagnosticCode, "storage.capacity_exhausted");
+    assert.equal(
+      (
+        database.prepare("SELECT count(*) AS count FROM captures").get() as {
+          count: number;
+        }
+      ).count,
+      0,
+    );
+
+    failCommit = false;
+    assert.equal(
+      unwrap(kernel.execute(context(), captureCommand)).outcome,
+      "success",
+    );
+    assert.equal(
+      (
+        database.prepare("SELECT count(*) AS count FROM captures").get() as {
+          count: number;
+        }
+      ).count,
+      1,
+    );
+    database.close();
+  });
+
+  it("rolls back permission loss during a unit of work before replay", () => {
+    const database = new DatabaseSync(":memory:");
+    const store = new SqliteApplicationStore(sqlitePort(database));
+    database.exec("CREATE TABLE permission_probe (value TEXT NOT NULL);");
+
+    assert.throws(
+      () =>
+        store.transact(() => {
+          database
+            .prepare("INSERT INTO permission_probe(value) VALUES (?)")
+            .run("must-roll-back");
+          throw Object.assign(new Error("SQLITE_READONLY_DIRECTORY"), {
+            code: "SQLITE_READONLY_DIRECTORY",
+          });
+        }),
+      (error) => {
+        assert.ok(error instanceof RetryableUnitOfWorkError);
+        assert.equal(error.diagnosticCode, "storage.permission_denied");
+        return true;
+      },
+    );
+    assert.equal(
+      (
+        database
+          .prepare("SELECT count(*) AS count FROM permission_probe")
+          .get() as { count: number }
+      ).count,
+      0,
+    );
+
+    store.transact(() => {
+      database
+        .prepare("INSERT INTO permission_probe(value) VALUES (?)")
+        .run("replayed");
+    });
+    assert.equal(
+      (
+        database
+          .prepare("SELECT count(*) AS count FROM permission_probe")
+          .get() as { count: number }
+      ).count,
+      1,
+    );
+    database.close();
+  });
+
+  it("does not promise a safe retry when rollback cannot be confirmed", () => {
+    const database = new DatabaseSync(":memory:");
+    const capacityFailure = Object.assign(new Error("SQLITE_FULL"), {
+      code: "SQLITE_FULL",
+    });
+    const delegated: SqliteDatabase = {
+      get inTransaction() {
+        return true;
+      },
+      exec(sql) {
+        if (sql === "ROLLBACK;")
+          throw Object.assign(new Error("SQLITE_IOERR"), {
+            code: "SQLITE_IOERR",
+          });
+        database.exec(sql);
+      },
+      prepare: (sql) => sqlitePort(database).prepare(sql),
+    };
+    const store = new SqliteApplicationStore(delegated);
+
+    assert.throws(
+      () =>
+        store.transact(() => {
+          throw capacityFailure;
+        }),
+      (error) => {
+        assert.equal(error, capacityFailure);
+        assert.equal(error instanceof RetryableUnitOfWorkError, false);
+        return true;
+      },
+    );
+    database.exec("ROLLBACK;");
+    database.close();
+  });
+
+  it("survives a real SQLite capacity limit without a partial write", () => {
+    const database = new DatabaseSync(":memory:");
+    const store = new SqliteApplicationStore(sqlitePort(database));
+    database.exec("CREATE TABLE capacity_probe (value BLOB NOT NULL);");
+    const pageCount = (
+      database.prepare("PRAGMA page_count").get() as { page_count: number }
+    ).page_count;
+    database.exec(`PRAGMA max_page_count = ${pageCount};`);
+
+    assert.throws(
+      () =>
+        store.transact(() => {
+          database
+            .prepare("INSERT INTO capacity_probe(value) VALUES (zeroblob(?))")
+            .run(1_000_000);
+        }),
+      (error) => {
+        assert.ok(error instanceof RetryableUnitOfWorkError);
+        assert.equal(error.diagnosticCode, "storage.capacity_exhausted");
+        return true;
+      },
+    );
+    assert.equal(
+      (
+        database
+          .prepare("SELECT count(*) AS count FROM capacity_probe")
+          .get() as { count: number }
+      ).count,
+      0,
+    );
+
+    database.exec(`PRAGMA max_page_count = ${pageCount + 4096};`);
+    store.transact(() => {
+      database
+        .prepare("INSERT INTO capacity_probe(value) VALUES (zeroblob(?))")
+        .run(128);
+    });
+    assert.equal(
+      (
+        database
+          .prepare("SELECT count(*) AS count FROM capacity_probe")
+          .get() as { count: number }
+      ).count,
+      1,
+    );
+    database.close();
   });
 
   it("preserves event command attribution across restart", () => {

@@ -775,6 +775,48 @@ const isBusy = (error: unknown): boolean => {
   );
 };
 
+const storageFailureDiagnostic = (
+  error: unknown,
+): "storage.capacity_exhausted" | "storage.permission_denied" | undefined => {
+  if (typeof error !== "object" || error === null) return undefined;
+  const record = error as Record<string, unknown>;
+  if (record.errcode === 13) return "storage.capacity_exhausted";
+  if (record.errcode === 3 || record.errcode === 8 || record.errcode === 23)
+    return "storage.permission_denied";
+  const code = record.code;
+  if (typeof code !== "string") return undefined;
+  if (code === "SQLITE_FULL" || code.startsWith("SQLITE_FULL_"))
+    return "storage.capacity_exhausted";
+  if (
+    code === "SQLITE_READONLY" ||
+    code.startsWith("SQLITE_READONLY_") ||
+    code === "SQLITE_PERM" ||
+    code.startsWith("SQLITE_PERM_") ||
+    code === "SQLITE_AUTH" ||
+    code.startsWith("SQLITE_AUTH_")
+  )
+    return "storage.permission_denied";
+  return undefined;
+};
+
+const retryableStorageFailure = (
+  error: unknown,
+): RetryableUnitOfWorkError | undefined => {
+  if (isBusy(error))
+    return new RetryableUnitOfWorkError("The local store is busy.");
+  const diagnosticCode = storageFailureDiagnostic(error);
+  if (diagnosticCode === undefined) return undefined;
+  return new RetryableUnitOfWorkError(
+    diagnosticCode === "storage.capacity_exhausted"
+      ? "The local store has no writable capacity."
+      : "The local store is not writable.",
+    diagnosticCode,
+  );
+};
+
+const transactionIsClosed = (database: SqliteDatabase): boolean =>
+  database.inTransaction === false || database.isTransaction === false;
+
 export const initializeLocalStoreSchema = (database: SqliteDatabase): void => {
   database.exec("PRAGMA foreign_keys = ON;");
   const versionRow = database.prepare("PRAGMA user_version").get();
@@ -3570,8 +3612,8 @@ export class SqliteApplicationStore
     try {
       this.database.exec("BEGIN IMMEDIATE;");
     } catch (error) {
-      if (isBusy(error))
-        throw new RetryableUnitOfWorkError("The local store is busy.");
+      const retryable = retryableStorageFailure(error);
+      if (retryable !== undefined) throw retryable;
       throw error;
     }
     try {
@@ -3579,13 +3621,17 @@ export class SqliteApplicationStore
       this.database.exec("COMMIT;");
       return result;
     } catch (error) {
+      let rolledBack = false;
       try {
         this.database.exec("ROLLBACK;");
+        rolledBack = true;
       } catch {
-        /* Preserve the original failure. */
+        rolledBack = transactionIsClosed(this.database);
       }
-      if (isBusy(error))
-        throw new RetryableUnitOfWorkError("The local store is busy.");
+      if (rolledBack) {
+        const retryable = retryableStorageFailure(error);
+        if (retryable !== undefined) throw retryable;
+      }
       throw error;
     }
   }

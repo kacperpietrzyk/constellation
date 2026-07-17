@@ -498,7 +498,7 @@ export class ApplicationKernel {
       }
       return this.outcome(command, occurredAt, {
         outcome: "retryable",
-        diagnosticCode: "storage.unit_of_work_failed",
+        diagnosticCode: error.diagnosticCode,
       });
     }
   }

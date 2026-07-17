@@ -15,6 +15,8 @@ export interface SqliteStatement {
  * SQLCipher-patched better-sqlite3 binding. No key material crosses this port.
  */
 export interface SqliteDatabase {
+  readonly inTransaction?: boolean;
+  readonly isTransaction?: boolean;
   exec(sql: string): void;
   prepare(sql: string): SqliteStatement;
 }
