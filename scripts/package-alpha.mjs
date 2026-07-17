@@ -263,6 +263,7 @@ const productionDesktopFiles = new Set([
   "runtime-kernel-service.js",
   "security.js",
   "starter-workspace-import.js",
+  "support-report.js",
   "workspace-key-custody.js",
   "workspace-backup-archive.js",
   "workspace-recovery-service.js",
@@ -602,7 +603,8 @@ if (
     entry.endsWith("/remote-mcp-credential-custody.js"),
   ) ||
   !archiveFiles.some((entry) => entry.endsWith("/attention-notification.js")) ||
-  !archiveFiles.some((entry) => entry.endsWith("/document-collaboration.js"))
+  !archiveFiles.some((entry) => entry.endsWith("/document-collaboration.js")) ||
+  !archiveFiles.some((entry) => entry.endsWith("/support-report.js"))
 ) {
   throw new Error("PRODUCTION_ASAR_CONTENT_INVALID");
 }
