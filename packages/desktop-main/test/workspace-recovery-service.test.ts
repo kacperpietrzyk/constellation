@@ -34,7 +34,7 @@ const writeMarker = (directory: string, marker: string): void => {
 
 const writeJournal = (
   stateRoot: string,
-  state: "previous_retained" | "candidate_active_unverified",
+  state: "prepared" | "previous_retained" | "candidate_active_unverified",
 ): void => {
   const recoveryRoot = path.join(stateRoot, "workspace-recovery");
   mkdirSync(recoveryRoot, { recursive: true, mode: 0o700 });
@@ -115,6 +115,98 @@ describe("interrupted workspace restore recovery", () => {
         "last-known-good",
       );
       assert.equal(existsSync(retained), false);
+    });
+  });
+
+  it("restores the retained workspace when interruption lands before the journal update", () => {
+    withStateRoot((stateRoot) => {
+      const retained = path.join(
+        stateRoot,
+        "workspace-recovery",
+        `retained-${restoreId}`,
+      );
+      writeMarker(retained, "last-known-good");
+      writeMarker(
+        path.join(
+          stateRoot,
+          "workspace-recovery",
+          "operations",
+          restoreId,
+          "candidate",
+        ),
+        "candidate",
+      );
+      writeJournal(stateRoot, "prepared");
+
+      assert.equal(
+        recoverInterruptedWorkspaceRestore(stateRoot),
+        "previous_workspace_restored",
+      );
+      assert.equal(
+        readFileSync(
+          path.join(stateRoot, "local-alpha-workspace", "marker"),
+          "utf8",
+        ),
+        "last-known-good",
+      );
+      assert.equal(existsSync(retained), false);
+    });
+  });
+
+  it("clears a prepared journal when interruption happens before retention", () => {
+    withStateRoot((stateRoot) => {
+      const active = path.join(stateRoot, "local-alpha-workspace");
+      const candidate = path.join(
+        stateRoot,
+        "workspace-recovery",
+        "operations",
+        restoreId,
+        "candidate",
+      );
+      writeMarker(active, "last-known-good");
+      writeMarker(candidate, "candidate");
+      writeJournal(stateRoot, "prepared");
+
+      assert.equal(recoverInterruptedWorkspaceRestore(stateRoot), "none");
+      assert.equal(
+        readFileSync(path.join(active, "marker"), "utf8"),
+        "last-known-good",
+      );
+      assert.equal(
+        existsSync(
+          path.join(stateRoot, "workspace-recovery", "activation.json"),
+        ),
+        false,
+      );
+    });
+  });
+
+  it("fails closed when a prepared journal has both active and retained roots", () => {
+    withStateRoot((stateRoot) => {
+      writeMarker(
+        path.join(stateRoot, "local-alpha-workspace"),
+        "ambiguous-active",
+      );
+      writeMarker(
+        path.join(stateRoot, "workspace-recovery", `retained-${restoreId}`),
+        "ambiguous-retained",
+      );
+      writeMarker(
+        path.join(
+          stateRoot,
+          "workspace-recovery",
+          "operations",
+          restoreId,
+          "candidate",
+        ),
+        "candidate",
+      );
+      writeJournal(stateRoot, "prepared");
+
+      assert.throws(
+        () => recoverInterruptedWorkspaceRestore(stateRoot),
+        /WORKSPACE_RESTORE_PREPARED_STATE_AMBIGUOUS/,
+      );
     });
   });
 
