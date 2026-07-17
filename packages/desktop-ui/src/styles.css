@@ -6466,6 +6466,84 @@ kbd {
   opacity: 0.45;
 }
 
+.support-report-details {
+  margin-top: 0.75rem;
+}
+
+.support-report-details summary {
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  min-height: 44px;
+  padding: 0.65rem 0;
+  width: fit-content;
+}
+
+.support-report-details summary:focus-visible {
+  border-radius: 0.3rem;
+  outline: 1px solid var(--color-text-primary);
+  outline-offset: 3px;
+}
+
+.support-report-details > div {
+  border-inline-start: 1px solid var(--color-border-strong);
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.25rem;
+  padding-inline-start: 0.8rem;
+}
+
+.support-report-details > div p {
+  color: var(--color-text-secondary);
+  font-size: 0.74rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.support-report-details strong {
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+.support-report-action {
+  align-items: flex-start;
+  display: grid;
+  justify-items: start;
+}
+
+.settings-control.support-report-action > button {
+  background: var(--action-primary-bg);
+  border-color: var(--action-primary-bg);
+  color: var(--action-primary-text);
+  font-weight: 600;
+  padding-inline: 1rem;
+}
+
+.settings-control.support-report-action > button:active:not(:disabled) {
+  background: var(--action-primary-pressed);
+  transform: scale(0.98);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .settings-control.support-report-action > button:hover:not(:disabled) {
+    background: var(--action-primary-hover);
+  }
+}
+
+.support-report-privacy-note,
+.support-report-action [role="status"] {
+  color: var(--color-text-secondary);
+  font-size: 0.74rem;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 28rem;
+}
+
+.support-report-action [role="status"] {
+  color: var(--color-text-primary);
+}
+
 .settings-control button,
 .file-action,
 .workspace-focus-strip button,
