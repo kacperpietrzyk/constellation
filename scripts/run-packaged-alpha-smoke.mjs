@@ -647,6 +647,13 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             ".nav-item[data-surface]"
           )) {
             destination.click();
+            const readyDeadline = performance.now() + 3000;
+            while (
+              document.querySelector('.work-surface [aria-busy="true"]') &&
+              performance.now() < readyDeadline
+            ) {
+              await new Promise((resolve) => setTimeout(resolve, 25));
+            }
             await new Promise((resolve) =>
               requestAnimationFrame(() => requestAnimationFrame(resolve))
             );
@@ -781,6 +788,13 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             ".nav-item[data-surface]"
           )) {
             destination.click();
+            const readyDeadline = performance.now() + 3000;
+            while (
+              document.querySelector('.work-surface [aria-busy="true"]') &&
+              performance.now() < readyDeadline
+            ) {
+              await new Promise((resolve) => setTimeout(resolve, 25));
+            }
             await new Promise((resolve) =>
               requestAnimationFrame(() => requestAnimationFrame(resolve))
             );
