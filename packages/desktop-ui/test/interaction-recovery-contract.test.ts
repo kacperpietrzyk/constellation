@@ -32,6 +32,10 @@ const activityStyles = readFileSync(
   path.join(root, "src", "activity-surface.css"),
   "utf8",
 );
+const documentsSurface = readFileSync(
+  path.join(root, "src", "DocumentsSurface.tsx"),
+  "utf8",
+);
 const realApp = readFileSync(path.join(root, "src", "RealApp.tsx"), "utf8");
 const meetings = readFileSync(
   path.join(root, "src", "MeetingsSurface.tsx"),
@@ -135,6 +139,28 @@ describe("interaction recovery contracts", () => {
     assert.match(
       styles,
       /\.work-context-row,\s*\.work-project-row,\s*\.work-task-row\s*\{[^}]*border-top:[^;]+;[^}]*background:\s*transparent;/s,
+    );
+  });
+
+  it("keeps Document creation progressive and the editor on a distinct reading plane", () => {
+    assert.match(documentsSurface, /className="knowledge-create-bar"/);
+    assert.match(documentsSurface, /label="Dodaj źródło"/);
+    assert.match(documentsSurface, /label="Nowa treść"/);
+    assert.match(
+      documentsSurface,
+      /open=\{openCreate === "source"\}[\s\S]*open=\{openCreate === "content"\}/,
+    );
+    assert.match(
+      styles,
+      /\.knowledge-library\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
+    );
+    assert.match(
+      styles,
+      /\.document-canvas\s*\{[^}]*border:[^;]+;[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-rest\)/s,
+    );
+    assert.match(
+      styles,
+      /\.knowledge-welcome\s*\{[^}]*border:[^;]+;[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-rest\)/s,
     );
   });
 });

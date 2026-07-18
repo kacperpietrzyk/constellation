@@ -22,6 +22,7 @@ import {
   type KnowledgeSourceRecord,
   type MutationFailure,
 } from "./client/workflow.js";
+import { InlinePopover } from "./components/InlinePopover.js";
 import { computeDocumentTextEdit } from "./document-text-diff.js";
 import { countLabel, formatDateTime } from "./i18n.js";
 
@@ -755,6 +756,7 @@ export const DocumentsSurface = ({
   const [sourceTitle, setSourceTitle] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [creating, setCreating] = useState(false);
+  const [openCreate, setOpenCreate] = useState<"source" | "content">();
   const selected = items.find((item) => item.id === selectedId) ?? items[0];
   const selectedSource = knowledge?.sources.find(
     (source) => source.id === selectedSourceId,
@@ -778,46 +780,118 @@ export const DocumentsSurface = ({
           </span>
         </header>
 
-        <form
-          className="quick-source-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!client || !sourceTitle.trim() || creating) return;
-            setCreating(true);
-            void createKnowledgeSource(client, snapshot, {
-              title: sourceTitle,
-              ...(sourceUrl.trim() === "" ? {} : { canonicalUrl: sourceUrl }),
-            }).then(async (result) => {
-              setCreating(false);
-              if (result.kind !== "success") return onFailure(result);
-              setSourceTitle("");
-              setSourceUrl("");
-              await onReload();
-            });
-          }}
-        >
-          <label htmlFor="knowledge-source-title">Zachowaj źródło</label>
-          <input
-            id="knowledge-source-title"
-            name="sourceTitle"
-            required
-            value={sourceTitle}
-            onChange={(event) => setSourceTitle(event.target.value)}
-            placeholder="Co warto zachować?"
-            maxLength={500}
-          />
-          <input
-            name="sourceUrl"
-            type="url"
-            aria-label="Adres URL źródła"
-            value={sourceUrl}
-            onChange={(event) => setSourceUrl(event.target.value)}
-            placeholder="https://… (opcjonalnie)"
-          />
-          <button className="primary-button" disabled={creating}>
-            Zachowaj źródło
-          </button>
-        </form>
+        <div className="knowledge-create-bar" aria-label="Utwórz w bibliotece">
+          <InlinePopover
+            label="Dodaj źródło"
+            panelLabel="Dodaj źródło do biblioteki"
+            open={openCreate === "source"}
+            onOpenChange={(open) => setOpenCreate(open ? "source" : undefined)}
+            disabled={!client || creating}
+          >
+            <form
+              className="quick-source-form knowledge-create-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!client || !sourceTitle.trim() || creating) return;
+                setCreating(true);
+                void createKnowledgeSource(client, snapshot, {
+                  title: sourceTitle,
+                  ...(sourceUrl.trim() === ""
+                    ? {}
+                    : { canonicalUrl: sourceUrl }),
+                }).then(async (result) => {
+                  setCreating(false);
+                  if (result.kind !== "success") return onFailure(result);
+                  setSourceTitle("");
+                  setSourceUrl("");
+                  setOpenCreate(undefined);
+                  await onReload();
+                });
+              }}
+            >
+              <label htmlFor="knowledge-source-title">Zachowaj źródło</label>
+              <input
+                id="knowledge-source-title"
+                name="sourceTitle"
+                required
+                value={sourceTitle}
+                onChange={(event) => setSourceTitle(event.target.value)}
+                placeholder="Co warto zachować?"
+                maxLength={500}
+              />
+              <input
+                name="sourceUrl"
+                type="url"
+                aria-label="Adres URL źródła"
+                value={sourceUrl}
+                onChange={(event) => setSourceUrl(event.target.value)}
+                placeholder="https://… (opcjonalnie)"
+              />
+              <button className="primary-button" disabled={creating}>
+                Zachowaj źródło
+              </button>
+            </form>
+          </InlinePopover>
+          <InlinePopover
+            label="Nowa treść"
+            panelLabel="Utwórz treść w bibliotece"
+            open={openCreate === "content"}
+            onOpenChange={(open) => setOpenCreate(open ? "content" : undefined)}
+            disabled={!client || creating}
+          >
+            <form
+              className="new-knowledge-form knowledge-create-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!client || !newTitle.trim() || creating) return;
+                setCreating(true);
+                void createDocument(client, snapshot, newTitle, newRole).then(
+                  async (result) => {
+                    setCreating(false);
+                    if (result.kind !== "success") return onFailure(result);
+                    setSelectedId(result.data);
+                    setSelectedSourceId(undefined);
+                    setNewTitle("");
+                    setOpenCreate(undefined);
+                    await onReload();
+                  },
+                );
+              }}
+            >
+              <label htmlFor="knowledge-title">Nowa treść</label>
+              <input
+                id="knowledge-title"
+                name="knowledgeTitle"
+                required
+                value={newTitle}
+                onChange={(event) => setNewTitle(event.target.value)}
+                placeholder="Tytuł notatki lub rezultatu"
+                maxLength={500}
+              />
+              <div
+                className="role-options"
+                role="group"
+                aria-label="Rodzaj treści"
+              >
+                {(Object.keys(roleCopy) as (keyof typeof roleCopy)[]).map(
+                  (role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      aria-pressed={newRole === role}
+                      onClick={() => setNewRole(role)}
+                    >
+                      {roleCopy[role]}
+                    </button>
+                  ),
+                )}
+              </div>
+              <button className="primary-button" disabled={creating}>
+                Utwórz {roleAccusativeCopy[newRole]}
+              </button>
+            </form>
+          </InlinePopover>
+        </div>
 
         <section className="library-section" aria-labelledby="sources-title">
           <div className="library-section-heading">
@@ -871,56 +945,6 @@ export const DocumentsSurface = ({
             <h2 id="documents-title">Treści</h2>
             <span>{items.length}</span>
           </div>
-          <form
-            className="new-knowledge-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!client || !newTitle.trim() || creating) return;
-              setCreating(true);
-              void createDocument(client, snapshot, newTitle, newRole).then(
-                async (result) => {
-                  setCreating(false);
-                  if (result.kind !== "success") return onFailure(result);
-                  setSelectedId(result.data);
-                  setSelectedSourceId(undefined);
-                  setNewTitle("");
-                  await onReload();
-                },
-              );
-            }}
-          >
-            <label htmlFor="knowledge-title">Nowa treść</label>
-            <input
-              id="knowledge-title"
-              name="knowledgeTitle"
-              required
-              value={newTitle}
-              onChange={(event) => setNewTitle(event.target.value)}
-              placeholder="Tytuł notatki lub rezultatu"
-              maxLength={500}
-            />
-            <div
-              className="role-options"
-              role="group"
-              aria-label="Rodzaj treści"
-            >
-              {(Object.keys(roleCopy) as (keyof typeof roleCopy)[]).map(
-                (role) => (
-                  <button
-                    key={role}
-                    type="button"
-                    aria-pressed={newRole === role}
-                    onClick={() => setNewRole(role)}
-                  >
-                    {roleCopy[role]}
-                  </button>
-                ),
-              )}
-            </div>
-            <button className="primary-button" disabled={creating}>
-              Utwórz {roleAccusativeCopy[newRole]}
-            </button>
-          </form>
           {snapshot.documents.kind === "unavailable" ? (
             <p className="inline-error">
               Treści nie są dostępne w tym zakresie.
