@@ -8,7 +8,7 @@ import type {
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 import { createPortal } from "react-dom";
 
-import { MeetingMarkdown, toPlainMeetingMarkdown } from "./MeetingMarkdown.js";
+import { MeetingMarkdown, toMeetingResultPreview } from "./MeetingMarkdown.js";
 import { Icon } from "./components/Icon.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
 import { countLabel } from "./i18n.js";
@@ -316,15 +316,16 @@ export const MeetingsSurface = ({
   };
   useEffect(load, [client]);
   useEffect(loadJamieStatus, [client]);
-  // Stripping Markdown from every summary is pure text work; do it once per
-  // snapshot instead of on every render of the result list.
-  const resultSummaries = useMemo(() => {
+  // Collection rows expose a bounded preview to both layout and assistive
+  // technology. The complete source remains available only in the selected
+  // inspector reading view.
+  const resultPreviews = useMemo(() => {
     if (state.kind !== "ready") return new Map<string, string>();
     return new Map(
       state.data.completed.map((meeting) => [
         meeting.id,
         meeting.summaryMarkdown
-          ? toPlainMeetingMarkdown(meeting.summaryMarkdown)
+          ? toMeetingResultPreview(meeting.summaryMarkdown)
           : "Brak podsumowania w wyniku Jamie.",
       ]),
     );
@@ -722,15 +723,25 @@ export const MeetingsSurface = ({
               >
                 {surface.completed.map((meeting, index) => {
                   const selected = meeting.id === selectedMeeting.id;
-                  const summary =
-                    resultSummaries.get(meeting.id) ??
+                  const preview =
+                    resultPreviews.get(meeting.id) ??
                     "Brak podsumowania w wyniku Jamie.";
+                  const previewId = `meeting-result-preview-${index}`;
+                  const title = meeting.title ?? "Spotkanie bez tytułu";
+                  const workCount = countLabel(
+                    meeting.workItems.length,
+                    "działanie",
+                    "działania",
+                    "działań",
+                  );
                   return (
                     <li key={meeting.id} role="presentation">
                       <button
                         type="button"
                         role="option"
                         className={`meeting-result-row${selected ? " is-selected" : ""}`}
+                        aria-label={`${title}. ${healthLabel(meeting)}. ${formatTime(meeting.startedAt)}. ${workCount}.`}
+                        aria-describedby={previewId}
                         aria-selected={selected}
                         {...(inspectorHost
                           ? { "aria-controls": "meeting-result-detail" }
@@ -739,9 +750,7 @@ export const MeetingsSurface = ({
                         onClick={() => selectResult(index)}
                       >
                         <span className="meeting-result-row-heading">
-                          <strong>
-                            {meeting.title ?? "Spotkanie bez tytułu"}
-                          </strong>
+                          <strong>{title}</strong>
                           <span
                             className={`meeting-health meeting-health--${meeting.triage}`}
                           >
@@ -751,16 +760,14 @@ export const MeetingsSurface = ({
                         <time dateTime={meeting.startedAt}>
                           {formatTime(meeting.startedAt)}
                         </time>
-                        <span className="meeting-result-row-summary">
-                          {summary}
+                        <span
+                          className="meeting-result-row-summary"
+                          id={previewId}
+                        >
+                          {preview}
                         </span>
                         <span className="meeting-result-row-meta">
-                          {countLabel(
-                            meeting.workItems.length,
-                            "działanie",
-                            "działania",
-                            "działań",
-                          )}
+                          {workCount}
                           <span aria-hidden="true">→</span>
                         </span>
                       </button>

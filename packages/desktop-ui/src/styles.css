@@ -693,7 +693,8 @@ kbd {
   min-height: 2rem;
   padding-inline: var(--space-3);
 }
-.quiet-button {
+.quiet-button,
+.ghost-button {
   min-height: 2.25rem;
   display: inline-flex;
   align-items: center;
@@ -712,16 +713,19 @@ kbd {
     color var(--duration-fast),
     background var(--duration-fast);
 }
-.quiet-button:not(:disabled):hover {
+.quiet-button:not(:disabled):hover,
+.ghost-button:not(:disabled):hover {
   color: var(--text-primary);
   background: var(--surface-hover);
 }
-.quiet-button:not(:disabled):active {
+.quiet-button:not(:disabled):active,
+.ghost-button:not(:disabled):active {
   background: var(--surface-pressed);
 }
 .primary-button:disabled,
 .secondary-button:disabled,
 .quiet-button:disabled,
+.ghost-button:disabled,
 .quiet-danger-button:disabled,
 .text-button:disabled {
   cursor: default;
@@ -6948,6 +6952,10 @@ button.mention-chip:disabled {
 @media (max-width: 50rem) {
   .wave2-shell {
     min-width: 0;
+  }
+  .quiet-button,
+  .ghost-button {
+    min-height: 2.75rem;
   }
   .nav-entry {
     grid-template-columns: minmax(0, 1fr);

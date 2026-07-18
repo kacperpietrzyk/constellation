@@ -16,6 +16,21 @@ export const toPlainMeetingMarkdown = (value: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+export const toMeetingResultPreview = (
+  value: string,
+  maxLength = 220,
+): string => {
+  const plain = toPlainMeetingMarkdown(value);
+  if (plain.length <= maxLength) return plain;
+
+  const safeLimit = Math.max(2, maxLength) - 1;
+  const candidate = plain.slice(0, safeLimit);
+  const wordBoundary = candidate.lastIndexOf(" ");
+  const end =
+    wordBoundary >= Math.floor(safeLimit * 0.7) ? wordBoundary : safeLimit;
+  return `${candidate.slice(0, end).trimEnd()}…`;
+};
+
 // Imported content is untrusted: only plain web and mail schemes may become
 // real links; anything else degrades to its visible text.
 const sanitizeMarkdownHref = (value: string): string | undefined =>

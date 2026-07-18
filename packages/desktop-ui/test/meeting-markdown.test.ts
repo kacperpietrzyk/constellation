@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   MeetingMarkdown,
+  toMeetingResultPreview,
   toPlainMeetingMarkdown,
 } from "../src/MeetingMarkdown.js";
 
@@ -169,4 +170,22 @@ test("toPlainMeetingMarkdown strips extended syntax from summaries", () => {
   assert.match(plain, /Budżet Anna/);
   assert.match(plain, /Diagram/);
   assert.match(plain, /Notatka/);
+});
+
+test("toMeetingResultPreview keeps collection content semantic and bounded", () => {
+  const preview = toMeetingResultPreview(
+    `## Ustalenia\n${"Bardzo długie podsumowanie spotkania. ".repeat(20)}`,
+  );
+
+  assert.ok(preview.length <= 220);
+  assert.match(preview, /^Ustalenia Bardzo długie/);
+  assert.match(preview, /…$/);
+  assert.doesNotMatch(preview, /[#*_`]/);
+});
+
+test("toMeetingResultPreview leaves short summaries intact", () => {
+  assert.equal(
+    toMeetingResultPreview("**Krótki wynik** bez dalszych szczegółów."),
+    "Krótki wynik bez dalszych szczegółów.",
+  );
 });

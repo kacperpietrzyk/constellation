@@ -25,6 +25,10 @@ const surfaces = readFileSync(
 );
 const styles = readFileSync(path.join(root, "src", "styles.css"), "utf8");
 const realApp = readFileSync(path.join(root, "src", "RealApp.tsx"), "utf8");
+const meetings = readFileSync(
+  path.join(root, "src", "MeetingsSurface.tsx"),
+  "utf8",
+);
 
 describe("interaction recovery contracts", () => {
   it("keeps global-search failure content-safe and explicitly recoverable", () => {
@@ -62,5 +66,29 @@ describe("interaction recovery contracts", () => {
     assert.match(realApp, /onClick=\{dismissInspector\}/);
     assert.match(realApp, /setMeetingInspectorOpen\(false\)/);
     assert.match(realApp, /setDocumentInspectorOpen\(false\)/);
+  });
+
+  it("keeps meeting collection options concise while full content stays in the inspector", () => {
+    assert.match(
+      meetings,
+      /toMeetingResultPreview\(meeting\.summaryMarkdown\)/,
+    );
+    assert.match(meetings, /aria-label=\{`\$\{title\}/);
+    assert.match(meetings, /aria-describedby=\{previewId\}/);
+    assert.match(
+      meetings,
+      /<MeetingMarkdown\s+value=\{selectedMeeting\.summaryMarkdown\}/s,
+    );
+  });
+
+  it("maps ghost actions to the accepted quiet-button target contract", () => {
+    assert.match(
+      styles,
+      /\.quiet-button,\s*\.ghost-button\s*\{[^}]*min-height:\s*2\.25rem/s,
+    );
+    assert.match(
+      styles,
+      /@media \(max-width: 50rem\)[\s\S]*?\.quiet-button,\s*\.ghost-button\s*\{[^}]*min-height:\s*2\.75rem/s,
+    );
   });
 });
