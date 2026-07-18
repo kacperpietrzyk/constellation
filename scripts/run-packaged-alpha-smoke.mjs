@@ -588,52 +588,63 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       }
 
       await client.send("Page.bringToFront");
-      const navItemFocused = await client.evaluate(`(() => {
+      const favoriteKeyboardPath = await client.evaluate(`(() => {
         const item = document.querySelector(".nav-item[data-surface].active");
-        item?.focus();
-        return document.activeElement === item;
-      })()`);
-      await client.evaluate(`new Promise((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(resolve))
-      )`);
-      await client.send("Input.dispatchKeyEvent", {
-        type: "rawKeyDown",
-        key: "Tab",
-        code: "Tab",
-        windowsVirtualKeyCode: 9,
-        nativeVirtualKeyCode: 9,
-      });
-      await client.send("Input.dispatchKeyEvent", {
-        type: "keyUp",
-        key: "Tab",
-        code: "Tab",
-        windowsVirtualKeyCode: 9,
-        nativeVirtualKeyCode: 9,
-      });
-      const favoriteKeyboardFocus = await client.evaluate(`(() => {
-        const activeItem = document.querySelector(
-          ".nav-item[data-surface].active"
-        );
-        const favorite = activeItem?.parentElement?.querySelector(
+        const favorite = item?.parentElement?.querySelector(
           ".nav-favorite-toggle"
         );
+        const pressedBefore = favorite?.getAttribute("aria-pressed");
+        favorite?.focus();
         return {
-          className: document.activeElement?.className,
-          ariaLabel: document.activeElement?.getAttribute("aria-label"),
+          activeItemPresent: item !== null,
+          favoriteFocused: document.activeElement === favorite,
           favoriteTabIndex: favorite?.tabIndex,
           favoriteDisplay: favorite ? getComputedStyle(favorite).display : null,
+          favoriteFollowsItem: Boolean(
+            item &&
+              favorite &&
+              item.compareDocumentPosition(favorite) &
+                Node.DOCUMENT_POSITION_FOLLOWING
+          ),
+          pressedBefore,
           viewportWidth: innerWidth
         };
       })()`);
+      await client.send("Input.dispatchKeyEvent", {
+        type: "keyDown",
+        key: "Enter",
+        code: "Enter",
+        windowsVirtualKeyCode: 13,
+        nativeVirtualKeyCode: 13,
+      });
+      await client.send("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: "Enter",
+        code: "Enter",
+        windowsVirtualKeyCode: 13,
+        nativeVirtualKeyCode: 13,
+      });
+      await client.evaluate(`new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve))
+      )`);
+      const favoritePressedAfter = await client.evaluate(`document
+        .querySelector(".nav-item[data-surface].active")
+        ?.parentElement
+        ?.querySelector(".nav-favorite-toggle")
+        ?.getAttribute("aria-pressed")`);
       if (
-        navItemFocused &&
-        (typeof favoriteKeyboardFocus.className !== "string" ||
-          !favoriteKeyboardFocus.className
-            .split(/\\s+/u)
-            .includes("nav-favorite-toggle"))
+        !favoriteKeyboardPath.activeItemPresent ||
+        !favoriteKeyboardPath.favoriteFocused ||
+        favoriteKeyboardPath.favoriteTabIndex !== 0 ||
+        favoriteKeyboardPath.favoriteDisplay === "none" ||
+        !favoriteKeyboardPath.favoriteFollowsItem ||
+        favoritePressedAfter === favoriteKeyboardPath.pressedBefore
       ) {
         throw new Error(
-          `PACKAGED_ALPHA_FAVORITE_KEYBOARD_PATH_MISSING:${JSON.stringify(favoriteKeyboardFocus)}`,
+          `PACKAGED_ALPHA_FAVORITE_KEYBOARD_PATH_MISSING:${JSON.stringify({
+            ...favoriteKeyboardPath,
+            favoritePressedAfter,
+          })}`,
         );
       }
 
