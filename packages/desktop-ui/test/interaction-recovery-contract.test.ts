@@ -49,6 +49,14 @@ const meetings = readFileSync(
   path.join(root, "src", "MeetingsSurface.tsx"),
   "utf8",
 );
+const strategicSurface = readFileSync(
+  path.join(root, "src", "StrategicDepthSurface.tsx"),
+  "utf8",
+);
+const strategicCreate = readFileSync(
+  path.join(root, "src", "StrategicCreatePanel.tsx"),
+  "utf8",
+);
 
 describe("interaction recovery contracts", () => {
   it("keeps global-search failure content-safe and explicitly recoverable", () => {
@@ -129,6 +137,47 @@ describe("interaction recovery contracts", () => {
       "Opening Meetings must not select or expose a result before activation.",
     );
     assert.match(meetings, /selected && inspectorHost/);
+  });
+
+  it("makes Relations one raised work plane with a quieter review rail", () => {
+    assert.match(strategicSurface, /<main className="strategic-work-plane">/);
+    assert.match(
+      styles,
+      /\.strategic-work-plane\s*\{[^}]*background:\s*var\(--panel-reading-bg\)[^}]*box-shadow:\s*var\(--elevation-raised\)/s,
+    );
+    assert.match(
+      styles,
+      /\.strategic-ledger\s*\{[^}]*border-top:\s*1px solid var\(--border-subtle\)/s,
+    );
+    assert.match(
+      styles,
+      /\.strategic-review\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
+    );
+    assert.match(
+      styles,
+      /@container \(max-width: 480px\)[\s\S]*?\.ledger-select\s*\{[^}]*grid-column:\s*1 \/ -1/s,
+    );
+  });
+
+  it("reveals strategic record types only after one deliberate create action", () => {
+    assert.match(strategicCreate, /const \[launcherOpen, setLauncherOpen\]/);
+    assert.match(
+      strategicCreate,
+      /launcherOpen \? "Zamknij wybór" : "Dodaj rekord"/,
+    );
+    assert.match(strategicCreate, /aria-expanded=\{launcherOpen\}/);
+    assert.match(
+      strategicCreate,
+      /launcherOpen\s*\?\s*\{ "aria-controls": "strategic-create-options" \}/s,
+    );
+    assert.match(
+      strategicCreate,
+      /\{launcherOpen && \([\s\S]*id="strategic-create-options"[\s\S]*className="strategic-create-grid"/,
+    );
+    assert.match(
+      styles,
+      /\.strategic-create-toggle\s*\{[^}]*min-height:\s*2\.75rem/s,
+    );
   });
 
   it("maps ghost actions to the accepted quiet-button target contract", () => {

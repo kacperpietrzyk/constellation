@@ -234,15 +234,15 @@ export const StrategicDepthSurface = ({
             <p>
               Relacja łączy organizację z potwierdzoną potrzebą, ofertą,
               projektem, odnowieniem i decyzją — każdy krok zachowuje źródło i
-              historię. Dodaj pierwszą organizację przyciskiem „Organizacja”
-              powyżej; szanse i pozostałe rekordy pojawią się, gdy będzie je do
-              czego podłączyć.
+              historię. Otwórz „Dodaj rekord” i zacznij od organizacji; szanse
+              oraz pozostałe rekordy pojawią się, gdy będzie je do czego
+              podłączyć.
             </p>
           </div>
         </section>
       ) : (
         <div className="strategic-layout">
-          <div>
+          <main className="strategic-work-plane">
             <section
               className="strategic-thread"
               aria-labelledby="thread-title"
@@ -493,7 +493,7 @@ export const StrategicDepthSurface = ({
                 </p>
               )}
             </section>
-          </div>
+          </main>
 
           <aside className="strategic-review" aria-labelledby="review-title">
             <header>
