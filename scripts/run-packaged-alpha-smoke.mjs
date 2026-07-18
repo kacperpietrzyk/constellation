@@ -595,11 +595,12 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         );
         const pressedBefore = favorite?.getAttribute("aria-pressed");
         favorite?.focus();
+        const favoriteFocused = document.activeElement === favorite;
         favorite?.click();
         return {
           activeItemPresent: item !== null,
           documentFocused: document.hasFocus(),
-          favoriteFocused: document.activeElement === favorite,
+          favoriteFocused,
           favoriteTag: favorite?.tagName,
           favoriteDisabled: favorite?.hasAttribute("disabled"),
           favoriteTabIndex: favorite?.tabIndex,
