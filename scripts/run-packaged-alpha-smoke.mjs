@@ -935,7 +935,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       await waitFor(
         client,
         `[...document.querySelectorAll('.search-results button')].some(
-          (button) => button.querySelector('small')?.textContent?.startsWith('task ·')
+          (button) => button.querySelector('strong')?.textContent === ${JSON.stringify(taskTitle)}
         )`,
         "PACKAGED_ALPHA_LOCAL_SEARCH_RESULT_MISSING",
       );
@@ -945,7 +945,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       }
       await client.evaluate(`(() => {
         const result = [...document.querySelectorAll('.search-results button')].find(
-          (button) => button.querySelector('small')?.textContent?.startsWith('task ·')
+          (button) => button.querySelector('strong')?.textContent === ${JSON.stringify(taskTitle)}
         );
         result.click();
         return true;
