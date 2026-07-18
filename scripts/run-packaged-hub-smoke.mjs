@@ -688,16 +688,14 @@ try {
   })()`);
   await waitFor(
     member.client,
-    `document.querySelector(".comment-composer textarea") !== null && [...document.querySelectorAll(".comment-composer select option")].some((option) => option.value === ${JSON.stringify(ownerConnection.context.principalId)})`,
+    `document.querySelector(".comment-composer textarea") !== null && document.querySelector(${JSON.stringify(`.comment-composer .mention-chip[data-principal-id="${ownerConnection.context.principalId}"]`)}) !== null`,
     "COMMENT_COMPOSER_NOT_RENDERED",
   );
   await member.client.evaluate(`(() => {
     const textarea = document.querySelector(".comment-composer textarea");
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(textarea, ${JSON.stringify(packagedCommentBody)});
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    const mentions = document.querySelector(".comment-composer select");
-    for (const option of mentions.options) option.selected = option.value === ${JSON.stringify(ownerConnection.context.principalId)};
-    mentions.dispatchEvent(new Event("change", { bubbles: true }));
+    document.querySelector(${JSON.stringify(`.comment-composer .mention-chip[data-principal-id="${ownerConnection.context.principalId}"]`)}).click();
     return true;
   })()`);
   await waitFor(

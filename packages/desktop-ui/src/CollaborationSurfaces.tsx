@@ -383,6 +383,7 @@ export const CommentsPanel = ({
                   type="button"
                   className="mention-chip"
                   key={candidate.principalId}
+                  data-principal-id={candidate.principalId}
                   aria-pressed={mentions.includes(candidate.principalId)}
                   onClick={() => toggleMention(candidate.principalId)}
                 >
