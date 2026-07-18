@@ -21,6 +21,18 @@ export type ShortcutGroup = {
   readonly entries: readonly ShortcutEntry[];
 };
 
+export type SurfaceShortcutHint = {
+  readonly keys: string;
+  readonly kind: "direct" | "palette";
+};
+
+export const surfaceShortcutHint = (surface: {
+  readonly shortcut?: string;
+}): SurfaceShortcutHint =>
+  surface.shortcut === undefined
+    ? { keys: `${modifierLabel}K`, kind: "palette" }
+    : { keys: `${modifierLabel}${surface.shortcut}`, kind: "direct" };
+
 export const shellShortcutGroups = (
   surfaces: readonly { readonly label: string; readonly shortcut?: string }[],
 ): readonly ShortcutGroup[] => [
@@ -34,11 +46,20 @@ export const shellShortcutGroups = (
     ],
   },
   {
-    title: "Widoki",
+    title: "Widoki bezpośrednie",
     entries: surfaces
       .filter((item) => item.shortcut !== undefined)
       .map((item) => ({
-        keys: [`${modifierLabel}${item.shortcut}`],
+        keys: [surfaceShortcutHint(item).keys],
+        label: item.label,
+      })),
+  },
+  {
+    title: "Widoki przez paletę",
+    entries: surfaces
+      .filter((item) => item.shortcut === undefined)
+      .map((item) => ({
+        keys: [surfaceShortcutHint(item).keys],
         label: item.label,
       })),
   },

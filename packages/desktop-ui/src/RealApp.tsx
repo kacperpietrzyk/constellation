@@ -35,6 +35,8 @@ import { Icon, type IconName } from "./components/Icon.js";
 import {
   ShortcutsOverlay,
   modifierLabel,
+  surfaceShortcutHint,
+  type SurfaceShortcutHint,
 } from "./components/ShortcutsOverlay.js";
 import { useDismissiblePanel } from "./hooks/useDismissiblePanel.js";
 import { AttentionSurface, CommentsPanel } from "./CollaborationSurfaces.js";
@@ -1395,7 +1397,7 @@ export const RealApp = ({
   const [focusedNavItemId, setFocusedNavItemId] = useState<SurfaceId>();
   const [railTip, setRailTip] = useState<{
     readonly label: string;
-    readonly shortcut?: string;
+    readonly hint?: SurfaceShortcutHint;
     readonly top: number;
   }>();
   const navRef = useRef<HTMLElement>(null);
@@ -1463,13 +1465,13 @@ export const RealApp = ({
   const showRailTip = (
     target: HTMLElement,
     label: string,
-    shortcut?: string,
+    hint?: SurfaceShortcutHint,
   ) => {
     if (!railMode) return;
     const rect = target.getBoundingClientRect();
     setRailTip({
       label,
-      ...(shortcut === undefined ? {} : { shortcut }),
+      ...(hint === undefined ? {} : { hint }),
       top: rect.top + rect.height / 2,
     });
   };
@@ -2320,10 +2322,18 @@ export const RealApp = ({
         <button
           className="search-control"
           aria-label={`Szukaj · ${modifierLabel}K`}
-          onFocus={(event) => showRailTip(event.currentTarget, "Szukaj", "K")}
+          onFocus={(event) =>
+            showRailTip(event.currentTarget, "Szukaj", {
+              keys: `${modifierLabel}K`,
+              kind: "direct",
+            })
+          }
           onBlur={hideRailTip}
           onMouseEnter={(event) =>
-            showRailTip(event.currentTarget, "Szukaj", "K")
+            showRailTip(event.currentTarget, "Szukaj", {
+              keys: `${modifierLabel}K`,
+              kind: "direct",
+            })
           }
           onMouseLeave={hideRailTip}
           onClick={() => setSearchOpen(true)}
@@ -2385,90 +2395,101 @@ export const RealApp = ({
               <p className="nav-label">{group}</p>
               {navItems
                 .filter((item) => item.group === group)
-                .map((item) => (
-                  <div className="nav-entry" key={item.id}>
-                    <button
-                      data-surface={item.id}
-                      className={`nav-item ${surface === item.id ? "active" : ""}`}
-                      tabIndex={surface === item.id ? 0 : -1}
-                      aria-label={
-                        item.id === "tasks"
-                          ? `${item.label} · ${tasks.length}`
-                          : item.id === "attention" &&
-                              state.snapshot.attention.kind === "ready" &&
-                              state.snapshot.attention.data.unreadCount > 0
-                            ? `${item.label} · ${state.snapshot.attention.data.unreadCount} nieprzeczytanych`
-                            : item.label
-                      }
-                      aria-current={surface === item.id ? "page" : undefined}
-                      title={
-                        railMode || item.shortcut === undefined
-                          ? undefined
-                          : `${item.label} · ${modifierLabel}${item.shortcut}`
-                      }
-                      onFocus={(event) => {
-                        setFocusedNavItemId(item.id);
-                        preloadSurface(item.id);
-                        showRailTip(
-                          event.currentTarget,
-                          item.label,
-                          item.shortcut,
-                        );
-                      }}
-                      onBlur={hideRailTip}
-                      onMouseEnter={(event) => {
-                        preloadSurface(item.id);
-                        showRailTip(
-                          event.currentTarget,
-                          item.label,
-                          item.shortcut,
-                        );
-                      }}
-                      onMouseLeave={hideRailTip}
-                      {...navHandlers(destinationContext(item.id, item.label))}
-                    >
-                      <Icon name={item.icon} />
-                      <span>{item.label}</span>
-                      {item.id === "tasks" ? (
-                        <span className="nav-count">{tasks.length}</span>
-                      ) : item.id === "attention" &&
-                        state.snapshot.attention.kind === "ready" &&
-                        state.snapshot.attention.data.unreadCount > 0 ? (
-                        <span
-                          className="nav-count nav-count--attention"
-                          aria-hidden="true"
-                        >
-                          {state.snapshot.attention.data.unreadCount}
+                .map((item) => {
+                  const shortcutHint = surfaceShortcutHint(item);
+                  return (
+                    <div className="nav-entry" key={item.id}>
+                      <button
+                        data-surface={item.id}
+                        className={`nav-item ${surface === item.id ? "active" : ""}`}
+                        tabIndex={surface === item.id ? 0 : -1}
+                        aria-label={
+                          item.id === "tasks"
+                            ? `${item.label} · ${tasks.length}`
+                            : item.id === "attention" &&
+                                state.snapshot.attention.kind === "ready" &&
+                                state.snapshot.attention.data.unreadCount > 0
+                              ? `${item.label} · ${state.snapshot.attention.data.unreadCount} nieprzeczytanych`
+                              : item.label
+                        }
+                        aria-current={surface === item.id ? "page" : undefined}
+                        title={
+                          railMode
+                            ? undefined
+                            : shortcutHint.kind === "direct"
+                              ? `${item.label} · ${shortcutHint.keys}`
+                              : `${item.label} · przez paletę ${shortcutHint.keys}`
+                        }
+                        onFocus={(event) => {
+                          setFocusedNavItemId(item.id);
+                          preloadSurface(item.id);
+                          showRailTip(
+                            event.currentTarget,
+                            item.label,
+                            shortcutHint,
+                          );
+                        }}
+                        onBlur={hideRailTip}
+                        onMouseEnter={(event) => {
+                          preloadSurface(item.id);
+                          showRailTip(
+                            event.currentTarget,
+                            item.label,
+                            shortcutHint,
+                          );
+                        }}
+                        onMouseLeave={hideRailTip}
+                        {...navHandlers(
+                          destinationContext(item.id, item.label),
+                        )}
+                      >
+                        <Icon name={item.icon} />
+                        <span>{item.label}</span>
+                        <span className="nav-item-meta" aria-hidden="true">
+                          {item.id === "tasks" ? (
+                            <span className="nav-count">{tasks.length}</span>
+                          ) : item.id === "attention" &&
+                            state.snapshot.attention.kind === "ready" &&
+                            state.snapshot.attention.data.unreadCount > 0 ? (
+                            <span className="nav-count nav-count--attention">
+                              {state.snapshot.attention.data.unreadCount}
+                            </span>
+                          ) : null}
+                          <kbd
+                            className={
+                              shortcutHint.kind === "palette"
+                                ? "nav-palette-shortcut"
+                                : undefined
+                            }
+                          >
+                            {shortcutHint.keys}
+                            {shortcutHint.kind === "palette" ? "…" : ""}
+                          </kbd>
                         </span>
-                      ) : item.shortcut !== undefined ? (
-                        <kbd>
-                          {modifierLabel}
-                          {item.shortcut}
-                        </kbd>
-                      ) : null}
-                    </button>
-                    <button
-                      type="button"
-                      className="nav-favorite-toggle"
-                      tabIndex={
-                        focusedNavItemId === item.id || surface === item.id
-                          ? 0
-                          : -1
-                      }
-                      aria-label={`${favorites.includes(item.id) ? "Usuń" : "Dodaj"} ${item.label} ${favorites.includes(item.id) ? "z" : "do"} ulubionych`}
-                      aria-pressed={favorites.includes(item.id)}
-                      onClick={() =>
-                        setFavorites((current) =>
-                          current.includes(item.id)
-                            ? current.filter((id) => id !== item.id)
-                            : [...current, item.id],
-                        )
-                      }
-                    >
-                      {favorites.includes(item.id) ? "★" : "☆"}
-                    </button>
-                  </div>
-                ))}
+                      </button>
+                      <button
+                        type="button"
+                        className="nav-favorite-toggle"
+                        tabIndex={
+                          focusedNavItemId === item.id || surface === item.id
+                            ? 0
+                            : -1
+                        }
+                        aria-label={`${favorites.includes(item.id) ? "Usuń" : "Dodaj"} ${item.label} ${favorites.includes(item.id) ? "z" : "do"} ulubionych`}
+                        aria-pressed={favorites.includes(item.id)}
+                        onClick={() =>
+                          setFavorites((current) =>
+                            current.includes(item.id)
+                              ? current.filter((id) => id !== item.id)
+                              : [...current, item.id],
+                          )
+                        }
+                      >
+                        {favorites.includes(item.id) ? "★" : "☆"}
+                      </button>
+                    </div>
+                  );
+                })}
             </Fragment>
           ))}
         </nav>
@@ -3999,11 +4020,11 @@ export const RealApp = ({
           style={{ top: railTip.top }}
         >
           <span>{railTip.label}</span>
-          {railTip.shortcut !== undefined && (
-            <kbd>
-              {modifierLabel}
-              {railTip.shortcut}
-            </kbd>
+          {railTip.hint !== undefined && (
+            <span>
+              {railTip.hint.kind === "palette" && <small>przez paletę</small>}
+              <kbd>{railTip.hint.keys}</kbd>
+            </span>
           )}
         </div>
       )}

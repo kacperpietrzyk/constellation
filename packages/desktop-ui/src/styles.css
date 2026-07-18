@@ -976,6 +976,18 @@ kbd {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.nav-item-meta {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.nav-item-meta .nav-count {
+  flex: none;
+}
+.nav-item-meta .nav-palette-shortcut {
+  color: var(--text-quaternary);
+}
 /* Unread attention weighs more than an informational task count: a filled
    pill distinguishes it by shape and background, never by a new hue. */
 .nav-count--attention {
@@ -2962,8 +2974,9 @@ button.mention-chip:disabled {
   left: 4.5rem;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
-  max-width: 16rem;
+  max-width: min(16rem, calc(100vw - 5rem));
   padding: 0.3rem 0.55rem;
   border: 1px solid var(--overlay-border);
   border-radius: var(--radius-sm);
@@ -2971,12 +2984,23 @@ button.mention-chip:disabled {
   background: var(--overlay-bg);
   box-shadow: var(--overlay-shadow);
   font-size: var(--text-xs);
-  white-space: nowrap;
+  line-height: var(--leading-tight);
+  overflow-wrap: anywhere;
   pointer-events: none;
   transform: translateY(-50%);
 }
 .nav-rail-tooltip kbd {
   color: var(--text-quaternary);
+}
+.nav-rail-tooltip > span:last-child {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+.nav-rail-tooltip > span:last-child small {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
 }
 
 @media (prefers-reduced-transparency: reduce) {
