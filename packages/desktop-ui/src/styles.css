@@ -6518,10 +6518,25 @@ button.mention-chip:disabled {
   .knowledge-layout {
     grid-template-columns: 1fr;
   }
+  .knowledge-layout,
+  .knowledge-library,
+  .knowledge-editor,
+  .knowledge-writing-plane {
+    width: 100%;
+    min-width: 0;
+  }
   .knowledge-library {
     max-height: 45vh;
     border-right: 0;
     border-bottom: 1px solid var(--border-subtle);
+  }
+  .knowledge-library > header,
+  .knowledge-editor-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .knowledge-welcome .knowledge-motif {
+    max-width: 100%;
   }
   .knowledge-editor-header,
   .named-versions {

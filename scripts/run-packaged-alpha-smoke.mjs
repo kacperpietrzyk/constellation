@@ -675,13 +675,27 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             const surface = [...(work?.children ?? [])].find(
               (element) => element.getClientRects().length > 0
             );
+            const overflowingDescendants = [...(surface?.querySelectorAll("*") ?? [])]
+              .filter(
+                (element) =>
+                  element.getClientRects().length > 0 &&
+                  element.scrollWidth > element.clientWidth + 1
+              )
+              .slice(0, 8)
+              .map((element) => ({
+                tag: element.tagName.toLowerCase(),
+                className: element.getAttribute("class"),
+                scrollWidth: element.scrollWidth,
+                clientWidth: element.clientWidth
+              }));
             results.push({
               surface: destination.dataset.surface,
               documentWidth: document.documentElement.scrollWidth,
               viewportWidth: innerWidth,
               surfacePresent: surface !== undefined,
               surfaceWidth: surface?.scrollWidth,
-              surfaceClientWidth: surface?.clientWidth
+              surfaceClientWidth: surface?.clientWidth,
+              overflowingDescendants
             });
           }
         } finally {
