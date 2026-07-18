@@ -1392,6 +1392,7 @@ export const RealApp = ({
   const [railMode, setRailMode] = useState(
     () => window.matchMedia("(max-width: 50rem)").matches,
   );
+  const [focusedNavItemId, setFocusedNavItemId] = useState<SurfaceId>();
   const [railTip, setRailTip] = useState<{
     readonly label: string;
     readonly shortcut?: string;
@@ -2269,7 +2270,7 @@ export const RealApp = ({
   // present on wide screens. Without a selection it shows the workspace
   // context, so the shell grid never shifts between two and three columns.
   return (
-    <main
+    <div
       className={`desktop-shell wave2-shell${surface === "meetings" ? " meeting-context-shell" : ""}`}
       style={{ ["--inspector-width" as string]: `${inspectorWidth}px` }}
     >
@@ -2283,7 +2284,7 @@ export const RealApp = ({
       >
         Przejdź do treści
       </a>
-      <aside className="sidebar">
+      <aside className="sidebar" aria-label="Workspace i nawigacja">
         <div className="window-drag" />
         <div className="brand-row">
           <BrandMark />
@@ -2393,7 +2394,11 @@ export const RealApp = ({
                       aria-label={
                         item.id === "tasks"
                           ? `${item.label} · ${tasks.length}`
-                          : item.label
+                          : item.id === "attention" &&
+                              state.snapshot.attention.kind === "ready" &&
+                              state.snapshot.attention.data.unreadCount > 0
+                            ? `${item.label} · ${state.snapshot.attention.data.unreadCount} nieprzeczytanych`
+                            : item.label
                       }
                       aria-current={surface === item.id ? "page" : undefined}
                       title={
@@ -2402,6 +2407,7 @@ export const RealApp = ({
                           : `${item.label} · ${modifierLabel}${item.shortcut}`
                       }
                       onFocus={(event) => {
+                        setFocusedNavItemId(item.id);
                         preloadSurface(item.id);
                         showRailTip(
                           event.currentTarget,
@@ -2430,7 +2436,7 @@ export const RealApp = ({
                         state.snapshot.attention.data.unreadCount > 0 ? (
                         <span
                           className="nav-count nav-count--attention"
-                          aria-label={`${state.snapshot.attention.data.unreadCount} nieprzeczytanych`}
+                          aria-hidden="true"
                         >
                           {state.snapshot.attention.data.unreadCount}
                         </span>
@@ -2444,7 +2450,7 @@ export const RealApp = ({
                     <button
                       type="button"
                       className="nav-favorite-toggle"
-                      tabIndex={-1}
+                      tabIndex={focusedNavItemId === item.id ? 0 : -1}
                       aria-label={`${favorites.includes(item.id) ? "Usuń" : "Dodaj"} ${item.label} ${favorites.includes(item.id) ? "z" : "do"} ulubionych`}
                       aria-pressed={favorites.includes(item.id)}
                       onClick={() =>
@@ -2505,7 +2511,7 @@ export const RealApp = ({
         </div>
       </aside>
 
-      <section className="work-column" aria-labelledby="surface-title">
+      <main className="work-column" aria-labelledby="surface-title">
         <div className="shell-tabbar" aria-label="Otwarte konteksty">
           <div
             className="shell-history-controls"
@@ -3331,7 +3337,7 @@ export const RealApp = ({
             <kbd>{modifierLabel}⇧K</kbd>
           </button>
         </div>
-      </section>
+      </main>
 
       {narrowShell && inspectorDetailOpen && (
         <div
@@ -4056,6 +4062,6 @@ export const RealApp = ({
           </button>
         </div>
       )}
-    </main>
+    </div>
   );
 };

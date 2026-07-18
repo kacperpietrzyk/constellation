@@ -546,6 +546,130 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         `document.querySelector(".capture-dock") !== null && document.querySelectorAll(".nav-item[data-surface]").length === 12`,
         "PACKAGED_ALPHA_OPERATIONAL_SHELL_NOT_READY",
       );
+      const shellAccessibility = await client.evaluate(`(() => {
+        const main = document.querySelector("main");
+        const attention = document.querySelector(
+          '.nav-item[data-surface="attention"]'
+        );
+        const attentionCount = attention?.querySelector(".nav-count")?.textContent?.trim();
+        const ids = [...document.querySelectorAll("[id]")].map(
+          (element) => element.id
+        );
+        return {
+          language: document.documentElement.lang,
+          mainCount: document.querySelectorAll("main").length,
+          mainIsWorkColumn: main?.classList.contains("work-column") ?? false,
+          sidebarInsideMain: Boolean(main?.querySelector(".sidebar")),
+          inspectorInsideMain: Boolean(main?.querySelector(".inspector")),
+          sidebarLabel: document.querySelector(".sidebar")?.getAttribute("aria-label"),
+          attentionName: attention?.getAttribute("aria-label"),
+          attentionCount,
+          duplicateIds: [...new Set(
+            ids.filter((id, index) => ids.indexOf(id) !== index)
+          )]
+        };
+      })()`);
+      if (
+        shellAccessibility.language !== "pl" ||
+        shellAccessibility.mainCount !== 1 ||
+        !shellAccessibility.mainIsWorkColumn ||
+        shellAccessibility.sidebarInsideMain ||
+        shellAccessibility.inspectorInsideMain ||
+        !shellAccessibility.sidebarLabel ||
+        shellAccessibility.duplicateIds.length > 0 ||
+        (shellAccessibility.attentionCount &&
+          !shellAccessibility.attentionName?.includes(
+            shellAccessibility.attentionCount,
+          ))
+      ) {
+        throw new Error(
+          `PACKAGED_ALPHA_SHELL_ACCESSIBILITY_INVALID:${JSON.stringify(shellAccessibility)}`,
+        );
+      }
+
+      await client.send("Page.bringToFront");
+      const navItemFocused = await client.evaluate(`(() => {
+        const item = document.querySelector(".nav-item[data-surface].active");
+        item?.focus();
+        return document.activeElement === item;
+      })()`);
+      await client.evaluate(`new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve))
+      )`);
+      await client.send("Input.dispatchKeyEvent", {
+        type: "keyDown",
+        key: "Tab",
+        code: "Tab",
+        windowsVirtualKeyCode: 9,
+        nativeVirtualKeyCode: 9,
+      });
+      await client.send("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: "Tab",
+        code: "Tab",
+        windowsVirtualKeyCode: 9,
+        nativeVirtualKeyCode: 9,
+      });
+      const favoriteKeyboardFocus = await client.evaluate(`(() => ({
+        className: document.activeElement?.className,
+        ariaLabel: document.activeElement?.getAttribute("aria-label")
+      }))()`);
+      if (
+        navItemFocused &&
+        (typeof favoriteKeyboardFocus.className !== "string" ||
+          !favoriteKeyboardFocus.className
+            .split(/\\s+/u)
+            .includes("nav-favorite-toggle"))
+      ) {
+        throw new Error(
+          `PACKAGED_ALPHA_FAVORITE_KEYBOARD_PATH_MISSING:${JSON.stringify(favoriteKeyboardFocus)}`,
+        );
+      }
+
+      const textScalingSurfaces = await client.evaluate(`(async () => {
+        const results = [];
+        document.documentElement.style.fontSize = "200%";
+        try {
+          for (const destination of document.querySelectorAll(
+            ".nav-item[data-surface]"
+          )) {
+            destination.click();
+            await new Promise((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(resolve))
+            );
+            const work = document.querySelector(".work-surface");
+            const surface = [...(work?.children ?? [])].find(
+              (element) => element.getClientRects().length > 0
+            );
+            results.push({
+              surface: destination.dataset.surface,
+              documentWidth: document.documentElement.scrollWidth,
+              viewportWidth: innerWidth,
+              surfacePresent: surface !== undefined,
+              surfaceWidth: surface?.scrollWidth,
+              surfaceClientWidth: surface?.clientWidth
+            });
+          }
+        } finally {
+          document.documentElement.style.fontSize = "";
+          document.querySelector('.nav-item[data-surface="cockpit"]')?.click();
+          await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve))
+          );
+        }
+        return results;
+      })()`);
+      const invalidTextScalingSurface = textScalingSurfaces.find(
+        (surface) =>
+          !surface.surfacePresent ||
+          surface.documentWidth > surface.viewportWidth ||
+          surface.surfaceWidth > surface.surfaceClientWidth,
+      );
+      if (invalidTextScalingSurface !== undefined) {
+        throw new Error(
+          `PACKAGED_ALPHA_TEXT_SCALING_INVALID:${JSON.stringify(invalidTextScalingSurface)}`,
+        );
+      }
       await client.send("Emulation.setDeviceMetricsOverride", {
         width: 320,
         height: 800,
@@ -681,6 +805,27 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
               ![...surface.querySelectorAll("button")].some((element) =>
                 /spróbuj ponownie/i.test(element.textContent ?? "")
               );
+            const ids = [...document.querySelectorAll("[id]")].map(
+              (element) => element.id
+            );
+            const missingAriaReferences = [...document.querySelectorAll(
+              "[aria-labelledby], [aria-describedby], [aria-controls]"
+            )].flatMap((element) =>
+              ["aria-labelledby", "aria-describedby", "aria-controls"].flatMap(
+                (attribute) =>
+                  (element.getAttribute(attribute) ?? "")
+                    .split(/\\s+/u)
+                    .filter(Boolean)
+                    .filter((id) => document.getElementById(id) === null)
+                    .map((id) => attribute + ":" + id)
+              )
+            );
+            const headings = [...(surface?.querySelectorAll(
+              "h1, h2, h3, h4, h5, h6"
+            ) ?? [])].map((element) => Number(element.tagName.slice(1)));
+            const headingJumps = headings
+              .slice(1)
+              .filter((level, index) => level - headings[index] > 1);
             results.push({
               surface: destination.dataset.surface,
               documentWidth: document.documentElement.scrollWidth,
@@ -689,7 +834,12 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
               surfaceClientWidth: surface?.clientWidth,
               unnamedControls,
               blankHeaderActions,
-              unavailableWithoutRetry
+              unavailableWithoutRetry,
+              duplicateIds: [...new Set(
+                ids.filter((id, index) => ids.indexOf(id) !== index)
+              )],
+              missingAriaReferences,
+              headingJumps
             });
           }
           return results;
@@ -700,7 +850,10 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             !surface.surfacePresent ||
             surface.unnamedControls.length > 0 ||
             surface.blankHeaderActions.length > 0 ||
-            surface.unavailableWithoutRetry,
+            surface.unavailableWithoutRetry ||
+            surface.duplicateIds.length > 0 ||
+            surface.missingAriaReferences.length > 0 ||
+            surface.headingJumps.length > 0,
         );
         if (invalidNarrowSurface !== undefined) {
           throw new Error(

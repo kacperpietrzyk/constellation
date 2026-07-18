@@ -77,30 +77,35 @@ const InlineState = ({
   detail,
   action,
   tone = "neutral",
+  headingLevel = "h3",
 }: {
   readonly title: string;
   readonly detail: string;
   readonly action?: React.ReactNode;
   readonly tone?: InlineStateTone;
-}) => (
-  <div
-    className={`empty-state empty-state--${tone}`}
-    role={tone === "warning" ? "alert" : "status"}
-  >
-    <span className="empty-glyph">
-      <Mark
-        kind={
-          tone === "warning" ? "warning" : tone === "info" ? "info" : "empty"
-        }
-      />
-    </span>
-    <div>
-      <h3>{title}</h3>
-      <p>{detail}</p>
+  readonly headingLevel?: "h2" | "h3";
+}) => {
+  const Heading = headingLevel;
+  return (
+    <div
+      className={`empty-state empty-state--${tone}`}
+      role={tone === "warning" ? "alert" : "status"}
+    >
+      <span className="empty-glyph">
+        <Mark
+          kind={
+            tone === "warning" ? "warning" : tone === "info" ? "info" : "empty"
+          }
+        />
+      </span>
+      <div>
+        <Heading>{title}</Heading>
+        <p>{detail}</p>
+      </div>
+      {action}
     </div>
-    {action}
-  </div>
-);
+  );
+};
 
 // The cockpit's differentiator is that its order is a deterministic *rule*, not
 // a model. The raw score (100/120/…) is an internal scale with no external
@@ -337,6 +342,7 @@ export const CockpitSurface = ({
     attention.kind === "unavailable" ? (
       <InlineState
         tone="info"
+        headingLevel="h2"
         title="Sygnały do uwagi są chwilowo niedostępne"
         detail={attention.message}
         action={
@@ -509,6 +515,7 @@ export const CockpitSurface = ({
       {workspaceFocusUnavailable && (
         <InlineState
           tone="info"
+          headingLevel="h2"
           title="Przekrojowy fokus jest chwilowo niedostępny"
           detail="Bieżący workspace działa normalnie; pozostałe zaszyfrowane projekcje nie zostały otwarte."
         />
@@ -530,6 +537,7 @@ export const CockpitSurface = ({
         <>
           <InlineState
             tone="warning"
+            headingLevel="h2"
             title="Widok tygodnia jest niedostępny"
             detail={cockpit.message}
           />
@@ -539,6 +547,7 @@ export const CockpitSurface = ({
       ) : focus.length === 0 ? (
         <>
           <InlineState
+            headingLevel="h2"
             title="Brak otwartych działań na ten tydzień"
             detail="Dodaj zadanie przez Quick Capture albo utwórz projekt z konkretnym wynikiem."
             action={
@@ -599,22 +608,21 @@ export const CockpitSurface = ({
                 {ruleOpen ? "Ukryj szczegóły" : "Jak ustalana jest kolejność?"}
               </button>
             </p>
-            {ruleOpen ? (
-              <div
-                id="ordering-rule-detail"
-                className="ordering-rule-detail"
-                role="region"
-                aria-label="Reguła kolejności"
-              >
-                <p>
-                  Widok nie generuje rekomendacji. Pokazuje wyłącznie otwarte
-                  zadania i porządkuje je zawsze tak samo: najpierw utworzone w
-                  tym tygodniu, potem powiązane z aktywnym projektem, a przy
-                  remisie alfabetycznie. Ta sama kolejność wyjdzie za każdym
-                  razem.
-                </p>
-              </div>
-            ) : null}
+            <div
+              id="ordering-rule-detail"
+              className="ordering-rule-detail"
+              role="region"
+              aria-label="Reguła kolejności"
+              hidden={!ruleOpen}
+            >
+              <p>
+                Widok nie generuje rekomendacji. Pokazuje wyłącznie otwarte
+                zadania i porządkuje je zawsze tak samo: najpierw utworzone w
+                tym tygodniu, potem powiązane z aktywnym projektem, a przy
+                remisie alfabetycznie. Ta sama kolejność wyjdzie za każdym
+                razem.
+              </p>
+            </div>
             <div
               className="compact-record-list compact-record-list--focus"
               role="listbox"
@@ -1004,11 +1012,13 @@ export const ProjectsSurface = ({
       {projects.kind === "unavailable" ? (
         <InlineState
           tone="warning"
+          headingLevel="h2"
           title="Lista projektów jest niedostępna"
           detail={projects.message}
         />
       ) : projects.data.items.length === 0 ? (
         <InlineState
+          headingLevel="h2"
           title="Nie ma jeszcze projektów"
           detail="Utwórz projekt i nazwij wynik, po którym poznasz, że praca jest skończona."
         />
@@ -1185,6 +1195,7 @@ export const HistorySurface = ({
       />
       {snapshot.captures.length === 0 ? (
         <InlineState
+          headingLevel="h2"
           title="Historia Capture jest pusta"
           detail="Pierwszy zapis przez Quick Capture pojawi się tutaj wraz z wynikiem przetwarzania."
         />
