@@ -123,6 +123,12 @@ describe("interaction recovery contracts", () => {
       styles,
       /\.meeting-context-rail\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
     );
+    assert.doesNotMatch(
+      meetings,
+      /selectedMeeting[\s\S]{0,120}\?\?\s*surface\.completed\[0\]/,
+      "Opening Meetings must not select or expose a result before activation.",
+    );
+    assert.match(meetings, /selected && inspectorHost/);
   });
 
   it("maps ghost actions to the accepted quiet-button target contract", () => {

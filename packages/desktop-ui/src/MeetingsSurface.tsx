@@ -364,9 +364,9 @@ export const MeetingsSurface = ({
   }
 
   const surface = state.data;
-  const selectedMeeting =
-    surface.completed.find((meeting) => meeting.id === selectedMeetingId) ??
-    surface.completed[0];
+  const selectedMeeting = surface.completed.find(
+    (meeting) => meeting.id === selectedMeetingId,
+  );
   const calendarCapability = (
     <div
       className={`calendar-capability calendar-capability--${surface.capability.availability}`}
@@ -594,7 +594,7 @@ export const MeetingsSurface = ({
                 duplikaty.
               </p>
             </div>
-          ) : selectedMeeting ? (
+          ) : (
             <div className="meeting-results-browser">
               <ol
                 className="meeting-result-list"
@@ -602,7 +602,7 @@ export const MeetingsSurface = ({
                 aria-label="Zaimportowane wyniki Jamie"
               >
                 {surface.completed.map((meeting, index) => {
-                  const selected = meeting.id === selectedMeeting.id;
+                  const selected = meeting.id === selectedMeeting?.id;
                   const preview =
                     resultPreviews.get(meeting.id) ??
                     "Brak podsumowania w wyniku Jamie.";
@@ -623,7 +623,7 @@ export const MeetingsSurface = ({
                         aria-label={`${title}. ${healthLabel(meeting)}. ${formatTime(meeting.startedAt)}. ${workCount}.`}
                         aria-describedby={previewId}
                         aria-selected={selected}
-                        {...(inspectorHost
+                        {...(selected && inspectorHost
                           ? { "aria-controls": "meeting-result-detail" }
                           : {})}
                         {...resultNav(index)}
@@ -656,7 +656,8 @@ export const MeetingsSurface = ({
                 })}
               </ol>
 
-              {inspectorHost &&
+              {selectedMeeting &&
+                inspectorHost &&
                 createPortal(
                   <article
                     className="meeting-result-detail"
@@ -1095,7 +1096,7 @@ export const MeetingsSurface = ({
                   inspectorHost,
                 )}
             </div>
-          ) : null}
+          )}
         </section>
         <aside className="meeting-context-rail" aria-labelledby="sources-title">
           <header>
