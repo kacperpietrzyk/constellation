@@ -891,7 +891,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       const contextTabs = await client.evaluate(
         `document.querySelectorAll('.shell-tab').length`,
       );
-      if (contextTabs !== 3) {
+      if (contextTabs !== 1) {
         throw new Error("PACKAGED_ALPHA_CONTEXT_TAB_COUNT_INVALID");
       }
       await client.evaluate(`(() => {
@@ -952,7 +952,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       })()`);
       await waitFor(
         client,
-        `document.querySelector('.shell-tab.active [role="tab"] span:last-child')?.textContent === ${JSON.stringify(taskTitle)} && document.querySelectorAll('.shell-tab').length === 3`,
+        `document.querySelector('.shell-tab.active [role="tab"] span:last-child')?.textContent === ${JSON.stringify(taskTitle)} && document.querySelectorAll('.shell-tab').length === 1`,
         "PACKAGED_ALPHA_SEARCH_CONTEXT_NAVIGATION_FAILED",
       );
       await client.evaluate(`(() => {
