@@ -611,9 +611,11 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         };
       })()`);
       await client.send("Input.dispatchKeyEvent", {
-        type: "keyDown",
+        type: "rawKeyDown",
         key: "Enter",
         code: "Enter",
+        text: "\r",
+        unmodifiedText: "\r",
         windowsVirtualKeyCode: 13,
         nativeVirtualKeyCode: 13,
       });
