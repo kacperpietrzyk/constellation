@@ -92,8 +92,8 @@
   --surface-stage: var(--neutral-1000);
   --surface-window: var(--neutral-950);
   --surface-canvas: var(--neutral-950);
-  --surface-content: var(--neutral-900);
-  --surface-raised: var(--white-a035);
+  --surface-content: var(--neutral-850);
+  --surface-raised: var(--white-a055);
   --surface-overlay: oklch(13.5% 0.005 255 / 0.94);
   --surface-sunken: var(--black-a24);
   --surface-glass: oklch(11.8% 0.005 255 / 0.68);
@@ -137,7 +137,8 @@
     0 0 0 0.1875rem oklch(97.3% 0.003 255 / 0.12),
     0 0 0.875rem oklch(97.3% 0.003 255 / 0.12);
   --elevation-rest:
-    inset 0 0.0625rem 0 var(--white-a055), 0 0.0625rem 0 oklch(0% 0 0 / 0.35);
+    inset 0 0.0625rem 0 var(--white-a10), 0 0 0 0.0625rem var(--white-a035),
+    0 0.25rem 0.75rem oklch(0% 0 0 / 0.18);
   --elevation-raised:
     inset 0 0.0625rem 0 oklch(100% 0 0 / 0.07),
     0 0.5rem 1.5rem oklch(0% 0 0 / 0.22),
@@ -156,7 +157,7 @@
   --shell-inspector-bg: var(--surface-glass);
   --shell-border: var(--border-default);
   --panel-reading-bg: var(--surface-content);
-  --panel-reading-border: var(--border-subtle);
+  --panel-reading-border: var(--border-default);
   --panel-raised-bg: var(--surface-raised);
   --panel-raised-border: var(--border-default);
   --action-primary-bg: var(--neutral-100);

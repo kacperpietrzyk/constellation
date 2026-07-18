@@ -1943,6 +1943,8 @@ export const RealApp = ({
           setSelectedProjectId(undefined);
           setSelectedWorkContext(undefined);
           setSelectedStrategicId(undefined);
+          setMeetingInspectorOpen(false);
+          setDocumentInspectorOpen(false);
         }
       }
     };
@@ -2068,11 +2070,14 @@ export const RealApp = ({
     setSelectedWorkContext(undefined);
     setSelectedStrategicId(undefined);
   }, [surface]);
-  // Poniżej 75rem inspector działa jako drawer: scrim zamyka kliknięciem,
-  // fokus przechodzi na nagłówek panelu i wraca po zamknięciu, Escape zamyka.
-  const inspectorDrawer = useDismissiblePanel({
-    open: narrowShell && inspectorDetailOpen,
+  // Każdy inspector jest zamykalny Escape i oddaje fokus do obiektu, który go
+  // otworzył. Poniżej 75rem działa jako drawer i dodatkowo przenosi fokus na
+  // nagłówek; na szerokim ekranie fokus pozostaje w kolekcji do czasu jawnej
+  // interakcji z panelem.
+  const inspectorPanel = useDismissiblePanel({
+    open: inspectorDetailOpen,
     onDismiss: dismissInspector,
+    focusOnOpen: narrowShell,
   });
   const sourceCapture =
     selectedTask?.sourceCaptureId === undefined
@@ -2268,12 +2273,12 @@ export const RealApp = ({
   const dataHomeLabel = coordinatedDataHome
     ? `${state.snapshot.dataHome?.descriptor.displayName ?? "Hub"} · skoordynowany`
     : "Local only · dane na tym urządzeniu";
-  // Architectural decision (2026-07-18): the inspector column is always
-  // present on wide screens. Without a selection it shows the workspace
-  // context, so the shell grid never shifts between two and three columns.
+  // Product-owner correction (2026-07-18): the work plane owns the available
+  // width until a deliberate record selection opens the inspector. The panel
+  // remains the single detail plane, but it never consumes an empty column.
   return (
     <div
-      className={`desktop-shell wave2-shell${surface === "meetings" ? " meeting-context-shell" : ""}`}
+      className={`desktop-shell wave2-shell${inspectorDetailOpen ? " inspector-open" : ""}${surface === "meetings" ? " meeting-context-shell" : ""}`}
       style={{ ["--inspector-width" as string]: `${inspectorWidth}px` }}
     >
       <a
@@ -3374,6 +3379,7 @@ export const RealApp = ({
       <aside
         className={`inspector${surface === "meetings" ? " inspector--meeting" : ""}${inspectorDetailOpen ? " open" : ""}`}
         aria-label="Podgląd kontekstu"
+        aria-hidden={!inspectorDetailOpen}
       >
         <div
           className="inspector-resize"
@@ -3403,7 +3409,7 @@ export const RealApp = ({
         <header
           className="inspector-header"
           tabIndex={-1}
-          ref={inspectorDrawer.focusTargetRef}
+          ref={inspectorPanel.focusTargetRef}
         >
           <div>
             <span>Podgląd kontekstu</span>
@@ -3428,47 +3434,13 @@ export const RealApp = ({
                           : "Workspace"}
             </small>
           </div>
-          {(selectedTask ||
-            selectedProject ||
-            selectedWorkContextRecord ||
-            selectedStrategicRecord) && (
-            <button
-              className="icon-button"
-              aria-label="Zamknij podgląd kontekstu"
-              onClick={() => {
-                const item = navItems.find((entry) => entry.id === surface);
-                setSelectedTaskId(undefined);
-                setSelectedProjectId(undefined);
-                setSelectedWorkContext(undefined);
-                setSelectedStrategicId(undefined);
-                openContext(
-                  destinationContext(
-                    surface,
-                    item?.label ?? activeContext.label,
-                  ),
-                );
-              }}
-            >
-              <Icon name="close" />
-            </button>
-          )}
-          {(surface === "meetings" || surface === "documents") && (
-            <button
-              className="icon-button surface-inspector-close"
-              aria-label={
-                surface === "meetings"
-                  ? "Zamknij szczegóły spotkania"
-                  : "Zamknij szczegóły dokumentu"
-              }
-              onClick={() =>
-                surface === "meetings"
-                  ? setMeetingInspectorOpen(false)
-                  : setDocumentInspectorOpen(false)
-              }
-            >
-              <Icon name="close" />
-            </button>
-          )}
+          <button
+            className="icon-button"
+            aria-label="Zamknij podgląd kontekstu"
+            onClick={dismissInspector}
+          >
+            <Icon name="close" />
+          </button>
         </header>
         {surface === "meetings" ? (
           <div
@@ -3800,12 +3772,7 @@ export const RealApp = ({
         )}
       </aside>
 
-      {(selectedTask ||
-        selectedProject ||
-        selectedWorkContextRecord ||
-        selectedStrategicRecord ||
-        surface === "meetings" ||
-        surface === "documents") && (
+      {inspectorDetailOpen && (
         <span className="context-thread" aria-hidden="true" />
       )}
       {captureOpen && (

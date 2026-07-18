@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef } from "react";
 
-// Wspólny kontrakt zamykalnego panelu (drawer inspektora <75rem dla spotkań,
-// dokumentów oraz zadań/projektów): przy otwarciu fokus przechodzi na
-// nagłówek panelu, Escape zamyka panel (gdy nie ma otwartego modala),
-// a po zamknięciu fokus wraca do elementu, który panel otworzył.
+// Wspólny kontrakt zamykalnego panelu inspektora: Escape zamyka panel (gdy nie
+// ma otwartego modala), a po zamknięciu fokus wraca do elementu, który panel
+// otworzył. Drawer może dodatkowo przenieść fokus na swój nagłówek; szeroki
+// inspector pozostawia go w kolekcji do czasu jawnej interakcji z panelem.
 
 export const useDismissiblePanel = ({
   open,
   onDismiss,
+  focusOnOpen = true,
 }: {
   readonly open: boolean;
   readonly onDismiss: () => void;
+  readonly focusOnOpen?: boolean;
 }): { readonly focusTargetRef: (element: HTMLElement | null) => void } => {
   const targetRef = useRef<HTMLElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -27,14 +29,14 @@ export const useDismissiblePanel = ({
         activeElement instanceof HTMLElement && activeElement !== document.body
           ? activeElement
           : null;
-      targetRef.current?.focus();
+      if (focusOnOpen) targetRef.current?.focus();
     } else if (!open && wasOpenRef.current) {
       const returnTarget = returnFocusRef.current;
       returnFocusRef.current = null;
       if (returnTarget?.isConnected) returnTarget.focus();
     }
     wasOpenRef.current = open;
-  }, [open]);
+  }, [focusOnOpen, open]);
 
   useEffect(() => {
     if (!open) return;

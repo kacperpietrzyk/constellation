@@ -382,7 +382,6 @@ export const CockpitSurface = ({
   const [ruleOpen, setRuleOpen] = useState(false);
   const focusNav = useListNavigation({
     itemCount: focus.length,
-    selectOnFocus: true,
     onSelect: (index) => {
       const entry = focus[index];
       if (entry) onSelectTask(entry.taskId);
@@ -394,7 +393,6 @@ export const CockpitSurface = ({
   });
   const projectNav = useListNavigation({
     itemCount: projectItems.length,
-    selectOnFocus: true,
     onSelect: (index) => {
       const entry = projectItems[index];
       if (entry) onSelectProject(entry.id);

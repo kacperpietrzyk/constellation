@@ -24,6 +24,7 @@ const surfaces = readFileSync(
   "utf8",
 );
 const styles = readFileSync(path.join(root, "src", "styles.css"), "utf8");
+const realApp = readFileSync(path.join(root, "src", "RealApp.tsx"), "utf8");
 
 describe("interaction recovery contracts", () => {
   it("keeps global-search failure content-safe and explicitly recoverable", () => {
@@ -46,5 +47,20 @@ describe("interaction recovery contracts", () => {
   it("gives the inspector separator a 24px pointer target without thickening its seam", () => {
     assert.match(styles, /\.inspector-resize::before\s*\{[^}]*width:\s*24px/s);
     assert.match(styles, /\.inspector-resize::after\s*\{[^}]*width:\s*1px/s);
+  });
+
+  it("keeps the inspector out of the layout until deliberate object selection", () => {
+    assert.match(realApp, /inspectorDetailOpen \? " inspector-open" : ""/);
+    assert.match(
+      styles,
+      /\.desktop-shell:not\(\.inspector-open\) > \.inspector\s*\{[^}]*display:\s*none/s,
+    );
+    assert.match(
+      styles,
+      /\.desktop-shell\.inspector-open\s*\{[^}]*--inspector-width/s,
+    );
+    assert.match(realApp, /onClick=\{dismissInspector\}/);
+    assert.match(realApp, /setMeetingInspectorOpen\(false\)/);
+    assert.match(realApp, /setDocumentInspectorOpen\(false\)/);
   });
 });

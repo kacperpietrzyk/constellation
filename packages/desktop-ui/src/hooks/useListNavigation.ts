@@ -6,8 +6,9 @@ import {
 
 // Shared keyboard model for vertical record lists (cockpit focus, work,
 // tasks, Jamie results): one roving tab stop per list, ArrowUp/ArrowDown to
-// move, Home/End to jump, Enter opens the record as the active context and
-// Space only shows it in the inspector. The split mirrors the shell's
+// move focus without opening anything, Home/End to jump, Enter opens the
+// record as the active context and Space deliberately shows it in the
+// inspector. The split mirrors the shell's
 // select-vs-open contract, so every list behaves like the ⌘K palette instead
 // of inventing its own arrow handling.
 
@@ -27,7 +28,7 @@ export const useListNavigation = ({
   readonly itemCount: number;
   /** Enter: promote the record to the active context (navigation). */
   readonly onOpen?: (index: number) => void;
-  /** Space (and arrow movement, when `selectOnFocus`): show the record in the inspector. */
+  /** Space (and arrow movement only when explicitly requested): show the record in the inspector. */
   readonly onSelect?: (index: number) => void;
   readonly selectOnFocus?: boolean;
 }): ((index: number) => ListNavigationItemProps) => {
@@ -41,10 +42,8 @@ export const useListNavigation = ({
     if (target === null || target === undefined) return;
     setFocusIndex(index);
     target.focus();
-    // Selection follows deliberate keyboard movement inside the list. It must
-    // NOT follow the bare focus event: dismissing the inspector drawer returns
-    // focus to the row, and select-on-focus would instantly re-open the drawer
-    // the user just closed.
+    // Selection never follows a bare focus event: dismissing the inspector
+    // returns focus to the row and must not instantly reopen the panel.
     if (selectOnFocus) onSelect?.(index);
   };
 
