@@ -767,7 +767,8 @@ export const TasksSurface = ({
         description="Przechwycone działania, ich stan i zachowane źródła."
         action={
           <button className="secondary-button" onClick={onCapture}>
-            Nowe zadanie
+            <Icon name="capture" />
+            <span>Nowe zadanie</span>
           </button>
         }
       />
@@ -961,7 +962,8 @@ export const ProjectsSurface = ({
             className="secondary-button"
             onClick={() => setCreating((value) => !value)}
           >
-            {creating ? "Anuluj" : "Nowy projekt"}
+            <Icon name={creating ? "close" : "capture"} />
+            <span>{creating ? "Anuluj" : "Nowy projekt"}</span>
           </button>
         }
       />
@@ -1349,10 +1351,12 @@ export const ActivitySurface = ({
   activity,
   timezone,
   onUndo,
+  onRetry,
 }: {
   readonly activity: DesktopSnapshot["activity"];
   readonly timezone?: string;
   readonly onUndo: (targetCommandId: CommandId) => void;
+  readonly onRetry: () => void;
 }) => (
   <div className="surface-scroll">
     <SurfaceHeader
@@ -1374,6 +1378,15 @@ export const ActivitySurface = ({
         <InlineState
           title="Aktywność jest niedostępna"
           detail={activity.message}
+          action={
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={onRetry}
+            >
+              Spróbuj ponownie
+            </button>
+          }
         />
       ) : activity.data.items.length === 0 ? (
         <InlineState

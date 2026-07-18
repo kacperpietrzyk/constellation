@@ -207,6 +207,17 @@ export const StrategicDepthSurface = ({
 
       {snapshot.relationships.kind === "unavailable" ? (
         <section className="empty-state" role="status">
+          <span className="empty-glyph" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            >
+              <path d="M12 5v8M12 17v.5" />
+            </svg>
+          </span>
           <div>
             <h2>Relacje są chwilowo niedostępne</h2>
             <p>{snapshot.relationships.message}</p>

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 
 import type { ProjectId, TaskId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
@@ -30,9 +30,11 @@ const stateLabel = {
 const WorkEmpty = ({
   title,
   detail,
+  action,
 }: {
   readonly title: string;
   readonly detail: string;
+  readonly action?: ReactNode;
 }) => (
   <div className="work-empty" role="status">
     <span className="empty-glyph" aria-hidden="true">
@@ -50,6 +52,7 @@ const WorkEmpty = ({
       <strong>{title}</strong>
       <p>{detail}</p>
     </div>
+    {action}
   </div>
 );
 
@@ -169,6 +172,15 @@ export const WorkSurface = ({
           title="Widok pracy jest niedostępny"
           detail={
             work.kind === "unavailable" ? work.message : "Spróbuj ponownie."
+          }
+          action={
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => void onReload()}
+            >
+              Spróbuj ponownie
+            </button>
           }
         />
       </div>

@@ -3934,7 +3934,7 @@ button.mention-chip:disabled {
 .access-composer {
   display: grid;
   grid-template-columns:
-    minmax(12rem, 1.4fr) minmax(9rem, 0.8fr) minmax(13rem, 1fr)
+    minmax(10rem, 1.4fr) minmax(8rem, 0.8fr) minmax(11rem, 1fr)
     auto;
   align-items: end;
   gap: var(--space-4);
@@ -3943,6 +3943,10 @@ button.mention-chip:disabled {
   border-radius: var(--radius-lg);
   background: var(--panel-reading-bg);
   box-shadow: var(--elevation-raised);
+}
+
+.access-composer > .primary-button {
+  white-space: nowrap;
 }
 
 .access-composer-title {
@@ -7937,10 +7941,11 @@ button.work-task-copy {
 }
 
 .work-empty {
-  align-items: start;
+  align-items: center;
   border: 1px dashed var(--border-default);
   border-radius: var(--radius-lg);
-  display: flex;
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1fr) auto;
   gap: 0.7rem;
   padding: var(--space-4);
 }
@@ -7966,6 +7971,15 @@ button.work-task-copy {
   }
 
   .work-task-row .task-state-trigger {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .work-empty {
+    grid-template-columns: 2.25rem minmax(0, 1fr);
+  }
+
+  .work-empty > .secondary-button {
     grid-column: 2;
     justify-self: start;
   }

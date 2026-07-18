@@ -2996,6 +2996,7 @@ export const RealApp = ({
               activity={state.snapshot.activity}
               timezone={state.snapshot.bootstrap.workspace.timezone}
               onUndo={(id) => void openUndo(id)}
+              onRetry={() => void reload()}
             />
           )}
           {surface === "attention" && (

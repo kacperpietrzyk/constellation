@@ -661,13 +661,35 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
                   !hasAccessibleName(element)
               )
               .map((element) => element.tagName.toLowerCase());
+            const blankHeaderActions = [
+              ...(surface?.querySelectorAll(".surface-header button:not(:disabled)") ?? [])
+            ]
+              .filter((element) => {
+                const hasVisibleIcon = [...element.querySelectorAll("svg")].some(
+                  (icon) => icon.getClientRects().length > 0
+                );
+                const hasVisibleText =
+                  Boolean(element.textContent?.trim()) &&
+                  Number.parseFloat(getComputedStyle(element).fontSize) > 0;
+                return !hasVisibleIcon && !hasVisibleText;
+              })
+              .map((element) => element.textContent?.trim() || "unnamed");
+            const unavailableHeading = [...(surface?.querySelectorAll("h2, h3, strong") ?? [])]
+              .find((element) => /niedostępn/i.test(element.textContent ?? ""));
+            const unavailableWithoutRetry =
+              unavailableHeading !== undefined &&
+              ![...surface.querySelectorAll("button")].some((element) =>
+                /spróbuj ponownie/i.test(element.textContent ?? "")
+              );
             results.push({
               surface: destination.dataset.surface,
               documentWidth: document.documentElement.scrollWidth,
               surfacePresent: surface !== undefined,
               surfaceWidth: surface?.scrollWidth,
               surfaceClientWidth: surface?.clientWidth,
-              unnamedControls
+              unnamedControls,
+              blankHeaderActions,
+              unavailableWithoutRetry
             });
           }
           return results;
@@ -676,7 +698,9 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           (surface) =>
             surface.documentWidth > 320 ||
             !surface.surfacePresent ||
-            surface.unnamedControls.length > 0,
+            surface.unnamedControls.length > 0 ||
+            surface.blankHeaderActions.length > 0 ||
+            surface.unavailableWithoutRetry,
         );
         if (invalidNarrowSurface !== undefined) {
           throw new Error(
