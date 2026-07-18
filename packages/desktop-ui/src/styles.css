@@ -8195,6 +8195,25 @@ button.mention-chip:disabled {
   min-width: 0;
 }
 
+/* Work has two jobs with different visual weight: the durable context is a
+   quiet rail, while projects and next actions are the primary reading plane.
+   Rows stay linear so added depth does not turn the graph into a card grid. */
+.work-context-column {
+  align-self: start;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
+}
+
+.work-delivery-column {
+  background: var(--panel-reading-bg);
+  border: 1px solid var(--panel-reading-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elevation-rest);
+  padding: var(--space-5);
+}
+
 .work-section-heading {
   align-items: end;
   display: flex;
@@ -8379,6 +8398,12 @@ button.work-task-copy {
   .work-task-row .task-state-trigger {
     grid-column: 2;
     justify-self: start;
+  }
+
+  .work-context-column,
+  .work-delivery-column {
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
   }
 
   .work-empty {

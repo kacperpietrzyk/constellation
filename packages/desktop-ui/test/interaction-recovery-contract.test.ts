@@ -122,4 +122,19 @@ describe("interaction recovery contracts", () => {
       /\.activity-controls\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
     );
   });
+
+  it("separates Work context from the primary reading plane without card rows", () => {
+    assert.match(
+      styles,
+      /\.work-context-column\s*\{[^}]*background:\s*var\(--surface-sunken\);[^}]*border:[^;]+;[^}]*border-radius:[^;]+;[^}]*padding:/s,
+    );
+    assert.match(
+      styles,
+      /\.work-delivery-column\s*\{[^}]*background:\s*var\(--panel-reading-bg\);[^}]*border:[^;]+;[^}]*box-shadow:\s*var\(--elevation-rest\);[^}]*padding:/s,
+    );
+    assert.match(
+      styles,
+      /\.work-context-row,\s*\.work-project-row,\s*\.work-task-row\s*\{[^}]*border-top:[^;]+;[^}]*background:\s*transparent;/s,
+    );
+  });
 });
