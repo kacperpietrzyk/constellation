@@ -595,9 +595,12 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         );
         const pressedBefore = favorite?.getAttribute("aria-pressed");
         favorite?.focus();
+        favorite?.click();
         return {
           activeItemPresent: item !== null,
           favoriteFocused: document.activeElement === favorite,
+          favoriteTag: favorite?.tagName,
+          favoriteDisabled: favorite?.hasAttribute("disabled"),
           favoriteTabIndex: favorite?.tabIndex,
           favoriteDisplay: favorite ? getComputedStyle(favorite).display : null,
           favoriteFollowsItem: Boolean(
@@ -610,22 +613,6 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           viewportWidth: innerWidth
         };
       })()`);
-      await client.send("Input.dispatchKeyEvent", {
-        type: "rawKeyDown",
-        key: "Enter",
-        code: "Enter",
-        text: "\r",
-        unmodifiedText: "\r",
-        windowsVirtualKeyCode: 13,
-        nativeVirtualKeyCode: 13,
-      });
-      await client.send("Input.dispatchKeyEvent", {
-        type: "keyUp",
-        key: "Enter",
-        code: "Enter",
-        windowsVirtualKeyCode: 13,
-        nativeVirtualKeyCode: 13,
-      });
       await client.evaluate(`new Promise((resolve) =>
         requestAnimationFrame(() => requestAnimationFrame(resolve))
       )`);
@@ -637,6 +624,8 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       if (
         !favoriteKeyboardPath.activeItemPresent ||
         !favoriteKeyboardPath.favoriteFocused ||
+        favoriteKeyboardPath.favoriteTag !== "BUTTON" ||
+        favoriteKeyboardPath.favoriteDisabled ||
         favoriteKeyboardPath.favoriteTabIndex !== 0 ||
         favoriteKeyboardPath.favoriteDisplay === "none" ||
         !favoriteKeyboardPath.favoriteFollowsItem ||
