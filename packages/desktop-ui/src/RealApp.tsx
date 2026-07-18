@@ -2450,7 +2450,11 @@ export const RealApp = ({
                     <button
                       type="button"
                       className="nav-favorite-toggle"
-                      tabIndex={focusedNavItemId === item.id ? 0 : -1}
+                      tabIndex={
+                        focusedNavItemId === item.id || surface === item.id
+                          ? 0
+                          : -1
+                      }
                       aria-label={`${favorites.includes(item.id) ? "Usuń" : "Dodaj"} ${item.label} ${favorites.includes(item.id) ? "z" : "do"} ulubionych`}
                       aria-pressed={favorites.includes(item.id)}
                       onClick={() =>
