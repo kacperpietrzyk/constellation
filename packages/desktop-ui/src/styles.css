@@ -4451,7 +4451,7 @@ button.mention-chip:disabled {
   transform: translate(-50%, -50%);
 }
 
-@media (max-width: 56.25rem) {
+@container (max-width: 56.25rem) {
   .access-composer {
     grid-template-columns: 1fr 1fr;
   }
@@ -4478,7 +4478,7 @@ button.mention-chip:disabled {
   }
 }
 
-@media (max-width: 38.75rem) {
+@container (max-width: 38.75rem) {
   .access-surface {
     padding-inline: var(--space-4);
   }
@@ -6509,12 +6509,12 @@ button.mention-chip:disabled {
 .knowledge-welcome p {
   line-height: 1.6;
 }
-@media (max-width: 54rem) {
+@container (max-width: 54rem) {
   .knowledge-layout {
     grid-template-columns: minmax(14rem, 16rem) minmax(0, 1fr);
   }
 }
-@media (max-width: 40rem) {
+@container (max-width: 40rem) {
   .knowledge-layout {
     grid-template-columns: 1fr;
   }
