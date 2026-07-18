@@ -4531,6 +4531,76 @@ button.mention-chip:disabled {
   background: var(--context-bg);
   box-shadow: var(--context-shadow);
 }
+.project-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.project-surface {
+  container-type: inline-size;
+}
+.project-portfolio {
+  max-width: var(--surface-measure, 58rem);
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--panel-reading-border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-reading-bg);
+  box-shadow: var(--elevation-rest);
+}
+.project-portfolio > header {
+  min-height: 3.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+.project-portfolio > header > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.project-portfolio > header h2 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 630;
+}
+.project-portfolio > header span {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+.project-list {
+  display: grid;
+}
+.project-detail-flow {
+  max-width: var(--surface-measure, 58rem);
+  display: grid;
+  gap: var(--space-4);
+  margin: 0 auto;
+}
+.project-detail-flow > .project-overview,
+.project-detail-flow > .project-work {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+@container (max-width: 34rem) {
+  .project-portfolio > header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .project-portfolio > header > span {
+    white-space: normal;
+  }
+}
 .overview-intent {
   padding: var(--space-6);
 }
@@ -6307,6 +6377,18 @@ button.mention-chip:disabled {
   }
   .quiet-button,
   .ghost-button {
+    min-height: 2.75rem;
+  }
+  .project-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .project-header-actions .ghost-button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .project-header-actions .secondary-button {
+    width: 2.75rem;
     min-height: 2.75rem;
   }
   .nav-entry {

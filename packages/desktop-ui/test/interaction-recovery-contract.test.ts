@@ -150,6 +150,33 @@ describe("interaction recovery contracts", () => {
     );
   });
 
+  it("keeps Projects as a collection until the user deliberately opens its full view", () => {
+    assert.match(realApp, /onSelectProject=\{selectProjectInInspector\}/);
+    assert.match(realApp, /activeProjectId=\{activeContext\.projectId\}/);
+    assert.match(
+      realApp,
+      /surface === "projects" && activeContext\.projectId !== undefined/,
+    );
+    assert.match(realApp, /\(selectedProject && !projectFullView\)/);
+    assert.match(surfaces, /const fullView =/);
+    assert.match(surfaces, /className="project-portfolio"/);
+    assert.match(surfaces, /\.\.\.projectNav\(index\)/);
+    assert.match(
+      surfaces,
+      /onDoubleClick=\{\(\) => onOpenProject\(project\.id\)\}/,
+    );
+    assert.match(surfaces, /className="project-detail-flow"/);
+    assert.match(surfaces, /Wróć do projektów/);
+    assert.match(
+      styles,
+      /\.project-portfolio\s*\{[^}]*border:[^;]+;[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-rest\)/s,
+    );
+    assert.match(
+      styles,
+      /\.project-detail-flow\s*\{[^}]*display:\s*grid;[^}]*gap:[^;]+;[^}]*margin:\s*0 auto/s,
+    );
+  });
+
   it("keeps Document creation progressive and the editor on a distinct reading plane", () => {
     assert.match(documentsSurface, /className="knowledge-create-bar"/);
     assert.match(documentsSurface, /label="Dodaj źródło"/);

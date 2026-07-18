@@ -2055,9 +2055,12 @@ export const RealApp = ({
         : undefined,
     [selectedProjectId, snapshot],
   );
+  const projectFullView = Boolean(
+    surface === "projects" && activeContext.projectId !== undefined,
+  );
   const inspectorDetailOpen = Boolean(
     selectedTask ||
-    selectedProject ||
+    (selectedProject && !projectFullView) ||
     selectedWorkContextRecord ||
     selectedStrategicRecord ||
     (surface === "meetings" && meetingInspectorOpen) ||
@@ -2905,10 +2908,11 @@ export const RealApp = ({
             <ProjectsSurface
               snapshot={state.snapshot}
               selectedProjectId={selectedProjectId}
+              activeProjectId={activeContext.projectId}
               overview={projectOverview}
               relation={sessionRelation}
               busy={projectBusy}
-              onSelectProject={(id) => {
+              onOpenProject={(id) => {
                 const project =
                   state.snapshot.projects.kind === "ready"
                     ? state.snapshot.projects.data.items.find(
@@ -2917,6 +2921,10 @@ export const RealApp = ({
                     : undefined;
                 openContext(projectContext(id, project?.title ?? "Projekt"));
               }}
+              onSelectProject={selectProjectInInspector}
+              onBackToProjects={() =>
+                openContext(destinationContext("projects", "Projekty"))
+              }
               onCreate={async (title, outcome) => {
                 if (!client) return false;
                 setProjectBusy(true);

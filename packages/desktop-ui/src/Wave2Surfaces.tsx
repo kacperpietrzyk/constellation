@@ -914,10 +914,13 @@ export const TasksSurface = ({
 export const ProjectsSurface = ({
   snapshot,
   selectedProjectId,
+  activeProjectId,
   overview,
   relation,
   busy,
+  onOpenProject,
   onSelectProject,
+  onBackToProjects,
   onCreate,
   onUpdateOutcome,
   onSetLifecycle,
@@ -926,6 +929,7 @@ export const ProjectsSurface = ({
 }: {
   readonly snapshot: DesktopSnapshot;
   readonly selectedProjectId: ProjectId | undefined;
+  readonly activeProjectId: ProjectId | undefined;
   readonly overview: ProjectOverviewProjection | undefined;
   readonly relation:
     | {
@@ -935,7 +939,9 @@ export const ProjectsSurface = ({
       }
     | undefined;
   readonly busy: boolean;
+  readonly onOpenProject: (id: ProjectId) => void;
   readonly onSelectProject: (id: ProjectId) => void;
+  readonly onBackToProjects: () => void;
   readonly onCreate: (title: string, outcome: string) => Promise<boolean>;
   readonly onUpdateOutcome: (outcome: string) => void;
   readonly onSetLifecycle: (lifecycle: "active" | "closed") => void;
@@ -945,14 +951,34 @@ export const ProjectsSurface = ({
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState("");
-  const [outcome, setOutcome] = useState(
+  const [newOutcome, setNewOutcome] = useState("");
+  const createTriggerRef = useRef<HTMLButtonElement>(null);
+  const createTitleRef = useRef<HTMLInputElement>(null);
+  const [editedOutcome, setEditedOutcome] = useState(
     overview?.project.intendedOutcome ?? "",
   );
   useEffect(
-    () => setOutcome(overview?.project.intendedOutcome ?? ""),
+    () => setEditedOutcome(overview?.project.intendedOutcome ?? ""),
     [overview],
   );
+  useEffect(() => {
+    if (creating) createTitleRef.current?.focus();
+  }, [creating]);
   const projects = snapshot.projects;
+  const projectItems = projects.kind === "ready" ? projects.data.items : [];
+  const fullView =
+    activeProjectId !== undefined && overview?.project.id === activeProjectId;
+  const projectNav = useListNavigation({
+    itemCount: projectItems.length,
+    onOpen: (index) => {
+      const project = projectItems[index];
+      if (project) onOpenProject(project.id);
+    },
+    onSelect: (index) => {
+      const project = projectItems[index];
+      if (project) onSelectProject(project.id);
+    },
+  });
   const unrelated = snapshot.tasks.filter(
     (task) => !overview?.relatedTasks.some((related) => related.id === task.id),
   );
@@ -960,29 +986,50 @@ export const ProjectsSurface = ({
     <div className="surface-scroll project-surface">
       <SurfaceHeader
         kicker="Projekty · aktywne"
-        title={overview?.project.title ?? "Projekty"}
-        description="Operacyjny przegląd zamierzonego wyniku i powiązanej pracy."
+        title={fullView ? overview.project.title : "Projekty"}
+        description={
+          fullView
+            ? "Zamierzony wynik, cykl życia i praca należące do tego projektu."
+            : "Portfel zamierzonych wyników i powiązanej pracy."
+        }
         action={
-          <button
-            className="secondary-button"
-            onClick={() => setCreating((value) => !value)}
-          >
-            <Icon name={creating ? "close" : "capture"} />
-            <span>{creating ? "Anuluj" : "Nowy projekt"}</span>
-          </button>
+          <div className="project-header-actions">
+            {fullView && (
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={onBackToProjects}
+              >
+                <span>Wróć do projektów</span>
+              </button>
+            )}
+            <button
+              ref={createTriggerRef}
+              type="button"
+              className="secondary-button"
+              aria-expanded={creating}
+              aria-controls="project-create-form"
+              onClick={() => setCreating((value) => !value)}
+            >
+              <Icon name={creating ? "close" : "capture"} />
+              <span>{creating ? "Anuluj" : "Nowy projekt"}</span>
+            </button>
+          </div>
         }
       />
       {creating && (
         <form
+          id="project-create-form"
           className="project-overview"
           onSubmit={(event: FormEvent) => {
             event.preventDefault();
-            if (title.trim() && outcome.trim()) {
-              void onCreate(title, outcome).then((created) => {
+            if (title.trim() && newOutcome.trim()) {
+              void onCreate(title, newOutcome).then((created) => {
                 if (!created) return;
                 setCreating(false);
                 setTitle("");
-                setOutcome("");
+                setNewOutcome("");
+                requestAnimationFrame(() => createTriggerRef.current?.focus());
               });
             }
           }}
@@ -990,15 +1037,20 @@ export const ProjectsSurface = ({
           <div className="overview-intent">
             <label htmlFor="project-title">Nazwa projektu</label>
             <input
+              ref={createTitleRef}
               id="project-title"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
+              maxLength={160}
+              required
             />
             <label htmlFor="project-outcome">Zamierzony wynik</label>
             <textarea
               id="project-outcome"
-              value={outcome}
-              onChange={(event) => setOutcome(event.target.value)}
+              value={newOutcome}
+              onChange={(event) => setNewOutcome(event.target.value)}
+              maxLength={2_000}
+              required
             />
             <button className="primary-button" disabled={busy} type="submit">
               {busy ? "Tworzę…" : "Utwórz projekt"}
@@ -1013,23 +1065,160 @@ export const ProjectsSurface = ({
           title="Lista projektów jest niedostępna"
           detail={projects.message}
         />
-      ) : projects.data.items.length === 0 ? (
+      ) : projectItems.length === 0 ? (
         <InlineState
           headingLevel="h2"
           title="Nie ma jeszcze projektów"
           detail="Utwórz projekt i nazwij wynik, po którym poznasz, że praca jest skończona."
         />
-      ) : (
-        <div className="cockpit-grid">
+      ) : fullView ? (
+        <div className="project-detail-flow">
           <section
-            className="outcome-rail reading-panel"
-            aria-label="Lista projektów"
+            className="project-overview"
+            aria-labelledby="project-outcome-title"
           >
-            {projects.data.items.map((project) => (
+            <div className="overview-intent">
+              <p className="eyebrow">Zamierzony wynik</p>
+              {editing ? (
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    onUpdateOutcome(editedOutcome);
+                  }}
+                >
+                  <label className="sr-only" htmlFor="edited-project-outcome">
+                    Zamierzony wynik
+                  </label>
+                  <textarea
+                    id="edited-project-outcome"
+                    value={editedOutcome}
+                    onChange={(event) => setEditedOutcome(event.target.value)}
+                  />
+                  <div className="capture-footer">
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => setEditing(false)}
+                    >
+                      Anuluj
+                    </button>
+                    <button
+                      className="primary-button"
+                      disabled={busy}
+                      type="submit"
+                    >
+                      Zapisz wynik
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <h2 id="project-outcome-title">
+                    {overview.project.intendedOutcome}
+                  </h2>
+                  <div className="capture-footer">
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => setEditing(true)}
+                    >
+                      Edytuj wynik
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button compact"
+                      disabled={busy}
+                      onClick={() =>
+                        onSetLifecycle(
+                          overview.project.lifecycle === "active"
+                            ? "closed"
+                            : "active",
+                        )
+                      }
+                    >
+                      {overview.project.lifecycle === "active"
+                        ? "Zamknij projekt"
+                        : "Otwórz ponownie"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
+          <section
+            className="project-work reading-panel"
+            aria-labelledby="project-work-title"
+          >
+            <header className="section-heading">
+              <div>
+                <p className="eyebrow">Powiązana praca</p>
+                <h2 id="project-work-title">Zadania projektu</h2>
+              </div>
+              {relation ? (
+                <button
+                  type="button"
+                  className="secondary-button compact"
+                  disabled={busy}
+                  onClick={onUnrelate}
+                >
+                  Usuń ostatnie powiązanie
+                </button>
+              ) : unrelated[0] ? (
+                <button
+                  type="button"
+                  className="secondary-button compact"
+                  disabled={busy}
+                  onClick={() => onRelate(unrelated[0]!.id)}
+                >
+                  Powiąż „{unrelated[0].title}”
+                </button>
+              ) : null}
+            </header>
+            {overview.relatedTasks.length === 0 ? (
+              <p className="capacity-note">
+                Ten projekt nie ma jeszcze powiązanych zadań.
+              </p>
+            ) : (
+              <div className="compact-record-list">
+                {overview.relatedTasks.map((task) => (
+                  <div key={task.id} className="compact-record">
+                    <Mark kind="task" />
+                    <span>
+                      <strong>{task.title}</strong>
+                      <small>Powiązane z projektem</small>
+                    </span>
+                    <em>
+                      {task.completionState === "completed"
+                        ? "Ukończone"
+                        : "Otwarte"}
+                    </em>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      ) : (
+        <section className="project-portfolio" aria-label="Lista projektów">
+          <header>
+            <div>
+              <h2>Portfel projektów</h2>
+              <span>{projectItems.length} w widoku</span>
+            </div>
+            <span>Wynik i otwarta praca</span>
+          </header>
+          <div className="project-list">
+            {projectItems.map((project, index) => (
               <button
+                type="button"
                 className={`outcome-row ${project.id === selectedProjectId ? "selected" : ""}`}
                 key={project.id}
-                onClick={() => onSelectProject(project.id)}
+                {...projectNav(index)}
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey) onOpenProject(project.id);
+                  else onSelectProject(project.id);
+                }}
+                onDoubleClick={() => onOpenProject(project.id)}
               >
                 <Mark kind="project" />
                 <span>
@@ -1039,131 +1228,7 @@ export const ProjectsSurface = ({
                 <em>{project.relatedOpenTaskCount} otw.</em>
               </button>
             ))}
-          </section>
-          {overview && (
-            <section
-              className="project-overview"
-              aria-labelledby="project-outcome-title"
-            >
-              <div className="overview-intent">
-                <p className="eyebrow">Zamierzony wynik</p>
-                {editing ? (
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      onUpdateOutcome(outcome);
-                    }}
-                  >
-                    <label className="sr-only" htmlFor="edited-project-outcome">
-                      Zamierzony wynik
-                    </label>
-                    <textarea
-                      id="edited-project-outcome"
-                      value={outcome}
-                      onChange={(event) => setOutcome(event.target.value)}
-                    />
-                    <div className="capture-footer">
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={() => setEditing(false)}
-                      >
-                        Anuluj
-                      </button>
-                      <button
-                        className="primary-button"
-                        disabled={busy}
-                        type="submit"
-                      >
-                        Zapisz wynik
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <>
-                    <h2 id="project-outcome-title">
-                      {overview.project.intendedOutcome}
-                    </h2>
-                    <div className="capture-footer">
-                      <button
-                        className="ghost-button"
-                        onClick={() => setEditing(true)}
-                      >
-                        Edytuj wynik
-                      </button>
-                      <button
-                        className="secondary-button compact"
-                        disabled={busy}
-                        onClick={() =>
-                          onSetLifecycle(
-                            overview.project.lifecycle === "active"
-                              ? "closed"
-                              : "active",
-                          )
-                        }
-                      >
-                        {overview.project.lifecycle === "active"
-                          ? "Zamknij projekt"
-                          : "Otwórz ponownie"}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </section>
-          )}
-        </div>
-      )}
-      {overview && (
-        <section
-          className="project-work reading-panel"
-          aria-labelledby="project-work-title"
-        >
-          <header className="section-heading">
-            <div>
-              <p className="eyebrow">Powiązana praca</p>
-              <h2 id="project-work-title">Zadania projektu</h2>
-            </div>
-            {relation ? (
-              <button
-                className="secondary-button compact"
-                disabled={busy}
-                onClick={onUnrelate}
-              >
-                Usuń ostatnie powiązanie
-              </button>
-            ) : unrelated[0] ? (
-              <button
-                className="secondary-button compact"
-                disabled={busy}
-                onClick={() => onRelate(unrelated[0]!.id)}
-              >
-                Powiąż „{unrelated[0].title}”
-              </button>
-            ) : null}
-          </header>
-          {overview.relatedTasks.length === 0 ? (
-            <p className="capacity-note">
-              Ten projekt nie ma jeszcze powiązanych zadań.
-            </p>
-          ) : (
-            <div className="compact-record-list">
-              {overview.relatedTasks.map((task) => (
-                <div key={task.id} className="compact-record">
-                  <Mark kind="task" />
-                  <span>
-                    <strong>{task.title}</strong>
-                    <small>Powiązane z projektem</small>
-                  </span>
-                  <em>
-                    {task.completionState === "completed"
-                      ? "Ukończone"
-                      : "Otwarte"}
-                  </em>
-                </div>
-              ))}
-            </div>
-          )}
+          </div>
         </section>
       )}
     </div>
