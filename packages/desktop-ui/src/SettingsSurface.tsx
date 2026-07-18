@@ -19,6 +19,10 @@ import {
   type MutationFailure,
 } from "./client/workflow.js";
 import { ReleaseContinuity } from "./components/ReleaseContinuity.js";
+import {
+  ConceptHelpDialog,
+  type ConceptHelpTopicId,
+} from "./components/ConceptHelpDialog.js";
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 
 type Theme = "system" | "dark" | "light";
@@ -87,6 +91,8 @@ export const SettingsSurface = ({
   const [workspaceMessage, setWorkspaceMessage] = useState<SectionMessage>();
   const [importMessage, setImportMessage] = useState<SectionMessage>();
   const [supportMessage, setSupportMessage] = useState<SectionMessage>();
+  const [conceptHelpTopic, setConceptHelpTopic] =
+    useState<ConceptHelpTopicId>();
   const [importCandidate, setImportCandidate] = useState<{
     readonly fileName: string;
     readonly manifest: unknown;
@@ -445,6 +451,14 @@ export const SettingsSurface = ({
             Tożsamość, dane, wygląd, dostęp, połączenia i wydanie w jednym
             spokojnym miejscu.
           </p>
+          <button
+            type="button"
+            className="settings-help-entry"
+            aria-haspopup="dialog"
+            onClick={() => setConceptHelpTopic("data-home")}
+          >
+            Wyjaśnij pojęcia danych i dostępu
+          </button>
         </div>
       </header>
 
@@ -560,6 +574,14 @@ export const SettingsSurface = ({
                   poświadczenia Hub i lokalny endpoint MCP. Przełączenie
                   bezpiecznie uruchamia aplikację ponownie.
                 </p>
+                <button
+                  type="button"
+                  className="settings-context-help"
+                  aria-haspopup="dialog"
+                  onClick={() => setConceptHelpTopic("data-home")}
+                >
+                  Wyjaśnij Data Home, Hub i MCP
+                </button>
               </div>
               <div className="settings-control workspace-registry-control">
                 <div className="workspace-registry-list">
@@ -660,6 +682,14 @@ export const SettingsSurface = ({
                   {snapshot.dataHome?.descriptor.displayName ??
                     "Stan Data Home jest chwilowo niedostępny."}
                 </p>
+                <button
+                  type="button"
+                  className="settings-context-help"
+                  aria-haspopup="dialog"
+                  onClick={() => setConceptHelpTopic("recovery")}
+                >
+                  Wyjaśnij odzyskiwanie
+                </button>
               </div>
               <div className="settings-control">
                 <span
@@ -766,6 +796,14 @@ export const SettingsSurface = ({
                   Rola, zakres Space i możliwości agentów pozostają niezależnymi
                   ustawieniami.
                 </p>
+                <button
+                  type="button"
+                  className="settings-context-help"
+                  aria-haspopup="dialog"
+                  onClick={() => setConceptHelpTopic("agent-access")}
+                >
+                  Wyjaśnij dostęp agenta
+                </button>
               </div>
               <div className="settings-control settings-actions">
                 <button
@@ -909,6 +947,12 @@ export const SettingsSurface = ({
           </div>
         </div>
       </div>
+      {conceptHelpTopic !== undefined && (
+        <ConceptHelpDialog
+          initialTopic={conceptHelpTopic}
+          onClose={() => setConceptHelpTopic(undefined)}
+        />
+      )}
     </div>
   );
 };

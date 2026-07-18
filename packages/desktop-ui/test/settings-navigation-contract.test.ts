@@ -52,4 +52,13 @@ describe("enterprise settings navigation contract", () => {
     );
     assert.match(styles, /\.settings-navigator\s*\{[\s\S]*?position: sticky/s);
   });
+
+  it("offers one global and three contextual routes into the concept help", () => {
+    assert.match(settings, /Wyjaśnij pojęcia danych i dostępu/);
+    assert.match(settings, /Wyjaśnij Data Home, Hub i MCP/);
+    assert.match(settings, /Wyjaśnij odzyskiwanie/);
+    assert.match(settings, /Wyjaśnij dostęp agenta/);
+    assert.equal(settings.match(/aria-haspopup="dialog"/g)?.length, 4);
+    assert.match(settings, /initialTopic=\{conceptHelpTopic\}/);
+  });
 });

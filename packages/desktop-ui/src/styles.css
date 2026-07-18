@@ -3009,12 +3009,14 @@ button.mention-chip:disabled {
   .shell-tabbar,
   .capture-dock,
   .capture-dialog,
+  .concept-help-dialog,
   .context-menu {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: var(--surface-window);
   }
-  .capture-backdrop::backdrop {
+  .capture-backdrop::backdrop,
+  .concept-help-backdrop::backdrop {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: var(--black-a72);
@@ -7266,6 +7268,33 @@ button.mention-chip:disabled {
   display: none;
 }
 
+.settings-help-entry,
+.settings-context-help {
+  background: transparent;
+  border: 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+  min-height: 2.75rem;
+  padding: 0;
+  text-align: start;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 0.22rem;
+  width: fit-content;
+}
+
+.settings-help-entry {
+  margin-top: var(--space-2);
+}
+
+.settings-help-entry:hover,
+.settings-context-help:hover {
+  color: var(--text-primary);
+  text-decoration-color: currentColor;
+}
+
 .settings-navigator {
   position: sticky;
   top: var(--space-5);
@@ -7346,11 +7375,250 @@ button.mention-chip:disabled {
   margin: 0.1rem 0 0.35rem;
 }
 
-.settings-copy p:last-child {
+.settings-copy > p {
   color: var(--text-secondary);
   font-size: var(--text-xs);
   line-height: 1.5;
   margin: 0;
+}
+
+.settings-context-help {
+  margin-top: var(--space-1);
+}
+
+.concept-help-backdrop {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  height: 100dvh;
+  justify-content: center;
+  margin: 0;
+  max-height: none;
+  max-width: none;
+  padding: var(--space-4);
+  width: 100vw;
+}
+
+.concept-help-backdrop[open] {
+  display: flex;
+}
+
+.concept-help-backdrop::backdrop {
+  background: var(--black-a72);
+  backdrop-filter: blur(1rem);
+  -webkit-backdrop-filter: blur(1rem);
+}
+
+.concept-help-dialog {
+  background: var(--overlay-bg);
+  border: 1px solid var(--overlay-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--overlay-shadow);
+  color: var(--text-primary);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
+  width: min(46rem, calc(100vw - 2rem));
+}
+
+.concept-help-dialog > *,
+.concept-help-dialog > header > div {
+  min-width: 0;
+}
+
+.concept-help-dialog > header,
+.concept-help-dialog > footer {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--space-4);
+  justify-content: space-between;
+  padding: var(--space-5);
+}
+
+.concept-help-dialog > header {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.concept-help-dialog > footer {
+  border-top: 1px solid var(--border-subtle);
+  justify-content: flex-end;
+}
+
+.concept-help-dialog h2 {
+  font-size: var(--text-xl);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+  margin: 0.2rem 0 var(--space-2);
+}
+
+.concept-help-dialog > header p:last-child {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  margin: 0;
+  max-width: 35rem;
+}
+
+.concept-help-dialog > header .icon-button {
+  flex: none;
+}
+
+.concept-help-layout {
+  display: grid;
+  grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.concept-help-layout nav,
+.concept-help-layout article {
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.concept-help-layout nav {
+  border-inline-end: 1px solid var(--border-subtle);
+  padding: var(--space-3);
+}
+
+.concept-help-layout ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.concept-help-layout nav button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 0.16rem;
+  min-height: 3.25rem;
+  padding: var(--space-2) var(--space-3);
+  text-align: start;
+  width: 100%;
+}
+
+.concept-help-layout nav button span {
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.concept-help-layout nav button small {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  line-height: 1.35;
+}
+
+.concept-help-layout nav button[aria-current="true"] {
+  background: var(--surface-selected);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+.concept-help-layout nav button[aria-current="true"] small {
+  color: var(--text-tertiary);
+}
+
+.concept-help-layout article {
+  align-content: start;
+  display: grid;
+  padding: clamp(var(--space-5), 4vw, var(--space-8));
+}
+
+.concept-help-layout article > p:first-child {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.05em;
+  margin: 0 0 var(--space-2);
+  text-transform: uppercase;
+}
+
+.concept-help-layout article h3 {
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-tight);
+  margin: 0 0 var(--space-3);
+}
+
+.concept-help-layout article > p:last-of-type {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  margin: 0;
+}
+
+.concept-help-layout article aside {
+  border-inline-start: 1px solid var(--border-strong);
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+  padding-inline-start: var(--space-4);
+}
+
+.concept-help-layout article aside strong {
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.concept-help-layout article aside span {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.concept-help-dialog > footer button {
+  background: var(--action-secondary-bg);
+  border: 1px solid var(--action-secondary-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-4);
+}
+
+@media (max-width: 42rem) {
+  .concept-help-backdrop {
+    padding: var(--space-2);
+  }
+
+  .concept-help-dialog {
+    display: block;
+    overflow: auto;
+    width: calc(100vw - 1rem);
+  }
+
+  .concept-help-layout {
+    display: block;
+    overflow: visible;
+  }
+
+  .concept-help-layout nav,
+  .concept-help-layout article {
+    overflow: visible;
+  }
+
+  .concept-help-layout nav {
+    border-bottom: 1px solid var(--border-subtle);
+    border-inline-end: 0;
+  }
+
+  .concept-help-dialog > header,
+  .concept-help-dialog > footer {
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .concept-help-dialog > header h2,
+  .concept-help-dialog > header p {
+    overflow-wrap: anywhere;
+  }
 }
 
 .settings-control {
