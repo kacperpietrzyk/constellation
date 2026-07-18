@@ -180,14 +180,14 @@ export const MeetingsHarness = () => {
             <small>Wynik Jamie</small>
           </div>
           <button
-            className="icon-button meeting-inspector-close"
+            className="icon-button surface-inspector-close"
             aria-label="Zamknij szczegóły spotkania"
             onClick={() => setInspectorOpen(false)}
           >
             ×
           </button>
         </header>
-        <div className="meeting-inspector-host" ref={setInspectorHost} />
+        <div className="surface-inspector-host" ref={setInspectorHost} />
       </aside>
     </main>
   );

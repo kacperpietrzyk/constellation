@@ -2,11 +2,16 @@ import { gzipSync } from "node:zlib";
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
+// 2026-07-18: totalJavaScript i stylesheet podniesione po fali „enterprise
+// shell polish" (menu natywne, paleta ⌘K z semantyką combobox, ściąga skrótów,
+// popovery, moduł i18n, pełny renderer Markdownu, drawer inspektora). Entry
+// pozostaje na starym budżecie — nowe powierzchnie ładują się jako osobne
+// chunki (Access, Relacje, Onboarding, Recovery dołączyły do split-listy).
 const limits = {
   entryBytes: 510_000,
   entryGzipBytes: 140_000,
-  totalJavaScriptBytes: 680_000,
-  stylesheetBytes: 145_000,
+  totalJavaScriptBytes: 760_000,
+  stylesheetBytes: 165_000,
 };
 
 const dist = path.join(process.cwd(), "packages", "desktop-ui", "dist");

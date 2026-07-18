@@ -11,7 +11,9 @@ import {
   destinationShortcutIndex,
   destinationContext,
   moveShellHistory,
+  navigateShellContext,
   openShellContext,
+  openShellContextReportingEviction,
   projectContext,
   pruneInaccessibleShellContexts,
   restoreShellNavigation,
@@ -53,7 +55,7 @@ describe("stable shell navigation", () => {
     state = moveShellHistory(state, -1);
     state = activateShellContext(state, cockpit.key);
 
-    assert.deepEqual(state.history, [cockpit.key, task.key, cockpit.key]);
+    assert.deepEqual(state.history, [cockpit, task, cockpit]);
     assert.equal(state.tabs.length, 3);
     state = closeShellContext(state, cockpit.key);
     assert.equal(activeShellContext(state).key, task.key);
@@ -61,6 +63,87 @@ describe("stable shell navigation", () => {
       state.tabs.some((tab) => tab.key === cockpit.key),
       false,
     );
+  });
+
+  it("re-materializes contexts navigated within one card on Back and Forward", () => {
+    const cockpit = destinationContext("cockpit", "Tydzień");
+    const task = taskContext(taskId, "Zadanie Alpha");
+    const project = projectContext(projectId, "Projekt Alpha");
+    let state = createShellNavigation(cockpit);
+    state = navigateShellContext(state, task);
+    state = navigateShellContext(state, project);
+    assert.equal(state.tabs.length, 1);
+
+    state = moveShellHistory(state, -1);
+    assert.equal(state.tabs.length, 1);
+    assert.equal(activeShellContext(state).key, task.key);
+    assert.equal(activeShellContext(state).taskId, taskId);
+
+    state = moveShellHistory(state, -1);
+    assert.equal(activeShellContext(state).key, cockpit.key);
+
+    state = moveShellHistory(state, 1);
+    assert.equal(activeShellContext(state).key, task.key);
+    assert.equal(state.tabs.length, 1);
+  });
+
+  it("does not replace another open card on Back after closing a card", () => {
+    const cockpit = destinationContext("cockpit", "Tydzień");
+    const taskB = taskContext(taskId, "Zadanie B");
+    const projectC = projectContext(projectId, "Projekt C");
+    let state = createShellNavigation(cockpit);
+    state = openShellContext(state, taskB);
+    state = openShellContext(state, projectC);
+    state = activateShellContext(state, taskB.key);
+
+    // ⌘W zamyka aktywną kartę B; aktywna staje się karta C.
+    state = closeShellContext(state, taskB.key);
+    assert.deepEqual(
+      state.tabs.map((tab) => tab.key),
+      [cockpit.key, projectC.key],
+    );
+    assert.equal(activeShellContext(state).key, projectC.key);
+
+    // Wstecz pomija wpisy zamkniętej karty B zamiast podmieniać kartę C.
+    state = moveShellHistory(state, -1);
+    assert.deepEqual(
+      state.tabs.map((tab) => tab.key),
+      [cockpit.key, projectC.key],
+    );
+    assert.notEqual(activeShellContext(state).key, taskB.key);
+
+    state = moveShellHistory(state, -1);
+    assert.equal(activeShellContext(state).key, cockpit.key);
+    assert.deepEqual(
+      state.tabs.map((tab) => tab.key),
+      [cockpit.key, projectC.key],
+    );
+  });
+
+  it("reports the silently evicted context when the tab limit overflows", () => {
+    let state = createShellNavigation(destinationContext("cockpit", "Tydzień"));
+    for (let index = 0; index < 6; index += 1) {
+      const id = TaskIdSchema.parse(
+        `00000000-0000-4000-8000-${String(index + 10).padStart(12, "0")}`,
+      );
+      state = openShellContext(state, taskContext(id, `Zadanie ${index + 1}`));
+    }
+    assert.equal(state.tabs.length, 7);
+
+    const overflowing = taskContext(
+      TaskIdSchema.parse("00000000-0000-4000-8000-000000000099"),
+      "Zadanie przepełniające",
+    );
+    const outcome = openShellContextReportingEviction(state, overflowing);
+    assert.equal(outcome.state.tabs.length, 7);
+    assert.ok(outcome.evictedContext);
+    assert.equal(
+      outcome.state.tabs.some((tab) => tab.key === outcome.evictedContext?.key),
+      false,
+    );
+
+    const restored = openShellContext(outcome.state, outcome.evictedContext!);
+    assert.equal(activeShellContext(restored).key, outcome.evictedContext!.key);
   });
 
   it("bounds open contexts without evicting the current context", () => {
@@ -113,7 +196,7 @@ describe("stable shell navigation", () => {
     );
 
     assert.deepEqual(pruned.tabs, [cockpit]);
-    assert.deepEqual(pruned.history, [cockpit.key]);
+    assert.deepEqual(pruned.history, [cockpit]);
     assert.equal(pruned.activeKey, cockpit.key);
     assert.doesNotMatch(serializeShellNavigation(pruned), /Poufne|00000000/);
   });

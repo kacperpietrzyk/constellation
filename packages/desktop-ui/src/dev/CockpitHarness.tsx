@@ -1,0 +1,261 @@
+import type { RendererQueryResponse } from "@constellation/desktop-preload/client";
+
+import { RealApp } from "../RealApp.js";
+import { createScenarioClient } from "../client/scenario-client.js";
+
+// Deterministic, truthful cockpit fixture. It mounts the canonical RealApp shell
+// so the weekly cockpit's populated `ready` state is designable and
+// screenshot-verifiable in a browser — the one flagship state no other scenario
+// renders. No parallel component language: this is the real surface with real
+// projection shapes. Attention carries unread signals so the exceptions bar —
+// part of the brief's 30-second orientation — renders and stays verifiable.
+
+const workspaceId = "00000000-0000-4000-8000-000000000601";
+const spaceId = "00000000-0000-4000-8000-000000000602";
+const statusId = "00000000-0000-4000-8000-000000000603";
+const ownerId = "00000000-0000-4000-8000-000000000604";
+
+const projectA = "00000000-0000-4000-8000-000000000610";
+const projectB = "00000000-0000-4000-8000-000000000611";
+const projectC = "00000000-0000-4000-8000-000000000612";
+
+const task1 = "00000000-0000-4000-8000-000000000620";
+const task2 = "00000000-0000-4000-8000-000000000621";
+const task3 = "00000000-0000-4000-8000-000000000622";
+const task4 = "00000000-0000-4000-8000-000000000623";
+const task5 = "00000000-0000-4000-8000-000000000624";
+
+const signal1 = "00000000-0000-4000-8000-000000000640";
+const signal2 = "00000000-0000-4000-8000-000000000641";
+
+const weekStart = "2026-07-13";
+const weekEnd = "2026-07-19";
+
+const result = (projection: Record<string, unknown>): RendererQueryResponse =>
+  ({
+    kind: "query_result",
+    result: {
+      contractVersion: 1,
+      queryId: "00000000-0000-4000-8000-0000000006f0",
+      kernelTime: "2026-07-15T09:00:00.000Z",
+      outcome: "success",
+      freshness: {
+        mode: "local_authoritative",
+        checkpoint: null,
+        missingCapabilities: [],
+      },
+      projection,
+    },
+  }) as unknown as RendererQueryResponse;
+
+const taskRow = (
+  id: string,
+  title: string,
+  createdAt: string,
+): Record<string, unknown> => ({
+  id,
+  spaceId,
+  title,
+  status: {
+    id: statusId,
+    label: "W toku",
+    operationalSemantics: "actionable",
+  },
+  completionState: "open",
+  createdAt,
+  updatedAt: "2026-07-15T09:00:00.000Z",
+  version: 1,
+});
+
+const client = createScenarioClient({
+  queries: {
+    "workspace.bootstrapContext": result({
+      kind: "workspace.bootstrapContext",
+      workspace: {
+        id: workspaceId,
+        name: "Praca",
+        timezone: "Europe/Warsaw",
+        defaultTaskStatusId: statusId,
+        version: 6,
+      },
+      spaces: [{ id: spaceId, name: "Praca", version: 1 }],
+      taskStatuses: [
+        {
+          id: statusId,
+          label: "W toku",
+          operationalSemantics: "actionable",
+          position: 0,
+          version: 1,
+        },
+      ],
+    }),
+    "task.list": result({
+      kind: "task.list",
+      items: [
+        taskRow(task1, "Zatwierdzić model custody dla przechwyceń", weekStart),
+        taskRow(task2, "Opisać stan lattice kokpitu tygodnia", "2026-07-14"),
+        taskRow(task3, "Sprawdzić migrację SQLCipher", "2026-06-30"),
+        taskRow(task4, "Dowieźć harness kokpitu", "2026-07-15"),
+        taskRow(task5, "Przejrzeć kopie w Ustawieniach", "2026-06-20"),
+      ],
+      nextCursor: null,
+    }),
+    "capture.history": result({
+      kind: "capture.history",
+      items: [],
+      nextCursor: null,
+    }),
+    "cockpit.week": result({
+      kind: "cockpit.week",
+      weekStart,
+      weekEnd,
+      focus: [
+        {
+          taskId: task1,
+          title: "Zatwierdzić model custody dla przechwyceń",
+          score: 130,
+          reasons: [
+            { code: "task_open", weight: 100 },
+            { code: "created_this_week", weight: 20 },
+            {
+              code: "active_project",
+              weight: 10,
+              projectId: projectA,
+              projectTitle: "Domknięcie aplikacji",
+            },
+          ],
+          relatedProjectId: projectA,
+        },
+        {
+          taskId: task2,
+          title: "Opisać stan lattice kokpitu tygodnia",
+          score: 120,
+          reasons: [
+            { code: "task_open", weight: 100 },
+            { code: "created_this_week", weight: 20 },
+          ],
+        },
+        {
+          taskId: task3,
+          title: "Sprawdzić migrację SQLCipher",
+          score: 110,
+          reasons: [
+            { code: "task_open", weight: 100 },
+            {
+              code: "active_project",
+              weight: 10,
+              projectId: projectB,
+              projectTitle: "Migracja magazynu",
+            },
+          ],
+          relatedProjectId: projectB,
+        },
+        {
+          taskId: task4,
+          title: "Dowieźć harness kokpitu",
+          score: 110,
+          reasons: [
+            { code: "task_open", weight: 100 },
+            {
+              code: "active_project",
+              weight: 10,
+              projectId: projectA,
+              projectTitle: "Domknięcie aplikacji",
+            },
+          ],
+          relatedProjectId: projectA,
+        },
+        {
+          taskId: task5,
+          title: "Przejrzeć kopie w Ustawieniach",
+          score: 100,
+          reasons: [{ code: "task_open", weight: 100 }],
+        },
+      ],
+    }),
+    "project.list": result({
+      kind: "project.list",
+      items: [
+        {
+          id: projectA,
+          spaceId,
+          title: "Domknięcie aplikacji",
+          intendedOutcome:
+            "Główne powierzchnie są operacyjne i spójne z roadmapą",
+          lifecycle: "active",
+          relatedOpenTaskCount: 3,
+          version: 2,
+          updatedAt: "2026-07-15T09:00:00.000Z",
+        },
+        {
+          id: projectB,
+          spaceId,
+          title: "Migracja magazynu",
+          intendedOutcome:
+            "Dane działają na SQLCipher bez utraty historii i dowodów",
+          lifecycle: "active",
+          relatedOpenTaskCount: 2,
+          version: 1,
+          updatedAt: "2026-07-14T09:00:00.000Z",
+        },
+        {
+          id: projectC,
+          spaceId,
+          title: "Alfa interaktywna",
+          intendedOutcome: "Pełny tydzień przepracowany na realnych danych",
+          lifecycle: "active",
+          relatedOpenTaskCount: 1,
+          version: 1,
+          updatedAt: "2026-07-13T09:00:00.000Z",
+        },
+      ],
+    }),
+    "attention.inbox": result({
+      kind: "attention.inbox",
+      unreadCount: 2,
+      items: [
+        {
+          id: signal1,
+          reason: "task_assignment",
+          destination: { kind: "task", taskId: task3 },
+          title: "Przypisano: Sprawdzić migrację SQLCipher",
+          detail: "Zadanie zostało przypisane do Ciebie w Space Praca.",
+          urgency: "in_app",
+          state: "unread",
+          version: 1,
+          occurredAt: "2026-07-14T08:30:00.000Z",
+        },
+        {
+          id: signal2,
+          reason: "sync_conflict",
+          destination: { kind: "task", taskId: task5 },
+          title: "Konflikt wersji: Przejrzeć kopie w Ustawieniach",
+          detail: "Dwie równoległe zmiany zadania wymagają decyzji.",
+          urgency: "in_app",
+          state: "unread",
+          version: 1,
+          occurredAt: "2026-07-15T07:10:00.000Z",
+        },
+      ],
+    }),
+    "workspace.access": result({
+      kind: "workspace.access",
+      policyVersion: 6,
+      currentPrincipalId: ownerId,
+      canManage: true,
+      members: [
+        {
+          membershipId: "00000000-0000-4000-8000-000000000630",
+          principalId: ownerId,
+          displayName: "Kacper",
+          role: "owner",
+          status: "active",
+          version: 1,
+          spaces: [],
+        },
+      ],
+    }),
+  },
+});
+
+export const CockpitHarness = () => <RealApp client={client} />;

@@ -12,12 +12,14 @@ import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 
 import type {
   CaptureId,
   CaptureOriginal,
+  CommandId,
   PrincipalId,
   ProjectId,
   RelationId,
@@ -29,10 +31,18 @@ import type {
   DesktopBuildInfo,
 } from "@constellation/desktop-preload/client";
 
-import { AccessSurface } from "./AccessSurface.js";
+import { Icon, type IconName } from "./components/Icon.js";
+import {
+  ShortcutsOverlay,
+  modifierLabel,
+} from "./components/ShortcutsOverlay.js";
+import { useDismissiblePanel } from "./hooks/useDismissiblePanel.js";
 import { AttentionSurface, CommentsPanel } from "./CollaborationSurfaces.js";
-import { StrategicDepthSurface } from "./StrategicDepthSurface.js";
-import { OnboardingFlow } from "./OnboardingFlow.js";
+import {
+  recurrenceCadenceLabels,
+  strategicStateLabels,
+} from "./strategic-labels.js";
+import { countLabel, recordKindLabels } from "./i18n.js";
 
 import {
   ActivitySurface,
@@ -80,6 +90,7 @@ import {
   type ProjectOverviewProjection,
   type CommentListProjection,
   type DataSlice,
+  type RelationshipWorkspaceProjection,
   type UndoPreview,
 } from "./client/workflow.js";
 import {
@@ -92,7 +103,7 @@ import {
   destinationContext,
   moveShellHistory,
   navigateShellContext,
-  openShellContext,
+  openShellContextReportingEviction,
   projectContext,
   pruneInaccessibleShellContexts,
   restoreShellNavigation,
@@ -105,7 +116,7 @@ import {
   type PreviewCondition,
   type SurfaceId,
 } from "./client/wave2-fixtures.js";
-import { WorkspaceRecovery } from "./WorkspaceRecovery.js";
+import type { WorkContextKind } from "./WorkSurface.js";
 import {
   MAX_VOICE_NOTE_BYTES,
   startVoiceRecording,
@@ -136,6 +147,28 @@ const loadWorkSurface = () => import("./WorkSurface.js");
 const WorkSurface = lazy(() =>
   loadWorkSurface().then((module) => ({ default: module.WorkSurface })),
 );
+const loadAccessSurface = () => import("./AccessSurface.js");
+const AccessSurface = lazy(() =>
+  loadAccessSurface().then((module) => ({ default: module.AccessSurface })),
+);
+const loadStrategicDepthSurface = () => import("./StrategicDepthSurface.js");
+const StrategicDepthSurface = lazy(() =>
+  loadStrategicDepthSurface().then((module) => ({
+    default: module.StrategicDepthSurface,
+  })),
+);
+// Onboarding i recovery są modalne oraz rzadkie; ich kod nie należy do
+// wejściowego chunku renderera.
+const OnboardingFlow = lazy(() =>
+  import("./OnboardingFlow.js").then((module) => ({
+    default: module.OnboardingFlow,
+  })),
+);
+const WorkspaceRecovery = lazy(() =>
+  import("./WorkspaceRecovery.js").then((module) => ({
+    default: module.WorkspaceRecovery,
+  })),
+);
 
 const preloadSurface = (surface: SurfaceId) => {
   if (surface === "documents")
@@ -143,6 +176,9 @@ const preloadSurface = (surface: SurfaceId) => {
   if (surface === "meetings") void loadMeetingsSurface().catch(() => undefined);
   if (surface === "settings") void loadSettingsSurface().catch(() => undefined);
   if (surface === "work") void loadWorkSurface().catch(() => undefined);
+  if (surface === "access") void loadAccessSurface().catch(() => undefined);
+  if (surface === "relationships")
+    void loadStrategicDepthSurface().catch(() => undefined);
 };
 
 class LazySurfaceBoundary extends Component<
@@ -186,21 +222,6 @@ const SurfaceLoadingState = ({ label }: { readonly label: string }) => (
   </section>
 );
 
-type IconName =
-  | "capture"
-  | "tasks"
-  | "history"
-  | "search"
-  | "close"
-  | "project"
-  | "cockpit"
-  | "activity"
-  | "attention"
-  | "access"
-  | "documents"
-  | "meetings"
-  | "relationships"
-  | "settings";
 type AgentGrantDetails = {
   readonly title: string;
   readonly descriptorLabel: string;
@@ -290,48 +311,6 @@ const AgentGrantDetailsDialog = ({
   );
 };
 
-const Icon = ({ name }: { readonly name: IconName }) => {
-  const paths = {
-    capture: <path d="M12 5v14M5 12h14" />,
-    tasks: <path d="m5 7 2 2 4-4M12 7h7M5 15l2 2 4-4M12 15h7" />,
-    history: <path d="M4 6h16v12H4zM4 14h4l2 2h4l2-2h4" />,
-    search: (
-      <path d="m20 20-4.3-4.3M10.8 17a6.2 6.2 0 1 1 0-12.4 6.2 6.2 0 0 1 0 12.4Z" />
-    ),
-    close: <path d="m6 6 12 12M18 6 6 18" />,
-    project: <path d="M4 5h6l2 2h8v12H4z" />,
-    cockpit: <path d="M4 5h7v6H4zM13 5h7v10h-7zM4 13h7v6H4zM13 17h7v2h-7z" />,
-    activity: <path d="M5 6h14M5 12h14M5 18h9M3 6h.01M3 12h.01M3 18h.01" />,
-    attention: (
-      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM9.5 20h5" />
-    ),
-    access: (
-      <path d="M16 19c0-3-2.2-5-5-5s-5 2-5 5M11 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM17 8h4M19 6v4" />
-    ),
-    documents: <path d="M6 3h9l4 4v14H6zM15 3v5h4M9 12h7M9 16h7" />,
-    meetings: <path d="M5 5h14v14H5zM8 3v5M16 3v5M5 10h14M8 14h3M13 14h3" />,
-    relationships: (
-      <path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM16.5 10a2.5 2.5 0 1 0 0-5M3 20c0-4 2-6 5-6s5 2 5 6M14 14c3 0 5 2 5 6M11 8h3" />
-    ),
-    settings: (
-      <path d="M4 7h7M17 7h3M4 17h2M12 17h8M16 7a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM11 17a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" />
-    ),
-  } as const;
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {paths[name]}
-    </svg>
-  );
-};
-
 const BrandMark = () => (
   <svg className="brand-mark" aria-hidden="true" viewBox="0 0 32 32">
     <circle cx="16" cy="16" r="3.2" fill="currentColor" />
@@ -349,6 +328,274 @@ const BrandMark = () => (
     />
   </svg>
 );
+
+type StrategicRecord = RelationshipWorkspaceProjection["records"][number];
+
+const strategicRecordState = (record: StrategicRecord): string =>
+  record.kind === "organization"
+    ? record.relationshipState
+    : "state" in record
+      ? record.state
+      : "current";
+
+const strategicRecordTitle = (record: StrategicRecord): string =>
+  record.kind === "organization" || record.kind === "person"
+    ? record.name
+    : record.kind === "relationship_fact"
+      ? record.factType
+      : record.kind === "saved_view"
+        ? record.name
+        : "title" in record
+          ? record.title
+          : (recordKindLabels[record.kind] ?? record.kind);
+
+// Rekord strategiczny w shellowym inspectorze: wybór wiersza na powierzchni
+// Relacje (albo klik licznika ofert/projektów) prowadzi tutaj. Powiązane
+// oferty wybiera się dalej w inspectorze, a projekty otwierają się jako
+// pełnoprawny kontekst shellu.
+const StrategicRecordInspector = ({
+  record,
+  records,
+  projects,
+  onSelectRecord,
+  onOpenProject,
+}: {
+  readonly record: StrategicRecord;
+  readonly records: readonly StrategicRecord[];
+  readonly projects: readonly {
+    readonly id: ProjectId;
+    readonly title: string;
+  }[];
+  readonly onSelectRecord: (id: string) => void;
+  readonly onOpenProject: (id: ProjectId, title: string) => void;
+}) => {
+  const state = strategicRecordState(record);
+  const organization =
+    "organizationId" in record && record.organizationId !== undefined
+      ? records.find((item) => item.id === record.organizationId)
+      : undefined;
+  const organizationName =
+    organization?.kind === "organization" ? organization.name : undefined;
+  const relatedOpportunities =
+    record.kind === "organization"
+      ? records.filter(
+          (item): item is Extract<StrategicRecord, { kind: "opportunity" }> =>
+            item.kind === "opportunity" && item.organizationId === record.id,
+        )
+      : [];
+  const relatedOffers =
+    record.kind === "opportunity"
+      ? records.filter(
+          (item): item is Extract<StrategicRecord, { kind: "offer" }> =>
+            item.kind === "offer" && item.opportunityId === record.id,
+        )
+      : [];
+  const linkedProjects =
+    record.kind === "opportunity"
+      ? projects.filter((project) => record.projectIds.includes(project.id))
+      : [];
+  const parentOpportunity =
+    record.kind === "offer"
+      ? records.find(
+          (item): item is Extract<StrategicRecord, { kind: "opportunity" }> =>
+            item.kind === "opportunity" && item.id === record.opportunityId,
+        )
+      : undefined;
+  return (
+    <div className="inspector-body">
+      <span className="record-status">
+        <i />
+        {strategicStateLabels[state] ?? state.replaceAll("_", " ")}
+      </span>
+      <h2>{strategicRecordTitle(record)}</h2>
+      <p className="record-summary">
+        {organizationName
+          ? `${recordKindLabels[record.kind] ?? "Rekord"} w relacji ${organizationName}.`
+          : "Wersjonowany rekord strategiczny w aktywnym Space."}
+      </p>
+      {record.kind === "organization" && (
+        <>
+          <section className="inspector-section provenance-block">
+            <p className="section-label">Następny ruch</p>
+            <blockquote>
+              {record.nextAction ?? "Brak następnego ruchu"}
+            </blockquote>
+            <p>Relacja prowadzi szanse, oferty i odnowienia.</p>
+          </section>
+          <section className="inspector-section">
+            <p className="section-label">
+              {countLabel(
+                relatedOpportunities.length,
+                "szansa",
+                "szanse",
+                "szans",
+              )}
+            </p>
+            {relatedOpportunities.length === 0 ? (
+              <p>Nie ma jeszcze szans powiązanych z tą relacją.</p>
+            ) : (
+              <ul className="inspector-links">
+                {relatedOpportunities.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => onSelectRecord(item.id)}
+                    >
+                      {item.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
+      {record.kind === "person" && (
+        <section className="inspector-section">
+          <p className="section-label">Dane kontaktowe</p>
+          <dl className="record-fields">
+            <div>
+              <dt>Rola</dt>
+              <dd>{record.role ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>E-mail</dt>
+              <dd>{record.email ?? "—"}</dd>
+            </div>
+          </dl>
+        </section>
+      )}
+      {record.kind === "opportunity" && (
+        <>
+          <section className="inspector-section provenance-block">
+            <p className="section-label">Potwierdzona potrzeba</p>
+            <blockquote>{record.need}</blockquote>
+            <p>Następny ruch: {record.nextAction}</p>
+          </section>
+          <section className="inspector-section">
+            <p className="section-label">
+              {countLabel(relatedOffers.length, "oferta", "oferty", "ofert")}
+            </p>
+            {relatedOffers.length === 0 ? (
+              <p>Ta szansa nie ma jeszcze ofert.</p>
+            ) : (
+              <ul className="inspector-links">
+                {relatedOffers.map((offer) => (
+                  <li key={offer.id}>
+                    <button
+                      type="button"
+                      onClick={() => onSelectRecord(offer.id)}
+                    >
+                      {offer.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section className="inspector-section">
+            <p className="section-label">
+              {countLabel(
+                linkedProjects.length,
+                "projekt",
+                "projekty",
+                "projektów",
+              )}
+            </p>
+            {linkedProjects.length === 0 ? (
+              <p>Ta szansa nie prowadzi jeszcze do projektu.</p>
+            ) : (
+              <ul className="inspector-links">
+                {linkedProjects.map((project) => (
+                  <li key={project.id}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenProject(project.id, project.title)}
+                    >
+                      {project.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
+      {record.kind === "offer" && (
+        <section className="inspector-section provenance-block">
+          <p className="section-label">Następny ruch</p>
+          <blockquote>{record.nextAction}</blockquote>
+          {parentOpportunity && (
+            <p>
+              Szansa:{" "}
+              <button
+                type="button"
+                className="inspector-link"
+                onClick={() => onSelectRecord(parentOpportunity.id)}
+              >
+                {parentOpportunity.title}
+              </button>
+            </p>
+          )}
+        </section>
+      )}
+      {record.kind === "renewal" && (
+        <section className="inspector-section">
+          <p className="section-label">Terminy</p>
+          <dl className="record-fields">
+            <div>
+              <dt>Zakres</dt>
+              <dd>{record.scope}</dd>
+            </div>
+            <div>
+              <dt>Wygasa</dt>
+              <dd>{new Date(record.expiresAt).toLocaleDateString("pl-PL")}</dd>
+            </div>
+          </dl>
+        </section>
+      )}
+      {record.kind === "relationship_fact" && (
+        <section className="inspector-section provenance-block">
+          <p className="section-label">Potwierdzona wartość</p>
+          <blockquote>{record.value}</blockquote>
+          <p>
+            Zweryfikowano{" "}
+            {new Date(record.verifiedAt).toLocaleDateString("pl-PL")}.
+          </p>
+        </section>
+      )}
+      {record.kind === "decision" && (
+        <section className="inspector-section provenance-block">
+          <p className="section-label">Uzasadnienie</p>
+          <blockquote>{record.rationale}</blockquote>
+          <p>Decyzja pozostaje częścią wersjonowanej historii.</p>
+        </section>
+      )}
+      {record.kind === "recurrence" && (
+        <section className="inspector-section">
+          <p className="section-label">Reguła</p>
+          <dl className="record-fields">
+            <div>
+              <dt>Zadanie</dt>
+              <dd>{record.taskTitle}</dd>
+            </div>
+            <div>
+              <dt>Rytm</dt>
+              <dd>{recurrenceCadenceLabels[record.cadence]}</dd>
+            </div>
+          </dl>
+        </section>
+      )}
+      {record.kind === "radar_candidate" && (
+        <section className="inspector-section provenance-block">
+          <p className="section-label">Znaczenie</p>
+          <blockquote>{record.relevance}</blockquote>
+          <p>Kandydat czeka na decyzję w przeglądzie Relacji.</p>
+        </section>
+      )}
+    </div>
+  );
+};
 
 export const CaptureDialog = ({
   busy,
@@ -959,7 +1206,7 @@ const navItems: readonly {
   {
     id: "work",
     label: "Praca",
-    icon: "project",
+    icon: "work",
     shortcut: "3",
     group: "Praca",
   },
@@ -1036,6 +1283,7 @@ export const RealApp = ({
           fallback,
         );
   });
+  const navigationRef = useRef(navigation);
   const [favorites, setFavorites] = useState<readonly SurfaceId[]>(() => {
     try {
       const parsed = JSON.parse(
@@ -1065,9 +1313,20 @@ export const RealApp = ({
   const [capturing, setCapturing] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<TaskId>();
   const [selectedProjectId, setSelectedProjectId] = useState<ProjectId>();
+  const [selectedWorkContext, setSelectedWorkContext] = useState<{
+    readonly kind: WorkContextKind;
+    readonly id: string;
+  }>();
+  const [selectedStrategicId, setSelectedStrategicId] = useState<string>();
   const [meetingInspectorHost, setMeetingInspectorHost] =
     useState<HTMLElement | null>(null);
   const [meetingInspectorOpen, setMeetingInspectorOpen] = useState(false);
+  const [documentInspectorHost, setDocumentInspectorHost] =
+    useState<HTMLElement | null>(null);
+  const [documentInspectorOpen, setDocumentInspectorOpen] = useState(false);
+  const [documentInspectorKind, setDocumentInspectorKind] = useState<
+    "document" | "source"
+  >("document");
   const [projectOverview, setProjectOverview] =
     useState<ProjectOverviewProjection>();
   const [busyTaskId, setBusyTaskId] = useState<TaskId>();
@@ -1078,7 +1337,7 @@ export const RealApp = ({
   const [historyBusyCaptureId, setHistoryBusyCaptureId] = useState<CaptureId>();
   const [comments, setComments] = useState<DataSlice<CommentListProjection>>({
     kind: "unavailable",
-    message: "Wybierz Task albo Project.",
+    message: "Wybierz Zadanie albo Projekt.",
   });
   const [sessionRelation, setSessionRelation] = useState<{
     id: RelationId;
@@ -1091,18 +1350,57 @@ export const RealApp = ({
     Record<string, AuditReceiptProjection>
   >({});
   const [notice, setNotice] = useState<MutationFailure>();
-  const [toast, setToast] = useState<string>();
+  // Toasty są kolejkowane zamiast nadpisywane: widoczny jest pierwszy wpis,
+  // kolejne czekają, a odwracalna mutacja niesie akcję „Cofnij”.
+  const [toasts, setToasts] = useState<
+    readonly {
+      readonly id: number;
+      readonly message: string;
+      readonly restore?: ShellContext;
+      readonly undoCommandId?: CommandId;
+    }[]
+  >([]);
+  const toastIdRef = useRef(0);
+  const pushToast = useCallback(
+    (toast: {
+      readonly message: string;
+      readonly restore?: ShellContext;
+      readonly undoCommandId?: CommandId;
+    }) => {
+      toastIdRef.current += 1;
+      const id = toastIdRef.current;
+      setToasts((current) => [...current, { ...toast, id }]);
+    },
+    [],
+  );
+  const dismissToast = useCallback((id: number) => {
+    setToasts((current) => current.filter((item) => item.id !== id));
+  }, []);
+  const activeToast = toasts[0];
+  // Hover lub fokus w toaście wstrzymuje automatyczne zamknięcie, żeby akcje
+  // „Cofnij”/„Przywróć” nie znikały użytkownikowi spod kursora ani spod
+  // fokusa klawiatury; timer rusza od nowa po opuszczeniu toastu.
+  const [toastPaused, setToastPaused] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [agentGrantDetails, setAgentGrantDetails] =
     useState<AgentGrantDetails>();
   const [previewCondition, setPreviewCondition] =
     useState<PreviewCondition>("ready");
+  const [narrowShell, setNarrowShell] = useState(
+    () => window.matchMedia("(max-width: 75rem)").matches,
+  );
+  const [railMode, setRailMode] = useState(
+    () => window.matchMedia("(max-width: 50rem)").matches,
+  );
+  const [railTip, setRailTip] = useState<{
+    readonly label: string;
+    readonly shortcut?: string;
+    readonly top: number;
+  }>();
   const navRef = useRef<HTMLElement>(null);
   const tabRef = useRef<HTMLDivElement>(null);
   const captureReturnFocusRef = useRef<HTMLElement | null>(null);
   const captureRestoreFocusPendingRef = useRef(false);
-  const modifierLabel = /Mac|iPhone|iPad/.test(navigator.platform)
-    ? "⌘"
-    : "Ctrl";
   const activeContext = activeShellContext(navigation);
   const surface = activeContext.surface;
   const detachedWindow =
@@ -1110,67 +1408,126 @@ export const RealApp = ({
   const recentContexts = navigation.history
     .slice(0, navigation.historyIndex + 1)
     .reverse()
-    .reduce<ShellContext[]>((items, key) => {
+    .reduce<ShellContext[]>((items, context) => {
       if (
-        key === activeContext.key ||
-        key.startsWith("destination:") ||
-        items.some((item) => item.key === key)
+        context.key === activeContext.key ||
+        context.key.startsWith("destination:") ||
+        items.some((item) => item.key === context.key)
       )
         return items;
-      const context = navigation.tabs.find((item) => item.key === key);
-      if (context) items.push(context);
+      items.push(context);
       return items;
     }, [])
     .slice(0, 3);
 
   useEffect(() => {
+    if (detachedWindow) return;
     localStorage.setItem(
       "constellation.shell-navigation",
       serializeShellNavigation(navigation),
     );
-  }, [navigation]);
+  }, [detachedWindow, navigation]);
 
   useEffect(() => {
     localStorage.setItem("constellation.favorites", JSON.stringify(favorites));
   }, [favorites]);
 
   useEffect(() => {
+    if (detachedWindow) return;
     localStorage.setItem(
       "constellation.inspector-width",
       String(inspectorWidth),
     );
-  }, [inspectorWidth]);
+  }, [detachedWindow, inspectorWidth]);
 
-  const startInspectorResize = (event: ReactMouseEvent) => {
+  useEffect(() => {
+    const narrow = window.matchMedia("(max-width: 75rem)");
+    const rail = window.matchMedia("(max-width: 50rem)");
+    const update = () => {
+      setNarrowShell(narrow.matches);
+      setRailMode(rail.matches);
+    };
+    narrow.addEventListener("change", update);
+    rail.addEventListener("change", update);
+    return () => {
+      narrow.removeEventListener("change", update);
+      rail.removeEventListener("change", update);
+    };
+  }, []);
+  useEffect(() => {
+    if (!railMode) setRailTip(undefined);
+  }, [railMode]);
+  // W trybie rail etykiety sidebaru są ukryte; tooltip z etykietą i skrótem
+  // pojawia się przy hover oraz fokusie klawiatury obok zwiniętej kolumny.
+  const showRailTip = (
+    target: HTMLElement,
+    label: string,
+    shortcut?: string,
+  ) => {
+    if (!railMode) return;
+    const rect = target.getBoundingClientRect();
+    setRailTip({
+      label,
+      ...(shortcut === undefined ? {} : { shortcut }),
+      top: rect.top + rect.height / 2,
+    });
+  };
+  const hideRailTip = () => setRailTip(undefined);
+
+  // Separator szerokości inspektora używa pointer capture, więc przeciąganie
+  // nie gubi się poza oknem; podwójne kliknięcie przywraca domyślne 320 px.
+  const resizePointerIdRef = useRef<number | undefined>(undefined);
+  const beginInspectorResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
-    const onMove = (moveEvent: globalThis.MouseEvent) => {
-      setInspectorWidth(
-        Math.min(640, Math.max(280, window.innerWidth - moveEvent.clientX)),
-      );
-    };
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
-    };
+    resizePointerIdRef.current = event.pointerId;
+    event.currentTarget.setPointerCapture(event.pointerId);
     document.body.style.userSelect = "none";
     document.body.style.cursor = "col-resize";
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+  };
+  const moveInspectorResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (resizePointerIdRef.current !== event.pointerId) return;
+    setInspectorWidth(
+      Math.min(640, Math.max(280, window.innerWidth - event.clientX)),
+    );
+  };
+  const endInspectorResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (resizePointerIdRef.current !== event.pointerId) return;
+    resizePointerIdRef.current = undefined;
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
   };
 
+  // Każde otwarcie kontekstu w bieżącej karcie (sidebar, ⌘1-9, Enter,
+  // dblclick, wyszukiwarka) przenosi fokus na nagłówek nowej powierzchni —
+  // flaga jest ustawiana w jednym miejscu, żeby żadna ścieżka nie gubiła
+  // fokusa na odmontowanym elemencie listy.
+  const surfaceFocusPendingRef = useRef(false);
   const openContext = useCallback((context: ShellContext) => {
+    surfaceFocusPendingRef.current = true;
     setNavigation((current) => navigateShellContext(current, context));
   }, []);
-  const openContextInNewTab = useCallback((context: ShellContext) => {
-    setNavigation((current) => openShellContext(current, context));
-  }, []);
+  const openContextInNewTab = useCallback(
+    (context: ShellContext) => {
+      const outcome = openShellContextReportingEviction(navigation, context);
+      setNavigation(outcome.state);
+      if (outcome.evictedContext !== undefined) {
+        pushToast({
+          message: `Zamknięto kartę „${outcome.evictedContext.label}”, aby otworzyć nową.`,
+          restore: outcome.evictedContext,
+        });
+      }
+    },
+    [navigation, pushToast],
+  );
   const [navMenu, setNavMenu] = useState<{
     readonly x: number;
     readonly y: number;
     readonly context: ShellContext;
   }>();
+  const navMenuRef = useRef<HTMLDivElement>(null);
+  const navMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   const navHandlers = (context: ShellContext) => ({
     onClick: (event: ReactMouseEvent) => {
       if (event.metaKey || event.ctrlKey) {
@@ -1188,6 +1545,8 @@ export const RealApp = ({
     },
     onContextMenu: (event: ReactMouseEvent) => {
       event.preventDefault();
+      navMenuReturnFocusRef.current =
+        event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
       setNavMenu({
         x: Math.min(event.clientX, window.innerWidth - 208),
         y: Math.min(event.clientY, window.innerHeight - 96),
@@ -1195,6 +1554,42 @@ export const RealApp = ({
       });
     },
   });
+  const closeNavMenu = useCallback((restoreFocus: boolean) => {
+    setNavMenu(undefined);
+    if (restoreFocus && navMenuReturnFocusRef.current?.isConnected)
+      navMenuReturnFocusRef.current.focus();
+  }, []);
+  useEffect(() => {
+    if (navMenu === undefined) return;
+    navMenuRef.current
+      ?.querySelector<HTMLButtonElement>("[role='menuitem']")
+      ?.focus();
+  }, [navMenu]);
+  const navMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const items = [
+      ...(navMenuRef.current?.querySelectorAll<HTMLButtonElement>(
+        "[role='menuitem']",
+      ) ?? []),
+    ];
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      items[(current + delta + items.length) % items.length]?.focus();
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      items[0]?.focus();
+    } else if (event.key === "End") {
+      event.preventDefault();
+      items[items.length - 1]?.focus();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeNavMenu(true);
+    } else if (event.key === "Tab") {
+      closeNavMenu(false);
+    }
+  };
   const openCapture = useCallback(() => {
     const activeElement = document.activeElement;
     captureReturnFocusRef.current =
@@ -1219,13 +1614,103 @@ export const RealApp = ({
   useEffect(() => {
     setSelectedTaskId(activeContext.taskId);
     setSelectedProjectId(activeContext.projectId);
+    if (activeContext.taskId || activeContext.projectId) {
+      setSelectedWorkContext(undefined);
+      setSelectedStrategicId(undefined);
+    }
   }, [activeContext.projectId, activeContext.taskId]);
+
+  // Inspector selection is intentionally separate from the active context:
+  // selecting a row keeps the collection surface in place and only feeds the
+  // inspector; opening (Enter, double-click, ⌘click) promotes the record to
+  // the active shell context.
+  const selectTaskInInspector = useCallback((id: TaskId) => {
+    setSelectedProjectId(undefined);
+    setSelectedWorkContext(undefined);
+    setSelectedStrategicId(undefined);
+    setSelectedTaskId(id);
+  }, []);
+  const selectProjectInInspector = useCallback((id: ProjectId) => {
+    setSelectedTaskId(undefined);
+    setSelectedWorkContext(undefined);
+    setSelectedStrategicId(undefined);
+    setSelectedProjectId(id);
+  }, []);
+  const selectWorkContextInInspector = useCallback(
+    (kind: WorkContextKind, id: string) => {
+      setSelectedTaskId(undefined);
+      setSelectedProjectId(undefined);
+      setSelectedStrategicId(undefined);
+      setSelectedWorkContext({ kind, id });
+    },
+    [],
+  );
+  const selectStrategicInInspector = useCallback((id: string) => {
+    setSelectedTaskId(undefined);
+    setSelectedProjectId(undefined);
+    setSelectedWorkContext(undefined);
+    setSelectedStrategicId(id);
+  }, []);
+
+  // Surface changes requested from the sidebar or ⌘1-9 move focus onto the
+  // freshly rendered surface heading; lazy surfaces fall back to the panel.
+  useEffect(() => {
+    if (!surfaceFocusPendingRef.current) return;
+    surfaceFocusPendingRef.current = false;
+    (
+      document.getElementById("surface-title") ??
+      document.getElementById("main-content")
+    )?.focus();
+  }, [activeContext.key]);
 
   useEffect(() => {
     if (surface !== "meetings") setMeetingInspectorOpen(false);
+    if (surface !== "documents") {
+      setDocumentInspectorOpen(false);
+      setDocumentInspectorKind("document");
+    }
+    if (surface !== "relationships") setSelectedStrategicId(undefined);
   }, [surface]);
 
   const snapshot = state.kind === "ready" ? state.snapshot : undefined;
+  const selectedWorkContextRecord = useMemo(() => {
+    if (!snapshot || snapshot.work.kind !== "ready" || !selectedWorkContext)
+      return undefined;
+    if (selectedWorkContext.kind === "area") {
+      const area = snapshot.work.data.areas.find(
+        (item) => item.id === selectedWorkContext.id,
+      );
+      return area === undefined
+        ? undefined
+        : {
+            kind: "area" as const,
+            title: area.title,
+            detail: area.responsibility,
+            stateLabel: area.state === "active" ? "Aktywny" : "Zarchiwizowany",
+          };
+    }
+    const initiative = snapshot.work.data.initiatives.find(
+      (item) => item.id === selectedWorkContext.id,
+    );
+    return initiative === undefined
+      ? undefined
+      : {
+          kind: "initiative" as const,
+          title: initiative.title,
+          detail: initiative.intendedOutcome,
+          stateLabel: initiative.state === "active" ? "Aktywna" : "Zamknięta",
+        };
+  }, [selectedWorkContext, snapshot]);
+  const selectedStrategicRecord = useMemo(
+    () =>
+      snapshot?.relationships.kind === "ready" &&
+      selectedStrategicId !== undefined
+        ? snapshot.relationships.data.records.find(
+            (record) => record.id === selectedStrategicId,
+          )
+        : undefined,
+    [selectedStrategicId, snapshot],
+  );
   useEffect(() => {
     if (!snapshot) return;
     const taskIds = new Set(snapshot.tasks.map((task) => task.id));
@@ -1256,10 +1741,14 @@ export const RealApp = ({
     });
   }, [client, openContext]);
 
-  const reload = async () => {
-    if (!client) return;
+  const reloadSnapshot = async () => {
+    if (!client) return undefined;
     const next = await loadDesktopSnapshot(client, snapshot?.build);
     setState({ kind: "ready", snapshot: next });
+    return next;
+  };
+  const reload = async () => {
+    await reloadSnapshot();
   };
 
   useEffect(() => {
@@ -1340,7 +1829,7 @@ export const RealApp = ({
     if (!client || !snapshot || (!selectedTaskId && !selectedProjectId)) {
       setComments({
         kind: "unavailable",
-        message: "Wybierz Task albo Project.",
+        message: "Wybierz Zadanie albo Projekt.",
       });
       return;
     }
@@ -1370,6 +1859,14 @@ export const RealApp = ({
     const onKeyDown = (event: KeyboardEvent) => {
       const modalOpen = document.querySelector("dialog[open]") !== null;
       const shortcutIndex = destinationShortcutIndex(event.code);
+      // Nieprzypisana cyfra ⌘Digit nie jest przechwytywana — zdarzenie
+      // przechodzi dalej zamiast znikać bez efektu.
+      const shortcutItem =
+        shortcutIndex === undefined
+          ? undefined
+          : navItems.find(
+              (entry) => entry.shortcut === String(shortcutIndex + 1),
+            );
       if (modalOpen && event.key !== "Escape") return;
       if (
         (event.metaKey || event.ctrlKey) &&
@@ -1383,13 +1880,17 @@ export const RealApp = ({
         setSearchOpen(true);
       } else if (
         (event.metaKey || event.ctrlKey) &&
-        shortcutIndex !== undefined
+        !event.shiftKey &&
+        (event.key === "/" || event.code === "Slash")
       ) {
         event.preventDefault();
-        const item = navItems.find(
-          (entry) => entry.shortcut === String(shortcutIndex + 1),
-        );
-        if (item) openContext(destinationContext(item.id, item.label));
+        setShortcutsOpen(true);
+      } else if (
+        (event.metaKey || event.ctrlKey) &&
+        shortcutItem !== undefined
+      ) {
+        event.preventDefault();
+        openContext(destinationContext(shortcutItem.id, shortcutItem.label));
       } else if (event.altKey && event.key === "ArrowLeft") {
         event.preventDefault();
         setNavigation((current) => moveShellHistory(current, -1));
@@ -1422,19 +1923,83 @@ export const RealApp = ({
           closeShellContext(current, current.activeKey),
         );
       } else if (event.key === "Escape") {
+        const overlayOpen =
+          searchOpen || undoPreview !== undefined || navMenu !== undefined;
         setSearchOpen(false);
         setUndoPreview(undefined);
         setNavMenu(undefined);
+        // Escape z fokusem w polu edycji nie czyści selekcji inspektora —
+        // wyczyszczenie odmontowałoby formularz razem z wpisanym szkicem.
+        const target = event.target;
+        const editableTarget =
+          target instanceof HTMLElement &&
+          (target.matches("input, textarea, select") ||
+            target.isContentEditable);
+        if (!modalOpen && !overlayOpen && !editableTarget) {
+          setSelectedTaskId(undefined);
+          setSelectedProjectId(undefined);
+          setSelectedWorkContext(undefined);
+          setSelectedStrategicId(undefined);
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [navigation.activeKey, navigation.tabs, openCapture, openContext]);
+  }, [
+    navigation.activeKey,
+    navigation.tabs,
+    navMenu,
+    openCapture,
+    openContext,
+    searchOpen,
+    undoPreview,
+  ]);
+
+  // Subskrypcja komend IPC jest zakładana raz na klienta; liczba kart jest
+  // czytana z refa aktualizowanego przy każdym renderze, żeby ⌘W z menu nie
+  // działał na nieaktualnym stanie (i żeby komendy nie przepadały w oknie
+  // między unsubscribe a resubscribe).
   useEffect(() => {
-    if (!toast) return;
-    const timer = window.setTimeout(() => setToast(undefined), 5000);
+    navigationRef.current = navigation;
+  }, [navigation]);
+  useEffect(() => {
+    if (client?.onShellCommand === undefined) return;
+    return client.onShellCommand((command) => {
+      if (document.querySelector("dialog[open]") !== null) return;
+      if (command.kind === "close-tab") {
+        if (navigationRef.current.tabs.length <= 1) window.close();
+        else
+          setNavigation((current) =>
+            closeShellContext(current, current.activeKey),
+          );
+      } else if (command.kind === "open-capture") {
+        openCapture();
+      } else if (command.kind === "open-search") {
+        setSearchOpen(true);
+      } else if (command.kind === "open-shortcuts") {
+        setShortcutsOpen(true);
+      } else {
+        const item = navItems.find(
+          (entry) => entry.shortcut === String(command.digit),
+        );
+        if (item) {
+          openContext(destinationContext(item.id, item.label));
+        }
+      }
+    });
+  }, [client, openCapture, openContext]);
+  useEffect(() => {
+    if (activeToast === undefined) {
+      setToastPaused(false);
+      return;
+    }
+    if (toastPaused) return;
+    const timer = window.setTimeout(
+      () => dismissToast(activeToast.id),
+      activeToast.undoCommandId === undefined ? 5000 : 8000,
+    );
     return () => window.clearTimeout(timer);
-  }, [toast]);
+  }, [activeToast, dismissToast, toastPaused]);
 
   useEffect(() => {
     const element = tabRef.current;
@@ -1478,6 +2043,34 @@ export const RealApp = ({
         : undefined,
     [selectedProjectId, snapshot],
   );
+  const inspectorDetailOpen = Boolean(
+    selectedTask ||
+    selectedProject ||
+    selectedWorkContextRecord ||
+    selectedStrategicRecord ||
+    (surface === "meetings" && meetingInspectorOpen) ||
+    (surface === "documents" && documentInspectorOpen),
+  );
+  const dismissInspector = useCallback(() => {
+    if (surface === "meetings") {
+      setMeetingInspectorOpen(false);
+      return;
+    }
+    if (surface === "documents") {
+      setDocumentInspectorOpen(false);
+      return;
+    }
+    setSelectedTaskId(undefined);
+    setSelectedProjectId(undefined);
+    setSelectedWorkContext(undefined);
+    setSelectedStrategicId(undefined);
+  }, [surface]);
+  // Poniżej 75rem inspector działa jako drawer: scrim zamyka kliknięciem,
+  // fokus przechodzi na nagłówek panelu i wraca po zamknięciu, Escape zamyka.
+  const inspectorDrawer = useDismissiblePanel({
+    open: narrowShell && inspectorDetailOpen,
+    onDismiss: dismissInspector,
+  });
   const sourceCapture =
     selectedTask?.sourceCaptureId === undefined
       ? undefined
@@ -1501,9 +2094,27 @@ export const RealApp = ({
   const canResolveComments =
     currentMember?.role === "owner" || currentGrant?.access === "edit";
   const canComment = canResolveComments || currentGrant?.access === "comment";
+  // Po odwracalnej mutacji toast niesie akcję „Cofnij”: świeży wpis na
+  // szczycie timeline aktywności wskazuje polecenie, którego podgląd
+  // cofnięcia otwiera istniejący UndoDialog.
   const refreshAfter = async (message: string) => {
-    await reload();
-    setToast(message);
+    const previousHeadEventId =
+      snapshot?.activity.kind === "ready"
+        ? snapshot.activity.data.items[0]?.eventId
+        : undefined;
+    const next = await reloadSnapshot();
+    const head =
+      next?.activity.kind === "ready" ? next.activity.data.items[0] : undefined;
+    const undoCommandId =
+      head !== undefined &&
+      head.eventId !== previousHeadEventId &&
+      head.activityType !== "command_undone"
+        ? head.targetCommandId
+        : undefined;
+    pushToast({
+      message,
+      ...(undoCommandId === undefined ? {} : { undoCommandId }),
+    });
   };
 
   const openUndo = async (
@@ -1517,17 +2128,30 @@ export const RealApp = ({
   };
 
   const navKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    if (
+      event.key !== "ArrowDown" &&
+      event.key !== "ArrowUp" &&
+      event.key !== "Home" &&
+      event.key !== "End"
+    )
+      return;
     event.preventDefault();
     const buttons = [
       ...(navRef.current?.querySelectorAll<HTMLButtonElement>(".nav-item") ??
         []),
     ];
+    if (buttons.length === 0) return;
     const current = buttons.indexOf(
       document.activeElement as HTMLButtonElement,
     );
-    const delta = event.key === "ArrowDown" ? 1 : -1;
-    buttons[(current + delta + buttons.length) % buttons.length]?.focus();
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? buttons.length - 1
+          : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) %
+            buttons.length;
+    buttons[nextIndex]?.focus();
   };
 
   const tabKeyDown = (
@@ -1600,14 +2224,16 @@ export const RealApp = ({
           </button>
         </div>
         {recoveryOpen && client && (
-          <WorkspaceRecovery
-            client={client}
-            workspaceName="Lokalny workspace"
-            recoveredPrevious={false}
-            restoreOnly
-            onClose={() => setRecoveryOpen(false)}
-            onRestored={async () => window.location.reload()}
-          />
+          <Suspense fallback={null}>
+            <WorkspaceRecovery
+              client={client}
+              workspaceName="Lokalny workspace"
+              recoveredPrevious={false}
+              restoreOnly
+              onClose={() => setRecoveryOpen(false)}
+              onRestored={async () => window.location.reload()}
+            />
+          </Suspense>
         )}
       </main>
     );
@@ -1639,15 +2265,22 @@ export const RealApp = ({
   const dataHomeLabel = coordinatedDataHome
     ? `${state.snapshot.dataHome?.descriptor.displayName ?? "Hub"} · skoordynowany`
     : "Local only · dane na tym urządzeniu";
-  const inspectorVisible = Boolean(
-    selectedTask || selectedProject || surface === "meetings",
-  );
+  // Architectural decision (2026-07-18): the inspector column is always
+  // present on wide screens. Without a selection it shows the workspace
+  // context, so the shell grid never shifts between two and three columns.
   return (
     <main
-      className={`desktop-shell wave2-shell${surface === "meetings" ? " meeting-context-shell" : ""}${inspectorVisible ? "" : " no-inspector"}`}
+      className={`desktop-shell wave2-shell${surface === "meetings" ? " meeting-context-shell" : ""}`}
       style={{ ["--inspector-width" as string]: `${inspectorWidth}px` }}
     >
-      <a className="skip-link" href="#main-content">
+      <a
+        className="skip-link"
+        href="#main-content"
+        onClick={(event) => {
+          event.preventDefault();
+          document.getElementById("main-content")?.focus();
+        }}
+      >
         Przejdź do treści
       </a>
       <aside className="sidebar">
@@ -1686,6 +2319,12 @@ export const RealApp = ({
         <button
           className="search-control"
           aria-label={`Szukaj · ${modifierLabel}K`}
+          onFocus={(event) => showRailTip(event.currentTarget, "Szukaj", "K")}
+          onBlur={hideRailTip}
+          onMouseEnter={(event) =>
+            showRailTip(event.currentTarget, "Szukaj", "K")
+          }
+          onMouseLeave={hideRailTip}
           onClick={() => setSearchOpen(true)}
         >
           <Icon name="search" />
@@ -1702,6 +2341,7 @@ export const RealApp = ({
                   <button
                     key={`favorite:${item.id}`}
                     className={`nav-item nav-favorite ${surface === item.id ? "active" : ""}`}
+                    tabIndex={-1}
                     aria-current={surface === item.id ? "page" : undefined}
                     onFocus={() => preloadSurface(item.id)}
                     onMouseEnter={() => preloadSurface(item.id)}
@@ -1726,11 +2366,8 @@ export const RealApp = ({
                   <button
                     key={`recent:${recent.key}`}
                     className="nav-item nav-recent"
-                    onClick={() =>
-                      setNavigation((current) =>
-                        activateShellContext(current, recent.key),
-                      )
-                    }
+                    tabIndex={-1}
+                    {...navHandlers(recent)}
                   >
                     <Icon name={item?.icon ?? "project"} />
                     <span>{recent.label}</span>
@@ -1752,14 +2389,36 @@ export const RealApp = ({
                     <button
                       data-surface={item.id}
                       className={`nav-item ${surface === item.id ? "active" : ""}`}
+                      tabIndex={surface === item.id ? 0 : -1}
                       aria-label={
                         item.id === "tasks"
                           ? `${item.label} · ${tasks.length}`
                           : item.label
                       }
                       aria-current={surface === item.id ? "page" : undefined}
-                      onFocus={() => preloadSurface(item.id)}
-                      onMouseEnter={() => preloadSurface(item.id)}
+                      title={
+                        railMode || item.shortcut === undefined
+                          ? undefined
+                          : `${item.label} · ${modifierLabel}${item.shortcut}`
+                      }
+                      onFocus={(event) => {
+                        preloadSurface(item.id);
+                        showRailTip(
+                          event.currentTarget,
+                          item.label,
+                          item.shortcut,
+                        );
+                      }}
+                      onBlur={hideRailTip}
+                      onMouseEnter={(event) => {
+                        preloadSurface(item.id);
+                        showRailTip(
+                          event.currentTarget,
+                          item.label,
+                          item.shortcut,
+                        );
+                      }}
+                      onMouseLeave={hideRailTip}
                       {...navHandlers(destinationContext(item.id, item.label))}
                     >
                       <Icon name={item.icon} />
@@ -1770,7 +2429,7 @@ export const RealApp = ({
                         state.snapshot.attention.kind === "ready" &&
                         state.snapshot.attention.data.unreadCount > 0 ? (
                         <span
-                          className="nav-count"
+                          className="nav-count nav-count--attention"
                           aria-label={`${state.snapshot.attention.data.unreadCount} nieprzeczytanych`}
                         >
                           {state.snapshot.attention.data.unreadCount}
@@ -1785,6 +2444,7 @@ export const RealApp = ({
                     <button
                       type="button"
                       className="nav-favorite-toggle"
+                      tabIndex={-1}
                       aria-label={`${favorites.includes(item.id) ? "Usuń" : "Dodaj"} ${item.label} ${favorites.includes(item.id) ? "z" : "do"} ulubionych`}
                       aria-pressed={favorites.includes(item.id)}
                       onClick={() =>
@@ -1880,17 +2540,20 @@ export const RealApp = ({
             role="tablist"
             aria-label="Konteksty"
           >
-            {navigation.tabs.map((tab) => {
+            {navigation.tabs.map((tab, index) => {
               const active = tab.key === navigation.activeKey;
               return (
                 <div
                   className={`shell-tab ${active ? "active" : ""}`}
+                  role="presentation"
                   key={tab.key}
                 >
                   <button
                     type="button"
                     role="tab"
+                    id={`shell-tab-${index}`}
                     aria-selected={active}
+                    aria-controls="main-content"
                     tabIndex={active ? 0 : -1}
                     data-shell-tab={tab.key}
                     onKeyDown={(event) => tabKeyDown(event, tab.key)}
@@ -1948,7 +2611,18 @@ export const RealApp = ({
             {detachedWindow ? "Dołącz z powrotem" : "Osobne okno"}
           </button>
         </div>
-        <div className="work-surface wave2-work" id="main-content">
+        <div
+          className="work-surface wave2-work"
+          id="main-content"
+          role="tabpanel"
+          tabIndex={-1}
+          aria-labelledby={`shell-tab-${Math.max(
+            0,
+            navigation.tabs.findIndex(
+              (tab) => tab.key === navigation.activeKey,
+            ),
+          )}`}
+        >
           {notice && (
             <div
               className={`notice notice-${notice.kind}`}
@@ -2000,6 +2674,8 @@ export const RealApp = ({
             <CockpitSurface
               client={client}
               snapshot={state.snapshot}
+              selectedTaskId={selectedTaskId}
+              selectedProjectId={selectedProjectId}
               onOpenProject={(id) => {
                 const project =
                   state.snapshot.projects.kind === "ready"
@@ -2009,10 +2685,16 @@ export const RealApp = ({
                     : undefined;
                 openContext(projectContext(id, project?.title ?? "Projekt"));
               }}
-              onSelectTask={(id) => {
+              onSelectProject={selectProjectInInspector}
+              onOpenTask={(id) => {
                 const task = tasks.find((item) => item.id === id);
                 openContext(taskContext(id, task?.title ?? "Zadanie"));
               }}
+              onSelectTask={selectTaskInInspector}
+              onOpenAttention={() =>
+                openContext(destinationContext("attention", "Do uwagi"))
+              }
+              onCapture={openCapture}
             />
           )}
           {surface === "meetings" && client && (
@@ -2027,12 +2709,18 @@ export const RealApp = ({
             </LazySurfaceBoundary>
           )}
           {surface === "relationships" && (
-            <StrategicDepthSurface
-              client={client}
-              snapshot={state.snapshot}
-              onReload={reload}
-              onFailure={showFailure}
-            />
+            <LazySurfaceBoundary label="Relacje">
+              <Suspense fallback={<SurfaceLoadingState label="Relacje" />}>
+                <StrategicDepthSurface
+                  client={client}
+                  snapshot={state.snapshot}
+                  selectedRecordId={selectedStrategicId}
+                  onSelectRecord={selectStrategicInInspector}
+                  onReload={reload}
+                  onFailure={showFailure}
+                />
+              </Suspense>
+            </LazySurfaceBoundary>
           )}
           {surface === "work" && (
             <LazySurfaceBoundary label="Praca">
@@ -2040,6 +2728,16 @@ export const RealApp = ({
                 <WorkSurface
                   client={client}
                   snapshot={state.snapshot}
+                  selectedTaskId={selectedTaskId}
+                  selectedProjectId={selectedProjectId}
+                  selectedContextId={selectedWorkContext?.id}
+                  onSelectTask={selectTaskInInspector}
+                  onOpenTask={(id) => {
+                    const task = tasks.find((item) => item.id === id);
+                    openContext(taskContext(id, task?.title ?? "Zadanie"));
+                  }}
+                  onSelectProject={selectProjectInInspector}
+                  onSelectContext={selectWorkContextInInspector}
                   onReload={reload}
                   onFailure={showFailure}
                 />
@@ -2067,10 +2765,11 @@ export const RealApp = ({
               snapshot={state.snapshot}
               selectedTaskId={selectedTaskId}
               busyTaskId={busyTaskId}
-              onSelectTask={(id) => {
+              onOpenTask={(id) => {
                 const task = tasks.find((item) => item.id === id);
                 openContext(taskContext(id, task?.title ?? "Zadanie"));
               }}
+              onSelectTask={selectTaskInInspector}
               onCapture={openCapture}
               onSetStatus={(id, statusId) => {
                 const task = tasks.find((item) => item.id === id);
@@ -2143,6 +2842,11 @@ export const RealApp = ({
                 <DocumentsSurface
                   client={client}
                   snapshot={state.snapshot}
+                  inspectorHost={documentInspectorHost}
+                  onInspectorOpen={(kind) => {
+                    setDocumentInspectorKind(kind);
+                    setDocumentInspectorOpen(true);
+                  }}
                   onReload={reload}
                   onFailure={showFailure}
                 />
@@ -2285,6 +2989,7 @@ export const RealApp = ({
           {surface === "activity" && (
             <ActivitySurface
               activity={state.snapshot.activity}
+              timezone={state.snapshot.bootstrap.workspace.timezone}
               onUndo={(id) => void openUndo(id)}
             />
           )}
@@ -2292,6 +2997,7 @@ export const RealApp = ({
             <AttentionSurface
               attention={state.snapshot.attention}
               busy={attentionBusy}
+              onRetry={() => void reload()}
               onOpen={(item) => {
                 const destination = item.destination;
                 if (destination.kind === "task") {
@@ -2417,7 +3123,9 @@ export const RealApp = ({
               }}
               onReplaceCapturePayload={(item) => {
                 if (!client?.selectCapturePayload) {
-                  setToast("Wybór pliku jest chwilowo niedostępny.");
+                  pushToast({
+                    message: "Wybór pliku jest chwilowo niedostępny.",
+                  });
                   return;
                 }
                 setAttentionBusy(true);
@@ -2425,9 +3133,10 @@ export const RealApp = ({
                   if (selected.outcome !== "success") {
                     setAttentionBusy(false);
                     if (selected.code !== "cancelled")
-                      setToast(
-                        "Nie udało się przygotować bezpiecznego pliku zastępczego.",
-                      );
+                      pushToast({
+                        message:
+                          "Nie udało się przygotować bezpiecznego pliku zastępczego.",
+                      });
                     return;
                   }
                   const result = await resolveCaptureException(
@@ -2448,154 +3157,160 @@ export const RealApp = ({
             />
           )}
           {surface === "access" && (
-            <AccessSurface
-              access={state.snapshot.access}
-              agentAccess={state.snapshot.agentAccess}
-              agentTransport={
-                state.snapshot.dataHome?.descriptor.providerKind ===
-                "coordinated"
-                  ? "remote_hub"
-                  : "local"
-              }
-              spaces={state.snapshot.bootstrap.spaces}
-              busy={accessBusy}
-              onAdd={(input) => {
-                if (!client) return;
-                setAccessBusy(true);
-                setNotice(undefined);
-                void addWorkspaceMember(client, state.snapshot, input).then(
-                  async (result) => {
-                    setAccessBusy(false);
-                    if (result.kind === "success")
-                      await refreshAfter("Dostęp utworzono.");
-                    else showFailure(result);
-                  },
-                );
-              }}
-              onSetAccess={(member, access) => {
-                if (!client) return;
-                setAccessBusy(true);
-                setNotice(undefined);
-                void setWorkspaceMemberAccess(
-                  client,
-                  state.snapshot,
-                  member,
-                  access,
-                ).then(async (result) => {
-                  setAccessBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter("Zakres dostępu zaktualizowano.");
-                  else showFailure(result);
-                });
-              }}
-              onRevoke={(member) => {
-                if (!client) return;
-                setAccessBusy(true);
-                setNotice(undefined);
-                void revokeWorkspaceMember(client, state.snapshot, member).then(
-                  async (result) => {
-                    setAccessBusy(false);
-                    if (result.kind === "success")
-                      await refreshAfter(
-                        "Dostęp cofnięto. Urządzenia usuną projekcję po synchronizacji.",
-                      );
-                    else showFailure(result);
-                  },
-                );
-              }}
-              onAgentAdd={(input) => {
-                if (!client) return;
-                setAccessBusy(true);
-                setNotice(undefined);
-                const remote =
-                  state.snapshot.dataHome?.descriptor.providerKind ===
-                  "coordinated";
-                void (
-                  remote
-                    ? createRemoteAgentGrant(client, input)
-                    : createAgentGrant(client, state.snapshot, input)
-                ).then(async (result) => {
-                  setAccessBusy(false);
-                  if (result.kind === "success") {
-                    await reload();
-                    setAgentGrantDetails(
-                      "endpoint" in result.data
-                        ? {
-                            title: "Zdalny dostęp MCP utworzono",
-                            descriptorLabel: "Chroniony plik konfiguracji",
-                            descriptorPath: result.data.descriptorPath,
-                            connectionLabel: "Endpoint",
-                            connectionValue: result.data.endpoint,
-                          }
-                        : {
-                            title: "Dostęp MCP utworzono",
-                            descriptorLabel: "Plik dostępu",
-                            descriptorPath: result.data.descriptorPath,
-                            connectionLabel: "Adapter hosta",
-                            connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
-                          },
+            <LazySurfaceBoundary label="Dostęp">
+              <Suspense fallback={<SurfaceLoadingState label="Dostęp" />}>
+                <AccessSurface
+                  access={state.snapshot.access}
+                  agentAccess={state.snapshot.agentAccess}
+                  agentTransport={
+                    state.snapshot.dataHome?.descriptor.providerKind ===
+                    "coordinated"
+                      ? "remote_hub"
+                      : "local"
+                  }
+                  spaces={state.snapshot.bootstrap.spaces}
+                  busy={accessBusy}
+                  onAdd={(input) => {
+                    if (!client) return;
+                    setAccessBusy(true);
+                    setNotice(undefined);
+                    void addWorkspaceMember(client, state.snapshot, input).then(
+                      async (result) => {
+                        setAccessBusy(false);
+                        if (result.kind === "success")
+                          await refreshAfter("Dostęp utworzono.");
+                        else showFailure(result);
+                      },
                     );
-                  } else showFailure(result);
-                });
-              }}
-              onAgentRotate={(grant) => {
-                if (!client) return;
-                setAccessBusy(true);
-                setNotice(undefined);
-                const remote =
-                  state.snapshot.dataHome?.descriptor.providerKind ===
-                  "coordinated";
-                void (
-                  remote
-                    ? rotateRemoteAgentCredential(client, grant)
-                    : rotateAgentCredential(client, state.snapshot, grant)
-                ).then(async (result) => {
-                  setAccessBusy(false);
-                  if (result.kind === "success") {
-                    await reload();
-                    setAgentGrantDetails(
-                      "endpoint" in result.data
-                        ? {
-                            title: "Zdalne poświadczenie obrócono",
-                            descriptorLabel: "Chroniony plik konfiguracji",
-                            descriptorPath: result.data.descriptorPath,
-                            connectionLabel: "Endpoint",
-                            connectionValue: result.data.endpoint,
-                          }
-                        : {
-                            title: "Poświadczenie obrócono",
-                            descriptorLabel: "Plik dostępu",
-                            descriptorPath: result.data.descriptorPath,
-                            connectionLabel: "Adapter hosta",
-                            connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
-                          },
-                    );
-                  } else showFailure(result);
-                });
-              }}
-              onAgentRevoke={(grant) => {
-                if (!client) return;
-                setAccessBusy(true);
-                setNotice(undefined);
-                const remote =
-                  state.snapshot.dataHome?.descriptor.providerKind ===
-                  "coordinated";
-                void (
-                  remote
-                    ? revokeRemoteAgentGrant(client, grant)
-                    : revokeAgentGrant(client, state.snapshot, grant)
-                ).then(async (result) => {
-                  setAccessBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter(
+                  }}
+                  onSetAccess={(member, access) => {
+                    if (!client) return;
+                    setAccessBusy(true);
+                    setNotice(undefined);
+                    void setWorkspaceMemberAccess(
+                      client,
+                      state.snapshot,
+                      member,
+                      access,
+                    ).then(async (result) => {
+                      setAccessBusy(false);
+                      if (result.kind === "success")
+                        await refreshAfter("Zakres dostępu zaktualizowano.");
+                      else showFailure(result);
+                    });
+                  }}
+                  onRevoke={(member) => {
+                    if (!client) return;
+                    setAccessBusy(true);
+                    setNotice(undefined);
+                    void revokeWorkspaceMember(
+                      client,
+                      state.snapshot,
+                      member,
+                    ).then(async (result) => {
+                      setAccessBusy(false);
+                      if (result.kind === "success")
+                        await refreshAfter(
+                          "Dostęp cofnięto. Urządzenia usuną projekcję po synchronizacji.",
+                        );
+                      else showFailure(result);
+                    });
+                  }}
+                  onAgentAdd={(input) => {
+                    if (!client) return;
+                    setAccessBusy(true);
+                    setNotice(undefined);
+                    const remote =
+                      state.snapshot.dataHome?.descriptor.providerKind ===
+                      "coordinated";
+                    void (
                       remote
-                        ? "Zdalny dostęp agenta cofnięto, a chroniony plik konfiguracji usunięto."
-                        : "Dostęp agenta cofnięto, a lokalne poświadczenie usunięto.",
-                    );
-                  else showFailure(result);
-                });
-              }}
-            />
+                        ? createRemoteAgentGrant(client, input)
+                        : createAgentGrant(client, state.snapshot, input)
+                    ).then(async (result) => {
+                      setAccessBusy(false);
+                      if (result.kind === "success") {
+                        await reload();
+                        setAgentGrantDetails(
+                          "endpoint" in result.data
+                            ? {
+                                title: "Zdalny dostęp MCP utworzono",
+                                descriptorLabel: "Chroniony plik konfiguracji",
+                                descriptorPath: result.data.descriptorPath,
+                                connectionLabel: "Endpoint",
+                                connectionValue: result.data.endpoint,
+                              }
+                            : {
+                                title: "Dostęp MCP utworzono",
+                                descriptorLabel: "Plik dostępu",
+                                descriptorPath: result.data.descriptorPath,
+                                connectionLabel: "Adapter hosta",
+                                connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                              },
+                        );
+                      } else showFailure(result);
+                    });
+                  }}
+                  onAgentRotate={(grant) => {
+                    if (!client) return;
+                    setAccessBusy(true);
+                    setNotice(undefined);
+                    const remote =
+                      state.snapshot.dataHome?.descriptor.providerKind ===
+                      "coordinated";
+                    void (
+                      remote
+                        ? rotateRemoteAgentCredential(client, grant)
+                        : rotateAgentCredential(client, state.snapshot, grant)
+                    ).then(async (result) => {
+                      setAccessBusy(false);
+                      if (result.kind === "success") {
+                        await reload();
+                        setAgentGrantDetails(
+                          "endpoint" in result.data
+                            ? {
+                                title: "Zdalne poświadczenie obrócono",
+                                descriptorLabel: "Chroniony plik konfiguracji",
+                                descriptorPath: result.data.descriptorPath,
+                                connectionLabel: "Endpoint",
+                                connectionValue: result.data.endpoint,
+                              }
+                            : {
+                                title: "Poświadczenie obrócono",
+                                descriptorLabel: "Plik dostępu",
+                                descriptorPath: result.data.descriptorPath,
+                                connectionLabel: "Adapter hosta",
+                                connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                              },
+                        );
+                      } else showFailure(result);
+                    });
+                  }}
+                  onAgentRevoke={(grant) => {
+                    if (!client) return;
+                    setAccessBusy(true);
+                    setNotice(undefined);
+                    const remote =
+                      state.snapshot.dataHome?.descriptor.providerKind ===
+                      "coordinated";
+                    void (
+                      remote
+                        ? revokeRemoteAgentGrant(client, grant)
+                        : revokeAgentGrant(client, state.snapshot, grant)
+                    ).then(async (result) => {
+                      setAccessBusy(false);
+                      if (result.kind === "success")
+                        await refreshAfter(
+                          remote
+                            ? "Zdalny dostęp agenta cofnięto, a chroniony plik konfiguracji usunięto."
+                            : "Dostęp agenta cofnięto, a lokalne poświadczenie usunięto.",
+                        );
+                      else showFailure(result);
+                    });
+                  }}
+                />
+              </Suspense>
+            </LazySurfaceBoundary>
           )}
         </div>
 
@@ -2610,333 +3325,448 @@ export const RealApp = ({
         </div>
       </section>
 
-      {inspectorVisible && (
-        <aside
-          className={`inspector${surface === "meetings" ? " inspector--meeting" : ""}${selectedTask || selectedProject || (surface === "meetings" && meetingInspectorOpen) ? " open" : ""}`}
-          aria-label="Podgląd kontekstu"
+      {narrowShell && inspectorDetailOpen && (
+        <div
+          className="inspector-scrim"
+          aria-hidden="true"
+          onClick={dismissInspector}
+        />
+      )}
+      <aside
+        className={`inspector${surface === "meetings" ? " inspector--meeting" : ""}${inspectorDetailOpen ? " open" : ""}`}
+        aria-label="Podgląd kontekstu"
+      >
+        <div
+          className="inspector-resize"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Zmień szerokość panelu podglądu"
+          aria-valuemin={280}
+          aria-valuemax={640}
+          aria-valuenow={inspectorWidth}
+          title="Podwójne kliknięcie przywraca domyślną szerokość"
+          tabIndex={0}
+          onPointerDown={beginInspectorResize}
+          onPointerMove={moveInspectorResize}
+          onPointerUp={endInspectorResize}
+          onPointerCancel={endInspectorResize}
+          onDoubleClick={() => setInspectorWidth(320)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") {
+              event.preventDefault();
+              setInspectorWidth((width) => Math.min(640, width + 16));
+            } else if (event.key === "ArrowRight") {
+              event.preventDefault();
+              setInspectorWidth((width) => Math.max(280, width - 16));
+            }
+          }}
+        />
+        <header
+          className="inspector-header"
+          tabIndex={-1}
+          ref={inspectorDrawer.focusTargetRef}
         >
-          <div
-            className="inspector-resize"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Zmień szerokość panelu podglądu"
-            tabIndex={0}
-            onMouseDown={startInspectorResize}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowLeft") {
-                event.preventDefault();
-                setInspectorWidth((width) => Math.min(640, width + 16));
-              } else if (event.key === "ArrowRight") {
-                event.preventDefault();
-                setInspectorWidth((width) => Math.max(280, width - 16));
+          <div>
+            <span>Podgląd kontekstu</span>
+            <small>
+              {selectedTask
+                ? "Zadanie"
+                : selectedProject
+                  ? "Projekt"
+                  : selectedWorkContextRecord
+                    ? selectedWorkContextRecord.kind === "area"
+                      ? "Obszar odpowiedzialności"
+                      : "Inicjatywa"
+                    : selectedStrategicRecord
+                      ? (recordKindLabels[selectedStrategicRecord.kind] ??
+                        "Rekord strategiczny")
+                      : surface === "meetings"
+                        ? "Wynik Jamie"
+                        : surface === "documents"
+                          ? documentInspectorKind === "source"
+                            ? "Źródło"
+                            : "Dokument"
+                          : "Workspace"}
+            </small>
+          </div>
+          {(selectedTask ||
+            selectedProject ||
+            selectedWorkContextRecord ||
+            selectedStrategicRecord) && (
+            <button
+              className="icon-button"
+              aria-label="Zamknij podgląd kontekstu"
+              onClick={() => {
+                const item = navItems.find((entry) => entry.id === surface);
+                setSelectedTaskId(undefined);
+                setSelectedProjectId(undefined);
+                setSelectedWorkContext(undefined);
+                setSelectedStrategicId(undefined);
+                openContext(
+                  destinationContext(
+                    surface,
+                    item?.label ?? activeContext.label,
+                  ),
+                );
+              }}
+            >
+              <Icon name="close" />
+            </button>
+          )}
+          {(surface === "meetings" || surface === "documents") && (
+            <button
+              className="icon-button surface-inspector-close"
+              aria-label={
+                surface === "meetings"
+                  ? "Zamknij szczegóły spotkania"
+                  : "Zamknij szczegóły dokumentu"
               }
-            }}
+              onClick={() =>
+                surface === "meetings"
+                  ? setMeetingInspectorOpen(false)
+                  : setDocumentInspectorOpen(false)
+              }
+            >
+              <Icon name="close" />
+            </button>
+          )}
+        </header>
+        {surface === "meetings" ? (
+          <div
+            className="surface-inspector-host"
+            ref={setMeetingInspectorHost}
           />
-          <header className="inspector-header">
-            <div>
-              <span>Podgląd kontekstu</span>
-              <small>
-                {selectedTask
-                  ? "Zadanie"
-                  : selectedProject
-                    ? "Projekt"
-                    : surface === "meetings"
-                      ? "Wynik Jamie"
-                      : "Workspace"}
-              </small>
-            </div>
-            {(selectedTask || selectedProject) && (
-              <button
-                className="icon-button"
-                aria-label="Zamknij inspector"
-                onClick={() =>
-                  setNavigation((current) =>
-                    closeShellContext(current, current.activeKey),
-                  )
-                }
-              >
-                <Icon name="close" />
-              </button>
-            )}
-            {surface === "meetings" && (
-              <button
-                className="icon-button meeting-inspector-close"
-                aria-label="Zamknij szczegóły spotkania"
-                onClick={() => setMeetingInspectorOpen(false)}
-              >
-                <Icon name="close" />
-              </button>
-            )}
-          </header>
-          {surface === "meetings" ? (
-            <div
-              className="meeting-inspector-host"
-              ref={setMeetingInspectorHost}
-            />
-          ) : selectedTask ? (
-            <div className="inspector-body">
-              <span className="record-status">
-                <i />
-                {selectedTask.completionState === "completed"
-                  ? "Ukończone"
-                  : selectedTask.status.label}
-              </span>
-              <h2>{selectedTask.title}</h2>
-              <p className="record-summary">
-                {sourceCapture
-                  ? "Utworzone z zachowanego Capture."
-                  : "Zadanie w aktywnym workspace."}
+        ) : surface === "documents" ? (
+          <div
+            className="surface-inspector-host"
+            ref={setDocumentInspectorHost}
+          />
+        ) : selectedTask ? (
+          <div className="inspector-body">
+            <span className="record-status">
+              <i />
+              {selectedTask.completionState === "completed"
+                ? "Ukończone"
+                : selectedTask.status.label}
+            </span>
+            <h2>{selectedTask.title}</h2>
+            <p className="record-summary">
+              {sourceCapture
+                ? "Utworzone z zachowanego Capture."
+                : "Zadanie w aktywnym workspace."}
+            </p>
+            <section className="inspector-section assignment-block">
+              <p className="section-label">Odpowiedzialność</p>
+              <p>
+                {selectedTask.assignment?.displayName ?? "Nieprzypisane"}
+                {selectedTask.assignment?.availability === "former_member"
+                  ? " · dostęp cofnięty"
+                  : ""}
               </p>
-              <section className="inspector-section assignment-block">
-                <p className="section-label">Odpowiedzialność</p>
-                <p>
-                  {selectedTask.assignment?.displayName ?? "Nieprzypisane"}
-                  {selectedTask.assignment?.availability === "former_member"
-                    ? " · dostęp cofnięty"
-                    : ""}
-                </p>
-              </section>
-              <section className="inspector-section provenance-block">
-                <p className="section-label">Pochodzenie z Capture</p>
-                {sourceCapture ? (
-                  <>
-                    <blockquote>{sourceCapture.originalText}</blockquote>
-                    <p>Quick Capture · oryginał zachowany</p>
-                  </>
-                ) : (
-                  <p>Brak powiązanego źródła Capture.</p>
-                )}
-              </section>
-              <section className="inspector-section audit-block">
-                <p className="section-label">Ślad audytowy</p>
-                {receipt ? (
-                  <dl>
-                    <div>
-                      <dt>Polecenie</dt>
-                      <dd>{receipt.commandName}</dd>
-                    </div>
-                    <div>
-                      <dt>Receipt</dt>
-                      <dd className="mono">{receipt.id.slice(0, 18)}…</dd>
-                    </div>
-                  </dl>
-                ) : (
-                  <p>
-                    Pełne potwierdzenie operacji pozostaje w lokalnym rdzeniu
-                    danych.
-                  </p>
-                )}
-              </section>
-              <CommentsPanel
-                comments={comments}
-                candidates={state.snapshot.mentionCandidates}
-                currentPrincipalId={currentPrincipalId}
-                canComment={Boolean(canComment)}
-                canResolve={Boolean(canResolveComments)}
-                busy={commentBusy}
-                onAdd={(body, mentions, parent) => {
-                  if (!client) return;
-                  setCommentBusy(true);
-                  void addComment(
-                    client,
-                    state.snapshot,
-                    { kind: "task", taskId: selectedTask.id },
-                    selectedTask.version,
-                    body,
-                    mentions,
-                    parent,
-                  ).then(async (result) => {
-                    setCommentBusy(false);
-                    if (result.kind === "success") {
-                      const data = await loadComments(client, state.snapshot, {
-                        kind: "task",
-                        taskId: selectedTask.id,
-                      });
-                      setComments({ kind: "ready", data });
-                      setToast("Komentarz zapisano.");
-                    } else showFailure(result);
-                  });
-                }}
-                onEdit={(comment, body) => {
-                  if (!client) return;
-                  setCommentBusy(true);
-                  void editComment(
-                    client,
-                    state.snapshot,
-                    comment.id,
-                    comment.version,
-                    body,
-                    comment.mentionPrincipalIds,
-                  ).then(async (result) => {
-                    setCommentBusy(false);
-                    if (result.kind === "success") {
-                      const data = await loadComments(client, state.snapshot, {
-                        kind: "task",
-                        taskId: selectedTask.id,
-                      });
-                      setComments({ kind: "ready", data });
-                    } else showFailure(result);
-                  });
-                }}
-                onResolve={(comment, resolved) => {
-                  if (!client) return;
-                  setCommentBusy(true);
-                  void setCommentResolved(
-                    client,
-                    state.snapshot,
-                    comment,
-                    resolved,
-                  ).then(async (result) => {
-                    setCommentBusy(false);
-                    if (result.kind === "success") {
-                      const data = await loadComments(client, state.snapshot, {
-                        kind: "task",
-                        taskId: selectedTask.id,
-                      });
-                      setComments({ kind: "ready", data });
-                    } else showFailure(result);
-                  });
-                }}
-              />
-            </div>
-          ) : selectedProject ? (
-            <div className="inspector-body">
-              <span className="record-status">
-                <i />
-                {selectedProject.lifecycle === "active"
-                  ? "Aktywny"
-                  : selectedProject.lifecycle}
-              </span>
-              <h2>{selectedProject.title}</h2>
-              <p className="record-summary">
-                Projekt w aktywnym workspace i bieżącym zakresie Space.
-              </p>
-              <section className="inspector-section provenance-block">
-                <p className="section-label">Zamierzony wynik</p>
-                <blockquote>{selectedProject.intendedOutcome}</blockquote>
-                <p>Wynik pozostaje częścią wersjonowanego rekordu Projektu.</p>
-              </section>
-              <section className="inspector-section">
-                <p className="section-label">Kontekst pracy</p>
-                <dl className="record-fields">
+            </section>
+            <section className="inspector-section provenance-block">
+              <p className="section-label">Pochodzenie z Capture</p>
+              {sourceCapture ? (
+                <>
+                  <blockquote>{sourceCapture.originalText}</blockquote>
+                  <p>Quick Capture · oryginał zachowany</p>
+                </>
+              ) : (
+                <p>Brak powiązanego źródła Capture.</p>
+              )}
+            </section>
+            <section className="inspector-section audit-block">
+              <p className="section-label">Ślad audytowy</p>
+              {receipt ? (
+                <dl>
                   <div>
-                    <dt>Otwarte</dt>
-                    <dd>{selectedProject.relatedOpenTaskCount} zadań</dd>
+                    <dt>Polecenie</dt>
+                    <dd>{receipt.commandName}</dd>
                   </div>
                   <div>
-                    <dt>Wersja</dt>
-                    <dd>
-                      {projectOverview?.project.version ??
-                        selectedProject.version}
-                    </dd>
+                    <dt>Receipt</dt>
+                    <dd className="mono">{receipt.id.slice(0, 18)}…</dd>
                   </div>
                 </dl>
-              </section>
-              <CommentsPanel
-                comments={comments}
-                candidates={state.snapshot.mentionCandidates}
-                currentPrincipalId={currentPrincipalId}
-                canComment={Boolean(canComment)}
-                canResolve={Boolean(canResolveComments)}
-                busy={commentBusy}
-                onAdd={(body, mentions, parent) => {
-                  if (!client) return;
-                  setCommentBusy(true);
-                  void addComment(
-                    client,
-                    state.snapshot,
-                    { kind: "project", projectId: selectedProject.id },
-                    projectOverview?.project.version ?? selectedProject.version,
-                    body,
-                    mentions,
-                    parent,
-                  ).then(async (result) => {
-                    setCommentBusy(false);
-                    if (result.kind === "success") {
-                      const data = await loadComments(client, state.snapshot, {
-                        kind: "project",
-                        projectId: selectedProject.id,
-                      });
-                      setComments({ kind: "ready", data });
-                      setToast("Komentarz zapisano.");
-                    } else showFailure(result);
-                  });
-                }}
-                onEdit={(comment, body) => {
-                  if (!client) return;
-                  setCommentBusy(true);
-                  void editComment(
-                    client,
-                    state.snapshot,
-                    comment.id,
-                    comment.version,
-                    body,
-                    comment.mentionPrincipalIds,
-                  ).then(async (result) => {
-                    setCommentBusy(false);
-                    if (result.kind === "success") {
-                      const data = await loadComments(client, state.snapshot, {
-                        kind: "project",
-                        projectId: selectedProject.id,
-                      });
-                      setComments({ kind: "ready", data });
-                    } else showFailure(result);
-                  });
-                }}
-                onResolve={(comment, resolved) => {
-                  if (!client) return;
-                  setCommentBusy(true);
-                  void setCommentResolved(
-                    client,
-                    state.snapshot,
-                    comment,
-                    resolved,
-                  ).then(async (result) => {
-                    setCommentBusy(false);
-                    if (result.kind === "success") {
-                      const data = await loadComments(client, state.snapshot, {
-                        kind: "project",
-                        projectId: selectedProject.id,
-                      });
-                      setComments({ kind: "ready", data });
-                    } else showFailure(result);
-                  });
-                }}
-              />
-            </div>
-          ) : (
-            <div className="inspector-empty workspace-context">
-              <BrandMark />
-              <p className="eyebrow">Aktywny kontekst</p>
-              <h2>{bootstrap.workspace.name}</h2>
-              <p>
-                Root Space ·{" "}
-                {coordinatedDataHome
-                  ? "skoordynowany Data Home"
-                  : "lokalne źródło danych"}
-              </p>
-              <dl>
+              ) : (
+                <p>
+                  Pełne potwierdzenie operacji pozostaje w lokalnym rdzeniu
+                  danych.
+                </p>
+              )}
+            </section>
+            <CommentsPanel
+              key={`task-${selectedTask.id}`}
+              comments={comments}
+              candidates={state.snapshot.mentionCandidates}
+              currentPrincipalId={currentPrincipalId}
+              canComment={Boolean(canComment)}
+              canResolve={Boolean(canResolveComments)}
+              busy={commentBusy}
+              onAdd={(body, mentions, parent) => {
+                if (!client) return Promise.resolve(false);
+                setCommentBusy(true);
+                return addComment(
+                  client,
+                  state.snapshot,
+                  { kind: "task", taskId: selectedTask.id },
+                  selectedTask.version,
+                  body,
+                  mentions,
+                  parent,
+                ).then(async (result) => {
+                  setCommentBusy(false);
+                  if (result.kind === "success") {
+                    const data = await loadComments(client, state.snapshot, {
+                      kind: "task",
+                      taskId: selectedTask.id,
+                    });
+                    setComments({ kind: "ready", data });
+                    pushToast({ message: "Komentarz zapisano." });
+                    return true;
+                  }
+                  showFailure(result);
+                  return false;
+                });
+              }}
+              onEdit={(comment, body) => {
+                if (!client) return Promise.resolve(false);
+                setCommentBusy(true);
+                return editComment(
+                  client,
+                  state.snapshot,
+                  comment.id,
+                  comment.version,
+                  body,
+                  comment.mentionPrincipalIds,
+                ).then(async (result) => {
+                  setCommentBusy(false);
+                  if (result.kind === "success") {
+                    const data = await loadComments(client, state.snapshot, {
+                      kind: "task",
+                      taskId: selectedTask.id,
+                    });
+                    setComments({ kind: "ready", data });
+                    return true;
+                  }
+                  showFailure(result);
+                  return false;
+                });
+              }}
+              onResolve={(comment, resolved) => {
+                if (!client) return;
+                setCommentBusy(true);
+                void setCommentResolved(
+                  client,
+                  state.snapshot,
+                  comment,
+                  resolved,
+                ).then(async (result) => {
+                  setCommentBusy(false);
+                  if (result.kind === "success") {
+                    const data = await loadComments(client, state.snapshot, {
+                      kind: "task",
+                      taskId: selectedTask.id,
+                    });
+                    setComments({ kind: "ready", data });
+                  } else showFailure(result);
+                });
+              }}
+            />
+          </div>
+        ) : selectedProject ? (
+          <div className="inspector-body">
+            <span className="record-status">
+              <i />
+              {selectedProject.lifecycle === "active"
+                ? "Aktywny"
+                : selectedProject.lifecycle}
+            </span>
+            <h2>{selectedProject.title}</h2>
+            <p className="record-summary">
+              Projekt w aktywnym workspace i bieżącym zakresie Space.
+            </p>
+            <section className="inspector-section provenance-block">
+              <p className="section-label">Zamierzony wynik</p>
+              <blockquote>{selectedProject.intendedOutcome}</blockquote>
+              <p>Wynik pozostaje częścią wersjonowanego rekordu Projektu.</p>
+            </section>
+            <section className="inspector-section">
+              <p className="section-label">Kontekst pracy</p>
+              <dl className="record-fields">
                 <div>
-                  <dt>Tryb</dt>
+                  <dt>Otwarte</dt>
+                  <dd>{selectedProject.relatedOpenTaskCount} zadań</dd>
+                </div>
+                <div>
+                  <dt>Wersja</dt>
                   <dd>
-                    {coordinatedDataHome
-                      ? "Hub + zaszyfrowana kopia robocza"
-                      : build.persistence === "encrypted-local"
-                        ? "Zaszyfrowany zapis lokalny"
-                        : "Podgląd deweloperski"}
+                    {projectOverview?.project.version ??
+                      selectedProject.version}
                   </dd>
                 </div>
-                <div>
-                  <dt>Stan</dt>
-                  <dd>Gotowy</dd>
-                </div>
               </dl>
-            </div>
-          )}
-        </aside>
-      )}
+            </section>
+            <CommentsPanel
+              key={`project-${selectedProject.id}`}
+              comments={comments}
+              candidates={state.snapshot.mentionCandidates}
+              currentPrincipalId={currentPrincipalId}
+              canComment={Boolean(canComment)}
+              canResolve={Boolean(canResolveComments)}
+              busy={commentBusy}
+              onAdd={(body, mentions, parent) => {
+                if (!client) return Promise.resolve(false);
+                setCommentBusy(true);
+                return addComment(
+                  client,
+                  state.snapshot,
+                  { kind: "project", projectId: selectedProject.id },
+                  projectOverview?.project.version ?? selectedProject.version,
+                  body,
+                  mentions,
+                  parent,
+                ).then(async (result) => {
+                  setCommentBusy(false);
+                  if (result.kind === "success") {
+                    const data = await loadComments(client, state.snapshot, {
+                      kind: "project",
+                      projectId: selectedProject.id,
+                    });
+                    setComments({ kind: "ready", data });
+                    pushToast({ message: "Komentarz zapisano." });
+                    return true;
+                  }
+                  showFailure(result);
+                  return false;
+                });
+              }}
+              onEdit={(comment, body) => {
+                if (!client) return Promise.resolve(false);
+                setCommentBusy(true);
+                return editComment(
+                  client,
+                  state.snapshot,
+                  comment.id,
+                  comment.version,
+                  body,
+                  comment.mentionPrincipalIds,
+                ).then(async (result) => {
+                  setCommentBusy(false);
+                  if (result.kind === "success") {
+                    const data = await loadComments(client, state.snapshot, {
+                      kind: "project",
+                      projectId: selectedProject.id,
+                    });
+                    setComments({ kind: "ready", data });
+                    return true;
+                  }
+                  showFailure(result);
+                  return false;
+                });
+              }}
+              onResolve={(comment, resolved) => {
+                if (!client) return;
+                setCommentBusy(true);
+                void setCommentResolved(
+                  client,
+                  state.snapshot,
+                  comment,
+                  resolved,
+                ).then(async (result) => {
+                  setCommentBusy(false);
+                  if (result.kind === "success") {
+                    const data = await loadComments(client, state.snapshot, {
+                      kind: "project",
+                      projectId: selectedProject.id,
+                    });
+                    setComments({ kind: "ready", data });
+                  } else showFailure(result);
+                });
+              }}
+            />
+          </div>
+        ) : selectedWorkContextRecord ? (
+          <div className="inspector-body">
+            <span className="record-status">
+              <i />
+              {selectedWorkContextRecord.stateLabel}
+            </span>
+            <h2>{selectedWorkContextRecord.title}</h2>
+            <p className="record-summary">
+              {selectedWorkContextRecord.kind === "area"
+                ? "Trwała odpowiedzialność w modelu pracy."
+                : "Inicjatywa z wynikiem do zamknięcia."}
+            </p>
+            <section className="inspector-section provenance-block">
+              <p className="section-label">
+                {selectedWorkContextRecord.kind === "area"
+                  ? "Stała odpowiedzialność"
+                  : "Zamierzony wynik"}
+              </p>
+              <blockquote>{selectedWorkContextRecord.detail}</blockquote>
+              <p>
+                {selectedWorkContextRecord.kind === "area"
+                  ? "Obszar nie ma daty końca; zamyka się projektami."
+                  : "Inicjatywę zamyka osiągnięcie tego wyniku."}
+              </p>
+            </section>
+          </div>
+        ) : selectedStrategicRecord ? (
+          <StrategicRecordInspector
+            record={selectedStrategicRecord}
+            records={
+              state.snapshot.relationships.kind === "ready"
+                ? state.snapshot.relationships.data.records
+                : []
+            }
+            projects={
+              state.snapshot.projects.kind === "ready"
+                ? state.snapshot.projects.data.items
+                : []
+            }
+            onSelectRecord={selectStrategicInInspector}
+            onOpenProject={(id, title) =>
+              openContext(projectContext(id, title))
+            }
+          />
+        ) : (
+          <div className="inspector-empty workspace-context">
+            <BrandMark />
+            <p className="eyebrow">Aktywny kontekst</p>
+            <h2>{bootstrap.workspace.name}</h2>
+            <p>
+              Root Space ·{" "}
+              {coordinatedDataHome
+                ? "skoordynowany Data Home"
+                : "lokalne źródło danych"}
+            </p>
+            <dl>
+              <div>
+                <dt>Tryb</dt>
+                <dd>
+                  {coordinatedDataHome
+                    ? "Hub + zaszyfrowana kopia robocza"
+                    : build.persistence === "encrypted-local"
+                      ? "Zaszyfrowany zapis lokalny"
+                      : "Podgląd deweloperski"}
+                </dd>
+              </div>
+              <div>
+                <dt>Stan</dt>
+                <dd>Gotowy</dd>
+              </div>
+            </dl>
+          </div>
+        )}
+      </aside>
 
-      {(selectedTask || selectedProject || surface === "meetings") && (
+      {(selectedTask ||
+        selectedProject ||
+        selectedWorkContextRecord ||
+        selectedStrategicRecord ||
+        surface === "meetings" ||
+        surface === "documents") && (
         <span className="context-thread" aria-hidden="true" />
       )}
       {captureOpen && (
@@ -2986,15 +3816,16 @@ export const RealApp = ({
               openContext(destinationContext("documents", "Dokumenty"));
             }
             setCaptureOpen(false);
-            setToast(
-              captureResult.kind === "task"
-                ? "Capture zapisano jako zadanie."
-                : captureResult.kind === "knowledge_source"
-                  ? "Capture zapisano jako źródło wiedzy."
-                  : captureResult.kind === "voice_note"
-                    ? "Notatka głosowa jest bezpieczna i czeka na transkrypcję agenta."
-                    : "Capture wymaga decyzji i trafił do Attention.",
-            );
+            pushToast({
+              message:
+                captureResult.kind === "task"
+                  ? "Capture zapisano jako zadanie."
+                  : captureResult.kind === "knowledge_source"
+                    ? "Capture zapisano jako źródło wiedzy."
+                    : captureResult.kind === "voice_note"
+                      ? "Notatka głosowa jest bezpieczna i czeka na transkrypcję agenta."
+                      : "Capture wymaga decyzji i trafił do Attention.",
+            });
             return undefined;
           }}
         />
@@ -3060,33 +3891,39 @@ export const RealApp = ({
         />
       )}
       {onboardingOpen && client && (
-        <OnboardingFlow
-          client={client}
-          snapshot={state.snapshot}
-          onComplete={async () => {
-            setOnboardingOpen(false);
-            await reload();
-          }}
-          onFailure={showFailure}
-        />
+        <Suspense fallback={null}>
+          <OnboardingFlow
+            client={client}
+            snapshot={state.snapshot}
+            onComplete={async () => {
+              setOnboardingOpen(false);
+              await reload();
+            }}
+            onFailure={showFailure}
+          />
+        </Suspense>
       )}
       {recoveryOpen && client && (
-        <WorkspaceRecovery
-          client={client}
-          {...(state.snapshot.dataHome === undefined
-            ? {}
-            : { initialStatus: state.snapshot.dataHome })}
-          workspaceName={bootstrap.workspace.name}
-          recoveredPrevious={
-            build.startupRecovery === "previous_workspace_restored"
-          }
-          onClose={() => setRecoveryOpen(false)}
-          onRestored={async () => {
-            await reload();
-            openContext(destinationContext("cockpit", "Tydzień"));
-            setToast("Workspace przywrócono i otwarto ponownie.");
-          }}
-        />
+        <Suspense fallback={null}>
+          <WorkspaceRecovery
+            client={client}
+            {...(state.snapshot.dataHome === undefined
+              ? {}
+              : { initialStatus: state.snapshot.dataHome })}
+            workspaceName={bootstrap.workspace.name}
+            recoveredPrevious={
+              build.startupRecovery === "previous_workspace_restored"
+            }
+            onClose={() => setRecoveryOpen(false)}
+            onRestored={async () => {
+              await reload();
+              openContext(destinationContext("cockpit", "Tydzień"));
+              pushToast({
+                message: "Workspace przywrócono i otwarto ponownie.",
+              });
+            }}
+          />
+        </Suspense>
       )}
       {agentGrantDetails && (
         <AgentGrantDetailsDialog
@@ -3097,24 +3934,28 @@ export const RealApp = ({
       {navMenu && (
         <div
           className="context-menu-layer"
-          onMouseDown={() => setNavMenu(undefined)}
+          onMouseDown={() => closeNavMenu(false)}
           onContextMenu={(event) => {
             event.preventDefault();
-            setNavMenu(undefined);
+            closeNavMenu(false);
           }}
         >
           <div
+            ref={navMenuRef}
             className="context-menu"
             role="menu"
+            aria-label={`Akcje kontekstu ${navMenu.context.label}`}
             style={{ left: navMenu.x, top: navMenu.y }}
             onMouseDown={(event) => event.stopPropagation()}
+            onKeyDown={navMenuKeyDown}
           >
             <button
               type="button"
               role="menuitem"
+              tabIndex={-1}
               onClick={() => {
                 openContext(navMenu.context);
-                setNavMenu(undefined);
+                closeNavMenu(true);
               }}
             >
               Otwórz
@@ -3122,9 +3963,10 @@ export const RealApp = ({
             <button
               type="button"
               role="menuitem"
+              tabIndex={-1}
               onClick={() => {
                 openContextInNewTab(navMenu.context);
-                setNavMenu(undefined);
+                closeNavMenu(true);
               }}
             >
               Otwórz w nowej karcie
@@ -3132,10 +3974,76 @@ export const RealApp = ({
           </div>
         </div>
       )}
-      {toast && (
-        <div className="undo-toast" role="status">
-          <span>{toast}</span>
-          <button className="ghost-button" onClick={() => setToast(undefined)}>
+      {railMode && railTip && (
+        <div
+          className="nav-rail-tooltip"
+          role="presentation"
+          style={{ top: railTip.top }}
+        >
+          <span>{railTip.label}</span>
+          {railTip.shortcut !== undefined && (
+            <kbd>
+              {modifierLabel}
+              {railTip.shortcut}
+            </kbd>
+          )}
+        </div>
+      )}
+      {shortcutsOpen && (
+        <ShortcutsOverlay
+          surfaces={navItems}
+          onClose={() => setShortcutsOpen(false)}
+        />
+      )}
+      {activeToast && (
+        <div
+          className="undo-toast"
+          role="status"
+          onMouseEnter={() => setToastPaused(true)}
+          onMouseLeave={() => setToastPaused(false)}
+          onFocus={() => setToastPaused(true)}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget))
+              setToastPaused(false);
+          }}
+        >
+          <span>{activeToast.message}</span>
+          {toasts.length > 1 && (
+            <span
+              className="undo-toast-queue"
+              aria-label={`W kolejce: ${toasts.length - 1}`}
+            >
+              +{toasts.length - 1}
+            </span>
+          )}
+          {activeToast.restore && (
+            <button
+              className="ghost-button"
+              onClick={() => {
+                const restore = activeToast.restore;
+                dismissToast(activeToast.id);
+                if (restore) openContextInNewTab(restore);
+              }}
+            >
+              Przywróć
+            </button>
+          )}
+          {activeToast.undoCommandId && (
+            <button
+              className="ghost-button"
+              onClick={() => {
+                const target = activeToast.undoCommandId;
+                dismissToast(activeToast.id);
+                if (target) void openUndo(target);
+              }}
+            >
+              Cofnij
+            </button>
+          )}
+          <button
+            className="ghost-button"
+            onClick={() => dismissToast(activeToast.id)}
+          >
             Zamknij
           </button>
         </div>

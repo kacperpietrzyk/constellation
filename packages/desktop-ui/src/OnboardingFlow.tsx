@@ -24,6 +24,8 @@ export const OnboardingFlow = ({
   const [step, setStep] = useState(0);
   const [name, setName] = useState(snapshot.bootstrap.workspace.name);
   const [busy, setBusy] = useState(false);
+  const [renameError, setRenameError] = useState<string>();
+  const [skipConfirm, setSkipConfirm] = useState(false);
   useEffect(() => {
     dialogRef.current?.showModal();
     return () => dialogRef.current?.close();
@@ -55,11 +57,14 @@ export const OnboardingFlow = ({
 
   const finish = async () => {
     setBusy(true);
+    setRenameError(undefined);
     if (name.trim() !== snapshot.bootstrap.workspace.name) {
       const result = await renameWorkspace(client, snapshot, name.trim());
       if (result.kind !== "success") {
+        // Inline in the card: a notice behind the open modal would be
+        // invisible and the flow would look silently stuck.
         setBusy(false);
-        onFailure(result);
+        setRenameError(result.message);
         return;
       }
     }
@@ -79,6 +84,26 @@ export const OnboardingFlow = ({
       aria-labelledby="onboarding-title"
       onCancel={(event) => {
         event.preventDefault();
+        if (busy) return;
+        // First Esc arms a visible confirmation; only the second one skips,
+        // because skipping hides the intro on every next launch.
+        if (skipConfirm) {
+          void skip();
+          return;
+        }
+        setSkipConfirm(true);
+      }}
+      onClose={() => {
+        // Chromium's CloseWatcher lets a second Esc close the dialog natively
+        // despite preventDefault() in onCancel. During a save the modal must
+        // stay on screen; otherwise a native close counts as skipping, so the
+        // onboarding state is never orphaned behind a closed dialog.
+        const dialog = dialogRef.current;
+        if (dialog === null || !dialog.isConnected) return;
+        if (busy) {
+          dialog.showModal();
+          return;
+        }
         void skip();
       }}
     >
@@ -124,7 +149,17 @@ export const OnboardingFlow = ({
               <span>Nazwa workspace</span>
               <input
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                maxLength={80}
+                aria-invalid={renameError !== undefined}
+                aria-describedby={
+                  renameError === undefined
+                    ? undefined
+                    : "onboarding-rename-error"
+                }
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setRenameError(undefined);
+                }}
                 required
               />
             </label>
@@ -171,12 +206,39 @@ export const OnboardingFlow = ({
             </p>
           </div>
         )}
+        {renameError !== undefined && (
+          <p
+            id="onboarding-rename-error"
+            className="onboarding-feedback is-error"
+            role="alert"
+          >
+            Nazwa nie została zapisana. {renameError}{" "}
+            {step !== 1 && (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setStep(1)}
+              >
+                Popraw nazwę
+              </button>
+            )}
+          </p>
+        )}
+        {skipConfirm && renameError === undefined && (
+          <p className="onboarding-feedback" role="status">
+            Pominąć wprowadzenie? Naciśnij Esc ponownie albo wybierz „Pomiń
+            wprowadzenie”. Ten ekran nie pokaże się przy kolejnym otwarciu.
+          </p>
+        )}
         <footer>
           <button
             type="button"
             className="secondary-button"
             disabled={step === 0 || busy}
-            onClick={() => setStep((current) => current - 1)}
+            onClick={() => {
+              setSkipConfirm(false);
+              setStep((current) => current - 1);
+            }}
           >
             Wstecz
           </button>
@@ -194,7 +256,10 @@ export const OnboardingFlow = ({
                 type="button"
                 className="primary-button"
                 disabled={step === 1 && !name.trim()}
-                onClick={() => setStep((current) => current + 1)}
+                onClick={() => {
+                  setSkipConfirm(false);
+                  setStep((current) => current + 1);
+                }}
               >
                 Dalej
               </button>

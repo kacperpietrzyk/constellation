@@ -52,7 +52,9 @@ export const AccessSurface = ({
   readonly onAgentRotate: (grant: AgentGrant) => void;
   readonly onAgentRevoke: (grant: AgentGrant) => void;
 }) => {
-  const [confirmRevoke, setConfirmRevoke] = useState<string>();
+  // One armed destructive/irreversible action at a time: member revoke,
+  // agent revoke, or agent credential rotation.
+  const [confirmAction, setConfirmAction] = useState<string>();
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<"admin" | "member" | "guest">("member");
   const [spaceAccess, setSpaceAccess] = useState<"view" | "comment" | "edit">(
@@ -73,6 +75,11 @@ export const AccessSurface = ({
     derivedResultWrite: false,
     sourceMaterialization: false,
   });
+  // The empty-scope alert appears only after the user touched the scope
+  // fieldset or tried to submit — not on first render.
+  const [spacesTouched, setSpacesTouched] = useState(false);
+  const showSpacesError =
+    spacesTouched && spaces.length > 0 && agentSpaces.length === 0;
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!busy && displayName.trim()) {
@@ -82,6 +89,7 @@ export const AccessSurface = ({
   };
   const submitAgent = (event: FormEvent) => {
     event.preventDefault();
+    if (agentSpaces.length === 0) setSpacesTouched(true);
     if (busy || !agentName.trim() || agentSpaces.length === 0) return;
     const expiresAt =
       agentExpiry === "never"
@@ -100,10 +108,14 @@ export const AccessSurface = ({
   if (access.kind === "unavailable") {
     return (
       <section className="access-surface" aria-labelledby="surface-title">
-        <header className="surface-heading">
-          <p className="eyebrow">Workspace</p>
-          <h1 id="surface-title">Dostęp</h1>
-          <p>Nie można teraz odczytać bieżącej polityki dostępu.</p>
+        <header className="surface-header access-heading">
+          <div>
+            <p className="eyebrow">Workspace</p>
+            <h1 id="surface-title" tabIndex={-1}>
+              Dostęp
+            </h1>
+            <p>Nie można teraz odczytać bieżącej polityki dostępu.</p>
+          </div>
         </header>
         <div className="access-unavailable" role="alert">
           <strong>Dostęp jest niedostępny</strong>
@@ -116,10 +128,12 @@ export const AccessSurface = ({
   const current = access.data;
   return (
     <section className="access-surface" aria-labelledby="surface-title">
-      <header className="surface-heading access-heading">
+      <header className="surface-header access-heading">
         <div>
           <p className="eyebrow">Workspace</p>
-          <h1 id="surface-title">Dostęp</h1>
+          <h1 id="surface-title" tabIndex={-1}>
+            Dostęp
+          </h1>
           <p>
             Rola i zakres Space są niezależne. Zmiany są wersjonowane,
             audytowane i sprawdzane ponownie po pracy offline.
@@ -263,11 +277,9 @@ export const AccessSurface = ({
               <span className={`access-state ${member.status}`}>
                 {member.status === "active" ? "Aktywny" : "Cofnięty"}
               </span>
-              {current.canManage &&
-                !self &&
-                member.status === "active" &&
-                grant && (
-                  <div className="member-actions">
+              {current.canManage && !self && member.status === "active" && (
+                <div className="member-actions">
+                  {grant && (
                     <label>
                       <span className="sr-only">
                         Zakres dla {member.displayName}
@@ -287,42 +299,43 @@ export const AccessSurface = ({
                         <option value="edit">Może edytować</option>
                       </select>
                     </label>
-                    {confirmRevoke === `member-${member.membershipId}` ? (
-                      <>
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={() => setConfirmRevoke(undefined)}
-                          disabled={busy}
-                        >
-                          Anuluj
-                        </button>
-                        <button
-                          className="quiet-danger-button"
-                          type="button"
-                          onClick={() => {
-                            setConfirmRevoke(undefined);
-                            onRevoke(member);
-                          }}
-                          disabled={busy}
-                        >
-                          Potwierdź cofnięcie
-                        </button>
-                      </>
-                    ) : (
+                  )}
+                  {confirmAction === `member-${member.membershipId}` ? (
+                    <>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => setConfirmAction(undefined)}
+                        disabled={busy}
+                      >
+                        Anuluj
+                      </button>
                       <button
                         className="quiet-danger-button"
                         type="button"
-                        onClick={() =>
-                          setConfirmRevoke(`member-${member.membershipId}`)
-                        }
+                        onClick={() => {
+                          setConfirmAction(undefined);
+                          onRevoke(member);
+                        }}
                         disabled={busy}
                       >
-                        Cofnij dostęp
+                        Potwierdź cofnięcie
                       </button>
-                    )}
-                  </div>
-                )}
+                    </>
+                  ) : (
+                    <button
+                      className="quiet-danger-button"
+                      type="button"
+                      onClick={() =>
+                        setConfirmAction(`member-${member.membershipId}`)
+                      }
+                      disabled={busy}
+                    >
+                      Cofnij dostęp
+                    </button>
+                  )}
+                </div>
+              )}
             </article>
           );
         })}
@@ -421,28 +434,45 @@ export const AccessSurface = ({
                     </label>
                   ))}
                 </fieldset>
-                <fieldset>
+                <fieldset
+                  aria-describedby={
+                    showSpacesError ? "agent-spaces-error" : undefined
+                  }
+                >
                   <legend>Zakres danych</legend>
-                  {spaces.map((space) => (
-                    <label key={space.id} className="agent-option">
-                      <input
-                        type="checkbox"
-                        checked={agentSpaces.includes(space.id)}
-                        onChange={() =>
-                          setAgentSpaces((current) =>
-                            current.includes(space.id)
-                              ? current.filter((id) => id !== space.id)
-                              : [...current, space.id],
-                          )
-                        }
-                        disabled={busy}
-                      />
-                      <span>
-                        <strong>{space.name}</strong>
-                        <small>Relacje nie poszerzą tego zakresu.</small>
-                      </span>
-                    </label>
-                  ))}
+                  {spaces.length === 0 ? (
+                    <p className="access-boundary-note">
+                      Ten workspace nie ma jeszcze żadnego Space, więc nie da
+                      się przyznać zakresu danych. Grant utworzysz po dodaniu
+                      pierwszego Space.
+                    </p>
+                  ) : (
+                    spaces.map((space) => (
+                      <label key={space.id} className="agent-option">
+                        <input
+                          type="checkbox"
+                          checked={agentSpaces.includes(space.id)}
+                          aria-invalid={showSpacesError}
+                          aria-describedby={
+                            showSpacesError ? "agent-spaces-error" : undefined
+                          }
+                          onChange={() => {
+                            setSpacesTouched(true);
+                            setAgentSpaces((current) =>
+                              current.includes(space.id)
+                                ? current.filter((id) => id !== space.id)
+                                : [...current, space.id],
+                            );
+                          }}
+                          disabled={busy}
+                        />
+                        <span>
+                          <strong>{space.name}</strong>
+                          <small>Relacje nie poszerzą tego zakresu.</small>
+                        </span>
+                      </label>
+                    ))
+                  )}
                 </fieldset>
                 <fieldset className="agent-expiry">
                   <legend>Wygaśnięcie</legend>
@@ -519,8 +549,12 @@ export const AccessSurface = ({
                       ? "Utwórz zdalny dostęp MCP"
                       : "Utwórz lokalny dostęp MCP"}
                 </button>
-                {agentSpaces.length === 0 && (
-                  <p className="field-error" role="alert">
+                {showSpacesError && (
+                  <p
+                    id="agent-spaces-error"
+                    className="field-error"
+                    role="alert"
+                  >
                     Wybierz co najmniej jeden Space.
                   </p>
                 )}
@@ -576,20 +610,34 @@ export const AccessSurface = ({
                     {agentAccess.data.canManage &&
                       grant.status === "active" && (
                         <div className="member-actions">
-                          <button
-                            className="secondary-button"
-                            type="button"
-                            onClick={() => onAgentRotate(grant)}
-                            disabled={busy}
-                          >
-                            Obróć poświadczenie
-                          </button>
-                          {confirmRevoke === `agent-${grant.grantId}` ? (
+                          {confirmAction === `agent-rotate-${grant.grantId}` ? (
                             <>
                               <button
                                 className="secondary-button"
                                 type="button"
-                                onClick={() => setConfirmRevoke(undefined)}
+                                onClick={() => setConfirmAction(undefined)}
+                                disabled={busy}
+                              >
+                                Anuluj
+                              </button>
+                              <button
+                                className="secondary-button"
+                                type="button"
+                                onClick={() => {
+                                  setConfirmAction(undefined);
+                                  onAgentRotate(grant);
+                                }}
+                                disabled={busy}
+                              >
+                                Potwierdź rotację
+                              </button>
+                            </>
+                          ) : confirmAction === `agent-${grant.grantId}` ? (
+                            <>
+                              <button
+                                className="secondary-button"
+                                type="button"
+                                onClick={() => setConfirmAction(undefined)}
                                 disabled={busy}
                               >
                                 Anuluj
@@ -598,7 +646,7 @@ export const AccessSurface = ({
                                 className="quiet-danger-button"
                                 type="button"
                                 onClick={() => {
-                                  setConfirmRevoke(undefined);
+                                  setConfirmAction(undefined);
                                   onAgentRevoke(grant);
                                 }}
                                 disabled={busy}
@@ -607,16 +655,30 @@ export const AccessSurface = ({
                               </button>
                             </>
                           ) : (
-                            <button
-                              className="quiet-danger-button"
-                              type="button"
-                              onClick={() =>
-                                setConfirmRevoke(`agent-${grant.grantId}`)
-                              }
-                              disabled={busy}
-                            >
-                              Cofnij dostęp
-                            </button>
+                            <>
+                              <button
+                                className="secondary-button"
+                                type="button"
+                                onClick={() =>
+                                  setConfirmAction(
+                                    `agent-rotate-${grant.grantId}`,
+                                  )
+                                }
+                                disabled={busy}
+                              >
+                                Obróć poświadczenie
+                              </button>
+                              <button
+                                className="quiet-danger-button"
+                                type="button"
+                                onClick={() =>
+                                  setConfirmAction(`agent-${grant.grantId}`)
+                                }
+                                disabled={busy}
+                              >
+                                Cofnij dostęp
+                              </button>
+                            </>
                           )}
                         </div>
                       )}

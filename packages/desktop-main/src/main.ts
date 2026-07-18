@@ -16,6 +16,7 @@ import {
 } from "@constellation/desktop-preload/client";
 
 import { DESKTOP_PREVIEW_VERSION } from "./index.js";
+import { installApplicationMenu } from "./app-menu.js";
 import { runAlphaSmoke } from "./alpha-smoke.js";
 import { createBetterSqlite3Factory } from "./better-sqlite3-factory.js";
 import {
@@ -285,6 +286,7 @@ void app.whenReady().then(async () => {
     },
   );
 
+  installApplicationMenu();
   await createWindow();
   const shortcutRegistered = globalShortcut.register(
     "CommandOrControl+Shift+K",

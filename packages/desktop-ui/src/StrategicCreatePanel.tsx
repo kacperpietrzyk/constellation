@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 
 import type {
   DocumentId,
@@ -10,6 +10,8 @@ import type { ConstellationRendererClient } from "@constellation/desktop-preload
 import {
   createDecision,
   createOffer,
+  createOpportunity,
+  createOrganization,
   createPerson,
   createRadarCandidate,
   createRecurrence,
@@ -20,6 +22,10 @@ import {
   type MutationResult,
   type RelationshipWorkspaceProjection,
 } from "./client/workflow.js";
+import {
+  InlinePopover,
+  reportFirstEmptyRequiredField,
+} from "./components/InlinePopover.js";
 
 type Record = RelationshipWorkspaceProjection["records"][number];
 type Operation = () => Promise<MutationResult<unknown>>;
@@ -38,8 +44,9 @@ export const StrategicCreatePanel = ({
   readonly snapshot: DesktopSnapshot;
   readonly records: readonly Record[];
   readonly busy: boolean;
-  readonly onRun: (id: string, operation: Operation) => void;
+  readonly onRun: (id: string, operation: Operation) => Promise<boolean>;
 }) => {
+  const [openId, setOpenId] = useState<string>();
   const organizations = records.filter(
     (record): record is Extract<Record, { kind: "organization" }> =>
       record.kind === "organization",
@@ -60,17 +67,24 @@ export const StrategicCreatePanel = ({
       : [];
   const sources =
     snapshot.knowledge.kind === "ready" ? snapshot.knowledge.data.sources : [];
-  const submit = (
+  // The popover form resets by unmounting, so it closes (and resets) only
+  // after the mutation succeeds; a failure keeps the draft visible. A make()
+  // that returns undefined means a required field holds only whitespace —
+  // report it instead of refusing silently.
+  const submit = async (
     id: string,
     event: FormEvent<HTMLFormElement>,
     make: (data: FormData) => Operation | undefined,
   ) => {
     event.preventDefault();
+    const form = event.currentTarget;
     if (!client) return;
-    const operation = make(new FormData(event.currentTarget));
-    if (operation === undefined) return;
-    onRun(id, operation);
-    event.currentTarget.reset();
+    const operation = make(new FormData(form));
+    if (operation === undefined) {
+      reportFirstEmptyRequiredField(form);
+      return;
+    }
+    if (await onRun(id, operation)) setOpenId(undefined);
   };
 
   return (
@@ -87,11 +101,112 @@ export const StrategicCreatePanel = ({
         <span>Każdy zapis ma wersję, autora i audyt</span>
       </header>
       <div className="strategic-create-grid">
-        <details>
-          <summary>Osoba</summary>
+        <InlinePopover
+          label="Organizacja"
+          panelLabel="Dodaj organizację"
+          open={openId === "organization"}
+          onOpenChange={(next) => setOpenId(next ? "organization" : undefined)}
+        >
           <form
             onSubmit={(event) =>
-              submit("person", event, (data) => {
+              void submit("organization", event, (data) => {
+                const name = value(data, "name");
+                if (!name) return;
+                return () =>
+                  createOrganization(client!, snapshot, {
+                    name,
+                    nextAction: value(data, "nextAction"),
+                  });
+              })
+            }
+          >
+            <input
+              name="name"
+              aria-label="Nazwa organizacji"
+              placeholder="Nazwa organizacji"
+              required
+            />
+            <input
+              name="nextAction"
+              aria-label="Następny ruch dla organizacji"
+              placeholder="Co ma wydarzyć się dalej?"
+            />
+            <button disabled={busy}>Dodaj organizację</button>
+          </form>
+        </InlinePopover>
+
+        <InlinePopover
+          label="Szansa"
+          panelLabel="Dodaj szansę"
+          open={openId === "opportunity"}
+          onOpenChange={(next) => setOpenId(next ? "opportunity" : undefined)}
+        >
+          <form
+            onSubmit={(event) =>
+              void submit("opportunity", event, (data) => {
+                const organizationId = value(data, "organizationId");
+                const title = value(data, "title");
+                const need = value(data, "need");
+                const nextAction = value(data, "nextAction");
+                if (!organizationId || !title || !need || !nextAction) return;
+                return () =>
+                  createOpportunity(client!, snapshot, {
+                    organizationId: organizationId as StrategicRecordId,
+                    title,
+                    need,
+                    nextAction,
+                  });
+              })
+            }
+          >
+            <select
+              name="organizationId"
+              aria-label="Organizacja szansy"
+              required
+            >
+              <option value="">Wybierz organizację</option>
+              {organizations.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+            <input
+              name="title"
+              aria-label="Nazwa szansy"
+              placeholder="Nazwa szansy"
+              required
+            />
+            <input
+              name="need"
+              aria-label="Potwierdzona potrzeba szansy"
+              placeholder="Jaka potrzeba jest potwierdzona?"
+              required
+            />
+            <input
+              name="nextAction"
+              aria-label="Następny ruch dla szansy"
+              placeholder="Jedna konkretna czynność"
+              required
+            />
+            <button disabled={busy || organizations.length === 0}>
+              Dodaj szansę
+            </button>
+            {organizations.length === 0 && (
+              <small>Najpierw dodaj organizację.</small>
+            )}
+          </form>
+        </InlinePopover>
+
+        <InlinePopover
+          label="Osoba"
+          panelLabel="Dodaj osobę"
+          open={openId === "person"}
+          onOpenChange={(next) => setOpenId(next ? "person" : undefined)}
+        >
+          <form
+            onSubmit={(event) =>
+              void submit("person", event, (data) => {
                 const name = value(data, "name");
                 if (!name) return;
                 const organizationId = value(data, "organizationId");
@@ -130,13 +245,17 @@ export const StrategicCreatePanel = ({
             />
             <button disabled={busy}>Dodaj osobę</button>
           </form>
-        </details>
+        </InlinePopover>
 
-        <details>
-          <summary>Oferta</summary>
+        <InlinePopover
+          label="Oferta"
+          panelLabel="Utwórz szkic oferty"
+          open={openId === "offer"}
+          onOpenChange={(next) => setOpenId(next ? "offer" : undefined)}
+        >
           <form
             onSubmit={(event) =>
-              submit("offer", event, (data) => {
+              void submit("offer", event, (data) => {
                 const opportunityId = value(data, "opportunityId");
                 const documentId = value(data, "documentId");
                 const title = value(data, "title");
@@ -200,13 +319,17 @@ export const StrategicCreatePanel = ({
               <small>Najpierw utwórz dokument typu Deliverable.</small>
             )}
           </form>
-        </details>
+        </InlinePopover>
 
-        <details>
-          <summary>Odnowienie</summary>
+        <InlinePopover
+          label="Odnowienie"
+          panelLabel="Dodaj odnowienie"
+          open={openId === "renewal"}
+          onOpenChange={(next) => setOpenId(next ? "renewal" : undefined)}
+        >
           <form
             onSubmit={(event) =>
-              submit("renewal", event, (data) => {
+              void submit("renewal", event, (data) => {
                 const organizationId = value(data, "organizationId");
                 const title = value(data, "title");
                 const scope = value(data, "scope");
@@ -268,13 +391,17 @@ export const StrategicCreatePanel = ({
               Dodaj i utwórz follow-up
             </button>
           </form>
-        </details>
+        </InlinePopover>
 
-        <details>
-          <summary>Fakt ze źródłem</summary>
+        <InlinePopover
+          label="Fakt ze źródłem"
+          panelLabel="Zapisz fakt ze źródłem"
+          open={openId === "fact"}
+          onOpenChange={(next) => setOpenId(next ? "fact" : undefined)}
+        >
           <form
             onSubmit={(event) =>
-              submit("fact", event, (data) => {
+              void submit("fact", event, (data) => {
                 const organizationId = value(data, "organizationId");
                 const factType = value(data, "factType");
                 const factValue = value(data, "factValue");
@@ -325,13 +452,17 @@ export const StrategicCreatePanel = ({
             </select>
             <button disabled={busy || sources.length === 0}>Zapisz fakt</button>
           </form>
-        </details>
+        </InlinePopover>
 
-        <details>
-          <summary>Decyzja</summary>
+        <InlinePopover
+          label="Decyzja"
+          panelLabel="Zapisz decyzję"
+          open={openId === "decision"}
+          onOpenChange={(next) => setOpenId(next ? "decision" : undefined)}
+        >
           <form
             onSubmit={(event) =>
-              submit("decision", event, (data) => {
+              void submit("decision", event, (data) => {
                 const title = value(data, "title");
                 const rationale = value(data, "rationale");
                 if (!title || !rationale) return;
@@ -369,13 +500,17 @@ export const StrategicCreatePanel = ({
             </select>
             <button disabled={busy}>Zapisz decyzję</button>
           </form>
-        </details>
+        </InlinePopover>
 
-        <details>
-          <summary>Zastąp decyzję</summary>
+        <InlinePopover
+          label="Zastąp decyzję"
+          panelLabel="Zastąp decyzję z historią"
+          open={openId === "supersede"}
+          onOpenChange={(next) => setOpenId(next ? "supersede" : undefined)}
+        >
           <form
             onSubmit={(event) =>
-              submit("supersede", event, (data) => {
+              void submit("supersede", event, (data) => {
                 const prior = decisions.find(
                   (item) => item.id === value(data, "decisionId"),
                 );
@@ -426,13 +561,17 @@ export const StrategicCreatePanel = ({
               Zastąp z historią
             </button>
           </form>
-        </details>
+        </InlinePopover>
 
-        <details>
-          <summary>Reguła cykliczna</summary>
+        <InlinePopover
+          label="Reguła cykliczna"
+          panelLabel="Dodaj regułę cykliczną"
+          open={openId === "recurrence"}
+          onOpenChange={(next) => setOpenId(next ? "recurrence" : undefined)}
+        >
           <form
             onSubmit={(event) =>
-              submit("recurrence", event, (data) => {
+              void submit("recurrence", event, (data) => {
                 const title = value(data, "title");
                 const taskTitle = value(data, "taskTitle");
                 const cadence = value(data, "cadence") as
@@ -467,13 +606,17 @@ export const StrategicCreatePanel = ({
             </select>
             <button disabled={busy}>Dodaj regułę</button>
           </form>
-        </details>
+        </InlinePopover>
 
-        <details>
-          <summary>Kandydat Radar</summary>
+        <InlinePopover
+          label="Kandydat Radar"
+          panelLabel="Dodaj kandydata Radaru"
+          open={openId === "radar"}
+          onOpenChange={(next) => setOpenId(next ? "radar" : undefined)}
+        >
           <form
             onSubmit={(event) =>
-              submit("radar", event, (data) => {
+              void submit("radar", event, (data) => {
                 const sourceId = value(data, "sourceId");
                 const title = value(data, "title");
                 const relevance = value(data, "relevance");
@@ -515,7 +658,7 @@ export const StrategicCreatePanel = ({
               Dodaj do skończonego przeglądu
             </button>
           </form>
-        </details>
+        </InlinePopover>
       </div>
     </section>
   );

@@ -59,6 +59,7 @@ export type MentionCandidatesProjection =
 export type AttentionInboxProjection = Projection<"attention.inbox">;
 export type DocumentListProjection = Projection<"document.list">;
 export type KnowledgeListProjection = Projection<"knowledge.list">;
+export type KnowledgeSourceRecord = KnowledgeListProjection["sources"][number];
 export type KnowledgeDocumentContextProjection =
   Projection<"knowledge.documentContext">;
 export type RelationshipWorkspaceProjection =
@@ -509,6 +510,48 @@ export const createKnowledgeSource = async (
     return { kind: "success", data: sourceId };
   } catch {
     return { kind: "error", message: "Źródło nie zostało zapisane." };
+  }
+};
+
+export const updateKnowledgeSourceTitle = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  source: KnowledgeSourceRecord,
+  title: string,
+): Promise<MutationResult<void>> => {
+  try {
+    const response = await client.executeCommand(
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "knowledge.sourceUpdate",
+        commandId: crypto.randomUUID(),
+        workspaceId: snapshot.bootstrap.workspace.id,
+        idempotencyKey: `knowledge-source-title:${source.id}:${source.version}`,
+        expectedVersions: { [source.id]: source.version },
+        correlationId: crypto.randomUUID(),
+        payload: {
+          sourceId: source.id,
+          title: title.trim(),
+          ...(source.canonicalUrl === undefined
+            ? {}
+            : { canonicalUrl: source.canonicalUrl }),
+          availability: source.availability,
+          observedAt: source.observedAt,
+        },
+      }),
+    );
+    if (response.kind !== "command_outcome")
+      return { kind: "error", message: "Tytuł źródła nie został zapisany." };
+    if (response.outcome.outcome === "conflict")
+      return {
+        kind: "conflict",
+        message: "Źródło zmieniło się w tle. Odśwież i spróbuj ponownie.",
+      };
+    return response.outcome.outcome === "success"
+      ? { kind: "success", data: undefined }
+      : { kind: "error", message: "Tytuł źródła nie został zapisany." };
+  } catch {
+    return { kind: "error", message: "Tytuł źródła nie został zapisany." };
   }
 };
 

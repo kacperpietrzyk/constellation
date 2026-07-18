@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   CalendarBlockDraft,
@@ -9,6 +9,9 @@ import type { ConstellationRendererClient } from "@constellation/desktop-preload
 import { createPortal } from "react-dom";
 
 import { MeetingMarkdown, toPlainMeetingMarkdown } from "./MeetingMarkdown.js";
+import { Icon } from "./components/Icon.js";
+import { useListNavigation } from "./hooks/useListNavigation.js";
+import { countLabel } from "./i18n.js";
 
 type MeetingState =
   | { readonly kind: "loading" }
@@ -27,14 +30,8 @@ type JamieState =
 type CompletedMeeting = MeetingLoopSurface["completed"][number];
 type MeetingWorkItem = CompletedMeeting["workItems"][number];
 
-const countLabel = (count: number, one: string, few: string, many: string) => {
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-  if (count === 1) return `1 ${one}`;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14))
-    return `${count} ${few}`;
-  return `${count} ${many}`;
-};
+const staleRefreshNotice =
+  "Nie udało się odświeżyć spotkań. Pokazuję ostatni bezpieczny stan.";
 
 const healthLabel = (meeting: CompletedMeeting) => {
   switch (meeting.triage) {
@@ -160,9 +157,7 @@ const CalendarConsentDialog = ({
             onClick={onClose}
             disabled={busy}
           >
-            <svg aria-hidden="true" viewBox="0 0 20 20">
-              <path d="m5 5 10 10M15 5 5 15" />
-            </svg>
+            <Icon name="close" />
           </button>
         </header>
         <dl className="calendar-preview-facts">
@@ -188,7 +183,7 @@ const CalendarConsentDialog = ({
           Zmiana treści albo rewizji wymaga nowego podglądu.
         </p>
         {error && (
-          <p className="inline-error" role="alert">
+          <p id="calendar-consent-error" className="inline-error" role="alert">
             {error}
           </p>
         )}
@@ -204,6 +199,7 @@ const CalendarConsentDialog = ({
           <button
             className="primary-button"
             disabled={busy}
+            aria-describedby={error ? "calendar-consent-error" : undefined}
             onClick={() => {
               setBusy(true);
               setError(undefined);
@@ -269,23 +265,70 @@ export const MeetingsSurface = ({
       .then((status) => setJamie({ kind: "ready", ...status }))
       .catch(() => setJamie({ kind: "error" }));
   };
+  const selectResult = (index: number) => {
+    if (state.kind !== "ready") return;
+    const meeting = state.data.completed[index];
+    if (meeting === undefined) return;
+    setSelectedMeetingId(meeting.id);
+    setVisibleTranscriptMeetingId(undefined);
+    setNewItemMeetingId(undefined);
+    onInspectorOpen();
+  };
+  const resultNav = useListNavigation({
+    itemCount: state.kind === "ready" ? state.data.completed.length : 0,
+    onOpen: selectResult,
+    onSelect: selectResult,
+  });
+  // Refetch is decoupled from the visible state: after a mutation the last
+  // ready snapshot stays on screen and the skeleton appears only on the very
+  // first load. A failed refresh keeps the safe data and reports via notice.
+  // Requests carry a generation so a slower, older refetch can never
+  // overwrite the snapshot of a newer one.
+  const hasLoadedRef = useRef(false);
+  const loadGenerationRef = useRef(0);
   const load = () => {
-    setState({ kind: "loading" });
+    const generation = ++loadGenerationRef.current;
+    setState((current) =>
+      current.kind === "ready" ? current : { kind: "loading" },
+    );
     const from = new Date();
     const to = new Date(from.getTime() + 14 * 86_400_000);
     void client
       .getMeetingLoop({ from: from.toISOString(), to: to.toISOString() })
-      .then((data) => setState({ kind: "ready", data }))
-      .catch(() =>
-        setState({
-          kind: "error",
-          message:
-            "Pętla spotkań jest niedostępna. Dane i kalendarz nie zostały zmienione.",
-        }),
-      );
+      .then((data) => {
+        if (generation !== loadGenerationRef.current) return;
+        hasLoadedRef.current = true;
+        setNotice((current) =>
+          current === staleRefreshNotice ? undefined : current,
+        );
+        setState({ kind: "ready", data });
+      })
+      .catch(() => {
+        if (generation !== loadGenerationRef.current) return;
+        if (hasLoadedRef.current) setNotice(staleRefreshNotice);
+        else
+          setState({
+            kind: "error",
+            message:
+              "Pętla spotkań jest niedostępna. Dane i kalendarz nie zostały zmienione.",
+          });
+      });
   };
   useEffect(load, [client]);
   useEffect(loadJamieStatus, [client]);
+  // Stripping Markdown from every summary is pure text work; do it once per
+  // snapshot instead of on every render of the result list.
+  const resultSummaries = useMemo(() => {
+    if (state.kind !== "ready") return new Map<string, string>();
+    return new Map(
+      state.data.completed.map((meeting) => [
+        meeting.id,
+        meeting.summaryMarkdown
+          ? toPlainMeetingMarkdown(meeting.summaryMarkdown)
+          : "Brak podsumowania w wyniku Jamie.",
+      ]),
+    );
+  }, [state]);
 
   if (state.kind === "loading") {
     return (
@@ -324,14 +367,13 @@ export const MeetingsSurface = ({
     surface.completed.find((meeting) => meeting.id === selectedMeetingId) ??
     surface.completed[0];
   return (
-    <section
-      className="meeting-surface"
-      aria-labelledby="meeting-surface-title"
-    >
+    <section className="meeting-surface" aria-labelledby="surface-title">
       <header className="meeting-hero">
         <div>
           <p className="eyebrow">Od przygotowania do dalszej pracy</p>
-          <h1 id="meeting-surface-title">Spotkania</h1>
+          <h1 id="surface-title" tabIndex={-1}>
+            Spotkania
+          </h1>
           <p>
             Fakty przed spotkaniem, wynik Jamie po nim i każde dalsze działanie
             z własnym cyklem życia.
@@ -368,16 +410,33 @@ export const MeetingsSurface = ({
       </header>
 
       <div className="meeting-integration-wrap">
-        <section className="meeting-integration" aria-labelledby="jamie-title">
-          <div>
-            <p className="eyebrow">Źródło wyników</p>
-            <h2 id="jamie-title">Jamie</h2>
-            <p>
-              Jamie zachowuje odpowiedzialność za nagranie, transkrypcję i
-              inteligencję spotkania. Constellation importuje wynik oraz trwałe
-              identyfikatory zadań.
+        {/* Po skonfigurowaniu integracja zwija się do jednowierszowego paska
+            statusu; pełny opis i formularz wracają dopiero po odłączeniu. */}
+        <section
+          className={`meeting-integration${jamie.kind === "ready" && jamie.configured ? " meeting-integration--connected" : ""}`}
+          aria-labelledby="jamie-title"
+        >
+          {jamie.kind === "ready" && jamie.configured ? (
+            <p className="meeting-integration-summary">
+              <span className="eyebrow" id="jamie-title">
+                Jamie
+              </span>
+              <span className="meeting-integration-status">
+                Połączono klucz{" "}
+                {jamie.scope === "workspace" ? "zespołu" : "osobisty"}
+              </span>
             </p>
-          </div>
+          ) : (
+            <div>
+              <p className="eyebrow">Źródło wyników</p>
+              <h2 id="jamie-title">Jamie</h2>
+              <p>
+                Jamie zachowuje odpowiedzialność za nagranie, transkrypcję i
+                inteligencję spotkania. Constellation importuje wynik oraz
+                trwałe identyfikatory zadań.
+              </p>
+            </div>
+          )}
           {jamie.kind === "loading" ? (
             <span className="meeting-integration-status">Sprawdzam…</span>
           ) : jamie.kind === "error" ? (
@@ -386,10 +445,6 @@ export const MeetingsSurface = ({
             </button>
           ) : jamie.configured ? (
             <div className="meeting-integration-actions">
-              <span className="meeting-integration-status">
-                Połączono klucz{" "}
-                {jamie.scope === "workspace" ? "zespołu" : "osobisty"}
-              </span>
               <button
                 className="primary-button"
                 disabled={jamieBusy}
@@ -400,7 +455,21 @@ export const MeetingsSurface = ({
                     .then((result) => {
                       setJamieBusy(false);
                       setNotice(
-                        `Jamie: ${result.applied + result.corrected} nowych lub poprawionych, ${result.noChange} bez zmian, ${result.partial} częściowych${result.failed ? `, ${result.failed} błędów` : ""}.`,
+                        `Jamie: ${countLabel(
+                          result.applied + result.corrected,
+                          "nowy lub poprawiony",
+                          "nowe lub poprawione",
+                          "nowych lub poprawionych",
+                        )}, ${result.noChange} bez zmian, ${countLabel(
+                          result.partial,
+                          "częściowy",
+                          "częściowe",
+                          "częściowych",
+                        )}${
+                          result.failed
+                            ? `, ${countLabel(result.failed, "błąd", "błędy", "błędów")}`
+                            : ""
+                        }.`,
                       );
                       load();
                     })
@@ -537,7 +606,12 @@ export const MeetingsSurface = ({
                 <div className="meeting-event-body">
                   <h3>{event.title}</h3>
                   <p>
-                    {event.attendees.length} uczestników
+                    {countLabel(
+                      event.attendees.length,
+                      "uczestnik",
+                      "uczestników",
+                      "uczestników",
+                    )}
                     {event.location ? ` · ${event.location}` : ""}
                   </p>
                   <div className="evidence-thread">
@@ -643,26 +717,26 @@ export const MeetingsSurface = ({
             <div className="meeting-results-browser">
               <ol
                 className="meeting-result-list"
+                role="listbox"
                 aria-label="Zaimportowane wyniki Jamie"
               >
-                {surface.completed.map((meeting) => {
+                {surface.completed.map((meeting, index) => {
                   const selected = meeting.id === selectedMeeting.id;
-                  const summary = meeting.summaryMarkdown
-                    ? toPlainMeetingMarkdown(meeting.summaryMarkdown)
-                    : "Brak podsumowania w wyniku Jamie.";
+                  const summary =
+                    resultSummaries.get(meeting.id) ??
+                    "Brak podsumowania w wyniku Jamie.";
                   return (
-                    <li key={meeting.id}>
+                    <li key={meeting.id} role="presentation">
                       <button
                         type="button"
+                        role="option"
                         className={`meeting-result-row${selected ? " is-selected" : ""}`}
-                        aria-pressed={selected}
-                        aria-controls="meeting-result-detail"
-                        onClick={() => {
-                          setSelectedMeetingId(meeting.id);
-                          setVisibleTranscriptMeetingId(undefined);
-                          setNewItemMeetingId(undefined);
-                          onInspectorOpen();
-                        }}
+                        aria-selected={selected}
+                        {...(inspectorHost
+                          ? { "aria-controls": "meeting-result-detail" }
+                          : {})}
+                        {...resultNav(index)}
+                        onClick={() => selectResult(index)}
                       >
                         <span className="meeting-result-row-heading">
                           <strong>
@@ -681,7 +755,12 @@ export const MeetingsSurface = ({
                           {summary}
                         </span>
                         <span className="meeting-result-row-meta">
-                          {meeting.workItems.length} działań
+                          {countLabel(
+                            meeting.workItems.length,
+                            "działanie",
+                            "działania",
+                            "działań",
+                          )}
                           <span aria-hidden="true">→</span>
                         </span>
                       </button>
@@ -708,7 +787,12 @@ export const MeetingsSurface = ({
                             {formatTime(selectedMeeting.startedAt)}
                           </time>
                           <span aria-hidden="true"> · </span>
-                          {selectedMeeting.participants.length} uczestników
+                          {countLabel(
+                            selectedMeeting.participants.length,
+                            "uczestnik",
+                            "uczestników",
+                            "uczestników",
+                          )}
                         </p>
                       </div>
                       <strong
@@ -814,7 +898,7 @@ export const MeetingsSurface = ({
                               </div>
                               <div className="meeting-item-actions">
                                 <button
-                                  className="quiet-button"
+                                  className="secondary-button"
                                   disabled={busyItemId === item.id}
                                   onClick={() => {
                                     setBusyItemId(item.id);
@@ -849,7 +933,7 @@ export const MeetingsSurface = ({
                                 {item.state === "conflicted" &&
                                   item.sourceValueInConflict && (
                                     <button
-                                      className="quiet-button"
+                                      className="secondary-button"
                                       disabled={busyItemId === item.id}
                                       onClick={() => {
                                         setBusyItemId(item.id);
@@ -876,7 +960,7 @@ export const MeetingsSurface = ({
                                   )}
                                 {item.state === "open" && (
                                   <button
-                                    className="quiet-button"
+                                    className="secondary-button"
                                     disabled={busyItemId === item.id}
                                     onClick={() => {
                                       setBusyItemId(item.id);
@@ -905,7 +989,7 @@ export const MeetingsSurface = ({
                                   item.kind === "waiting" ||
                                   item.kind === "follow_up") && (
                                   <button
-                                    className="quiet-button"
+                                    className="secondary-button"
                                     disabled={busyItemId === item.id}
                                     onClick={() => {
                                       setResponsibilityItemId(item.id);

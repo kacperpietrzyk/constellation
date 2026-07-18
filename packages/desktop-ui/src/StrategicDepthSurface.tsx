@@ -1,12 +1,10 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState } from "react";
 
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import { StrategicCreatePanel } from "./StrategicCreatePanel.js";
 
 import {
-  createOpportunity,
-  createOrganization,
   generateRecurrenceOccurrence,
   resolveDecisionImpact,
   resolveRadarCandidate,
@@ -15,60 +13,46 @@ import {
   type MutationFailure,
   type RelationshipWorkspaceProjection,
 } from "./client/workflow.js";
+import { useListNavigation } from "./hooks/useListNavigation.js";
+import { countLabel, pluralize, recordKindLabels } from "./i18n.js";
+import {
+  recurrenceCadenceLabels,
+  strategicStateLabels,
+} from "./strategic-labels.js";
 
 type Record = RelationshipWorkspaceProjection["records"][number];
 type Radar = Extract<Record, { kind: "radar_candidate" }>;
 type Review = Extract<Record, { kind: "impact_review" }>;
 
-const recordKindLabels: { readonly [kind: string]: string } = {
-  commitment: "Zobowiązanie",
-  decision: "Decyzja",
-  offer: "Oferta",
-  opportunity: "Szansa",
-  organization: "Organizacja",
-  project: "Projekt",
-  task: "Zadanie",
-  fact: "Fakt",
-  renewal: "Odnowienie",
-  person: "Osoba",
-};
-
-const stateLabels: { readonly [state: string]: string } = {
-  active: "Aktywne",
-  pursued: "W toku",
-  stale: "Wygasłe",
-  watching: "Obserwowane",
-  open: "Otwarte",
-  resolved: "Rozstrzygnięte",
-  renewed: "Odnowione",
-};
+// The impact-review audit note is stored data, so it carries the product's
+// Polish tool voice instead of an English implementation remark.
+const impactReviewNote =
+  "Przejrzano na powierzchni strategicznej; bez automatycznych zmian.";
 
 const StateMark = ({ state }: { readonly state: string }) => (
   <span className={`strategic-state strategic-state--${state}`}>
     <i aria-hidden="true" />
-    {stateLabels[state] ?? state.replaceAll("_", " ")}
+    {strategicStateLabels[state] ?? state.replaceAll("_", " ")}
   </span>
 );
 
 export const StrategicDepthSurface = ({
   client,
   snapshot,
+  selectedRecordId,
+  onSelectRecord,
   onReload,
   onFailure,
 }: {
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
+  /** Rekord pokazywany w shellowym inspectorze (select, nie open). */
+  readonly selectedRecordId: string | undefined;
+  readonly onSelectRecord: (id: string) => void;
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
 }) => {
   const [busyId, setBusyId] = useState<string>();
-  const [organizationName, setOrganizationName] = useState("");
-  const [organizationAction, setOrganizationAction] = useState("");
-  const [opportunityOrganizationId, setOpportunityOrganizationId] =
-    useState("");
-  const [opportunityTitle, setOpportunityTitle] = useState("");
-  const [opportunityNeed, setOpportunityNeed] = useState("");
-  const [opportunityAction, setOpportunityAction] = useState("");
   const records =
     snapshot.relationships.kind === "ready"
       ? snapshot.relationships.data.records
@@ -102,23 +86,62 @@ export const StrategicDepthSurface = ({
       .filter((item) => item.state === "open")
       .map((item) => ({ review, item })),
   );
+  // Wiersze rekordów są wybieralne i zasilają inspector; nawigacja
+  // strzałkami działa na tym samym prymitywie co listy Pracy i kokpitu.
+  const orderedOpportunities = organizations.flatMap((organization) =>
+    opportunities.filter((item) => item.organizationId === organization.id),
+  );
+  const timelyRecords = [...renewals, ...facts];
+  const supportRecords = [...people, ...decisions, ...recurrences];
+  const selectAt =
+    (list: readonly Record[]) =>
+    (index: number): void => {
+      const record = list[index];
+      if (record) onSelectRecord(record.id);
+    };
+  const opportunityNav = useListNavigation({
+    itemCount: orderedOpportunities.length,
+    onOpen: selectAt(orderedOpportunities),
+    onSelect: selectAt(orderedOpportunities),
+  });
+  const opportunityIndex = new Map(
+    orderedOpportunities.map((record, index) => [record.id, index]),
+  );
+  const timelyNav = useListNavigation({
+    itemCount: timelyRecords.length,
+    onOpen: selectAt(timelyRecords),
+    onSelect: selectAt(timelyRecords),
+  });
+  const supportNav = useListNavigation({
+    itemCount: supportRecords.length,
+    onOpen: selectAt(supportRecords),
+    onSelect: selectAt(supportRecords),
+  });
   const act = async (id: string, action: () => Promise<unknown>) => {
     setBusyId(id);
     try {
       await action();
       await onReload();
+    } catch {
+      // A rejected transport promise must not leave the surface busy or fail
+      // silently; the record state on disk is unchanged.
+      onFailure({
+        kind: "unavailable",
+        message:
+          "Polecenie nie dotarło do warstwy danych. Nic nie zmieniono — spróbuj ponownie.",
+      });
     } finally {
       setBusyId(undefined);
     }
   };
-  const dismissRadar = (candidate: Radar) => {
+  const resolveRadar = (candidate: Radar, state: "saved" | "dismissed") => {
     if (!client) return;
-    void act(candidate.id, async () => {
+    void act(`${candidate.id}:${state}`, async () => {
       const result = await resolveRadarCandidate(
         client,
         snapshot,
         candidate,
-        "dismissed",
+        state,
       );
       if (result.kind !== "success") onFailure(result);
     });
@@ -131,52 +154,9 @@ export const StrategicDepthSurface = ({
         snapshot,
         review,
         recordId,
-        "Reviewed in the strategic-depth surface; no automatic rewrite applied.",
+        impactReviewNote,
       );
       if (result.kind !== "success") onFailure(result);
-    });
-  };
-  const submitOrganization = (event: FormEvent) => {
-    event.preventDefault();
-    if (!client || organizationName.trim() === "") return;
-    void act("new-organization", async () => {
-      const result = await createOrganization(client, snapshot, {
-        name: organizationName.trim(),
-        nextAction: organizationAction.trim(),
-      });
-      if (result.kind !== "success") onFailure(result);
-      else {
-        setOrganizationName("");
-        setOrganizationAction("");
-      }
-    });
-  };
-  const submitOpportunity = (event: FormEvent) => {
-    event.preventDefault();
-    const organization = organizations.find(
-      (item) => item.id === opportunityOrganizationId,
-    );
-    if (
-      !client ||
-      organization === undefined ||
-      opportunityTitle.trim() === "" ||
-      opportunityNeed.trim() === "" ||
-      opportunityAction.trim() === ""
-    )
-      return;
-    void act("new-opportunity", async () => {
-      const result = await createOpportunity(client, snapshot, {
-        organizationId: organization.id,
-        title: opportunityTitle.trim(),
-        need: opportunityNeed.trim(),
-        nextAction: opportunityAction.trim(),
-      });
-      if (result.kind !== "success") onFailure(result);
-      else {
-        setOpportunityTitle("");
-        setOpportunityNeed("");
-        setOpportunityAction("");
-      }
     });
   };
 
@@ -185,7 +165,9 @@ export const StrategicDepthSurface = ({
       <header className="surface-header strategic-header">
         <div>
           <p className="eyebrow">Relacje i przeglądy</p>
-          <h1 id="surface-title">Relacje</h1>
+          <h1 id="surface-title" tabIndex={-1}>
+            Relacje
+          </h1>
           <p>
             Szanse, oferty, odnowienia, decyzje i wiedza zachowują źródła oraz
             historię. Aplikacja pokazuje skutki, ale nie podejmuje decyzji za
@@ -195,125 +177,30 @@ export const StrategicDepthSurface = ({
         <div className="strategic-summary" aria-label="Stan przeglądu">
           <strong>{radar.length + openConsequences.length}</strong>
           <span>
-            {(() => {
-              const count = radar.length + openConsequences.length;
-              const mod10 = count % 10;
-              const mod100 = count % 100;
-              if (count === 1) return "element wymaga decyzji";
-              if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14))
-                return "elementy wymagają decyzji";
-              return "elementów wymaga decyzji";
-            })()}
+            {pluralize(
+              radar.length + openConsequences.length,
+              "element wymaga decyzji",
+              "elementy wymagają decyzji",
+              "elementów wymaga decyzji",
+            )}
           </span>
         </div>
       </header>
 
       {snapshot.relationships.kind === "ready" && (
-        <section
-          className="strategic-compose"
-          aria-label="Dodaj relację lub szansę"
-        >
-          <form onSubmit={submitOrganization}>
-            <div>
-              <strong>Dodaj organizację</strong>
-            </div>
-            <label>
-              <span>Nazwa</span>
-              <input
-                value={organizationName}
-                onChange={(event) => setOrganizationName(event.target.value)}
-                placeholder="np. Northstar Industries"
-                required
-              />
-            </label>
-            <label>
-              <span>Następny ruch</span>
-              <input
-                value={organizationAction}
-                onChange={(event) => setOrganizationAction(event.target.value)}
-                placeholder="Co ma wydarzyć się dalej?"
-              />
-            </label>
-            <button
-              className="secondary-button compact"
-              disabled={!client || busyId === "new-organization"}
-            >
-              {busyId === "new-organization" ? "Zapisuję…" : "Dodaj relację"}
-            </button>
-          </form>
-          {organizations.length > 0 && (
-            <form onSubmit={submitOpportunity}>
-              <div>
-                <strong>Dodaj szansę</strong>
-              </div>
-              <label>
-                <span>Organizacja</span>
-                <select
-                  value={opportunityOrganizationId}
-                  onChange={(event) =>
-                    setOpportunityOrganizationId(event.target.value)
-                  }
-                  required
-                >
-                  <option value="">Wybierz relację</option>
-                  {organizations.map((organization) => (
-                    <option key={organization.id} value={organization.id}>
-                      {organization.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Tytuł i potrzeba</span>
-                <input
-                  value={opportunityTitle}
-                  onChange={(event) => setOpportunityTitle(event.target.value)}
-                  placeholder="Nazwa szansy"
-                  required
-                />
-                <input
-                  value={opportunityNeed}
-                  onChange={(event) => setOpportunityNeed(event.target.value)}
-                  aria-label="Potwierdzona potrzeba Opportunity"
-                  placeholder="Jaka potrzeba jest potwierdzona?"
-                  required
-                />
-              </label>
-              <label>
-                <span>Następny ruch</span>
-                <input
-                  value={opportunityAction}
-                  onChange={(event) => setOpportunityAction(event.target.value)}
-                  placeholder="Jedna konkretna czynność"
-                  required
-                />
-              </label>
-              <button
-                className="secondary-button compact"
-                disabled={
-                  !client ||
-                  organizations.length === 0 ||
-                  busyId === "new-opportunity"
-                }
-              >
-                {busyId === "new-opportunity" ? "Zapisuję…" : "Dodaj szansę"}
-              </button>
-            </form>
-          )}
-        </section>
-      )}
-
-      {snapshot.relationships.kind === "ready" && records.length > 0 && (
         <StrategicCreatePanel
           client={client}
           snapshot={snapshot}
           records={records}
           busy={busyId !== undefined}
-          onRun={(id, operation) => {
-            void act(`create:${id}`, async () => {
+          onRun={async (id, operation) => {
+            let succeeded = false;
+            await act(`create:${id}`, async () => {
               const result = await operation();
-              if (result.kind !== "success") onFailure(result);
+              if (result.kind === "success") succeeded = true;
+              else onFailure(result);
             });
+            return succeeded;
           }}
         />
       )}
@@ -336,8 +223,9 @@ export const StrategicDepthSurface = ({
             <p>
               Relacja łączy organizację z potwierdzoną potrzebą, ofertą,
               projektem, odnowieniem i decyzją — każdy krok zachowuje źródło i
-              historię. Dodaj pierwszą organizację w formularzu powyżej; szanse
-              i pozostałe rekordy pojawią się, gdy będzie je do czego podłączyć.
+              historię. Dodaj pierwszą organizację przyciskiem „Organizacja”
+              powyżej; szanse i pozostałe rekordy pojawią się, gdy będzie je do
+              czego podłączyć.
             </p>
           </div>
         </section>
@@ -352,7 +240,14 @@ export const StrategicDepthSurface = ({
                 <div>
                   <h2 id="thread-title">Od organizacji do projektu</h2>
                 </div>
-                <span>{opportunities.length} aktywnych wątków</span>
+                <span>
+                  {countLabel(
+                    opportunities.length,
+                    "aktywny wątek",
+                    "aktywne wątki",
+                    "aktywnych wątków",
+                  )}
+                </span>
               </header>
               {organizations.map((organization) => {
                 const related = opportunities.filter(
@@ -362,12 +257,17 @@ export const StrategicDepthSurface = ({
                   <article className="relationship-row" key={organization.id}>
                     <div className="relationship-anchor">
                       <span aria-hidden="true">O</span>
-                      <div>
+                      <button
+                        type="button"
+                        className="relationship-select"
+                        aria-pressed={selectedRecordId === organization.id}
+                        onClick={() => onSelectRecord(organization.id)}
+                      >
                         <strong>{organization.name}</strong>
                         <small>
                           {organization.nextAction ?? "Brak następnego ruchu"}
                         </small>
-                      </div>
+                      </button>
                       <StateMark state={organization.relationshipState} />
                     </div>
                     <div className="relationship-branches">
@@ -379,19 +279,53 @@ export const StrategicDepthSurface = ({
                         related.map((opportunity) => (
                           <div
                             key={opportunity.id}
-                            className="opportunity-line"
+                            className={`opportunity-line${
+                              selectedRecordId === opportunity.id
+                                ? " selected"
+                                : ""
+                            }`}
                           >
-                            <div>
+                            <button
+                              type="button"
+                              className="opportunity-select"
+                              aria-pressed={selectedRecordId === opportunity.id}
+                              {...opportunityNav(
+                                opportunityIndex.get(opportunity.id) ?? 0,
+                              )}
+                              onClick={() => onSelectRecord(opportunity.id)}
+                            >
                               <strong>{opportunity.title}</strong>
                               <span>{opportunity.need}</span>
                               <small>{opportunity.nextAction}</small>
-                            </div>
+                            </button>
                             <div className="opportunity-outcomes">
                               <StateMark state={opportunity.state} />
-                              <span>{opportunity.offerIds.length} ofert</span>
-                              <span>
-                                {opportunity.projectIds.length} projektów
-                              </span>
+                              <button
+                                type="button"
+                                className="outcome-link"
+                                aria-label={`Pokaż oferty szansy ${opportunity.title} w podglądzie kontekstu`}
+                                onClick={() => onSelectRecord(opportunity.id)}
+                              >
+                                {countLabel(
+                                  opportunity.offerIds.length,
+                                  "oferta",
+                                  "oferty",
+                                  "ofert",
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                className="outcome-link"
+                                aria-label={`Pokaż projekty szansy ${opportunity.title} w podglądzie kontekstu`}
+                                onClick={() => onSelectRecord(opportunity.id)}
+                              >
+                                {countLabel(
+                                  opportunity.projectIds.length,
+                                  "projekt",
+                                  "projekty",
+                                  "projektów",
+                                )}
+                              </button>
                             </div>
                           </div>
                         ))
@@ -411,23 +345,36 @@ export const StrategicDepthSurface = ({
                   <h2 id="ledger-title">Odnowienia i świeżość faktów</h2>
                 </div>
               </header>
-              {[...renewals, ...facts].map((record) => (
-                <div className="ledger-row" key={record.id}>
-                  <span className="record-kind">
-                    {record.kind === "renewal" ? "Odnowienie" : "Fakt"}
-                  </span>
-                  <div>
-                    <strong>
-                      {record.kind === "renewal"
-                        ? record.title
-                        : record.factType}
-                    </strong>
-                    <small>
-                      {record.kind === "renewal"
-                        ? `${record.scope} · ${new Date(record.expiresAt).toLocaleDateString("pl-PL")}`
-                        : `${record.value} · zweryfikowano ${new Date(record.verifiedAt).toLocaleDateString("pl-PL")}`}
-                    </small>
-                  </div>
+              {timelyRecords.map((record, index) => (
+                <div
+                  className={`ledger-row${
+                    selectedRecordId === record.id ? " selected" : ""
+                  }`}
+                  key={record.id}
+                >
+                  <button
+                    type="button"
+                    className="ledger-select"
+                    aria-pressed={selectedRecordId === record.id}
+                    {...timelyNav(index)}
+                    onClick={() => onSelectRecord(record.id)}
+                  >
+                    <span className="record-kind">
+                      {record.kind === "renewal" ? "Odnowienie" : "Fakt"}
+                    </span>
+                    <span className="ledger-copy">
+                      <strong>
+                        {record.kind === "renewal"
+                          ? record.title
+                          : record.factType}
+                      </strong>
+                      <small>
+                        {record.kind === "renewal"
+                          ? `${record.scope} · ${new Date(record.expiresAt).toLocaleDateString("pl-PL")}`
+                          : `${record.value} · zweryfikowano ${new Date(record.verifiedAt).toLocaleDateString("pl-PL")}`}
+                      </small>
+                    </span>
+                  </button>
                   <StateMark state={record.state} />
                   {record.kind === "renewal" && record.state === "watching" && (
                     <div className="ledger-actions">
@@ -453,7 +400,7 @@ export const StrategicDepthSurface = ({
                   )}
                 </div>
               ))}
-              {renewals.length + facts.length === 0 && (
+              {timelyRecords.length === 0 && (
                 <p className="strategic-quiet">
                   Brak terminowych rekordów do pokazania.
                 </p>
@@ -469,60 +416,67 @@ export const StrategicDepthSurface = ({
                   <h2 id="supporting-title">Rekordy wspierające nić</h2>
                 </div>
               </header>
-              {people.map((person) => (
-                <div className="ledger-row" key={person.id}>
-                  <span className="record-kind">Osoba</span>
-                  <div>
-                    <strong>{person.name}</strong>
-                    <small>
-                      {[person.role, person.email]
-                        .filter(Boolean)
-                        .join(" · ") || "Bez dodatkowych danych"}
-                    </small>
-                  </div>
-                  <StateMark state="current" />
-                </div>
-              ))}
-              {decisions.map((decision) => (
-                <div className="ledger-row" key={decision.id}>
-                  <span className="record-kind">Decyzja</span>
-                  <div>
-                    <strong>{decision.title}</strong>
-                    <small>{decision.rationale}</small>
-                  </div>
-                  <StateMark state={decision.state} />
-                </div>
-              ))}
-              {recurrences.map((recurrence) => (
-                <div className="ledger-row" key={recurrence.id}>
-                  <span className="record-kind">Cykl</span>
-                  <div>
-                    <strong>{recurrence.title}</strong>
-                    <small>
-                      {recurrence.taskTitle} · {recurrence.cadence}
-                    </small>
-                  </div>
+              {supportRecords.map((record, index) => (
+                <div
+                  className={`ledger-row${
+                    selectedRecordId === record.id ? " selected" : ""
+                  }`}
+                  key={record.id}
+                >
                   <button
                     type="button"
-                    className="ledger-action"
-                    disabled={!client || busyId === recurrence.id}
-                    onClick={() => {
-                      if (!client) return;
-                      void act(recurrence.id, async () => {
-                        const result = await generateRecurrenceOccurrence(
-                          client,
-                          snapshot,
-                          recurrence,
-                        );
-                        if (result.kind !== "success") onFailure(result);
-                      });
-                    }}
+                    className="ledger-select"
+                    aria-pressed={selectedRecordId === record.id}
+                    {...supportNav(index)}
+                    onClick={() => onSelectRecord(record.id)}
                   >
-                    Utwórz wystąpienie
+                    <span className="record-kind">
+                      {recordKindLabels[record.kind] ?? record.kind}
+                    </span>
+                    <span className="ledger-copy">
+                      <strong>
+                        {record.kind === "person" ? record.name : record.title}
+                      </strong>
+                      <small>
+                        {record.kind === "person"
+                          ? [record.role, record.email]
+                              .filter(Boolean)
+                              .join(" · ") || "Bez dodatkowych danych"
+                          : record.kind === "decision"
+                            ? record.rationale
+                            : `${record.taskTitle} · ${recurrenceCadenceLabels[record.cadence]}`}
+                      </small>
+                    </span>
                   </button>
+                  {record.kind === "recurrence" ? (
+                    <button
+                      type="button"
+                      className="ledger-action"
+                      disabled={!client || busyId === record.id}
+                      onClick={() => {
+                        if (!client) return;
+                        void act(record.id, async () => {
+                          const result = await generateRecurrenceOccurrence(
+                            client,
+                            snapshot,
+                            record,
+                          );
+                          if (result.kind !== "success") onFailure(result);
+                        });
+                      }}
+                    >
+                      Utwórz wystąpienie
+                    </button>
+                  ) : (
+                    <StateMark
+                      state={
+                        record.kind === "person" ? "current" : record.state
+                      }
+                    />
+                  )}
                 </div>
               ))}
-              {people.length + decisions.length + recurrences.length === 0 && (
+              {supportRecords.length === 0 && (
                 <p className="strategic-quiet">
                   Brak dodatkowych rekordów w tym Space.
                 </p>
@@ -535,22 +489,38 @@ export const StrategicDepthSurface = ({
               <h2 id="review-title">Do rozstrzygnięcia</h2>
               <span>Lista nie rozszerza się podczas przeglądu.</span>
             </header>
-            {radar.map((candidate) => (
-              <article key={candidate.id} className="review-item">
-                <span className="review-type">Radar wiedzy</span>
-                <strong>{candidate.title}</strong>
-                <p>{candidate.relevance}</p>
-                <div>
-                  <button
-                    className="secondary-button compact"
-                    disabled={busyId === candidate.id}
-                    onClick={() => dismissRadar(candidate)}
-                  >
-                    {busyId === candidate.id ? "Zapisuję…" : "Odrzuć kandydata"}
-                  </button>
-                </div>
-              </article>
-            ))}
+            {radar.map((candidate) => {
+              const radarBusy =
+                busyId === `${candidate.id}:saved` ||
+                busyId === `${candidate.id}:dismissed`;
+              return (
+                <article key={candidate.id} className="review-item">
+                  <span className="review-type">Radar wiedzy</span>
+                  <strong>{candidate.title}</strong>
+                  <p>{candidate.relevance}</p>
+                  <div className="review-actions">
+                    <button
+                      className="secondary-button compact"
+                      disabled={radarBusy}
+                      onClick={() => resolveRadar(candidate, "saved")}
+                    >
+                      {busyId === `${candidate.id}:saved`
+                        ? "Zapisuję…"
+                        : "Zachowaj"}
+                    </button>
+                    <button
+                      className="secondary-button compact"
+                      disabled={radarBusy}
+                      onClick={() => resolveRadar(candidate, "dismissed")}
+                    >
+                      {busyId === `${candidate.id}:dismissed`
+                        ? "Zapisuję…"
+                        : "Odrzuć"}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
             {openConsequences.map(({ review, item }) => (
               <article
                 key={`${review.id}:${item.recordId}`}
@@ -581,8 +551,17 @@ export const StrategicDepthSurface = ({
               </div>
             )}
             <footer>
-              <span>{offers.length} ofert</span>
-              <span>{recurrences.length} reguł cyklicznych</span>
+              <span>
+                {countLabel(offers.length, "oferta", "oferty", "ofert")}
+              </span>
+              <span>
+                {countLabel(
+                  recurrences.length,
+                  "reguła cykliczna",
+                  "reguły cykliczne",
+                  "reguł cyklicznych",
+                )}
+              </span>
             </footer>
           </aside>
         </div>

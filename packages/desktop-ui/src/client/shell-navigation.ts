@@ -13,11 +13,25 @@ export interface ShellContext {
   readonly projectId?: ProjectId;
 }
 
+// Wpisy historii pochodzące z nawigacji w obrębie jednej karty niosą marker
+// inCard: tylko takie wpisy wolno z powrotem zmaterializować w aktywnej
+// karcie. Wpisy dopisane przy otwieraniu, przełączaniu i zamykaniu kart są
+// pomijane, gdy ich karta nie jest już otwarta — Wstecz nie podmienia wtedy
+// cudzej karty.
+export interface ShellHistoryEntry extends ShellContext {
+  readonly inCard?: boolean;
+}
+
 export interface ShellNavigationState {
   readonly tabs: readonly ShellContext[];
   readonly activeKey: string;
-  readonly history: readonly string[];
+  readonly history: readonly ShellHistoryEntry[];
   readonly historyIndex: number;
+}
+
+export interface ShellOpenOutcome {
+  readonly state: ShellNavigationState;
+  readonly evictedContext?: ShellContext;
 }
 
 const RESTORABLE_SURFACES = new Set<SurfaceId>([
@@ -35,8 +49,27 @@ const RESTORABLE_SURFACES = new Set<SurfaceId>([
   "settings",
 ]);
 
+const isRestorableShellContext = (value: unknown): value is ShellContext => {
+  if (typeof value !== "object" || value === null) return false;
+  const context = value as ShellContext;
+  if (typeof context.key !== "string" || typeof context.label !== "string")
+    return false;
+  if (!RESTORABLE_SURFACES.has(context.surface)) return false;
+  if (context.taskId !== undefined && typeof context.taskId !== "string")
+    return false;
+  if (context.projectId !== undefined && typeof context.projectId !== "string")
+    return false;
+  // Prefiks klucza musi być spójny z obecnością identyfikatora — inaczej
+  // wpis nigdy nie zostałby przycięty przez pruneInaccessibleShellContexts.
+  if (context.key.startsWith("task:") && context.taskId === undefined)
+    return false;
+  if (context.key.startsWith("project:") && context.projectId === undefined)
+    return false;
+  return true;
+};
+
 export const serializeShellNavigation = (state: ShellNavigationState): string =>
-  JSON.stringify({ version: 1, state });
+  JSON.stringify({ version: 2, state });
 
 export const restoreShellNavigation = (
   value: string | null,
@@ -50,7 +83,7 @@ export const restoreShellNavigation = (
     };
     const state = parsed.state;
     if (
-      parsed.version !== 1 ||
+      parsed.version !== 2 ||
       state === undefined ||
       !Array.isArray(state.tabs) ||
       state.tabs.length === 0 ||
@@ -60,30 +93,25 @@ export const restoreShellNavigation = (
       typeof state.historyIndex !== "number"
     )
       return createShellNavigation(fallback);
-    const tabs = state.tabs.filter(
-      (tab): tab is ShellContext =>
-        typeof tab === "object" &&
-        tab !== null &&
-        typeof tab.key === "string" &&
-        typeof tab.label === "string" &&
-        RESTORABLE_SURFACES.has(tab.surface),
-    );
+    const tabs = state.tabs.filter(isRestorableShellContext);
     if (tabs.length !== state.tabs.length)
       return createShellNavigation(fallback);
     if (!tabs.some((tab) => tab.key === state.activeKey))
       return createShellNavigation(fallback);
-    const keys = new Set(tabs.map((tab) => tab.key));
-    const history = state.history.filter(
-      (key): key is string => typeof key === "string" && keys.has(key),
-    );
-    if (history.length === 0) return createShellNavigation(fallback);
+    const history = state.history.filter(isRestorableShellContext);
+    if (history.length !== state.history.length || history.length === 0)
+      return createShellNavigation(fallback);
+    // Indeks klamrowany PO przycięciu historii i skorygowany o wpisy odcięte
+    // z przodu — inaczej przerośnięta historia zostawia indeks poza zakresem.
+    const bounded = history.slice(-MAX_HISTORY);
+    const dropped = history.length - bounded.length;
     return {
       tabs,
       activeKey: state.activeKey,
-      history: history.slice(-MAX_HISTORY),
+      history: bounded,
       historyIndex: Math.min(
-        Math.max(0, Math.trunc(state.historyIndex)),
-        history.length - 1,
+        Math.max(0, Math.trunc(state.historyIndex) - dropped),
+        bounded.length - 1,
       ),
     };
   } catch {
@@ -99,21 +127,23 @@ export const pruneInaccessibleShellContexts = (
   },
   fallback: ShellContext,
 ): ShellNavigationState => {
-  const tabs = state.tabs.filter(
-    (tab) =>
-      (tab.taskId === undefined || access.taskIds.has(tab.taskId)) &&
-      (tab.projectId === undefined || access.projectIds.has(tab.projectId)),
-  );
+  const accessible = (context: ShellContext): boolean =>
+    (context.taskId === undefined || access.taskIds.has(context.taskId)) &&
+    (context.projectId === undefined ||
+      access.projectIds.has(context.projectId));
+  const tabs = state.tabs.filter(accessible);
   if (tabs.length === 0) return createShellNavigation(fallback);
-  const keys = new Set(tabs.map((tab) => tab.key));
-  const activeKey = keys.has(state.activeKey) ? state.activeKey : tabs[0]!.key;
-  let history = state.history.filter((key) => keys.has(key));
+  const activeKey = tabs.some((tab) => tab.key === state.activeKey)
+    ? state.activeKey
+    : tabs[0]!.key;
+  const active = tabs.find((tab) => tab.key === activeKey)!;
+  let history = state.history.filter(accessible);
   let historyIndex = Math.min(state.historyIndex, history.length - 1);
   if (history.length === 0) {
-    history = [activeKey];
+    history = [active];
     historyIndex = 0;
-  } else if (history[historyIndex] !== activeKey) {
-    history = [...history.slice(0, historyIndex + 1), activeKey];
+  } else if (history[historyIndex]!.key !== activeKey) {
+    history = [...history.slice(0, historyIndex + 1), active];
     historyIndex = history.length - 1;
   }
   if (
@@ -154,7 +184,7 @@ export const createShellNavigation = (
 ): ShellNavigationState => ({
   tabs: [initial],
   activeKey: initial.key,
-  history: [initial.key],
+  history: [initial],
   historyIndex: 0,
 });
 
@@ -168,39 +198,59 @@ export const destinationShortcutIndex = (code: string): number | undefined => {
 
 const appendHistory = (
   state: ShellNavigationState,
-  key: string,
+  context: ShellHistoryEntry,
 ): Pick<ShellNavigationState, "history" | "historyIndex"> => {
   const current = state.history[state.historyIndex];
-  if (current === key) return state;
+  if (current?.key === context.key) {
+    if (current === context) return state;
+    return {
+      history: state.history.map((entry, index) =>
+        index === state.historyIndex ? context : entry,
+      ),
+      historyIndex: state.historyIndex,
+    };
+  }
   const history = [
     ...state.history.slice(0, state.historyIndex + 1),
-    key,
+    context,
   ].slice(-MAX_HISTORY);
   return { history, historyIndex: history.length - 1 };
 };
 
-export const openShellContext = (
+export const openShellContextReportingEviction = (
   state: ShellNavigationState,
   context: ShellContext,
-): ShellNavigationState => {
+): ShellOpenOutcome => {
   const existing = state.tabs.findIndex((tab) => tab.key === context.key);
   let tabs =
     existing < 0
       ? [...state.tabs, context]
       : state.tabs.map((tab, index) => (index === existing ? context : tab));
+  let evictedContext: ShellContext | undefined;
   if (tabs.length > MAX_TABS) {
     const removable = tabs.findIndex(
       (tab, index) => index > 0 && tab.key !== state.activeKey,
     );
-    tabs = tabs.filter((_, index) => index !== (removable < 0 ? 1 : removable));
+    const removeIndex = removable < 0 ? 1 : removable;
+    evictedContext = tabs[removeIndex];
+    tabs = tabs.filter((_, index) => index !== removeIndex);
   }
-  return {
+  const next: ShellNavigationState = {
     ...state,
-    ...appendHistory(state, context.key),
+    ...appendHistory(state, context),
     tabs,
     activeKey: context.key,
   };
+  return evictedContext === undefined
+    ? { state: next }
+    : { state: next, evictedContext };
 };
+
+export const openShellContext = (
+  state: ShellNavigationState,
+  context: ShellContext,
+): ShellNavigationState =>
+  openShellContextReportingEviction(state, context).state;
 
 export const navigateShellContext = (
   state: ShellNavigationState,
@@ -213,7 +263,7 @@ export const navigateShellContext = (
     );
     return {
       ...state,
-      ...appendHistory(state, context.key),
+      ...appendHistory(state, context),
       tabs,
       activeKey: context.key,
     };
@@ -225,9 +275,19 @@ export const navigateShellContext = (
   const tabs = state.tabs.map((tab, index) =>
     index === activeIndex ? context : tab,
   );
+  // Nawigacja w obrębie karty: zarówno opuszczany, jak i nowy wpis historii
+  // należą do łańcucha tej karty, więc oba wolno przywrócić przez Wstecz.
+  const marked: ShellNavigationState = {
+    ...state,
+    history: state.history.map((entry, index) =>
+      index === state.historyIndex && entry.inCard !== true
+        ? { ...entry, inCard: true }
+        : entry,
+    ),
+  };
   return {
     ...state,
-    ...appendHistory(state, context.key),
+    ...appendHistory(marked, { ...context, inCard: true }),
     tabs,
     activeKey: context.key,
   };
@@ -237,10 +297,11 @@ export const activateShellContext = (
   state: ShellNavigationState,
   key: string,
 ): ShellNavigationState => {
-  if (!state.tabs.some((tab) => tab.key === key)) return state;
+  const tab = state.tabs.find((entry) => entry.key === key);
+  if (tab === undefined) return state;
   return {
     ...state,
-    ...appendHistory(state, key),
+    ...appendHistory(state, tab),
     activeKey: key,
   };
 };
@@ -251,10 +312,25 @@ export const moveShellHistory = (
 ): ShellNavigationState => {
   let index = state.historyIndex + direction;
   while (index >= 0 && index < state.history.length) {
-    const key = state.history[index];
-    if (key !== undefined && state.tabs.some((tab) => tab.key === key)) {
-      return { ...state, activeKey: key, historyIndex: index };
+    const target = state.history[index];
+    if (target === undefined) return state;
+    if (state.tabs.some((tab) => tab.key === target.key)) {
+      return { ...state, activeKey: target.key, historyIndex: index };
     }
+    if (target.inCard === true) {
+      const activeIndex = state.tabs.findIndex(
+        (tab) => tab.key === state.activeKey,
+      );
+      const tabs =
+        activeIndex < 0
+          ? [...state.tabs, target]
+          : state.tabs.map((tab, tabIndex) =>
+              tabIndex === activeIndex ? target : tab,
+            );
+      return { ...state, tabs, activeKey: target.key, historyIndex: index };
+    }
+    // Wpis z zamkniętej lub eksmitowanej karty — pomijamy go, żeby Wstecz
+    // nie podmieniał aktywnej karty na cudzy kontekst.
     index += direction;
   }
   return state;
@@ -276,6 +352,8 @@ export const closeShellContext = (
   );
 };
 
+// Pomijanie wpisów w moveShellHistory sprawia, że sam zakres indeksu nie
+// wystarcza — przycisk jest aktywny tylko, gdy ruch faktycznie coś zmienia.
 export const canMoveShellHistory = (
   state: ShellNavigationState,
   direction: -1 | 1,

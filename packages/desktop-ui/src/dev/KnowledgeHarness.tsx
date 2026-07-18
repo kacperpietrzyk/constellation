@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import {
   DocumentIdSchema,
   DocumentRevisionIdSchema,
@@ -219,11 +221,44 @@ const snapshot: DesktopSnapshot = {
   },
 };
 
-export const KnowledgeHarness = () => (
-  <DocumentsSurface
-    client={client}
-    snapshot={snapshot}
-    onReload={async () => undefined}
-    onFailure={() => undefined}
-  />
-);
+export const KnowledgeHarness = () => {
+  const [inspectorHost, setInspectorHost] = useState<HTMLElement | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorKind, setInspectorKind] = useState<"document" | "source">(
+    "document",
+  );
+  return (
+    <main className="meetings-harness-shell">
+      <DocumentsSurface
+        client={client}
+        snapshot={snapshot}
+        inspectorHost={inspectorHost}
+        onInspectorOpen={(kind) => {
+          setInspectorKind(kind);
+          setInspectorOpen(true);
+        }}
+        onReload={async () => undefined}
+        onFailure={() => undefined}
+      />
+      <aside
+        className={`inspector${inspectorOpen ? " open" : ""}`}
+        aria-label="Podgląd kontekstu"
+      >
+        <header className="inspector-header">
+          <div>
+            <span>Podgląd kontekstu</span>
+            <small>{inspectorKind === "source" ? "Źródło" : "Dokument"}</small>
+          </div>
+          <button
+            className="icon-button surface-inspector-close"
+            aria-label="Zamknij szczegóły dokumentu"
+            onClick={() => setInspectorOpen(false)}
+          >
+            ×
+          </button>
+        </header>
+        <div className="surface-inspector-host" ref={setInspectorHost} />
+      </aside>
+    </main>
+  );
+};
