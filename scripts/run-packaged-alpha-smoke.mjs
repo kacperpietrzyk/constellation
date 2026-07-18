@@ -560,6 +560,8 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           const shell = document.querySelector(".desktop-shell");
           const work = document.querySelector(".work-surface");
           const dock = document.querySelector(".capture-dock");
+          const dockLabel = document.querySelector(".capture-dock-label");
+          const detach = document.querySelector(".shell-detach");
           const targets = [...document.querySelectorAll(
             ".search-control, .nav-item, .capture-dock"
           )].filter((element) => element.getClientRects().length > 0);
@@ -574,6 +576,11 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             shellWidth: shell?.getBoundingClientRect().width,
             workWithinViewport: work ? withinViewport(work) : false,
             dockWithinViewport: dock ? withinViewport(dock) : false,
+            detachWithinViewport: detach ? withinViewport(detach) : false,
+            dockLabelTruncatesCleanly: dockLabel
+              ? dockLabel.scrollWidth <= dockLabel.clientWidth ||
+                getComputedStyle(dockLabel).textOverflow === "ellipsis"
+              : false,
             dockRect: dock
               ? (() => {
                   const rect = dock.getBoundingClientRect();
@@ -605,6 +612,8 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           narrowShell.shellWidth > 320 ||
           !narrowShell.workWithinViewport ||
           !narrowShell.dockWithinViewport ||
+          !narrowShell.detachWithinViewport ||
+          !narrowShell.dockLabelTruncatesCleanly ||
           !narrowShell.targetsAreLargeEnough ||
           !narrowShell.favoritesHidden
         ) {

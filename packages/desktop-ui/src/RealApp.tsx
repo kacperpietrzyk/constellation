@@ -2608,7 +2608,12 @@ export const RealApp = ({
                 );
             }}
           >
-            {detachedWindow ? "Dołącz z powrotem" : "Osobne okno"}
+            <span className="shell-detach-long">
+              {detachedWindow ? "Dołącz z powrotem" : "Osobne okno"}
+            </span>
+            <span className="shell-detach-short" aria-hidden="true">
+              {detachedWindow ? "Dołącz" : "Okno"}
+            </span>
           </button>
         </div>
         <div
@@ -3316,9 +3321,11 @@ export const RealApp = ({
 
         <div className="capture-dock-layer">
           <button className="capture-dock" onClick={openCapture}>
-            <span>
+            <span className="capture-dock-content">
               <Icon name="capture" />
-              Zapisz myśl, link albo zadanie…
+              <span className="capture-dock-label">
+                Zapisz myśl, link albo zadanie…
+              </span>
             </span>
             <kbd>{modifierLabel}⇧K</kbd>
           </button>

@@ -54,4 +54,19 @@ describe("css token lint", () => {
       "Token definitions were not parsed; the lint would pass vacuously.",
     );
   });
+
+  it("uses the dynamic viewport for height-bound desktop surfaces", () => {
+    const legacyViewportReferences = sources.flatMap((css, sourceIndex) =>
+      [...css.matchAll(/100vh/g)].map((match) => ({
+        source: sourceIndex === 0 ? "tokens.css" : "styles.css",
+        offset: match.index,
+      })),
+    );
+    assert.deepEqual(
+      legacyViewportReferences,
+      [],
+      "Height-bound overlays and editors must use 100dvh so changing browser " +
+        "chrome cannot hide their footer or final action.",
+    );
+  });
 });
