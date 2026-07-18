@@ -561,7 +561,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           const work = document.querySelector(".work-surface");
           const dock = document.querySelector(".capture-dock");
           const targets = [...document.querySelectorAll(
-            ".search-control, .nav-item, .sidebar-capture"
+            ".search-control, .nav-item, .capture-dock"
           )].filter((element) => element.getClientRects().length > 0);
           const favorites = [...document.querySelectorAll(".nav-favorite-toggle")];
           const withinViewport = (element) => {
@@ -698,7 +698,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
 
         await client.send("Page.bringToFront");
         const captureOpener = await client.evaluate(`(() => {
-          const trigger = document.querySelector(".sidebar-capture");
+          const trigger = document.querySelector(".capture-dock");
           trigger.focus();
           const focused = document.activeElement === trigger;
           trigger.click();
@@ -736,7 +736,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         if (
           captureOpener.focused &&
           (typeof captureFocus.className !== "string" ||
-            !captureFocus.className.split(/\s+/u).includes("sidebar-capture"))
+            !captureFocus.className.split(/\s+/u).includes("capture-dock"))
         ) {
           throw new Error(
             `PACKAGED_ALPHA_CAPTURE_FOCUS_NOT_RESTORED:${JSON.stringify(captureFocus)}`,
@@ -773,7 +773,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     const submitCapture = async (title) => {
       const startedAt = performance.now();
       await client.evaluate(`(() => {
-        document.querySelector(".sidebar-capture").click();
+        document.querySelector(".capture-dock").click();
         return true;
       })()`);
       await waitFor(

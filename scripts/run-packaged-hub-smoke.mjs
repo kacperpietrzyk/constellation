@@ -260,7 +260,7 @@ const stop = async (session) => {
 
 const submitCapture = async (client, title) => {
   await client.evaluate(
-    `(() => { document.querySelector(".sidebar-capture").click(); return true; })()`,
+    `(() => { document.querySelector(".capture-dock").click(); return true; })()`,
   );
   await waitFor(
     client,
