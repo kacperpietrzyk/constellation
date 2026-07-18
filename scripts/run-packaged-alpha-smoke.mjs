@@ -648,8 +648,22 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           )) {
             destination.click();
             const readyDeadline = performance.now() + 3000;
+            const hasMissingAriaReference = () =>
+              [...document.querySelectorAll(
+                "[aria-labelledby], [aria-describedby], [aria-controls]"
+              )].some((element) =>
+                ["aria-labelledby", "aria-describedby", "aria-controls"].some(
+                  (attribute) =>
+                    (element.getAttribute(attribute) ?? "")
+                      .split(/\\s+/u)
+                      .filter(Boolean)
+                      .some((id) => document.getElementById(id) === null)
+                )
+              );
             while (
-              document.querySelector('.work-surface [aria-busy="true"]') &&
+              (!destination.classList.contains("active") ||
+                document.querySelector('.work-surface [aria-busy="true"]') ||
+                hasMissingAriaReference()) &&
               performance.now() < readyDeadline
             ) {
               await new Promise((resolve) => setTimeout(resolve, 25));
@@ -789,8 +803,22 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           )) {
             destination.click();
             const readyDeadline = performance.now() + 3000;
+            const hasMissingAriaReference = () =>
+              [...document.querySelectorAll(
+                "[aria-labelledby], [aria-describedby], [aria-controls]"
+              )].some((element) =>
+                ["aria-labelledby", "aria-describedby", "aria-controls"].some(
+                  (attribute) =>
+                    (element.getAttribute(attribute) ?? "")
+                      .split(/\\s+/u)
+                      .filter(Boolean)
+                      .some((id) => document.getElementById(id) === null)
+                )
+              );
             while (
-              document.querySelector('.work-surface [aria-busy="true"]') &&
+              (!destination.classList.contains("active") ||
+                document.querySelector('.work-surface [aria-busy="true"]') ||
+                hasMissingAriaReference()) &&
               performance.now() < readyDeadline
             ) {
               await new Promise((resolve) => setTimeout(resolve, 25));
