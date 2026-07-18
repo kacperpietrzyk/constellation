@@ -1043,6 +1043,7 @@ kbd {
 }
 .work-surface {
   --surface-measure: 72rem;
+  container-type: inline-size;
   position: relative;
   min-width: 0;
   overflow: auto;
@@ -3803,7 +3804,7 @@ button.mention-chip:disabled {
   color: var(--text-secondary);
 }
 
-@media (max-width: 68rem) {
+@container (max-width: 68rem) {
   .meeting-lanes {
     grid-template-columns: 1fr;
   }
@@ -3832,7 +3833,7 @@ button.mention-chip:disabled {
     grid-row: 2;
   }
 }
-@media (max-width: 47.5rem) {
+@container (max-width: 47.5rem) {
   .meeting-surface {
     padding-inline: var(--space-4);
   }
