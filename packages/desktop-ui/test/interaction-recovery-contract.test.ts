@@ -168,6 +168,10 @@ describe("interaction recovery contracts", () => {
     assert.match(surfaces, /className="project-detail-flow"/);
     assert.match(surfaces, /Wróć do projektów/);
     assert.match(
+      surfaces,
+      /aria-controls=\{creating \? "project-create-form" : undefined\}/,
+    );
+    assert.match(
       styles,
       /\.project-portfolio\s*\{[^}]*border:[^;]+;[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-rest\)/s,
     );

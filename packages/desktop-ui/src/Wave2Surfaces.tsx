@@ -1008,7 +1008,7 @@ export const ProjectsSurface = ({
               type="button"
               className="secondary-button"
               aria-expanded={creating}
-              aria-controls="project-create-form"
+              aria-controls={creating ? "project-create-form" : undefined}
               onClick={() => setCreating((value) => !value)}
             >
               <Icon name={creating ? "close" : "capture"} />
