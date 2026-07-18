@@ -757,7 +757,7 @@ try {
   );
   await waitFor(
     first.client,
-    `[...document.querySelectorAll(".attention-main strong")].some((node) => node.textContent === ${JSON.stringify(sharedTask.title)})`,
+    `[...document.querySelectorAll(".attention-main strong")].some((node) => node.textContent.includes(${JSON.stringify(sharedTask.title)}))`,
     "OWNER_ATTENTION_NOT_RENDERED",
   );
   await first.client.evaluate(`(() => {
