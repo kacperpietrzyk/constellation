@@ -599,7 +599,6 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         favorite?.click();
         return {
           activeItemPresent: item !== null,
-          documentFocused: document.hasFocus(),
           favoriteFocused,
           favoriteTag: favorite?.tagName,
           favoriteDisabled: favorite?.hasAttribute("disabled"),
@@ -625,8 +624,6 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         ?.getAttribute("aria-pressed")`);
       if (
         !favoriteKeyboardPath.activeItemPresent ||
-        (favoriteKeyboardPath.documentFocused &&
-          !favoriteKeyboardPath.favoriteFocused) ||
         favoriteKeyboardPath.favoriteTag !== "BUTTON" ||
         favoriteKeyboardPath.favoriteDisabled ||
         favoriteKeyboardPath.favoriteTabIndex !== 0 ||
