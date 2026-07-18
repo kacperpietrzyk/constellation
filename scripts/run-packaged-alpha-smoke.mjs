@@ -597,7 +597,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         requestAnimationFrame(() => requestAnimationFrame(resolve))
       )`);
       await client.send("Input.dispatchKeyEvent", {
-        type: "keyDown",
+        type: "rawKeyDown",
         key: "Tab",
         code: "Tab",
         windowsVirtualKeyCode: 9,
@@ -610,10 +610,21 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         windowsVirtualKeyCode: 9,
         nativeVirtualKeyCode: 9,
       });
-      const favoriteKeyboardFocus = await client.evaluate(`(() => ({
-        className: document.activeElement?.className,
-        ariaLabel: document.activeElement?.getAttribute("aria-label")
-      }))()`);
+      const favoriteKeyboardFocus = await client.evaluate(`(() => {
+        const activeItem = document.querySelector(
+          ".nav-item[data-surface].active"
+        );
+        const favorite = activeItem?.parentElement?.querySelector(
+          ".nav-favorite-toggle"
+        );
+        return {
+          className: document.activeElement?.className,
+          ariaLabel: document.activeElement?.getAttribute("aria-label"),
+          favoriteTabIndex: favorite?.tabIndex,
+          favoriteDisplay: favorite ? getComputedStyle(favorite).display : null,
+          viewportWidth: innerWidth
+        };
+      })()`);
       if (
         navItemFocused &&
         (typeof favoriteKeyboardFocus.className !== "string" ||
