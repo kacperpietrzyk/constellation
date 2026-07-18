@@ -1631,6 +1631,14 @@ kbd {
   background: transparent;
   transition: background var(--duration-fast) var(--ease-out);
 }
+.inspector-resize::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 24px;
+}
 .inspector-resize::after {
   content: "";
   position: absolute;
@@ -5530,6 +5538,16 @@ button.mention-chip:disabled {
 }
 .search-empty button {
   margin-top: var(--space-3);
+}
+.search-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.search-empty-actions button {
+  margin-top: 0;
 }
 .search-dialog > footer {
   display: flex;

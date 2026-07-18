@@ -67,7 +67,7 @@ const taskRow = (
   version: 1,
 });
 
-const client = createScenarioClient({
+const baseClient = createScenarioClient({
   queries: {
     "workspace.bootstrapContext": result({
       kind: "workspace.bootstrapContext",
@@ -257,5 +257,28 @@ const client = createScenarioClient({
     }),
   },
 });
+
+let injectedSearchAttempt = 0;
+const client = {
+  ...baseClient,
+  runQuery: async (...parameters: Parameters<typeof baseClient.runQuery>) => {
+    const [query] = parameters;
+    const searchFailureMode = new URLSearchParams(window.location.search).get(
+      "search-error",
+    );
+    if (query.queryName === "search.global" && searchFailureMode !== null) {
+      injectedSearchAttempt += 1;
+      if (searchFailureMode === "1" || injectedSearchAttempt === 1) {
+        throw new Error("private/path/provider-secret");
+      }
+      return result({
+        kind: "search.global",
+        normalizedQuery: query.parameters.text,
+        items: [],
+      });
+    }
+    return baseClient.runQuery(...parameters);
+  },
+};
 
 export const CockpitHarness = () => <RealApp client={client} />;

@@ -1454,10 +1454,12 @@ export const SearchOverlay = ({
   const [state, setState] = useState<
     | { readonly kind: "idle" | "loading" }
     | { readonly kind: "ready"; readonly data: SearchProjection }
-    | { readonly kind: "error"; readonly message: string }
+    | { readonly kind: "error" }
   >({ kind: "idle" });
+  const [searchAttempt, setSearchAttempt] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const dialog = dialogRef.current;
     dialog?.showModal();
@@ -1474,23 +1476,13 @@ export const SearchOverlay = ({
     const timer = window.setTimeout(() => {
       void searchGlobal(client, snapshot, text)
         .then((data) => active && setState({ kind: "ready", data }))
-        .catch(
-          (error: unknown) =>
-            active &&
-            setState({
-              kind: "error",
-              message:
-                error instanceof Error
-                  ? error.message
-                  : "Wyszukiwanie jest niedostępne.",
-            }),
-        );
+        .catch(() => active && setState({ kind: "error" }));
     }, 180);
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [client, query, snapshot]);
+  }, [client, query, searchAttempt, snapshot]);
   const results = state.kind === "ready" ? state.data.items : [];
   const commandResults = destinations.filter((item) =>
     item.label
@@ -1568,6 +1560,7 @@ export const SearchOverlay = ({
             Otwórz widok albo szukaj projektów, zadań i Capture
           </label>
           <input
+            ref={searchInputRef}
             id="global-search"
             autoFocus
             role="combobox"
@@ -1669,13 +1662,47 @@ export const SearchOverlay = ({
         ) : state.kind === "error" ? (
           <div className="search-empty" role="alert">
             <strong>Wyszukiwanie jest niedostępne</strong>
-            <span>{state.message}</span>
+            <span>
+              Lokalny indeks jest chwilowo niedostępny. Twoje dane pozostały bez
+              zmian.
+            </span>
+            <div className="search-empty-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  searchInputRef.current?.focus();
+                  setSearchAttempt((attempt) => attempt + 1);
+                }}
+              >
+                Ponów wyszukiwanie
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  searchInputRef.current?.focus();
+                  setQuery("");
+                  setActiveIndex(0);
+                }}
+              >
+                Wyczyść zapytanie
+              </button>
+            </div>
           </div>
         ) : (
           <div className="search-empty">
             <strong>Brak wyników dla „{query}”</strong>
             <span>Sprawdź pisownię albo wyszukaj szersze pojęcie.</span>
-            <button className="secondary-button" onClick={() => setQuery("")}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                searchInputRef.current?.focus();
+                setQuery("");
+                setActiveIndex(0);
+              }}
+            >
               Wyczyść zapytanie
             </button>
           </div>
