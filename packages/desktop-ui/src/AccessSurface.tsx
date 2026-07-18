@@ -1,4 +1,11 @@
-import { useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 
 import type {
   AccessProjection,
@@ -7,8 +14,81 @@ import type {
 } from "./client/workflow.js";
 import type { SpaceId } from "@constellation/contracts";
 
+import { Icon } from "./components/Icon.js";
+import { reportFirstEmptyRequiredField } from "./components/InlinePopover.js";
+
 type Member = AccessProjection["members"][number];
 type AgentGrant = AgentAccessProjection["grants"][number];
+
+const AccessCreateDialog = ({
+  title,
+  description,
+  open,
+  onClose,
+  children,
+}: {
+  readonly title: string;
+  readonly description: string;
+  readonly open: boolean;
+  readonly onClose: () => void;
+  readonly children: ReactNode;
+}) => {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (open && dialog !== null && !dialog.open) {
+      dialog.showModal();
+      dialog
+        .querySelector<HTMLElement>(
+          "input:not(:disabled), select:not(:disabled), textarea:not(:disabled)",
+        )
+        ?.focus();
+    }
+  }, [open]);
+
+  const close = () => {
+    const dialog = dialogRef.current;
+    if (dialog?.open) dialog.close();
+    else onClose();
+  };
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className="concept-help-backdrop access-dialog-backdrop"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+      onClose={onClose}
+      onCancel={(event) => {
+        event.preventDefault();
+        close();
+      }}
+      onMouseDown={(event) => event.target === event.currentTarget && close()}
+    >
+      <section className="concept-help-dialog access-dialog">
+        <header>
+          <div>
+            <p className="eyebrow">Nowy dostęp</p>
+            <h2 id={titleId}>{title}</h2>
+            <p id={descriptionId}>{description}</p>
+          </div>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={`Zamknij: ${title}`}
+            onClick={close}
+          >
+            <Icon name="close" />
+          </button>
+        </header>
+        <div className="access-dialog-content">{children}</div>
+      </section>
+    </dialog>
+  );
+};
 
 export const AccessSurface = ({
   access,
@@ -55,6 +135,9 @@ export const AccessSurface = ({
   // One armed destructive/irreversible action at a time: member revoke,
   // agent revoke, or agent credential rotation.
   const [confirmAction, setConfirmAction] = useState<string>();
+  const [openCreation, setOpenCreation] = useState<"person" | "agent">();
+  const personTriggerRef = useRef<HTMLButtonElement>(null);
+  const agentTriggerRef = useRef<HTMLButtonElement>(null);
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<"admin" | "member" | "guest">("member");
   const [spaceAccess, setSpaceAccess] = useState<"view" | "comment" | "edit">(
@@ -80,17 +163,42 @@ export const AccessSurface = ({
   const [spacesTouched, setSpacesTouched] = useState(false);
   const showSpacesError =
     spacesTouched && spaces.length > 0 && agentSpaces.length === 0;
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!busy && displayName.trim()) {
-      onAdd({ displayName: displayName.trim(), role, access: spaceAccess });
-      setDisplayName("");
-    }
+  const closeCreation = () => {
+    const closing = openCreation;
+    setOpenCreation(undefined);
+    requestAnimationFrame(() => {
+      (closing === "person"
+        ? personTriggerRef.current
+        : agentTriggerRef.current
+      )?.focus();
+    });
   };
-  const submitAgent = (event: FormEvent) => {
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (busy) return;
+    if (!displayName.trim()) {
+      reportFirstEmptyRequiredField(event.currentTarget);
+      return;
+    }
+    onAdd({ displayName: displayName.trim(), role, access: spaceAccess });
+    setDisplayName("");
+    closeCreation();
+  };
+  const submitAgent = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (agentSpaces.length === 0) setSpacesTouched(true);
-    if (busy || !agentName.trim() || agentSpaces.length === 0) return;
+    if (busy) return;
+    if (!agentName.trim()) {
+      reportFirstEmptyRequiredField(event.currentTarget);
+      return;
+    }
+    if (agentSpaces.length === 0) {
+      const firstSpace = event.currentTarget.querySelector<HTMLInputElement>(
+        ".agent-space-scope input",
+      );
+      requestAnimationFrame(() => firstSpace?.focus());
+      return;
+    }
     const expiresAt =
       agentExpiry === "never"
         ? undefined
@@ -103,6 +211,8 @@ export const AccessSurface = ({
       ...(expiresAt === undefined ? {} : { expiresAt }),
     });
     setAgentName("");
+    setSpacesTouched(false);
+    closeCreation();
   };
 
   if (access.kind === "unavailable") {
@@ -134,215 +244,237 @@ export const AccessSurface = ({
           <h1 id="surface-title" tabIndex={-1}>
             Dostęp
           </h1>
-          <p>
-            Rola i zakres Space są niezależne. Zmiany są wersjonowane,
-            audytowane i sprawdzane ponownie po pracy offline.
-          </p>
+          <p>Sprawdź, kto może pracować w tym workspace i w jakim zakresie.</p>
         </div>
         <span className="policy-version">
           Polityka v{current.policyVersion}
         </span>
       </header>
 
-      {current.canManage && (
-        <form className="access-composer" onSubmit={submit}>
-          <div className="access-composer-title">
-            <span className="access-avatar" aria-hidden="true">
-              +
-            </span>
-            <div>
-              <strong>Dodaj osobę</strong>
-              <small>Utwórz trwałą tożsamość i jawny zakres dostępu.</small>
-            </div>
+      <section className="access-ledger" aria-labelledby="member-list-title">
+        <header className="access-ledger-heading">
+          <div>
+            <h2 id="member-list-title">Osoby</h2>
+            <p>Rola w workspace i dostęp do Space pozostają niezależne.</p>
           </div>
-          <label>
-            <span>Nazwa osoby</span>
-            <input
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="np. Ada Nowak"
-              maxLength={120}
-              disabled={busy}
-              required
-            />
-          </label>
-          <label>
-            <span>Rola w workspace</span>
-            <select
-              value={role}
-              onChange={(event) =>
-                setRole(event.target.value as "admin" | "member" | "guest")
-              }
-              disabled={busy}
-            >
-              <option value="member">Członek</option>
-              <option value="guest">Gość</option>
-              <option value="admin">Administrator</option>
-            </select>
-          </label>
-          <fieldset>
-            <legend>Dostęp w bieżącym Space</legend>
-            <label>
-              <input
-                type="radio"
-                name="space-access"
-                checked={spaceAccess === "comment"}
-                onChange={() => setSpaceAccess("comment")}
-                disabled={busy}
-              />
-              Może komentować
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="space-access"
-                checked={spaceAccess === "view"}
-                onChange={() => setSpaceAccess("view")}
-                disabled={busy}
-              />
-              Tylko odczyt
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="space-access"
-                checked={spaceAccess === "edit"}
-                onChange={() => setSpaceAccess("edit")}
-                disabled={busy}
-              />
-              Może edytować
-            </label>
-          </fieldset>
-          <button
-            className="primary-button"
-            type="submit"
-            disabled={busy || !displayName.trim()}
-          >
-            {busy ? "Zapisuję…" : "Utwórz dostęp"}
-          </button>
-          <p className="access-boundary-note">
-            Dostęp nie obejmuje ukrytych Space. Pełny zakres funkcji nigdy nie
-            poszerza zakresu danych.
-          </p>
-        </form>
-      )}
-
-      <div className="member-list" aria-live="polite">
-        <div className="member-list-heading">
-          <h2>Osoby z dostępem</h2>
-          <span>
-            {
-              current.members.filter((member) => member.status === "active")
-                .length
-            }{" "}
-            aktywne
-          </span>
-        </div>
-        {current.members.map((member) => {
-          const grant = member.spaces[0];
-          const self = member.principalId === current.currentPrincipalId;
-          return (
-            <article
-              className={`member-row ${member.status === "revoked" ? "revoked" : ""}`}
-              key={member.membershipId}
-            >
-              <span className="access-avatar" aria-hidden="true">
-                {member.displayName
-                  .split(/\s+/u)
-                  .slice(0, 2)
-                  .map((part) => part[0])
-                  .join("")
-                  .toLocaleUpperCase()}
-              </span>
-              <div className="member-identity">
-                <strong>
-                  {member.displayName}
-                  {self ? " · Ty" : ""}
-                </strong>
-                <span>
-                  {member.role === "owner"
-                    ? "Właściciel"
-                    : member.role === "admin"
-                      ? "Administrator"
-                      : member.role === "guest"
-                        ? "Gość"
-                        : "Członek"}
-                  {grant
-                    ? ` · ${grant.spaceName}`
-                    : member.role === "owner"
-                      ? " · główny Space"
-                      : " · bez aktywnego Space"}
+          <div className="access-ledger-actions">
+            <span className="access-ledger-count">
+              {
+                current.members.filter((member) => member.status === "active")
+                  .length
+              }{" "}
+              aktywne
+            </span>
+            {current.canManage && (
+              <button
+                ref={personTriggerRef}
+                type="button"
+                className="secondary-button access-create-trigger"
+                aria-haspopup="dialog"
+                onClick={() => setOpenCreation("person")}
+              >
+                <Icon name="access" />
+                Dodaj osobę
+              </button>
+            )}
+          </div>
+        </header>
+        <div className="member-list" aria-live="polite">
+          {current.members.map((member) => {
+            const grant = member.spaces[0];
+            const self = member.principalId === current.currentPrincipalId;
+            return (
+              <article
+                className={`member-row ${member.status === "revoked" ? "revoked" : ""}`}
+                key={member.membershipId}
+              >
+                <span className="access-avatar" aria-hidden="true">
+                  {member.displayName
+                    .split(/\s+/u)
+                    .slice(0, 2)
+                    .map((part) => part[0])
+                    .join("")
+                    .toLocaleUpperCase()}
                 </span>
-              </div>
-              <span className={`access-state ${member.status}`}>
-                {member.status === "active" ? "Aktywny" : "Cofnięty"}
-              </span>
-              {current.canManage && !self && member.status === "active" && (
-                <div className="member-actions">
-                  {grant && (
-                    <label>
-                      <span className="sr-only">
-                        Zakres dla {member.displayName}
-                      </span>
-                      <select
-                        value={grant.access}
-                        onChange={(event) =>
-                          onSetAccess(
-                            member,
-                            event.target.value as "view" | "comment" | "edit",
-                          )
-                        }
-                        disabled={busy}
-                      >
-                        <option value="view">Tylko odczyt</option>
-                        <option value="comment">Może komentować</option>
-                        <option value="edit">Może edytować</option>
-                      </select>
-                    </label>
-                  )}
-                  {confirmAction === `member-${member.membershipId}` ? (
-                    <>
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={() => setConfirmAction(undefined)}
-                        disabled={busy}
-                      >
-                        Anuluj
-                      </button>
+                <div className="member-identity">
+                  <strong>
+                    {member.displayName}
+                    {self ? " · Ty" : ""}
+                  </strong>
+                  <span>
+                    {member.role === "owner"
+                      ? "Właściciel"
+                      : member.role === "admin"
+                        ? "Administrator"
+                        : member.role === "guest"
+                          ? "Gość"
+                          : "Członek"}
+                    {grant
+                      ? ` · ${grant.spaceName}`
+                      : member.role === "owner"
+                        ? " · główny Space"
+                        : " · bez aktywnego Space"}
+                  </span>
+                </div>
+                <span className={`access-state ${member.status}`}>
+                  {member.status === "active" ? "Aktywny" : "Cofnięty"}
+                </span>
+                {current.canManage && !self && member.status === "active" && (
+                  <div className="member-actions">
+                    {grant && (
+                      <label>
+                        <span className="sr-only">
+                          Zakres dla {member.displayName}
+                        </span>
+                        <select
+                          value={grant.access}
+                          onChange={(event) =>
+                            onSetAccess(
+                              member,
+                              event.target.value as "view" | "comment" | "edit",
+                            )
+                          }
+                          disabled={busy}
+                        >
+                          <option value="view">Tylko odczyt</option>
+                          <option value="comment">Może komentować</option>
+                          <option value="edit">Może edytować</option>
+                        </select>
+                      </label>
+                    )}
+                    {confirmAction === `member-${member.membershipId}` ? (
+                      <>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => setConfirmAction(undefined)}
+                          disabled={busy}
+                        >
+                          Anuluj
+                        </button>
+                        <button
+                          className="quiet-danger-button"
+                          type="button"
+                          onClick={() => {
+                            setConfirmAction(undefined);
+                            onRevoke(member);
+                          }}
+                          disabled={busy}
+                        >
+                          Potwierdź cofnięcie
+                        </button>
+                      </>
+                    ) : (
                       <button
                         className="quiet-danger-button"
                         type="button"
-                        onClick={() => {
-                          setConfirmAction(undefined);
-                          onRevoke(member);
-                        }}
+                        onClick={() =>
+                          setConfirmAction(`member-${member.membershipId}`)
+                        }
                         disabled={busy}
                       >
-                        Potwierdź cofnięcie
+                        Cofnij dostęp
                       </button>
-                    </>
-                  ) : (
-                    <button
-                      className="quiet-danger-button"
-                      type="button"
-                      onClick={() =>
-                        setConfirmAction(`member-${member.membershipId}`)
-                      }
-                      disabled={busy}
-                    >
-                      Cofnij dostęp
-                    </button>
-                  )}
-                </div>
-              )}
-            </article>
-          );
-        })}
-      </div>
+                    )}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      {current.canManage && openCreation === "person" && (
+        <AccessCreateDialog
+          title="Dodaj osobę"
+          description="Utwórz trwałą tożsamość, a rolę w workspace i dostęp do bieżącego Space przyznaj osobno."
+          open
+          onClose={closeCreation}
+        >
+          <form className="access-composer" onSubmit={submit}>
+            <label>
+              <span>Nazwa osoby</span>
+              <input
+                name="display-name"
+                autoComplete="name"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                placeholder="np. Ada Nowak"
+                maxLength={120}
+                disabled={busy}
+                required
+              />
+            </label>
+            <label>
+              <span>Rola w workspace</span>
+              <select
+                value={role}
+                onChange={(event) =>
+                  setRole(event.target.value as "admin" | "member" | "guest")
+                }
+                disabled={busy}
+              >
+                <option value="member">Członek</option>
+                <option value="guest">Gość</option>
+                <option value="admin">Administrator</option>
+              </select>
+            </label>
+            <fieldset>
+              <legend>Dostęp w bieżącym Space</legend>
+              <label>
+                <input
+                  type="radio"
+                  name="space-access"
+                  checked={spaceAccess === "comment"}
+                  onChange={() => setSpaceAccess("comment")}
+                  disabled={busy}
+                />
+                Może komentować
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="space-access"
+                  checked={spaceAccess === "view"}
+                  onChange={() => setSpaceAccess("view")}
+                  disabled={busy}
+                />
+                Tylko odczyt
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="space-access"
+                  checked={spaceAccess === "edit"}
+                  onChange={() => setSpaceAccess("edit")}
+                  disabled={busy}
+                />
+                Może edytować
+              </label>
+            </fieldset>
+            <p className="access-boundary-note">
+              Dostęp nie obejmuje ukrytych Space. Pełny zakres funkcji nigdy nie
+              poszerza zakresu danych.
+            </p>
+            <div className="access-dialog-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={closeCreation}
+                disabled={busy}
+              >
+                Anuluj
+              </button>
+              <button className="primary-button" type="submit" disabled={busy}>
+                {busy ? "Zapisuję…" : "Utwórz dostęp"}
+              </button>
+            </div>
+          </form>
+        </AccessCreateDialog>
+      )}
 
       <section
-        className="agent-access-section"
+        className="access-ledger agent-access-section"
         aria-labelledby="agent-access-title"
       >
         <header className="agent-access-heading">
@@ -361,14 +493,28 @@ export const AccessSurface = ({
             </p>
           </div>
           {agentAccess.kind === "ready" && (
-            <span className="policy-version">
-              {
-                agentAccess.data.grants.filter(
-                  (grant) => grant.status === "active",
-                ).length
-              }{" "}
-              aktywne
-            </span>
+            <div className="access-ledger-actions">
+              <span className="access-ledger-count">
+                {
+                  agentAccess.data.grants.filter(
+                    (grant) => grant.status === "active",
+                  ).length
+                }{" "}
+                aktywne
+              </span>
+              {agentAccess.data.canManage && (
+                <button
+                  ref={agentTriggerRef}
+                  type="button"
+                  className="secondary-button access-create-trigger"
+                  aria-haspopup="dialog"
+                  onClick={() => setOpenCreation("agent")}
+                >
+                  <span className="agent-orbit-mark" aria-hidden="true" />
+                  Dodaj agenta
+                </button>
+              )}
+            </div>
           )}
         </header>
 
@@ -383,182 +529,208 @@ export const AccessSurface = ({
           </div>
         ) : (
           <>
-            {agentAccess.data.canManage && (
-              <form className="agent-access-composer" onSubmit={submitAgent}>
-                <div className="agent-trust-boundary" aria-hidden="true">
-                  <span>Co może zrobić</span>
-                  <i />
-                  <span>Co może zobaczyć</span>
-                </div>
-                <label className="agent-name-field">
-                  <span>Nazwa agenta lub hosta</span>
-                  <input
-                    value={agentName}
-                    onChange={(event) => setAgentName(event.target.value)}
-                    placeholder="np. Codex — praca projektowa"
-                    maxLength={120}
-                    disabled={busy}
-                    required
-                  />
-                </label>
-                <fieldset>
-                  <legend>Poziom możliwości</legend>
-                  {(
-                    [
-                      ["observe", "Obserwuj", "Tylko odczyt i dowody"],
-                      [
-                        "propose",
-                        "Proponuj",
-                        "Odczyt i sugestie w komentarzach",
-                      ],
-                      ["operate", "Działaj", "Typowe zmiany bez administracji"],
-                      [
-                        "full_access",
-                        "Pełny dostęp",
-                        "Wszystkie przyznane operacje",
-                      ],
-                    ] as const
-                  ).map(([value, label, description]) => (
-                    <label key={value} className="agent-option">
-                      <input
-                        type="radio"
-                        name="agent-preset"
-                        checked={agentPreset === value}
-                        onChange={() => setAgentPreset(value)}
-                        disabled={busy}
-                      />
-                      <span>
-                        <strong>{label}</strong>
-                        <small>{description}</small>
-                      </span>
-                    </label>
-                  ))}
-                </fieldset>
-                <fieldset
-                  aria-describedby={
-                    showSpacesError ? "agent-spaces-error" : undefined
-                  }
-                >
-                  <legend>Zakres danych</legend>
-                  {spaces.length === 0 ? (
-                    <p className="access-boundary-note">
-                      Ten workspace nie ma jeszcze żadnego Space, więc nie da
-                      się przyznać zakresu danych. Grant utworzysz po dodaniu
-                      pierwszego Space.
-                    </p>
-                  ) : (
-                    spaces.map((space) => (
-                      <label key={space.id} className="agent-option">
-                        <input
-                          type="checkbox"
-                          checked={agentSpaces.includes(space.id)}
-                          aria-invalid={showSpacesError}
-                          aria-describedby={
-                            showSpacesError ? "agent-spaces-error" : undefined
-                          }
-                          onChange={() => {
-                            setSpacesTouched(true);
-                            setAgentSpaces((current) =>
-                              current.includes(space.id)
-                                ? current.filter((id) => id !== space.id)
-                                : [...current, space.id],
-                            );
-                          }}
-                          disabled={busy}
-                        />
-                        <span>
-                          <strong>{space.name}</strong>
-                          <small>Relacje nie poszerzą tego zakresu.</small>
-                        </span>
-                      </label>
-                    ))
-                  )}
-                </fieldset>
-                <fieldset className="agent-expiry">
-                  <legend>Wygaśnięcie</legend>
-                  <label>
+            {agentAccess.data.canManage && openCreation === "agent" && (
+              <AccessCreateDialog
+                title={
+                  agentTransport === "remote_hub"
+                    ? "Dodaj zdalnego agenta"
+                    : "Dodaj lokalnego agenta"
+                }
+                description="Najpierw określ możliwości, potem jawnie ogranicz dane, które agent może zobaczyć."
+                open
+                onClose={closeCreation}
+              >
+                <form className="agent-access-composer" onSubmit={submitAgent}>
+                  <div className="agent-trust-boundary" aria-hidden="true">
+                    <span>Co może zrobić</span>
+                    <i />
+                    <span>Co może zobaczyć</span>
+                  </div>
+                  <label className="agent-name-field">
+                    <span>Nazwa agenta lub hosta</span>
                     <input
-                      type="radio"
-                      name="agent-expiry"
-                      checked={agentExpiry === "30_days"}
-                      onChange={() => setAgentExpiry("30_days")}
+                      name="agent-name"
+                      autoComplete="off"
+                      value={agentName}
+                      onChange={(event) => setAgentName(event.target.value)}
+                      placeholder="np. Codex — praca projektowa"
+                      maxLength={120}
                       disabled={busy}
+                      required
                     />
-                    30 dni
                   </label>
-                  <label>
-                    <input
-                      type="radio"
-                      name="agent-expiry"
-                      checked={agentExpiry === "never"}
-                      onChange={() => setAgentExpiry("never")}
-                      disabled={busy}
-                    />
-                    Bez terminu
-                  </label>
-                </fieldset>
-                {agentTransport === "remote_hub" && (
-                  <fieldset className="agent-federation-scope">
-                    <legend>Granice między workspace</legend>
+                  <fieldset>
+                    <legend>Poziom możliwości</legend>
                     {(
                       [
+                        ["observe", "Obserwuj", "Tylko odczyt i dowody"],
                         [
-                          "crossWorkspaceRead",
-                          "Odczyt z innych przyznanych workspace",
+                          "propose",
+                          "Proponuj",
+                          "Odczyt i sugestie w komentarzach",
                         ],
                         [
-                          "derivedResultWrite",
-                          "Zapis wyniku pochodnego do celu",
+                          "operate",
+                          "Działaj",
+                          "Typowe zmiany bez administracji",
                         ],
                         [
-                          "sourceMaterialization",
-                          "Materializacja treści źródłowej",
+                          "full_access",
+                          "Pełny dostęp",
+                          "Wszystkie przyznane operacje",
                         ],
                       ] as const
-                    ).map(([key, label]) => (
-                      <label key={key} className="agent-option">
+                    ).map(([value, label, description]) => (
+                      <label key={value} className="agent-option">
                         <input
-                          type="checkbox"
-                          checked={federationScope[key]}
-                          onChange={() =>
-                            setFederationScope((current) => ({
-                              ...current,
-                              [key]: !current[key],
-                            }))
-                          }
+                          type="radio"
+                          name="agent-preset"
+                          checked={agentPreset === value}
+                          onChange={() => setAgentPreset(value)}
                           disabled={busy}
                         />
                         <span>
                           <strong>{label}</strong>
-                          <small>Osobny grant. Domyślnie wyłączony.</small>
+                          <small>{description}</small>
                         </span>
                       </label>
                     ))}
                   </fieldset>
-                )}
-                <button
-                  className="primary-button"
-                  type="submit"
-                  disabled={
-                    busy || !agentName.trim() || agentSpaces.length === 0
-                  }
-                >
-                  {busy
-                    ? "Zapisuję…"
-                    : agentTransport === "remote_hub"
-                      ? "Utwórz zdalny dostęp MCP"
-                      : "Utwórz lokalny dostęp MCP"}
-                </button>
-                {showSpacesError && (
-                  <p
-                    id="agent-spaces-error"
-                    className="field-error"
-                    role="alert"
+                  <fieldset
+                    className="agent-space-scope"
+                    aria-describedby={
+                      showSpacesError ? "agent-spaces-error" : undefined
+                    }
                   >
-                    Wybierz co najmniej jeden Space.
-                  </p>
-                )}
-              </form>
+                    <legend>Zakres danych</legend>
+                    {spaces.length === 0 ? (
+                      <p className="access-boundary-note">
+                        Ten workspace nie ma jeszcze żadnego Space, więc nie da
+                        się przyznać zakresu danych. Grant utworzysz po dodaniu
+                        pierwszego Space.
+                      </p>
+                    ) : (
+                      spaces.map((space) => (
+                        <label key={space.id} className="agent-option">
+                          <input
+                            type="checkbox"
+                            checked={agentSpaces.includes(space.id)}
+                            aria-invalid={showSpacesError}
+                            aria-describedby={
+                              showSpacesError ? "agent-spaces-error" : undefined
+                            }
+                            onChange={() => {
+                              setSpacesTouched(true);
+                              setAgentSpaces((current) =>
+                                current.includes(space.id)
+                                  ? current.filter((id) => id !== space.id)
+                                  : [...current, space.id],
+                              );
+                            }}
+                            disabled={busy}
+                          />
+                          <span>
+                            <strong>{space.name}</strong>
+                            <small>Relacje nie poszerzą tego zakresu.</small>
+                          </span>
+                        </label>
+                      ))
+                    )}
+                  </fieldset>
+                  <fieldset className="agent-expiry">
+                    <legend>Wygaśnięcie</legend>
+                    <label>
+                      <input
+                        type="radio"
+                        name="agent-expiry"
+                        checked={agentExpiry === "30_days"}
+                        onChange={() => setAgentExpiry("30_days")}
+                        disabled={busy}
+                      />
+                      30 dni
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name="agent-expiry"
+                        checked={agentExpiry === "never"}
+                        onChange={() => setAgentExpiry("never")}
+                        disabled={busy}
+                      />
+                      Bez terminu
+                    </label>
+                  </fieldset>
+                  {agentTransport === "remote_hub" && (
+                    <fieldset className="agent-federation-scope">
+                      <legend>Granice między workspace</legend>
+                      {(
+                        [
+                          [
+                            "crossWorkspaceRead",
+                            "Odczyt z innych przyznanych workspace",
+                          ],
+                          [
+                            "derivedResultWrite",
+                            "Zapis wyniku pochodnego do celu",
+                          ],
+                          [
+                            "sourceMaterialization",
+                            "Materializacja treści źródłowej",
+                          ],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <label key={key} className="agent-option">
+                          <input
+                            type="checkbox"
+                            checked={federationScope[key]}
+                            onChange={() =>
+                              setFederationScope((current) => ({
+                                ...current,
+                                [key]: !current[key],
+                              }))
+                            }
+                            disabled={busy}
+                          />
+                          <span>
+                            <strong>{label}</strong>
+                            <small>Osobny grant. Domyślnie wyłączony.</small>
+                          </span>
+                        </label>
+                      ))}
+                    </fieldset>
+                  )}
+                  <div className="access-dialog-actions">
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={closeCreation}
+                      disabled={busy}
+                    >
+                      Anuluj
+                    </button>
+                    <button
+                      className="primary-button"
+                      type="submit"
+                      disabled={busy}
+                    >
+                      {busy
+                        ? "Zapisuję…"
+                        : agentTransport === "remote_hub"
+                          ? "Utwórz zdalny dostęp MCP"
+                          : "Utwórz lokalny dostęp MCP"}
+                    </button>
+                  </div>
+                  {showSpacesError && (
+                    <p
+                      id="agent-spaces-error"
+                      className="field-error"
+                      role="alert"
+                    >
+                      Wybierz co najmniej jeden Space.
+                    </p>
+                  )}
+                </form>
+              </AccessCreateDialog>
             )}
 
             <div className="agent-grant-list" aria-live="polite">

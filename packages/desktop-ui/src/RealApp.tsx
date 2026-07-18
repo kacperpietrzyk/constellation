@@ -152,7 +152,10 @@ const loadWorkSurface = () => import("./WorkSurface.js");
 const WorkSurface = lazy(() =>
   loadWorkSurface().then((module) => ({ default: module.WorkSurface })),
 );
-const loadAccessSurface = () => import("./AccessSurface.js");
+const loadAccessSurface = async () => {
+  await import("./access-surface.css");
+  return import("./AccessSurface.js");
+};
 const AccessSurface = lazy(() =>
   loadAccessSurface().then((module) => ({ default: module.AccessSurface })),
 );

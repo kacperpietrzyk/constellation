@@ -36,6 +36,14 @@ const documentsSurface = readFileSync(
   path.join(root, "src", "DocumentsSurface.tsx"),
   "utf8",
 );
+const accessSurface = readFileSync(
+  path.join(root, "src", "AccessSurface.tsx"),
+  "utf8",
+);
+const accessStyles = readFileSync(
+  path.join(root, "src", "access-surface.css"),
+  "utf8",
+);
 const realApp = readFileSync(path.join(root, "src", "RealApp.tsx"), "utf8");
 const meetings = readFileSync(
   path.join(root, "src", "MeetingsSurface.tsx"),
@@ -161,6 +169,33 @@ describe("interaction recovery contracts", () => {
     assert.match(
       styles,
       /\.knowledge-welcome\s*\{[^}]*border:[^;]+;[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-rest\)/s,
+    );
+  });
+
+  it("keeps Access ledgers primary and opens grant construction deliberately", () => {
+    assert.match(accessSurface, /const AccessCreateDialog =/);
+    assert.match(accessSurface, /dialog\.showModal\(\)/);
+    assert.match(accessSurface, /openCreation === "person"/);
+    assert.match(accessSurface, /openCreation === "agent"/);
+    assert.match(accessSurface, /aria-haspopup="dialog"/);
+    assert.match(accessSurface, /Dodaj osobę/);
+    assert.match(accessSurface, /Dodaj agenta/);
+    assert.match(accessSurface, /Poziom możliwości/);
+    assert.match(accessSurface, /Zakres danych/);
+    assert.match(accessSurface, /Granice między workspace/);
+    assert.match(accessSurface, /concept-help-backdrop access-dialog-backdrop/);
+    assert.match(accessSurface, /concept-help-dialog access-dialog/);
+    assert.match(
+      accessStyles,
+      /\.access-ledger\s*\{[^}]*border:[^;]+;[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-raised\)/s,
+    );
+    assert.match(
+      styles,
+      /\.concept-help-dialog\s*\{[^}]*background:\s*var\(--overlay-bg\);[^}]*max-height:[^;]+;[^}]*overflow:\s*hidden/s,
+    );
+    assert.match(
+      accessStyles,
+      /\.concept-help-dialog\.access-dialog\s*\{[^}]*display:\s*grid;[^}]*width:[^;]+;[^}]*grid-template-rows:[^;]+;[^}]*overflow:\s*hidden/s,
     );
   });
 });
