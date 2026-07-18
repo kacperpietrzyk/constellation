@@ -5326,85 +5326,6 @@ button.mention-chip:disabled {
   border-top: 1px solid var(--border-subtle);
 }
 
-.activity-layout {
-  max-width: var(--surface-measure, 58rem);
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(16rem, 0.65fr);
-  gap: var(--space-4);
-  margin: 0 auto;
-}
-.activity-row {
-  min-height: 4.5rem;
-  display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border-subtle);
-}
-.activity-row:last-child {
-  border-bottom: 0;
-}
-.activity-row.undone {
-  opacity: 0.62;
-}
-.actor-avatar {
-  display: grid;
-  width: 2rem;
-  height: 2rem;
-  place-items: center;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-full);
-  background: var(--surface-raised);
-  color: var(--text-secondary);
-  font-size: 0.625rem;
-  font-weight: 650;
-}
-.actor-agent {
-  border-radius: var(--radius-sm);
-}
-.activity-row > span:nth-child(2) {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-.activity-row strong {
-  overflow: hidden;
-  font-size: var(--text-sm);
-  font-weight: 580;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.activity-row small {
-  color: var(--text-quaternary);
-  font-size: var(--text-2xs);
-}
-.deep-audit {
-  align-self: start;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-5);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  background: var(--surface-sunken);
-}
-.deep-audit h2 {
-  margin: -0.4rem 0 var(--space-2);
-  font-size: var(--text-base);
-}
-.deep-audit code {
-  color: var(--text-tertiary);
-  font: var(--text-2xs) / 1.5 var(--font-mono);
-}
-.deep-audit p:last-child {
-  margin: var(--space-2) 0 0;
-  color: var(--text-quaternary);
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-}
-
 .conflict-compare {
   max-width: var(--surface-measure, 58rem);
   margin: var(--space-4) auto calc(-1 * var(--space-2));
@@ -6983,13 +6904,6 @@ button.mention-chip:disabled {
     grid-template-columns: 1.5rem minmax(0, 1fr);
   }
   .overview-attention button {
-    grid-column: 2;
-    justify-self: start;
-  }
-  .activity-row {
-    grid-template-columns: 2rem minmax(0, 1fr);
-  }
-  .activity-row button {
     grid-column: 2;
     justify-self: start;
   }

@@ -24,6 +24,14 @@ const surfaces = readFileSync(
   "utf8",
 );
 const styles = readFileSync(path.join(root, "src", "styles.css"), "utf8");
+const activitySurface = readFileSync(
+  path.join(root, "src", "ActivitySurface.tsx"),
+  "utf8",
+);
+const activityStyles = readFileSync(
+  path.join(root, "src", "activity-surface.css"),
+  "utf8",
+);
 const realApp = readFileSync(path.join(root, "src", "RealApp.tsx"), "utf8");
 const meetings = readFileSync(
   path.join(root, "src", "MeetingsSurface.tsx"),
@@ -89,6 +97,29 @@ describe("interaction recovery contracts", () => {
     assert.match(
       styles,
       /@media \(max-width: 50rem\)[\s\S]*?\.quiet-button,\s*\.ghost-button\s*\{[^}]*min-height:\s*2\.75rem/s,
+    );
+  });
+
+  it("keeps dense Activity controllable and semantically grouped", () => {
+    assert.match(activitySurface, /id="activity-search"/);
+    assert.match(activitySurface, /id="activity-category"/);
+    assert.match(
+      activitySurface,
+      /filterActivityItems\(items, category, query\)/,
+    );
+    assert.match(
+      activitySurface,
+      /groupActivityItems\(filteredItems, timezone\)/,
+    );
+    assert.match(activitySurface, /<ol className="activity-list">/);
+    assert.match(activitySurface, /Brak pasujących zmian/);
+    assert.match(
+      activityStyles,
+      /\.activity-group\s*\{[^}]*border:[^;]+;[^}]*background:\s*var\(--surface-raised\)/s,
+    );
+    assert.match(
+      activityStyles,
+      /\.activity-controls\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
     );
   });
 });

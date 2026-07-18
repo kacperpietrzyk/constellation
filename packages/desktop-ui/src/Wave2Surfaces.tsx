@@ -22,7 +22,6 @@ import type {
 
 import {
   searchGlobal,
-  type ActivityProjection,
   type DesktopSnapshot,
   type MutationFailure,
   type ProjectOverviewProjection,
@@ -1329,102 +1328,6 @@ export const HistorySurface = ({
     </div>
   );
 };
-
-const activityLabels: Record<
-  ActivityProjection["items"][number]["activityType"],
-  string
-> = {
-  capture_routed: "Capture przekształcono w zadanie",
-  capture_transcript_ready: "Zapisano transkrypcję notatki głosowej",
-  project_created: "Utworzono projekt",
-  project_outcome_changed: "Zmieniono zamierzony wynik projektu",
-  task_completed: "Ukończono zadanie",
-  task_reopened: "Ponownie otwarto zadanie",
-  task_assigned: "Przypisano odpowiedzialność za zadanie",
-  task_unassigned: "Usunięto odpowiedzialność za zadanie",
-  comment_added: "Dodano komentarz",
-  comment_resolved: "Rozwiązano wątek komentarzy",
-  comment_reopened: "Ponownie otwarto wątek komentarzy",
-  relation_added: "Powiązano zadanie z projektem",
-  relation_removed: "Usunięto powiązanie",
-  knowledge_source_created: "Zachowano źródło wiedzy",
-  knowledge_source_updated: "Zaktualizowano źródło wiedzy",
-  knowledge_evidence_updated: "Zmieniono dowody dokumentu",
-  knowledge_named_version_created: "Zamrożono nazwaną wersję",
-  knowledge_named_version_voided: "Unieważniono nazwaną wersję",
-  strategic_record_changed: "Zmieniono rekord strategiczny",
-  command_undone: "Cofnięto polecenie",
-};
-
-export const ActivitySurface = ({
-  activity,
-  timezone,
-  onUndo,
-  onRetry,
-}: {
-  readonly activity: DesktopSnapshot["activity"];
-  readonly timezone?: string;
-  readonly onUndo: (targetCommandId: CommandId) => void;
-  readonly onRetry: () => void;
-}) => (
-  <div className="surface-scroll">
-    <SurfaceHeader
-      kicker="Znacząca aktywność"
-      title="Aktywność"
-      description="Timeline pokazuje potwierdzone zmiany. Atrybucja i pełny receipt pozostają w audycie."
-    />
-    <section
-      className="meaningful-timeline reading-panel"
-      aria-labelledby="timeline-title"
-    >
-      <header className="section-heading">
-        <div>
-          <p className="eyebrow">Lokalny timeline</p>
-          <h2 id="timeline-title">Ostatnie zmiany</h2>
-        </div>
-      </header>
-      {activity.kind === "unavailable" ? (
-        <InlineState
-          title="Aktywność jest niedostępna"
-          detail={activity.message}
-          action={
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={onRetry}
-            >
-              Spróbuj ponownie
-            </button>
-          }
-        />
-      ) : activity.data.items.length === 0 ? (
-        <InlineState
-          title="Nie ma jeszcze znaczących zmian"
-          detail="Utworzenie projektu, routing Capture lub zmiana zadania pojawią się tutaj."
-        />
-      ) : (
-        activity.data.items.map((item) => (
-          <div className="activity-row" key={item.eventId}>
-            <span className="actor-avatar actor-human">•</span>
-            <span>
-              <strong>{activityLabels[item.activityType]}</strong>
-              <small>
-                {formatDateTime(item.occurredAt, timezone)} · rekord{" "}
-                {item.recordId.slice(0, 8)}
-              </small>
-            </span>
-            <button
-              className="ghost-button"
-              onClick={() => onUndo(item.targetCommandId)}
-            >
-              Podgląd cofnięcia
-            </button>
-          </div>
-        ))
-      )}
-    </section>
-  </div>
-);
 
 const searchResultsCountLabel = (count: number) =>
   countLabel(count, "wynik", "wyniki", "wyników");

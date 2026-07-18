@@ -47,7 +47,6 @@ import {
 import { countLabel, recordKindLabels } from "./i18n.js";
 
 import {
-  ActivitySurface,
   CockpitSurface,
   HistorySurface,
   ProjectsSurface,
@@ -141,6 +140,10 @@ const loadMeetingsSurface = () => import("./MeetingsSurface.js");
 const MeetingsSurface = lazy(() =>
   loadMeetingsSurface().then((module) => ({ default: module.MeetingsSurface })),
 );
+const loadActivitySurface = () => import("./ActivitySurface.js");
+const ActivitySurface = lazy(() =>
+  loadActivitySurface().then((module) => ({ default: module.ActivitySurface })),
+);
 const loadSettingsSurface = () => import("./SettingsSurface.js");
 const SettingsSurface = lazy(() =>
   loadSettingsSurface().then((module) => ({ default: module.SettingsSurface })),
@@ -176,6 +179,7 @@ const preloadSurface = (surface: SurfaceId) => {
   if (surface === "documents")
     void loadDocumentsSurface().catch(() => undefined);
   if (surface === "meetings") void loadMeetingsSurface().catch(() => undefined);
+  if (surface === "activity") void loadActivitySurface().catch(() => undefined);
   if (surface === "settings") void loadSettingsSurface().catch(() => undefined);
   if (surface === "work") void loadWorkSurface().catch(() => undefined);
   if (surface === "access") void loadAccessSurface().catch(() => undefined);
@@ -3028,12 +3032,16 @@ export const RealApp = ({
             />
           )}
           {surface === "activity" && (
-            <ActivitySurface
-              activity={state.snapshot.activity}
-              timezone={state.snapshot.bootstrap.workspace.timezone}
-              onUndo={(id) => void openUndo(id)}
-              onRetry={() => void reload()}
-            />
+            <LazySurfaceBoundary label="Aktywność">
+              <Suspense fallback={<SurfaceLoadingState label="Aktywność" />}>
+                <ActivitySurface
+                  activity={state.snapshot.activity}
+                  timezone={state.snapshot.bootstrap.workspace.timezone}
+                  onUndo={(id) => void openUndo(id)}
+                  onRetry={() => void reload()}
+                />
+              </Suspense>
+            </LazySurfaceBoundary>
           )}
           {surface === "attention" && (
             <AttentionSurface
