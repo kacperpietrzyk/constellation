@@ -97,7 +97,31 @@ describe("interaction recovery contracts", () => {
     assert.match(meetings, /aria-describedby=\{previewId\}/);
     assert.match(
       meetings,
+      /aria-controls=\{\s*visibleTranscriptMeetingId === selectedMeeting\.id\s*\? "meeting-result-transcript-content"\s*: undefined/s,
+    );
+    assert.match(
+      meetings,
       /<MeetingMarkdown\s+value=\{selectedMeeting\.summaryMarkdown\}/s,
+    );
+  });
+
+  it("keeps Jamie results ahead of provider context in a raised work plane", () => {
+    const completedIndex = meetings.indexOf('className="meeting-completed"');
+    const contextIndex = meetings.indexOf('className="meeting-context-rail"');
+    assert.ok(completedIndex > -1, "Jamie result plane must exist");
+    assert.ok(contextIndex > completedIndex, "Provider context follows work");
+    assert.match(meetings, /\{jamieConnection\}[\s\S]*meeting-results-browser/);
+    assert.match(
+      styles,
+      /\.meeting-lanes\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(18rem, 22rem\)/s,
+    );
+    assert.match(
+      styles,
+      /\.meeting-completed\s*\{[^}]*background:\s*var\(--panel-reading-bg\)[^}]*box-shadow:\s*var\(--elevation-raised\)/s,
+    );
+    assert.match(
+      styles,
+      /\.meeting-context-rail\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
     );
   });
 

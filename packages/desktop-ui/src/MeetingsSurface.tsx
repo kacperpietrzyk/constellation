@@ -367,6 +367,186 @@ export const MeetingsSurface = ({
   const selectedMeeting =
     surface.completed.find((meeting) => meeting.id === selectedMeetingId) ??
     surface.completed[0];
+  const calendarCapability = (
+    <div
+      className={`calendar-capability calendar-capability--${surface.capability.availability}`}
+    >
+      <strong>
+        {surface.capability.provider === "eventkit"
+          ? "Apple Calendar"
+          : "Kalendarz"}
+      </strong>
+      <span>{capabilityCopy(surface)}</span>
+      {surface.capability.availability !== "available" && (
+        <button
+          className="quiet-button"
+          onClick={() => {
+            if (
+              surface.capability.platform === "macos" &&
+              surface.capability.availability === "permission_required"
+            ) {
+              void client.requestCalendarAccess().then(load);
+            } else load();
+          }}
+        >
+          {surface.capability.platform === "macos" &&
+          surface.capability.availability === "permission_required"
+            ? "Przyznaj dostęp"
+            : "Sprawdź ponownie"}
+        </button>
+      )}
+    </div>
+  );
+  const jamieConnection = (
+    <div className="meeting-integration-wrap">
+      {/* Po skonfigurowaniu integracja zwija się do jednowierszowego paska
+          statusu; pełny opis i formularz wracają dopiero po odłączeniu. */}
+      <section
+        className={`meeting-integration${jamie.kind === "ready" && jamie.configured ? " meeting-integration--connected" : ""}`}
+        aria-labelledby="jamie-title"
+      >
+        {jamie.kind === "ready" && jamie.configured ? (
+          <p className="meeting-integration-summary">
+            <span className="eyebrow" id="jamie-title">
+              Jamie
+            </span>
+            <span className="meeting-integration-status">
+              Połączono klucz{" "}
+              {jamie.scope === "workspace" ? "zespołu" : "osobisty"}
+            </span>
+          </p>
+        ) : (
+          <div>
+            <p className="eyebrow">Źródło wyników</p>
+            <h2 id="jamie-title">Jamie</h2>
+            <p>
+              Jamie zachowuje odpowiedzialność za nagranie, transkrypcję i
+              inteligencję spotkania. Constellation importuje wynik oraz trwałe
+              identyfikatory zadań.
+            </p>
+          </div>
+        )}
+        {jamie.kind === "loading" ? (
+          <span className="meeting-integration-status">Sprawdzam…</span>
+        ) : jamie.kind === "error" ? (
+          <button className="secondary-button" onClick={loadJamieStatus}>
+            Ponów sprawdzenie
+          </button>
+        ) : jamie.configured ? (
+          <div className="meeting-integration-actions">
+            <button
+              className="primary-button"
+              disabled={jamieBusy}
+              onClick={() => {
+                setJamieBusy(true);
+                void client
+                  .syncJamie()
+                  .then((result) => {
+                    setJamieBusy(false);
+                    setNotice(
+                      `Jamie: ${countLabel(
+                        result.applied + result.corrected,
+                        "nowy lub poprawiony",
+                        "nowe lub poprawione",
+                        "nowych lub poprawionych",
+                      )}, ${result.noChange} bez zmian, ${countLabel(
+                        result.partial,
+                        "częściowy",
+                        "częściowe",
+                        "częściowych",
+                      )}${
+                        result.failed
+                          ? `, ${countLabel(result.failed, "błąd", "błędy", "błędów")}`
+                          : ""
+                      }.`,
+                    );
+                    load();
+                  })
+                  .catch(() => {
+                    setJamieBusy(false);
+                    setNotice(
+                      "Nie udało się zsynchronizować Jamie. Dotychczasowe wyniki pozostały bez zmian.",
+                    );
+                  });
+              }}
+            >
+              {jamieBusy ? "Synchronizuję…" : "Synchronizuj ostatnie 90 dni"}
+            </button>
+            <button
+              className="quiet-button"
+              disabled={jamieBusy}
+              onClick={() => {
+                setJamieBusy(true);
+                void client.disconnectJamie().then(() => {
+                  setJamieBusy(false);
+                  setNotice(
+                    "Odłączono klucz Jamie. Zaimportowane wyniki zachowano.",
+                  );
+                  loadJamieStatus();
+                });
+              }}
+            >
+              Odłącz
+            </button>
+          </div>
+        ) : (
+          <form
+            className="meeting-integration-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setJamieBusy(true);
+              void client
+                .configureJamie({ apiKey: jamieApiKey, scope: jamieScope })
+                .then(() => {
+                  setJamieApiKey("");
+                  setJamieBusy(false);
+                  setNotice(
+                    "Klucz Jamie zapisano w ochronie poświadczeń systemu operacyjnego.",
+                  );
+                  loadJamieStatus();
+                })
+                .catch(() => {
+                  setJamieBusy(false);
+                  setNotice(
+                    "Nie zapisano klucza Jamie. Sprawdź format i ochronę poświadczeń systemu.",
+                  );
+                });
+            }}
+          >
+            <label>
+              Zakres klucza
+              <select
+                value={jamieScope}
+                onChange={(event) =>
+                  setJamieScope(event.target.value as typeof jamieScope)
+                }
+              >
+                <option value="personal">Osobisty</option>
+                <option value="workspace">Workspace</option>
+              </select>
+            </label>
+            <label>
+              Klucz API
+              <input
+                type="password"
+                autoComplete="off"
+                value={jamieApiKey}
+                onChange={(event) => setJamieApiKey(event.target.value)}
+                placeholder="jk_…"
+                required
+              />
+            </label>
+            <button
+              className="primary-button"
+              disabled={jamieBusy || jamieApiKey.trim().length < 19}
+            >
+              {jamieBusy ? "Zabezpieczam…" : "Połącz Jamie"}
+            </button>
+          </form>
+        )}
+      </section>
+    </div>
+  );
   return (
     <section className="meeting-surface" aria-labelledby="surface-title">
       <header className="meeting-hero">
@@ -380,184 +560,7 @@ export const MeetingsSurface = ({
             z własnym cyklem życia.
           </p>
         </div>
-        <div
-          className={`calendar-capability calendar-capability--${surface.capability.availability}`}
-        >
-          <strong>
-            {surface.capability.provider === "eventkit"
-              ? "Apple Calendar"
-              : "Kalendarz"}
-          </strong>
-          <span>{capabilityCopy(surface)}</span>
-          {surface.capability.availability !== "available" && (
-            <button
-              className="quiet-button"
-              onClick={() => {
-                if (
-                  surface.capability.platform === "macos" &&
-                  surface.capability.availability === "permission_required"
-                ) {
-                  void client.requestCalendarAccess().then(load);
-                } else load();
-              }}
-            >
-              {surface.capability.platform === "macos" &&
-              surface.capability.availability === "permission_required"
-                ? "Przyznaj dostęp"
-                : "Sprawdź ponownie"}
-            </button>
-          )}
-        </div>
       </header>
-
-      <div className="meeting-integration-wrap">
-        {/* Po skonfigurowaniu integracja zwija się do jednowierszowego paska
-            statusu; pełny opis i formularz wracają dopiero po odłączeniu. */}
-        <section
-          className={`meeting-integration${jamie.kind === "ready" && jamie.configured ? " meeting-integration--connected" : ""}`}
-          aria-labelledby="jamie-title"
-        >
-          {jamie.kind === "ready" && jamie.configured ? (
-            <p className="meeting-integration-summary">
-              <span className="eyebrow" id="jamie-title">
-                Jamie
-              </span>
-              <span className="meeting-integration-status">
-                Połączono klucz{" "}
-                {jamie.scope === "workspace" ? "zespołu" : "osobisty"}
-              </span>
-            </p>
-          ) : (
-            <div>
-              <p className="eyebrow">Źródło wyników</p>
-              <h2 id="jamie-title">Jamie</h2>
-              <p>
-                Jamie zachowuje odpowiedzialność za nagranie, transkrypcję i
-                inteligencję spotkania. Constellation importuje wynik oraz
-                trwałe identyfikatory zadań.
-              </p>
-            </div>
-          )}
-          {jamie.kind === "loading" ? (
-            <span className="meeting-integration-status">Sprawdzam…</span>
-          ) : jamie.kind === "error" ? (
-            <button className="secondary-button" onClick={loadJamieStatus}>
-              Ponów sprawdzenie
-            </button>
-          ) : jamie.configured ? (
-            <div className="meeting-integration-actions">
-              <button
-                className="primary-button"
-                disabled={jamieBusy}
-                onClick={() => {
-                  setJamieBusy(true);
-                  void client
-                    .syncJamie()
-                    .then((result) => {
-                      setJamieBusy(false);
-                      setNotice(
-                        `Jamie: ${countLabel(
-                          result.applied + result.corrected,
-                          "nowy lub poprawiony",
-                          "nowe lub poprawione",
-                          "nowych lub poprawionych",
-                        )}, ${result.noChange} bez zmian, ${countLabel(
-                          result.partial,
-                          "częściowy",
-                          "częściowe",
-                          "częściowych",
-                        )}${
-                          result.failed
-                            ? `, ${countLabel(result.failed, "błąd", "błędy", "błędów")}`
-                            : ""
-                        }.`,
-                      );
-                      load();
-                    })
-                    .catch(() => {
-                      setJamieBusy(false);
-                      setNotice(
-                        "Nie udało się zsynchronizować Jamie. Dotychczasowe wyniki pozostały bez zmian.",
-                      );
-                    });
-                }}
-              >
-                {jamieBusy ? "Synchronizuję…" : "Synchronizuj ostatnie 90 dni"}
-              </button>
-              <button
-                className="quiet-button"
-                disabled={jamieBusy}
-                onClick={() => {
-                  setJamieBusy(true);
-                  void client.disconnectJamie().then(() => {
-                    setJamieBusy(false);
-                    setNotice(
-                      "Odłączono klucz Jamie. Zaimportowane wyniki zachowano.",
-                    );
-                    loadJamieStatus();
-                  });
-                }}
-              >
-                Odłącz
-              </button>
-            </div>
-          ) : (
-            <form
-              className="meeting-integration-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                setJamieBusy(true);
-                void client
-                  .configureJamie({ apiKey: jamieApiKey, scope: jamieScope })
-                  .then(() => {
-                    setJamieApiKey("");
-                    setJamieBusy(false);
-                    setNotice(
-                      "Klucz Jamie zapisano w ochronie poświadczeń systemu operacyjnego.",
-                    );
-                    loadJamieStatus();
-                  })
-                  .catch(() => {
-                    setJamieBusy(false);
-                    setNotice(
-                      "Nie zapisano klucza Jamie. Sprawdź format i ochronę poświadczeń systemu.",
-                    );
-                  });
-              }}
-            >
-              <label>
-                Zakres klucza
-                <select
-                  value={jamieScope}
-                  onChange={(event) =>
-                    setJamieScope(event.target.value as typeof jamieScope)
-                  }
-                >
-                  <option value="personal">Osobisty</option>
-                  <option value="workspace">Workspace</option>
-                </select>
-              </label>
-              <label>
-                Klucz API
-                <input
-                  type="password"
-                  autoComplete="off"
-                  value={jamieApiKey}
-                  onChange={(event) => setJamieApiKey(event.target.value)}
-                  placeholder="jk_…"
-                  required
-                />
-              </label>
-              <button
-                className="primary-button"
-                disabled={jamieBusy || jamieApiKey.trim().length < 19}
-              >
-                {jamieBusy ? "Zabezpieczam…" : "Połącz Jamie"}
-              </button>
-            </form>
-          )}
-        </section>
-      </div>
 
       {notice && (
         <p className="meeting-notice" role="status">
@@ -566,130 +569,6 @@ export const MeetingsSurface = ({
       )}
 
       <div className="meeting-lanes">
-        <section className="meeting-upcoming" aria-labelledby="upcoming-title">
-          <header>
-            <h2 id="upcoming-title">Nadchodzące</h2>
-            <span>
-              {countLabel(
-                surface.upcoming.length,
-                "wydarzenie",
-                "wydarzenia",
-                "wydarzeń",
-              )}
-            </span>
-          </header>
-          {surface.upcoming.length === 0 ? (
-            <div className="meeting-empty">
-              <svg aria-hidden="true" viewBox="0 0 48 48">
-                <path d="M9 12h30v27H9zM15 7v10M33 7v10M9 20h30" />
-              </svg>
-              <h3>Brak widocznych wydarzeń</h3>
-              <p>
-                {surface.capability.canRead
-                  ? "W tym oknie czasu kalendarz nie ma spotkań."
-                  : "Połącz lub odblokuj provider, aby zobaczyć przygotowanie."}
-              </p>
-            </div>
-          ) : (
-            surface.upcoming.map(({ event, brief }) => (
-              <article
-                className="meeting-event"
-                key={`${event.calendarExternalId}:${event.eventExternalId}`}
-              >
-                <div className="meeting-time">
-                  <strong>{formatTime(event.startsAt)}</strong>
-                  <span>
-                    {event.isAllDay
-                      ? "Cały dzień"
-                      : `${Math.round((Date.parse(event.endsAt) - Date.parse(event.startsAt)) / 60000)} min`}
-                  </span>
-                </div>
-                <div className="meeting-event-body">
-                  <h3>{event.title}</h3>
-                  <p>
-                    {countLabel(
-                      event.attendees.length,
-                      "uczestnik",
-                      "uczestników",
-                      "uczestników",
-                    )}
-                    {event.location ? ` · ${event.location}` : ""}
-                  </p>
-                  <div className="evidence-thread">
-                    <span className="evidence-node">Wydarzenie</span>
-                    <i aria-hidden="true" />
-                    <span className="evidence-node">Brief faktograficzny</span>
-                    <i aria-hidden="true" />
-                    <span className="evidence-node evidence-node--muted">
-                      Wynik Jamie po spotkaniu
-                    </span>
-                  </div>
-                  <div className="meeting-brief">
-                    <div>
-                      <strong>Orientacja</strong>
-                      <span>
-                        {brief.orientation.length
-                          ? brief.orientation
-                              .map((item) => item.label)
-                              .join(" · ")
-                          : "Brak dokładnie powiązanych rekordów."}
-                      </span>
-                    </div>
-                    <div>
-                      <strong>Otwarte pętle</strong>
-                      <span>
-                        {brief.openLoops.length
-                          ? brief.openLoops
-                              .map((item) => item.label)
-                              .join(" · ")
-                          : "Brak bezpiecznie dopasowanych zobowiązań."}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  className="secondary-button meeting-block-action"
-                  disabled={
-                    !surface.capability.canWriteOwnedBlocks || event.isAllDay
-                  }
-                  title={
-                    !surface.capability.canWriteOwnedBlocks
-                      ? "Provider nie zezwala na zapis własnych bloków."
-                      : undefined
-                  }
-                  onClick={() => {
-                    const startsAt = new Date(
-                      Date.parse(event.startsAt) - 30 * 60_000,
-                    ).toISOString();
-                    const block: CalendarBlockDraft = {
-                      calendarExternalId: event.calendarExternalId,
-                      ownedBlockExternalId: `meeting-prep:${event.eventExternalId}`,
-                      title: `Przygotowanie: ${event.title}`,
-                      startsAt,
-                      endsAt: event.startsAt,
-                      expectedRevision: null,
-                      sourceRecordIds: [
-                        `calendar-event:${event.eventExternalId}`,
-                      ],
-                    };
-                    void client
-                      .previewCalendarBlocks({ blocks: [block] })
-                      .then((result) => {
-                        if (result === undefined)
-                          setNotice(
-                            "Nie udało się przygotować bezpiecznego podglądu. Nic nie zapisano.",
-                          );
-                        else setPreview(result);
-                      });
-                  }}
-                >
-                  Podgląd bloku
-                </button>
-              </article>
-            ))
-          )}
-        </section>
-
         <section
           className="meeting-completed"
           aria-labelledby="completed-title"
@@ -705,6 +584,7 @@ export const MeetingsSurface = ({
               )}
             </span>
           </header>
+          {jamieConnection}
           {surface.completed.length === 0 ? (
             <div className="meeting-empty meeting-empty--compact">
               <h3>Nie zaimportowano jeszcze wyniku</h3>
@@ -843,7 +723,11 @@ export const MeetingsSurface = ({
                             aria-expanded={
                               visibleTranscriptMeetingId === selectedMeeting.id
                             }
-                            aria-controls="meeting-result-transcript-content"
+                            aria-controls={
+                              visibleTranscriptMeetingId === selectedMeeting.id
+                                ? "meeting-result-transcript-content"
+                                : undefined
+                            }
                             onClick={() =>
                               setVisibleTranscriptMeetingId((current) =>
                                 current === selectedMeeting.id
@@ -1213,6 +1097,141 @@ export const MeetingsSurface = ({
             </div>
           ) : null}
         </section>
+        <aside className="meeting-context-rail" aria-labelledby="sources-title">
+          <header>
+            <p className="eyebrow">Źródła i przygotowanie</p>
+            <h2 id="sources-title">Kontekst spotkań</h2>
+          </header>
+          {calendarCapability}
+          <section
+            className="meeting-upcoming"
+            aria-labelledby="upcoming-title"
+          >
+            <header>
+              <h3 id="upcoming-title">Nadchodzące</h3>
+              <span>
+                {countLabel(
+                  surface.upcoming.length,
+                  "wydarzenie",
+                  "wydarzenia",
+                  "wydarzeń",
+                )}
+              </span>
+            </header>
+            {surface.upcoming.length === 0 ? (
+              <div className="meeting-empty">
+                <svg aria-hidden="true" viewBox="0 0 48 48">
+                  <path d="M9 12h30v27H9zM15 7v10M33 7v10M9 20h30" />
+                </svg>
+                <h4>Brak widocznych wydarzeń</h4>
+                <p>
+                  {surface.capability.canRead
+                    ? "W tym oknie czasu kalendarz nie ma spotkań."
+                    : "Odblokuj provider, aby zobaczyć przygotowanie."}
+                </p>
+              </div>
+            ) : (
+              surface.upcoming.map(({ event, brief }) => (
+                <article
+                  className="meeting-event"
+                  key={`${event.calendarExternalId}:${event.eventExternalId}`}
+                >
+                  <div className="meeting-time">
+                    <strong>{formatTime(event.startsAt)}</strong>
+                    <span>
+                      {event.isAllDay
+                        ? "Cały dzień"
+                        : `${Math.round((Date.parse(event.endsAt) - Date.parse(event.startsAt)) / 60000)} min`}
+                    </span>
+                  </div>
+                  <div className="meeting-event-body">
+                    <h4>{event.title}</h4>
+                    <p>
+                      {countLabel(
+                        event.attendees.length,
+                        "uczestnik",
+                        "uczestników",
+                        "uczestników",
+                      )}
+                      {event.location ? ` · ${event.location}` : ""}
+                    </p>
+                    <div className="evidence-thread">
+                      <span className="evidence-node">Wydarzenie</span>
+                      <i aria-hidden="true" />
+                      <span className="evidence-node">
+                        Brief faktograficzny
+                      </span>
+                      <i aria-hidden="true" />
+                      <span className="evidence-node evidence-node--muted">
+                        Wynik Jamie po spotkaniu
+                      </span>
+                    </div>
+                    <div className="meeting-brief">
+                      <div>
+                        <strong>Orientacja</strong>
+                        <span>
+                          {brief.orientation.length
+                            ? brief.orientation
+                                .map((item) => item.label)
+                                .join(" · ")
+                            : "Brak dokładnie powiązanych rekordów."}
+                        </span>
+                      </div>
+                      <div>
+                        <strong>Otwarte pętle</strong>
+                        <span>
+                          {brief.openLoops.length
+                            ? brief.openLoops
+                                .map((item) => item.label)
+                                .join(" · ")
+                            : "Brak bezpiecznie dopasowanych zobowiązań."}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    className="secondary-button meeting-block-action"
+                    disabled={
+                      !surface.capability.canWriteOwnedBlocks || event.isAllDay
+                    }
+                    title={
+                      !surface.capability.canWriteOwnedBlocks
+                        ? "Provider nie zezwala na zapis własnych bloków."
+                        : undefined
+                    }
+                    onClick={() => {
+                      const startsAt = new Date(
+                        Date.parse(event.startsAt) - 30 * 60_000,
+                      ).toISOString();
+                      const block: CalendarBlockDraft = {
+                        calendarExternalId: event.calendarExternalId,
+                        ownedBlockExternalId: `meeting-prep:${event.eventExternalId}`,
+                        title: `Przygotowanie: ${event.title}`,
+                        startsAt,
+                        endsAt: event.startsAt,
+                        expectedRevision: null,
+                        sourceRecordIds: [
+                          `calendar-event:${event.eventExternalId}`,
+                        ],
+                      };
+                      void client
+                        .previewCalendarBlocks({ blocks: [block] })
+                        .then((result) => {
+                          if (result === undefined)
+                            setNotice(
+                              "Nie udało się przygotować bezpiecznego podglądu. Nic nie zapisano.",
+                            );
+                          else setPreview(result);
+                        });
+                    }}
+                  >
+                    Podgląd bloku
+                  </button>
+                </article>
+              ))
+            )}
+          </section>
+        </aside>
       </div>
       {preview && (
         <CalendarConsentDialog
