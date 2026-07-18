@@ -1033,6 +1033,7 @@ kbd {
 .work-column {
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   background:
@@ -1555,11 +1556,13 @@ kbd {
 }
 
 .capture-dock-layer {
+  min-width: 0;
   display: flex;
   justify-content: center;
   padding: var(--space-3) 1.5rem var(--space-4);
 }
 .capture-dock {
+  min-width: 0;
   width: 100%;
   max-width: 32rem;
   min-height: 3.15rem;
@@ -1582,6 +1585,7 @@ kbd {
   border-color: var(--edge-specular);
 }
 .capture-dock span {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-2);
