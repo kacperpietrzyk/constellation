@@ -7986,7 +7986,7 @@ button.work-task-copy {
   padding: var(--space-4);
 }
 
-@media (max-width: 53.75rem) {
+@container (max-width: 53.75rem) {
   .work-thread {
     grid-template-columns: 1fr;
   }
@@ -7996,7 +7996,7 @@ button.work-task-copy {
   }
 }
 
-@media (max-width: 38.75rem) {
+@container (max-width: 38.75rem) {
   .saved-view-strip,
   .work-thread {
     margin-inline: var(--space-4);
