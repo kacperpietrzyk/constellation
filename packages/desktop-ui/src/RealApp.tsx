@@ -47,6 +47,7 @@ import {
 import { countLabel, recordKindLabels } from "./i18n.js";
 
 import {
+  CaptureHistoryDetail,
   CockpitSurface,
   HistorySurface,
   ProjectsSurface,
@@ -1327,6 +1328,7 @@ export const RealApp = ({
     readonly id: string;
   }>();
   const [selectedStrategicId, setSelectedStrategicId] = useState<string>();
+  const [selectedCaptureId, setSelectedCaptureId] = useState<CaptureId>();
   const [meetingInspectorHost, setMeetingInspectorHost] =
     useState<HTMLElement | null>(null);
   const [meetingInspectorOpen, setMeetingInspectorOpen] = useState(false);
@@ -1627,6 +1629,7 @@ export const RealApp = ({
     if (activeContext.taskId || activeContext.projectId) {
       setSelectedWorkContext(undefined);
       setSelectedStrategicId(undefined);
+      setSelectedCaptureId(undefined);
     }
   }, [activeContext.projectId, activeContext.taskId]);
 
@@ -1638,12 +1641,14 @@ export const RealApp = ({
     setSelectedProjectId(undefined);
     setSelectedWorkContext(undefined);
     setSelectedStrategicId(undefined);
+    setSelectedCaptureId(undefined);
     setSelectedTaskId(id);
   }, []);
   const selectProjectInInspector = useCallback((id: ProjectId) => {
     setSelectedTaskId(undefined);
     setSelectedWorkContext(undefined);
     setSelectedStrategicId(undefined);
+    setSelectedCaptureId(undefined);
     setSelectedProjectId(id);
   }, []);
   const selectWorkContextInInspector = useCallback(
@@ -1651,6 +1656,7 @@ export const RealApp = ({
       setSelectedTaskId(undefined);
       setSelectedProjectId(undefined);
       setSelectedStrategicId(undefined);
+      setSelectedCaptureId(undefined);
       setSelectedWorkContext({ kind, id });
     },
     [],
@@ -1659,7 +1665,15 @@ export const RealApp = ({
     setSelectedTaskId(undefined);
     setSelectedProjectId(undefined);
     setSelectedWorkContext(undefined);
+    setSelectedCaptureId(undefined);
     setSelectedStrategicId(id);
+  }, []);
+  const selectCaptureInInspector = useCallback((id: CaptureId) => {
+    setSelectedTaskId(undefined);
+    setSelectedProjectId(undefined);
+    setSelectedWorkContext(undefined);
+    setSelectedStrategicId(undefined);
+    setSelectedCaptureId(id);
   }, []);
 
   // Surface changes requested from the sidebar or ⌘1-9 move focus onto the
@@ -1680,6 +1694,7 @@ export const RealApp = ({
       setDocumentInspectorKind("document");
     }
     if (surface !== "relationships") setSelectedStrategicId(undefined);
+    if (surface !== "history") setSelectedCaptureId(undefined);
   }, [surface]);
 
   const snapshot = state.kind === "ready" ? state.snapshot : undefined;
@@ -2055,6 +2070,22 @@ export const RealApp = ({
         : undefined,
     [selectedProjectId, snapshot],
   );
+  const selectedCapture = useMemo(
+    () =>
+      snapshot?.captures.find((capture) => capture.id === selectedCaptureId),
+    [selectedCaptureId, snapshot],
+  );
+  const selectedCaptureRouteActivity = useMemo(
+    () =>
+      selectedCapture && snapshot?.activity.kind === "ready"
+        ? snapshot.activity.data.items.find(
+            (item) =>
+              item.activityType === "capture_routed" &&
+              item.recordId === selectedCapture.id,
+          )
+        : undefined,
+    [selectedCapture, snapshot],
+  );
   const projectFullView = Boolean(
     surface === "projects" && activeContext.projectId !== undefined,
   );
@@ -2063,6 +2094,7 @@ export const RealApp = ({
     (selectedProject && !projectFullView) ||
     selectedWorkContextRecord ||
     selectedStrategicRecord ||
+    selectedCapture ||
     (surface === "meetings" && meetingInspectorOpen) ||
     (surface === "documents" && documentInspectorOpen),
   );
@@ -2079,6 +2111,7 @@ export const RealApp = ({
     setSelectedProjectId(undefined);
     setSelectedWorkContext(undefined);
     setSelectedStrategicId(undefined);
+    setSelectedCaptureId(undefined);
   }, [surface]);
   // Każdy inspector jest zamykalny Escape i oddaje fokus do obiektu, który go
   // otworzył. Poniżej 75rem działa jako drawer i dodatkowo przenosi fokus na
@@ -3023,23 +3056,8 @@ export const RealApp = ({
           {surface === "history" && (
             <HistorySurface
               snapshot={state.snapshot}
-              onUndo={(id) => void openUndo(id)}
-              busyCaptureId={historyBusyCaptureId}
-              onDeleteVoiceAudio={(captureId, version) => {
-                if (!client) return;
-                setHistoryBusyCaptureId(captureId);
-                void requestVoiceAudioDeletion(
-                  client,
-                  state.snapshot,
-                  captureId,
-                  version,
-                ).then(async (result) => {
-                  setHistoryBusyCaptureId(undefined);
-                  if (result.kind === "success")
-                    await refreshAfter("Zachowane audio zostało usunięte.");
-                  else showFailure(result);
-                });
-              }}
+              selectedCaptureId={selectedCaptureId}
+              onSelectCapture={selectCaptureInInspector}
             />
           )}
           {surface === "activity" && (
@@ -3444,13 +3462,15 @@ export const RealApp = ({
                     : selectedStrategicRecord
                       ? (recordKindLabels[selectedStrategicRecord.kind] ??
                         "Rekord strategiczny")
-                      : surface === "meetings"
-                        ? "Wynik Jamie"
-                        : surface === "documents"
-                          ? documentInspectorKind === "source"
-                            ? "Źródło"
-                            : "Dokument"
-                          : "Workspace"}
+                      : selectedCapture
+                        ? "Capture"
+                        : surface === "meetings"
+                          ? "Wynik Jamie"
+                          : surface === "documents"
+                            ? documentInspectorKind === "source"
+                              ? "Źródło"
+                              : "Dokument"
+                            : "Workspace"}
             </small>
           </div>
           <button
@@ -3470,6 +3490,33 @@ export const RealApp = ({
           <div
             className="surface-inspector-host"
             ref={setDocumentInspectorHost}
+          />
+        ) : selectedCapture ? (
+          <CaptureHistoryDetail
+            capture={selectedCapture}
+            timezone={state.snapshot.bootstrap.workspace.timezone}
+            {...(selectedCaptureRouteActivity?.targetCommandId
+              ? {
+                  undoCommandId: selectedCaptureRouteActivity.targetCommandId,
+                }
+              : {})}
+            busy={historyBusyCaptureId === selectedCapture.id}
+            onUndo={(id) => void openUndo(id)}
+            onDeleteVoiceAudio={(captureId, version) => {
+              if (!client) return;
+              setHistoryBusyCaptureId(captureId);
+              void requestVoiceAudioDeletion(
+                client,
+                state.snapshot,
+                captureId,
+                version,
+              ).then(async (result) => {
+                setHistoryBusyCaptureId(undefined);
+                if (result.kind === "success")
+                  await refreshAfter("Zachowane audio zostało usunięte.");
+                else showFailure(result);
+              });
+            }}
           />
         ) : selectedTask ? (
           <div className="inspector-body">

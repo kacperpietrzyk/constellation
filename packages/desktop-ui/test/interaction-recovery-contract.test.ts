@@ -96,6 +96,33 @@ describe("interaction recovery contracts", () => {
     assert.match(realApp, /setDocumentInspectorOpen\(false\)/);
   });
 
+  it("keeps Capture History as a compact ledger until deliberate activation", () => {
+    assert.match(surfaces, /className="history-ledger"/);
+    assert.match(surfaces, /className=\{`history-row/);
+    assert.match(
+      surfaces,
+      /aria-pressed=\{selectedCaptureId === capture\.id\}/,
+    );
+    assert.match(surfaces, /\.\.\.captureNav\(index\)/);
+    assert.match(
+      surfaces,
+      /onClick=\{\(\) => onSelectCapture\(capture\.id\)\}/,
+    );
+    assert.match(surfaces, /export const CaptureHistoryDetail/);
+    assert.doesNotMatch(surfaces, /className="history-card"/);
+    assert.match(realApp, /const \[selectedCaptureId, setSelectedCaptureId\]/);
+    assert.match(realApp, /selectedCapture \|\|/);
+    assert.match(realApp, /<CaptureHistoryDetail/);
+    assert.match(
+      styles,
+      /\.history-ledger\s*\{[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-raised\)/s,
+    );
+    assert.match(
+      styles,
+      /\.history-row\.selected\s*\{[^}]*background:\s*var\(--surface-selected\)/s,
+    );
+  });
+
   it("keeps meeting collection options concise while full content stays in the inspector", () => {
     assert.match(
       meetings,

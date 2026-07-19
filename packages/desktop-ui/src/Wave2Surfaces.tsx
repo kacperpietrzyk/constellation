@@ -32,12 +32,7 @@ import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
 import { modifierLabel } from "./components/ShortcutsOverlay.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
-import {
-  countLabel,
-  formatDateTime,
-  formatTime,
-  recordKindLabels,
-} from "./i18n.js";
+import { countLabel, formatDateTime, recordKindLabels } from "./i18n.js";
 
 const Mark = ({ kind }: { readonly kind: string }) => (
   <span className={`record-mark mark-${kind}`} aria-hidden="true" />
@@ -1235,21 +1230,154 @@ export const ProjectsSurface = ({
   );
 };
 
-export const HistorySurface = ({
-  snapshot,
+export type HistoryCapture = DesktopSnapshot["captures"][number];
+
+const captureKindLabel = (capture: HistoryCapture): string =>
+  capture.original.kind === "text"
+    ? "Tekst"
+    : capture.original.kind === "url"
+      ? "Link"
+      : capture.original.kind === "screenshot"
+        ? "Screenshot"
+        : capture.original.kind === "managed_file"
+          ? "Zarządzany plik"
+          : capture.original.kind === "voice_note"
+            ? "Notatka głosowa"
+            : "Odwołanie do pliku";
+
+const captureResultLabel = (capture: HistoryCapture): string =>
+  capture.processingState === "routed_as_task"
+    ? "Utworzono zadanie"
+    : capture.processingState === "routed_as_knowledge_source"
+      ? "Utworzono źródło wiedzy"
+      : capture.processingState === "needs_review"
+        ? "Wymaga decyzji"
+        : capture.processingState === "awaiting_transcript"
+          ? "Czeka na transkrypcję"
+          : capture.processingState === "transcript_ready"
+            ? capture.audioState === "retained"
+              ? "Transkrypcja gotowa · audio zachowane"
+              : capture.audioState === "deleted"
+                ? "Transkrypcja gotowa · audio usunięte"
+                : "Transkrypcja gotowa · usuwanie audio"
+            : capture.processingState === "unclassified"
+              ? "Zachowano bez klasyfikacji"
+              : "Oczekuje na przetworzenie";
+
+const captureCustodyLabel = (capture: HistoryCapture): string =>
+  capture.original.kind === "managed_file" ||
+  capture.original.kind === "screenshot" ||
+  capture.original.kind === "voice_note"
+    ? `Zaszyfrowana kopia · ${Math.ceil(capture.original.payload.byteLength / 1024).toLocaleString("pl-PL")} KB · integralność SHA-256`
+    : "Stan lokalny potwierdzony";
+
+export const CaptureHistoryDetail = ({
+  capture,
+  timezone,
+  undoCommandId,
+  busy,
   onUndo,
   onDeleteVoiceAudio,
-  busyCaptureId,
 }: {
-  readonly snapshot: DesktopSnapshot;
+  readonly capture: HistoryCapture;
+  readonly timezone: string;
+  readonly undoCommandId?: CommandId;
+  readonly busy: boolean;
   readonly onUndo: (targetCommandId: CommandId) => void;
   readonly onDeleteVoiceAudio: (captureId: CaptureId, version: number) => void;
-  readonly busyCaptureId: CaptureId | undefined;
+}) => (
+  <div className="inspector-body capture-history-detail">
+    <span className="record-status">
+      <i />
+      {captureResultLabel(capture)}
+    </span>
+    <h2>{capture.originalText}</h2>
+    <p className="record-summary">
+      {captureKindLabel(capture)} · zapisano{" "}
+      {formatDateTime(capture.capturedAt, timezone)}
+    </p>
+    <section className="inspector-section provenance-block">
+      <p className="section-label">Przebieg przetwarzania</p>
+      <ol className="processing-timeline">
+        <li className="done">
+          <i />
+          <div>
+            <strong>Zapisano oryginał</strong>
+            <span>{captureCustodyLabel(capture)}</span>
+          </div>
+        </li>
+        <li className="current">
+          <i />
+          <div>
+            <strong>{captureResultLabel(capture)}</strong>
+            <span>
+              {capture.processingState === "transcript_ready"
+                ? capture.transcript.text
+                : capture.originalText}
+            </span>
+            {capture.processingState === "transcript_ready" && (
+              <small>
+                Zapis: {capture.transcript.writtenByKind} ·{" "}
+                {formatDateTime(capture.transcript.writtenAt, timezone)}
+                {capture.transcript.hostRunId
+                  ? " · przebieg " + capture.transcript.hostRunId
+                  : ""}
+              </small>
+            )}
+          </div>
+        </li>
+      </ol>
+    </section>
+    <section className="inspector-section capture-history-actions">
+      <p className="section-label">Dostępne działania</p>
+      <button
+        className="secondary-button"
+        disabled={undoCommandId === undefined}
+        title={
+          undoCommandId === undefined
+            ? "Brak odwracalnego polecenia dla tego Capture"
+            : undefined
+        }
+        onClick={() => undoCommandId && onUndo(undoCommandId)}
+      >
+        Podgląd cofnięcia
+      </button>
+      {capture.processingState === "transcript_ready" &&
+        capture.audioState === "retained" && (
+          <button
+            className="secondary-button"
+            disabled={busy}
+            onClick={() => onDeleteVoiceAudio(capture.id, capture.version)}
+          >
+            {busy ? "Usuwanie…" : "Usuń zachowane audio"}
+          </button>
+        )}
+    </section>
+  </div>
+);
+
+export const HistorySurface = ({
+  snapshot,
+  selectedCaptureId,
+  onSelectCapture,
+}: {
+  readonly snapshot: DesktopSnapshot;
+  readonly selectedCaptureId: CaptureId | undefined;
+  readonly onSelectCapture: (captureId: CaptureId) => void;
 }) => {
-  const activity =
-    snapshot.activity.kind === "ready" ? snapshot.activity.data.items : [];
+  const captureNav = useListNavigation({
+    itemCount: snapshot.captures.length,
+    onOpen: (index) => {
+      const capture = snapshot.captures[index];
+      if (capture) onSelectCapture(capture.id);
+    },
+    onSelect: (index) => {
+      const capture = snapshot.captures[index];
+      if (capture) onSelectCapture(capture.id);
+    },
+  });
   return (
-    <div className="surface-scroll">
+    <div className="surface-scroll history-surface">
       <SurfaceHeader
         kicker="Zachowane oryginały"
         title="Historia Capture"
@@ -1262,133 +1390,47 @@ export const HistorySurface = ({
           detail="Pierwszy zapis przez Quick Capture pojawi się tutaj wraz z wynikiem przetwarzania."
         />
       ) : (
-        <div className="history-grid">
-          {snapshot.captures.map((capture) => {
-            const routeActivity = activity.find(
-              (item) =>
-                item.activityType === "capture_routed" &&
-                item.recordId === capture.id,
-            );
-            return (
-              <article className="history-card" key={capture.id}>
-                <header>
-                  <Mark kind="capture" />
-                  <div>
-                    <p className="eyebrow">
-                      Oryginał ·{" "}
-                      {capture.original.kind === "text"
-                        ? "tekst"
-                        : capture.original.kind === "url"
-                          ? "link"
-                          : capture.original.kind === "screenshot"
-                            ? "screenshot"
-                            : capture.original.kind === "managed_file"
-                              ? "zarządzany plik"
-                              : capture.original.kind === "voice_note"
-                                ? "notatka głosowa"
-                                : "odwołanie do pliku"}
-                    </p>
-                    <h2>{capture.originalText}</h2>
-                  </div>
-                  <time>
-                    {formatTime(
-                      capture.capturedAt,
-                      snapshot.bootstrap.workspace.timezone,
-                    )}
-                  </time>
-                </header>
-                <ol className="processing-timeline">
-                  <li className="done">
-                    <i />
-                    <div>
-                      <strong>Zapisano oryginał</strong>
-                      <span>
-                        {capture.original.kind === "managed_file" ||
-                        capture.original.kind === "screenshot" ||
-                        capture.original.kind === "voice_note"
-                          ? `Zaszyfrowana kopia · ${Math.ceil(capture.original.payload.byteLength / 1024).toLocaleString("pl-PL")} KB · integralność SHA-256`
-                          : "Stan lokalny potwierdzony"}
-                      </span>
-                    </div>
-                  </li>
-                  <li className="current">
-                    <i />
-                    <div>
-                      <strong>
-                        {capture.processingState === "routed_as_task"
-                          ? "Utworzono zadanie"
-                          : capture.processingState ===
-                              "routed_as_knowledge_source"
-                            ? "Utworzono źródło wiedzy"
-                            : capture.processingState === "needs_review"
-                              ? "Wymaga decyzji w Attention"
-                              : capture.processingState ===
-                                  "awaiting_transcript"
-                                ? "Oczekuje na transkrypcję agenta"
-                                : capture.processingState === "transcript_ready"
-                                  ? capture.audioState === "retained"
-                                    ? "Transkrypcja gotowa · audio zachowane"
-                                    : capture.audioState === "deleted"
-                                      ? "Transkrypcja gotowa · audio usunięte"
-                                      : "Transkrypcja gotowa · usuwanie audio"
-                                  : capture.processingState === "unclassified"
-                                    ? "Zachowano bez klasyfikacji"
-                                    : "Oczekuje na przetworzenie"}
-                      </strong>
-                      <span>
-                        {capture.processingState === "transcript_ready"
-                          ? capture.transcript.text
-                          : capture.originalText}
-                      </span>
-                      {capture.processingState === "transcript_ready" && (
-                        <small>
-                          Zapis: {capture.transcript.writtenByKind} ·{" "}
-                          {formatDateTime(
-                            capture.transcript.writtenAt,
-                            snapshot.bootstrap.workspace.timezone,
-                          )}
-                          {capture.transcript.hostRunId
-                            ? " · przebieg " + capture.transcript.hostRunId
-                            : ""}
-                        </small>
-                      )}
-                    </div>
-                  </li>
-                </ol>
-                <footer>
-                  <button
-                    className="secondary-button"
-                    disabled={routeActivity === undefined}
-                    title={
-                      routeActivity === undefined
-                        ? "Brak odwracalnego polecenia dla tego Capture"
-                        : undefined
-                    }
-                    onClick={() =>
-                      routeActivity && onUndo(routeActivity.targetCommandId)
-                    }
-                  >
-                    Podgląd cofnięcia
-                  </button>
-                  {capture.processingState === "transcript_ready" &&
-                    capture.audioState === "retained" && (
-                      <button
-                        className="secondary-button"
-                        disabled={busyCaptureId === capture.id}
-                        onClick={() =>
-                          onDeleteVoiceAudio(capture.id, capture.version)
-                        }
-                      >
-                        {busyCaptureId === capture.id
-                          ? "Usuwanie…"
-                          : "Usuń zachowane audio"}
-                      </button>
-                    )}
-                </footer>
-              </article>
-            );
-          })}
-        </div>
+        <section className="history-ledger" aria-label="Zachowane Capture">
+          <header>
+            <div>
+              <h2>Zachowane oryginały</h2>
+              <span>
+                {countLabel(
+                  snapshot.captures.length,
+                  "zapis",
+                  "zapisy",
+                  "zapisów",
+                )}
+              </span>
+            </div>
+            <span>Kliknij rekord, aby sprawdzić przebieg</span>
+          </header>
+          <div className="history-list">
+            {snapshot.captures.map((capture, index) => (
+              <button
+                type="button"
+                className={`history-row${selectedCaptureId === capture.id ? " selected" : ""}`}
+                key={capture.id}
+                aria-pressed={selectedCaptureId === capture.id}
+                {...captureNav(index)}
+                onClick={() => onSelectCapture(capture.id)}
+              >
+                <Mark kind="capture" />
+                <span className="history-row-copy">
+                  <span>{captureKindLabel(capture)}</span>
+                  <strong>{capture.originalText}</strong>
+                  <small>{captureResultLabel(capture)}</small>
+                </span>
+                <time dateTime={capture.capturedAt}>
+                  {formatDateTime(
+                    capture.capturedAt,
+                    snapshot.bootstrap.workspace.timezone,
+                  )}
+                </time>
+              </button>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );
