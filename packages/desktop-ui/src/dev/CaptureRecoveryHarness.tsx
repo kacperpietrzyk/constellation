@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { QueryProjectionSchema } from "@constellation/contracts";
 
-import { AttentionSurface } from "../CollaborationSurfaces.js";
+import { AttentionDetail, AttentionSurface } from "../CollaborationSurfaces.js";
 import type { AttentionInboxProjection } from "../client/workflow.js";
 
 const attention = QueryProjectionSchema.parse({
@@ -41,36 +41,49 @@ const attention = QueryProjectionSchema.parse({
     },
   ],
 });
+const attentionProjection = attention as AttentionInboxProjection;
 
 export const CaptureRecoveryHarness = () => {
   const [status, setStatus] = useState("Wybierz jedną konkretną akcję.");
+  const [selectedId, setSelectedId] = useState<string>();
+  const selected = attentionProjection.items.find(
+    (item) => item.id === selectedId,
+  );
   return (
     <main className="app-shell" data-testid="capture-recovery-harness">
       <div className="surface-scroll">
         <AttentionSurface
           attention={{
             kind: "ready",
-            data: attention as AttentionInboxProjection,
+            data: attentionProjection,
           }}
-          busy={false}
+          selectedItemId={selectedId}
           onOpen={() => setStatus("Otworzono zachowany Capture.")}
-          onRead={() => setStatus("Oznaczono jako przeczytane.")}
-          onDismiss={() => setStatus("Sygnał usunięto bez zmiany oryginału.")}
-          onRouteCapture={(_, destination) =>
-            setStatus(
-              destination === "task"
-                ? "Wybrano zadanie."
-                : "Wybrano źródło wiedzy.",
-            )
-          }
-          onRetryCapture={() => setStatus("Ponowienie jest gotowe.")}
-          onKeepCapture={() =>
-            setStatus("Oryginał zachowano bez klasyfikacji.")
-          }
-          onReplaceCapturePayload={() =>
-            setStatus("Wybrano bezpieczną wymianę oryginału.")
-          }
+          onSelect={(item) => setSelectedId(item.id)}
         />
+        {selected && (
+          <AttentionDetail
+            item={selected}
+            busy={false}
+            onOpen={() => setStatus("Otworzono zachowany Capture.")}
+            onRead={() => setStatus("Oznaczono jako przeczytane.")}
+            onDismiss={() => setStatus("Sygnał usunięto bez zmiany oryginału.")}
+            onRouteCapture={(_, destination) =>
+              setStatus(
+                destination === "task"
+                  ? "Wybrano zadanie."
+                  : "Wybrano źródło wiedzy.",
+              )
+            }
+            onRetryCapture={() => setStatus("Ponowienie jest gotowe.")}
+            onKeepCapture={() =>
+              setStatus("Oryginał zachowano bez klasyfikacji.")
+            }
+            onReplaceCapturePayload={() =>
+              setStatus("Wybrano bezpieczną wymianę oryginału.")
+            }
+          />
+        )}
         <p className="center-state" role="status">
           {status}
         </p>

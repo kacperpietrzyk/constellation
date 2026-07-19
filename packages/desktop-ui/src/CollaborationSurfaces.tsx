@@ -12,6 +12,7 @@ import type {
   DataSlice,
   MentionCandidatesProjection,
 } from "./client/workflow.js";
+import { useListNavigation } from "./hooks/useListNavigation.js";
 import { countLabel, formatDateTime } from "./i18n.js";
 
 type Comment = CommentListProjection["threads"][number];
@@ -474,28 +475,15 @@ export const captureRecoveryActions = (
 
 export const AttentionSurface = ({
   attention,
-  busy,
+  selectedItemId,
   onOpen,
-  onRead,
-  onDismiss,
-  onRouteCapture,
-  onRetryCapture,
-  onKeepCapture,
-  onReplaceCapturePayload,
+  onSelect,
   onRetry,
 }: {
   readonly attention: DataSlice<AttentionInboxProjection>;
-  readonly busy: boolean;
+  readonly selectedItemId: string | undefined;
   readonly onOpen: (item: AttentionInboxProjection["items"][number]) => void;
-  readonly onRead: (item: AttentionInboxProjection["items"][number]) => void;
-  readonly onDismiss: (item: AttentionInboxProjection["items"][number]) => void;
-  readonly onRouteCapture: (
-    item: AttentionInboxProjection["items"][number],
-    destination: "task" | "knowledge_source",
-  ) => void;
-  readonly onRetryCapture: (item: AttentionItem) => void;
-  readonly onKeepCapture: (item: AttentionItem) => void;
-  readonly onReplaceCapturePayload: (item: AttentionItem) => void;
+  readonly onSelect: (item: AttentionInboxProjection["items"][number]) => void;
   /** Ponawia ładowanie skrzynki, gdy warstwa danych była niedostępna. */
   readonly onRetry?: () => void;
 }) => {
@@ -508,6 +496,17 @@ export const AttentionSurface = ({
             (a.urgency === "urgent" ? 0 : 1) - (b.urgency === "urgent" ? 0 : 1),
         )
       : [];
+  const attentionNav = useListNavigation({
+    itemCount: items.length,
+    onOpen: (index) => {
+      const item = items[index];
+      if (item) onOpen(item);
+    },
+    onSelect: (index) => {
+      const item = items[index];
+      if (item) onSelect(item);
+    },
+  });
   return (
     <section className="attention-surface" aria-labelledby="surface-title">
       <header className="surface-header attention-heading">
@@ -554,118 +553,182 @@ export const AttentionSurface = ({
           </span>
         </div>
       ) : (
-        <ol className="attention-list-real">
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className={item.state === "unread" ? "unread" : "read"}
-            >
-              <button
-                className="attention-main"
-                type="button"
-                onClick={() => onOpen(item)}
+        <div className="attention-ledger">
+          <div className="attention-ledger-head" aria-hidden="true">
+            <span>Sygnał</span>
+            <span>Powód</span>
+            <span>Otrzymano</span>
+          </div>
+          <ol className="attention-list-real">
+            {items.map((item, index) => (
+              <li
+                key={item.id}
+                className={`${item.state} ${item.urgency === "urgent" ? "urgent" : ""}`}
               >
-                <span className="attention-reason">
-                  {reasonLabels[item.reason]}
-                  {item.urgency === "urgent" && (
-                    <b className="attention-urgent">Pilne</b>
-                  )}
-                </span>
-                <strong>
-                  {item.state === "unread" && (
-                    <>
-                      <i className="attention-unread-dot" aria-hidden="true" />
-                      <span className="sr-only">Nieprzeczytane: </span>
-                    </>
-                  )}
-                  {item.title}
-                </strong>
-                <span>
-                  {item.reason === "comment_mention"
-                    ? "Wspomniano Cię w komentarzu."
-                    : item.reason === "task_assignment"
-                      ? "Masz odpowiedzialność za to zadanie."
-                      : item.detail}
-                </span>
-                <time dateTime={item.occurredAt}>
-                  {formatDateTime(item.occurredAt)}
-                </time>
-              </button>
-              <div className="attention-actions">
-                {item.destination.kind === "capture" &&
-                  captureRecoveryActions(item.reason).includes("route") && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => onRouteCapture(item, "task")}
-                        disabled={busy}
-                      >
-                        Utwórz zadanie
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onRouteCapture(item, "knowledge_source")}
-                        disabled={busy}
-                      >
-                        Zapisz jako źródło
-                      </button>
-                    </>
-                  )}
-                {item.destination.kind === "capture" &&
-                  captureRecoveryActions(item.reason).includes("retry") && (
-                    <button
-                      type="button"
-                      onClick={() => onRetryCapture(item)}
-                      disabled={busy}
-                    >
-                      Spróbuj ponownie
-                    </button>
-                  )}
-                {item.destination.kind === "capture" &&
-                  captureRecoveryActions(item.reason).includes(
-                    "replace_payload",
-                  ) && (
-                    <button
-                      type="button"
-                      onClick={() => onReplaceCapturePayload(item)}
-                      disabled={busy}
-                    >
-                      Zastąp oryginał
-                    </button>
-                  )}
-                {item.destination.kind === "capture" &&
-                  captureRecoveryActions(item.reason).includes(
-                    "keep_unclassified",
-                  ) && (
-                    <button
-                      type="button"
-                      onClick={() => onKeepCapture(item)}
-                      disabled={busy}
-                    >
-                      Zachowaj bez klasyfikacji
-                    </button>
-                  )}
-                {item.state === "unread" && (
-                  <button
-                    type="button"
-                    onClick={() => onRead(item)}
-                    disabled={busy}
-                  >
-                    Oznacz jako przeczytane
-                  </button>
-                )}
                 <button
+                  className="attention-main"
                   type="button"
-                  onClick={() => onDismiss(item)}
-                  disabled={busy}
+                  aria-pressed={selectedItemId === item.id}
+                  {...attentionNav(index)}
+                  onClick={() => onSelect(item)}
+                  onDoubleClick={() => onOpen(item)}
                 >
-                  Usuń z uwagi
+                  <span className="attention-copy">
+                    <strong title={item.title}>
+                      {item.state === "unread" && (
+                        <>
+                          <i
+                            className="attention-unread-dot"
+                            aria-hidden="true"
+                          />
+                          <span className="sr-only">Nieprzeczytane: </span>
+                        </>
+                      )}
+                      {item.title}
+                    </strong>
+                    <span>
+                      {item.reason === "comment_mention"
+                        ? "Wspomniano Cię w komentarzu."
+                        : item.reason === "task_assignment"
+                          ? "Masz odpowiedzialność za to zadanie."
+                          : item.detail}
+                    </span>
+                  </span>
+                  <span className="attention-reason">
+                    {reasonLabels[item.reason]}
+                    {item.urgency === "urgent" && (
+                      <b className="attention-urgent">Pilne</b>
+                    )}
+                  </span>
+                  <time dateTime={item.occurredAt}>
+                    {formatDateTime(item.occurredAt)}
+                  </time>
                 </button>
-              </div>
-            </li>
-          ))}
-        </ol>
+              </li>
+            ))}
+          </ol>
+        </div>
       )}
     </section>
+  );
+};
+
+export const AttentionDetail = ({
+  item,
+  busy,
+  onOpen,
+  onRead,
+  onDismiss,
+  onRouteCapture,
+  onRetryCapture,
+  onKeepCapture,
+  onReplaceCapturePayload,
+}: {
+  readonly item: AttentionItem;
+  readonly busy: boolean;
+  readonly onOpen: (item: AttentionItem) => void;
+  readonly onRead: (item: AttentionItem) => void;
+  readonly onDismiss: (item: AttentionItem) => void;
+  readonly onRouteCapture: (
+    item: AttentionItem,
+    destination: "task" | "knowledge_source",
+  ) => void;
+  readonly onRetryCapture: (item: AttentionItem) => void;
+  readonly onKeepCapture: (item: AttentionItem) => void;
+  readonly onReplaceCapturePayload: (item: AttentionItem) => void;
+}) => {
+  const recoveryActions = captureRecoveryActions(item.reason);
+  return (
+    <div className="inspector-body attention-detail">
+      <span className="record-status">
+        <i />
+        {item.urgency === "urgent"
+          ? "Pilne"
+          : item.state === "unread"
+            ? "Nieprzeczytane"
+            : "Przeczytane"}
+      </span>
+      <h2>{item.title}</h2>
+      <p className="record-summary">{item.detail}</p>
+      <section className="inspector-section">
+        <p className="section-label">Powód</p>
+        <p>{reasonLabels[item.reason]}</p>
+      </section>
+      <section className="inspector-section">
+        <p className="section-label">Otrzymano</p>
+        <p>
+          <time dateTime={item.occurredAt}>
+            {formatDateTime(item.occurredAt)}
+          </time>
+        </p>
+      </section>
+      <div className="attention-detail-actions">
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => onOpen(item)}
+          disabled={busy}
+        >
+          Otwórz dokładny kontekst
+        </button>
+        {item.destination.kind === "capture" &&
+          recoveryActions.includes("route") && (
+            <>
+              <button
+                type="button"
+                onClick={() => onRouteCapture(item, "task")}
+                disabled={busy}
+              >
+                Utwórz zadanie
+              </button>
+              <button
+                type="button"
+                onClick={() => onRouteCapture(item, "knowledge_source")}
+                disabled={busy}
+              >
+                Zapisz jako źródło
+              </button>
+            </>
+          )}
+        {item.destination.kind === "capture" &&
+          recoveryActions.includes("retry") && (
+            <button
+              type="button"
+              onClick={() => onRetryCapture(item)}
+              disabled={busy}
+            >
+              Spróbuj ponownie
+            </button>
+          )}
+        {item.destination.kind === "capture" &&
+          recoveryActions.includes("replace_payload") && (
+            <button
+              type="button"
+              onClick={() => onReplaceCapturePayload(item)}
+              disabled={busy}
+            >
+              Zastąp oryginał
+            </button>
+          )}
+        {item.destination.kind === "capture" &&
+          recoveryActions.includes("keep_unclassified") && (
+            <button
+              type="button"
+              onClick={() => onKeepCapture(item)}
+              disabled={busy}
+            >
+              Zachowaj bez klasyfikacji
+            </button>
+          )}
+        {item.state === "unread" && (
+          <button type="button" onClick={() => onRead(item)} disabled={busy}>
+            Oznacz jako przeczytane
+          </button>
+        )}
+        <button type="button" onClick={() => onDismiss(item)} disabled={busy}>
+          Usuń z uwagi
+        </button>
+      </div>
+    </div>
   );
 };

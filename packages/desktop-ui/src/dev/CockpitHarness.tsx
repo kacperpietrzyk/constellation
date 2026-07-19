@@ -31,6 +31,10 @@ const task5 = "00000000-0000-4000-8000-000000000624";
 
 const signal1 = "00000000-0000-4000-8000-000000000640";
 const signal2 = "00000000-0000-4000-8000-000000000641";
+const signal3 = "00000000-0000-4000-8000-000000000642";
+const signal4 = "00000000-0000-4000-8000-000000000643";
+const signal5 = "00000000-0000-4000-8000-000000000644";
+const captureAttention = "00000000-0000-4000-8000-000000000645";
 
 const weekStart = "2026-07-13";
 const weekEnd = "2026-07-19";
@@ -285,8 +289,20 @@ const baseClient = createScenarioClient({
     }),
     "attention.inbox": result({
       kind: "attention.inbox",
-      unreadCount: 2,
+      unreadCount: 4,
       items: [
+        {
+          id: signal3,
+          reason: "capture_missing_payload",
+          destination: { kind: "capture", captureId: captureAttention },
+          title: "Oferta_Northstar_v3.pdf wymaga bezpiecznej wymiany",
+          detail:
+            "Zaszyfrowany rekord pozostał zachowany, ale jego bajty są niedostępne i wymagają świadomej decyzji.",
+          urgency: "urgent",
+          state: "unread",
+          version: 1,
+          occurredAt: "2026-07-15T08:54:00.000Z",
+        },
         {
           id: signal1,
           reason: "task_assignment",
@@ -308,6 +324,29 @@ const baseClient = createScenarioClient({
           state: "unread",
           version: 1,
           occurredAt: "2026-07-15T07:10:00.000Z",
+        },
+        {
+          id: signal4,
+          reason: "decision_impact_review",
+          destination: { kind: "project", projectId: projectA },
+          title: "Nowa decyzja wpływa na zakres Domknięcia aplikacji",
+          detail:
+            "Dwa powiązane rezultaty używają wcześniejszej wersji decyzji i wymagają przeglądu skutków.",
+          urgency: "in_app",
+          state: "unread",
+          version: 1,
+          occurredAt: "2026-07-14T15:45:00.000Z",
+        },
+        {
+          id: signal5,
+          reason: "comment_mention",
+          destination: { kind: "task", taskId: task2 },
+          title: "Ada wspomniała Cię przy opisie kokpitu tygodnia",
+          detail: "Komentarz zawiera pytanie o zakres dowodu przed akceptacją.",
+          urgency: "in_app",
+          state: "read",
+          version: 1,
+          occurredAt: "2026-07-13T12:20:00.000Z",
         },
       ],
     }),

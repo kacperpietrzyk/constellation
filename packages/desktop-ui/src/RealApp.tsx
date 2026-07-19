@@ -39,7 +39,11 @@ import {
   type SurfaceShortcutHint,
 } from "./components/ShortcutsOverlay.js";
 import { useDismissiblePanel } from "./hooks/useDismissiblePanel.js";
-import { AttentionSurface, CommentsPanel } from "./CollaborationSurfaces.js";
+import {
+  AttentionDetail,
+  AttentionSurface,
+  CommentsPanel,
+} from "./CollaborationSurfaces.js";
 import {
   recurrenceCadenceLabels,
   strategicStateLabels,
@@ -86,6 +90,7 @@ import {
   routeCaptureException,
   requestVoiceAudioDeletion,
   resolveCaptureException,
+  type AttentionInboxProjection,
   type AuditReceiptProjection,
   type DesktopSnapshot,
   type MutationFailure,
@@ -1329,6 +1334,7 @@ export const RealApp = ({
   }>();
   const [selectedStrategicId, setSelectedStrategicId] = useState<string>();
   const [selectedCaptureId, setSelectedCaptureId] = useState<CaptureId>();
+  const [selectedAttentionId, setSelectedAttentionId] = useState<string>();
   const [meetingInspectorHost, setMeetingInspectorHost] =
     useState<HTMLElement | null>(null);
   const [meetingInspectorOpen, setMeetingInspectorOpen] = useState(false);
@@ -1630,6 +1636,7 @@ export const RealApp = ({
       setSelectedWorkContext(undefined);
       setSelectedStrategicId(undefined);
       setSelectedCaptureId(undefined);
+      setSelectedAttentionId(undefined);
     }
   }, [activeContext.projectId, activeContext.taskId]);
 
@@ -1642,6 +1649,7 @@ export const RealApp = ({
     setSelectedWorkContext(undefined);
     setSelectedStrategicId(undefined);
     setSelectedCaptureId(undefined);
+    setSelectedAttentionId(undefined);
     setSelectedTaskId(id);
   }, []);
   const selectProjectInInspector = useCallback((id: ProjectId) => {
@@ -1649,6 +1657,7 @@ export const RealApp = ({
     setSelectedWorkContext(undefined);
     setSelectedStrategicId(undefined);
     setSelectedCaptureId(undefined);
+    setSelectedAttentionId(undefined);
     setSelectedProjectId(id);
   }, []);
   const selectWorkContextInInspector = useCallback(
@@ -1657,6 +1666,7 @@ export const RealApp = ({
       setSelectedProjectId(undefined);
       setSelectedStrategicId(undefined);
       setSelectedCaptureId(undefined);
+      setSelectedAttentionId(undefined);
       setSelectedWorkContext({ kind, id });
     },
     [],
@@ -1666,6 +1676,7 @@ export const RealApp = ({
     setSelectedProjectId(undefined);
     setSelectedWorkContext(undefined);
     setSelectedCaptureId(undefined);
+    setSelectedAttentionId(undefined);
     setSelectedStrategicId(id);
   }, []);
   const selectCaptureInInspector = useCallback((id: CaptureId) => {
@@ -1673,7 +1684,16 @@ export const RealApp = ({
     setSelectedProjectId(undefined);
     setSelectedWorkContext(undefined);
     setSelectedStrategicId(undefined);
+    setSelectedAttentionId(undefined);
     setSelectedCaptureId(id);
+  }, []);
+  const selectAttentionInInspector = useCallback((id: string) => {
+    setSelectedTaskId(undefined);
+    setSelectedProjectId(undefined);
+    setSelectedWorkContext(undefined);
+    setSelectedStrategicId(undefined);
+    setSelectedCaptureId(undefined);
+    setSelectedAttentionId(id);
   }, []);
 
   // Surface changes requested from the sidebar or ⌘1-9 move focus onto the
@@ -1695,6 +1715,7 @@ export const RealApp = ({
     }
     if (surface !== "relationships") setSelectedStrategicId(undefined);
     if (surface !== "history") setSelectedCaptureId(undefined);
+    if (surface !== "attention") setSelectedAttentionId(undefined);
   }, [surface]);
 
   const snapshot = state.kind === "ready" ? state.snapshot : undefined;
@@ -2075,6 +2096,15 @@ export const RealApp = ({
       snapshot?.captures.find((capture) => capture.id === selectedCaptureId),
     [selectedCaptureId, snapshot],
   );
+  const selectedAttention = useMemo(
+    () =>
+      snapshot?.attention.kind === "ready"
+        ? snapshot.attention.data.items.find(
+            (item) => item.id === selectedAttentionId,
+          )
+        : undefined,
+    [selectedAttentionId, snapshot],
+  );
   const selectedCaptureRouteActivity = useMemo(
     () =>
       selectedCapture && snapshot?.activity.kind === "ready"
@@ -2095,6 +2125,7 @@ export const RealApp = ({
     selectedWorkContextRecord ||
     selectedStrategicRecord ||
     selectedCapture ||
+    selectedAttention ||
     (surface === "meetings" && meetingInspectorOpen) ||
     (surface === "documents" && documentInspectorOpen),
   );
@@ -2112,6 +2143,7 @@ export const RealApp = ({
     setSelectedWorkContext(undefined);
     setSelectedStrategicId(undefined);
     setSelectedCaptureId(undefined);
+    setSelectedAttentionId(undefined);
   }, [surface]);
   // Każdy inspector jest zamykalny Escape i oddaje fokus do obiektu, który go
   // otworzył. Poniżej 75rem działa jako drawer i dodatkowo przenosi fokus na
@@ -2165,6 +2197,147 @@ export const RealApp = ({
     pushToast({
       message,
       ...(undoCommandId === undefined ? {} : { undoCommandId }),
+    });
+  };
+
+  type AttentionItem = AttentionInboxProjection["items"][number];
+  const openAttentionDestination = (item: AttentionItem) => {
+    const destination = item.destination;
+    if (destination.kind === "task") {
+      const task = tasks.find(
+        (candidate) => candidate.id === destination.taskId,
+      );
+      openContext(taskContext(destination.taskId, task?.title ?? item.title));
+    } else if (destination.kind === "project") {
+      const project =
+        snapshot?.projects.kind === "ready"
+          ? snapshot.projects.data.items.find(
+              (candidate) => candidate.id === destination.projectId,
+            )
+          : undefined;
+      openContext(
+        projectContext(destination.projectId, project?.title ?? item.title),
+      );
+    } else if (destination.kind === "document") {
+      openContext(destinationContext("documents", "Dokumenty"));
+    } else {
+      openContext(destinationContext("history", "Historia Capture"));
+    }
+    if (client && snapshot && item.state === "unread") {
+      setAttentionBusy(true);
+      void updateAttention(client, snapshot, item, "read").then(
+        async (result) => {
+          setAttentionBusy(false);
+          if (result.kind === "success") await reload();
+          else showFailure(result);
+        },
+      );
+    }
+  };
+  const readAttention = (item: AttentionItem) => {
+    if (!client || !snapshot) return;
+    setAttentionBusy(true);
+    void updateAttention(client, snapshot, item, "read").then(
+      async (result) => {
+        setAttentionBusy(false);
+        if (result.kind === "success")
+          await refreshAfter("Sygnał oznaczono jako przeczytany.");
+        else showFailure(result);
+      },
+    );
+  };
+  const dismissAttention = (item: AttentionItem) => {
+    if (!client || !snapshot) return;
+    setAttentionBusy(true);
+    void updateAttention(client, snapshot, item, "dismiss").then(
+      async (result) => {
+        setAttentionBusy(false);
+        if (result.kind === "success")
+          await refreshAfter("Sygnał usunięto z uwagi.");
+        else showFailure(result);
+      },
+    );
+  };
+  const routeAttentionCapture = (
+    item: AttentionItem,
+    destination: "task" | "knowledge_source",
+  ) => {
+    if (!client || !snapshot || item.destination.kind !== "capture") return;
+    setAttentionBusy(true);
+    void routeCaptureException(
+      client,
+      snapshot,
+      item.destination.captureId,
+      destination,
+    ).then(async (result) => {
+      setAttentionBusy(false);
+      if (result.kind === "success")
+        await refreshAfter(
+          destination === "task"
+            ? "Capture skierowano do zadań."
+            : "Capture zapisano jako źródło wiedzy.",
+        );
+      else showFailure(result);
+    });
+  };
+  const retryAttentionCapture = (item: AttentionItem) => {
+    if (!client || !snapshot) return;
+    setAttentionBusy(true);
+    void resolveCaptureException(client, snapshot, item, "retry").then(
+      async (result) => {
+        setAttentionBusy(false);
+        if (result.kind === "success")
+          await refreshAfter(
+            "Capture wrócił do bezpiecznej kolejki przetwarzania.",
+          );
+        else showFailure(result);
+      },
+    );
+  };
+  const keepAttentionCapture = (item: AttentionItem) => {
+    if (!client || !snapshot) return;
+    setAttentionBusy(true);
+    void resolveCaptureException(
+      client,
+      snapshot,
+      item,
+      "keep_unclassified",
+    ).then(async (result) => {
+      setAttentionBusy(false);
+      if (result.kind === "success")
+        await refreshAfter("Oryginał zachowano bez wymuszonej klasyfikacji.");
+      else showFailure(result);
+    });
+  };
+  const replaceAttentionPayload = (item: AttentionItem) => {
+    if (!client?.selectCapturePayload || !snapshot) {
+      pushToast({ message: "Wybór pliku jest chwilowo niedostępny." });
+      return;
+    }
+    setAttentionBusy(true);
+    void client.selectCapturePayload().then(async (selected) => {
+      if (selected.outcome !== "success") {
+        setAttentionBusy(false);
+        if (selected.code !== "cancelled")
+          pushToast({
+            message:
+              "Nie udało się przygotować bezpiecznego pliku zastępczego.",
+          });
+        return;
+      }
+      const result = await resolveCaptureException(
+        client,
+        snapshot,
+        item,
+        "replace_payload",
+        selected.original,
+      );
+      setAttentionBusy(false);
+      if (result.kind === "success")
+        await refreshAfter(
+          "Oryginał zastąpiono i skierowano do ponownego przetwarzania.",
+        );
+      else showFailure(result);
     });
   };
 
@@ -3075,164 +3248,10 @@ export const RealApp = ({
           {surface === "attention" && (
             <AttentionSurface
               attention={state.snapshot.attention}
-              busy={attentionBusy}
+              selectedItemId={selectedAttentionId}
               onRetry={() => void reload()}
-              onOpen={(item) => {
-                const destination = item.destination;
-                if (destination.kind === "task") {
-                  const task = tasks.find(
-                    (candidate) => candidate.id === destination.taskId,
-                  );
-                  openContext(
-                    taskContext(destination.taskId, task?.title ?? item.title),
-                  );
-                } else if (destination.kind === "project") {
-                  const project =
-                    state.snapshot.projects.kind === "ready"
-                      ? state.snapshot.projects.data.items.find(
-                          (candidate) => candidate.id === destination.projectId,
-                        )
-                      : undefined;
-                  openContext(
-                    projectContext(
-                      destination.projectId,
-                      project?.title ?? item.title,
-                    ),
-                  );
-                } else if (destination.kind === "document") {
-                  openContext(destinationContext("documents", "Dokumenty"));
-                } else {
-                  openContext(
-                    destinationContext("history", "Historia Capture"),
-                  );
-                }
-                if (client && item.state === "unread") {
-                  setAttentionBusy(true);
-                  void updateAttention(
-                    client,
-                    state.snapshot,
-                    item,
-                    "read",
-                  ).then(async (result) => {
-                    setAttentionBusy(false);
-                    if (result.kind === "success") await reload();
-                    else showFailure(result);
-                  });
-                }
-              }}
-              onRead={(item) => {
-                if (!client) return;
-                setAttentionBusy(true);
-                void updateAttention(client, state.snapshot, item, "read").then(
-                  async (result) => {
-                    setAttentionBusy(false);
-                    if (result.kind === "success")
-                      await refreshAfter("Sygnał oznaczono jako przeczytany.");
-                    else showFailure(result);
-                  },
-                );
-              }}
-              onDismiss={(item) => {
-                if (!client) return;
-                setAttentionBusy(true);
-                void updateAttention(
-                  client,
-                  state.snapshot,
-                  item,
-                  "dismiss",
-                ).then(async (result) => {
-                  setAttentionBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter("Sygnał usunięto z uwagi.");
-                  else showFailure(result);
-                });
-              }}
-              onRouteCapture={(item, destination) => {
-                if (!client || item.destination.kind !== "capture") return;
-                setAttentionBusy(true);
-                void routeCaptureException(
-                  client,
-                  state.snapshot,
-                  item.destination.captureId,
-                  destination,
-                ).then(async (routeResult) => {
-                  setAttentionBusy(false);
-                  if (routeResult.kind === "success")
-                    await refreshAfter(
-                      destination === "task"
-                        ? "Capture skierowano do zadań."
-                        : "Capture zapisano jako źródło wiedzy.",
-                    );
-                  else showFailure(routeResult);
-                });
-              }}
-              onRetryCapture={(item) => {
-                if (!client) return;
-                setAttentionBusy(true);
-                void resolveCaptureException(
-                  client,
-                  state.snapshot,
-                  item,
-                  "retry",
-                ).then(async (result) => {
-                  setAttentionBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter(
-                      "Capture wrócił do bezpiecznej kolejki przetwarzania.",
-                    );
-                  else showFailure(result);
-                });
-              }}
-              onKeepCapture={(item) => {
-                if (!client) return;
-                setAttentionBusy(true);
-                void resolveCaptureException(
-                  client,
-                  state.snapshot,
-                  item,
-                  "keep_unclassified",
-                ).then(async (result) => {
-                  setAttentionBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter(
-                      "Oryginał zachowano bez wymuszonej klasyfikacji.",
-                    );
-                  else showFailure(result);
-                });
-              }}
-              onReplaceCapturePayload={(item) => {
-                if (!client?.selectCapturePayload) {
-                  pushToast({
-                    message: "Wybór pliku jest chwilowo niedostępny.",
-                  });
-                  return;
-                }
-                setAttentionBusy(true);
-                void client.selectCapturePayload().then(async (selected) => {
-                  if (selected.outcome !== "success") {
-                    setAttentionBusy(false);
-                    if (selected.code !== "cancelled")
-                      pushToast({
-                        message:
-                          "Nie udało się przygotować bezpiecznego pliku zastępczego.",
-                      });
-                    return;
-                  }
-                  const result = await resolveCaptureException(
-                    client,
-                    state.snapshot,
-                    item,
-                    "replace_payload",
-                    selected.original,
-                  );
-                  setAttentionBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter(
-                      "Oryginał zastąpiono i skierowano do ponownego przetwarzania.",
-                    );
-                  else showFailure(result);
-                });
-              }}
+              onOpen={openAttentionDestination}
+              onSelect={(item) => selectAttentionInInspector(item.id)}
             />
           )}
           {surface === "access" && (
@@ -3464,13 +3483,15 @@ export const RealApp = ({
                         "Rekord strategiczny")
                       : selectedCapture
                         ? "Capture"
-                        : surface === "meetings"
-                          ? "Wynik Jamie"
-                          : surface === "documents"
-                            ? documentInspectorKind === "source"
-                              ? "Źródło"
-                              : "Dokument"
-                            : "Workspace"}
+                        : selectedAttention
+                          ? "Sygnał uwagi"
+                          : surface === "meetings"
+                            ? "Wynik Jamie"
+                            : surface === "documents"
+                              ? documentInspectorKind === "source"
+                                ? "Źródło"
+                                : "Dokument"
+                              : "Workspace"}
             </small>
           </div>
           <button
@@ -3490,6 +3511,18 @@ export const RealApp = ({
           <div
             className="surface-inspector-host"
             ref={setDocumentInspectorHost}
+          />
+        ) : selectedAttention ? (
+          <AttentionDetail
+            item={selectedAttention}
+            busy={attentionBusy}
+            onOpen={openAttentionDestination}
+            onRead={readAttention}
+            onDismiss={dismissAttention}
+            onRouteCapture={routeAttentionCapture}
+            onRetryCapture={retryAttentionCapture}
+            onKeepCapture={keepAttentionCapture}
+            onReplaceCapturePayload={replaceAttentionPayload}
           />
         ) : selectedCapture ? (
           <CaptureHistoryDetail

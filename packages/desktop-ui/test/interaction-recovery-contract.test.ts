@@ -45,6 +45,10 @@ const accessStyles = readFileSync(
   "utf8",
 );
 const realApp = readFileSync(path.join(root, "src", "RealApp.tsx"), "utf8");
+const collaborationSurfaces = readFileSync(
+  path.join(root, "src", "CollaborationSurfaces.tsx"),
+  "utf8",
+);
 const meetings = readFileSync(
   path.join(root, "src", "MeetingsSurface.tsx"),
   "utf8",
@@ -141,6 +145,37 @@ describe("interaction recovery contracts", () => {
       /\.task-control-strip\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
     );
     assert.match(styles, /@container \(max-width: 42rem\)/);
+  });
+
+  it("keeps Attention mutations behind deliberate signal selection", () => {
+    assert.match(collaborationSurfaces, /className="attention-ledger"/);
+    assert.match(collaborationSurfaces, /\.\.\.attentionNav\(index\)/);
+    assert.match(
+      collaborationSurfaces,
+      /aria-pressed=\{selectedItemId === item\.id\}/,
+    );
+    assert.match(collaborationSurfaces, /onClick=\{\(\) => onSelect\(item\)\}/);
+    assert.match(
+      collaborationSurfaces,
+      /onDoubleClick=\{\(\) => onOpen\(item\)\}/,
+    );
+    assert.match(
+      collaborationSurfaces,
+      /Skrzynka uwagi jest chwilowo niedostępna[\s\S]*Spróbuj ponownie/,
+    );
+    assert.match(
+      collaborationSurfaces,
+      /Nic nie wymaga reakcji[\s\S]*nie tworzy długu uwagi/,
+    );
+    assert.match(collaborationSurfaces, /export const AttentionDetail/);
+    assert.doesNotMatch(collaborationSurfaces, /className="attention-actions"/);
+    assert.match(realApp, /const \[selectedAttentionId/);
+    assert.match(realApp, /selectedAttention \|\|/);
+    assert.match(realApp, /<AttentionDetail/);
+    assert.match(
+      styles,
+      /\.attention-ledger\s*\{[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-raised\)/s,
+    );
   });
 
   it("keeps meeting collection options concise while full content stays in the inspector", () => {

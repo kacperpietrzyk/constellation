@@ -2842,7 +2842,7 @@ kbd {
 }
 .comment-entry button,
 .reply-context button,
-.attention-actions button {
+.attention-detail-actions button {
   min-height: 2rem;
   padding: 0 var(--space-2);
   color: var(--text-secondary);
@@ -2851,7 +2851,7 @@ kbd {
 }
 .comment-entry button:hover,
 .reply-context button:hover,
-.attention-actions button:hover {
+.attention-detail-actions button:hover {
   background: var(--surface-hover);
 }
 .comment-reply {
@@ -2945,20 +2945,12 @@ button.mention-chip:disabled {
   padding: var(--space-8);
 }
 .attention-heading {
-  /* The attention list below is full-width and already carries its own
-     margin-top, so the shared .surface-header measure cap and bottom margin
-     would misalign the left edge and double the rhythm. */
-  max-width: none;
-  margin: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-6);
+  max-width: 70rem;
+  margin: 0 auto;
 }
 .attention-total {
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 .attention-empty {
   display: grid;
@@ -2969,21 +2961,45 @@ button.mention-chip:disabled {
   justify-self: start;
   margin-top: var(--space-2);
 }
-/* Pilny sygnał: semantyka ostrzegawcza zawsze zdublowana tekstem etykiety. */
+.attention-ledger {
+  max-width: 70rem;
+  margin: var(--space-6) auto 0;
+  overflow: hidden;
+  border: 1px solid var(--panel-reading-border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-reading-bg);
+  box-shadow: var(--elevation-raised);
+}
+.attention-ledger-head,
+.attention-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 13rem 10rem;
+  gap: var(--space-4);
+  align-items: center;
+}
+.attention-ledger-head {
+  min-height: 2rem;
+  padding: 0 var(--space-4);
+  color: var(--text-quaternary);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  text-transform: uppercase;
+}
 .attention-urgent {
   margin-left: var(--space-2);
   color: var(--status-warning);
   font-weight: 500;
 }
 .attention-list-real {
-  margin-top: var(--space-6);
+  gap: 0;
 }
 .attention-list-real li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--space-3);
-  align-items: center;
   border-bottom: 1px solid var(--border-subtle);
+}
+.attention-list-real li:last-child {
+  border-bottom: 0;
 }
 /* Unread is a compact info-blue dot plus screen-reader text, not a full-row
    selected wash — selection material stays reserved for selection. */
@@ -2997,13 +3013,9 @@ button.mention-chip:disabled {
   background: var(--status-info);
 }
 .attention-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--space-1) var(--space-4);
   width: 100%;
   padding: var(--space-4);
   background: transparent;
-  cursor: pointer;
   text-align: left;
 }
 .attention-main:not(:disabled):hover {
@@ -3012,23 +3024,41 @@ button.mention-chip:disabled {
 .attention-main:not(:disabled):active {
   background: var(--surface-pressed);
 }
-.attention-main strong,
-.attention-main > span:not(.attention-reason) {
-  grid-column: 1;
+.attention-main[aria-pressed="true"] {
+  background: var(--surface-selected);
+  box-shadow: inset 0.125rem 0 0 var(--text-secondary);
+}
+.attention-copy {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.attention-copy strong,
+.attention-copy > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attention-copy > span {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+.attention-reason {
+  color: var(--text-tertiary);
 }
 .attention-main time {
-  grid-column: 2;
-  grid-row: 1 / span 2;
   color: var(--text-quaternary);
   font: var(--text-2xs)/1.3 var(--font-mono);
 }
-.attention-main > span:not(.attention-reason) {
-  color: var(--text-tertiary);
+.attention-detail-actions {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
 }
-.attention-actions {
-  display: flex;
-  gap: var(--space-1);
-  padding-right: var(--space-3);
+.attention-detail-actions button {
+  border: 1px solid var(--border-subtle);
 }
 /* Component width, not only window width, governs the dense Attention list.
    This also covers 200% text scaling, where rem-based content grows while the
@@ -3042,25 +3072,12 @@ button.mention-chip:disabled {
     flex-direction: column;
     gap: var(--space-2);
   }
-  .attention-total {
-    max-width: 100%;
-    white-space: normal;
+  .attention-ledger-head {
+    display: none;
   }
-  .attention-list-real li,
   .attention-main {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .attention-main time {
-    grid-column: 1;
-    grid-row: auto;
-  }
-  .attention-actions {
-    padding: 0 var(--space-4) var(--space-3);
-    flex-wrap: wrap;
-  }
-  .attention-actions button {
-    flex: 1 1 7rem;
-    white-space: normal;
+    gap: var(--space-2);
   }
 }
 
@@ -6893,20 +6910,6 @@ button.mention-chip:disabled {
     border-right: 0;
     border-bottom: 1px solid var(--border-subtle);
   }
-  .attention-surface {
-    padding-inline: var(--space-4);
-  }
-  .attention-list-real li {
-    grid-template-columns: 1fr;
-  }
-  .attention-actions {
-    padding: 0 var(--space-4) var(--space-3);
-    flex-wrap: wrap;
-  }
-  .attention-actions button {
-    flex: 1 1 7rem;
-    white-space: normal;
-  }
   .comment-reply {
     margin-left: var(--space-2);
   }
@@ -6915,23 +6918,10 @@ button.mention-chip:disabled {
   .wave2-header h1 {
     font-size: 1.75rem;
   }
-  .attention-heading {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-  .attention-main {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .attention-main time {
-    grid-column: 1;
-    grid-row: auto;
-  }
 }
 @media (prefers-reduced-transparency: reduce) {
   .comment-entry,
   .comment-composer,
-  .attention-list-real li,
   .search-backdrop,
   .undo-backdrop,
   .shortcuts-backdrop {
