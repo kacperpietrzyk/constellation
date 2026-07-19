@@ -211,7 +211,9 @@ class LazySurfaceBoundary extends Component<
       return (
         <section className="surface-load-state" role="alert">
           <p className="eyebrow">{this.props.label}</p>
-          <h1>Nie udało się otworzyć tej części aplikacji</h1>
+          <h1 id="surface-title" tabIndex={-1}>
+            Nie udało się otworzyć tej części aplikacji
+          </h1>
           <p>
             Dane nie zostały zmienione. Odśwież aplikację i spróbuj ponownie.
           </p>
@@ -232,7 +234,9 @@ class LazySurfaceBoundary extends Component<
 const SurfaceLoadingState = ({ label }: { readonly label: string }) => (
   <section className="surface-load-state" aria-busy="true" aria-live="polite">
     <p className="eyebrow">{label}</p>
-    <h1>Otwieram tę część aplikacji…</h1>
+    <h1 id="surface-title" tabIndex={-1}>
+      Otwieram tę część aplikacji…
+    </h1>
     <p>Ładuję bieżącą zawartość workspace.</p>
   </section>
 );

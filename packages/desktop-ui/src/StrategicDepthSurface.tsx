@@ -242,7 +242,7 @@ export const StrategicDepthSurface = ({
         </section>
       ) : (
         <div className="strategic-layout">
-          <main className="strategic-work-plane">
+          <div className="strategic-work-plane">
             <section
               className="strategic-thread"
               aria-labelledby="thread-title"
@@ -493,7 +493,7 @@ export const StrategicDepthSurface = ({
                 </p>
               )}
             </section>
-          </main>
+          </div>
 
           <aside className="strategic-review" aria-labelledby="review-title">
             <header>
