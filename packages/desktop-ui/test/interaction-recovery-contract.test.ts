@@ -284,8 +284,32 @@ describe("interaction recovery contracts", () => {
     assert.match(meetings, /selected && inspectorHost/);
   });
 
+  it("keeps the shell main landmark named while surfaces load or fail", () => {
+    assert.match(
+      realApp,
+      /<h1 id="surface-title" tabIndex=\{-1\}>\s*Nie udało się otworzyć tej części aplikacji/s,
+    );
+    assert.match(
+      realApp,
+      /<h1 id="surface-title" tabIndex=\{-1\}>\s*Otwieram tę część aplikacji…/s,
+    );
+    assert.match(
+      meetings,
+      /<h1 id="surface-title" className="sr-only" tabIndex=\{-1\}>\s*Otwieram spotkania…/s,
+    );
+    assert.match(
+      meetings,
+      /<h1 id="surface-title" tabIndex=\{-1\}>\s*Spotkania są chwilowo niedostępne/s,
+    );
+  });
+
   it("makes Relations one raised work plane with a quieter review rail", () => {
-    assert.match(strategicSurface, /<main className="strategic-work-plane">/);
+    assert.match(strategicSurface, /<div className="strategic-work-plane">/);
+    assert.doesNotMatch(
+      strategicSurface,
+      /<main className="strategic-work-plane">/,
+      "The Relations work plane lives inside the shell's main landmark and must not create a second main landmark.",
+    );
     assert.match(
       styles,
       /\.strategic-work-plane\s*\{[^}]*background:\s*var\(--panel-reading-bg\)[^}]*box-shadow:\s*var\(--elevation-raised\)/s,

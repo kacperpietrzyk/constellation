@@ -334,6 +334,9 @@ export const MeetingsSurface = ({
   if (state.kind === "loading") {
     return (
       <section className="meeting-surface meeting-skeleton" aria-busy="true">
+        <h1 id="surface-title" className="sr-only" tabIndex={-1}>
+          Otwieram spotkania…
+        </h1>
         <div />
         <div />
         <div />
@@ -354,7 +357,9 @@ export const MeetingsSurface = ({
             <path d="M12 5v8M12 17v.5" />
           </svg>
         </span>
-        <h1>Spotkania są chwilowo niedostępne</h1>
+        <h1 id="surface-title" tabIndex={-1}>
+          Spotkania są chwilowo niedostępne
+        </h1>
         <p>{state.message}</p>
         <button className="primary-button" onClick={load}>
           Spróbuj ponownie
