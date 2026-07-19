@@ -82,6 +82,8 @@ export const CapabilitySchema = z.enum([
   "radar.resolve",
   "radar.review",
   "meeting.upsertImported",
+  "task.create",
+  "task.updateDetails",
   "task.setStatus",
   "task.complete",
   "task.reopen",

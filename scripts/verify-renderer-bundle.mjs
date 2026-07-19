@@ -7,11 +7,13 @@ import path from "node:path";
 // popovery, moduł i18n, pełny renderer Markdownu, drawer inspektora). Entry
 // pozostaje na starym budżecie — nowe powierzchnie ładują się jako osobne
 // chunki (Access, Relacje, Onboarding, Recovery dołączyły do split-listy).
+// 2026-07-20: stylesheet podniesiony po R12.1 (kontekst roboczy zadania:
+// edytor w inspektorze i wiersz bezpośredniego tworzenia zadania).
 const limits = {
   entryBytes: 510_000,
   entryGzipBytes: 140_000,
   totalJavaScriptBytes: 760_000,
-  stylesheetBytes: 165_000,
+  stylesheetBytes: 169_000,
 };
 
 const dist = path.join(process.cwd(), "packages", "desktop-ui", "dist");

@@ -340,6 +340,8 @@ const isCurrentlyAuthorized = (
     case "radar.resolve":
     case "meeting.upsertImported":
     case "project.updateOutcome":
+    case "task.create":
+    case "task.updateDetails":
     case "task.setStatus":
     case "task.setOperationalState":
     case "task.complete":
@@ -675,6 +677,8 @@ export class ApplicationKernel {
       case "radar.resolve":
       case "meeting.upsertImported":
       case "project.updateOutcome":
+      case "task.create":
+      case "task.updateDetails":
       case "task.setStatus":
       case "task.setOperationalState":
       case "task.complete":
@@ -2909,6 +2913,12 @@ export class ApplicationKernel {
             id: task.id,
             spaceId: task.spaceId,
             title: task.title,
+            ...(task.description === undefined
+              ? {}
+              : { description: task.description }),
+            ...(task.nextAction === undefined
+              ? {}
+              : { nextAction: task.nextAction }),
             status: {
               id: status.id,
               label: status.label,

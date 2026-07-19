@@ -79,7 +79,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-export const LOCAL_STORE_SCHEMA_VERSION = 15;
+export const LOCAL_STORE_SCHEMA_VERSION = 16;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -628,6 +628,36 @@ const schemaV15 = `
     ON capture_payloads(workspace_id, created_at, id);
 `;
 
+const schemaV16 = `
+  DROP TRIGGER work_search_task_insert;
+  DROP TRIGGER work_search_task_update;
+  CREATE TRIGGER work_search_task_insert AFTER INSERT ON tasks BEGIN
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    SELECT new.id, new.workspace_id, new.space_id, 'task',
+      json_extract(new.payload_json, '$.title'),
+      trim(coalesce(json_extract(new.payload_json, '$.description'), '')
+        || ' ' || coalesce(json_extract(new.payload_json, '$.nextAction'), ''))
+    WHERE new.record_state = 'active';
+  END;
+  CREATE TRIGGER work_search_task_update AFTER UPDATE OF payload_json ON tasks BEGIN
+    DELETE FROM work_search WHERE record_kind = 'task' AND record_id = old.id;
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    SELECT new.id, new.workspace_id, new.space_id, 'task',
+      json_extract(new.payload_json, '$.title'),
+      trim(coalesce(json_extract(new.payload_json, '$.description'), '')
+        || ' ' || coalesce(json_extract(new.payload_json, '$.nextAction'), ''))
+    WHERE new.record_state = 'active';
+  END;
+  DELETE FROM work_search WHERE record_kind = 'task';
+  INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    SELECT id, workspace_id, space_id, 'task',
+      json_extract(payload_json, '$.title'),
+      trim(coalesce(json_extract(payload_json, '$.description'), '')
+        || ' ' || coalesce(json_extract(payload_json, '$.nextAction'), ''))
+    FROM tasks
+    WHERE record_state = 'active';
+`;
+
 const localStoreMigrations = [
   schemaV1,
   schemaV2,
@@ -644,6 +674,7 @@ const localStoreMigrations = [
   schemaV13,
   schemaV14,
   schemaV15,
+  schemaV16,
 ] as const;
 
 export interface LocalCoordinationState {

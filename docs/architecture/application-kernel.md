@@ -70,6 +70,8 @@ Commands:
 - `radar.candidateUpsert`
 - `radar.resolve`
 - `meeting.upsertImported`
+- `task.create`
+- `task.updateDetails`
 - `task.setStatus`
 - `task.setOperationalState`
 - `task.complete`
@@ -155,8 +157,19 @@ one unit of work; keeping an original unclassified removes inbox debt without
 discarding or falsely routing it.
 
 Capture provenance is optional on the core Task model. A routed Task records
-its source Capture, while future direct `task.create` commands will not invent
-one.
+its source Capture, while a directly created Task (`task.create`) does not
+invent one.
+
+A Task also carries optional bounded working context: a plain-text
+`description` and a separate one-line `nextAction`. Both travel through
+`task.create` and the expected-version `task.updateDetails` command with the
+standard attribution, idempotent replay, audit, activity, previewed undo, and
+Space authorization semantics. Clearing a field is an explicit null assignment
+rather than an omission, undo restores the exact prior title and context, and
+both fields are covered by permission-safe deterministic search. A richer
+collaborative Document remains an explicitly related, separately created
+record; no Task requires one merely to hold a few paragraphs of working
+context.
 
 The application-owned rule is deliberately narrow: text becomes a Task, while
 URLs, file references, managed files, and screenshots become knowledge

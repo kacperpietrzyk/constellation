@@ -31,7 +31,7 @@ import {
   type RelationId,
   type TaskId,
 } from "@constellation/contracts";
-import type { DomainEvent } from "@constellation/domain";
+import type { DomainEvent, Task } from "@constellation/domain";
 import {
   Base64JsonCursorCodec,
   DeterministicIdGenerator,
@@ -982,7 +982,7 @@ describe("SQLite ApplicationStore", () => {
           user_version: number;
         }
       ).user_version,
-      15,
+      LOCAL_STORE_SCHEMA_VERSION,
     );
     assert.equal(
       store.read((view) => view.getTask(taskId))?.operationalState,
@@ -1122,6 +1122,112 @@ describe("SQLite ApplicationStore", () => {
         reopened.close();
       });
     }
+  });
+
+  it("indexes Task working context through the v16 migration and its triggers", () => {
+    withDatabase((filename) => {
+      const historical = new DatabaseSync(filename);
+      initializeLocalStoreSchemaForVersion(sqlitePort(historical), 15);
+      const taskId = "00000000-0000-4000-8000-0000000000a6" as TaskId;
+      const createdAt = "2026-07-19T09:00:00.000Z";
+      historical
+        .prepare(
+          "INSERT INTO workspaces(id, version, payload_json) VALUES (?, 1, ?)",
+        )
+        .run(ids.workspace, JSON.stringify({ id: ids.workspace, version: 1 }));
+      historical
+        .prepare(
+          "INSERT INTO spaces(id, workspace_id, version, payload_json) VALUES (?, ?, 1, ?)",
+        )
+        .run(
+          ids.rootSpace,
+          ids.workspace,
+          JSON.stringify({
+            id: ids.rootSpace,
+            workspaceId: ids.workspace,
+            version: 1,
+          }),
+        );
+      const task = {
+        id: taskId,
+        workspaceId: ids.workspace,
+        spaceId: ids.rootSpace,
+        title: "Renewal offer",
+        description: "Wymaga kosztorysu od dystrybutora przed wysyłką.",
+        nextAction: "Zapytać o właściciela budżetu.",
+        statusId: "00000000-0000-4000-8000-0000000000a7",
+        recordState: "active",
+        completionState: "open",
+        operationalState: "actionable",
+        createdBy: ids.principal,
+        version: 1,
+        createdAt,
+        updatedAt: createdAt,
+      };
+      historical
+        .prepare(
+          "INSERT INTO tasks(id, workspace_id, space_id, created_at, version, payload_json, record_state, completion_state, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)",
+        )
+        .run(
+          taskId,
+          ids.workspace,
+          ids.rootSpace,
+          createdAt,
+          JSON.stringify(task),
+          task.recordState,
+          task.completionState,
+          task.updatedAt,
+        );
+      assert.equal(
+        (
+          historical
+            .prepare(
+              "SELECT count(*) AS count FROM work_search WHERE work_search MATCH 'kosztorysu'",
+            )
+            .get() as { count: number }
+        ).count,
+        0,
+        "v15 does not index Task working context",
+      );
+      historical.close();
+
+      const reopened = new DatabaseSync(filename);
+      const store = new SqliteApplicationStore(sqlitePort(reopened));
+      assert.equal(
+        (
+          reopened.prepare("PRAGMA user_version").get() as {
+            user_version: number;
+          }
+        ).user_version,
+        LOCAL_STORE_SCHEMA_VERSION,
+      );
+      const matches = (needle: string): number =>
+        (
+          reopened
+            .prepare(
+              "SELECT count(*) AS count FROM work_search WHERE work_search MATCH ? AND record_kind = 'task'",
+            )
+            .get(needle) as { count: number }
+        ).count;
+      assert.equal(matches("kosztorysu"), 1, "backfilled description");
+      assert.equal(matches("budżetu"), 1, "backfilled next action");
+
+      store.transact((transaction) => {
+        assert.ok(isApplicationWave2Transaction(transaction));
+        transaction.updateTask(
+          {
+            ...task,
+            description: "Nowy zakres: audyt licencji.",
+            nextAction: undefined,
+            version: 2,
+          } as unknown as Task,
+          1,
+        );
+      });
+      assert.equal(matches("licencji"), 1, "trigger indexes new description");
+      assert.equal(matches("budżetu"), 0, "cleared next action leaves FTS");
+      reopened.close();
+    });
   });
 
   it("rolls back an interrupted migration and retries from the same source", () => {

@@ -60,6 +60,8 @@ export const DiagnosticCodeSchema = z.enum([
   "strategic.record_changed",
   "project.outcome_updated",
   "project.lifecycle_changed",
+  "task.created",
+  "task.details_updated",
   "task.status_changed",
   "task.operational_state_changed",
   "task.completed",
@@ -381,6 +383,29 @@ const TaskMutationProjectionFields = {
   version: z.int().positive(),
 } as const;
 
+export const TaskCreatedProjectionSchema = z
+  .object({
+    kind: z.literal("task.created"),
+    taskId: TaskIdSchema,
+    spaceId: SpaceIdSchema,
+    title: z.string(),
+    description: z.string().optional(),
+    nextAction: z.string().optional(),
+    statusId: TaskStatusIdSchema,
+    completionState: z.enum(["open", "completed"]),
+    version: z.int().positive(),
+  })
+  .strict();
+export const TaskDetailsUpdatedProjectionSchema = z
+  .object({
+    kind: z.literal("task.details_updated"),
+    taskId: TaskIdSchema,
+    title: z.string(),
+    description: z.string().optional(),
+    nextAction: z.string().optional(),
+    version: z.int().positive(),
+  })
+  .strict();
 export const TaskStatusChangedProjectionSchema = z
   .object({
     kind: z.literal("task.status_changed"),
@@ -561,6 +586,8 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   StrategicRecordMutationProjectionSchema,
   ProjectOutcomeUpdatedProjectionSchema,
   ProjectLifecycleChangedProjectionSchema,
+  TaskCreatedProjectionSchema,
+  TaskDetailsUpdatedProjectionSchema,
   TaskStatusChangedProjectionSchema,
   TaskOperationalStateChangedProjectionSchema,
   TaskCompletedProjectionSchema,
@@ -762,6 +789,17 @@ const ProjectLifecycleChangedSuccessOutcomeSchema =
     diagnosticCode: z.literal("project.lifecycle_changed"),
     projection: ProjectLifecycleChangedProjectionSchema,
   }).strict();
+const TaskCreatedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
+  outcome: z.literal("success"),
+  diagnosticCode: z.literal("task.created"),
+  projection: TaskCreatedProjectionSchema,
+}).strict();
+const TaskDetailsUpdatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("task.details_updated"),
+    projection: TaskDetailsUpdatedProjectionSchema,
+  }).strict();
 const TaskStatusChangedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -910,6 +948,8 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   StrategicRecordChangedSuccessOutcomeSchema,
   ProjectOutcomeUpdatedSuccessOutcomeSchema,
   ProjectLifecycleChangedSuccessOutcomeSchema,
+  TaskCreatedSuccessOutcomeSchema,
+  TaskDetailsUpdatedSuccessOutcomeSchema,
   TaskStatusChangedSuccessOutcomeSchema,
   TaskOperationalStateChangedSuccessOutcomeSchema,
   TaskCompletedSuccessOutcomeSchema,
@@ -944,6 +984,7 @@ export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
         .enum([
           "project.restore_outcome",
           "task.restore_state",
+          "task.restore_details",
           "task.restore_operational_state",
           "work_link.restore_state",
           "relation.remove",

@@ -1,10 +1,82 @@
 import type {
   PrincipalId,
   RelationId,
+  SpaceId,
+  TaskId,
   TaskStatusId,
+  WorkspaceId,
 } from "@constellation/contracts";
 
 import type { Project, Task, TaskProjectRelation } from "./model.js";
+
+export interface CreateTaskInput {
+  readonly id: TaskId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly title: string;
+  readonly description?: string;
+  readonly nextAction?: string;
+  readonly statusId: TaskStatusId;
+  readonly createdBy: PrincipalId;
+  readonly occurredAt: string;
+}
+
+export const createTask = (input: CreateTaskInput): Task => ({
+  id: input.id,
+  workspaceId: input.workspaceId,
+  spaceId: input.spaceId,
+  title: input.title,
+  ...(input.description === undefined
+    ? {}
+    : { description: input.description }),
+  ...(input.nextAction === undefined ? {} : { nextAction: input.nextAction }),
+  statusId: input.statusId,
+  recordState: "active",
+  completionState: "open",
+  operationalState: "actionable",
+  createdBy: input.createdBy,
+  version: 1,
+  createdAt: input.occurredAt,
+  updatedAt: input.occurredAt,
+});
+
+export interface TaskDetailsUpdate {
+  readonly title?: string;
+  readonly description?: string | null;
+  readonly nextAction?: string | null;
+}
+
+export const updateTaskDetails = (
+  task: Task,
+  update: TaskDetailsUpdate,
+  occurredAt: string,
+): Task => {
+  const {
+    description: currentDescription,
+    nextAction: currentNextAction,
+    ...base
+  } = task;
+  const description =
+    update.description === undefined
+      ? currentDescription
+      : update.description === null
+        ? undefined
+        : update.description;
+  const nextAction =
+    update.nextAction === undefined
+      ? currentNextAction
+      : update.nextAction === null
+        ? undefined
+        : update.nextAction;
+  return {
+    ...base,
+    title: update.title ?? task.title,
+    ...(description === undefined ? {} : { description }),
+    ...(nextAction === undefined ? {} : { nextAction }),
+    version: task.version + 1,
+    updatedAt: occurredAt,
+  };
+};
 
 export const setTaskStatus = (
   task: Task,

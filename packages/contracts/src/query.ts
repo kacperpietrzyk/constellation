@@ -800,6 +800,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             id: TaskIdSchema,
             spaceId: SpaceIdSchema,
             title: z.string(),
+            description: z.string().optional(),
+            nextAction: z.string().optional(),
             status: z
               .object({
                 id: TaskStatusIdSchema,
@@ -1157,6 +1159,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             matchedFields: z.array(
               z.enum([
                 "title",
+                "description",
+                "nextAction",
                 "intendedOutcome",
                 "originalText",
                 "excerpt",
@@ -1225,6 +1229,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "capture_transcript_ready",
               "project_created",
               "project_outcome_changed",
+              "task_created",
+              "task_details_updated",
               "task_completed",
               "task_reopened",
               "task_assigned",
@@ -1258,6 +1264,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
         .enum([
           "project.restore_outcome",
           "task.restore_state",
+          "task.restore_details",
           "task.restore_operational_state",
           "work_link.restore_state",
           "relation.remove",

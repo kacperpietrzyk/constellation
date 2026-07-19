@@ -67,6 +67,8 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "radar.review",
   "meeting.upsertImported",
   "project.operationalOverview",
+  "task.create",
+  "task.updateDetails",
   "task.setStatus",
   "task.setOperationalState",
   "task.complete",

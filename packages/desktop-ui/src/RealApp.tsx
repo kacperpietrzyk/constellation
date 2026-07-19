@@ -64,6 +64,8 @@ import {
   addComment,
   editComment,
   createProject,
+  createTask,
+  updateTaskDetails,
   loadDesktopSnapshot,
   loadProjectOverview,
   loadComments,
@@ -1351,6 +1353,21 @@ export const RealApp = ({
   const [projectOverview, setProjectOverview] =
     useState<ProjectOverviewProjection>();
   const [busyTaskId, setBusyTaskId] = useState<TaskId>();
+  const [taskEditOpen, setTaskEditOpen] = useState(false);
+  const [taskDraft, setTaskDraft] = useState({
+    title: "",
+    description: "",
+    nextAction: "",
+  });
+  const [taskEditBusy, setTaskEditBusy] = useState(false);
+  const taskEditButtonRef = useRef<HTMLButtonElement | null>(null);
+  const taskEditWantsFocusRef = useRef(false);
+  useEffect(() => {
+    if (!taskEditOpen && taskEditWantsFocusRef.current) {
+      taskEditWantsFocusRef.current = false;
+      taskEditButtonRef.current?.focus();
+    }
+  }, [taskEditOpen]);
   const [projectBusy, setProjectBusy] = useState(false);
   const [accessBusy, setAccessBusy] = useState(false);
   const [commentBusy, setCommentBusy] = useState(false);
@@ -1655,6 +1672,7 @@ export const RealApp = ({
     setSelectedCaptureId(undefined);
     setSelectedAttentionId(undefined);
     setSelectedTaskId(id);
+    setTaskEditOpen(false);
   }, []);
   const selectProjectInInspector = useCallback((id: ProjectId) => {
     setSelectedTaskId(undefined);
@@ -3032,6 +3050,19 @@ export const RealApp = ({
               }}
               onSelectTask={selectTaskInInspector}
               onCapture={openCapture}
+              onCreateTask={async (title) => {
+                if (!client) return false;
+                const result = await createTask(client, state.snapshot, {
+                  title,
+                });
+                if (result.kind === "success") {
+                  await refreshAfter("Zadanie utworzono.");
+                  selectTaskInInspector(result.data.taskId);
+                  return true;
+                }
+                showFailure(result);
+                return false;
+              }}
               onSetStatus={(id, statusId) => {
                 const task = tasks.find((item) => item.id === id);
                 if (!client || !task) return;
@@ -3569,6 +3600,164 @@ export const RealApp = ({
                 ? "Utworzone z zachowanego Capture."
                 : "Zadanie w aktywnym workspace."}
             </p>
+            <section className="inspector-section task-context-block">
+              <p className="section-label">Kontekst roboczy</p>
+              {taskEditOpen ? (
+                <form
+                  className="task-context-editor"
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.stopPropagation();
+                      taskEditWantsFocusRef.current = true;
+                      setTaskEditOpen(false);
+                    }
+                  }}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!client || taskEditBusy) return;
+                    const title = taskDraft.title.trim();
+                    const description = taskDraft.description.trim();
+                    const nextAction = taskDraft.nextAction.trim();
+                    if (title.length === 0) return;
+                    const draft = {
+                      ...(title === selectedTask.title ? {} : { title }),
+                      ...(description === (selectedTask.description ?? "")
+                        ? {}
+                        : {
+                            description:
+                              description.length === 0 ? null : description,
+                          }),
+                      ...(nextAction === (selectedTask.nextAction ?? "")
+                        ? {}
+                        : {
+                            nextAction:
+                              nextAction.length === 0 ? null : nextAction,
+                          }),
+                    };
+                    if (Object.keys(draft).length === 0) {
+                      taskEditWantsFocusRef.current = true;
+                      setTaskEditOpen(false);
+                      return;
+                    }
+                    setTaskEditBusy(true);
+                    void updateTaskDetails(
+                      client,
+                      state.snapshot,
+                      selectedTask.id,
+                      selectedTask.version,
+                      draft,
+                    ).then(async (result) => {
+                      setTaskEditBusy(false);
+                      if (result.kind === "success") {
+                        taskEditWantsFocusRef.current = true;
+                        setTaskEditOpen(false);
+                        await refreshAfter("Kontekst zadania zapisano.");
+                      } else showFailure(result);
+                    });
+                  }}
+                >
+                  <label>
+                    <span>Tytuł</span>
+                    <input
+                      value={taskDraft.title}
+                      maxLength={500}
+                      required
+                      autoFocus
+                      disabled={taskEditBusy}
+                      onChange={(event) =>
+                        setTaskDraft((current) => ({
+                          ...current,
+                          title: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Kontekst</span>
+                    <textarea
+                      value={taskDraft.description}
+                      rows={6}
+                      maxLength={16000}
+                      disabled={taskEditBusy}
+                      placeholder="Co trzeba wiedzieć, aby podjąć to zadanie po przerwie?"
+                      onChange={(event) =>
+                        setTaskDraft((current) => ({
+                          ...current,
+                          description: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Następny krok</span>
+                    <input
+                      value={taskDraft.nextAction}
+                      maxLength={500}
+                      disabled={taskEditBusy}
+                      placeholder="Jedno zdanie: od czego zacząć."
+                      onChange={(event) =>
+                        setTaskDraft((current) => ({
+                          ...current,
+                          nextAction: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <div className="task-context-actions">
+                    <button
+                      type="submit"
+                      className="secondary-button"
+                      disabled={taskEditBusy || !client}
+                    >
+                      {taskEditBusy ? "Zapisywanie…" : "Zapisz"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={taskEditBusy}
+                      onClick={() => {
+                        taskEditWantsFocusRef.current = true;
+                        setTaskEditOpen(false);
+                      }}
+                    >
+                      Anuluj
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  {selectedTask.description ? (
+                    <p className="task-context-text">
+                      {selectedTask.description}
+                    </p>
+                  ) : (
+                    <p>
+                      Brak zapisanego kontekstu. Dodaj notatki, aby wrócić do
+                      zadania bez odtwarzania z pamięci.
+                    </p>
+                  )}
+                  {selectedTask.nextAction && (
+                    <p className="task-next-action">
+                      <span>Następny krok:</span> {selectedTask.nextAction}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    ref={taskEditButtonRef}
+                    onClick={() => {
+                      setTaskDraft({
+                        title: selectedTask.title,
+                        description: selectedTask.description ?? "",
+                        nextAction: selectedTask.nextAction ?? "",
+                      });
+                      setTaskEditOpen(true);
+                    }}
+                  >
+                    Edytuj kontekst
+                  </button>
+                </>
+              )}
+            </section>
             <section className="inspector-section assignment-block">
               <p className="section-label">Odpowiedzialność</p>
               <p>

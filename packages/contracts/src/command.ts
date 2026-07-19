@@ -873,6 +873,42 @@ export const ProjectUpdateOutcomeCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 
+const TaskTitleSchema = z.string().trim().min(1).max(500);
+const TaskDescriptionSchema = z.string().trim().min(1).max(16_000);
+const TaskNextActionSchema = z.string().trim().min(1).max(500);
+
+export const TaskCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("task.create"),
+  payload: z
+    .object({
+      taskId: TaskIdSchema,
+      spaceId: SpaceIdSchema,
+      title: TaskTitleSchema,
+      description: TaskDescriptionSchema.optional(),
+      nextAction: TaskNextActionSchema.optional(),
+    })
+    .strict(),
+}).strict();
+
+export const TaskUpdateDetailsCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("task.updateDetails"),
+  payload: z
+    .object({
+      taskId: TaskIdSchema,
+      title: TaskTitleSchema.optional(),
+      description: TaskDescriptionSchema.nullable().optional(),
+      nextAction: TaskNextActionSchema.nullable().optional(),
+    })
+    .strict()
+    .refine(
+      (payload) =>
+        payload.title !== undefined ||
+        payload.description !== undefined ||
+        payload.nextAction !== undefined,
+      { message: "task.updateDetails requires at least one field change." },
+    ),
+}).strict();
+
 export const TaskSetStatusCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("task.setStatus"),
   payload: z
@@ -1054,6 +1090,8 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   RadarResolveCommandSchema,
   MeetingUpsertImportedCommandSchema,
   ProjectUpdateOutcomeCommandSchema,
+  TaskCreateCommandSchema,
+  TaskUpdateDetailsCommandSchema,
   TaskSetStatusCommandSchema,
   TaskSetOperationalStateCommandSchema,
   TaskCompleteCommandSchema,

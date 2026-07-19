@@ -1876,6 +1876,77 @@ export const updateProjectOutcome = (
         : undefined,
   );
 
+export const createTask = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly title: string;
+    readonly description?: string;
+    readonly nextAction?: string;
+  },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "task.create",
+      payload: {
+        taskId: crypto.randomUUID(),
+        spaceId: firstSpace(snapshot),
+        title: input.title,
+        ...(input.description === undefined || input.description === ""
+          ? {}
+          : { description: input.description }),
+        ...(input.nextAction === undefined || input.nextAction === ""
+          ? {}
+          : { nextAction: input.nextAction }),
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "task.created"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export interface TaskDetailsDraft {
+  readonly title?: string;
+  readonly description?: string | null;
+  readonly nextAction?: string | null;
+}
+
+export const updateTaskDetails = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  taskId: TaskId,
+  taskVersion: number,
+  draft: TaskDetailsDraft,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [taskId]: taskVersion,
+      }),
+      commandName: "task.updateDetails",
+      payload: {
+        taskId,
+        ...(draft.title === undefined ? {} : { title: draft.title }),
+        ...(draft.description === undefined
+          ? {}
+          : { description: draft.description }),
+        ...(draft.nextAction === undefined
+          ? {}
+          : { nextAction: draft.nextAction }),
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "task.details_updated"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export const setTaskStatus = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
