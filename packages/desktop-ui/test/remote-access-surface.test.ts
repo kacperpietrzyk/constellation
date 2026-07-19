@@ -7,7 +7,7 @@ import { SpaceIdSchema } from "@constellation/contracts";
 
 import { AccessSurface } from "../src/AccessSurface.js";
 
-test("remote agent access keeps capability, data, and federation grants visibly independent", () => {
+test("remote agent access leads with the ledger and reveals grant creation deliberately", () => {
   const spaceId = SpaceIdSchema.parse("80000000-0000-4000-8000-000000000001");
   const markup = renderToStaticMarkup(
     createElement(AccessSurface, {
@@ -43,12 +43,9 @@ test("remote agent access keeps capability, data, and federation grants visibly 
     }),
   );
   assert.match(markup, /MCP · zdalnie przez Hub/u);
-  assert.match(markup, /Poziom możliwości/u);
-  assert.match(markup, /Zakres danych/u);
-  assert.match(markup, /Granice między workspace/u);
-  assert.match(markup, /Odczyt z innych przyznanych workspace/u);
-  assert.match(markup, /Zapis wyniku pochodnego/u);
-  assert.match(markup, /Materializacja treści źródłowej/u);
-  assert.match(markup, /Osobny grant. Domyślnie wyłączony./u);
-  assert.match(markup, /Utwórz zdalny dostęp MCP/u);
+  assert.match(markup, /Agenci zewnętrzni/u);
+  assert.match(markup, /Dodaj agenta/u);
+  assert.match(markup, /Żaden host nie ma dostępu/u);
+  assert.doesNotMatch(markup, /Poziom możliwości/u);
+  assert.doesNotMatch(markup, /Utwórz zdalny dostęp MCP/u);
 });

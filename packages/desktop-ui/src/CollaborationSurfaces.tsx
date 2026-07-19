@@ -1,4 +1,8 @@
-import { useState, type FormEvent } from "react";
+import {
+  useState,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 
 import type { PrincipalId } from "@constellation/contracts";
 
@@ -8,8 +12,49 @@ import type {
   DataSlice,
   MentionCandidatesProjection,
 } from "./client/workflow.js";
+import { useListNavigation } from "./hooks/useListNavigation.js";
+import { countLabel, formatDateTime } from "./i18n.js";
 
 type Comment = CommentListProjection["threads"][number];
+type Candidate = MentionCandidatesProjection["candidates"][number];
+
+// Author identity stays compact: initials in a neutral chip. Blue remains
+// reserved for collaboration identity — mention chips and the own-entry seam.
+const initialsOf = (name: string): string => {
+  const letters = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => (part[0] ?? "").toUpperCase())
+    .join("");
+  return letters === "" ? "?" : letters;
+};
+
+const MentionChips = ({
+  ids,
+  candidateById,
+  currentPrincipalId,
+}: {
+  readonly ids: readonly PrincipalId[];
+  readonly candidateById: ReadonlyMap<PrincipalId, Candidate>;
+  readonly currentPrincipalId: PrincipalId | undefined;
+}) =>
+  ids.length === 0 ? null : (
+    <ul className="comment-mentions" aria-label="Wzmiankowani uczestnicy">
+      {ids.map((id) => {
+        const candidate = candidateById.get(id);
+        return (
+          <li className="mention-chip" key={id}>
+            @
+            {id === currentPrincipalId
+              ? "Ty"
+              : (candidate?.displayName ?? "Uczestnik")}
+            {candidate?.participantKind === "guest" && <small>Gość</small>}
+          </li>
+        );
+      })}
+    </ul>
+  );
 
 export const CommentsPanel = ({
   comments,
@@ -28,43 +73,172 @@ export const CommentsPanel = ({
   readonly canComment: boolean;
   readonly canResolve: boolean;
   readonly busy: boolean;
+  // Add/edit report their outcome: the panel clears a draft only after the
+  // mutation confirmed, so a failed save never discards the typed text.
   readonly onAdd: (
     body: string,
     mentions: readonly PrincipalId[],
     parent?: Comment,
-  ) => void;
-  readonly onEdit: (comment: Comment, body: string) => void;
+  ) => Promise<boolean>;
+  readonly onEdit: (comment: Comment, body: string) => Promise<boolean>;
   readonly onResolve: (comment: Comment, resolved: boolean) => void;
 }) => {
   const [body, setBody] = useState("");
   const [mentions, setMentions] = useState<readonly PrincipalId[]>([]);
   const [replyTo, setReplyTo] = useState<Comment>();
   const [editingId, setEditingId] = useState<Comment["id"]>();
-  const [editBody, setEditBody] = useState("");
+  // Szkice edycji trzymane per wpis: przełączenie edycji na inny komentarz
+  // nie kasuje niezapisanych zmian — wracają po ponownym wejściu w edycję.
+  const [editDrafts, setEditDrafts] = useState<{
+    readonly [id: string]: string;
+  }>({});
+  const setDraft = (id: Comment["id"], value: string) =>
+    setEditDrafts((current) => ({ ...current, [id]: value }));
+  const clearDraft = (id: Comment["id"]) =>
+    setEditDrafts((current) =>
+      Object.fromEntries(Object.entries(current).filter(([key]) => key !== id)),
+    );
   const beginEdit = (comment: Comment) => {
+    setEditDrafts((current) =>
+      current[comment.id] === undefined
+        ? { ...current, [comment.id]: comment.body }
+        : current,
+    );
     setEditingId(comment.id);
-    setEditBody(comment.body);
   };
   const saveEdit = (comment: Comment) => {
-    if (!busy && editBody.trim()) {
-      onEdit(comment, editBody.trim());
-      setEditingId(undefined);
-      setEditBody("");
+    const draft = (editDrafts[comment.id] ?? comment.body).trim();
+    if (!busy && draft) {
+      void onEdit(comment, draft).then((saved) => {
+        if (!saved) return;
+        setEditingId(undefined);
+        clearDraft(comment.id);
+      });
+    }
+  };
+  const cancelEdit = (comment: Comment) => {
+    setEditingId(undefined);
+    clearDraft(comment.id);
+  };
+  // ⌘Enter saves, Escape cancels — the same contract as the composer below.
+  const editKeyDown = (
+    event: ReactKeyboardEvent<HTMLTextAreaElement>,
+    comment: Comment,
+  ) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      saveEdit(comment);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelEdit(comment);
     }
   };
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!busy && canComment && body.trim()) {
-      onAdd(body.trim(), mentions, replyTo);
-      setBody("");
-      setMentions([]);
-      setReplyTo(undefined);
+      void onAdd(body.trim(), mentions, replyTo).then((saved) => {
+        if (!saved) return;
+        setBody("");
+        setMentions([]);
+        setReplyTo(undefined);
+      });
     }
   };
+  const toggleMention = (id: PrincipalId) =>
+    setMentions((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+    );
   const items = comments.kind === "ready" ? comments.data.threads : [];
   const roots = items.filter(
     (comment) => comment.parentCommentId === undefined,
   );
+  const candidateById = new Map<PrincipalId, Candidate>(
+    candidates.kind === "ready"
+      ? candidates.data.candidates.map((candidate) => [
+          candidate.principalId,
+          candidate,
+        ])
+      : [],
+  );
+  const mentionOptions =
+    candidates.kind === "ready"
+      ? candidates.data.candidates.filter(
+          (candidate) => candidate.principalId !== currentPrincipalId,
+        )
+      : [];
+  const entryHeader = (comment: Comment) => (
+    <header>
+      <span className="comment-author">
+        <span className="comment-avatar" aria-hidden="true">
+          {initialsOf(comment.author.displayName)}
+        </span>
+        <strong>{comment.author.displayName}</strong>
+        {comment.author.principalId === currentPrincipalId && (
+          <span className="comment-own-mark">Ty</span>
+        )}
+      </span>
+      <time dateTime={comment.createdAt}>
+        {formatDateTime(comment.createdAt)}
+      </time>
+    </header>
+  );
+  const entryBody = (comment: Comment, editLabel: string) =>
+    editingId === comment.id ? (
+      <div className="comment-inline-edit">
+        <label htmlFor={`edit-comment-${comment.id}`}>{editLabel}</label>
+        <textarea
+          id={`edit-comment-${comment.id}`}
+          value={editDrafts[comment.id] ?? comment.body}
+          onChange={(event) => setDraft(comment.id, event.target.value)}
+          onKeyDown={(event) => editKeyDown(event, comment)}
+          maxLength={16000}
+          disabled={busy}
+          autoFocus
+        />
+        <div>
+          <button
+            type="button"
+            onClick={() => saveEdit(comment)}
+            disabled={busy || !(editDrafts[comment.id] ?? "").trim()}
+          >
+            Zapisz
+          </button>
+          <button
+            type="button"
+            onClick={() => cancelEdit(comment)}
+            disabled={busy}
+          >
+            Anuluj
+          </button>
+        </div>
+      </div>
+    ) : (
+      <>
+        <p>{comment.body}</p>
+        <MentionChips
+          ids={comment.mentionPrincipalIds}
+          candidateById={candidateById}
+          currentPrincipalId={currentPrincipalId}
+        />
+      </>
+    );
+  const draftPreserved = (comment: Comment) =>
+    editingId !== comment.id &&
+    editDrafts[comment.id] !== undefined &&
+    editDrafts[comment.id] !== comment.body;
+  const entryClassName = (comment: Comment, extra?: string) =>
+    [
+      "comment-entry",
+      extra,
+      comment.author.principalId === currentPrincipalId
+        ? "comment-own"
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join(" ");
   return (
     <section className="comments-panel" aria-labelledby="comments-heading">
       <header>
@@ -72,9 +246,7 @@ export const CommentsPanel = ({
           <span>Komentarze</span>
           <h3 id="comments-heading">Ustalenia przy pracy</h3>
         </div>
-        <small>
-          {roots.length} {roots.length === 1 ? "wątek" : "wątki"}
-        </small>
+        <small>{countLabel(roots.length, "wątek", "wątki", "wątków")}</small>
       </header>
       {comments.kind === "unavailable" ? (
         <div className="comments-state" role="status">
@@ -96,48 +268,14 @@ export const CommentsPanel = ({
                 key={root.id}
                 className={root.threadState === "resolved" ? "resolved" : ""}
               >
-                <article className="comment-entry">
-                  <header>
-                    <strong>{root.author.displayName}</strong>
-                    <time dateTime={root.createdAt}>
-                      {new Date(root.createdAt).toLocaleString()}
-                    </time>
-                  </header>
-                  {editingId === root.id ? (
-                    <div className="comment-inline-edit">
-                      <label htmlFor={`edit-comment-${root.id}`}>
-                        Edytuj komentarz
-                      </label>
-                      <textarea
-                        id={`edit-comment-${root.id}`}
-                        value={editBody}
-                        onChange={(event) => setEditBody(event.target.value)}
-                        maxLength={16000}
-                        disabled={busy}
-                        autoFocus
-                      />
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => saveEdit(root)}
-                          disabled={busy || !editBody.trim()}
-                        >
-                          Zapisz
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditingId(undefined)}
-                          disabled={busy}
-                        >
-                          Anuluj
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <p>{root.body}</p>
-                  )}
+                <article className={entryClassName(root)}>
+                  {entryHeader(root)}
+                  {entryBody(root, "Edytuj komentarz")}
                   <footer>
                     {root.edited && <span>Edytowany · historia zachowana</span>}
+                    {draftPreserved(root) && (
+                      <span>Szkic edycji zachowany</span>
+                    )}
                     {canComment && root.threadState === "open" && (
                       <button type="button" onClick={() => setReplyTo(root)}>
                         Odpowiedz
@@ -171,60 +309,30 @@ export const CommentsPanel = ({
                 </article>
                 {replies.map((reply) => (
                   <article
-                    className="comment-entry comment-reply"
+                    className={entryClassName(reply, "comment-reply")}
                     key={reply.id}
                   >
-                    <header>
-                      <strong>{reply.author.displayName}</strong>
-                      <time dateTime={reply.createdAt}>
-                        {new Date(reply.createdAt).toLocaleString()}
-                      </time>
-                    </header>
-                    {editingId === reply.id ? (
-                      <div className="comment-inline-edit">
-                        <label htmlFor={`edit-comment-${reply.id}`}>
-                          Edytuj odpowiedź
-                        </label>
-                        <textarea
-                          id={`edit-comment-${reply.id}`}
-                          value={editBody}
-                          onChange={(event) => setEditBody(event.target.value)}
-                          maxLength={16000}
-                          disabled={busy}
-                          autoFocus
-                        />
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() => saveEdit(reply)}
-                            disabled={busy || !editBody.trim()}
-                          >
-                            Zapisz
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingId(undefined)}
-                            disabled={busy}
-                          >
-                            Anuluj
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p>{reply.body}</p>
+                    {entryHeader(reply)}
+                    {entryBody(reply, "Edytuj odpowiedź")}
+                    {(draftPreserved(reply) ||
+                      (reply.author.principalId === currentPrincipalId &&
+                        editingId !== reply.id)) && (
+                      <footer>
+                        {draftPreserved(reply) && (
+                          <span>Szkic edycji zachowany</span>
+                        )}
+                        {reply.author.principalId === currentPrincipalId &&
+                          editingId !== reply.id && (
+                            <button
+                              type="button"
+                              onClick={() => beginEdit(reply)}
+                              disabled={busy}
+                            >
+                              Edytuj
+                            </button>
+                          )}
+                      </footer>
                     )}
-                    {reply.author.principalId === currentPrincipalId &&
-                      editingId !== reply.id && (
-                        <footer>
-                          <button
-                            type="button"
-                            onClick={() => beginEdit(reply)}
-                            disabled={busy}
-                          >
-                            Edytuj
-                          </button>
-                        </footer>
-                      )}
                   </article>
                 ))}
               </li>
@@ -267,38 +375,30 @@ export const CommentsPanel = ({
             }}
           />
         </label>
+        {mentionOptions.length > 0 && (
+          <fieldset className="mention-picker" disabled={!canComment || busy}>
+            <legend>Wzmianki</legend>
+            <div className="mention-chips">
+              {mentionOptions.map((candidate) => (
+                <button
+                  type="button"
+                  className="mention-chip"
+                  key={candidate.principalId}
+                  data-principal-id={candidate.principalId}
+                  aria-pressed={mentions.includes(candidate.principalId)}
+                  onClick={() => toggleMention(candidate.principalId)}
+                >
+                  {candidate.displayName}
+                  {candidate.participantKind === "guest" && <small>Gość</small>}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        )}
         <div className="comment-composer-actions">
-          <label>
-            <span>Wzmianki</span>
-            <select
-              multiple
-              value={mentions}
-              disabled={
-                !canComment || busy || candidates.kind === "unavailable"
-              }
-              onChange={(event) =>
-                setMentions(
-                  [...event.currentTarget.selectedOptions].map(
-                    (option) => option.value as PrincipalId,
-                  ),
-                )
-              }
-            >
-              {candidates.kind === "ready" &&
-                candidates.data.candidates
-                  .filter(
-                    (candidate) => candidate.principalId !== currentPrincipalId,
-                  )
-                  .map((candidate) => (
-                    <option
-                      value={candidate.principalId}
-                      key={candidate.principalId}
-                    >
-                      {candidate.displayName}
-                    </option>
-                  ))}
-            </select>
-          </label>
+          <span className="comment-composer-hint">
+            <kbd>⌘ Enter</kbd> wysyła
+          </span>
           <button
             className="secondary-button compact"
             type="submit"
@@ -318,31 +418,27 @@ export const CommentsPanel = ({
 
 type AttentionItem = AttentionInboxProjection["items"][number];
 
-const captureReasonLabel = (reason: AttentionItem["reason"]): string => {
-  switch (reason) {
-    case "capture_duplicate":
-      return "Duplikat Capture";
-    case "capture_ambiguous":
-      return "Niejasny kierunek";
-    case "capture_unsupported":
-      return "Nieobsługiwany oryginał";
-    case "capture_parsing_failure":
-      return "Błąd odczytu";
-    case "capture_permission_failure":
-      return "Brak uprawnienia";
-    case "capture_stale_conflict":
-      return "Nieaktualna wersja";
-    case "capture_missing_target":
-      return "Brak celu";
-    case "capture_missing_payload":
-      return "Brak oryginału";
-    case "capture_partial_payload_transfer":
-      return "Niepełny transfer";
-    case "capture_unknown_reconcile":
-      return "Wynik nieznany";
-    default:
-      return "Wymaga decyzji";
-  }
+// Pełna taksonomia powodów z kontraktu attention.inbox. Typ mapowany po unii
+// wymusza kompletność: nowy powód w kontrakcie nie przejdzie typecheck bez
+// polskiej etykiety.
+const reasonLabels: { readonly [reason in AttentionItem["reason"]]: string } = {
+  comment_mention: "Wzmianka",
+  task_assignment: "Odpowiedzialność",
+  sync_conflict: "Konflikt synchronizacji",
+  knowledge_evidence_changed: "Zmiana dowodów wiedzy",
+  renewal_due: "Termin odnowienia",
+  relationship_fact_stale: "Nieaktualny fakt relacji",
+  decision_impact_review: "Skutki decyzji do przeglądu",
+  capture_duplicate: "Duplikat Capture",
+  capture_ambiguous: "Niejasny kierunek",
+  capture_unsupported: "Nieobsługiwany oryginał",
+  capture_parsing_failure: "Błąd odczytu",
+  capture_permission_failure: "Brak uprawnienia",
+  capture_stale_conflict: "Nieaktualna wersja",
+  capture_missing_target: "Brak celu",
+  capture_missing_payload: "Brak oryginału",
+  capture_partial_payload_transfer: "Niepełny transfer",
+  capture_unknown_reconcile: "Wynik nieznany",
 };
 
 export const captureRecoveryActions = (
@@ -379,6 +475,146 @@ export const captureRecoveryActions = (
 
 export const AttentionSurface = ({
   attention,
+  selectedItemId,
+  onOpen,
+  onSelect,
+  onRetry,
+}: {
+  readonly attention: DataSlice<AttentionInboxProjection>;
+  readonly selectedItemId: string | undefined;
+  readonly onOpen: (item: AttentionInboxProjection["items"][number]) => void;
+  readonly onSelect: (item: AttentionInboxProjection["items"][number]) => void;
+  /** Ponawia ładowanie skrzynki, gdy warstwa danych była niedostępna. */
+  readonly onRetry?: () => void;
+}) => {
+  // Pilne sygnały prowadzą listę; wewnątrz grup porządek pozostaje
+  // chronologiczny (sortowanie stabilne).
+  const items =
+    attention.kind === "ready"
+      ? [...attention.data.items].sort(
+          (a, b) =>
+            (a.urgency === "urgent" ? 0 : 1) - (b.urgency === "urgent" ? 0 : 1),
+        )
+      : [];
+  const attentionNav = useListNavigation({
+    itemCount: items.length,
+    onOpen: (index) => {
+      const item = items[index];
+      if (item) onOpen(item);
+    },
+    onSelect: (index) => {
+      const item = items[index];
+      if (item) onSelect(item);
+    },
+  });
+  return (
+    <section className="attention-surface" aria-labelledby="surface-title">
+      <header className="surface-header attention-heading">
+        <div>
+          <p className="eyebrow">Sygnały wymagające reakcji</p>
+          <h1 id="surface-title" tabIndex={-1}>
+            Do uwagi
+          </h1>
+          <p>
+            To nie jest dziennik aktywności. Każdy wpis ma powód i prowadzi do
+            dokładnego kontekstu.
+          </p>
+        </div>
+        {attention.kind === "ready" && (
+          <span className="attention-total">
+            {countLabel(
+              attention.data.unreadCount,
+              "nieprzeczytany",
+              "nieprzeczytane",
+              "nieprzeczytanych",
+            )}
+          </span>
+        )}
+      </header>
+      {attention.kind === "unavailable" ? (
+        <div className="attention-empty" role="status">
+          <strong>Skrzynka uwagi jest chwilowo niedostępna</strong>
+          <span>Żaden sygnał nie został oznaczony jako przeczytany.</span>
+          {onRetry && (
+            <button
+              type="button"
+              className="secondary-button compact"
+              onClick={onRetry}
+            >
+              Spróbuj ponownie
+            </button>
+          )}
+        </div>
+      ) : items.length === 0 ? (
+        <div className="attention-empty">
+          <strong>Nic nie wymaga reakcji</strong>
+          <span>
+            Rutynowa aktywność pozostaje w historii i nie tworzy długu uwagi.
+          </span>
+        </div>
+      ) : (
+        <div className="attention-ledger">
+          <div className="attention-ledger-head" aria-hidden="true">
+            <span>Sygnał</span>
+            <span>Powód</span>
+            <span>Otrzymano</span>
+          </div>
+          <ol className="attention-list-real">
+            {items.map((item, index) => (
+              <li
+                key={item.id}
+                className={`${item.state} ${item.urgency === "urgent" ? "urgent" : ""}`}
+              >
+                <button
+                  className="attention-main"
+                  type="button"
+                  aria-pressed={selectedItemId === item.id}
+                  {...attentionNav(index)}
+                  onClick={() => onSelect(item)}
+                  onDoubleClick={() => onOpen(item)}
+                >
+                  <span className="attention-copy">
+                    <strong title={item.title}>
+                      {item.state === "unread" && (
+                        <>
+                          <i
+                            className="attention-unread-dot"
+                            aria-hidden="true"
+                          />
+                          <span className="sr-only">Nieprzeczytane: </span>
+                        </>
+                      )}
+                      {item.title}
+                    </strong>
+                    <span>
+                      {item.reason === "comment_mention"
+                        ? "Wspomniano Cię w komentarzu."
+                        : item.reason === "task_assignment"
+                          ? "Masz odpowiedzialność za to zadanie."
+                          : item.detail}
+                    </span>
+                  </span>
+                  <span className="attention-reason">
+                    {reasonLabels[item.reason]}
+                    {item.urgency === "urgent" && (
+                      <b className="attention-urgent">Pilne</b>
+                    )}
+                  </span>
+                  <time dateTime={item.occurredAt}>
+                    {formatDateTime(item.occurredAt)}
+                  </time>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </section>
+  );
+};
+
+export const AttentionDetail = ({
+  item,
   busy,
   onOpen,
   onRead,
@@ -388,152 +624,111 @@ export const AttentionSurface = ({
   onKeepCapture,
   onReplaceCapturePayload,
 }: {
-  readonly attention: DataSlice<AttentionInboxProjection>;
+  readonly item: AttentionItem;
   readonly busy: boolean;
-  readonly onOpen: (item: AttentionInboxProjection["items"][number]) => void;
-  readonly onRead: (item: AttentionInboxProjection["items"][number]) => void;
-  readonly onDismiss: (item: AttentionInboxProjection["items"][number]) => void;
+  readonly onOpen: (item: AttentionItem) => void;
+  readonly onRead: (item: AttentionItem) => void;
+  readonly onDismiss: (item: AttentionItem) => void;
   readonly onRouteCapture: (
-    item: AttentionInboxProjection["items"][number],
+    item: AttentionItem,
     destination: "task" | "knowledge_source",
   ) => void;
   readonly onRetryCapture: (item: AttentionItem) => void;
   readonly onKeepCapture: (item: AttentionItem) => void;
   readonly onReplaceCapturePayload: (item: AttentionItem) => void;
-}) => (
-  <section className="attention-surface" aria-labelledby="surface-title">
-    <header className="surface-heading attention-heading">
-      <div>
-        <p className="eyebrow">Do uwagi</p>
-        <h1 id="surface-title">Tylko sygnały wymagające reakcji</h1>
+}) => {
+  const recoveryActions = captureRecoveryActions(item.reason);
+  return (
+    <div className="inspector-body attention-detail">
+      <span className="record-status">
+        <i />
+        {item.urgency === "urgent"
+          ? "Pilne"
+          : item.state === "unread"
+            ? "Nieprzeczytane"
+            : "Przeczytane"}
+      </span>
+      <h2>{item.title}</h2>
+      <p className="record-summary">{item.detail}</p>
+      <section className="inspector-section">
+        <p className="section-label">Powód</p>
+        <p>{reasonLabels[item.reason]}</p>
+      </section>
+      <section className="inspector-section">
+        <p className="section-label">Otrzymano</p>
         <p>
-          To nie jest dziennik aktywności. Każdy wpis ma powód i prowadzi do
-          dokładnego kontekstu.
+          <time dateTime={item.occurredAt}>
+            {formatDateTime(item.occurredAt)}
+          </time>
         </p>
-      </div>
-      {attention.kind === "ready" && (
-        <span className="attention-total">
-          {attention.data.unreadCount} nieprzeczytane
-        </span>
-      )}
-    </header>
-    {attention.kind === "unavailable" ? (
-      <div className="attention-empty" role="status">
-        Skrzynka uwagi jest chwilowo niedostępna. Żaden sygnał nie został
-        oznaczony jako przeczytany.
-      </div>
-    ) : attention.data.items.length === 0 ? (
-      <div className="attention-empty">
-        <strong>Nic nie wymaga reakcji</strong>
-        <span>
-          Rutynowa aktywność pozostaje w historii i nie tworzy długu uwagi.
-        </span>
-      </div>
-    ) : (
-      <ol className="attention-list-real">
-        {attention.data.items.map((item) => (
-          <li
-            key={item.id}
-            className={item.state === "unread" ? "unread" : "read"}
-          >
-            <button
-              className="attention-main"
-              type="button"
-              onClick={() => onOpen(item)}
-            >
-              <span className="attention-reason">
-                {item.reason === "comment_mention"
-                  ? "Wzmianka"
-                  : item.reason === "task_assignment"
-                    ? "Odpowiedzialność"
-                    : captureReasonLabel(item.reason)}
-              </span>
-              <strong>{item.title}</strong>
-              <span>
-                {item.reason === "comment_mention"
-                  ? "Wspomniano Cię w komentarzu."
-                  : item.reason === "task_assignment"
-                    ? "Masz odpowiedzialność za to zadanie."
-                    : item.detail}
-              </span>
-              <time dateTime={item.occurredAt}>
-                {new Date(item.occurredAt).toLocaleString()}
-              </time>
-            </button>
-            <div className="attention-actions">
-              {item.destination.kind === "capture" &&
-                captureRecoveryActions(item.reason).includes("route") && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => onRouteCapture(item, "task")}
-                      disabled={busy}
-                    >
-                      Utwórz zadanie
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onRouteCapture(item, "knowledge_source")}
-                      disabled={busy}
-                    >
-                      Zapisz jako źródło
-                    </button>
-                  </>
-                )}
-              {item.destination.kind === "capture" &&
-                captureRecoveryActions(item.reason).includes("retry") && (
-                  <button
-                    type="button"
-                    onClick={() => onRetryCapture(item)}
-                    disabled={busy}
-                  >
-                    Spróbuj ponownie
-                  </button>
-                )}
-              {item.destination.kind === "capture" &&
-                captureRecoveryActions(item.reason).includes(
-                  "replace_payload",
-                ) && (
-                  <button
-                    type="button"
-                    onClick={() => onReplaceCapturePayload(item)}
-                    disabled={busy}
-                  >
-                    Zastąp oryginał
-                  </button>
-                )}
-              {item.destination.kind === "capture" &&
-                captureRecoveryActions(item.reason).includes(
-                  "keep_unclassified",
-                ) && (
-                  <button
-                    type="button"
-                    onClick={() => onKeepCapture(item)}
-                    disabled={busy}
-                  >
-                    Zachowaj bez klasyfikacji
-                  </button>
-                )}
-              {item.state === "unread" && (
-                <button
-                  type="button"
-                  onClick={() => onRead(item)}
-                  disabled={busy}
-                >
-                  Oznacz jako przeczytane
-                </button>
-              )}
+      </section>
+      <div className="attention-detail-actions">
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => onOpen(item)}
+          disabled={busy}
+        >
+          Otwórz dokładny kontekst
+        </button>
+        {item.destination.kind === "capture" &&
+          recoveryActions.includes("route") && (
+            <>
               <button
                 type="button"
-                onClick={() => onDismiss(item)}
+                onClick={() => onRouteCapture(item, "task")}
                 disabled={busy}
               >
-                Usuń z uwagi
+                Utwórz zadanie
               </button>
-            </div>
-          </li>
-        ))}
-      </ol>
-    )}
-  </section>
-);
+              <button
+                type="button"
+                onClick={() => onRouteCapture(item, "knowledge_source")}
+                disabled={busy}
+              >
+                Zapisz jako źródło
+              </button>
+            </>
+          )}
+        {item.destination.kind === "capture" &&
+          recoveryActions.includes("retry") && (
+            <button
+              type="button"
+              onClick={() => onRetryCapture(item)}
+              disabled={busy}
+            >
+              Spróbuj ponownie
+            </button>
+          )}
+        {item.destination.kind === "capture" &&
+          recoveryActions.includes("replace_payload") && (
+            <button
+              type="button"
+              onClick={() => onReplaceCapturePayload(item)}
+              disabled={busy}
+            >
+              Zastąp oryginał
+            </button>
+          )}
+        {item.destination.kind === "capture" &&
+          recoveryActions.includes("keep_unclassified") && (
+            <button
+              type="button"
+              onClick={() => onKeepCapture(item)}
+              disabled={busy}
+            >
+              Zachowaj bez klasyfikacji
+            </button>
+          )}
+        {item.state === "unread" && (
+          <button type="button" onClick={() => onRead(item)} disabled={busy}>
+            Oznacz jako przeczytane
+          </button>
+        )}
+        <button type="button" onClick={() => onDismiss(item)} disabled={busy}>
+          Usuń z uwagi
+        </button>
+      </div>
+    </div>
+  );
+};

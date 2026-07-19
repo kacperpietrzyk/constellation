@@ -6,8 +6,13 @@ import type {
   WorkspaceBackupExportResult,
   WorkspaceBackupFailureCode,
   WorkspaceRestorePreviewResult,
-  ReleaseStatus,
 } from "@constellation/desktop-preload/client";
+
+import { ReleaseContinuity } from "./components/ReleaseContinuity.js";
+
+// Transport failure of the renderer↔main channel. Not part of the backup
+// contract: the request never reached the workspace, so nothing changed.
+type RecoveryFailureCode = WorkspaceBackupFailureCode | "channel_unavailable";
 
 type RecoveryState =
   | { readonly kind: "ready" }
@@ -28,7 +33,7 @@ type RecoveryState =
       >;
     }
   | { readonly kind: "restoring"; readonly restoreId: string }
-  | { readonly kind: "failure"; readonly code: WorkspaceBackupFailureCode };
+  | { readonly kind: "failure"; readonly code: RecoveryFailureCode };
 
 type HubEnrollmentState =
   | { readonly kind: "idle" }
@@ -64,7 +69,7 @@ const syncCopy: Record<
   },
 };
 
-const failureCopy: Record<WorkspaceBackupFailureCode, string> = {
+const failureCopy: Record<RecoveryFailureCode, string> = {
   secure_storage_unavailable:
     "Bezpieczny magazyn systemu jest chwilowo niedostępny. Odblokuj pęk kluczy lub magazyn poświadczeń i spróbuj ponownie.",
   archive_invalid:
@@ -81,6 +86,8 @@ const failureCopy: Record<WorkspaceBackupFailureCode, string> = {
     "Nie udało się bezpiecznie zakończyć operacji na pliku. Sprawdź miejsce i uprawnienia, a potem spróbuj ponownie.",
   restore_interrupted:
     "Restore nie został potwierdzony. Constellation przywróci ostatni znany dobry workspace przy ponownym otwarciu.",
+  channel_unavailable:
+    "Nie udało się połączyć z procesem aplikacji. Operacja nie została rozpoczęta, a aktywny workspace pozostaje bez zmian.",
 };
 
 const formatDate = (value: string): string =>
@@ -108,144 +115,6 @@ const CloseIcon = () => (
     <path d="m6 6 12 12M18 6 6 18" />
   </svg>
 );
-
-const ReleaseContinuity = ({
-  client,
-}: {
-  readonly client: ConstellationRendererClient;
-}) => {
-  const [status, setStatus] = useState<ReleaseStatus>();
-
-  useEffect(() => {
-    void client
-      .getReleaseStatus()
-      .then(setStatus)
-      .catch(() =>
-        setStatus({
-          kind: "failure",
-          currentVersion: "nieznana",
-          operation: "check",
-          message:
-            "Nie udało się odczytać kanału wydania. Workspace pozostaje bez zmian.",
-        }),
-      );
-  }, [client]);
-
-  const run = async (
-    action: () => Promise<ReleaseStatus>,
-    pending: ReleaseStatus,
-  ) => {
-    setStatus(pending);
-    try {
-      setStatus(await action());
-    } catch {
-      const operation =
-        pending.kind === "checking"
-          ? "check"
-          : pending.kind === "downloading"
-            ? "download"
-            : "install";
-      setStatus({
-        kind: "failure",
-        currentVersion: pending.currentVersion,
-        operation,
-        message:
-          "Kanał wydania jest chwilowo niedostępny. Obecna aplikacja i workspace pozostają bez zmian.",
-      });
-    }
-  };
-
-  const currentVersion = status?.currentVersion ?? "…";
-  const detail =
-    status === undefined
-      ? "Sprawdzam podpisany kanał wydania…"
-      : status.kind === "unavailable"
-        ? status.reason === "developer_preview"
-          ? "Podgląd deweloperski nie łączy się z kanałem wydań."
-          : status.reason === "mechanism_only_build"
-            ? "Ten build służy do weryfikacji instalatora i nie pobiera aktualizacji."
-            : status.reason === "platform_unsupported"
-              ? "Aktualizacje dla tej platformy nie są jeszcze obsługiwane."
-              : "Kanał wydania nie ma bezpiecznego adresu HTTPS."
-        : status.kind === "idle"
-          ? "Sprawdzenie uruchamiasz ręcznie; nic nie pobierze się w tle."
-          : status.kind === "checking"
-            ? "Sprawdzam podpisane metadane wydania…"
-            : status.kind === "current"
-              ? "Masz najnowszą wersję z tego kanału."
-              : status.kind === "available"
-                ? `Wersja ${status.version} jest dostępna. Pobieranie rozpocznie się dopiero po potwierdzeniu.`
-                : status.kind === "downloading"
-                  ? `Pobieram i weryfikuję wersję ${status.version}…`
-                  : status.kind === "ready"
-                    ? `Wersja ${status.version} jest zweryfikowana i gotowa do restartu.`
-                    : status.kind === "installing"
-                      ? `Zamykam aplikację i instaluję wersję ${status.version}…`
-                      : status.message;
-
-  return (
-    <section className="release-continuity" aria-labelledby="release-title">
-      <div>
-        <p className="eyebrow">Aplikacja</p>
-        <h3 id="release-title">Aktualizacja bez utraty workspace’u</h3>
-        <p role={status?.kind === "failure" ? "alert" : "status"}>{detail}</p>
-        <small>
-          Wersja {currentVersion}. Odinstalowanie usuwa aplikację, ale domyślnie
-          zachowuje zaszyfrowany workspace i klucze w magazynie systemowym.
-        </small>
-      </div>
-      {(status?.kind === "idle" ||
-        status?.kind === "current" ||
-        status?.kind === "failure") && (
-        <button
-          className="secondary-button compact"
-          onClick={() =>
-            void run(client.checkForRelease, {
-              kind: "checking",
-              currentVersion,
-            })
-          }
-        >
-          {status.kind === "failure" ? "Spróbuj ponownie" : "Sprawdź wersję"}
-        </button>
-      )}
-      {status?.kind === "available" && (
-        <button
-          className="secondary-button compact"
-          onClick={() =>
-            void run(client.downloadRelease, {
-              kind: "downloading",
-              currentVersion,
-              version: status.version,
-            })
-          }
-        >
-          Pobierz i zweryfikuj
-        </button>
-      )}
-      {status?.kind === "ready" && (
-        <button
-          className="primary-button compact"
-          onClick={() =>
-            void run(client.installRelease, {
-              kind: "installing",
-              currentVersion,
-              version: status.version,
-            })
-          }
-        >
-          Uruchom ponownie i zainstaluj
-        </button>
-      )}
-      {(status?.kind === "checking" ||
-        status?.kind === "downloading" ||
-        status?.kind === "installing" ||
-        status === undefined) && (
-        <span className="release-progress" aria-hidden="true" />
-      )}
-    </section>
-  );
-};
 
 export const WorkspaceRecovery = ({
   client,
@@ -318,6 +187,9 @@ export const WorkspaceRecovery = ({
 
   const close = () => {
     if (busy) return;
+    // The recovery code is shown exactly once. Closing (backdrop, Esc, ×)
+    // stays blocked until the user explicitly confirms "Kod zapisany".
+    if (state.kind === "code-issued") return;
     if (state.kind === "preview") {
       void client.cancelWorkspaceRestore({ restoreId: state.result.restoreId });
     }
@@ -326,7 +198,13 @@ export const WorkspaceRecovery = ({
 
   const exportBackup = async () => {
     setState({ kind: "exporting" });
-    const result = await client.exportWorkspaceBackup();
+    let result: WorkspaceBackupExportResult;
+    try {
+      result = await client.exportWorkspaceBackup();
+    } catch {
+      setState({ kind: "failure", code: "channel_unavailable" });
+      return;
+    }
     if (result.outcome === "success") {
       setState({ kind: "code-issued", result });
       setCopyStatus("idle");
@@ -339,7 +217,14 @@ export const WorkspaceRecovery = ({
     event.preventDefault();
     if (!recoveryCode.trim()) return;
     setState({ kind: "verifying" });
-    const result = await client.prepareWorkspaceRestore({ recoveryCode });
+    let result: WorkspaceRestorePreviewResult;
+    try {
+      result = await client.prepareWorkspaceRestore({ recoveryCode });
+    } catch {
+      // Keep the entered code so the user can retry after the channel returns.
+      setState({ kind: "failure", code: "channel_unavailable" });
+      return;
+    }
     setRecoveryCode("");
     if (result.outcome === "preview") setState({ kind: "preview", result });
     else if (result.outcome === "cancelled") setState({ kind: "ready" });
@@ -350,21 +235,38 @@ export const WorkspaceRecovery = ({
     if (state.kind !== "preview") return;
     const restoreId = state.result.restoreId;
     setState({ kind: "restoring", restoreId });
-    const result = await client.confirmWorkspaceRestore({ restoreId });
-    if (result.outcome === "success") {
-      await onRestored();
-      onClose();
-    } else setState({ kind: "failure", code: result.code });
+    try {
+      const result = await client.confirmWorkspaceRestore({ restoreId });
+      if (result.outcome === "success") {
+        await onRestored();
+        onClose();
+      } else setState({ kind: "failure", code: result.code });
+    } catch {
+      // Outcome unknown after confirm started: surface the interrupted-restore
+      // guarantee (last good workspace wins on reopen), not a generic error.
+      setState({ kind: "failure", code: "restore_interrupted" });
+    }
   };
 
   const enrollHub = async (event: FormEvent) => {
     event.preventDefault();
     setHubEnrollment({ kind: "connecting" });
-    const result = await client.enrollHub({
-      hubOrigin: hubOrigin.trim(),
-      enrollmentSecret: enrollmentSecret.trim(),
-      deviceLabel: deviceLabel.trim(),
-    });
+    let result: Awaited<ReturnType<typeof client.enrollHub>>;
+    try {
+      result = await client.enrollHub({
+        hubOrigin: hubOrigin.trim(),
+        enrollmentSecret: enrollmentSecret.trim(),
+        deviceLabel: deviceLabel.trim(),
+      });
+    } catch {
+      // Keep the one-time code so the user can retry without a new one.
+      setHubEnrollment({
+        kind: "failure",
+        message:
+          "Nie udało się połączyć z procesem aplikacji. Workspace pozostaje bez zmian; spróbuj ponownie.",
+      });
+      return;
+    }
     setEnrollmentSecret("");
     if (result.outcome === "success") {
       setDataHome({ kind: "ready", status: result.status });
@@ -390,12 +292,16 @@ export const WorkspaceRecovery = ({
 
   const exportHubAuthorization = async () => {
     setHubAuthorizationExport({ kind: "exporting" });
-    const result = await client.exportHubAuthorization();
-    setHubAuthorizationExport(
-      result.outcome === "success"
-        ? { kind: "success", fileLabel: result.fileLabel }
-        : { kind: result.outcome },
-    );
+    try {
+      const result = await client.exportHubAuthorization();
+      setHubAuthorizationExport(
+        result.outcome === "success"
+          ? { kind: "success", fileLabel: result.fileLabel }
+          : { kind: result.outcome },
+      );
+    } catch {
+      setHubAuthorizationExport({ kind: "failure" });
+    }
   };
 
   const syncNow = async () => {
@@ -416,6 +322,23 @@ export const WorkspaceRecovery = ({
         event.preventDefault();
         close();
       }}
+      onClose={() => {
+        // Chromium's CloseWatcher lets a second Esc close the dialog natively
+        // despite preventDefault() in onCancel. When closing is blocked (an
+        // operation runs or the one-time recovery code is on screen), reopen
+        // immediately; otherwise mirror close() so the parent stays in sync.
+        const dialog = dialogRef.current;
+        if (dialog === null || !dialog.isConnected) return;
+        if (busy || state.kind === "code-issued") {
+          dialog.showModal();
+          return;
+        }
+        if (state.kind === "preview")
+          void client.cancelWorkspaceRestore({
+            restoreId: state.result.restoreId,
+          });
+        onClose();
+      }}
       onMouseDown={(event) => event.target === event.currentTarget && close()}
     >
       <section className="recovery-dialog">
@@ -429,7 +352,7 @@ export const WorkspaceRecovery = ({
             ref={closeButtonRef}
             className="icon-button"
             aria-label="Zamknij backup i odzyskiwanie"
-            disabled={busy}
+            disabled={busy || state.kind === "code-issued"}
             onClick={close}
           >
             <CloseIcon />
@@ -580,6 +503,13 @@ export const WorkspaceRecovery = ({
                       <input
                         type="url"
                         required
+                        disabled={hubEnrollment.kind === "connecting"}
+                        aria-invalid={hubEnrollment.kind === "failure"}
+                        aria-describedby={
+                          hubEnrollment.kind === "failure"
+                            ? "hub-enrollment-error"
+                            : undefined
+                        }
                         value={hubOrigin}
                         onChange={(event) => setHubOrigin(event.target.value)}
                         placeholder="https://hub.example.com"
@@ -590,6 +520,13 @@ export const WorkspaceRecovery = ({
                       <input
                         required
                         maxLength={80}
+                        disabled={hubEnrollment.kind === "connecting"}
+                        aria-invalid={hubEnrollment.kind === "failure"}
+                        aria-describedby={
+                          hubEnrollment.kind === "failure"
+                            ? "hub-enrollment-error"
+                            : undefined
+                        }
                         value={deviceLabel}
                         onChange={(event) => setDeviceLabel(event.target.value)}
                         placeholder="MacBook podróżny"
@@ -603,6 +540,13 @@ export const WorkspaceRecovery = ({
                         minLength={32}
                         autoComplete="off"
                         spellCheck={false}
+                        disabled={hubEnrollment.kind === "connecting"}
+                        aria-invalid={hubEnrollment.kind === "failure"}
+                        aria-describedby={
+                          hubEnrollment.kind === "failure"
+                            ? "hub-enrollment-error"
+                            : undefined
+                        }
                         value={enrollmentSecret}
                         onChange={(event) =>
                           setEnrollmentSecret(event.target.value)
@@ -612,6 +556,7 @@ export const WorkspaceRecovery = ({
                     </label>
                     {hubEnrollment.kind === "failure" && (
                       <p
+                        id="hub-enrollment-error"
                         className="hub-enrollment-feedback is-error"
                         role="alert"
                       >
@@ -624,7 +569,11 @@ export const WorkspaceRecovery = ({
                         sprawdzony.
                       </p>
                     )}
-                    <button className="secondary-button" type="submit">
+                    <button
+                      className="secondary-button"
+                      type="submit"
+                      disabled={hubEnrollment.kind === "connecting"}
+                    >
                       {hubEnrollment.kind === "connecting"
                         ? "Łączę i sprawdzam…"
                         : "Połącz z Hubem"}
@@ -662,7 +611,11 @@ export const WorkspaceRecovery = ({
           {(state.kind === "ready" || state.kind === "failure") && (
             <>
               {state.kind === "failure" && (
-                <div className="recovery-error" role="alert">
+                <div
+                  id="recovery-failure"
+                  className="recovery-error"
+                  role="alert"
+                >
                   <strong>Operacja została zatrzymana</strong>
                   <span>{failureCopy[state.code]}</span>
                 </div>
@@ -698,6 +651,18 @@ export const WorkspaceRecovery = ({
                       id="workspace-recovery-code"
                       ref={codeInputRef}
                       type="password"
+                      aria-invalid={
+                        state.kind === "failure" &&
+                        (state.code === "recovery_code_invalid" ||
+                          state.code === "archive_invalid" ||
+                          state.code === "archive_unsupported" ||
+                          state.code === "workspace_identity_invalid")
+                      }
+                      aria-describedby={
+                        state.kind === "failure"
+                          ? "recovery-failure"
+                          : undefined
+                      }
                       value={recoveryCode}
                       onChange={(event) => setRecoveryCode(event.target.value)}
                       placeholder="cst1_…"
@@ -741,7 +706,8 @@ export const WorkspaceRecovery = ({
               <h3>Zapisz kod oddzielnie od pliku</h3>
               <p>
                 Bez tego kodu nie da się otworzyć backupu. Constellation nie
-                przechowuje jego kopii.
+                przechowuje jego kopii. Okno zamkniesz dopiero po potwierdzeniu
+                „Kod zapisany”.
               </p>
               <div className="recovery-code-value">
                 <code>{state.result.recoveryCode}</code>

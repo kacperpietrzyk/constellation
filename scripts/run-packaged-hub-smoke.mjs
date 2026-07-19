@@ -260,7 +260,7 @@ const stop = async (session) => {
 
 const submitCapture = async (client, title) => {
   await client.evaluate(
-    `(() => { document.querySelector(".sidebar-capture").click(); return true; })()`,
+    `(() => { document.querySelector(".capture-dock").click(); return true; })()`,
   );
   await waitFor(
     client,
@@ -688,16 +688,14 @@ try {
   })()`);
   await waitFor(
     member.client,
-    `document.querySelector(".comment-composer textarea") !== null && [...document.querySelectorAll(".comment-composer select option")].some((option) => option.value === ${JSON.stringify(ownerConnection.context.principalId)})`,
+    `document.querySelector(".comment-composer textarea") !== null && document.querySelector(${JSON.stringify(`.comment-composer .mention-chip[data-principal-id="${ownerConnection.context.principalId}"]`)}) !== null`,
     "COMMENT_COMPOSER_NOT_RENDERED",
   );
   await member.client.evaluate(`(() => {
     const textarea = document.querySelector(".comment-composer textarea");
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(textarea, ${JSON.stringify(packagedCommentBody)});
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    const mentions = document.querySelector(".comment-composer select");
-    for (const option of mentions.options) option.selected = option.value === ${JSON.stringify(ownerConnection.context.principalId)};
-    mentions.dispatchEvent(new Event("change", { bubbles: true }));
+    document.querySelector(${JSON.stringify(`.comment-composer .mention-chip[data-principal-id="${ownerConnection.context.principalId}"]`)}).click();
     return true;
   })()`);
   await waitFor(
@@ -759,12 +757,32 @@ try {
   );
   await waitFor(
     first.client,
-    `[...document.querySelectorAll(".attention-main strong")].some((node) => node.textContent === ${JSON.stringify(sharedTask.title)})`,
+    `[...document.querySelectorAll(".attention-main strong")].some((node) => node.textContent.includes(${JSON.stringify(sharedTask.title)}))`,
     "OWNER_ATTENTION_NOT_RENDERED",
   );
   await first.client.evaluate(`(() => {
     const item = [...document.querySelectorAll(".attention-main")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
     item.click();
+    return true;
+  })()`);
+  await waitFor(
+    first.client,
+    `document.querySelector(".inspector.open .attention-detail h2")?.textContent === ${JSON.stringify(sharedTask.title)}`,
+    "ATTENTION_DID_NOT_OPEN_SIGNAL_INSPECTOR",
+  );
+  const attentionSelectionWasMutationFree = await first.client.evaluate(
+    `(() => {
+      const item = [...document.querySelectorAll(".attention-main")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
+      const exactCommentIsOpen = [...document.querySelectorAll(".comment-entry p")].some((node) => node.textContent === ${JSON.stringify(packagedCommentBody)});
+      return item?.closest("li")?.classList.contains("unread") === true && !exactCommentIsOpen;
+    })()`,
+  );
+  if (!attentionSelectionWasMutationFree)
+    throw new Error("ATTENTION_SELECTION_MUTATED_OR_NAVIGATED");
+  await first.client.evaluate(`(() => {
+    const item = [...document.querySelectorAll(".attention-main")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
+    item.focus();
+    item.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
     return true;
   })()`);
   await waitFor(

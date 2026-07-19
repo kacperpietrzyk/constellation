@@ -80,6 +80,7 @@ export const DESKTOP_CHANNELS = {
   downloadRelease: "constellation:release:download",
   installRelease: "constellation:release:install",
   openDetachedSurface: "constellation:shell:open-detached-surface",
+  shellCommand: "constellation:shell:command",
   listWorkspaces: "constellation:workspace:list",
   createWorkspace: "constellation:workspace:create",
   switchWorkspace: "constellation:workspace:switch",
@@ -90,6 +91,37 @@ export const DESKTOP_CHANNELS = {
   stageCapturePayload: "constellation:capture:stage-payload",
   discardCapturePayload: "constellation:capture:discard-payload",
 } as const;
+
+export type DesktopShellCommand =
+  | { readonly kind: "close-tab" }
+  | { readonly kind: "open-capture" }
+  | { readonly kind: "open-search" }
+  | { readonly kind: "open-shortcuts" }
+  | { readonly kind: "navigate-shortcut"; readonly digit: number };
+
+export const isDesktopShellCommand = (
+  value: unknown,
+): value is DesktopShellCommand => {
+  if (typeof value !== "object" || value === null) return false;
+  const command = value as {
+    readonly kind?: unknown;
+    readonly digit?: unknown;
+  };
+  if (
+    command.kind === "close-tab" ||
+    command.kind === "open-capture" ||
+    command.kind === "open-search" ||
+    command.kind === "open-shortcuts"
+  )
+    return true;
+  return (
+    command.kind === "navigate-shortcut" &&
+    typeof command.digit === "number" &&
+    Number.isInteger(command.digit) &&
+    command.digit >= 1 &&
+    command.digit <= 9
+  );
+};
 
 export type DesktopSurface =
   | "cockpit"
@@ -273,6 +305,7 @@ export interface ConstellationRendererClient {
   }): Promise<CapturePayloadResponse>;
   discardCapturePayload?(original: CaptureOriginal): Promise<void>;
   openDetachedSurface?(surface: DesktopSurface): Promise<void>;
+  onShellCommand?(listener: (command: DesktopShellCommand) => void): () => void;
   listWorkspaces?(): Promise<readonly DesktopWorkspaceEntry[]>;
   createWorkspace?(input: {
     readonly name: string;

@@ -495,7 +495,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         (phase === "restore-confirm" ? "recovery_required" : "ready") ||
       boundary.hasNodeRequire ||
       boundary.bridgeKeys.join(",") !==
-        "acknowledgeDocumentUpdates,addMeetingWorkItem,cancelWorkspaceRestore,checkForRelease,configureJamie,confirmCalendarBlocks,confirmWorkspaceRestore,copyWorkspaceRecoveryCode,correctMeetingWorkItemResponsibility,createDocumentRevision,createRemoteAgentGrant,createWorkspace,discardCapturePayload,disconnectJamie,downloadRelease,editMeetingWorkItem,enrollHub,executeCommand,exportHubAuthorization,exportSupportReport,exportWorkspaceBackup,getBuildInfo,getCrossWorkspaceCockpit,getDataHomeStatus,getJamieStatus,getMeetingLoop,getReleaseStatus,importStarterWorkspace,installRelease,listDocumentRevisions,listRemoteAgentGrants,listWorkspaces,onAttentionActivated,openDetachedSurface,openDocument,persistDocumentUpdate,prepareAgentCredential,prepareWorkspaceRestore,previewCalendarBlocks,previewStarterWorkspace,requestCalendarAccess,restoreDocumentRevision,revokeRemoteAgentGrant,rotateRemoteAgentGrant,runQuery,selectCapturePayload,stageCapturePayload,switchWorkspace,syncDataHome,syncJamie"
+        "acknowledgeDocumentUpdates,addMeetingWorkItem,cancelWorkspaceRestore,checkForRelease,configureJamie,confirmCalendarBlocks,confirmWorkspaceRestore,copyWorkspaceRecoveryCode,correctMeetingWorkItemResponsibility,createDocumentRevision,createRemoteAgentGrant,createWorkspace,discardCapturePayload,disconnectJamie,downloadRelease,editMeetingWorkItem,enrollHub,executeCommand,exportHubAuthorization,exportSupportReport,exportWorkspaceBackup,getBuildInfo,getCrossWorkspaceCockpit,getDataHomeStatus,getJamieStatus,getMeetingLoop,getReleaseStatus,importStarterWorkspace,installRelease,listDocumentRevisions,listRemoteAgentGrants,listWorkspaces,onAttentionActivated,onShellCommand,openDetachedSurface,openDocument,persistDocumentUpdate,prepareAgentCredential,prepareWorkspaceRestore,previewCalendarBlocks,previewStarterWorkspace,requestCalendarAccess,restoreDocumentRevision,revokeRemoteAgentGrant,rotateRemoteAgentGrant,runQuery,selectCapturePayload,stageCapturePayload,switchWorkspace,syncDataHome,syncJamie"
     ) {
       throw new Error(
         `PACKAGED_ALPHA_PRELOAD_OR_IPC_INVALID:${JSON.stringify(boundary)}`,
@@ -546,6 +546,178 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         `document.querySelector(".capture-dock") !== null && document.querySelectorAll(".nav-item[data-surface]").length === 12`,
         "PACKAGED_ALPHA_OPERATIONAL_SHELL_NOT_READY",
       );
+      const shellAccessibility = await client.evaluate(`(() => {
+        const main = document.querySelector("main");
+        const attention = document.querySelector(
+          '.nav-item[data-surface="attention"]'
+        );
+        const attentionCount = attention?.querySelector(".nav-count")?.textContent?.trim();
+        const ids = [...document.querySelectorAll("[id]")].map(
+          (element) => element.id
+        );
+        return {
+          language: document.documentElement.lang,
+          mainCount: document.querySelectorAll("main").length,
+          mainIsWorkColumn: main?.classList.contains("work-column") ?? false,
+          sidebarInsideMain: Boolean(main?.querySelector(".sidebar")),
+          inspectorInsideMain: Boolean(main?.querySelector(".inspector")),
+          sidebarLabel: document.querySelector(".sidebar")?.getAttribute("aria-label"),
+          attentionName: attention?.getAttribute("aria-label"),
+          attentionCount,
+          duplicateIds: [...new Set(
+            ids.filter((id, index) => ids.indexOf(id) !== index)
+          )]
+        };
+      })()`);
+      if (
+        shellAccessibility.language !== "pl" ||
+        shellAccessibility.mainCount !== 1 ||
+        !shellAccessibility.mainIsWorkColumn ||
+        shellAccessibility.sidebarInsideMain ||
+        shellAccessibility.inspectorInsideMain ||
+        !shellAccessibility.sidebarLabel ||
+        shellAccessibility.duplicateIds.length > 0 ||
+        (shellAccessibility.attentionCount &&
+          !shellAccessibility.attentionName?.includes(
+            shellAccessibility.attentionCount,
+          ))
+      ) {
+        throw new Error(
+          `PACKAGED_ALPHA_SHELL_ACCESSIBILITY_INVALID:${JSON.stringify(shellAccessibility)}`,
+        );
+      }
+
+      await client.send("Page.bringToFront");
+      const favoriteKeyboardPath = await client.evaluate(`(() => {
+        const item = document.querySelector(".nav-item[data-surface].active");
+        const favorite = item?.parentElement?.querySelector(
+          ".nav-favorite-toggle"
+        );
+        const pressedBefore = favorite?.getAttribute("aria-pressed");
+        favorite?.focus();
+        const favoriteFocused = document.activeElement === favorite;
+        favorite?.click();
+        return {
+          activeItemPresent: item !== null,
+          favoriteFocused,
+          favoriteTag: favorite?.tagName,
+          favoriteDisabled: favorite?.hasAttribute("disabled"),
+          favoriteTabIndex: favorite?.tabIndex,
+          favoriteDisplay: favorite ? getComputedStyle(favorite).display : null,
+          favoriteFollowsItem: Boolean(
+            item &&
+              favorite &&
+              item.compareDocumentPosition(favorite) &
+                Node.DOCUMENT_POSITION_FOLLOWING
+          ),
+          pressedBefore,
+          viewportWidth: innerWidth
+        };
+      })()`);
+      await client.evaluate(`new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve))
+      )`);
+      const favoritePressedAfter = await client.evaluate(`document
+        .querySelector(".nav-item[data-surface].active")
+        ?.parentElement
+        ?.querySelector(".nav-favorite-toggle")
+        ?.getAttribute("aria-pressed")`);
+      if (
+        !favoriteKeyboardPath.activeItemPresent ||
+        favoriteKeyboardPath.favoriteTag !== "BUTTON" ||
+        favoriteKeyboardPath.favoriteDisabled ||
+        favoriteKeyboardPath.favoriteTabIndex !== 0 ||
+        favoriteKeyboardPath.favoriteDisplay === "none" ||
+        !favoriteKeyboardPath.favoriteFollowsItem ||
+        favoritePressedAfter === favoriteKeyboardPath.pressedBefore
+      ) {
+        throw new Error(
+          `PACKAGED_ALPHA_FAVORITE_KEYBOARD_PATH_MISSING:${JSON.stringify({
+            ...favoriteKeyboardPath,
+            favoritePressedAfter,
+          })}`,
+        );
+      }
+
+      const textScalingSurfaces = await client.evaluate(`(async () => {
+        const results = [];
+        document.documentElement.style.fontSize = "200%";
+        try {
+          for (const destination of document.querySelectorAll(
+            ".nav-item[data-surface]"
+          )) {
+            destination.click();
+            const readyDeadline = performance.now() + 3000;
+            const hasMissingAriaReference = () =>
+              [...document.querySelectorAll(
+                "[aria-labelledby], [aria-describedby], [aria-controls]"
+              )].some((element) =>
+                ["aria-labelledby", "aria-describedby", "aria-controls"].some(
+                  (attribute) =>
+                    (element.getAttribute(attribute) ?? "")
+                      .split(/\\s+/u)
+                      .filter(Boolean)
+                      .some((id) => document.getElementById(id) === null)
+                )
+              );
+            while (
+              (!destination.classList.contains("active") ||
+                document.querySelector('.work-surface [aria-busy="true"]') ||
+                hasMissingAriaReference()) &&
+              performance.now() < readyDeadline
+            ) {
+              await new Promise((resolve) => setTimeout(resolve, 25));
+            }
+            await new Promise((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(resolve))
+            );
+            const work = document.querySelector(".work-surface");
+            const surface = [...(work?.children ?? [])].find(
+              (element) => element.getClientRects().length > 0
+            );
+            const overflowingDescendants = [...(surface?.querySelectorAll("*") ?? [])]
+              .filter(
+                (element) =>
+                  element.getClientRects().length > 0 &&
+                  element.scrollWidth > element.clientWidth + 1
+              )
+              .slice(0, 8)
+              .map((element) => ({
+                tag: element.tagName.toLowerCase(),
+                className: element.getAttribute("class"),
+                scrollWidth: element.scrollWidth,
+                clientWidth: element.clientWidth
+              }));
+            results.push({
+              surface: destination.dataset.surface,
+              documentWidth: document.documentElement.scrollWidth,
+              viewportWidth: innerWidth,
+              surfacePresent: surface !== undefined,
+              surfaceWidth: surface?.scrollWidth,
+              surfaceClientWidth: surface?.clientWidth,
+              overflowingDescendants
+            });
+          }
+        } finally {
+          document.documentElement.style.fontSize = "";
+          document.querySelector('.nav-item[data-surface="cockpit"]')?.click();
+          await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve))
+          );
+        }
+        return results;
+      })()`);
+      const invalidTextScalingSurface = textScalingSurfaces.find(
+        (surface) =>
+          !surface.surfacePresent ||
+          surface.documentWidth > surface.viewportWidth ||
+          surface.surfaceWidth > surface.surfaceClientWidth,
+      );
+      if (invalidTextScalingSurface !== undefined) {
+        throw new Error(
+          `PACKAGED_ALPHA_TEXT_SCALING_INVALID:${JSON.stringify(invalidTextScalingSurface)}`,
+        );
+      }
       await client.send("Emulation.setDeviceMetricsOverride", {
         width: 320,
         height: 800,
@@ -560,8 +732,10 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           const shell = document.querySelector(".desktop-shell");
           const work = document.querySelector(".work-surface");
           const dock = document.querySelector(".capture-dock");
+          const dockLabel = document.querySelector(".capture-dock-label");
+          const detach = document.querySelector(".shell-detach");
           const targets = [...document.querySelectorAll(
-            ".search-control, .nav-item, .sidebar-capture"
+            ".search-control, .nav-item, .capture-dock"
           )].filter((element) => element.getClientRects().length > 0);
           const favorites = [...document.querySelectorAll(".nav-favorite-toggle")];
           const withinViewport = (element) => {
@@ -574,6 +748,11 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             shellWidth: shell?.getBoundingClientRect().width,
             workWithinViewport: work ? withinViewport(work) : false,
             dockWithinViewport: dock ? withinViewport(dock) : false,
+            detachWithinViewport: detach ? withinViewport(detach) : false,
+            dockLabelTruncatesCleanly: dockLabel
+              ? dockLabel.scrollWidth <= dockLabel.clientWidth ||
+                getComputedStyle(dockLabel).textOverflow === "ellipsis"
+              : false,
             dockRect: dock
               ? (() => {
                   const rect = dock.getBoundingClientRect();
@@ -605,6 +784,8 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           narrowShell.shellWidth > 320 ||
           !narrowShell.workWithinViewport ||
           !narrowShell.dockWithinViewport ||
+          !narrowShell.detachWithinViewport ||
+          !narrowShell.dockLabelTruncatesCleanly ||
           !narrowShell.targetsAreLargeEnough ||
           !narrowShell.favoritesHidden
         ) {
@@ -635,6 +816,27 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             ".nav-item[data-surface]"
           )) {
             destination.click();
+            const readyDeadline = performance.now() + 3000;
+            const hasMissingAriaReference = () =>
+              [...document.querySelectorAll(
+                "[aria-labelledby], [aria-describedby], [aria-controls]"
+              )].some((element) =>
+                ["aria-labelledby", "aria-describedby", "aria-controls"].some(
+                  (attribute) =>
+                    (element.getAttribute(attribute) ?? "")
+                      .split(/\\s+/u)
+                      .filter(Boolean)
+                      .some((id) => document.getElementById(id) === null)
+                )
+              );
+            while (
+              (!destination.classList.contains("active") ||
+                document.querySelector('.work-surface [aria-busy="true"]') ||
+                hasMissingAriaReference()) &&
+              performance.now() < readyDeadline
+            ) {
+              await new Promise((resolve) => setTimeout(resolve, 25));
+            }
             await new Promise((resolve) =>
               requestAnimationFrame(() => requestAnimationFrame(resolve))
             );
@@ -652,13 +854,61 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
                   !hasAccessibleName(element)
               )
               .map((element) => element.tagName.toLowerCase());
+            const blankHeaderActions = [
+              ...(surface?.querySelectorAll(".surface-header button:not(:disabled)") ?? [])
+            ]
+              .filter((element) => {
+                const hasVisibleIcon = [...element.querySelectorAll("svg")].some(
+                  (icon) => icon.getClientRects().length > 0
+                );
+                const hasVisibleText =
+                  Boolean(element.textContent?.trim()) &&
+                  Number.parseFloat(getComputedStyle(element).fontSize) > 0;
+                return !hasVisibleIcon && !hasVisibleText;
+              })
+              .map((element) => element.textContent?.trim() || "unnamed");
+            const unavailableHeading = [...(surface?.querySelectorAll("h2, h3, strong") ?? [])]
+              .find((element) => /niedostępn/i.test(element.textContent ?? ""));
+            const unavailableWithoutRetry =
+              unavailableHeading !== undefined &&
+              ![...surface.querySelectorAll("button")].some((element) =>
+                /spróbuj ponownie/i.test(element.textContent ?? "")
+              );
+            const ids = [...document.querySelectorAll("[id]")].map(
+              (element) => element.id
+            );
+            const missingAriaReferences = [...document.querySelectorAll(
+              "[aria-labelledby], [aria-describedby], [aria-controls]"
+            )].flatMap((element) =>
+              ["aria-labelledby", "aria-describedby", "aria-controls"].flatMap(
+                (attribute) =>
+                  (element.getAttribute(attribute) ?? "")
+                    .split(/\\s+/u)
+                    .filter(Boolean)
+                    .filter((id) => document.getElementById(id) === null)
+                    .map((id) => attribute + ":" + id)
+              )
+            );
+            const headings = [...(surface?.querySelectorAll(
+              "h1, h2, h3, h4, h5, h6"
+            ) ?? [])].map((element) => Number(element.tagName.slice(1)));
+            const headingJumps = headings
+              .slice(1)
+              .filter((level, index) => level - headings[index] > 1);
             results.push({
               surface: destination.dataset.surface,
               documentWidth: document.documentElement.scrollWidth,
               surfacePresent: surface !== undefined,
               surfaceWidth: surface?.scrollWidth,
               surfaceClientWidth: surface?.clientWidth,
-              unnamedControls
+              unnamedControls,
+              blankHeaderActions,
+              unavailableWithoutRetry,
+              duplicateIds: [...new Set(
+                ids.filter((id, index) => ids.indexOf(id) !== index)
+              )],
+              missingAriaReferences,
+              headingJumps
             });
           }
           return results;
@@ -667,7 +917,12 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           (surface) =>
             surface.documentWidth > 320 ||
             !surface.surfacePresent ||
-            surface.unnamedControls.length > 0,
+            surface.unnamedControls.length > 0 ||
+            surface.blankHeaderActions.length > 0 ||
+            surface.unavailableWithoutRetry ||
+            surface.duplicateIds.length > 0 ||
+            surface.missingAriaReferences.length > 0 ||
+            surface.headingJumps.length > 0,
         );
         if (invalidNarrowSurface !== undefined) {
           throw new Error(
@@ -698,7 +953,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
 
         await client.send("Page.bringToFront");
         const captureOpener = await client.evaluate(`(() => {
-          const trigger = document.querySelector(".sidebar-capture");
+          const trigger = document.querySelector(".capture-dock");
           trigger.focus();
           const focused = document.activeElement === trigger;
           trigger.click();
@@ -736,7 +991,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         if (
           captureOpener.focused &&
           (typeof captureFocus.className !== "string" ||
-            !captureFocus.className.split(/\s+/u).includes("sidebar-capture"))
+            !captureFocus.className.split(/\s+/u).includes("capture-dock"))
         ) {
           throw new Error(
             `PACKAGED_ALPHA_CAPTURE_FOCUS_NOT_RESTORED:${JSON.stringify(captureFocus)}`,
@@ -773,7 +1028,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     const submitCapture = async (title) => {
       const startedAt = performance.now();
       await client.evaluate(`(() => {
-        document.querySelector(".sidebar-capture").click();
+        document.querySelector(".capture-dock").click();
         return true;
       })()`);
       await waitFor(
@@ -891,7 +1146,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       const contextTabs = await client.evaluate(
         `document.querySelectorAll('.shell-tab').length`,
       );
-      if (contextTabs !== 3) {
+      if (contextTabs !== 1) {
         throw new Error("PACKAGED_ALPHA_CONTEXT_TAB_COUNT_INVALID");
       }
       await client.evaluate(`(() => {
@@ -935,7 +1190,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       await waitFor(
         client,
         `[...document.querySelectorAll('.search-results button')].some(
-          (button) => button.querySelector('small')?.textContent?.startsWith('task ·')
+          (button) => button.querySelector('strong')?.textContent === ${JSON.stringify(taskTitle)}
         )`,
         "PACKAGED_ALPHA_LOCAL_SEARCH_RESULT_MISSING",
       );
@@ -945,14 +1200,14 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       }
       await client.evaluate(`(() => {
         const result = [...document.querySelectorAll('.search-results button')].find(
-          (button) => button.querySelector('small')?.textContent?.startsWith('task ·')
+          (button) => button.querySelector('strong')?.textContent === ${JSON.stringify(taskTitle)}
         );
         result.click();
         return true;
       })()`);
       await waitFor(
         client,
-        `document.querySelector('.shell-tab.active [role="tab"] span:last-child')?.textContent === ${JSON.stringify(taskTitle)} && document.querySelectorAll('.shell-tab').length === 3`,
+        `document.querySelector('.shell-tab.active [role="tab"] span:last-child')?.textContent === ${JSON.stringify(taskTitle)} && document.querySelectorAll('.shell-tab').length === 1`,
         "PACKAGED_ALPHA_SEARCH_CONTEXT_NAVIGATION_FAILED",
       );
       await client.evaluate(`(() => {

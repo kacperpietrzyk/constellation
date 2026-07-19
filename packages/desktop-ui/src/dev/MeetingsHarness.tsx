@@ -8,6 +8,16 @@ import { createScenarioClient } from "../client/scenario-client.js";
 const base = createScenarioClient({ queries: {} });
 const client: ConstellationRendererClient = {
   ...base,
+  getJamieStatus: async () => ({ configured: true, scope: "personal" }),
+  syncJamie: async () => ({
+    applied: 0,
+    corrected: 0,
+    noChange: 2,
+    partial: 0,
+    conflicted: 0,
+    failed: 0,
+  }),
+  disconnectJamie: async () => undefined,
   getMeetingLoop: async () => ({
     capability: {
       platform: "macos",
@@ -165,11 +175,13 @@ export const MeetingsHarness = () => {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   return (
     <main className="meetings-harness-shell">
-      <MeetingsSurface
-        client={client}
-        inspectorHost={inspectorHost}
-        onInspectorOpen={() => setInspectorOpen(true)}
-      />
+      <div className="meetings-harness-work">
+        <MeetingsSurface
+          client={client}
+          inspectorHost={inspectorHost}
+          onInspectorOpen={() => setInspectorOpen(true)}
+        />
+      </div>
       <aside
         className={`inspector inspector--meeting${inspectorOpen ? " open" : ""}`}
         aria-label="Podgląd kontekstu"
@@ -180,14 +192,14 @@ export const MeetingsHarness = () => {
             <small>Wynik Jamie</small>
           </div>
           <button
-            className="icon-button meeting-inspector-close"
+            className="icon-button surface-inspector-close"
             aria-label="Zamknij szczegóły spotkania"
             onClick={() => setInspectorOpen(false)}
           >
             ×
           </button>
         </header>
-        <div className="meeting-inspector-host" ref={setInspectorHost} />
+        <div className="surface-inspector-host" ref={setInspectorHost} />
       </aside>
     </main>
   );

@@ -64,6 +64,13 @@ const render = async (): Promise<void> => {
   }
   if (
     import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("surface") === "cockpit"
+  ) {
+    const { CockpitHarness } = await import("./dev/CockpitHarness.js");
+    content = <CockpitHarness />;
+  }
+  if (
+    import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get("surface") === "knowledge"
   ) {
     const { KnowledgeHarness } = await import("./dev/KnowledgeHarness.js");

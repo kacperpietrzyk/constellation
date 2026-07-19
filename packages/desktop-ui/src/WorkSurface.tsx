@@ -1,5 +1,6 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 
+import type { ProjectId, TaskId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import {
@@ -11,6 +12,14 @@ import {
   type DesktopSnapshot,
   type MutationFailure,
 } from "./client/workflow.js";
+import {
+  InlinePopover,
+  reportFirstEmptyRequiredField,
+} from "./components/InlinePopover.js";
+import { useListNavigation } from "./hooks/useListNavigation.js";
+import { countLabel } from "./i18n.js";
+
+export type WorkContextKind = "area" | "initiative";
 
 const stateLabel = {
   actionable: "Do działania",
@@ -21,34 +30,73 @@ const stateLabel = {
 const WorkEmpty = ({
   title,
   detail,
+  action,
 }: {
   readonly title: string;
   readonly detail: string;
+  readonly action?: ReactNode;
 }) => (
   <div className="work-empty" role="status">
-    <span aria-hidden="true">○</span>
+    <span className="empty-glyph" aria-hidden="true">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      >
+        <path d="M5 12h14" />
+      </svg>
+    </span>
     <div>
       <strong>{title}</strong>
       <p>{detail}</p>
     </div>
+    {action}
   </div>
 );
 
 export const WorkSurface = ({
   client,
   snapshot,
+  selectedTaskId,
+  selectedProjectId,
+  selectedContextId,
+  onSelectTask,
+  onOpenTask,
+  onSelectProject,
+  onSelectContext,
   onReload,
   onFailure,
 }: {
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
+  readonly selectedTaskId: TaskId | undefined;
+  readonly selectedProjectId: ProjectId | undefined;
+  readonly selectedContextId: string | undefined;
+  readonly onSelectTask: (id: TaskId) => void;
+  readonly onOpenTask: (id: TaskId) => void;
+  readonly onSelectProject: (id: ProjectId) => void;
+  readonly onSelectContext: (kind: WorkContextKind, id: string) => void;
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
 }) => {
   const work = snapshot.work;
-  const [busy, setBusy] = useState(false);
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
+  const [openPopover, setOpenPopover] = useState<string>();
   const [waitingDraft, setWaitingDraft] = useState<Record<string, string>>({});
   const projection = work.kind === "ready" ? work.data : undefined;
+  const taskNav = useListNavigation({
+    itemCount: projection?.tasks.length ?? 0,
+    onOpen: (index) => {
+      const task = projection?.tasks[index];
+      if (task) onOpenTask(task.id);
+    },
+    onSelect: (index) => {
+      const task = projection?.tasks[index];
+      if (task) onSelectTask(task.id);
+    },
+  });
   const activeLinks =
     projection?.links.filter((link) => link.state === "active") ?? [];
   const projectContext = useMemo(
@@ -70,13 +118,42 @@ export const WorkSurface = ({
     [activeLinks, projection],
   );
 
-  const run = async (operation: () => Promise<{ readonly kind: string }>) => {
-    if (busy) return;
-    setBusy(true);
-    const result = await operation();
-    setBusy(false);
-    if (result.kind === "success") await onReload();
-    else onFailure(result as MutationFailure);
+  // Busy state is a set of operation ids, so concurrent mutations stay
+  // independent: a running operation disables only its own control and cannot
+  // re-enable another one that is still in flight. Operation ids double as
+  // popover ids, and success closes the popover only when it still belongs to
+  // the finished operation — a popover opened in the meantime keeps its draft.
+  // A rejected transport promise still lands in onFailure and never leaves the
+  // surface stuck in a busy state.
+  const run = async (
+    id: string,
+    operation: () => Promise<{ readonly kind: string }>,
+  ): Promise<boolean> => {
+    if (busyIds.has(id)) return false;
+    setBusyIds((current) => new Set(current).add(id));
+    try {
+      const result = await operation();
+      if (result.kind === "success") {
+        await onReload();
+        setOpenPopover((current) => (current === id ? undefined : current));
+        return true;
+      }
+      onFailure(result as MutationFailure);
+      return false;
+    } catch {
+      onFailure({
+        kind: "unavailable",
+        message:
+          "Polecenie nie dotarło do warstwy danych. Nic nie zmieniono — spróbuj ponownie.",
+      });
+      return false;
+    } finally {
+      setBusyIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+    }
   };
 
   if (projection === undefined) {
@@ -85,7 +162,9 @@ export const WorkSurface = ({
         <header className="surface-header wave2-header">
           <div>
             <p className="eyebrow">Model pracy</p>
-            <h1 id="surface-title">Praca</h1>
+            <h1 id="surface-title" tabIndex={-1}>
+              Praca
+            </h1>
             <p>Odpowiedzialność, wyniki i następne działania w jednym wątku.</p>
           </div>
         </header>
@@ -94,47 +173,77 @@ export const WorkSurface = ({
           detail={
             work.kind === "unavailable" ? work.message : "Spróbuj ponownie."
           }
+          action={
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => void onReload()}
+            >
+              Spróbuj ponownie
+            </button>
+          }
         />
       </div>
     );
   }
 
-  const submitArea = (event: FormEvent<HTMLFormElement>) => {
+  // Popover forms reset by unmounting, so run() closes the matching popover
+  // (and resets the form) only after the mutation reports success; a failure
+  // keeps the draft on screen.
+  const submitArea = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     const title = String(data.get("title") ?? "").trim();
     const responsibility = String(data.get("responsibility") ?? "").trim();
-    if (!client || !title || !responsibility) return;
-    void run(() => createArea(client, snapshot, title, responsibility));
-    event.currentTarget.reset();
+    if (!client) return;
+    if (!title || !responsibility) {
+      reportFirstEmptyRequiredField(form);
+      return;
+    }
+    await run("area", () =>
+      createArea(client, snapshot, title, responsibility),
+    );
   };
-  const submitInitiative = (event: FormEvent<HTMLFormElement>) => {
+  const submitInitiative = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     const title = String(data.get("title") ?? "").trim();
     const outcome = String(data.get("outcome") ?? "").trim();
-    if (!client || !title || !outcome) return;
-    void run(() => createInitiative(client, snapshot, title, outcome));
-    event.currentTarget.reset();
+    if (!client) return;
+    if (!title || !outcome) {
+      reportFirstEmptyRequiredField(form);
+      return;
+    }
+    await run("initiative", () =>
+      createInitiative(client, snapshot, title, outcome),
+    );
   };
-  const submitView = (event: FormEvent<HTMLFormElement>) => {
+  const submitView = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     const name = String(data.get("name") ?? "").trim();
     const state = String(data.get("state") ?? "actionable") as
       "actionable" | "waiting" | "blocked";
-    if (!client || !name) return;
-    void run(() => createSavedWorkView(client, snapshot, name, [state]));
-    event.currentTarget.reset();
+    if (!client) return;
+    if (!name) {
+      reportFirstEmptyRequiredField(form);
+      return;
+    }
+    await run("view", () =>
+      createSavedWorkView(client, snapshot, name, [state]),
+    );
   };
-  const submitProjectLink = (event: FormEvent<HTMLFormElement>) => {
+  const submitProjectLink = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const projectId = String(data.get("projectId") ?? "");
     const target = String(data.get("target") ?? "");
     const [kind, targetId] = target.split(":");
     if (!client || !projectId || !targetId) return;
-    void run(() =>
+    await run("link-project", () =>
       createWorkLink(
         client,
         snapshot,
@@ -146,13 +255,25 @@ export const WorkSurface = ({
       ),
     );
   };
-  const submitDependency = (event: FormEvent<HTMLFormElement>) => {
+  const submitDependency = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     const taskId = String(data.get("taskId") ?? "");
     const dependencyId = String(data.get("dependencyId") ?? "");
-    if (!client || !taskId || !dependencyId || taskId === dependencyId) return;
-    void run(() =>
+    if (!client || !taskId || !dependencyId) return;
+    if (taskId === dependencyId) {
+      const field = form.elements.namedItem("dependencyId");
+      if (field instanceof HTMLSelectElement) {
+        field.setCustomValidity("Zadanie nie może zależeć od samego siebie.");
+        field.reportValidity();
+        field.addEventListener("change", () => field.setCustomValidity(""), {
+          once: true,
+        });
+      }
+      return;
+    }
+    await run("link-dependency", () =>
       createWorkLink(
         client,
         snapshot,
@@ -162,13 +283,25 @@ export const WorkSurface = ({
       ),
     );
   };
+  const applyTaskState = (
+    task: (typeof projection.tasks)[number],
+    state: "actionable" | "waiting" | "blocked",
+    waitingLabel?: string,
+  ) => {
+    if (!client) return;
+    void run(`state:${task.id}`, () =>
+      setTaskOperationalState(client, snapshot, task, state, waitingLabel),
+    );
+  };
 
   return (
     <div className="surface-scroll work-surface">
       <header className="surface-header wave2-header work-header">
         <div>
           <p className="eyebrow">Obszar → inicjatywa → projekt → działanie</p>
-          <h1 id="surface-title">Praca bez utraty kontekstu</h1>
+          <h1 id="surface-title" tabIndex={-1}>
+            Praca
+          </h1>
           <p>
             Trwała odpowiedzialność jest oddzielona od wyniku do osiągnięcia.
             Zadania pokazują, co można zrobić teraz, a co czeka albo jest
@@ -193,9 +326,13 @@ export const WorkSurface = ({
             </button>
           ))
         )}
-        <details className="work-inline-create">
-          <summary>Zapisz widok</summary>
-          <form onSubmit={submitView}>
+        <InlinePopover
+          label="Zapisz widok"
+          panelLabel="Zapisz widok pracy"
+          open={openPopover === "view"}
+          onOpenChange={(next) => setOpenPopover(next ? "view" : undefined)}
+        >
+          <form onSubmit={(event) => void submitView(event)}>
             <input
               name="name"
               aria-label="Nazwa widoku"
@@ -207,9 +344,11 @@ export const WorkSurface = ({
               <option value="waiting">Czekam na</option>
               <option value="blocked">Zablokowane</option>
             </select>
-            <button disabled={busy || !client}>Zapisz</button>
+            <button disabled={busyIds.has("view") || !client}>
+              {busyIds.has("view") ? "Zapisuję…" : "Zapisz"}
+            </button>
           </form>
-        </details>
+        </InlinePopover>
       </nav>
 
       <div className="work-thread">
@@ -219,39 +358,56 @@ export const WorkSurface = ({
         >
           <div className="work-section-heading">
             <div>
-              <p className="eyebrow">Dlaczego ta praca istnieje</p>
               <h2 id="work-context-title">Kontekst odpowiedzialności</h2>
             </div>
             <span>
-              {projection.areas.length + projection.initiatives.length}
+              {countLabel(
+                projection.areas.length + projection.initiatives.length,
+                "wpis",
+                "wpisy",
+                "wpisów",
+              )}
             </span>
           </div>
           {projection.areas.map((area) => (
-            <article className="work-context-row area-row" key={area.id}>
+            <button
+              type="button"
+              className={`work-context-row area-row${
+                area.id === selectedContextId ? " selected" : ""
+              }`}
+              aria-pressed={area.id === selectedContextId}
+              key={area.id}
+              onClick={() => onSelectContext("area", area.id)}
+            >
               <span className="work-node" aria-hidden="true">
                 A
               </span>
-              <div>
+              <span className="work-row-copy">
                 <small>Obszar odpowiedzialności</small>
-                <h3>{area.title}</h3>
-                <p>{area.responsibility}</p>
-              </div>
-            </article>
+                <strong>{area.title}</strong>
+                <span>{area.responsibility}</span>
+              </span>
+            </button>
           ))}
           {projection.initiatives.map((initiative) => (
-            <article
-              className="work-context-row initiative-row"
+            <button
+              type="button"
+              className={`work-context-row initiative-row${
+                initiative.id === selectedContextId ? " selected" : ""
+              }`}
+              aria-pressed={initiative.id === selectedContextId}
               key={initiative.id}
+              onClick={() => onSelectContext("initiative", initiative.id)}
             >
               <span className="work-node" aria-hidden="true">
                 I
               </span>
-              <div>
+              <span className="work-row-copy">
                 <small>Inicjatywa · wynik do zamknięcia</small>
-                <h3>{initiative.title}</h3>
-                <p>{initiative.intendedOutcome}</p>
-              </div>
-            </article>
+                <strong>{initiative.title}</strong>
+                <span>{initiative.intendedOutcome}</span>
+              </span>
+            </button>
           ))}
           {projection.areas.length + projection.initiatives.length === 0 && (
             <WorkEmpty
@@ -260,9 +416,13 @@ export const WorkSurface = ({
             />
           )}
           <div className="work-create-pair">
-            <details>
-              <summary>Dodaj Obszar</summary>
-              <form onSubmit={submitArea}>
+            <InlinePopover
+              label="Dodaj Obszar"
+              panelLabel="Dodaj obszar odpowiedzialności"
+              open={openPopover === "area"}
+              onOpenChange={(next) => setOpenPopover(next ? "area" : undefined)}
+            >
+              <form onSubmit={(event) => void submitArea(event)}>
                 <input
                   name="title"
                   aria-label="Nazwa obszaru"
@@ -275,12 +435,20 @@ export const WorkSurface = ({
                   placeholder="Za co stale odpowiadasz?"
                   required
                 />
-                <button disabled={busy || !client}>Dodaj</button>
+                <button disabled={busyIds.has("area") || !client}>
+                  {busyIds.has("area") ? "Zapisuję…" : "Dodaj"}
+                </button>
               </form>
-            </details>
-            <details>
-              <summary>Dodaj Inicjatywę</summary>
-              <form onSubmit={submitInitiative}>
+            </InlinePopover>
+            <InlinePopover
+              label="Dodaj Inicjatywę"
+              panelLabel="Dodaj inicjatywę"
+              open={openPopover === "initiative"}
+              onOpenChange={(next) =>
+                setOpenPopover(next ? "initiative" : undefined)
+              }
+            >
+              <form onSubmit={(event) => void submitInitiative(event)}>
                 <input
                   name="title"
                   aria-label="Nazwa inicjatywy"
@@ -293,9 +461,11 @@ export const WorkSurface = ({
                   placeholder="Jaki wynik pozwoli ją zamknąć?"
                   required
                 />
-                <button disabled={busy || !client}>Dodaj</button>
+                <button disabled={busyIds.has("initiative") || !client}>
+                  {busyIds.has("initiative") ? "Zapisuję…" : "Dodaj"}
+                </button>
               </form>
-            </details>
+            </InlinePopover>
           </div>
         </section>
 
@@ -305,25 +475,44 @@ export const WorkSurface = ({
         >
           <div className="work-section-heading">
             <div>
-              <p className="eyebrow">Co dowozi wynik</p>
               <h2 id="work-delivery-title">Projekty i następne działania</h2>
             </div>
             <span>
-              {projection.projects.length} / {projection.tasks.length}
+              {countLabel(
+                projection.projects.length,
+                "projekt",
+                "projekty",
+                "projektów",
+              )}{" "}
+              ·{" "}
+              {countLabel(
+                projection.tasks.length,
+                "zadanie",
+                "zadania",
+                "zadań",
+              )}
             </span>
           </div>
           {projection.projects.map((project) => (
-            <article className="work-project-row" key={project.id}>
+            <button
+              type="button"
+              className={`work-project-row${
+                project.id === selectedProjectId ? " selected" : ""
+              }`}
+              aria-pressed={project.id === selectedProjectId}
+              key={project.id}
+              onClick={() => onSelectProject(project.id)}
+            >
               <span className="work-branch" aria-hidden="true" />
-              <div>
+              <span className="work-row-copy">
                 <small>
                   {projectContext.get(project.id) ??
                     "Projekt bez przypisanego kontekstu"}
                 </small>
-                <h3>{project.title}</h3>
-                <p>{project.intendedOutcome}</p>
-              </div>
-            </article>
+                <strong>{project.title}</strong>
+                <span>{project.intendedOutcome}</span>
+              </span>
+            </button>
           ))}
           {projection.projects.length === 0 && (
             <WorkEmpty
@@ -331,8 +520,15 @@ export const WorkSurface = ({
               detail="Projekt powinien prowadzić do jednego sprawdzalnego wyniku."
             />
           )}
-          <div className="work-task-list" aria-label="Następne działania">
-            {projection.tasks.map((task) => {
+          {/* Roving tabindex pairs with listbox/option semantics, matching the
+              cockpit lists: AT learns this is one composite widget where Tab
+              stops once and arrows move between rows. */}
+          <div
+            className="work-task-list"
+            role="listbox"
+            aria-label="Następne działania"
+          >
+            {projection.tasks.map((task, index) => {
               const dependency = activeLinks.find(
                 (link) =>
                   link.linkType === "task_depends_on_task" &&
@@ -343,36 +539,46 @@ export const WorkSurface = ({
               )?.title;
               return (
                 <article
-                  className={`work-task-row state-${task.operationalState}`}
+                  className={`work-task-row state-${task.operationalState}${
+                    task.id === selectedTaskId ? " selected" : ""
+                  }`}
                   key={task.id}
                 >
                   <span className="task-state-mark" aria-hidden="true" />
-                  <div className="work-task-copy">
-                    <h3>{task.title}</h3>
-                    <p>
+                  <button
+                    type="button"
+                    className="work-task-copy work-row-copy"
+                    role="option"
+                    aria-selected={task.id === selectedTaskId}
+                    {...taskNav(index)}
+                    onClick={(event) => {
+                      if (event.metaKey || event.ctrlKey) onOpenTask(task.id);
+                      else onSelectTask(task.id);
+                    }}
+                    onDoubleClick={() => onOpenTask(task.id)}
+                  >
+                    <strong>{task.title}</strong>
+                    <span>
                       {task.waitingOn?.label ??
                         (dependencyTitle
                           ? `Zależy od: ${dependencyTitle}`
                           : "Gotowe do podjęcia")}
-                    </p>
-                  </div>
-                  <details className="task-state-menu">
-                    <summary>{stateLabel[task.operationalState]}</summary>
+                    </span>
+                  </button>
+                  <InlinePopover
+                    label={stateLabel[task.operationalState]}
+                    panelLabel={`Zmień stan zadania: ${task.title}`}
+                    triggerClassName="task-state-trigger"
+                    open={openPopover === `state:${task.id}`}
+                    onOpenChange={(next) =>
+                      setOpenPopover(next ? `state:${task.id}` : undefined)
+                    }
+                  >
                     <div className="task-state-actions">
                       <button
                         type="button"
-                        disabled={busy || !client}
-                        onClick={() =>
-                          client &&
-                          void run(() =>
-                            setTaskOperationalState(
-                              client,
-                              snapshot,
-                              task,
-                              "actionable",
-                            ),
-                          )
-                        }
+                        disabled={busyIds.has(`state:${task.id}`) || !client}
+                        onClick={() => applyTaskState(task, "actionable")}
                       >
                         Do działania
                       </button>
@@ -392,22 +598,17 @@ export const WorkSurface = ({
                       <button
                         type="button"
                         disabled={
-                          busy ||
+                          busyIds.has(`state:${task.id}`) ||
                           !client ||
                           !(
                             waitingDraft[task.id] ?? task.waitingOn?.label
                           )?.trim()
                         }
                         onClick={() =>
-                          client &&
-                          void run(() =>
-                            setTaskOperationalState(
-                              client,
-                              snapshot,
-                              task,
-                              "waiting",
-                              waitingDraft[task.id] ?? task.waitingOn?.label,
-                            ),
+                          applyTaskState(
+                            task,
+                            "waiting",
+                            waitingDraft[task.id] ?? task.waitingOn?.label,
                           )
                         }
                       >
@@ -415,23 +616,13 @@ export const WorkSurface = ({
                       </button>
                       <button
                         type="button"
-                        disabled={busy || !client}
-                        onClick={() =>
-                          client &&
-                          void run(() =>
-                            setTaskOperationalState(
-                              client,
-                              snapshot,
-                              task,
-                              "blocked",
-                            ),
-                          )
-                        }
+                        disabled={busyIds.has(`state:${task.id}`) || !client}
+                        onClick={() => applyTaskState(task, "blocked")}
                       >
                         Zablokowane
                       </button>
                     </div>
-                  </details>
+                  </InlinePopover>
                 </article>
               );
             })}
@@ -443,9 +634,15 @@ export const WorkSurface = ({
             />
           )}
           <div className="work-link-tools">
-            <details>
-              <summary>Przypisz projekt do kontekstu</summary>
-              <form onSubmit={submitProjectLink}>
+            <InlinePopover
+              label="Przypisz projekt do kontekstu"
+              panelLabel="Przypisz projekt do kontekstu"
+              open={openPopover === "link-project"}
+              onOpenChange={(next) =>
+                setOpenPopover(next ? "link-project" : undefined)
+              }
+            >
+              <form onSubmit={(event) => void submitProjectLink(event)}>
                 <select name="projectId" required aria-label="Projekt">
                   <option value="">Wybierz projekt</option>
                   {projection.projects.map((item) => (
@@ -471,12 +668,20 @@ export const WorkSurface = ({
                     </option>
                   ))}
                 </select>
-                <button disabled={busy || !client}>Połącz</button>
+                <button disabled={busyIds.has("link-project") || !client}>
+                  {busyIds.has("link-project") ? "Zapisuję…" : "Połącz"}
+                </button>
               </form>
-            </details>
-            <details>
-              <summary>Dodaj zależność zadań</summary>
-              <form onSubmit={submitDependency}>
+            </InlinePopover>
+            <InlinePopover
+              label="Dodaj zależność zadań"
+              panelLabel="Dodaj zależność zadań"
+              open={openPopover === "link-dependency"}
+              onOpenChange={(next) =>
+                setOpenPopover(next ? "link-dependency" : undefined)
+              }
+            >
+              <form onSubmit={(event) => void submitDependency(event)}>
                 <select name="taskId" required aria-label="Zadanie zależne">
                   <option value="">Zadanie zależne</option>
                   {projection.tasks.map((item) => (
@@ -497,9 +702,13 @@ export const WorkSurface = ({
                     </option>
                   ))}
                 </select>
-                <button disabled={busy || !client}>Dodaj zależność</button>
+                <button disabled={busyIds.has("link-dependency") || !client}>
+                  {busyIds.has("link-dependency")
+                    ? "Zapisuję…"
+                    : "Dodaj zależność"}
+                </button>
               </form>
-            </details>
+            </InlinePopover>
           </div>
         </section>
       </div>

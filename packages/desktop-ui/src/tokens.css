@@ -92,8 +92,8 @@
   --surface-stage: var(--neutral-1000);
   --surface-window: var(--neutral-950);
   --surface-canvas: var(--neutral-950);
-  --surface-content: var(--neutral-900);
-  --surface-raised: var(--white-a035);
+  --surface-content: var(--neutral-850);
+  --surface-raised: var(--white-a055);
   --surface-overlay: oklch(13.5% 0.005 255 / 0.94);
   --surface-sunken: var(--black-a24);
   --surface-glass: oklch(11.8% 0.005 255 / 0.68);
@@ -109,7 +109,7 @@
       oklch(0% 0 0 / 0.08)
     ),
     oklch(10.5% 0.004 255 / 0.72);
-  --glass-blur: 1.75rem;
+  --glass-blur: 1.25rem;
   --glass-saturation: 0.72;
   --text-primary: var(--neutral-100);
   --text-secondary: var(--neutral-300);
@@ -137,7 +137,8 @@
     0 0 0 0.1875rem oklch(97.3% 0.003 255 / 0.12),
     0 0 0.875rem oklch(97.3% 0.003 255 / 0.12);
   --elevation-rest:
-    inset 0 0.0625rem 0 var(--white-a055), 0 0.0625rem 0 oklch(0% 0 0 / 0.35);
+    inset 0 0.0625rem 0 var(--white-a10), 0 0 0 0.0625rem var(--white-a035),
+    0 0.25rem 0.75rem oklch(0% 0 0 / 0.18);
   --elevation-raised:
     inset 0 0.0625rem 0 oklch(100% 0 0 / 0.07),
     0 0.5rem 1.5rem oklch(0% 0 0 / 0.22),
@@ -145,18 +146,13 @@
   --elevation-overlay:
     inset 0 0.0625rem 0 oklch(100% 0 0 / 0.12),
     0 1.75rem 5rem oklch(0% 0 0 / 0.56), 0 0.5rem 1.5rem oklch(0% 0 0 / 0.42);
-  --elevation-window:
-    inset 0 0.0625rem 0 oklch(100% 0 0 / 0.12),
-    0 0 0 0.0625rem var(--white-a055), 0 3rem 8.75rem var(--black-a72),
-    0 0.875rem 2.625rem oklch(0% 0 0 / 0.46);
-
   --shell-window-bg: var(--surface-window);
   --shell-chrome-bg: var(--surface-glass);
   --shell-sidebar-bg: var(--surface-glass);
   --shell-inspector-bg: var(--surface-glass);
   --shell-border: var(--border-default);
   --panel-reading-bg: var(--surface-content);
-  --panel-reading-border: var(--border-subtle);
+  --panel-reading-border: var(--border-default);
   --panel-raised-bg: var(--surface-raised);
   --panel-raised-border: var(--border-default);
   --action-primary-bg: var(--neutral-100);
@@ -206,6 +202,9 @@
   --sidebar-width: 13.75rem;
   --inspector-width: 20rem;
   --titlebar-height: 2.875rem;
+  /* Height of the tab/header band below the titlebar. The work-column tabbar
+     and the inspector header share it so their bottom borders form one seam. */
+  --header-band-height: 2.55rem;
 }
 
 [data-theme="light"] {
@@ -237,6 +236,10 @@
   --text-quaternary: var(--neutral-600);
   --text-disabled: var(--neutral-500);
   --text-on-action: var(--neutral-50);
+  --status-success: oklch(52% 0.1 150);
+  --status-warning: oklch(52% 0.1 78);
+  --status-error: oklch(52% 0.14 25);
+  --status-info: oklch(52% 0.075 245);
   --border-subtle: oklch(12% 0.006 255 / 0.08);
   --border-default: oklch(12% 0.006 255 / 0.13);
   --border-strong: oklch(12% 0.006 255 / 0.2);
@@ -255,14 +258,38 @@
   --context-border: oklch(12% 0.006 255 / 0.24);
 }
 
-:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+:where(
+  button,
+  a,
+  input,
+  textarea,
+  select,
+  summary,
+  [tabindex]:not([tabindex="-1"])
+):focus-visible {
   outline: 2px solid transparent;
   outline-offset: 2px;
   box-shadow: var(--control-focus-ring);
 }
 
+/* Programmatic focus targets (tabindex="-1") are not interactive controls —
+   no ring, including the user-agent default. */
+:where([tabindex="-1"]):focus,
+:where([tabindex="-1"]):focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 @media (forced-colors: active) {
-  :where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  :where(
+    button,
+    a,
+    input,
+    textarea,
+    select,
+    summary,
+    [tabindex]:not([tabindex="-1"])
+  ):focus-visible {
     outline-color: Highlight;
     box-shadow: none;
   }

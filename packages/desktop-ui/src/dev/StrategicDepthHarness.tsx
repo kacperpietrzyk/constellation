@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import {
   PrincipalIdSchema,
   ProjectIdSchema,
@@ -282,11 +284,16 @@ const snapshot: DesktopSnapshot = {
   radar: { kind: "ready", data: radar },
 };
 
-export const StrategicDepthHarness = () => (
-  <StrategicDepthSurface
-    client={client}
-    snapshot={snapshot}
-    onReload={async () => undefined}
-    onFailure={() => undefined}
-  />
-);
+export const StrategicDepthHarness = () => {
+  const [selectedRecordId, setSelectedRecordId] = useState<string>();
+  return (
+    <StrategicDepthSurface
+      client={client}
+      snapshot={snapshot}
+      selectedRecordId={selectedRecordId}
+      onSelectRecord={setSelectedRecordId}
+      onReload={async () => undefined}
+      onFailure={() => undefined}
+    />
+  );
+};

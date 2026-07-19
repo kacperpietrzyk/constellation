@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   CalendarBlockDraft,
@@ -8,7 +8,10 @@ import type {
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 import { createPortal } from "react-dom";
 
-import { MeetingMarkdown, toPlainMeetingMarkdown } from "./MeetingMarkdown.js";
+import { MeetingMarkdown, toMeetingResultPreview } from "./MeetingMarkdown.js";
+import { Icon } from "./components/Icon.js";
+import { useListNavigation } from "./hooks/useListNavigation.js";
+import { countLabel } from "./i18n.js";
 
 type MeetingState =
   | { readonly kind: "loading" }
@@ -26,6 +29,9 @@ type JamieState =
 
 type CompletedMeeting = MeetingLoopSurface["completed"][number];
 type MeetingWorkItem = CompletedMeeting["workItems"][number];
+
+const staleRefreshNotice =
+  "Nie udało się odświeżyć spotkań. Pokazuję ostatni bezpieczny stan.";
 
 const healthLabel = (meeting: CompletedMeeting) => {
   switch (meeting.triage) {
@@ -151,9 +157,7 @@ const CalendarConsentDialog = ({
             onClick={onClose}
             disabled={busy}
           >
-            <svg aria-hidden="true" viewBox="0 0 20 20">
-              <path d="m5 5 10 10M15 5 5 15" />
-            </svg>
+            <Icon name="close" />
           </button>
         </header>
         <dl className="calendar-preview-facts">
@@ -179,7 +183,7 @@ const CalendarConsentDialog = ({
           Zmiana treści albo rewizji wymaga nowego podglądu.
         </p>
         {error && (
-          <p className="inline-error" role="alert">
+          <p id="calendar-consent-error" className="inline-error" role="alert">
             {error}
           </p>
         )}
@@ -195,6 +199,7 @@ const CalendarConsentDialog = ({
           <button
             className="primary-button"
             disabled={busy}
+            aria-describedby={error ? "calendar-consent-error" : undefined}
             onClick={() => {
               setBusy(true);
               setError(undefined);
@@ -260,23 +265,71 @@ export const MeetingsSurface = ({
       .then((status) => setJamie({ kind: "ready", ...status }))
       .catch(() => setJamie({ kind: "error" }));
   };
+  const selectResult = (index: number) => {
+    if (state.kind !== "ready") return;
+    const meeting = state.data.completed[index];
+    if (meeting === undefined) return;
+    setSelectedMeetingId(meeting.id);
+    setVisibleTranscriptMeetingId(undefined);
+    setNewItemMeetingId(undefined);
+    onInspectorOpen();
+  };
+  const resultNav = useListNavigation({
+    itemCount: state.kind === "ready" ? state.data.completed.length : 0,
+    onOpen: selectResult,
+    onSelect: selectResult,
+  });
+  // Refetch is decoupled from the visible state: after a mutation the last
+  // ready snapshot stays on screen and the skeleton appears only on the very
+  // first load. A failed refresh keeps the safe data and reports via notice.
+  // Requests carry a generation so a slower, older refetch can never
+  // overwrite the snapshot of a newer one.
+  const hasLoadedRef = useRef(false);
+  const loadGenerationRef = useRef(0);
   const load = () => {
-    setState({ kind: "loading" });
+    const generation = ++loadGenerationRef.current;
+    setState((current) =>
+      current.kind === "ready" ? current : { kind: "loading" },
+    );
     const from = new Date();
     const to = new Date(from.getTime() + 14 * 86_400_000);
     void client
       .getMeetingLoop({ from: from.toISOString(), to: to.toISOString() })
-      .then((data) => setState({ kind: "ready", data }))
-      .catch(() =>
-        setState({
-          kind: "error",
-          message:
-            "Pętla spotkań jest niedostępna. Dane i kalendarz nie zostały zmienione.",
-        }),
-      );
+      .then((data) => {
+        if (generation !== loadGenerationRef.current) return;
+        hasLoadedRef.current = true;
+        setNotice((current) =>
+          current === staleRefreshNotice ? undefined : current,
+        );
+        setState({ kind: "ready", data });
+      })
+      .catch(() => {
+        if (generation !== loadGenerationRef.current) return;
+        if (hasLoadedRef.current) setNotice(staleRefreshNotice);
+        else
+          setState({
+            kind: "error",
+            message:
+              "Pętla spotkań jest niedostępna. Dane i kalendarz nie zostały zmienione.",
+          });
+      });
   };
   useEffect(load, [client]);
   useEffect(loadJamieStatus, [client]);
+  // Collection rows expose a bounded preview to both layout and assistive
+  // technology. The complete source remains available only in the selected
+  // inspector reading view.
+  const resultPreviews = useMemo(() => {
+    if (state.kind !== "ready") return new Map<string, string>();
+    return new Map(
+      state.data.completed.map((meeting) => [
+        meeting.id,
+        meeting.summaryMarkdown
+          ? toMeetingResultPreview(meeting.summaryMarkdown)
+          : "Brak podsumowania w wyniku Jamie.",
+      ]),
+    );
+  }, [state]);
 
   if (state.kind === "loading") {
     return (
@@ -290,9 +343,20 @@ export const MeetingsSurface = ({
   if (state.kind === "error") {
     return (
       <section className="meeting-surface state-panel state-panel--error">
+        <span className="empty-glyph" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          >
+            <path d="M12 5v8M12 17v.5" />
+          </svg>
+        </span>
         <h1>Spotkania są chwilowo niedostępne</h1>
         <p>{state.message}</p>
-        <button className="secondary-button" onClick={load}>
+        <button className="primary-button" onClick={load}>
           Spróbuj ponownie
         </button>
       </section>
@@ -300,63 +364,68 @@ export const MeetingsSurface = ({
   }
 
   const surface = state.data;
-  const selectedMeeting =
-    surface.completed.find((meeting) => meeting.id === selectedMeetingId) ??
-    surface.completed[0];
-  return (
-    <section
-      className="meeting-surface"
-      aria-labelledby="meeting-surface-title"
+  const selectedMeeting = surface.completed.find(
+    (meeting) => meeting.id === selectedMeetingId,
+  );
+  const calendarCapability = (
+    <div
+      className={`calendar-capability calendar-capability--${surface.capability.availability}`}
     >
-      <header className="meeting-hero">
-        <div>
-          <p className="eyebrow">Od przygotowania do dalszej pracy</p>
-          <h1 id="meeting-surface-title">Spotkania</h1>
-          <p>
-            Fakty przed spotkaniem, wynik Jamie po nim i każde dalsze działanie
-            z własnym cyklem życia.
-          </p>
-        </div>
-        <div
-          className={`calendar-capability calendar-capability--${surface.capability.availability}`}
-        >
-          <strong>
-            {surface.capability.provider === "eventkit"
-              ? "Apple Calendar"
-              : "Kalendarz"}
-          </strong>
-          <span>{capabilityCopy(surface)}</span>
-          {surface.capability.availability !== "available" && (
-            <button
-              className="quiet-button"
-              onClick={() => {
-                if (
-                  surface.capability.platform === "macos" &&
-                  surface.capability.availability === "permission_required"
-                ) {
-                  void client.requestCalendarAccess().then(load);
-                } else load();
-              }}
-            >
-              {surface.capability.platform === "macos" &&
+      <strong>
+        {surface.capability.provider === "eventkit"
+          ? "Apple Calendar"
+          : "Kalendarz"}
+      </strong>
+      <span>{capabilityCopy(surface)}</span>
+      {surface.capability.availability !== "available" && (
+        <button
+          className="quiet-button"
+          onClick={() => {
+            if (
+              surface.capability.platform === "macos" &&
               surface.capability.availability === "permission_required"
-                ? "Przyznaj dostęp"
-                : "Sprawdź ponownie"}
-            </button>
-          )}
-        </div>
-      </header>
-
-      <section className="meeting-integration" aria-labelledby="jamie-title">
-        <div>
-          <p className="eyebrow">Źródło wyników</p>
-          <h2 id="jamie-title">Jamie</h2>
-          <p>
-            Jamie zachowuje odpowiedzialność za nagranie, transkrypcję i
-            inteligencję spotkania. Constellation importuje wynik oraz trwałe
-            identyfikatory zadań.
+            ) {
+              void client.requestCalendarAccess().then(load);
+            } else load();
+          }}
+        >
+          {surface.capability.platform === "macos" &&
+          surface.capability.availability === "permission_required"
+            ? "Przyznaj dostęp"
+            : "Sprawdź ponownie"}
+        </button>
+      )}
+    </div>
+  );
+  const jamieConnection = (
+    <div className="meeting-integration-wrap">
+      {/* Po skonfigurowaniu integracja zwija się do jednowierszowego paska
+          statusu; pełny opis i formularz wracają dopiero po odłączeniu. */}
+      <section
+        className={`meeting-integration${jamie.kind === "ready" && jamie.configured ? " meeting-integration--connected" : ""}`}
+        aria-labelledby="jamie-title"
+      >
+        {jamie.kind === "ready" && jamie.configured ? (
+          <p className="meeting-integration-summary">
+            <span className="eyebrow" id="jamie-title">
+              Jamie
+            </span>
+            <span className="meeting-integration-status">
+              Połączono klucz{" "}
+              {jamie.scope === "workspace" ? "zespołu" : "osobisty"}
+            </span>
           </p>
-        </div>
+        ) : (
+          <div>
+            <p className="eyebrow">Źródło wyników</p>
+            <h2 id="jamie-title">Jamie</h2>
+            <p>
+              Jamie zachowuje odpowiedzialność za nagranie, transkrypcję i
+              inteligencję spotkania. Constellation importuje wynik oraz trwałe
+              identyfikatory zadań.
+            </p>
+          </div>
+        )}
         {jamie.kind === "loading" ? (
           <span className="meeting-integration-status">Sprawdzam…</span>
         ) : jamie.kind === "error" ? (
@@ -365,10 +434,6 @@ export const MeetingsSurface = ({
           </button>
         ) : jamie.configured ? (
           <div className="meeting-integration-actions">
-            <span className="meeting-integration-status">
-              Połączono klucz{" "}
-              {jamie.scope === "workspace" ? "zespołu" : "osobisty"}
-            </span>
             <button
               className="primary-button"
               disabled={jamieBusy}
@@ -379,7 +444,21 @@ export const MeetingsSurface = ({
                   .then((result) => {
                     setJamieBusy(false);
                     setNotice(
-                      `Jamie: ${result.applied + result.corrected} nowych lub poprawionych, ${result.noChange} bez zmian, ${result.partial} częściowych${result.failed ? `, ${result.failed} błędów` : ""}.`,
+                      `Jamie: ${countLabel(
+                        result.applied + result.corrected,
+                        "nowy lub poprawiony",
+                        "nowe lub poprawione",
+                        "nowych lub poprawionych",
+                      )}, ${result.noChange} bez zmian, ${countLabel(
+                        result.partial,
+                        "częściowy",
+                        "częściowe",
+                        "częściowych",
+                      )}${
+                        result.failed
+                          ? `, ${countLabel(result.failed, "błąd", "błędy", "błędów")}`
+                          : ""
+                      }.`,
                     );
                     load();
                   })
@@ -466,6 +545,22 @@ export const MeetingsSurface = ({
           </form>
         )}
       </section>
+    </div>
+  );
+  return (
+    <section className="meeting-surface" aria-labelledby="surface-title">
+      <header className="meeting-hero">
+        <div>
+          <p className="eyebrow">Od przygotowania do dalszej pracy</p>
+          <h1 id="surface-title" tabIndex={-1}>
+            Spotkania
+          </h1>
+          <p>
+            Fakty przed spotkaniem, wynik Jamie po nim i każde dalsze działanie
+            z własnym cyklem życia.
+          </p>
+        </div>
+      </header>
 
       {notice && (
         <p className="meeting-notice" role="status">
@@ -474,126 +569,22 @@ export const MeetingsSurface = ({
       )}
 
       <div className="meeting-lanes">
-        <section className="meeting-upcoming" aria-labelledby="upcoming-title">
-          <header>
-            <h2 id="upcoming-title">Nadchodzące</h2>
-            <span>{surface.upcoming.length}</span>
-          </header>
-          {surface.upcoming.length === 0 ? (
-            <div className="meeting-empty">
-              <svg aria-hidden="true" viewBox="0 0 48 48">
-                <path d="M9 12h30v27H9zM15 7v10M33 7v10M9 20h30" />
-              </svg>
-              <h3>Brak widocznych wydarzeń</h3>
-              <p>
-                {surface.capability.canRead
-                  ? "W tym oknie czasu kalendarz nie ma spotkań."
-                  : "Połącz lub odblokuj provider, aby zobaczyć przygotowanie."}
-              </p>
-            </div>
-          ) : (
-            surface.upcoming.map(({ event, brief }) => (
-              <article
-                className="meeting-event"
-                key={`${event.calendarExternalId}:${event.eventExternalId}`}
-              >
-                <div className="meeting-time">
-                  <strong>{formatTime(event.startsAt)}</strong>
-                  <span>
-                    {event.isAllDay
-                      ? "Cały dzień"
-                      : `${Math.round((Date.parse(event.endsAt) - Date.parse(event.startsAt)) / 60000)} min`}
-                  </span>
-                </div>
-                <div className="meeting-event-body">
-                  <h3>{event.title}</h3>
-                  <p>
-                    {event.attendees.length} uczestników
-                    {event.location ? ` · ${event.location}` : ""}
-                  </p>
-                  <div className="evidence-thread">
-                    <span className="evidence-node">Wydarzenie</span>
-                    <i aria-hidden="true" />
-                    <span className="evidence-node">Brief faktograficzny</span>
-                    <i aria-hidden="true" />
-                    <span className="evidence-node evidence-node--muted">
-                      Wynik Jamie po spotkaniu
-                    </span>
-                  </div>
-                  <div className="meeting-brief">
-                    <div>
-                      <strong>Orientacja</strong>
-                      <span>
-                        {brief.orientation.length
-                          ? brief.orientation
-                              .map((item) => item.label)
-                              .join(" · ")
-                          : "Brak dokładnie powiązanych rekordów."}
-                      </span>
-                    </div>
-                    <div>
-                      <strong>Otwarte pętle</strong>
-                      <span>
-                        {brief.openLoops.length
-                          ? brief.openLoops
-                              .map((item) => item.label)
-                              .join(" · ")
-                          : "Brak bezpiecznie dopasowanych zobowiązań."}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  className="secondary-button meeting-block-action"
-                  disabled={
-                    !surface.capability.canWriteOwnedBlocks || event.isAllDay
-                  }
-                  title={
-                    !surface.capability.canWriteOwnedBlocks
-                      ? "Provider nie zezwala na zapis własnych bloków."
-                      : undefined
-                  }
-                  onClick={() => {
-                    const startsAt = new Date(
-                      Date.parse(event.startsAt) - 30 * 60_000,
-                    ).toISOString();
-                    const block: CalendarBlockDraft = {
-                      calendarExternalId: event.calendarExternalId,
-                      ownedBlockExternalId: `meeting-prep:${event.eventExternalId}`,
-                      title: `Przygotowanie: ${event.title}`,
-                      startsAt,
-                      endsAt: event.startsAt,
-                      expectedRevision: null,
-                      sourceRecordIds: [
-                        `calendar-event:${event.eventExternalId}`,
-                      ],
-                    };
-                    void client
-                      .previewCalendarBlocks({ blocks: [block] })
-                      .then((result) => {
-                        if (result === undefined)
-                          setNotice(
-                            "Nie udało się przygotować bezpiecznego podglądu. Nic nie zapisano.",
-                          );
-                        else setPreview(result);
-                      });
-                  }}
-                >
-                  Podgląd bloku
-                </button>
-              </article>
-            ))
-          )}
-        </section>
-
         <section
           className="meeting-completed"
           aria-labelledby="completed-title"
         >
           <header>
             <h2 id="completed-title">Wyniki Jamie</h2>
-            <span>{surface.completed.length}</span>
+            <span>
+              {countLabel(
+                surface.completed.length,
+                "wynik",
+                "wyniki",
+                "wyników",
+              )}
+            </span>
           </header>
+          {jamieConnection}
           {surface.completed.length === 0 ? (
             <div className="meeting-empty meeting-empty--compact">
               <h3>Nie zaimportowano jeszcze wyniku</h3>
@@ -603,35 +594,43 @@ export const MeetingsSurface = ({
                 duplikaty.
               </p>
             </div>
-          ) : selectedMeeting ? (
+          ) : (
             <div className="meeting-results-browser">
               <ol
                 className="meeting-result-list"
+                role="listbox"
                 aria-label="Zaimportowane wyniki Jamie"
               >
-                {surface.completed.map((meeting) => {
-                  const selected = meeting.id === selectedMeeting.id;
-                  const summary = meeting.summaryMarkdown
-                    ? toPlainMeetingMarkdown(meeting.summaryMarkdown)
-                    : "Brak podsumowania w wyniku Jamie.";
+                {surface.completed.map((meeting, index) => {
+                  const selected = meeting.id === selectedMeeting?.id;
+                  const preview =
+                    resultPreviews.get(meeting.id) ??
+                    "Brak podsumowania w wyniku Jamie.";
+                  const previewId = `meeting-result-preview-${index}`;
+                  const title = meeting.title ?? "Spotkanie bez tytułu";
+                  const workCount = countLabel(
+                    meeting.workItems.length,
+                    "działanie",
+                    "działania",
+                    "działań",
+                  );
                   return (
-                    <li key={meeting.id}>
+                    <li key={meeting.id} role="presentation">
                       <button
                         type="button"
+                        role="option"
                         className={`meeting-result-row${selected ? " is-selected" : ""}`}
-                        aria-pressed={selected}
-                        aria-controls="meeting-result-detail"
-                        onClick={() => {
-                          setSelectedMeetingId(meeting.id);
-                          setVisibleTranscriptMeetingId(undefined);
-                          setNewItemMeetingId(undefined);
-                          onInspectorOpen();
-                        }}
+                        aria-label={`${title}. ${healthLabel(meeting)}. ${formatTime(meeting.startedAt)}. ${workCount}.`}
+                        aria-describedby={previewId}
+                        aria-selected={selected}
+                        {...(selected && inspectorHost
+                          ? { "aria-controls": "meeting-result-detail" }
+                          : {})}
+                        {...resultNav(index)}
+                        onClick={() => selectResult(index)}
                       >
                         <span className="meeting-result-row-heading">
-                          <strong>
-                            {meeting.title ?? "Spotkanie bez tytułu"}
-                          </strong>
+                          <strong>{title}</strong>
                           <span
                             className={`meeting-health meeting-health--${meeting.triage}`}
                           >
@@ -641,11 +640,14 @@ export const MeetingsSurface = ({
                         <time dateTime={meeting.startedAt}>
                           {formatTime(meeting.startedAt)}
                         </time>
-                        <span className="meeting-result-row-summary">
-                          {summary}
+                        <span
+                          className="meeting-result-row-summary"
+                          id={previewId}
+                        >
+                          {preview}
                         </span>
                         <span className="meeting-result-row-meta">
-                          {meeting.workItems.length} działań
+                          {workCount}
                           <span aria-hidden="true">→</span>
                         </span>
                       </button>
@@ -654,7 +656,8 @@ export const MeetingsSurface = ({
                 })}
               </ol>
 
-              {inspectorHost &&
+              {selectedMeeting &&
+                inspectorHost &&
                 createPortal(
                   <article
                     className="meeting-result-detail"
@@ -672,7 +675,12 @@ export const MeetingsSurface = ({
                             {formatTime(selectedMeeting.startedAt)}
                           </time>
                           <span aria-hidden="true"> · </span>
-                          {selectedMeeting.participants.length} uczestników
+                          {countLabel(
+                            selectedMeeting.participants.length,
+                            "uczestnik",
+                            "uczestników",
+                            "uczestników",
+                          )}
                         </p>
                       </div>
                       <strong
@@ -716,7 +724,11 @@ export const MeetingsSurface = ({
                             aria-expanded={
                               visibleTranscriptMeetingId === selectedMeeting.id
                             }
-                            aria-controls="meeting-result-transcript-content"
+                            aria-controls={
+                              visibleTranscriptMeetingId === selectedMeeting.id
+                                ? "meeting-result-transcript-content"
+                                : undefined
+                            }
                             onClick={() =>
                               setVisibleTranscriptMeetingId((current) =>
                                 current === selectedMeeting.id
@@ -754,7 +766,14 @@ export const MeetingsSurface = ({
                             spotkaniem.
                           </p>
                         </div>
-                        <span>{selectedMeeting.workItems.length}</span>
+                        <span>
+                          {countLabel(
+                            selectedMeeting.workItems.length,
+                            "zapis",
+                            "zapisy",
+                            "zapisów",
+                          )}
+                        </span>
                       </header>
                       {selectedMeeting.workItems.length === 0 ? (
                         <p className="meeting-result-empty-copy">
@@ -771,7 +790,7 @@ export const MeetingsSurface = ({
                               </div>
                               <div className="meeting-item-actions">
                                 <button
-                                  className="quiet-button"
+                                  className="secondary-button"
                                   disabled={busyItemId === item.id}
                                   onClick={() => {
                                     setBusyItemId(item.id);
@@ -806,7 +825,7 @@ export const MeetingsSurface = ({
                                 {item.state === "conflicted" &&
                                   item.sourceValueInConflict && (
                                     <button
-                                      className="quiet-button"
+                                      className="secondary-button"
                                       disabled={busyItemId === item.id}
                                       onClick={() => {
                                         setBusyItemId(item.id);
@@ -833,7 +852,7 @@ export const MeetingsSurface = ({
                                   )}
                                 {item.state === "open" && (
                                   <button
-                                    className="quiet-button"
+                                    className="secondary-button"
                                     disabled={busyItemId === item.id}
                                     onClick={() => {
                                       setBusyItemId(item.id);
@@ -862,7 +881,7 @@ export const MeetingsSurface = ({
                                   item.kind === "waiting" ||
                                   item.kind === "follow_up") && (
                                   <button
-                                    className="quiet-button"
+                                    className="secondary-button"
                                     disabled={busyItemId === item.id}
                                     onClick={() => {
                                       setResponsibilityItemId(item.id);
@@ -1077,8 +1096,143 @@ export const MeetingsSurface = ({
                   inspectorHost,
                 )}
             </div>
-          ) : null}
+          )}
         </section>
+        <aside className="meeting-context-rail" aria-labelledby="sources-title">
+          <header>
+            <p className="eyebrow">Źródła i przygotowanie</p>
+            <h2 id="sources-title">Kontekst spotkań</h2>
+          </header>
+          {calendarCapability}
+          <section
+            className="meeting-upcoming"
+            aria-labelledby="upcoming-title"
+          >
+            <header>
+              <h3 id="upcoming-title">Nadchodzące</h3>
+              <span>
+                {countLabel(
+                  surface.upcoming.length,
+                  "wydarzenie",
+                  "wydarzenia",
+                  "wydarzeń",
+                )}
+              </span>
+            </header>
+            {surface.upcoming.length === 0 ? (
+              <div className="meeting-empty">
+                <svg aria-hidden="true" viewBox="0 0 48 48">
+                  <path d="M9 12h30v27H9zM15 7v10M33 7v10M9 20h30" />
+                </svg>
+                <h4>Brak widocznych wydarzeń</h4>
+                <p>
+                  {surface.capability.canRead
+                    ? "W tym oknie czasu kalendarz nie ma spotkań."
+                    : "Odblokuj provider, aby zobaczyć przygotowanie."}
+                </p>
+              </div>
+            ) : (
+              surface.upcoming.map(({ event, brief }) => (
+                <article
+                  className="meeting-event"
+                  key={`${event.calendarExternalId}:${event.eventExternalId}`}
+                >
+                  <div className="meeting-time">
+                    <strong>{formatTime(event.startsAt)}</strong>
+                    <span>
+                      {event.isAllDay
+                        ? "Cały dzień"
+                        : `${Math.round((Date.parse(event.endsAt) - Date.parse(event.startsAt)) / 60000)} min`}
+                    </span>
+                  </div>
+                  <div className="meeting-event-body">
+                    <h4>{event.title}</h4>
+                    <p>
+                      {countLabel(
+                        event.attendees.length,
+                        "uczestnik",
+                        "uczestników",
+                        "uczestników",
+                      )}
+                      {event.location ? ` · ${event.location}` : ""}
+                    </p>
+                    <div className="evidence-thread">
+                      <span className="evidence-node">Wydarzenie</span>
+                      <i aria-hidden="true" />
+                      <span className="evidence-node">
+                        Brief faktograficzny
+                      </span>
+                      <i aria-hidden="true" />
+                      <span className="evidence-node evidence-node--muted">
+                        Wynik Jamie po spotkaniu
+                      </span>
+                    </div>
+                    <div className="meeting-brief">
+                      <div>
+                        <strong>Orientacja</strong>
+                        <span>
+                          {brief.orientation.length
+                            ? brief.orientation
+                                .map((item) => item.label)
+                                .join(" · ")
+                            : "Brak dokładnie powiązanych rekordów."}
+                        </span>
+                      </div>
+                      <div>
+                        <strong>Otwarte pętle</strong>
+                        <span>
+                          {brief.openLoops.length
+                            ? brief.openLoops
+                                .map((item) => item.label)
+                                .join(" · ")
+                            : "Brak bezpiecznie dopasowanych zobowiązań."}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    className="secondary-button meeting-block-action"
+                    disabled={
+                      !surface.capability.canWriteOwnedBlocks || event.isAllDay
+                    }
+                    title={
+                      !surface.capability.canWriteOwnedBlocks
+                        ? "Provider nie zezwala na zapis własnych bloków."
+                        : undefined
+                    }
+                    onClick={() => {
+                      const startsAt = new Date(
+                        Date.parse(event.startsAt) - 30 * 60_000,
+                      ).toISOString();
+                      const block: CalendarBlockDraft = {
+                        calendarExternalId: event.calendarExternalId,
+                        ownedBlockExternalId: `meeting-prep:${event.eventExternalId}`,
+                        title: `Przygotowanie: ${event.title}`,
+                        startsAt,
+                        endsAt: event.startsAt,
+                        expectedRevision: null,
+                        sourceRecordIds: [
+                          `calendar-event:${event.eventExternalId}`,
+                        ],
+                      };
+                      void client
+                        .previewCalendarBlocks({ blocks: [block] })
+                        .then((result) => {
+                          if (result === undefined)
+                            setNotice(
+                              "Nie udało się przygotować bezpiecznego podglądu. Nic nie zapisano.",
+                            );
+                          else setPreview(result);
+                        });
+                    }}
+                  >
+                    Podgląd bloku
+                  </button>
+                </article>
+              ))
+            )}
+          </section>
+        </aside>
       </div>
       {preview && (
         <CalendarConsentDialog

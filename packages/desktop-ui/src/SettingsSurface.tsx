@@ -1,10 +1,15 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 
 import type {
   ConstellationRendererClient,
   StarterWorkspaceCounts,
   DesktopWorkspaceEntry,
-  ReleaseStatus,
 } from "@constellation/desktop-preload/client";
 
 import {
@@ -13,27 +18,42 @@ import {
   type DesktopSnapshot,
   type MutationFailure,
 } from "./client/workflow.js";
+import { ReleaseContinuity } from "./components/ReleaseContinuity.js";
+import {
+  ConceptHelpDialog,
+  type ConceptHelpTopicId,
+} from "./components/ConceptHelpDialog.js";
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 
 type Theme = "system" | "dark" | "light";
 
-const releaseCopy = (status: ReleaseStatus | undefined): string => {
-  if (status === undefined) return "Sprawdzam stan wydania…";
-  if (status.kind === "unavailable") {
-    if (status.reason === "release_origin_missing")
-      return "Publiczne źródło aktualizacji jest odłożone. Aplikacja nie pobierze niczego bez niego.";
-    if (status.reason === "mechanism_only_build")
-      return "To build mechanizmu, nie podpisane wydanie.";
-    return "Aktualizacje nie są dostępne w tym wariancie aplikacji.";
-  }
-  if (status.kind === "available") return `Dostępna wersja ${status.version}.`;
-  if (status.kind === "ready")
-    return `Wersja ${status.version} jest gotowa do instalacji.`;
-  if (status.kind === "current")
-    return `Masz aktualną wersję ${status.currentVersion}.`;
-  if (status.kind === "failure") return status.message;
-  return `Zainstalowana wersja ${status.currentVersion}.`;
+const settingsCategories = [
+  { id: "workspace", label: "Workspace" },
+  { id: "data", label: "Dane i prywatność" },
+  { id: "appearance", label: "Wygląd" },
+  { id: "access", label: "Dostęp i połączenia" },
+  { id: "application", label: "Start i aplikacja" },
+] as const;
+
+type SettingsCategoryId = (typeof settingsCategories)[number]["id"];
+
+const settingsCategoryElementId = (category: SettingsCategoryId) =>
+  `settings-category-${category}`;
+
+// Section feedback carries its own tone: errors interrupt as alerts,
+// progress and confirmations stay polite status messages.
+type SectionMessage = {
+  readonly tone: "status" | "alert";
+  readonly text: string;
 };
+
+const availabilityLabels = {
+  available: "Dostępny",
+  locked: "Zablokowany",
+  unavailable: "Niedostępny",
+  recovery_required: "Wymaga odzyskania",
+  degraded: "Działa częściowo",
+} as const;
 
 export const SettingsSurface = ({
   client,
@@ -51,77 +71,146 @@ export const SettingsSurface = ({
   readonly onNavigate: (surface: SurfaceId, label: string) => void;
 }) => {
   const [name, setName] = useState(snapshot.bootstrap.workspace.name);
-  const [busy, setBusy] = useState(false);
+  const [busyName, setBusyName] = useState(false);
+  const [busyRetention, setBusyRetention] = useState(false);
+  const [busyWorkspace, setBusyWorkspace] = useState(false);
+  const [busyImport, setBusyImport] = useState(false);
+  const [busySupport, setBusySupport] = useState(false);
+  const [activeCategory, setActiveCategory] =
+    useState<SettingsCategoryId>("workspace");
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = globalThis.localStorage?.getItem("constellation.theme");
     return saved === "dark" || saved === "light" ? saved : "system";
   });
-  const [release, setRelease] = useState<ReleaseStatus>();
   const [workspaces, setWorkspaces] = useState<
     readonly DesktopWorkspaceEntry[]
   >([]);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
-  const [workspaceMessage, setWorkspaceMessage] = useState<string>();
-  const [importMessage, setImportMessage] = useState<string>();
-  const [supportMessage, setSupportMessage] = useState<string>();
+  const [confirmSwitchId, setConfirmSwitchId] =
+    useState<DesktopWorkspaceEntry["workspaceId"]>();
+  const [workspaceMessage, setWorkspaceMessage] = useState<SectionMessage>();
+  const [importMessage, setImportMessage] = useState<SectionMessage>();
+  const [supportMessage, setSupportMessage] = useState<SectionMessage>();
+  const [conceptHelpTopic, setConceptHelpTopic] =
+    useState<ConceptHelpTopicId>();
   const [importCandidate, setImportCandidate] = useState<{
     readonly fileName: string;
     readonly manifest: unknown;
     readonly counts: StarterWorkspaceCounts;
   }>();
+  const workspaceTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    if (!("IntersectionObserver" in globalThis)) return;
+    const categories = settingsCategories
+      .map(({ id }) => document.getElementById(settingsCategoryElementId(id)))
+      .filter((element): element is HTMLElement => element !== null);
+    if (categories.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const nearestVisible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort(
+            (left, right) =>
+              Math.abs(left.boundingClientRect.top) -
+              Math.abs(right.boundingClientRect.top),
+          )[0];
+        const category = nearestVisible?.target.getAttribute(
+          "data-settings-category",
+        ) as SettingsCategoryId | null | undefined;
+        if (category !== undefined && category !== null)
+          setActiveCategory(category);
+      },
+      { rootMargin: "-18% 0px -68% 0px", threshold: [0, 0.05] },
+    );
+    categories.forEach((category) => observer.observe(category));
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!client) return;
     let active = true;
-    void client
-      .getReleaseStatus()
-      .then((status) => active && setRelease(status))
-      .catch(() => {
-        if (active)
-          setRelease({
-            kind: "failure",
-            currentVersion: snapshot.build.version,
-            operation: "check",
-            message: "Stan wydania jest chwilowo niedostępny.",
-          });
-      });
     if (client.listWorkspaces)
       void client
         .listWorkspaces()
         .then((items) => active && setWorkspaces(items))
         .catch(() => {
           if (active)
-            setWorkspaceMessage(
-              "Lista workspace jest chwilowo niedostępna. Bieżące dane pozostają otwarte.",
-            );
+            setWorkspaceMessage({
+              tone: "alert",
+              text: "Lista workspace jest chwilowo niedostępna. Bieżące dane pozostają otwarte.",
+            });
         });
     return () => {
       active = false;
     };
-  }, [client, snapshot.build.version]);
+  }, [client]);
+
+  // Create/switch normally end with a full app restart, so a hung channel
+  // would leave the section busy forever. After 15 s without any response the
+  // section unlocks and states plainly that the current workspace is still
+  // the active one; every settled invoke (success or failure) clears the
+  // timer, and a confirmed success keeps the section locked until restart.
+  const clearWorkspaceTimeout = () => {
+    if (workspaceTimeoutRef.current !== undefined)
+      clearTimeout(workspaceTimeoutRef.current);
+    workspaceTimeoutRef.current = undefined;
+  };
+  const armWorkspaceTimeout = () => {
+    clearWorkspaceTimeout();
+    workspaceTimeoutRef.current = setTimeout(() => {
+      workspaceTimeoutRef.current = undefined;
+      setBusyWorkspace(false);
+      setWorkspaceMessage({
+        tone: "alert",
+        text: "Operacja nie potwierdziła się w ciągu 15 sekund. Bieżący workspace pozostaje aktywny; spróbuj ponownie.",
+      });
+    }, 15_000);
+  };
+  useEffect(() => clearWorkspaceTimeout, []);
 
   const createWorkspace = (event: FormEvent) => {
     event.preventDefault();
     const name = newWorkspaceName.trim();
     if (!name || !client?.createWorkspace) return;
-    setBusy(true);
-    setWorkspaceMessage("Tworzę osobny zaszyfrowany Data Home…");
+    setBusyWorkspace(true);
+    setWorkspaceMessage({
+      tone: "status",
+      text: "Tworzę osobny zaszyfrowany Data Home…",
+    });
+    armWorkspaceTimeout();
     void client
       .createWorkspace({ name })
       .then((result) => {
-        if (result.outcome !== "failure") return;
-        setBusy(false);
-        setWorkspaceMessage(
-          result.code === "invalid_name"
-            ? "Podaj nazwę od 1 do 80 znaków."
-            : "Nie udało się bezpiecznie utworzyć workspace.",
-        );
+        if (result.outcome !== "failure") {
+          // Confirmed: the app restarts into the new workspace. The section
+          // stays locked — the timeout covers only a channel that never
+          // answered, not a slow restart after success.
+          clearWorkspaceTimeout();
+          setWorkspaceMessage({
+            tone: "status",
+            text: "Workspace utworzony. Aplikacja za chwilę uruchomi się ponownie.",
+          });
+          return;
+        }
+        clearWorkspaceTimeout();
+        setBusyWorkspace(false);
+        setWorkspaceMessage({
+          tone: "alert",
+          text:
+            result.code === "invalid_name"
+              ? "Podaj nazwę od 1 do 80 znaków."
+              : "Nie udało się bezpiecznie utworzyć workspace.",
+        });
       })
       .catch(() => {
-        setBusy(false);
-        setWorkspaceMessage(
-          "Nie udało się uruchomić tworzenia. Bieżący workspace nie został zmieniony.",
-        );
+        clearWorkspaceTimeout();
+        setBusyWorkspace(false);
+        setWorkspaceMessage({
+          tone: "alert",
+          text: "Nie udało się uruchomić tworzenia. Bieżący workspace nie został zmieniony.",
+        });
       });
   };
 
@@ -129,22 +218,40 @@ export const SettingsSurface = ({
     workspaceId: DesktopWorkspaceEntry["workspaceId"],
   ) => {
     if (!client?.switchWorkspace) return;
-    setBusy(true);
-    setWorkspaceMessage(
-      "Zamykam bieżący runtime i otwieram wybrany workspace…",
-    );
+    setConfirmSwitchId(undefined);
+    setBusyWorkspace(true);
+    setWorkspaceMessage({
+      tone: "status",
+      text: "Zamykam bieżący runtime i otwieram wybrany workspace…",
+    });
+    armWorkspaceTimeout();
     void client
       .switchWorkspace({ workspaceId })
       .then((result) => {
-        if (result.outcome !== "failure") return;
-        setBusy(false);
-        setWorkspaceMessage("Wybrany workspace nie jest już dostępny.");
+        if (result.outcome !== "failure") {
+          // Confirmed: the runtime closes and reopens the chosen workspace,
+          // so the section must not unlock with a false failure alert.
+          clearWorkspaceTimeout();
+          setWorkspaceMessage({
+            tone: "status",
+            text: "Przełączenie potwierdzone. Aplikacja za chwilę uruchomi się ponownie.",
+          });
+          return;
+        }
+        clearWorkspaceTimeout();
+        setBusyWorkspace(false);
+        setWorkspaceMessage({
+          tone: "alert",
+          text: "Wybrany workspace nie jest już dostępny.",
+        });
       })
       .catch(() => {
-        setBusy(false);
-        setWorkspaceMessage(
-          "Przełączenie nie rozpoczęło się. Bieżący workspace pozostaje aktywny.",
-        );
+        clearWorkspaceTimeout();
+        setBusyWorkspace(false);
+        setWorkspaceMessage({
+          tone: "alert",
+          text: "Przełączenie nie rozpoczęło się. Bieżący workspace pozostaje aktywny.",
+        });
       });
   };
 
@@ -154,11 +261,17 @@ export const SettingsSurface = ({
     if (!file || !client?.previewStarterWorkspace) return;
     setImportCandidate(undefined);
     if (file.size > 256 * 1024) {
-      setImportMessage("Pakiet jest większy niż bezpieczny limit 256 KB.");
+      setImportMessage({
+        tone: "alert",
+        text: "Pakiet jest większy niż bezpieczny limit 256 KB.",
+      });
       return;
     }
-    setBusy(true);
-    setImportMessage("Waliduję pakiet. Nic nie zostało jeszcze zapisane…");
+    setBusyImport(true);
+    setImportMessage({
+      tone: "status",
+      text: "Waliduję pakiet. Nic nie zostało jeszcze zapisane…",
+    });
     try {
       const manifest: unknown = JSON.parse(await file.text());
       const result = await client.previewStarterWorkspace(manifest);
@@ -168,25 +281,36 @@ export const SettingsSurface = ({
           manifest,
           counts: result.counts,
         });
-        setImportMessage("Podgląd gotowy. Sprawdź zakres i potwierdź import.");
+        setImportMessage({
+          tone: "status",
+          text: "Podgląd gotowy. Sprawdź zakres i potwierdź import.",
+        });
       } else {
-        setImportMessage(
-          result.code === "manifest_invalid"
-            ? "Plik nie pasuje do ścisłego formatu pakietu startowego."
-            : "Podgląd jest dostępny w trwałej aplikacji desktopowej.",
-        );
+        setImportMessage({
+          tone: "alert",
+          text:
+            result.code === "manifest_invalid"
+              ? "Plik nie pasuje do ścisłego formatu pakietu startowego."
+              : "Podgląd jest dostępny w trwałej aplikacji desktopowej.",
+        });
       }
     } catch {
-      setImportMessage("Plik nie jest poprawnym JSON-em.");
+      setImportMessage({
+        tone: "alert",
+        text: "Plik nie jest poprawnym JSON-em.",
+      });
     } finally {
-      setBusy(false);
+      setBusyImport(false);
     }
   };
 
   const confirmStarterImport = async () => {
     if (!importCandidate || !client?.importStarterWorkspace) return;
-    setBusy(true);
-    setImportMessage("Wykonuję wersjonowane komendy…");
+    setBusyImport(true);
+    setImportMessage({
+      tone: "status",
+      text: "Wykonuję wersjonowane komendy…",
+    });
     try {
       const result = await client.importStarterWorkspace(
         importCandidate.manifest,
@@ -194,25 +318,29 @@ export const SettingsSurface = ({
       if (result.outcome === "success") {
         const { areas, initiatives, projects, tasks, links } = result.counts;
         setImportCandidate(undefined);
-        setImportMessage(
-          `Gotowe. Obszary: ${areas} · inicjatywy: ${initiatives} · projekty: ${projects} · zadania: ${tasks} · powiązania: ${links}.`,
-        );
+        setImportMessage({
+          tone: "status",
+          text: `Gotowe. Obszary: ${areas} · inicjatywy: ${initiatives} · projekty: ${projects} · zadania: ${tasks} · powiązania: ${links}.`,
+        });
         await onReload();
       } else {
-        setImportMessage(
-          result.code === "manifest_invalid"
-            ? "Pakiet zmienił się lub nie przeszedł ponownej walidacji. Wybierz go jeszcze raz."
-            : result.code === "unavailable"
-              ? "Import jest dostępny w trwałej aplikacji desktopowej."
-              : "Import zatrzymał się. Zapisane kroki są bezpieczne; ponów ten sam plik, aby dokończyć idempotentnie.",
-        );
+        setImportMessage({
+          tone: "alert",
+          text:
+            result.code === "manifest_invalid"
+              ? "Pakiet zmienił się lub nie przeszedł ponownej walidacji. Wybierz go jeszcze raz."
+              : result.code === "unavailable"
+                ? "Import jest dostępny w trwałej aplikacji desktopowej."
+                : "Import zatrzymał się. Zapisane kroki są bezpieczne; ponów ten sam plik, aby dokończyć idempotentnie.",
+        });
       }
     } catch {
-      setImportMessage(
-        "Import nie został ukończony. Ponowienie tego samego pakietu jest bezpieczne.",
-      );
+      setImportMessage({
+        tone: "alert",
+        text: "Import nie został ukończony. Ponowienie tego samego pakietu jest bezpieczne.",
+      });
     } finally {
-      setBusy(false);
+      setBusyImport(false);
     }
   };
 
@@ -236,9 +364,9 @@ export const SettingsSurface = ({
     const trimmed = name.trim();
     if (!client || !trimmed || trimmed === snapshot.bootstrap.workspace.name)
       return;
-    setBusy(true);
+    setBusyName(true);
     void renameWorkspace(client, snapshot, trimmed).then(async (result) => {
-      setBusy(false);
+      setBusyName(false);
       if (result.kind === "success") await onReload();
       else onFailure(result);
     });
@@ -248,13 +376,13 @@ export const SettingsSurface = ({
     if (!client) return;
     const retentionPolicy = event.target.value as
       "delete_after_transcript" | "retain";
-    setBusy(true);
+    setBusyRetention(true);
     void setWorkspaceVoiceAudioRetention(
       client,
       snapshot,
       retentionPolicy,
     ).then(async (result) => {
-      setBusy(false);
+      setBusyRetention(false);
       if (result.kind === "success") await onReload();
       else onFailure(result);
     });
@@ -262,401 +390,569 @@ export const SettingsSurface = ({
 
   const exportSupportReport = async () => {
     if (!client?.exportSupportReport) return;
-    setBusy(true);
-    setSupportMessage("Otwieram zapis raportu…");
+    setBusySupport(true);
+    setSupportMessage({ tone: "status", text: "Otwieram zapis raportu…" });
     try {
       const result = await client.exportSupportReport();
       setSupportMessage(
         result.outcome === "success"
-          ? `Raport zapisany jako ${result.fileLabel}. Sprawdź plik przed udostępnieniem.`
+          ? {
+              tone: "status",
+              text: `Raport zapisany jako ${result.fileLabel}. Sprawdź plik przed udostępnieniem.`,
+            }
           : result.outcome === "cancelled"
-            ? "Anulowano. Żaden raport nie został zapisany."
-            : "Nie udało się zapisać raportu. Spróbuj ponownie. Dane aplikacji pozostały bez zmian.",
+            ? {
+                tone: "status",
+                text: "Anulowano. Żaden raport nie został zapisany.",
+              }
+            : {
+                tone: "alert",
+                text: "Nie udało się zapisać raportu. Spróbuj ponownie. Dane aplikacji pozostały bez zmian.",
+              },
       );
     } catch {
-      setSupportMessage(
-        "Raport jest chwilowo niedostępny. Dane aplikacji pozostały bez zmian.",
-      );
+      setSupportMessage({
+        tone: "alert",
+        text: "Raport jest chwilowo niedostępny. Dane aplikacji pozostały bez zmian.",
+      });
     } finally {
-      setBusy(false);
+      setBusySupport(false);
     }
+  };
+
+  const themeLabel =
+    theme === "system" ? "System" : theme === "dark" ? "Ciemny" : "Jasny";
+  const categoryStatus: Record<SettingsCategoryId, string> = {
+    workspace: snapshot.bootstrap.workspace.name,
+    data:
+      snapshot.dataHome === undefined
+        ? "Stan Data Home nieznany"
+        : `Data Home: ${availabilityLabels[snapshot.dataHome.availability]}`,
+    appearance: `Motyw: ${themeLabel}`,
+    access: "Role, agenci, Kalendarz i Jamie",
+    application: `Wersja ${snapshot.build.version}`,
+  };
+  const navigateToCategory = (category: SettingsCategoryId) => {
+    setActiveCategory(category);
+    document
+      .getElementById(settingsCategoryElementId(category))
+      ?.scrollIntoView({ block: "start", behavior: "auto" });
   };
 
   return (
     <div className="surface-scroll settings-surface">
       <header className="surface-header wave2-header">
         <div>
-          <p className="eyebrow">Workspace operation</p>
-          <h1 id="surface-title">Ustawienia bez panelu administracyjnego</h1>
+          <p className="eyebrow">Workspace</p>
+          <h1 id="surface-title" tabIndex={-1}>
+            Ustawienia
+          </h1>
           <p>
             Tożsamość, dane, wygląd, dostęp, połączenia i wydanie w jednym
             spokojnym miejscu.
           </p>
+          <button
+            type="button"
+            className="settings-help-entry"
+            aria-haspopup="dialog"
+            onClick={() => setConceptHelpTopic("data-home")}
+          >
+            Wyjaśnij pojęcia danych i dostępu
+          </button>
         </div>
       </header>
 
-      <div className="settings-sections">
-        <section>
-          <div className="settings-copy">
-            <p className="eyebrow">Workspace</p>
-            <h2>Tożsamość</h2>
-            <p>
-              Nazwa jest wersjonowaną zmianą widoczną dla tych samych operatorów
-              co pozostała praca.
-            </p>
-          </div>
-          <form className="settings-control" onSubmit={submitName}>
-            <label htmlFor="workspace-name">Nazwa workspace</label>
-            <div>
-              <input
-                id="workspace-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
-              />
-              <button
-                disabled={
-                  busy ||
-                  !client ||
-                  name.trim() === snapshot.bootstrap.workspace.name
-                }
-              >
-                {busy ? "Zapisuję…" : "Zmień nazwę"}
-              </button>
-            </div>
-          </form>
-        </section>
+      <div className="settings-category-picker">
+        <label htmlFor="settings-category-select">Kategoria ustawień</label>
+        <select
+          id="settings-category-select"
+          value={activeCategory}
+          onChange={(event) =>
+            navigateToCategory(event.target.value as SettingsCategoryId)
+          }
+        >
+          {settingsCategories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.label}
+            </option>
+          ))}
+        </select>
+      </div>
 
-        <section>
-          <div className="settings-copy">
-            <p className="eyebrow">Voice custody</p>
-            <h2>Domyślna retencja audio</h2>
-            <p>
-              Nowe notatki głosowe dziedziczą tę decyzję. W Quick Capture możesz
-              ją zmienić dla pojedynczego nagrania.
-            </p>
-          </div>
-          <div className="settings-control">
-            <label htmlFor="voice-audio-retention">Po transkrypcji</label>
-            <select
-              id="voice-audio-retention"
-              disabled={busy || !client}
-              value={snapshot.bootstrap.workspace.voiceAudioRetentionPolicy}
-              onChange={changeVoiceRetention}
-            >
-              <option value="delete_after_transcript">Usuń audio</option>
-              <option value="retain">Zachowaj audio</option>
-            </select>
-          </div>
-        </section>
-
-        <section>
-          <div className="settings-copy">
-            <p className="eyebrow">Workspace switcher</p>
-            <h2>Osobne granice danych</h2>
-            <p>
-              Każdy workspace ma własną szyfrowaną bazę, Data Home,
-              poświadczenia Hub i lokalny endpoint MCP. Przełączenie bezpiecznie
-              uruchamia aplikację ponownie.
-            </p>
-          </div>
-          <div className="settings-control workspace-registry-control">
-            <div className="workspace-registry-list">
-              {workspaces.length === 0 ? (
-                <span>Lista jest dostępna w aplikacji desktopowej.</span>
-              ) : (
-                workspaces.map((workspace) => (
-                  <button
-                    type="button"
-                    key={workspace.workspaceId}
-                    disabled={
-                      busy || workspace.active || !client?.switchWorkspace
-                    }
-                    onClick={() => switchWorkspace(workspace.workspaceId)}
-                  >
-                    <span>
-                      <strong>{workspace.name}</strong>
-                      <small>
-                        {workspace.active
-                          ? "Otwarty teraz"
-                          : "Osobny Data Home"}
-                      </small>
-                    </span>
-                    <em>{workspace.active ? "Aktywny" : "Przełącz"}</em>
-                  </button>
-                ))
-              )}
-            </div>
-            <form onSubmit={createWorkspace}>
-              <label htmlFor="new-workspace-name">Nowy workspace</label>
-              <div>
-                <input
-                  id="new-workspace-name"
-                  value={newWorkspaceName}
-                  onChange={(event) => setNewWorkspaceName(event.target.value)}
-                  placeholder="Np. Studio"
-                  maxLength={80}
-                />
+      <div className="settings-layout">
+        <nav className="settings-navigator" aria-label="Kategorie ustawień">
+          <p>Kategorie</p>
+          <ol>
+            {settingsCategories.map((category) => (
+              <li key={category.id}>
                 <button
-                  disabled={
-                    busy ||
-                    !client?.createWorkspace ||
-                    newWorkspaceName.trim().length === 0
+                  type="button"
+                  aria-controls={settingsCategoryElementId(category.id)}
+                  aria-current={
+                    activeCategory === category.id ? "location" : undefined
                   }
+                  onClick={() => navigateToCategory(category.id)}
                 >
-                  Utwórz
+                  <span>{category.label}</span>
+                  <small>{categoryStatus[category.id]}</small>
                 </button>
-              </div>
-            </form>
-            {workspaceMessage && <p role="status">{workspaceMessage}</p>}
-          </div>
-        </section>
-
-        <section>
-          <div className="settings-copy">
-            <p className="eyebrow">Data Home</p>
-            <h2>Dane, backup i odzyskiwanie</h2>
-            <p>
-              {snapshot.dataHome?.descriptor.displayName ??
-                "Stan Data Home jest chwilowo niedostępny."}
-            </p>
-          </div>
-          <div className="settings-control">
-            <strong>
-              {snapshot.dataHome?.availability === "available"
-                ? "Dostępny"
-                : "Wymaga uwagi"}
-            </strong>
-            <button type="button" onClick={onOpenRecovery}>
-              Otwórz Data Home
-            </button>
-          </div>
-        </section>
-
-        <section className="support-report-section">
-          <div className="settings-copy">
-            <p className="eyebrow">Wsparcie</p>
-            <h2>Raport wsparcia</h2>
-            <p>
-              Zapisz plik diagnostyczny, gdy prosisz o pomoc. Pokazuje stan
-              aplikacji, ale nie treść pracy ani dane identyfikujące.
-            </p>
-            <details className="support-report-details">
-              <summary>Co znajdzie się w raporcie?</summary>
-              <div>
-                <p>
-                  <strong>Zawiera:</strong> wersje aplikacji i systemu oraz
-                  nazwane stany Data Home, odzyskiwania i aktualizacji.
-                </p>
-                <p>
-                  <strong>Nie zawiera:</strong> treści, nazw, identyfikatorów,
-                  ścieżek, adresów usług, liczby rekordów, poświadczeń, logów,
-                  stosów błędów ani surowych komunikatów.
-                </p>
-              </div>
-            </details>
-          </div>
-          <div className="settings-control support-report-action">
-            <button
-              type="button"
-              disabled={busy || !client?.exportSupportReport}
-              onClick={() => void exportSupportReport()}
-            >
-              Zapisz raport…
-            </button>
-            <p className="support-report-privacy-note">
-              Plik zostaje na Twoim urządzeniu. Nic nie jest wysyłane
-              automatycznie.
-            </p>
-            {supportMessage && <p role="status">{supportMessage}</p>}
-          </div>
-        </section>
-
-        <section>
-          <div className="settings-copy">
-            <p className="eyebrow">Appearance</p>
-            <h2>Wygląd</h2>
-            <p>
-              Motyw jest lokalną preferencją urządzenia. Kontrast,
-              przezroczystość i ruch respektują ustawienia systemowe.
-            </p>
-          </div>
-          <fieldset className="settings-control settings-choice">
-            <legend>Motyw</legend>
-            {(["system", "dark", "light"] as const).map((item) => (
-              <label key={item}>
-                <input
-                  type="radio"
-                  name="theme"
-                  checked={theme === item}
-                  onChange={() => applyTheme(item)}
-                />
-                <span>
-                  {item === "system"
-                    ? "System"
-                    : item === "dark"
-                      ? "Ciemny"
-                      : "Jasny"}
-                </span>
-              </label>
+              </li>
             ))}
-          </fieldset>
-        </section>
+          </ol>
+        </nav>
 
-        <section>
-          <div className="settings-copy">
-            <p className="eyebrow">Authority</p>
-            <h2>Dostęp i agenci</h2>
-            <p>
-              Rola, zakres Space i możliwości agentów pozostają niezależnymi
-              ustawieniami.
-            </p>
-          </div>
-          <div className="settings-control settings-actions">
-            <button
-              type="button"
-              onClick={() => onNavigate("access", "Dostęp")}
-            >
-              Zarządzaj dostępem
-            </button>
-          </div>
-        </section>
-
-        <section>
-          <div className="settings-copy">
-            <p className="eyebrow">Connectors</p>
-            <h2>Kalendarz i Jamie</h2>
-            <p>
-              Constellation czyta Kalendarz i importuje wyniki Jamie; nie
-              przejmuje nagrywania ani transkrypcji.
-            </p>
-          </div>
-          <div className="settings-control settings-actions">
-            <button
-              type="button"
-              onClick={() => onNavigate("meetings", "Spotkania")}
-            >
-              Otwórz połączenia
-            </button>
-          </div>
-        </section>
-
-        <section>
-          <div className="settings-copy">
-            <p className="eyebrow">Rules &amp; templates</p>
-            <h2>Powtarzalny start bez ukrytych zapisów</h2>
-            <p>
-              Pakiet startowy tworzy Areas, Initiatives, Projects, Tasks i jawne
-              powiązania wyłącznie przez te same wersjonowane komendy co UI i
-              MCP. Ponowienie tego samego importu jest bezpieczne.
-            </p>
-          </div>
-          <div className="settings-control settings-actions">
-            <label
-              className={`file-action ${busy || !client?.importStarterWorkspace ? "disabled" : ""}`}
-            >
-              <input
-                type="file"
-                accept="application/json,.json"
-                disabled={busy || !client?.previewStarterWorkspace}
-                onChange={(event) => void importStarter(event)}
-              />
-              <span>Wybierz pakiet startowy JSON</span>
-            </label>
-            {importCandidate && (
-              <div
-                className="import-preview"
-                role="group"
-                aria-labelledby="import-preview-title"
-              >
-                <strong id="import-preview-title">Zakres przed importem</strong>
-                <span>{importCandidate.fileName}</span>
-                <dl>
-                  <div>
-                    <dt>Obszary</dt>
-                    <dd>{importCandidate.counts.areas}</dd>
-                  </div>
-                  <div>
-                    <dt>Inicjatywy</dt>
-                    <dd>{importCandidate.counts.initiatives}</dd>
-                  </div>
-                  <div>
-                    <dt>Projekty</dt>
-                    <dd>{importCandidate.counts.projects}</dd>
-                  </div>
-                  <div>
-                    <dt>Zadania</dt>
-                    <dd>{importCandidate.counts.tasks}</dd>
-                  </div>
-                  <div>
-                    <dt>Powiązania</dt>
-                    <dd>{importCandidate.counts.links}</dd>
-                  </div>
-                </dl>
-                <div className="import-preview-actions">
+        <div className="settings-sections">
+          <div
+            className="settings-category"
+            id={settingsCategoryElementId("workspace")}
+            data-settings-category="workspace"
+          >
+            <section>
+              <div className="settings-copy">
+                <h2>Tożsamość</h2>
+                <p>
+                  Nazwa jest wersjonowaną zmianą widoczną dla tych samych
+                  operatorów co pozostała praca.
+                </p>
+              </div>
+              <form className="settings-control" onSubmit={submitName}>
+                <label htmlFor="workspace-name">Nazwa workspace</label>
+                <div>
+                  <input
+                    id="workspace-name"
+                    value={name}
+                    maxLength={80}
+                    onChange={(event) => setName(event.target.value)}
+                    required
+                  />
                   <button
-                    type="button"
-                    className="import-preview-confirm"
-                    disabled={busy}
-                    onClick={() => void confirmStarterImport()}
+                    disabled={
+                      busyName ||
+                      !client ||
+                      name.trim() === snapshot.bootstrap.workspace.name
+                    }
                   >
-                    Importuj ten zakres
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setImportCandidate(undefined);
-                      setImportMessage(
-                        "Import anulowany. Nic nie zostało zapisane.",
-                      );
-                    }}
-                  >
-                    Anuluj
+                    {busyName ? "Zapisuję…" : "Zmień nazwę"}
                   </button>
                 </div>
-              </div>
-            )}
-            {importMessage && <p role="status">{importMessage}</p>}
-            <small>
-              Reguły cykliczne i zapisane widoki pozostają zwykłymi rekordami
-              Work; import nie wykonuje kodu ani nie omija audytu.
-            </small>
-          </div>
-        </section>
+              </form>
+            </section>
 
-        <section>
-          <div className="settings-copy">
-            <p className="eyebrow">Release</p>
-            <h2>Aktualizacja aplikacji</h2>
-            <p>{releaseCopy(release)}</p>
+            <section>
+              <div className="settings-copy">
+                <h2>Domyślna retencja audio</h2>
+                <p>
+                  Nowe notatki głosowe dziedziczą tę decyzję. W Quick Capture
+                  możesz ją zmienić dla pojedynczego nagrania.
+                </p>
+              </div>
+              <div className="settings-control">
+                <label htmlFor="voice-audio-retention">Po transkrypcji</label>
+                <select
+                  id="voice-audio-retention"
+                  disabled={busyRetention || !client}
+                  value={snapshot.bootstrap.workspace.voiceAudioRetentionPolicy}
+                  onChange={changeVoiceRetention}
+                >
+                  <option value="delete_after_transcript">Usuń audio</option>
+                  <option value="retain">Zachowaj audio</option>
+                </select>
+              </div>
+            </section>
           </div>
-          <div className="settings-control">
-            <strong>{release?.currentVersion ?? snapshot.build.version}</strong>
-            <button
-              type="button"
-              disabled={!client || release?.kind === "unavailable"}
-              onClick={() => {
-                if (!client) return;
-                void client
-                  .checkForRelease()
-                  .then(setRelease)
-                  .catch(() =>
-                    setRelease({
-                      kind: "failure",
-                      currentVersion: snapshot.build.version,
-                      operation: "check",
-                      message:
-                        "Nie udało się sprawdzić wydania. Spróbuj ponownie.",
-                    }),
-                  );
-              }}
-            >
-              Sprawdź wersję
-            </button>
+
+          <div
+            className="settings-category"
+            id={settingsCategoryElementId("data")}
+            data-settings-category="data"
+          >
+            <section>
+              <div className="settings-copy">
+                <h2>Osobne granice danych</h2>
+                <p>
+                  Każdy workspace ma własną szyfrowaną bazę, Data Home,
+                  poświadczenia Hub i lokalny endpoint MCP. Przełączenie
+                  bezpiecznie uruchamia aplikację ponownie.
+                </p>
+                <button
+                  type="button"
+                  className="settings-context-help"
+                  aria-haspopup="dialog"
+                  onClick={() => setConceptHelpTopic("data-home")}
+                >
+                  Wyjaśnij Data Home, Hub i MCP
+                </button>
+              </div>
+              <div className="settings-control workspace-registry-control">
+                <div className="workspace-registry-list">
+                  {workspaces.length === 0 ? (
+                    <span>Lista jest dostępna w aplikacji desktopowej.</span>
+                  ) : (
+                    workspaces.map((workspace) => (
+                      <button
+                        type="button"
+                        key={workspace.workspaceId}
+                        className={
+                          workspace.active ? "workspace-current" : undefined
+                        }
+                        aria-current={workspace.active ? "true" : undefined}
+                        disabled={
+                          busyWorkspace ||
+                          workspace.active ||
+                          !client?.switchWorkspace
+                        }
+                        onClick={() => {
+                          // Two-step confirmation: switching closes the current
+                          // runtime, so the first click only arms the row.
+                          if (confirmSwitchId === workspace.workspaceId) {
+                            switchWorkspace(workspace.workspaceId);
+                            return;
+                          }
+                          setConfirmSwitchId(workspace.workspaceId);
+                          setWorkspaceMessage({
+                            tone: "status",
+                            text: "Przełączenie bezpiecznie zamknie bieżący workspace i uruchomi aplikację ponownie. Kliknij „Potwierdź przełączenie”.",
+                          });
+                        }}
+                      >
+                        <span>
+                          <strong>{workspace.name}</strong>
+                          <small>
+                            {workspace.active
+                              ? "Otwarty teraz"
+                              : "Osobny Data Home"}
+                          </small>
+                        </span>
+                        <em>
+                          {workspace.active
+                            ? "Aktywny"
+                            : confirmSwitchId === workspace.workspaceId
+                              ? "Potwierdź przełączenie"
+                              : "Przełącz"}
+                        </em>
+                      </button>
+                    ))
+                  )}
+                </div>
+                {confirmSwitchId !== undefined && (
+                  <button
+                    type="button"
+                    disabled={busyWorkspace}
+                    onClick={() => {
+                      setConfirmSwitchId(undefined);
+                      setWorkspaceMessage(undefined);
+                    }}
+                  >
+                    Anuluj przełączenie
+                  </button>
+                )}
+                <form onSubmit={createWorkspace}>
+                  <label htmlFor="new-workspace-name">Nowy workspace</label>
+                  <div>
+                    <input
+                      id="new-workspace-name"
+                      value={newWorkspaceName}
+                      onChange={(event) =>
+                        setNewWorkspaceName(event.target.value)
+                      }
+                      placeholder="Np. Studio"
+                      maxLength={80}
+                    />
+                    <button
+                      disabled={
+                        busyWorkspace ||
+                        !client?.createWorkspace ||
+                        newWorkspaceName.trim().length === 0
+                      }
+                    >
+                      Utwórz
+                    </button>
+                  </div>
+                </form>
+                {workspaceMessage && (
+                  <p role={workspaceMessage.tone}>{workspaceMessage.text}</p>
+                )}
+              </div>
+            </section>
+
+            <section>
+              <div className="settings-copy">
+                <h2>Dane, backup i odzyskiwanie</h2>
+                <p>
+                  {snapshot.dataHome?.descriptor.displayName ??
+                    "Stan Data Home jest chwilowo niedostępny."}
+                </p>
+                <button
+                  type="button"
+                  className="settings-context-help"
+                  aria-haspopup="dialog"
+                  onClick={() => setConceptHelpTopic("recovery")}
+                >
+                  Wyjaśnij odzyskiwanie
+                </button>
+              </div>
+              <div className="settings-control">
+                <span
+                  className={`data-home-availability data-home-availability--${snapshot.dataHome?.availability ?? "unavailable"}`}
+                >
+                  <i aria-hidden="true" />
+                  {snapshot.dataHome === undefined
+                    ? "Stan nieznany"
+                    : availabilityLabels[snapshot.dataHome.availability]}
+                </span>
+                <button type="button" onClick={onOpenRecovery}>
+                  Otwórz Data Home
+                </button>
+              </div>
+            </section>
+
+            <section className="support-report-section">
+              <div className="settings-copy">
+                <h2>Raport wsparcia</h2>
+                <p>
+                  Zapisz plik diagnostyczny, gdy prosisz o pomoc. Pokazuje stan
+                  aplikacji, ale nie treść pracy ani dane identyfikujące.
+                </p>
+                <details className="support-report-details">
+                  <summary>Co znajdzie się w raporcie?</summary>
+                  <div>
+                    <p>
+                      <strong>Zawiera:</strong> wersje aplikacji i systemu oraz
+                      nazwane stany Data Home, odzyskiwania i aktualizacji.
+                    </p>
+                    <p>
+                      <strong>Nie zawiera:</strong> treści, nazw,
+                      identyfikatorów, ścieżek, adresów usług, liczby rekordów,
+                      poświadczeń, logów, stosów błędów ani surowych
+                      komunikatów.
+                    </p>
+                  </div>
+                </details>
+              </div>
+              <div className="settings-control support-report-action">
+                <button
+                  type="button"
+                  disabled={busySupport || !client?.exportSupportReport}
+                  onClick={() => void exportSupportReport()}
+                >
+                  Zapisz raport…
+                </button>
+                <p className="support-report-privacy-note">
+                  Plik zostaje na Twoim urządzeniu. Nic nie jest wysyłane
+                  automatycznie.
+                </p>
+                {supportMessage && (
+                  <p role={supportMessage.tone}>{supportMessage.text}</p>
+                )}
+              </div>
+            </section>
           </div>
-        </section>
+
+          <div
+            className="settings-category"
+            id={settingsCategoryElementId("appearance")}
+            data-settings-category="appearance"
+          >
+            <section>
+              <div className="settings-copy">
+                <h2>Wygląd</h2>
+                <p>
+                  Motyw jest lokalną preferencją urządzenia. Kontrast,
+                  przezroczystość i ruch respektują ustawienia systemowe.
+                </p>
+              </div>
+              <fieldset className="settings-control settings-choice">
+                <legend>Motyw</legend>
+                {(["system", "dark", "light"] as const).map((item) => (
+                  <label key={item}>
+                    <input
+                      type="radio"
+                      name="theme"
+                      checked={theme === item}
+                      onChange={() => applyTheme(item)}
+                    />
+                    <span>
+                      {item === "system"
+                        ? "System"
+                        : item === "dark"
+                          ? "Ciemny"
+                          : "Jasny"}
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+            </section>
+          </div>
+
+          <div
+            className="settings-category"
+            id={settingsCategoryElementId("access")}
+            data-settings-category="access"
+          >
+            <section>
+              <div className="settings-copy">
+                <h2>Dostęp i agenci</h2>
+                <p>
+                  Rola, zakres Space i możliwości agentów pozostają niezależnymi
+                  ustawieniami.
+                </p>
+                <button
+                  type="button"
+                  className="settings-context-help"
+                  aria-haspopup="dialog"
+                  onClick={() => setConceptHelpTopic("agent-access")}
+                >
+                  Wyjaśnij dostęp agenta
+                </button>
+              </div>
+              <div className="settings-control settings-actions">
+                <button
+                  type="button"
+                  onClick={() => onNavigate("access", "Dostęp")}
+                >
+                  Zarządzaj dostępem
+                </button>
+              </div>
+            </section>
+
+            <section>
+              <div className="settings-copy">
+                <h2>Kalendarz i Jamie</h2>
+                <p>
+                  Constellation czyta Kalendarz i importuje wyniki Jamie; nie
+                  przejmuje nagrywania ani transkrypcji.
+                </p>
+              </div>
+              <div className="settings-control settings-actions">
+                <button
+                  type="button"
+                  onClick={() => onNavigate("meetings", "Spotkania")}
+                >
+                  Otwórz połączenia
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <div
+            className="settings-category"
+            id={settingsCategoryElementId("application")}
+            data-settings-category="application"
+          >
+            <section>
+              <div className="settings-copy">
+                <h2>Powtarzalny start bez ukrytych zapisów</h2>
+                <p>
+                  Pakiet startowy tworzy Areas, Initiatives, Projects, Tasks i
+                  jawne powiązania wyłącznie przez te same wersjonowane komendy
+                  co UI i MCP. Ponowienie tego samego importu jest bezpieczne.
+                </p>
+              </div>
+              <div className="settings-control settings-actions">
+                <label
+                  className={`file-action ${busyImport || !client?.importStarterWorkspace ? "disabled" : ""}`}
+                >
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    disabled={busyImport || !client?.previewStarterWorkspace}
+                    onChange={(event) => void importStarter(event)}
+                  />
+                  <span>Wybierz pakiet startowy JSON</span>
+                </label>
+                {importCandidate && (
+                  <div
+                    className="import-preview"
+                    role="group"
+                    aria-labelledby="import-preview-title"
+                  >
+                    <strong id="import-preview-title">
+                      Zakres przed importem
+                    </strong>
+                    <span>{importCandidate.fileName}</span>
+                    <dl>
+                      <div>
+                        <dt>Obszary</dt>
+                        <dd>{importCandidate.counts.areas}</dd>
+                      </div>
+                      <div>
+                        <dt>Inicjatywy</dt>
+                        <dd>{importCandidate.counts.initiatives}</dd>
+                      </div>
+                      <div>
+                        <dt>Projekty</dt>
+                        <dd>{importCandidate.counts.projects}</dd>
+                      </div>
+                      <div>
+                        <dt>Zadania</dt>
+                        <dd>{importCandidate.counts.tasks}</dd>
+                      </div>
+                      <div>
+                        <dt>Powiązania</dt>
+                        <dd>{importCandidate.counts.links}</dd>
+                      </div>
+                    </dl>
+                    <div className="import-preview-actions">
+                      <button
+                        type="button"
+                        className="import-preview-confirm"
+                        disabled={busyImport}
+                        onClick={() => void confirmStarterImport()}
+                      >
+                        Importuj ten zakres
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busyImport}
+                        onClick={() => {
+                          setImportCandidate(undefined);
+                          setImportMessage({
+                            tone: "status",
+                            text: "Import anulowany. Nic nie zostało zapisane.",
+                          });
+                        }}
+                      >
+                        Anuluj
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {importMessage && (
+                  <p role={importMessage.tone}>{importMessage.text}</p>
+                )}
+                <small>
+                  Reguły cykliczne i zapisane widoki pozostają zwykłymi
+                  rekordami Work; import nie wykonuje kodu ani nie omija audytu.
+                </small>
+              </div>
+            </section>
+
+            <section>
+              {client ? (
+                <ReleaseContinuity client={client} headingLevel={2} />
+              ) : (
+                <>
+                  <div className="settings-copy">
+                    <h2>Aktualizacja aplikacji</h2>
+                    <p role="status">
+                      Stan wydania jest dostępny w aplikacji desktopowej.
+                    </p>
+                  </div>
+                  <div className="settings-control">
+                    <strong>{snapshot.build.version}</strong>
+                  </div>
+                </>
+              )}
+            </section>
+          </div>
+        </div>
       </div>
+      {conceptHelpTopic !== undefined && (
+        <ConceptHelpDialog
+          initialTopic={conceptHelpTopic}
+          onClose={() => setConceptHelpTopic(undefined)}
+        />
+      )}
     </div>
   );
 };
