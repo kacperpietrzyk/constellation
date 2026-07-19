@@ -19,6 +19,7 @@ const findPackageRoot = (): string => {
 };
 
 const root = findPackageRoot();
+const tokenSource = readFileSync(path.join(root, "src", "tokens.css"), "utf8");
 const sources = ["src/tokens.css", "src/styles.css"].map((relative) =>
   readFileSync(path.join(root, relative), "utf8"),
 );
@@ -68,5 +69,29 @@ describe("css token lint", () => {
       "Height-bound overlays and editors must use 100dvh so changing browser " +
         "chrome cannot hide their footer or final action.",
     );
+  });
+
+  it("keeps light-theme semantic status text on the AA contrast mapping", () => {
+    const lightTheme = tokenSource.match(
+      /\[data-theme="light"\]\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+    assert.ok(lightTheme, "The light-theme token mapping must remain present.");
+
+    const contrastSafeStatuses = [
+      ["success", "0.1", "150"],
+      ["warning", "0.1", "78"],
+      ["error", "0.14", "25"],
+      ["info", "0.075", "245"],
+    ] as const;
+
+    for (const [status, chroma, hue] of contrastSafeStatuses) {
+      assert.match(
+        lightTheme,
+        new RegExp(
+          `--status-${status}:\\s*oklch\\(52%\\s+${chroma}\\s+${hue}\\)`,
+        ),
+        `Light ${status} text must retain the measured 52% OKLCH mapping.`,
+      );
+    }
   });
 });

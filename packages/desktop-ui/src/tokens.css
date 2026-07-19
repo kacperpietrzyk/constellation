@@ -146,11 +146,6 @@
   --elevation-overlay:
     inset 0 0.0625rem 0 oklch(100% 0 0 / 0.12),
     0 1.75rem 5rem oklch(0% 0 0 / 0.56), 0 0.5rem 1.5rem oklch(0% 0 0 / 0.42);
-  --elevation-window:
-    inset 0 0.0625rem 0 oklch(100% 0 0 / 0.12),
-    0 0 0 0.0625rem var(--white-a055), 0 3rem 8.75rem var(--black-a72),
-    0 0.875rem 2.625rem oklch(0% 0 0 / 0.46);
-
   --shell-window-bg: var(--surface-window);
   --shell-chrome-bg: var(--surface-glass);
   --shell-sidebar-bg: var(--surface-glass);
@@ -241,6 +236,10 @@
   --text-quaternary: var(--neutral-600);
   --text-disabled: var(--neutral-500);
   --text-on-action: var(--neutral-50);
+  --status-success: oklch(52% 0.1 150);
+  --status-warning: oklch(52% 0.1 78);
+  --status-error: oklch(52% 0.14 25);
+  --status-info: oklch(52% 0.075 245);
   --border-subtle: oklch(12% 0.006 255 / 0.08);
   --border-default: oklch(12% 0.006 255 / 0.13);
   --border-strong: oklch(12% 0.006 255 / 0.2);
