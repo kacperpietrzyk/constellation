@@ -85,6 +85,23 @@ describe("interaction recovery contracts", () => {
     assert.match(styles, /\.inspector-resize::after\s*\{[^}]*width:\s*1px/s);
   });
 
+  it("returns focus from the undo preview to the invoking Activity action", () => {
+    assert.match(
+      surfaces,
+      /const returnTargetRef = useRef<HTMLElement \| null>/,
+    );
+    assert.match(surfaces, /const activeElement = document\.activeElement/);
+    assert.match(
+      surfaces,
+      /activeElement instanceof HTMLElement && activeElement !== document\.body/,
+    );
+    assert.match(
+      surfaces,
+      /returnTarget\?\.isConnected && !returnTarget\.hasAttribute\("disabled"\)/,
+    );
+    assert.match(surfaces, /returnTarget\.focus\(\{ preventScroll: true \}\)/);
+  });
+
   it("keeps the inspector out of the layout until deliberate object selection", () => {
     assert.match(realApp, /inspectorDetailOpen \? " inspector-open" : ""/);
     assert.match(
