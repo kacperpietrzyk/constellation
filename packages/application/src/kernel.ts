@@ -344,6 +344,13 @@ const isCurrentlyAuthorized = (
     case "task.create":
     case "task.updateDetails":
     case "task.setParent":
+    case "taskStatus.create":
+    case "taskStatus.rename":
+    case "taskStatus.setSemantics":
+    case "taskStatus.reorder":
+    case "taskStatus.archive":
+    case "taskStatus.restore":
+    case "workspace.setDefaultTaskStatus":
     case "task.setStatus":
     case "task.setOperationalState":
     case "task.complete":
@@ -682,6 +689,13 @@ export class ApplicationKernel {
       case "task.create":
       case "task.updateDetails":
       case "task.setParent":
+      case "taskStatus.create":
+      case "taskStatus.rename":
+      case "taskStatus.setSemantics":
+      case "taskStatus.reorder":
+      case "taskStatus.archive":
+      case "taskStatus.restore":
+      case "workspace.setDefaultTaskStatus":
       case "task.setStatus":
       case "task.setOperationalState":
       case "task.complete":
@@ -2696,6 +2710,7 @@ export class ApplicationKernel {
           id: status.id,
           label: status.label,
           operationalSemantics: status.operationalSemantics,
+          ...(status.state === undefined ? {} : { state: status.state }),
           position: status.position,
           version: status.version,
         })),
@@ -2955,6 +2970,7 @@ export class ApplicationKernel {
               id: status.id,
               label: status.label,
               operationalSemantics: status.operationalSemantics,
+              ...(status.state === undefined ? {} : { state: status.state }),
             },
             completionState: task.completionState,
             ...(task.completedAt === undefined

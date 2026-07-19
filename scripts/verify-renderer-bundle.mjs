@@ -14,10 +14,13 @@ import path from "node:path";
 // 2026-07-20 (R12.2): oba podniesione po podzadaniach (sekcja inspektora,
 // wiersz dodawania, link do rodzica) i jawnym kierunku/terminie oczekiwania
 // w Work.
+// 2026-07-20 (R12.3): totalJavaScript i entry po bloku zarządzania statusami
+// zadań w Ustawieniach (wiersze definicji, dwustopniowa archiwizacja,
+// wiersz dodawania, wrappery komend taskStatus.*).
 const limits = {
-  entryBytes: 512_000,
-  entryGzipBytes: 140_000,
-  totalJavaScriptBytes: 775_000,
+  entryBytes: 515_000,
+  entryGzipBytes: 141_000,
+  totalJavaScriptBytes: 782_000,
   stylesheetBytes: 172_000,
 };
 

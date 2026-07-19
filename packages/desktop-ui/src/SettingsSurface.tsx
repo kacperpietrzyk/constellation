@@ -13,17 +13,28 @@ import type {
 } from "@constellation/desktop-preload/client";
 
 import {
+  changeTaskStatusDefinition,
+  createTaskStatusDefinition,
   renameWorkspace,
+  setDefaultTaskStatus,
   setWorkspaceVoiceAudioRetention,
   type DesktopSnapshot,
   type MutationFailure,
 } from "./client/workflow.js";
+
 import { ReleaseContinuity } from "./components/ReleaseContinuity.js";
 import {
   ConceptHelpDialog,
   type ConceptHelpTopicId,
 } from "./components/ConceptHelpDialog.js";
 import type { SurfaceId } from "./client/wave2-fixtures.js";
+
+const statusSemanticsLabels: Record<string, string> = {
+  actionable: "Do działania",
+  waiting: "Oczekiwanie",
+  blocked: "Blokada",
+  paused: "Wstrzymane",
+};
 
 type Theme = "system" | "dark" | "light";
 
@@ -72,6 +83,33 @@ export const SettingsSurface = ({
 }) => {
   const [name, setName] = useState(snapshot.bootstrap.workspace.name);
   const [busyName, setBusyName] = useState(false);
+  const [statusBusyId, setStatusBusyId] = useState<string>();
+  const [statusEditId, setStatusEditId] = useState<string>();
+  const [statusEditLabel, setStatusEditLabel] = useState("");
+  const [statusArchiveConfirmId, setStatusArchiveConfirmId] =
+    useState<string>();
+  const [newStatusLabel, setNewStatusLabel] = useState("");
+  const [newStatusSemantics, setNewStatusSemantics] = useState<
+    "actionable" | "waiting" | "blocked" | "paused"
+  >("actionable");
+  const runStatusOperation = async (
+    id: string,
+    operation: () => Promise<{ readonly kind: string }>,
+  ): Promise<boolean> => {
+    if (statusBusyId !== undefined) return false;
+    setStatusBusyId(id);
+    try {
+      const result = await operation();
+      if (result.kind === "success") {
+        await onReload();
+        return true;
+      }
+      onFailure(result as MutationFailure);
+      return false;
+    } finally {
+      setStatusBusyId(undefined);
+    }
+  };
   const [busyRetention, setBusyRetention] = useState(false);
   const [busyWorkspace, setBusyWorkspace] = useState(false);
   const [busyImport, setBusyImport] = useState(false);
@@ -536,6 +574,313 @@ export const SettingsSurface = ({
                   </button>
                 </div>
               </form>
+            </section>
+
+            <section>
+              <div className="settings-copy">
+                <h2>Statusy zadań</h2>
+                <p>
+                  Etykiety i kolejność należą do workspace; szerokie znaczenie
+                  operacyjne pozostaje jawne, żeby widoki i agenci zachowywali
+                  się przewidywalnie. Archiwizacja nie przepisuje istniejących
+                  zadań — zachowują historyczną etykietę.
+                </p>
+              </div>
+              <div className="settings-control status-manager">
+                <ul className="status-list">
+                  {[...snapshot.bootstrap.taskStatuses]
+                    .sort(
+                      (left, right) =>
+                        left.position - right.position ||
+                        left.id.localeCompare(right.id),
+                    )
+                    .map((status, index, ordered) => {
+                      const archived = status.state === "archived";
+                      const isDefault =
+                        snapshot.bootstrap.workspace.defaultTaskStatusId ===
+                        status.id;
+                      const carrying = snapshot.tasks.filter(
+                        (task) => task.status.id === status.id,
+                      ).length;
+                      const busy = statusBusyId === status.id;
+                      return (
+                        <li
+                          key={status.id}
+                          className={archived ? "status-archived" : undefined}
+                        >
+                          {statusEditId === status.id ? (
+                            <form
+                              className="status-rename"
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                const label = statusEditLabel.trim();
+                                if (label.length === 0 || !client) return;
+                                void runStatusOperation(status.id, () =>
+                                  changeTaskStatusDefinition(
+                                    client,
+                                    snapshot,
+                                    status.id,
+                                    status.version,
+                                    { kind: "rename", label },
+                                  ),
+                                ).then((ok) => {
+                                  if (ok) setStatusEditId(undefined);
+                                });
+                              }}
+                            >
+                              <input
+                                value={statusEditLabel}
+                                maxLength={120}
+                                autoFocus
+                                aria-label={`Nowa etykieta statusu ${status.label}`}
+                                onChange={(event) =>
+                                  setStatusEditLabel(event.target.value)
+                                }
+                                onKeyDown={(event) => {
+                                  if (event.key === "Escape") {
+                                    event.stopPropagation();
+                                    setStatusEditId(undefined);
+                                  }
+                                }}
+                              />
+                              <button type="submit" disabled={busy}>
+                                Zapisz
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => setStatusEditId(undefined)}
+                              >
+                                Anuluj
+                              </button>
+                            </form>
+                          ) : (
+                            <>
+                              <span className="status-label">
+                                <strong>{status.label}</strong>
+                                <small>
+                                  {statusSemanticsLabels[
+                                    status.operationalSemantics
+                                  ] ?? status.operationalSemantics}
+                                  {isDefault ? " · domyślny" : ""}
+                                  {archived ? " · archiwalny" : ""}
+                                </small>
+                              </span>
+                              <span className="status-actions">
+                                <button
+                                  type="button"
+                                  disabled={busy || index === 0 || archived}
+                                  aria-label={`Przesuń wyżej: ${status.label}`}
+                                  onClick={() => {
+                                    const above = ordered[index - 1];
+                                    if (!client || !above) return;
+                                    void runStatusOperation(status.id, () =>
+                                      changeTaskStatusDefinition(
+                                        client,
+                                        snapshot,
+                                        status.id,
+                                        status.version,
+                                        {
+                                          kind: "reorder",
+                                          position: Math.max(
+                                            0,
+                                            above.position === status.position
+                                              ? status.position - 1
+                                              : above.position,
+                                          ),
+                                        },
+                                      ),
+                                    );
+                                  }}
+                                >
+                                  ↑
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={
+                                    busy ||
+                                    index === ordered.length - 1 ||
+                                    archived
+                                  }
+                                  aria-label={`Przesuń niżej: ${status.label}`}
+                                  onClick={() => {
+                                    const below = ordered[index + 1];
+                                    if (!client || !below) return;
+                                    void runStatusOperation(status.id, () =>
+                                      changeTaskStatusDefinition(
+                                        client,
+                                        snapshot,
+                                        status.id,
+                                        status.version,
+                                        {
+                                          kind: "reorder",
+                                          position:
+                                            below.position === status.position
+                                              ? status.position + 1
+                                              : below.position,
+                                        },
+                                      ),
+                                    );
+                                  }}
+                                >
+                                  ↓
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy || archived}
+                                  onClick={() => {
+                                    setStatusEditId(status.id);
+                                    setStatusEditLabel(status.label);
+                                  }}
+                                >
+                                  Zmień nazwę
+                                </button>
+                                {!isDefault && !archived && (
+                                  <button
+                                    type="button"
+                                    disabled={busy || !client}
+                                    onClick={() => {
+                                      if (!client) return;
+                                      void runStatusOperation(status.id, () =>
+                                        setDefaultTaskStatus(
+                                          client,
+                                          snapshot,
+                                          status.id,
+                                        ),
+                                      );
+                                    }}
+                                  >
+                                    Ustaw domyślny
+                                  </button>
+                                )}
+                                {archived ? (
+                                  <button
+                                    type="button"
+                                    disabled={busy || !client}
+                                    onClick={() => {
+                                      if (!client) return;
+                                      void runStatusOperation(status.id, () =>
+                                        changeTaskStatusDefinition(
+                                          client,
+                                          snapshot,
+                                          status.id,
+                                          status.version,
+                                          { kind: "restore" },
+                                        ),
+                                      );
+                                    }}
+                                  >
+                                    Przywróć
+                                  </button>
+                                ) : statusArchiveConfirmId === status.id ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="status-danger"
+                                      disabled={busy || !client}
+                                      onClick={() => {
+                                        if (!client) return;
+                                        setStatusArchiveConfirmId(undefined);
+                                        void runStatusOperation(status.id, () =>
+                                          changeTaskStatusDefinition(
+                                            client,
+                                            snapshot,
+                                            status.id,
+                                            status.version,
+                                            { kind: "archive" },
+                                          ),
+                                        );
+                                      }}
+                                    >
+                                      Potwierdź archiwizację
+                                      {carrying > 0
+                                        ? ` (${carrying} zadań zachowa etykietę)`
+                                        : ""}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setStatusArchiveConfirmId(undefined)
+                                      }
+                                    >
+                                      Anuluj
+                                    </button>
+                                  </>
+                                ) : (
+                                  !isDefault && (
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() =>
+                                        setStatusArchiveConfirmId(status.id)
+                                      }
+                                    >
+                                      Archiwizuj
+                                    </button>
+                                  )
+                                )}
+                              </span>
+                            </>
+                          )}
+                        </li>
+                      );
+                    })}
+                </ul>
+                <form
+                  className="status-create"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const label = newStatusLabel.trim();
+                    if (label.length === 0 || !client) return;
+                    void runStatusOperation("create", () =>
+                      createTaskStatusDefinition(client, snapshot, {
+                        label,
+                        operationalSemantics: newStatusSemantics,
+                      }),
+                    ).then((ok) => {
+                      if (ok) setNewStatusLabel("");
+                    });
+                  }}
+                >
+                  <label>
+                    <span className="sr-only">Etykieta nowego statusu</span>
+                    <input
+                      value={newStatusLabel}
+                      maxLength={120}
+                      placeholder="Nowy status — etykieta"
+                      disabled={statusBusyId === "create"}
+                      onChange={(event) =>
+                        setNewStatusLabel(event.target.value)
+                      }
+                    />
+                  </label>
+                  <select
+                    aria-label="Znaczenie operacyjne nowego statusu"
+                    value={newStatusSemantics}
+                    disabled={statusBusyId === "create"}
+                    onChange={(event) =>
+                      setNewStatusSemantics(
+                        event.target.value as typeof newStatusSemantics,
+                      )
+                    }
+                  >
+                    <option value="actionable">Do działania</option>
+                    <option value="waiting">Oczekiwanie</option>
+                    <option value="blocked">Blokada</option>
+                    <option value="paused">Wstrzymane</option>
+                  </select>
+                  <button
+                    type="submit"
+                    disabled={
+                      statusBusyId === "create" ||
+                      newStatusLabel.trim() === "" ||
+                      !client
+                    }
+                  >
+                    Dodaj
+                  </button>
+                </form>
+              </div>
             </section>
 
             <section>

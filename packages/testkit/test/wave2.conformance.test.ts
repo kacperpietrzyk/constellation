@@ -74,6 +74,13 @@ const context = (): ExecutionContext =>
       "task.create",
       "task.updateDetails",
       "task.setParent",
+      "taskStatus.create",
+      "taskStatus.rename",
+      "taskStatus.setSemantics",
+      "taskStatus.reorder",
+      "taskStatus.archive",
+      "taskStatus.restore",
+      "workspace.setDefaultTaskStatus",
       "task.setStatus",
       "task.setOperationalState",
       "task.complete",
@@ -1474,6 +1481,145 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(byId.get(childA)?.parentTaskId, parentId);
     assert.equal(byId.get(childB)?.parentTaskId, parentId);
     assert.equal(byId.get(other)?.parentTaskId, undefined);
+  });
+
+  it("configures workspace Task statuses without rewriting existing Tasks", () => {
+    const harness = setup();
+    const taskId = createTask(harness, "Status workflow evidence");
+    const statusId = "10000000-0000-4000-8000-00000000a101";
+    const created = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("status-create"),
+        commandName: "taskStatus.create",
+        payload: {
+          statusId,
+          label: "W toku",
+          operationalSemantics: "actionable",
+        },
+      }),
+    );
+    assert.equal(created.diagnosticCode, "taskStatus.created");
+    if (
+      created.outcome !== "success" ||
+      created.projection.kind !== "taskStatus.created"
+    )
+      throw new Error("Expected status.");
+    assert.equal(created.projection.position, 1);
+
+    const duplicateLabel = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("status-duplicate"),
+        commandName: "taskStatus.create",
+        payload: {
+          statusId: "10000000-0000-4000-8000-00000000a102",
+          label: "w toku",
+          operationalSemantics: "waiting",
+        },
+      }),
+    );
+    assert.equal(
+      duplicateLabel.diagnosticCode,
+      "command.precondition_failed",
+      "active labels stay unique case-insensitively",
+    );
+
+    const reordered = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("status-reorder", { [statusId]: 1 }),
+        commandName: "taskStatus.reorder",
+        payload: { statusId, position: 0 },
+      }),
+    );
+    assert.equal(reordered.diagnosticCode, "taskStatus.changed");
+
+    const used = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("status-use", { [taskId]: 1 }),
+        commandName: "task.setStatus",
+        payload: { taskId, statusId },
+      }),
+    );
+    assert.equal(used.diagnosticCode, "task.status_changed");
+
+    const renameCommand = {
+      ...metadata("status-rename", { [statusId]: 2 }),
+      commandName: "taskStatus.rename",
+      payload: { statusId, label: "Realizacja" },
+    };
+    const renamed = unwrap(harness.kernel.execute(context(), renameCommand));
+    assert.equal(renamed.diagnosticCode, "taskStatus.changed");
+    const taskAfterRename = harness.store
+      .snapshot()
+      .tasks.find((task) => task.id === taskId);
+    assert.equal(
+      taskAfterRename?.statusId,
+      statusId,
+      "renaming a definition rewrites no Task",
+    );
+    assert.equal(taskAfterRename?.version, 2);
+
+    const archiveDefault = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("status-archive-default", {
+          ["10000000-0000-4000-8000-00000000a101"]: 3,
+        }),
+        commandName: "taskStatus.archive",
+        payload: { statusId },
+      }),
+    );
+    assert.equal(archiveDefault.diagnosticCode, "taskStatus.changed");
+
+    const otherTaskId = createTask(harness, "Second status evidence");
+    const setOnArchived = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("status-use-archived", { [otherTaskId]: 1 }),
+        commandName: "task.setStatus",
+        payload: { taskId: otherTaskId, statusId },
+      }),
+    );
+    assert.equal(
+      setOnArchived.diagnosticCode,
+      "command.precondition_failed",
+      "an archived status is not selectable",
+    );
+
+    const affected = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace, statusIds: [statusId] },
+    });
+    if (
+      affected.kind !== "query_result" ||
+      affected.result.outcome !== "success" ||
+      affected.result.projection.kind !== "task.list"
+    )
+      throw new Error("Expected preview list.");
+    assert.equal(
+      affected.result.projection.items.length,
+      1,
+      "archive preview lists Tasks still carrying the status",
+    );
+    assert.equal(
+      affected.result.projection.items[0]?.status.label,
+      "Realizacja",
+      "carrying Tasks keep rendering the archived label",
+    );
+
+    const undoRename = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("status-undo-rename", { [statusId]: 4 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: renameCommand.commandId },
+      }),
+    );
+    assert.equal(
+      undoRename.diagnosticCode,
+      "undo.not_available",
+      "the later archive blocks undoing the earlier rename",
+    );
   });
 
   it("previews and applies exact compensation, but refuses to overwrite later work", () => {

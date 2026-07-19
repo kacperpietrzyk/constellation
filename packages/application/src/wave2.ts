@@ -1,6 +1,7 @@
 import {
   canCommentInSpace,
   canEditSpace,
+  canManageWorkspaceAccess,
   canViewSpace,
   effectiveSpaceAccess,
 } from "./collaboration-policy.js";
@@ -32,8 +33,11 @@ import {
   assignTask,
   createProject,
   createTask,
+  createTaskStatus,
   isTaskTimingValid,
   setTaskParent,
+  taskStatusState,
+  updateTaskStatusDefinition,
   taskTimingAfterUpdate,
   updateTaskDetails,
   createNativeDocument,
@@ -73,6 +77,9 @@ import {
   updateProjectOutcome,
   type AuditReceipt,
   type DomainEvent,
+  type TaskStatusDefinition,
+  type TaskStatusDefinitionUpdate,
+  type Workspace,
   type OutboxEntry,
   type Project,
   type Task,
@@ -148,6 +155,13 @@ export type Wave2Command = Extract<
       | "task.create"
       | "task.updateDetails"
       | "task.setParent"
+      | "taskStatus.create"
+      | "taskStatus.rename"
+      | "taskStatus.setSemantics"
+      | "taskStatus.reorder"
+      | "taskStatus.archive"
+      | "taskStatus.restore"
+      | "workspace.setDefaultTaskStatus"
       | "task.setStatus"
       | "task.setOperationalState"
       | "task.complete"
@@ -440,6 +454,26 @@ export const isWave2CommandAuthorized = (
         space?.workspaceId === command.workspaceId ? space.id : undefined,
       );
     }
+    case "taskStatus.create":
+    case "taskStatus.rename":
+    case "taskStatus.setSemantics":
+    case "taskStatus.reorder":
+    case "taskStatus.archive":
+    case "taskStatus.restore":
+    case "workspace.setDefaultTaskStatus": {
+      // Workflow definitions are workspace-level shared configuration:
+      // maintainers (owner/admin) publish them; the capability grant still
+      // gates each operation for agents and humans alike.
+      return (
+        view.getWorkspace(command.workspaceId) !== undefined &&
+        canManageWorkspaceAccess(view, context, command.workspaceId) &&
+        dependencies.authorization.authorize({
+          context,
+          capability: command.commandName,
+          workspaceId: command.workspaceId,
+        })
+      );
+    }
     case "task.updateDetails":
     case "task.setParent":
     case "task.setStatus":
@@ -646,6 +680,8 @@ const appendJournal = (
       | "relation"
       | "comment"
       | "attentionSignal"
+      | "taskStatus"
+      | "workspace"
     >
   >,
 ): CommandOutcome => {
@@ -2937,6 +2973,276 @@ export const executeWave2Command = (
         },
       );
     }
+    case "taskStatus.create": {
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (workspace === undefined) return precondition(command, occurredAt);
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      const existing = transaction.getTaskStatus(command.payload.statusId);
+      if (existing !== undefined) {
+        return outcome(command, occurredAt, {
+          outcome: "conflict",
+          diagnosticCode: "record.already_exists",
+          currentVersions: { [existing.id]: existing.version },
+        });
+      }
+      const definitions = transaction.listTaskStatuses(command.workspaceId);
+      const normalizedLabel = command.payload.label.toLocaleLowerCase("pl-PL");
+      if (
+        definitions.some(
+          (definition) =>
+            taskStatusState(definition) === "active" &&
+            definition.label.toLocaleLowerCase("pl-PL") === normalizedLabel,
+        )
+      ) {
+        return precondition(command, occurredAt);
+      }
+      const status = createTaskStatus({
+        id: command.payload.statusId,
+        workspaceId: command.workspaceId,
+        label: command.payload.label,
+        operationalSemantics: command.payload.operationalSemantics,
+        position:
+          command.payload.position ??
+          definitions.reduce(
+            (max, definition) => Math.max(max, definition.position),
+            -1,
+          ) + 1,
+        occurredAt,
+      });
+      transaction.insertTaskStatus(status);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "taskStatus.created",
+          workspaceId: command.workspaceId,
+          spaceId: workspace.rootSpaceId,
+          aggregateId: status.id,
+          aggregateVersion: status.version,
+          occurredAt,
+        },
+        { [status.id]: status.version },
+        ["label", "operationalSemantics", "position", "state"],
+        {
+          diagnosticCode: "taskStatus.created",
+          projection: {
+            kind: "taskStatus.created",
+            statusId: status.id,
+            label: status.label,
+            operationalSemantics: status.operationalSemantics,
+            state: "active",
+            position: status.position,
+            version: status.version,
+          },
+        },
+        undefined,
+        { [status.id]: "taskStatus" },
+      );
+    }
+    case "taskStatus.rename":
+    case "taskStatus.setSemantics":
+    case "taskStatus.reorder":
+    case "taskStatus.archive":
+    case "taskStatus.restore": {
+      const status = transaction.getTaskStatus(command.payload.statusId);
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (
+        status === undefined ||
+        status.workspaceId !== command.workspaceId ||
+        workspace === undefined
+      ) {
+        return precondition(command, occurredAt);
+      }
+      const currentState = taskStatusState(status);
+      let update: TaskStatusDefinitionUpdate;
+      let changedFields: readonly string[];
+      if (command.commandName === "taskStatus.rename") {
+        const normalizedLabel =
+          command.payload.label.toLocaleLowerCase("pl-PL");
+        if (
+          command.payload.label === status.label ||
+          transaction
+            .listTaskStatuses(command.workspaceId)
+            .some(
+              (definition) =>
+                definition.id !== status.id &&
+                taskStatusState(definition) === "active" &&
+                definition.label.toLocaleLowerCase("pl-PL") === normalizedLabel,
+            )
+        ) {
+          return precondition(command, occurredAt);
+        }
+        update = { label: command.payload.label };
+        changedFields = ["label"];
+      } else if (command.commandName === "taskStatus.setSemantics") {
+        if (
+          command.payload.operationalSemantics === status.operationalSemantics
+        ) {
+          return precondition(command, occurredAt);
+        }
+        update = {
+          operationalSemantics: command.payload.operationalSemantics,
+        };
+        changedFields = ["operationalSemantics"];
+      } else if (command.commandName === "taskStatus.reorder") {
+        if (command.payload.position === status.position) {
+          return precondition(command, occurredAt);
+        }
+        update = { position: command.payload.position };
+        changedFields = ["position"];
+      } else if (command.commandName === "taskStatus.archive") {
+        if (
+          currentState === "archived" ||
+          workspace.defaultTaskStatusId === status.id
+        ) {
+          return precondition(command, occurredAt);
+        }
+        update = { state: "archived" };
+        changedFields = ["state"];
+      } else {
+        const normalizedLabel = status.label.toLocaleLowerCase("pl-PL");
+        if (
+          currentState === "active" ||
+          transaction
+            .listTaskStatuses(command.workspaceId)
+            .some(
+              (definition) =>
+                definition.id !== status.id &&
+                taskStatusState(definition) === "active" &&
+                definition.label.toLocaleLowerCase("pl-PL") === normalizedLabel,
+            )
+        ) {
+          return precondition(command, occurredAt);
+        }
+        update = { state: "active" };
+        changedFields = ["state"];
+      }
+      if (!exactExpected(command, { [status.id]: status.version })) {
+        return versionConflict(command, occurredAt, {
+          [status.id]: status.version,
+        });
+      }
+      const updated = updateTaskStatusDefinition(status, update, occurredAt);
+      if (!transaction.updateTaskStatus(updated, status.version)) {
+        return versionConflict(command, occurredAt, {
+          [status.id]: status.version,
+        });
+      }
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "taskStatus.changed",
+          workspaceId: command.workspaceId,
+          spaceId: workspace.rootSpaceId,
+          aggregateId: updated.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        changedFields,
+        {
+          diagnosticCode: "taskStatus.changed",
+          projection: {
+            kind: "taskStatus.changed",
+            statusId: updated.id,
+            label: updated.label,
+            operationalSemantics: updated.operationalSemantics,
+            state: taskStatusState(updated),
+            position: updated.position,
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: command.workspaceId,
+          spaceId: workspace.rootSpaceId,
+          kind: "taskStatus.restore_definition",
+          statusId: status.id,
+          priorLabel: status.label,
+          priorSemantics: status.operationalSemantics,
+          priorPosition: status.position,
+          priorState: currentState,
+          ...(status.archivedAt === undefined
+            ? {}
+            : { priorArchivedAt: status.archivedAt }),
+          resultingVersion: updated.version,
+        },
+        { [updated.id]: "taskStatus" },
+      );
+    }
+    case "workspace.setDefaultTaskStatus": {
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      const status = transaction.getTaskStatus(command.payload.statusId);
+      if (
+        workspace === undefined ||
+        status?.workspaceId !== command.workspaceId ||
+        taskStatusState(status) !== "active" ||
+        workspace.defaultTaskStatusId === status.id
+      ) {
+        return precondition(command, occurredAt);
+      }
+      if (!exactExpected(command, { [workspace.id]: workspace.version })) {
+        return versionConflict(command, occurredAt, {
+          [workspace.id]: workspace.version,
+        });
+      }
+      const updated: Workspace = {
+        ...workspace,
+        defaultTaskStatusId: status.id,
+        version: workspace.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateWorkspace(updated, workspace.version)) {
+        return versionConflict(command, occurredAt, {
+          [workspace.id]: workspace.version,
+        });
+      }
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "workspace.default_status_changed",
+          workspaceId: workspace.id,
+          spaceId: workspace.rootSpaceId,
+          aggregateId: workspace.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        ["defaultTaskStatusId"],
+        {
+          diagnosticCode: "workspace.default_status_changed",
+          projection: {
+            kind: "workspace.default_status_changed",
+            workspaceId: workspace.id,
+            defaultTaskStatusId: status.id,
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: workspace.id,
+          spaceId: workspace.rootSpaceId,
+          kind: "workspace.restore_default_status",
+          priorDefaultTaskStatusId: workspace.defaultTaskStatusId,
+          resultingVersion: updated.version,
+        },
+        { [updated.id]: "workspace" },
+      );
+    }
     case "task.setParent": {
       const task = transaction.getTask(command.payload.taskId);
       if (task === undefined) return precondition(command, occurredAt);
@@ -3124,7 +3430,8 @@ export const executeWave2Command = (
         const status = transaction.getTaskStatus(command.payload.statusId);
         if (
           status?.workspaceId !== task.workspaceId ||
-          status.id === task.statusId
+          status.id === task.statusId ||
+          taskStatusState(status) === "archived"
         ) {
           return precondition(command, occurredAt);
         }
@@ -3883,6 +4190,36 @@ const descriptorState = (
             reason: "later_change",
           };
     }
+    case "taskStatus.restore_definition": {
+      const status = view.getTaskStatus(descriptor.statusId);
+      return status?.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [status.id],
+            versions: { [status.id]: status.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "workspace.restore_default_status": {
+      const workspace = view.getWorkspace(descriptor.workspaceId);
+      return workspace?.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [workspace.id],
+            versions: { [workspace.id]: workspace.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
     case "task.restore_parent":
     case "task.restore_details": {
       const task = view.getTask(descriptor.taskId);
@@ -4129,6 +4466,8 @@ const applyUndo = (
     | "namedDocumentVersion"
     | "relation"
     | "strategicRecord"
+    | "taskStatus"
+    | "workspace"
   >;
   if (descriptor.kind === "project.restore_outcome") {
     const project = transaction.getProject(descriptor.projectId) as Project;
@@ -4162,6 +4501,40 @@ const applyUndo = (
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "task" };
+  } else if (descriptor.kind === "taskStatus.restore_definition") {
+    const status = transaction.getTaskStatus(
+      descriptor.statusId,
+    ) as TaskStatusDefinition;
+    const { archivedAt: _archivedAt, ...base } = status;
+    void _archivedAt;
+    const restored: TaskStatusDefinition = {
+      ...base,
+      label: descriptor.priorLabel,
+      operationalSemantics: descriptor.priorSemantics,
+      position: descriptor.priorPosition,
+      state: descriptor.priorState,
+      ...(descriptor.priorArchivedAt === undefined
+        ? {}
+        : { archivedAt: descriptor.priorArchivedAt }),
+      version: status.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateTaskStatus(restored, status.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "taskStatus" };
+  } else if (descriptor.kind === "workspace.restore_default_status") {
+    const workspace = transaction.getWorkspace(
+      descriptor.workspaceId,
+    ) as Workspace;
+    const restored: Workspace = {
+      ...workspace,
+      defaultTaskStatusId: descriptor.priorDefaultTaskStatusId,
+      version: workspace.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateWorkspace(restored, workspace.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "workspace" };
   } else if (descriptor.kind === "task.restore_parent") {
     const task = transaction.getTask(descriptor.taskId) as Task;
     const restored = setTaskParent(
@@ -5489,6 +5862,9 @@ export const executeWave2Query = (
     "task.created": "task_created",
     "task.details_updated": "task_details_updated",
     "task.parent_changed": "task_parent_changed",
+    "taskStatus.created": "task_status_definition_created",
+    "taskStatus.changed": "task_status_definition_changed",
+    "workspace.default_status_changed": "workspace_default_status_changed",
     "task.completed": "task_completed",
     "task.reopened": "task_reopened",
     "task.assigned": "task_assigned",

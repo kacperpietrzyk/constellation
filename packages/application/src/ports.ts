@@ -281,6 +281,10 @@ export interface ApplicationTransaction extends ApplicationReadView {
     expectedVersion: number,
   ): boolean;
   insertTaskStatus(status: TaskStatusDefinition): void;
+  updateTaskStatus(
+    status: TaskStatusDefinition,
+    expectedVersion: number,
+  ): boolean;
   insertCapture(capture: Capture): void;
   updateCapture(capture: Capture, expectedVersion: number): boolean;
   insertTask(task: Task): void;

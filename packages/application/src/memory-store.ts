@@ -844,6 +844,19 @@ class Transaction extends ReadView implements ApplicationTransaction {
     this.failures.reached("task-status");
   }
 
+  public updateTaskStatus(
+    status: TaskStatusDefinition,
+    expectedVersion: number,
+  ): boolean {
+    const current = this.state.taskStatuses.get(status.id);
+    if (current === undefined || current.version !== expectedVersion) {
+      return false;
+    }
+    this.state.taskStatuses.set(status.id, status);
+    this.failures.reached("task-status");
+    return true;
+  }
+
   public insertCapture(capture: Capture): void {
     if (this.state.captures.has(capture.id)) {
       throw new Error(`Duplicate capture ID: ${capture.id}`);

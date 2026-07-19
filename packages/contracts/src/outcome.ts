@@ -63,6 +63,9 @@ export const DiagnosticCodeSchema = z.enum([
   "task.created",
   "task.details_updated",
   "task.parent_changed",
+  "taskStatus.created",
+  "taskStatus.changed",
+  "workspace.default_status_changed",
   "task.status_changed",
   "task.operational_state_changed",
   "task.completed",
@@ -413,6 +416,34 @@ export const TaskDetailsUpdatedProjectionSchema = z
     version: z.int().positive(),
   })
   .strict();
+const TaskStatusDefinitionProjectionFields = {
+  statusId: TaskStatusIdSchema,
+  label: z.string(),
+  operationalSemantics: z.enum(["actionable", "waiting", "blocked", "paused"]),
+  state: z.enum(["active", "archived"]),
+  position: z.int().nonnegative(),
+  version: z.int().positive(),
+} as const;
+export const TaskStatusCreatedProjectionSchema = z
+  .object({
+    kind: z.literal("taskStatus.created"),
+    ...TaskStatusDefinitionProjectionFields,
+  })
+  .strict();
+export const TaskStatusChangedDefinitionProjectionSchema = z
+  .object({
+    kind: z.literal("taskStatus.changed"),
+    ...TaskStatusDefinitionProjectionFields,
+  })
+  .strict();
+export const WorkspaceDefaultStatusChangedProjectionSchema = z
+  .object({
+    kind: z.literal("workspace.default_status_changed"),
+    workspaceId: WorkspaceIdSchema,
+    defaultTaskStatusId: TaskStatusIdSchema,
+    version: z.int().positive(),
+  })
+  .strict();
 export const TaskParentChangedProjectionSchema = z
   .object({
     kind: z.literal("task.parent_changed"),
@@ -606,6 +637,9 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   TaskCreatedProjectionSchema,
   TaskDetailsUpdatedProjectionSchema,
   TaskParentChangedProjectionSchema,
+  TaskStatusCreatedProjectionSchema,
+  TaskStatusChangedDefinitionProjectionSchema,
+  WorkspaceDefaultStatusChangedProjectionSchema,
   TaskStatusChangedProjectionSchema,
   TaskOperationalStateChangedProjectionSchema,
   TaskCompletedProjectionSchema,
@@ -818,6 +852,24 @@ const TaskDetailsUpdatedSuccessOutcomeSchema =
     diagnosticCode: z.literal("task.details_updated"),
     projection: TaskDetailsUpdatedProjectionSchema,
   }).strict();
+const TaskStatusDefinitionCreatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("taskStatus.created"),
+    projection: TaskStatusCreatedProjectionSchema,
+  }).strict();
+const TaskStatusDefinitionChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("taskStatus.changed"),
+    projection: TaskStatusChangedDefinitionProjectionSchema,
+  }).strict();
+const WorkspaceDefaultStatusChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("workspace.default_status_changed"),
+    projection: WorkspaceDefaultStatusChangedProjectionSchema,
+  }).strict();
 const TaskParentChangedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -975,6 +1027,9 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   TaskCreatedSuccessOutcomeSchema,
   TaskDetailsUpdatedSuccessOutcomeSchema,
   TaskParentChangedSuccessOutcomeSchema,
+  TaskStatusDefinitionCreatedSuccessOutcomeSchema,
+  TaskStatusDefinitionChangedSuccessOutcomeSchema,
+  WorkspaceDefaultStatusChangedSuccessOutcomeSchema,
   TaskStatusChangedSuccessOutcomeSchema,
   TaskOperationalStateChangedSuccessOutcomeSchema,
   TaskCompletedSuccessOutcomeSchema,
@@ -1011,6 +1066,8 @@ export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
           "task.restore_state",
           "task.restore_details",
           "task.restore_parent",
+          "taskStatus.restore_definition",
+          "workspace.restore_default_status",
           "task.restore_operational_state",
           "work_link.restore_state",
           "relation.remove",
