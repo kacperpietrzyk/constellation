@@ -514,6 +514,68 @@ export const CockpitSurface = ({
       )}
     </>
   );
+  const outcomeRail = (
+    <section
+      className="outcome-rail reading-panel"
+      aria-labelledby="outcomes-title"
+    >
+      <header className="section-heading">
+        <div>
+          <p className="eyebrow">Aktywne projekty</p>
+          <h2 id="outcomes-title">Wyniki do osiągnięcia</h2>
+        </div>
+        <span>
+          {projects.kind === "ready" ? projects.data.items.length : "—"}
+        </span>
+      </header>
+      {projects.kind === "unavailable" ? (
+        <InlineState
+          tone="warning"
+          title="Projekty są niedostępne"
+          detail={projects.message}
+        />
+      ) : projectItems.length === 0 ? (
+        <p className="capacity-note">Nie ma jeszcze aktywnych projektów.</p>
+      ) : (
+        <div role="listbox" aria-label="Aktywne projekty">
+          {projectItems.map((project, index) => {
+            const selected = project.id === selectedProjectId;
+            return (
+              <button
+                className={`outcome-row${selected ? " selected" : ""}`}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                key={project.id}
+                {...projectNav(index)}
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey) onOpenProject(project.id);
+                  else onSelectProject(project.id);
+                }}
+                onDoubleClick={() => onOpenProject(project.id)}
+              >
+                <span className="outcome-number">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <span>
+                  <strong>{project.intendedOutcome}</strong>
+                  <small>{project.title}</small>
+                </span>
+                <em>
+                  {countLabel(
+                    project.relatedOpenTaskCount,
+                    "otwarte",
+                    "otwarte",
+                    "otwartych",
+                  )}
+                </em>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
   return (
     <div className="surface-scroll cockpit-surface">
       <SurfaceHeader
@@ -535,6 +597,7 @@ export const CockpitSurface = ({
           />
           {exceptionsBar}
           {workspaceStrip}
+          {outcomeRail}
         </>
       ) : focus.length === 0 ? (
         <>
@@ -550,6 +613,7 @@ export const CockpitSurface = ({
           />
           {exceptionsBar}
           {workspaceStrip}
+          {outcomeRail}
         </>
       ) : (
         <>
@@ -574,152 +638,97 @@ export const CockpitSurface = ({
           </section>
           {exceptionsBar}
           {workspaceStrip}
-          <section
-            className="active-work reading-panel"
-            aria-labelledby="active-work-title"
-          >
-            <header className="section-heading">
-              <div>
-                <p className="eyebrow">Aktywna praca</p>
-                <h2 id="active-work-title">Następne działania</h2>
-              </div>
-              <span>{focus.length} w kolejności</span>
-            </header>
-            <p className="ordering-rule">
-              <span>
-                Kolejność jest deterministyczna: otwarte zadania — najpierw
-                utworzone w tym tygodniu i z aktywnych projektów.
-              </span>
-              <button
-                type="button"
-                className="ordering-rule-info"
-                aria-expanded={ruleOpen}
-                aria-controls="ordering-rule-detail"
-                onClick={() => setRuleOpen((open) => !open)}
-              >
-                {ruleOpen ? "Ukryj szczegóły" : "Jak ustalana jest kolejność?"}
-              </button>
-            </p>
-            <div
-              id="ordering-rule-detail"
-              className="ordering-rule-detail"
-              role="region"
-              aria-label="Reguła kolejności"
-              hidden={!ruleOpen}
+          <div className="cockpit-grid">
+            <section
+              className="active-work reading-panel"
+              aria-labelledby="active-work-title"
             >
-              <p>
-                Widok nie generuje rekomendacji. Pokazuje wyłącznie otwarte
-                zadania i porządkuje je zawsze tak samo: najpierw utworzone w
-                tym tygodniu, potem powiązane z aktywnym projektem, a przy
-                remisie alfabetycznie. Ta sama kolejność wyjdzie za każdym
-                razem.
+              <header className="section-heading">
+                <div>
+                  <p className="eyebrow">Aktywna praca</p>
+                  <h2 id="active-work-title">Następne działania</h2>
+                </div>
+                <span>{focus.length} w kolejności</span>
+              </header>
+              <p className="ordering-rule">
+                <span>
+                  Kolejność jest deterministyczna: otwarte zadania — najpierw
+                  utworzone w tym tygodniu i z aktywnych projektów.
+                </span>
+                <button
+                  type="button"
+                  className="ordering-rule-info"
+                  aria-expanded={ruleOpen}
+                  aria-controls="ordering-rule-detail"
+                  onClick={() => setRuleOpen((open) => !open)}
+                >
+                  {ruleOpen
+                    ? "Ukryj szczegóły"
+                    : "Jak ustalana jest kolejność?"}
+                </button>
               </p>
-            </div>
-            <div
-              className="compact-record-list compact-record-list--focus"
-              role="listbox"
-              aria-label="Następne działania w kolejności tygodnia"
-            >
-              {focus.map((task, index) => {
-                const state =
-                  workTasks.get(task.taskId)?.operationalState ?? "actionable";
-                const selected = task.taskId === selectedTaskId;
-                return (
-                  <button
-                    key={task.taskId}
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    className={`state-${state}${selected ? " selected" : ""}`}
-                    {...focusNav(index)}
-                    onClick={(event) => {
-                      if (event.metaKey || event.ctrlKey)
-                        onOpenTask(task.taskId);
-                      else onSelectTask(task.taskId);
-                    }}
-                    onDoubleClick={() => onOpenTask(task.taskId)}
-                  >
-                    <span className="focus-rank" aria-hidden="true">
-                      {index + 1}
-                    </span>
-                    <span className="task-state-mark" aria-hidden="true" />
-                    <span>
-                      <strong>{task.title}</strong>
-                      <small>
-                        {focusRowMeta(
-                          task.taskId,
-                          task.reasons as readonly CockpitFocusReason[],
-                        )}
-                      </small>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
+              <div
+                id="ordering-rule-detail"
+                className="ordering-rule-detail"
+                role="region"
+                aria-label="Reguła kolejności"
+                hidden={!ruleOpen}
+              >
+                <p>
+                  Widok nie generuje rekomendacji. Pokazuje wyłącznie otwarte
+                  zadania i porządkuje je zawsze tak samo: najpierw utworzone w
+                  tym tygodniu, potem powiązane z aktywnym projektem, a przy
+                  remisie alfabetycznie. Ta sama kolejność wyjdzie za każdym
+                  razem.
+                </p>
+              </div>
+              <div
+                className="compact-record-list compact-record-list--focus"
+                role="listbox"
+                aria-label="Następne działania w kolejności tygodnia"
+              >
+                {focus.map((task, index) => {
+                  const state =
+                    workTasks.get(task.taskId)?.operationalState ??
+                    "actionable";
+                  const selected = task.taskId === selectedTaskId;
+                  return (
+                    <button
+                      key={task.taskId}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      className={`state-${state}${selected ? " selected" : ""}`}
+                      {...focusNav(index)}
+                      onClick={(event) => {
+                        if (event.metaKey || event.ctrlKey)
+                          onOpenTask(task.taskId);
+                        else onSelectTask(task.taskId);
+                      }}
+                      onDoubleClick={() => onOpenTask(task.taskId)}
+                    >
+                      <span className="focus-rank" aria-hidden="true">
+                        {index + 1}
+                      </span>
+                      <span className="task-state-mark" aria-hidden="true" />
+                      <span>
+                        <strong>{task.title}</strong>
+                        <small>
+                          {focusRowMeta(
+                            task.taskId,
+                            task.reasons as readonly CockpitFocusReason[],
+                          )}
+                        </small>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+            {outcomeRail}
+          </div>
         </>
       )}
-      <section
-        className="outcome-rail reading-panel"
-        aria-labelledby="outcomes-title"
-      >
-        <header className="section-heading">
-          <div>
-            <p className="eyebrow">Aktywne projekty</p>
-            <h2 id="outcomes-title">Wyniki do osiągnięcia</h2>
-          </div>
-          <span>
-            {projects.kind === "ready" ? projects.data.items.length : "—"}
-          </span>
-        </header>
-        {projects.kind === "unavailable" ? (
-          <InlineState
-            tone="warning"
-            title="Projekty są niedostępne"
-            detail={projects.message}
-          />
-        ) : projectItems.length === 0 ? (
-          <p className="capacity-note">Nie ma jeszcze aktywnych projektów.</p>
-        ) : (
-          <div role="listbox" aria-label="Aktywne projekty">
-            {projectItems.map((project, index) => {
-              const selected = project.id === selectedProjectId;
-              return (
-                <button
-                  className={`outcome-row${selected ? " selected" : ""}`}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  key={project.id}
-                  {...projectNav(index)}
-                  onClick={(event) => {
-                    if (event.metaKey || event.ctrlKey)
-                      onOpenProject(project.id);
-                    else onSelectProject(project.id);
-                  }}
-                  onDoubleClick={() => onOpenProject(project.id)}
-                >
-                  <span className="outcome-number">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span>
-                    <strong>{project.intendedOutcome}</strong>
-                    <small>{project.title}</small>
-                  </span>
-                  <em>
-                    {countLabel(
-                      project.relatedOpenTaskCount,
-                      "otwarte",
-                      "otwarte",
-                      "otwartych",
-                    )}
-                  </em>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
     </div>
   );
 };

@@ -100,6 +100,29 @@ describe("interaction recovery contracts", () => {
     assert.match(realApp, /setDocumentInspectorOpen\(false\)/);
   });
 
+  it("keeps Cockpit actions and intended outcomes in one responsive decision ledger", () => {
+    assert.match(
+      surfaces,
+      /<div className="cockpit-grid">[\s\S]*className="active-work reading-panel"[\s\S]*\{outcomeRail\}[\s\S]*<\/div>/,
+    );
+    assert.match(
+      surfaces,
+      /<h2 id="outcomes-title">Wyniki do osiągnięcia<\/h2>/,
+    );
+    assert.match(
+      surfaces,
+      /else onSelectTask\(task\.taskId\)[\s\S]*onDoubleClick=\{\(\) => onOpenTask\(task\.taskId\)\}/,
+    );
+    assert.match(
+      styles,
+      /\.cockpit-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1\.2fr\) minmax\(17rem, 0\.8fr\)/s,
+    );
+    assert.match(
+      styles,
+      /@media \(max-width: 84rem\)[\s\S]*?\.cockpit-grid,[\s\S]*?grid-template-columns:\s*1fr/s,
+    );
+  });
+
   it("keeps Capture History as a compact ledger until deliberate activation", () => {
     assert.match(surfaces, /className="history-ledger"/);
     assert.match(surfaces, /className=\{`history-row/);
