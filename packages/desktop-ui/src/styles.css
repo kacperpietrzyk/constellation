@@ -1515,6 +1515,36 @@ kbd {
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
 }
+/* Bezpośrednie utworzenie zadania: jeden wiersz tytułu nad listą, obok
+   ścieżki Quick Capture. Wynik przechodzi przez task.create i trafia do
+   listy oraz inspektora. */
+.task-create-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-3) var(--space-3) 0;
+}
+.task-create-title {
+  min-height: 2.25rem;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+.task-create-title input {
+  width: 100%;
+  min-width: 0;
+  height: 2.2rem;
+  padding: 0;
+  color: var(--text-primary);
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  font-size: var(--text-xs);
+}
 .task-control-strip {
   display: grid;
   grid-template-columns: minmax(13rem, 1fr) auto auto auto;
@@ -2075,6 +2105,62 @@ kbd {
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
+/* Kontekst roboczy zadania: treść wznowienia i następny krok w inspektorze.
+   Czytanie jest domyślne; edycja to jawny tryb z zapisem przez
+   task.updateDetails i wersją oczekiwaną. */
+.task-context-block > p {
+  margin: 0 0 var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+.task-context-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.task-next-action span {
+  color: var(--text-quaternary);
+}
+.task-context-editor {
+  display: grid;
+  gap: var(--space-3);
+}
+.task-context-editor label {
+  display: grid;
+  gap: 0.2rem;
+}
+.task-context-editor label > span {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+.task-context-editor input,
+.task-context-editor textarea {
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--input-text);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+.task-context-editor textarea {
+  resize: vertical;
+}
+.task-context-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.task-context-actions button[type="button"] {
+  padding: 0 var(--space-3);
+  color: var(--text-secondary);
+  background: transparent;
+  border-radius: var(--radius-sm);
+}
+.task-context-actions button[type="button"]:hover:not(:disabled) {
+  color: var(--text-primary);
+}
 .provenance-block blockquote {
   margin: 0 0 var(--space-2);
   padding: var(--space-3);
@@ -2297,6 +2383,7 @@ kbd {
   font-size: var(--text-sm);
 }
 .task-search-control:focus-within,
+.task-create-title:focus-within,
 .capture-field input:focus-visible,
 .capture-file:focus-within {
   border-color: var(--input-border-hover);

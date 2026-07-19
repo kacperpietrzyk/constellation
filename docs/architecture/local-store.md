@@ -22,17 +22,19 @@ preload bridge.
   their row identity when loaded;
 - malformed JSON, mismatched identity, and unsupported schema versions fail
   closed;
-- the versioned migration chain through schema v15 runs exclusively and
+- the versioned migration chain through schema v16 runs exclusively and
   backfills the accumulated event/audit, full-text, collaboration, agent,
   knowledge, strategic, meeting, and managed-payload structures in the same
   transaction;
 - this build opens and upgrades every historical local schema from v1 through
-  the current v15; it refuses v16 or newer before changing the database and
-  does not support opening a v15 workspace with an older build unless that
-  build's documented schema window includes v15;
+  the current v16; it refuses v17 or newer before changing the database and
+  does not support opening a v16 workspace with an older build unless that
+  build's documented schema window includes v16;
 - the FTS5 index carries Workspace and Space scope on every Capture, Task, and
-  Project entry; application search still authorizes scopes before reading and
-  keeps deterministic ranking in the shared query layer;
+  Project entry; since v16 the Task entry also indexes the optional working
+  `description` and `nextAction` fields; application search still authorizes
+  scopes before reading and keeps deterministic ranking in the shared query
+  layer;
 - close/reopen tests prove Project/status/relation/assignment/comment/Attention/
   search/cockpit/activity/undo state and idempotent replay survive a database
   restart;

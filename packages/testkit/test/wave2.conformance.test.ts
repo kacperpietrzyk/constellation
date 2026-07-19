@@ -71,6 +71,8 @@ const context = (): ExecutionContext =>
       "opportunity.offerCreate",
       "opportunity.linkOutcomes",
       "relationship.workspace",
+      "task.create",
+      "task.updateDetails",
       "task.setStatus",
       "task.complete",
       "task.reopen",
@@ -913,6 +915,195 @@ describe("Wave 2 reference semantics", () => {
       }),
     );
     assert.equal(status.diagnosticCode, "task.status_changed");
+  });
+
+  it("creates a Task with working context and edits it with replay, conflict, and undo safety", () => {
+    const harness = setup();
+    const taskId = "10000000-0000-4000-8000-00000000d001";
+    const createCommand = {
+      ...metadata("task-create"),
+      commandName: "task.create",
+      payload: {
+        taskId,
+        spaceId: ids.rootSpace,
+        title: "Prepare the renewal offer",
+        description: "Client asked for updated pricing after the July call.",
+        nextAction: "Confirm distributor pricing before drafting.",
+      },
+    };
+    const created = unwrap(harness.kernel.execute(context(), createCommand));
+    assert.equal(created.diagnosticCode, "task.created");
+    if (
+      created.outcome !== "success" ||
+      created.projection.kind !== "task.created"
+    ) {
+      throw new Error("Expected created Task.");
+    }
+    assert.equal(created.projection.taskId, taskId);
+    assert.equal(
+      created.projection.description,
+      "Client asked for updated pricing after the July call.",
+    );
+
+    const counts = harness.store.snapshot();
+    const replay = unwrap(harness.kernel.execute(context(), createCommand));
+    assert.deepEqual(replay, created);
+    assert.equal(harness.store.snapshot().events.length, counts.events.length);
+
+    const duplicate = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("task-create-duplicate"),
+        commandName: "task.create",
+        payload: {
+          taskId,
+          spaceId: ids.rootSpace,
+          title: "A different title for the same identity",
+        },
+      }),
+    );
+    assert.equal(duplicate.diagnosticCode, "record.already_exists");
+
+    const listed = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      listed.kind !== "query_result" ||
+      listed.result.outcome !== "success" ||
+      listed.result.projection.kind !== "task.list"
+    ) {
+      throw new Error("Expected task list.");
+    }
+    const listItem = listed.result.projection.items.find(
+      (item) => item.id === taskId,
+    );
+    assert.equal(
+      listItem?.nextAction,
+      "Confirm distributor pricing before drafting.",
+    );
+
+    const search = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "search.global",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: {
+        spaceIds: [ids.rootSpace],
+        text: "distributor pricing",
+        limit: 10,
+      },
+    });
+    if (
+      search.kind !== "query_result" ||
+      search.result.outcome !== "success" ||
+      search.result.projection.kind !== "search.global"
+    ) {
+      throw new Error("Expected search result.");
+    }
+    const match = search.result.projection.items.find(
+      (item) => item.recordId === taskId,
+    );
+    assert.ok(match, "Task should be findable through its working context.");
+    assert.ok(match.matchedFields.includes("nextAction"));
+
+    const staleUpdate = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("task-update-stale", { [taskId]: 2 }),
+        commandName: "task.updateDetails",
+        payload: { taskId, nextAction: "Stale expectations" },
+      }),
+    );
+    assert.equal(staleUpdate.diagnosticCode, "record.version_conflict");
+
+    const updateCommand = {
+      ...metadata("task-update", { [taskId]: 1 }),
+      commandName: "task.updateDetails",
+      payload: {
+        taskId,
+        title: "Prepare and send the renewal offer",
+        description: null,
+      },
+    };
+    const updated = unwrap(harness.kernel.execute(context(), updateCommand));
+    assert.equal(updated.diagnosticCode, "task.details_updated");
+    const storedAfterUpdate = harness.store
+      .snapshot()
+      .tasks.find((task) => task.id === taskId);
+    assert.equal(
+      storedAfterUpdate?.title,
+      "Prepare and send the renewal offer",
+    );
+    assert.equal(storedAfterUpdate?.description, undefined);
+    assert.equal(
+      storedAfterUpdate?.nextAction,
+      "Confirm distributor pricing before drafting.",
+    );
+
+    const updateReplay = unwrap(
+      harness.kernel.execute(context(), updateCommand),
+    );
+    assert.deepEqual(updateReplay, updated);
+
+    const preview = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("task-update-preview"),
+        commandName: "command.previewUndo",
+        payload: { targetCommandId: updateCommand.commandId },
+      }),
+    );
+    if (preview.outcome !== "preview") throw new Error("Expected preview.");
+    assert.equal(preview.projection.available, true);
+    assert.equal(preview.projection.compensationKind, "task.restore_details");
+
+    const undo = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("task-update-undo", { [taskId]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: updateCommand.commandId },
+      }),
+    );
+    assert.equal(undo.diagnosticCode, "command.undone");
+    const restored = harness.store
+      .snapshot()
+      .tasks.find((task) => task.id === taskId);
+    assert.equal(restored?.title, "Prepare the renewal offer");
+    assert.equal(
+      restored?.description,
+      "Client asked for updated pricing after the July call.",
+    );
+
+    const laterEdit = {
+      ...metadata("task-later-edit", { [taskId]: 3 }),
+      commandName: "task.updateDetails",
+      payload: { taskId, nextAction: "Ask about the new procurement owner." },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), laterEdit)).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("task-later-edit-2", { [taskId]: 4 }),
+          commandName: "task.updateDetails",
+          payload: { taskId, title: "Prepare the Q3 renewal offer" },
+        }),
+      ).outcome,
+      "success",
+    );
+    const blocked = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("task-unsafe-undo", { [taskId]: 4 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: laterEdit.commandId },
+      }),
+    );
+    assert.equal(blocked.diagnosticCode, "undo.not_available");
   });
 
   it("previews and applies exact compensation, but refuses to overwrite later work", () => {

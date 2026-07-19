@@ -387,7 +387,7 @@ describe("interaction recovery contracts", () => {
   it("keeps composite search and meeting-row focus visible in forced colors", () => {
     assert.match(
       styles,
-      /\.task-search-control:focus-within,\s*\.capture-field input:focus-visible,[\s\S]*?\{[^}]*box-shadow:\s*var\(--focus-ring\)/s,
+      /\.task-search-control:focus-within,\s*\.task-create-title:focus-within,\s*\.capture-field input:focus-visible,[\s\S]*?\{[^}]*box-shadow:\s*var\(--focus-ring\)/s,
     );
     assert.doesNotMatch(
       styles,

@@ -31,6 +31,8 @@ import {
   completeTask,
   assignTask,
   createProject,
+  createTask,
+  updateTaskDetails,
   createNativeDocument,
   relateTaskToProject,
   removeTaskProjectRelation,
@@ -140,6 +142,8 @@ export type Wave2Command = Extract<
       | "radar.resolve"
       | "meeting.upsertImported"
       | "project.updateOutcome"
+      | "task.create"
+      | "task.updateDetails"
       | "task.setStatus"
       | "task.setOperationalState"
       | "task.complete"
@@ -422,6 +426,17 @@ export const isWave2CommandAuthorized = (
           : undefined,
       );
     }
+    case "task.create": {
+      const space = view.getSpace(command.payload.spaceId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        space?.workspaceId === command.workspaceId ? space.id : undefined,
+      );
+    }
+    case "task.updateDetails":
     case "task.setStatus":
     case "task.setOperationalState":
     case "task.complete":
@@ -2700,6 +2715,153 @@ export const executeWave2Command = (
         },
       );
     }
+    case "task.create": {
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      const existing = transaction.getTask(command.payload.taskId);
+      if (existing !== undefined) {
+        return outcome(command, occurredAt, {
+          outcome: "conflict",
+          diagnosticCode: "record.already_exists",
+          currentVersions: { [existing.id]: existing.version },
+        });
+      }
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (workspace === undefined) return precondition(command, occurredAt);
+      const task = createTask({
+        id: command.payload.taskId,
+        workspaceId: command.workspaceId,
+        spaceId: command.payload.spaceId,
+        title: command.payload.title,
+        ...(command.payload.description === undefined
+          ? {}
+          : { description: command.payload.description }),
+        ...(command.payload.nextAction === undefined
+          ? {}
+          : { nextAction: command.payload.nextAction }),
+        statusId: workspace.defaultTaskStatusId,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertTask(task);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "task.created",
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          aggregateId: task.id,
+          aggregateVersion: task.version,
+          occurredAt,
+        },
+        { [task.id]: task.version },
+        ["title", "description", "nextAction", "statusId"],
+        {
+          diagnosticCode: "task.created",
+          projection: {
+            kind: "task.created",
+            taskId: task.id,
+            spaceId: task.spaceId,
+            title: task.title,
+            ...(task.description === undefined
+              ? {}
+              : { description: task.description }),
+            ...(task.nextAction === undefined
+              ? {}
+              : { nextAction: task.nextAction }),
+            statusId: task.statusId,
+            completionState: task.completionState,
+            version: task.version,
+          },
+        },
+      );
+    }
+    case "task.updateDetails": {
+      const task = transaction.getTask(command.payload.taskId);
+      if (task === undefined) return precondition(command, occurredAt);
+      if (!exactExpected(command, { [task.id]: task.version })) {
+        return versionConflict(command, occurredAt, {
+          [task.id]: task.version,
+        });
+      }
+      const updated = updateTaskDetails(
+        task,
+        {
+          ...(command.payload.title === undefined
+            ? {}
+            : { title: command.payload.title }),
+          ...(command.payload.description === undefined
+            ? {}
+            : { description: command.payload.description }),
+          ...(command.payload.nextAction === undefined
+            ? {}
+            : { nextAction: command.payload.nextAction }),
+        },
+        occurredAt,
+      );
+      if (!transaction.updateTask(updated, task.version)) {
+        return versionConflict(command, occurredAt, {
+          [task.id]: task.version,
+        });
+      }
+      const changedFields = [
+        ...(command.payload.title === undefined ? [] : ["title"]),
+        ...(command.payload.description === undefined ? [] : ["description"]),
+        ...(command.payload.nextAction === undefined ? [] : ["nextAction"]),
+      ];
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "task.details_updated",
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          aggregateId: task.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        changedFields,
+        {
+          diagnosticCode: "task.details_updated",
+          projection: {
+            kind: "task.details_updated",
+            taskId: updated.id,
+            title: updated.title,
+            ...(updated.description === undefined
+              ? {}
+              : { description: updated.description }),
+            ...(updated.nextAction === undefined
+              ? {}
+              : { nextAction: updated.nextAction }),
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          kind: "task.restore_details",
+          taskId: task.id,
+          priorTitle: task.title,
+          ...(task.description === undefined
+            ? {}
+            : { priorDescription: task.description }),
+          ...(task.nextAction === undefined
+            ? {}
+            : { priorNextAction: task.nextAction }),
+          resultingVersion: updated.version,
+        },
+      );
+    }
     case "task.setOperationalState": {
       const task = transaction.getTask(command.payload.taskId);
       if (task === undefined) return precondition(command, occurredAt);
@@ -3555,6 +3717,21 @@ const descriptorState = (
             reason: "later_change",
           };
     }
+    case "task.restore_details": {
+      const task = view.getTask(descriptor.taskId);
+      return task?.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [task.id],
+            versions: { [task.id]: task.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
     case "work_link.restore_state": {
       const link = view.getStrategicRecord(descriptor.linkId);
       return link?.kind === "work_link" &&
@@ -3815,6 +3992,20 @@ const applyUndo = (
             delete withoutCompletedAt.completedAt;
             return { ...withoutCompletedAt, completionState: "open" };
           })();
+    transaction.updateTask(restored, task.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "task" };
+  } else if (descriptor.kind === "task.restore_details") {
+    const task = transaction.getTask(descriptor.taskId) as Task;
+    const restored = updateTaskDetails(
+      task,
+      {
+        title: descriptor.priorTitle,
+        description: descriptor.priorDescription ?? null,
+        nextAction: descriptor.priorNextAction ?? null,
+      },
+      occurredAt,
+    );
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "task" };
@@ -4810,6 +5001,8 @@ export const executeWave2Query = (
       snippet: string;
       matchedFields: Array<
         | "title"
+        | "description"
+        | "nextAction"
         | "intendedOutcome"
         | "originalText"
         | "excerpt"
@@ -4823,16 +5016,36 @@ export const executeWave2Query = (
       if (kinds.has("task")) {
         for (const task of view.listTasksInSpace(query.workspaceId, spaceId)) {
           const title = normalizeSearch(task.title);
-          if (!title.includes(needle)) continue;
+          const description = normalizeSearch(task.description ?? "");
+          const nextAction = normalizeSearch(task.nextAction ?? "");
+          const matchedFields: Array<"title" | "description" | "nextAction"> =
+            [];
+          if (title.includes(needle)) matchedFields.push("title");
+          if (description.includes(needle)) matchedFields.push("description");
+          if (nextAction.includes(needle)) matchedFields.push("nextAction");
+          if (matchedFields.length === 0) continue;
           items.push({
             recordKind: "task",
             recordId: task.id,
             spaceId,
             title: task.title,
-            snippet: snippet(task.title, needle),
-            matchedFields: ["title"],
+            snippet: snippet(
+              matchedFields.includes("title")
+                ? task.title
+                : matchedFields.includes("nextAction")
+                  ? (task.nextAction ?? task.title)
+                  : (task.description ?? task.title),
+              needle,
+            ),
+            matchedFields,
             score:
-              title === needle ? 300 : title.startsWith(needle) ? 220 : 160,
+              title === needle
+                ? 300
+                : title.startsWith(needle)
+                  ? 220
+                  : title.includes(needle)
+                    ? 160
+                    : 100,
             updatedAt: task.updatedAt,
           });
         }
@@ -5057,6 +5270,8 @@ export const executeWave2Query = (
     "capture.transcript_written": "capture_transcript_ready",
     "project.created": "project_created",
     "project.outcome_updated": "project_outcome_changed",
+    "task.created": "task_created",
+    "task.details_updated": "task_details_updated",
     "task.completed": "task_completed",
     "task.reopened": "task_reopened",
     "task.assigned": "task_assigned",

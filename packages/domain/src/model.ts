@@ -248,6 +248,8 @@ export interface Task {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
   readonly title: string;
+  readonly description?: string;
+  readonly nextAction?: string;
   readonly statusId: TaskStatusId;
   readonly recordState: "active" | "removed";
   readonly completionState: "open" | "completed";
@@ -654,6 +656,18 @@ export type UndoDescriptor =
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
+      readonly kind: "task.restore_details";
+      readonly taskId: TaskId;
+      readonly priorTitle: string;
+      readonly priorDescription?: string;
+      readonly priorNextAction?: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
       readonly kind: "relation.remove";
       readonly relationId: RelationId;
       readonly resultingVersion: number;
@@ -884,6 +898,8 @@ export type DomainEvent = { readonly commandId: CommandId } & (
   | {
       readonly id: EventId;
       readonly type:
+        | "task.created"
+        | "task.details_updated"
         | "task.status_changed"
         | "task.operational_state_changed"
         | "task.completed"

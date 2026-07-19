@@ -740,6 +740,7 @@ export const TasksSurface = ({
   onOpenTask,
   onSelectTask,
   onCapture,
+  onCreateTask,
   onSetStatus,
   onSetCompleted,
   onSetAssignment,
@@ -750,6 +751,7 @@ export const TasksSurface = ({
   readonly onOpenTask: (id: TaskId) => void;
   readonly onSelectTask: (id: TaskId) => void;
   readonly onCapture: () => void;
+  readonly onCreateTask: (title: string) => Promise<boolean>;
   readonly onSetStatus: (id: TaskId, statusId: TaskStatusId) => void;
   readonly onSetCompleted: (id: TaskId, completed: boolean) => void;
   readonly onSetAssignment: (
@@ -760,6 +762,8 @@ export const TasksSurface = ({
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [creatingTask, setCreatingTask] = useState(false);
   const normalizedQuery = query.trim().toLocaleLowerCase("pl-PL");
   const assignmentCandidates =
     snapshot.assignmentCandidates.kind === "ready"
@@ -831,6 +835,39 @@ export const TasksSurface = ({
             </span>
           </div>
         </header>
+        <form
+          className="task-create-row"
+          aria-label="Nowe zadanie"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const title = newTaskTitle.trim();
+            if (title.length === 0 || creatingTask) return;
+            setCreatingTask(true);
+            void onCreateTask(title).then((created) => {
+              setCreatingTask(false);
+              if (created) setNewTaskTitle("");
+            });
+          }}
+        >
+          <label className="task-create-title">
+            <span className="sr-only">Tytuł nowego zadania</span>
+            <input
+              type="text"
+              value={newTaskTitle}
+              maxLength={500}
+              disabled={creatingTask}
+              placeholder="Dodaj zadanie — wpisz tytuł i zatwierdź"
+              onChange={(event) => setNewTaskTitle(event.target.value)}
+            />
+          </label>
+          <button
+            type="submit"
+            className="secondary-button"
+            disabled={creatingTask || newTaskTitle.trim().length === 0}
+          >
+            {creatingTask ? "Dodawanie…" : "Dodaj"}
+          </button>
+        </form>
         {snapshot.tasks.length === 0 ? (
           <InlineState
             title="Jeszcze nie ma zadań"
