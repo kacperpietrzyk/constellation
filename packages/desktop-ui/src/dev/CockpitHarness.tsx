@@ -13,7 +13,11 @@ import { createScenarioClient } from "../client/scenario-client.js";
 const workspaceId = "00000000-0000-4000-8000-000000000601";
 const spaceId = "00000000-0000-4000-8000-000000000602";
 const statusId = "00000000-0000-4000-8000-000000000603";
+const waitingStatusId = "00000000-0000-4000-8000-000000000605";
+const readyStatusId = "00000000-0000-4000-8000-000000000606";
 const ownerId = "00000000-0000-4000-8000-000000000604";
+const memberId = "00000000-0000-4000-8000-000000000607";
+const guestId = "00000000-0000-4000-8000-000000000608";
 
 const projectA = "00000000-0000-4000-8000-000000000610";
 const projectB = "00000000-0000-4000-8000-000000000611";
@@ -52,16 +56,32 @@ const taskRow = (
   id: string,
   title: string,
   createdAt: string,
+  status: { readonly id: string; readonly label: string } = {
+    id: statusId,
+    label: "W toku",
+  },
+  assignment?: { readonly principalId: string; readonly displayName: string },
 ): Record<string, unknown> => ({
   id,
   spaceId,
   title,
   status: {
-    id: statusId,
-    label: "W toku",
+    id: status.id,
+    label: status.label,
     operationalSemantics: "actionable",
   },
   completionState: "open",
+  ...(assignment
+    ? {
+        assignment: {
+          id: `${id.slice(0, -1)}${Number(id.slice(-1)) + 6}`,
+          assigneePrincipalId: assignment.principalId,
+          displayName: assignment.displayName,
+          availability: "active",
+          version: 1,
+        },
+      }
+    : {}),
   createdAt,
   updatedAt: "2026-07-15T09:00:00.000Z",
   version: 1,
@@ -87,18 +107,71 @@ const baseClient = createScenarioClient({
           position: 0,
           version: 1,
         },
+        {
+          id: waitingStatusId,
+          label: "Czeka",
+          operationalSemantics: "actionable",
+          position: 1,
+          version: 1,
+        },
+        {
+          id: readyStatusId,
+          label: "Do decyzji",
+          operationalSemantics: "actionable",
+          position: 2,
+          version: 1,
+        },
       ],
     }),
     "task.list": result({
       kind: "task.list",
       items: [
-        taskRow(task1, "Zatwierdzić model custody dla przechwyceń", weekStart),
-        taskRow(task2, "Opisać stan lattice kokpitu tygodnia", "2026-07-14"),
-        taskRow(task3, "Sprawdzić migrację SQLCipher", "2026-06-30"),
+        taskRow(
+          task1,
+          "Zatwierdzić model custody dla przechwyceń",
+          weekStart,
+          { id: readyStatusId, label: "Do decyzji" },
+          { principalId: ownerId, displayName: "Kacper" },
+        ),
+        taskRow(
+          task2,
+          "Opisać stan lattice kokpitu tygodnia",
+          "2026-07-14",
+          undefined,
+          { principalId: memberId, displayName: "Ada Nowak" },
+        ),
+        taskRow(
+          task3,
+          "Sprawdzić migrację SQLCipher",
+          "2026-06-30",
+          { id: waitingStatusId, label: "Czeka" },
+          { principalId: guestId, displayName: "Marek Lis" },
+        ),
         taskRow(task4, "Dowieźć harness kokpitu", "2026-07-15"),
         taskRow(task5, "Przejrzeć kopie w Ustawieniach", "2026-06-20"),
       ],
       nextCursor: null,
+    }),
+    "task.assignmentCandidates": result({
+      kind: "task.assignmentCandidates",
+      spaceId,
+      candidates: [
+        {
+          principalId: ownerId,
+          displayName: "Kacper",
+          participantKind: "member",
+        },
+        {
+          principalId: memberId,
+          displayName: "Ada Nowak",
+          participantKind: "member",
+        },
+        {
+          principalId: guestId,
+          displayName: "Marek Lis",
+          participantKind: "guest",
+        },
+      ],
     }),
     "capture.history": result({
       kind: "capture.history",

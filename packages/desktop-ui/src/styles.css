@@ -1487,10 +1487,11 @@ kbd {
   max-width: var(--surface-measure, 58rem);
   margin: 0 auto;
   overflow: hidden;
+  container-type: inline-size;
   border: 1px solid var(--panel-reading-border);
   border-radius: var(--radius-lg);
   background: var(--panel-reading-bg);
-  box-shadow: var(--elevation-rest);
+  box-shadow: var(--elevation-raised);
 }
 .task-panel > header {
   height: 3.25rem;
@@ -1514,6 +1515,70 @@ kbd {
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
 }
+.task-control-strip {
+  display: grid;
+  grid-template-columns: minmax(13rem, 1fr) auto auto auto;
+  align-items: end;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+.task-search-control {
+  min-height: 2.25rem;
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  color: var(--text-quaternary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+.task-search-control input {
+  min-width: 0;
+  height: 2.2rem;
+  padding: 0;
+  color: var(--text-primary);
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: var(--text-xs);
+}
+.task-filter-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.task-filter-control > span,
+.task-row-field > span,
+.task-column-head span {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  text-transform: uppercase;
+}
+.task-filter-control select,
+.task-reset-button {
+  min-height: 2.25rem;
+  padding: 0 var(--space-3);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  font-size: var(--text-xs);
+}
+.task-column-head {
+  min-height: 2rem;
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) 10rem 11rem;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--panel-reading-bg);
+}
 .task-list {
   display: flex;
   flex-direction: column;
@@ -1522,7 +1587,7 @@ kbd {
   width: 100%;
   min-height: 3.35rem;
   display: grid;
-  grid-template-columns: 1.5rem minmax(0, 1fr) auto auto;
+  grid-template-columns: 1.5rem minmax(0, 1fr) 10rem 11rem;
   align-items: center;
   gap: var(--space-3);
   padding: 0.55rem var(--space-3);
@@ -1599,8 +1664,14 @@ kbd {
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
 }
+.task-row-field {
+  min-width: 0;
+}
+.task-row-field > span {
+  display: none;
+}
 .task-status {
-  max-width: 10rem;
+  width: 100%;
   padding: 0.2rem 0.45rem;
   color: var(--text-tertiary);
   border: 1px solid var(--border-subtle);
@@ -1609,7 +1680,7 @@ kbd {
   font-size: var(--text-2xs);
 }
 .task-assignee {
-  max-width: 11rem;
+  width: 100%;
   padding: 0.2rem 0.45rem;
   color: var(--text-secondary);
   border: 1px solid var(--border-subtle);
@@ -1620,6 +1691,36 @@ kbd {
 .task-row > svg {
   width: 0.8rem;
   color: var(--text-disabled);
+}
+@container (max-width: 42rem) {
+  .task-control-strip {
+    grid-template-columns: 1fr;
+  }
+  .task-column-head {
+    display: none;
+  }
+  .task-row {
+    grid-template-columns: 1.5rem minmax(0, 1fr);
+    align-items: start;
+    padding-block: var(--space-3);
+  }
+  .task-check {
+    margin-top: 0.25rem;
+  }
+  .task-row-field {
+    grid-column: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .task-row-field > span {
+    display: block;
+  }
+  .task-status,
+  .task-assignee {
+    width: 100%;
+    min-height: 2.75rem;
+  }
 }
 .empty-state {
   min-height: 12rem;
@@ -3035,18 +3136,6 @@ button.mention-chip:disabled {
   }
   .context-panel {
     padding: var(--space-4);
-  }
-  .task-status {
-    display: none;
-  }
-  .task-row {
-    grid-template-columns: 1.25rem minmax(0, 1fr);
-    gap: var(--space-2);
-  }
-  .task-assignee {
-    width: 100%;
-    max-width: none;
-    grid-column: 2;
   }
   .empty-state {
     grid-template-columns: 2.25rem minmax(0, 1fr);

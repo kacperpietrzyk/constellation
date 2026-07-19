@@ -748,14 +748,54 @@ export const TasksSurface = ({
     principalId: PrincipalId | undefined,
   ) => void;
 }) => {
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [assigneeFilter, setAssigneeFilter] = useState("all");
+  const normalizedQuery = query.trim().toLocaleLowerCase("pl-PL");
+  const assignmentCandidates =
+    snapshot.assignmentCandidates.kind === "ready"
+      ? snapshot.assignmentCandidates.data.candidates
+      : [];
+  const filteredTasks = snapshot.tasks.filter((task) => {
+    const matchesStatus =
+      statusFilter === "all" || task.status.id === statusFilter;
+    const matchesAssignee =
+      assigneeFilter === "all" ||
+      (assigneeFilter === "unassigned"
+        ? task.assignment === undefined
+        : task.assignment?.assigneePrincipalId === assigneeFilter);
+    const searchable = [
+      task.title,
+      task.status.label,
+      task.assignment?.displayName,
+      task.sourceCaptureId ? "Quick Capture" : "Root Space",
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase("pl-PL");
+    return (
+      matchesStatus &&
+      matchesAssignee &&
+      (normalizedQuery.length === 0 || searchable.includes(normalizedQuery))
+    );
+  });
+  const filtersActive =
+    normalizedQuery.length > 0 ||
+    statusFilter !== "all" ||
+    assigneeFilter !== "all";
+  const resetFilters = () => {
+    setQuery("");
+    setStatusFilter("all");
+    setAssigneeFilter("all");
+  };
   const taskNav = useListNavigation({
-    itemCount: snapshot.tasks.length,
+    itemCount: filteredTasks.length,
     onOpen: (index) => {
-      const task = snapshot.tasks[index];
+      const task = filteredTasks[index];
       if (task) onOpenTask(task.id);
     },
     onSelect: (index) => {
-      const task = snapshot.tasks[index];
+      const task = filteredTasks[index];
       if (task) onSelectTask(task.id);
     },
   });
@@ -776,7 +816,10 @@ export const TasksSurface = ({
         <header>
           <div>
             <h2>Wszystkie zadania</h2>
-            <span>{snapshot.tasks.length} w widoku</span>
+            <span aria-live="polite">
+              {filteredTasks.length}
+              {filtersActive ? ` z ${snapshot.tasks.length}` : " w widoku"}
+            </span>
           </div>
         </header>
         {snapshot.tasks.length === 0 ? (
@@ -790,116 +833,196 @@ export const TasksSurface = ({
             }
           />
         ) : (
-          <div className="task-list">
-            {snapshot.tasks.map((task, index) => (
-              <div
-                key={task.id}
-                className={`task-row ${task.id === selectedTaskId ? "selected" : ""}`}
-              >
-                <button
-                  className="task-check"
-                  aria-label={
-                    task.completionState === "completed"
-                      ? `Otwórz ponownie: ${task.title}`
-                      : `Ukończ: ${task.title}`
-                  }
-                  aria-pressed={task.completionState === "completed"}
-                  disabled={busyTaskId === task.id}
-                  onClick={() =>
-                    onSetCompleted(
-                      task.id,
-                      task.completionState !== "completed",
-                    )
-                  }
+          <>
+            <div className="task-control-strip" aria-label="Filtry zadań">
+              <label className="task-search-control">
+                <Icon name="search" />
+                <span className="sr-only">Szukaj zadań</span>
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Szukaj po zadaniu, stanie lub osobie"
                 />
-                <button
-                  className="task-copy"
-                  type="button"
-                  {...taskNav(index)}
-                  onClick={(event) => {
-                    if (event.metaKey || event.ctrlKey) onOpenTask(task.id);
-                    else onSelectTask(task.id);
-                  }}
-                  onDoubleClick={() => onOpenTask(task.id)}
-                >
-                  <strong>{task.title}</strong>
-                  <span>
-                    {task.sourceCaptureId
-                      ? "Z Quick Capture · oryginał zachowany"
-                      : "Root Space"}
-                  </span>
-                </button>
-                <label className="sr-only" htmlFor={`status-${task.id}`}>
-                  Status zadania {task.title}
-                </label>
+              </label>
+              <label className="task-filter-control">
+                <span>Status</span>
                 <select
-                  id={`status-${task.id}`}
-                  className="task-status"
-                  value={task.status.id}
-                  disabled={busyTaskId === task.id}
-                  onChange={(event) =>
-                    onSetStatus(task.id, event.target.value as TaskStatusId)
-                  }
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
                 >
+                  <option value="all">Wszystkie</option>
                   {snapshot.bootstrap.taskStatuses.map((status) => (
                     <option key={status.id} value={status.id}>
                       {status.label}
                     </option>
                   ))}
                 </select>
-                <label className="sr-only" htmlFor={`assignee-${task.id}`}>
-                  Osoba odpowiedzialna za {task.title}
-                </label>
+              </label>
+              <label className="task-filter-control">
+                <span>Odpowiedzialność</span>
                 <select
-                  id={`assignee-${task.id}`}
-                  className="task-assignee"
-                  aria-label={`Osoba odpowiedzialna za ${task.title}`}
-                  value={
-                    task.assignment?.availability !== "active" &&
-                    task.assignment
-                      ? "unavailable-member"
-                      : (task.assignment?.assigneePrincipalId ?? "")
-                  }
-                  disabled={
-                    busyTaskId === task.id ||
-                    snapshot.assignmentCandidates.kind !== "ready"
-                  }
-                  onChange={(event) =>
-                    onSetAssignment(
-                      task.id,
-                      event.target.value === ""
-                        ? undefined
-                        : (event.target.value as PrincipalId),
-                    )
-                  }
+                  value={assigneeFilter}
+                  onChange={(event) => setAssigneeFilter(event.target.value)}
                 >
-                  <option value="">Nieprzypisane</option>
-                  {task.assignment?.availability !== "active" &&
-                    task.assignment !== undefined && (
-                      <option value="unavailable-member" disabled>
-                        {task.assignment.availability === "former_member"
-                          ? "Były członek"
-                          : "Brak dostępu do Space"}
-                      </option>
-                    )}
-                  {snapshot.assignmentCandidates.kind === "ready" &&
-                    snapshot.assignmentCandidates.data.candidates.map(
-                      (candidate) => (
-                        <option
-                          key={candidate.principalId}
-                          value={candidate.principalId}
-                        >
-                          {candidate.displayName}
-                          {candidate.participantKind === "guest"
-                            ? " · gość"
-                            : ""}
-                        </option>
-                      ),
-                    )}
+                  <option value="all">Wszyscy</option>
+                  <option value="unassigned">Nieprzypisane</option>
+                  {assignmentCandidates.map((candidate) => (
+                    <option
+                      key={candidate.principalId}
+                      value={candidate.principalId}
+                    >
+                      {candidate.displayName}
+                      {candidate.participantKind === "guest" ? " · gość" : ""}
+                    </option>
+                  ))}
                 </select>
+              </label>
+              {filtersActive && (
+                <button
+                  type="button"
+                  className="task-reset-button"
+                  onClick={resetFilters}
+                >
+                  Wyczyść
+                </button>
+              )}
+            </div>
+            <div className="task-column-head" aria-hidden="true">
+              <span />
+              <span>Zadanie</span>
+              <span>Status</span>
+              <span>Odpowiedzialność</span>
+            </div>
+            {filteredTasks.length === 0 ? (
+              <InlineState
+                title="Brak zadań w tym widoku"
+                detail="Zmień filtry albo wyczyść je, aby wrócić do pełnej listy."
+                action={
+                  <button className="secondary-button" onClick={resetFilters}>
+                    Wyczyść filtry
+                  </button>
+                }
+              />
+            ) : (
+              <div className="task-list">
+                {filteredTasks.map((task, index) => (
+                  <div
+                    key={task.id}
+                    className={`task-row ${task.id === selectedTaskId ? "selected" : ""}`}
+                  >
+                    <button
+                      className="task-check"
+                      aria-label={
+                        task.completionState === "completed"
+                          ? `Otwórz ponownie: ${task.title}`
+                          : `Ukończ: ${task.title}`
+                      }
+                      aria-pressed={task.completionState === "completed"}
+                      disabled={busyTaskId === task.id}
+                      onClick={() =>
+                        onSetCompleted(
+                          task.id,
+                          task.completionState !== "completed",
+                        )
+                      }
+                    />
+                    <button
+                      className="task-copy"
+                      type="button"
+                      {...taskNav(index)}
+                      onClick={(event) => {
+                        if (event.metaKey || event.ctrlKey) onOpenTask(task.id);
+                        else onSelectTask(task.id);
+                      }}
+                      onDoubleClick={() => onOpenTask(task.id)}
+                    >
+                      <strong title={task.title}>{task.title}</strong>
+                      <span>
+                        {task.sourceCaptureId
+                          ? "Z Quick Capture · oryginał zachowany"
+                          : "Root Space"}
+                      </span>
+                    </button>
+                    <label className="sr-only" htmlFor={`status-${task.id}`}>
+                      Status zadania {task.title}
+                    </label>
+                    <span className="task-row-field">
+                      <span aria-hidden="true">Status</span>
+                      <select
+                        id={`status-${task.id}`}
+                        className="task-status"
+                        value={task.status.id}
+                        disabled={busyTaskId === task.id}
+                        onChange={(event) =>
+                          onSetStatus(
+                            task.id,
+                            event.target.value as TaskStatusId,
+                          )
+                        }
+                      >
+                        {snapshot.bootstrap.taskStatuses.map((status) => (
+                          <option key={status.id} value={status.id}>
+                            {status.label}
+                          </option>
+                        ))}
+                      </select>
+                    </span>
+                    <label className="sr-only" htmlFor={`assignee-${task.id}`}>
+                      Osoba odpowiedzialna za {task.title}
+                    </label>
+                    <span className="task-row-field">
+                      <span aria-hidden="true">Odpowiedzialność</span>
+                      <select
+                        id={`assignee-${task.id}`}
+                        className="task-assignee"
+                        aria-label={`Osoba odpowiedzialna za ${task.title}`}
+                        value={
+                          task.assignment?.availability !== "active" &&
+                          task.assignment
+                            ? "unavailable-member"
+                            : (task.assignment?.assigneePrincipalId ?? "")
+                        }
+                        disabled={
+                          busyTaskId === task.id ||
+                          snapshot.assignmentCandidates.kind !== "ready"
+                        }
+                        onChange={(event) =>
+                          onSetAssignment(
+                            task.id,
+                            event.target.value === ""
+                              ? undefined
+                              : (event.target.value as PrincipalId),
+                          )
+                        }
+                      >
+                        <option value="">Nieprzypisane</option>
+                        {task.assignment?.availability !== "active" &&
+                          task.assignment !== undefined && (
+                            <option value="unavailable-member" disabled>
+                              {task.assignment.availability === "former_member"
+                                ? "Były członek"
+                                : "Brak dostępu do Space"}
+                            </option>
+                          )}
+                        {assignmentCandidates.map((candidate) => (
+                          <option
+                            key={candidate.principalId}
+                            value={candidate.principalId}
+                          >
+                            {candidate.displayName}
+                            {candidate.participantKind === "guest"
+                              ? " · gość"
+                              : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </section>
     </div>

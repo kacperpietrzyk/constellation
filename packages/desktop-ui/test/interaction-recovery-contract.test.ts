@@ -123,6 +123,26 @@ describe("interaction recovery contracts", () => {
     );
   });
 
+  it("keeps Tasks as a filterable ledger with deliberate inspector entry", () => {
+    assert.match(surfaces, /className="task-control-strip"/);
+    assert.match(surfaces, /className="task-column-head"/);
+    assert.match(surfaces, /const filteredTasks = snapshot\.tasks\.filter/);
+    assert.match(surfaces, /itemCount: filteredTasks\.length/);
+    assert.match(surfaces, /Brak zadań w tym widoku/);
+    assert.match(surfaces, /Wyczyść filtry/);
+    assert.match(surfaces, /else onSelectTask\(task\.id\)/);
+    assert.match(surfaces, /onDoubleClick=\{\(\) => onOpenTask\(task\.id\)\}/);
+    assert.match(
+      styles,
+      /\.task-panel\s*\{[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-raised\)/s,
+    );
+    assert.match(
+      styles,
+      /\.task-control-strip\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
+    );
+    assert.match(styles, /@container \(max-width: 42rem\)/);
+  });
+
   it("keeps meeting collection options concise while full content stays in the inspector", () => {
     assert.match(
       meetings,
