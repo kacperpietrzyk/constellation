@@ -427,6 +427,14 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
         areaIds: z.array(StrategicRecordIdSchema).optional(),
         initiativeIds: z.array(StrategicRecordIdSchema).optional(),
         unassigned: z.boolean().optional(),
+        statusIds: z.array(TaskStatusIdSchema).max(50).optional(),
+        assigneePrincipalIds: z.array(PrincipalIdSchema).max(50).optional(),
+        priorities: z
+          .array(z.enum(["urgent", "high", "normal", "low"]))
+          .max(4)
+          .optional(),
+        dueWindow: z.enum(["overdue", "today", "this_week"]).optional(),
+        scheduled: z.boolean().optional(),
       })
       .strict(),
     sort: z.enum(["updated_desc", "due_asc", "title_asc"]),
@@ -517,6 +525,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           .object({
             id: TaskIdSchema,
             title: z.string(),
+            statusId: TaskStatusIdSchema,
+            assigneePrincipalId: PrincipalIdSchema.optional(),
             operationalState: z.enum(["actionable", "waiting", "blocked"]),
             waitingOn: z
               .object({
@@ -601,6 +611,17 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
                 areaIds: z.array(StrategicRecordIdSchema).optional(),
                 initiativeIds: z.array(StrategicRecordIdSchema).optional(),
                 unassigned: z.boolean().optional(),
+                statusIds: z.array(TaskStatusIdSchema).max(50).optional(),
+                assigneePrincipalIds: z
+                  .array(PrincipalIdSchema)
+                  .max(50)
+                  .optional(),
+                priorities: z
+                  .array(z.enum(["urgent", "high", "normal", "low"]))
+                  .max(4)
+                  .optional(),
+                dueWindow: z.enum(["overdue", "today", "this_week"]).optional(),
+                scheduled: z.boolean().optional(),
               })
               .strict(),
             sort: z.enum(["updated_desc", "due_asc", "title_asc"]),

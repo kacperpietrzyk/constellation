@@ -1,6 +1,11 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 
-import type { ProjectId, TaskId } from "@constellation/contracts";
+import type {
+  PrincipalId,
+  ProjectId,
+  TaskId,
+  TaskStatusId,
+} from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import {
@@ -97,14 +102,107 @@ export const WorkSurface = ({
     Record<string, string>
   >({});
   const projection = work.kind === "ready" ? work.data : undefined;
+  const [activeViewId, setActiveViewId] = useState<string>();
+  const timeZone = snapshot.bootstrap.workspace.timezone;
+  // The applied saved view is a deterministic client-side projection of the
+  // already permission-safe work overview: same filters, same order, every
+  // time. Week membership follows the workspace calendar.
+  const activeView = projection?.savedViews.find(
+    (view) => view.id === activeViewId,
+  );
+  const todayKey = dateKeyInZone(new Date(), timeZone);
+  const weekdayIndex = (() => {
+    try {
+      const name = new Intl.DateTimeFormat("en", {
+        timeZone,
+        weekday: "short",
+      }).format(new Date());
+      return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(name);
+    } catch {
+      return (new Date().getDay() + 6) % 7;
+    }
+  })();
+  const dayKeyAt = (offset: number): string => {
+    const date = new Date();
+    date.setDate(date.getDate() + offset);
+    return dateKeyInZone(date, timeZone);
+  };
+  const weekStartKey = dayKeyAt(-Math.max(0, weekdayIndex));
+  const weekEndKey = dayKeyAt(6 - Math.max(0, weekdayIndex));
+  const matchesActiveView = (
+    task: NonNullable<typeof projection>["tasks"][number],
+  ): boolean => {
+    if (!activeView) return true;
+    const filters = activeView.filters;
+    if (
+      filters.operationalStates !== undefined &&
+      !filters.operationalStates.includes(task.operationalState)
+    )
+      return false;
+    if (filters.unassigned === true && task.assigneePrincipalId !== undefined)
+      return false;
+    if (
+      filters.statusIds !== undefined &&
+      !filters.statusIds.includes(task.statusId)
+    )
+      return false;
+    if (
+      filters.assigneePrincipalIds !== undefined &&
+      (task.assigneePrincipalId === undefined ||
+        !filters.assigneePrincipalIds.includes(task.assigneePrincipalId))
+    )
+      return false;
+    if (
+      filters.priorities !== undefined &&
+      !filters.priorities.includes(task.priority ?? "normal")
+    )
+      return false;
+    if (filters.scheduled !== undefined) {
+      if (filters.scheduled !== (task.dueAt !== undefined)) return false;
+    }
+    if (filters.dueWindow !== undefined) {
+      if (task.dueAt === undefined) return false;
+      const dueKey = dateKeyInZone(task.dueAt, timeZone);
+      if (filters.dueWindow === "overdue") {
+        if (Date.parse(task.dueAt) >= Date.now()) return false;
+      } else if (filters.dueWindow === "today") {
+        if (dueKey !== todayKey) return false;
+      } else if (dueKey < weekStartKey || dueKey > weekEndKey) return false;
+    }
+    return true;
+  };
+  const priorityRank = { urgent: 3, high: 2, normal: 1, low: 0 } as const;
+  const visibleTasks = (projection?.tasks ?? [])
+    .filter(matchesActiveView)
+    .toSorted((left, right) => {
+      if (activeView?.sort === "title_asc")
+        return (
+          left.title.localeCompare(right.title, "pl-PL") ||
+          left.id.localeCompare(right.id)
+        );
+      if (activeView?.sort === "due_asc") {
+        if (left.dueAt !== undefined || right.dueAt !== undefined) {
+          if (left.dueAt === undefined) return 1;
+          if (right.dueAt === undefined) return -1;
+          const byDue = Date.parse(left.dueAt) - Date.parse(right.dueAt);
+          if (byDue !== 0) return byDue;
+        }
+        const byPriority =
+          priorityRank[right.priority ?? "normal"] -
+          priorityRank[left.priority ?? "normal"];
+        if (byPriority !== 0) return byPriority;
+        return left.id.localeCompare(right.id);
+      }
+      return 0;
+    });
   const taskNav = useListNavigation({
-    itemCount: projection?.tasks.length ?? 0,
+    itemCount: visibleTasks.length,
     onOpen: (index) => {
-      const task = projection?.tasks[index];
+      const task = visibleTasks[index];
       if (task) onOpenTask(task.id);
     },
     onSelect: (index) => {
-      const task = projection?.tasks[index];
+      const task = visibleTasks[index];
       if (task) onSelectTask(task.id);
     },
   });
@@ -236,15 +334,50 @@ export const WorkSurface = ({
     const form = event.currentTarget;
     const data = new FormData(form);
     const name = String(data.get("name") ?? "").trim();
-    const state = String(data.get("state") ?? "actionable") as
-      "actionable" | "waiting" | "blocked";
+    const state = String(data.get("state") ?? "");
+    const statusId = String(data.get("statusId") ?? "");
+    const priority = String(data.get("priority") ?? "");
+    const dueWindow = String(data.get("dueWindow") ?? "");
+    const assignee = String(data.get("assignee") ?? "");
+    const sort = String(data.get("sort") ?? "updated_desc") as
+      "updated_desc" | "due_asc" | "title_asc";
     if (!client) return;
     if (!name) {
       reportFirstEmptyRequiredField(form);
       return;
     }
     await run("view", () =>
-      createSavedWorkView(client, snapshot, name, [state]),
+      createSavedWorkView(
+        client,
+        snapshot,
+        name,
+        {
+          ...(state === ""
+            ? {}
+            : {
+                operationalStates: [
+                  state as "actionable" | "waiting" | "blocked",
+                ],
+              }),
+          ...(statusId === "" ? {} : { statusIds: [statusId as TaskStatusId] }),
+          ...(priority === ""
+            ? {}
+            : {
+                priorities: [priority as "urgent" | "high" | "normal" | "low"],
+              }),
+          ...(dueWindow === ""
+            ? {}
+            : {
+                dueWindow: dueWindow as "overdue" | "today" | "this_week",
+              }),
+          ...(assignee === ""
+            ? {}
+            : assignee === "unassigned"
+              ? { unassigned: true }
+              : { assigneePrincipalIds: [assignee as PrincipalId] }),
+        },
+        sort,
+      ),
     );
   };
   const submitProjectLink = async (event: FormEvent<HTMLFormElement>) => {
@@ -339,11 +472,29 @@ export const WorkSurface = ({
 
       <nav className="saved-view-strip" aria-label="Zapisane widoki pracy">
         <span>Widoki</span>
+        <button
+          type="button"
+          className={`view-chip${activeViewId === undefined ? " active" : ""}`}
+          aria-pressed={activeViewId === undefined}
+          onClick={() => setActiveViewId(undefined)}
+        >
+          Wszystkie
+        </button>
         {projection.savedViews.length === 0 ? (
           <em>Jeszcze bez zapisanych filtrów</em>
         ) : (
           projection.savedViews.map((view) => (
-            <button type="button" key={view.id} className="view-chip">
+            <button
+              type="button"
+              key={view.id}
+              className={`view-chip${activeViewId === view.id ? " active" : ""}`}
+              aria-pressed={activeViewId === view.id}
+              onClick={() =>
+                setActiveViewId((current) =>
+                  current === view.id ? undefined : view.id,
+                )
+              }
+            >
               {view.name}
             </button>
           ))
@@ -361,10 +512,62 @@ export const WorkSurface = ({
               placeholder="Moje oczekujące"
               required
             />
-            <select name="state" aria-label="Stan zadań">
+            <select name="state" aria-label="Stan zadań" defaultValue="">
+              <option value="">Każdy stan</option>
               <option value="actionable">Do działania</option>
               <option value="waiting">Czekam na</option>
               <option value="blocked">Zablokowane</option>
+            </select>
+            <select name="statusId" aria-label="Status" defaultValue="">
+              <option value="">Każdy status</option>
+              {snapshot.bootstrap.taskStatuses
+                .filter((status) => status.state !== "archived")
+                .map((status) => (
+                  <option key={status.id} value={status.id}>
+                    {status.label}
+                  </option>
+                ))}
+            </select>
+            <select name="priority" aria-label="Priorytet" defaultValue="">
+              <option value="">Każdy priorytet</option>
+              <option value="urgent">Pilny</option>
+              <option value="high">Wysoki</option>
+              <option value="normal">Normalny</option>
+              <option value="low">Niski</option>
+            </select>
+            <select name="dueWindow" aria-label="Termin" defaultValue="">
+              <option value="">Dowolny termin</option>
+              <option value="overdue">Po terminie</option>
+              <option value="today">Termin dziś</option>
+              <option value="this_week">Termin w tym tygodniu</option>
+            </select>
+            <select
+              name="assignee"
+              aria-label="Odpowiedzialność"
+              defaultValue=""
+            >
+              <option value="">Każda osoba</option>
+              <option value="unassigned">Nieprzypisane</option>
+              {(snapshot.assignmentCandidates.kind === "ready"
+                ? snapshot.assignmentCandidates.data.candidates
+                : []
+              ).map((candidate) => (
+                <option
+                  key={candidate.principalId}
+                  value={candidate.principalId}
+                >
+                  {candidate.displayName}
+                </option>
+              ))}
+            </select>
+            <select
+              name="sort"
+              aria-label="Kolejność"
+              defaultValue="updated_desc"
+            >
+              <option value="updated_desc">Ostatnio zmieniane</option>
+              <option value="due_asc">Najbliższy termin</option>
+              <option value="title_asc">Alfabetycznie</option>
             </select>
             <button disabled={busyIds.has("view") || !client}>
               {busyIds.has("view") ? "Zapisuję…" : "Zapisz"}
@@ -506,13 +709,8 @@ export const WorkSurface = ({
                 "projekty",
                 "projektów",
               )}{" "}
-              ·{" "}
-              {countLabel(
-                projection.tasks.length,
-                "zadanie",
-                "zadania",
-                "zadań",
-              )}
+              · {countLabel(visibleTasks.length, "zadanie", "zadania", "zadań")}
+              {activeView !== undefined ? ` · widok „${activeView.name}”` : ""}
             </span>
           </div>
           {projection.projects.map((project) => (
@@ -550,7 +748,7 @@ export const WorkSurface = ({
             role="listbox"
             aria-label="Następne działania"
           >
-            {projection.tasks.map((task, index) => {
+            {visibleTasks.map((task, index) => {
               const dependency = activeLinks.find(
                 (link) =>
                   link.linkType === "task_depends_on_task" &&
@@ -746,10 +944,18 @@ export const WorkSurface = ({
               );
             })}
           </div>
-          {projection.tasks.length === 0 && (
+          {visibleTasks.length === 0 && (
             <WorkEmpty
-              title="Brak następnych działań"
-              detail="Quick Capture utworzy zadanie bez wymagania klasyfikacji na wejściu."
+              title={
+                activeView !== undefined && projection.tasks.length > 0
+                  ? "Ten widok nie pasuje do żadnego zadania"
+                  : "Brak następnych działań"
+              }
+              detail={
+                activeView !== undefined && projection.tasks.length > 0
+                  ? "Filtry widoku są jawne — zmień widok albo wróć do „Wszystkie”."
+                  : "Quick Capture utworzy zadanie bez wymagania klasyfikacji na wejściu."
+              }
             />
           )}
           <div className="work-link-tools">

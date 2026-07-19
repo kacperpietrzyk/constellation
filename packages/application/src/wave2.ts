@@ -4943,6 +4943,14 @@ export const executeWave2Query = (
         .map((task) => ({
           id: task.id,
           title: task.title,
+          statusId: task.statusId,
+          ...(view.getActiveTaskAssignment(task.id)?.assigneePrincipalId ===
+          undefined
+            ? {}
+            : {
+                assigneePrincipalId: view.getActiveTaskAssignment(task.id)!
+                  .assigneePrincipalId,
+              }),
           operationalState: task.operationalState,
           ...(task.waitingOn === undefined
             ? {}

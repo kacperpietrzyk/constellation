@@ -644,7 +644,9 @@ describe("real Wave 2 renderer workflow", () => {
     await createProject(client, snapshot, "Alpha", "Gotowe");
     await createArea(client, snapshot, "Produkt", "Utrzymuj jakość");
     await createInitiative(client, snapshot, "Alfa", "Pełny tydzień pracy");
-    await createSavedWorkView(client, snapshot, "Czekam", ["waiting"]);
+    await createSavedWorkView(client, snapshot, "Czekam", {
+      operationalStates: ["waiting"],
+    });
     await createWorkLink(
       client,
       snapshot,
@@ -658,6 +660,9 @@ describe("real Wave 2 renderer workflow", () => {
       {
         id: taskId,
         title: "Sprawdź integrację",
+        statusId: TaskStatusIdSchema.parse(
+          "00000000-0000-4000-8000-000000000031",
+        ),
         operationalState: "actionable",
         completionState: "open",
         version: 2,

@@ -1261,11 +1261,24 @@ export const createInitiative = (
   );
 };
 
+export interface SavedWorkViewFilters {
+  readonly operationalStates?: readonly (
+    "actionable" | "waiting" | "blocked"
+  )[];
+  readonly unassigned?: boolean;
+  readonly statusIds?: readonly TaskStatusId[];
+  readonly assigneePrincipalIds?: readonly PrincipalId[];
+  readonly priorities?: readonly ("urgent" | "high" | "normal" | "low")[];
+  readonly dueWindow?: "overdue" | "today" | "this_week";
+  readonly scheduled?: boolean;
+}
+
 export const createSavedWorkView = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
   name: string,
-  operationalStates: readonly ("actionable" | "waiting" | "blocked")[],
+  filters: SavedWorkViewFilters,
+  sort: "updated_desc" | "due_asc" | "title_asc" = "updated_desc",
 ) => {
   const savedViewId = crypto.randomUUID() as StrategicRecordId;
   return execute(
@@ -1277,8 +1290,8 @@ export const createSavedWorkView = (
         savedViewId,
         spaceId: firstSpace(snapshot),
         name,
-        filters: { operationalStates },
-        sort: "updated_desc",
+        filters,
+        sort,
       },
     },
     (response) =>
