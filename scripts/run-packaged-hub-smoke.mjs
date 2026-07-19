@@ -767,6 +767,26 @@ try {
   })()`);
   await waitFor(
     first.client,
+    `document.querySelector(".inspector.open .attention-detail h2")?.textContent === ${JSON.stringify(sharedTask.title)}`,
+    "ATTENTION_DID_NOT_OPEN_SIGNAL_INSPECTOR",
+  );
+  const attentionSelectionWasMutationFree = await first.client.evaluate(
+    `(() => {
+      const item = [...document.querySelectorAll(".attention-main")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
+      const exactCommentIsOpen = [...document.querySelectorAll(".comment-entry p")].some((node) => node.textContent === ${JSON.stringify(packagedCommentBody)});
+      return item?.closest("li")?.classList.contains("unread") === true && !exactCommentIsOpen;
+    })()`,
+  );
+  if (!attentionSelectionWasMutationFree)
+    throw new Error("ATTENTION_SELECTION_MUTATED_OR_NAVIGATED");
+  await first.client.evaluate(`(() => {
+    const item = [...document.querySelectorAll(".attention-main")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
+    item.focus();
+    item.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
+    return true;
+  })()`);
+  await waitFor(
+    first.client,
     `[...document.querySelectorAll(".comment-entry p")].some((node) => node.textContent === ${JSON.stringify(packagedCommentBody)})`,
     "ATTENTION_DID_NOT_OPEN_EXACT_COMMENT_CONTEXT",
   );
