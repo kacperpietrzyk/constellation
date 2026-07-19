@@ -7,17 +7,16 @@ import {
 
 import {
   ApplicationKernel,
+  Base64JsonCursorCodec,
   CommandScopedIdGenerator,
   InMemoryReferenceStore,
   type AuthorizationRequest,
   type CurrentAuthorizationPolicy,
-  type PaginationCursor,
-  type PaginationCursorCodec,
   type SemanticHasher,
 } from "@constellation/application";
 import {
   AgentRunIdSchema,
-  CaptureIdSchema,
+  type CaptureIdSchema,
   CheckpointIdSchema,
   CommandEnvelopeSchema,
   CommandIdSchema,
@@ -33,7 +32,6 @@ import {
   RemoteMcpGrantListRequestSchema,
   RemoteMcpGrantProjectionSchema,
   SpaceGrantIdSchema,
-  TaskIdSchema,
   isCustodiedCaptureOriginal,
   type Capability,
   type CaptureOriginal,
@@ -153,43 +151,6 @@ class HubClock {
   public constructor(private readonly current: () => string) {}
   public now(): string {
     return this.current();
-  }
-}
-
-class CursorCodec implements PaginationCursorCodec {
-  public encode(cursor: PaginationCursor): string {
-    return Buffer.from(JSON.stringify(cursor)).toString("base64url");
-  }
-  public decode(value: string): PaginationCursor | undefined {
-    try {
-      const candidate = JSON.parse(
-        Buffer.from(value, "base64url").toString("utf8"),
-      ) as Record<string, unknown>;
-      if (typeof candidate.orderedAt !== "string") return undefined;
-      if (candidate.kind === "capture") {
-        const recordId = CaptureIdSchema.safeParse(candidate.recordId);
-        return recordId.success
-          ? {
-              kind: "capture",
-              orderedAt: candidate.orderedAt,
-              recordId: recordId.data,
-            }
-          : undefined;
-      }
-      if (candidate.kind === "task") {
-        const recordId = TaskIdSchema.safeParse(candidate.recordId);
-        return recordId.success
-          ? {
-              kind: "task",
-              orderedAt: candidate.orderedAt,
-              recordId: recordId.data,
-            }
-          : undefined;
-      }
-      return undefined;
-    } catch {
-      return undefined;
-    }
   }
 }
 
@@ -1077,7 +1038,7 @@ export class HubRemoteMcpService {
     return new ApplicationKernel({
       authorization: new ExactGrant(context),
       clock: new HubClock(() => this.now()),
-      cursorCodec: new CursorCodec(),
+      cursorCodec: new Base64JsonCursorCodec(),
       hasher,
       ids,
       store,
@@ -1096,7 +1057,7 @@ export class HubRemoteMcpService {
       kernel: new ApplicationKernel({
         authorization: new ExactGrant(context),
         clock: new HubClock(() => this.now()),
-        cursorCodec: new CursorCodec(),
+        cursorCodec: new Base64JsonCursorCodec(),
         hasher,
         ids,
         store,

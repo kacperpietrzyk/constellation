@@ -418,6 +418,12 @@ it("deduplicates reviews and preserves recurrence, decision, and Project history
       ?.completionState,
     "completed",
   );
+  assert.equal(
+    harness.store.snapshot().tasks.find((task) => task.id === followUpTaskId)
+      ?.dueAt,
+    "2026-08-01T12:00:00.000Z",
+    "renewal follow-up carries the review deadline (expiry minus lead time)",
+  );
 
   const factId = uuid();
   assert.equal(
@@ -551,6 +557,13 @@ it("deduplicates reviews and preserves recurrence, decision, and Project history
     harness.store.snapshot().tasks.find((task) => task.id === occurrenceTaskId)
       ?.completionState,
     "open",
+  );
+  const occurrenceTask = harness.store
+    .snapshot()
+    .tasks.find((task) => task.id === occurrenceTaskId);
+  assert.ok(
+    occurrenceTask?.dueAt !== undefined,
+    "the generated occurrence inherits the due moment it was generated for",
   );
 
   const candidateId = uuid();

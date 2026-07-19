@@ -32,6 +32,8 @@ import {
   assignTask,
   createProject,
   createTask,
+  isTaskTimingValid,
+  taskTimingAfterUpdate,
   updateTaskDetails,
   createNativeDocument,
   relateTaskToProject,
@@ -1490,11 +1492,18 @@ export const executeWave2Command = (
         createdBy: context.principalId,
         occurredAt,
       });
+      const reviewDueAt = new Date(
+        Date.parse(record.expiresAt) -
+          record.leadTimeDays * 24 * 60 * 60 * 1_000,
+      ).toISOString();
       const task: Task = {
         id: record.followUpTaskId,
         workspaceId: record.workspaceId,
         spaceId: record.spaceId,
         title: `Review renewal: ${record.title}`,
+        // The follow-up carries the renewal review moment as its deadline so
+        // date-aware views surface it without a separate side list.
+        dueAt: reviewDueAt,
         statusId: workspace.defaultTaskStatusId,
         recordState: "active",
         completionState: "open",
@@ -2090,6 +2099,9 @@ export const executeWave2Command = (
         workspaceId: current.workspaceId,
         spaceId: current.spaceId,
         title: current.taskTitle,
+        // The occurrence inherits the due moment it is generated for, so the
+        // recurring responsibility lands in due-aware views without retyping.
+        dueAt: current.nextDueAt,
         statusId: workspace.defaultTaskStatusId,
         recordState: "active",
         completionState: "open",
@@ -2738,6 +2750,15 @@ export const executeWave2Command = (
         ...(command.payload.nextAction === undefined
           ? {}
           : { nextAction: command.payload.nextAction }),
+        ...(command.payload.startAt === undefined
+          ? {}
+          : { startAt: command.payload.startAt }),
+        ...(command.payload.dueAt === undefined
+          ? {}
+          : { dueAt: command.payload.dueAt }),
+        ...(command.payload.priority === undefined
+          ? {}
+          : { priority: command.payload.priority }),
         statusId: workspace.defaultTaskStatusId,
         createdBy: context.principalId,
         occurredAt,
@@ -2759,7 +2780,15 @@ export const executeWave2Command = (
           occurredAt,
         },
         { [task.id]: task.version },
-        ["title", "description", "nextAction", "statusId"],
+        [
+          "title",
+          "description",
+          "nextAction",
+          "startAt",
+          "dueAt",
+          "priority",
+          "statusId",
+        ],
         {
           diagnosticCode: "task.created",
           projection: {
@@ -2773,6 +2802,9 @@ export const executeWave2Command = (
             ...(task.nextAction === undefined
               ? {}
               : { nextAction: task.nextAction }),
+            ...(task.startAt === undefined ? {} : { startAt: task.startAt }),
+            ...(task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
+            ...(task.priority === undefined ? {} : { priority: task.priority }),
             statusId: task.statusId,
             completionState: task.completionState,
             version: task.version,
@@ -2788,21 +2820,30 @@ export const executeWave2Command = (
           [task.id]: task.version,
         });
       }
-      const updated = updateTaskDetails(
-        task,
-        {
-          ...(command.payload.title === undefined
-            ? {}
-            : { title: command.payload.title }),
-          ...(command.payload.description === undefined
-            ? {}
-            : { description: command.payload.description }),
-          ...(command.payload.nextAction === undefined
-            ? {}
-            : { nextAction: command.payload.nextAction }),
-        },
-        occurredAt,
-      );
+      const detailsUpdate = {
+        ...(command.payload.title === undefined
+          ? {}
+          : { title: command.payload.title }),
+        ...(command.payload.description === undefined
+          ? {}
+          : { description: command.payload.description }),
+        ...(command.payload.nextAction === undefined
+          ? {}
+          : { nextAction: command.payload.nextAction }),
+        ...(command.payload.startAt === undefined
+          ? {}
+          : { startAt: command.payload.startAt }),
+        ...(command.payload.dueAt === undefined
+          ? {}
+          : { dueAt: command.payload.dueAt }),
+        ...(command.payload.priority === undefined
+          ? {}
+          : { priority: command.payload.priority }),
+      };
+      if (!isTaskTimingValid(taskTimingAfterUpdate(task, detailsUpdate))) {
+        return precondition(command, occurredAt);
+      }
+      const updated = updateTaskDetails(task, detailsUpdate, occurredAt);
       if (!transaction.updateTask(updated, task.version)) {
         return versionConflict(command, occurredAt, {
           [task.id]: task.version,
@@ -2812,6 +2853,9 @@ export const executeWave2Command = (
         ...(command.payload.title === undefined ? [] : ["title"]),
         ...(command.payload.description === undefined ? [] : ["description"]),
         ...(command.payload.nextAction === undefined ? [] : ["nextAction"]),
+        ...(command.payload.startAt === undefined ? [] : ["startAt"]),
+        ...(command.payload.dueAt === undefined ? [] : ["dueAt"]),
+        ...(command.payload.priority === undefined ? [] : ["priority"]),
       ];
       return appendJournal(
         dependencies,
@@ -2842,6 +2886,13 @@ export const executeWave2Command = (
             ...(updated.nextAction === undefined
               ? {}
               : { nextAction: updated.nextAction }),
+            ...(updated.startAt === undefined
+              ? {}
+              : { startAt: updated.startAt }),
+            ...(updated.dueAt === undefined ? {} : { dueAt: updated.dueAt }),
+            ...(updated.priority === undefined
+              ? {}
+              : { priority: updated.priority }),
             version: updated.version,
           },
         },
@@ -2858,6 +2909,11 @@ export const executeWave2Command = (
           ...(task.nextAction === undefined
             ? {}
             : { priorNextAction: task.nextAction }),
+          ...(task.startAt === undefined ? {} : { priorStartAt: task.startAt }),
+          ...(task.dueAt === undefined ? {} : { priorDueAt: task.dueAt }),
+          ...(task.priority === undefined
+            ? {}
+            : { priorPriority: task.priority }),
           resultingVersion: updated.version,
         },
       );
@@ -4003,6 +4059,9 @@ const applyUndo = (
         title: descriptor.priorTitle,
         description: descriptor.priorDescription ?? null,
         nextAction: descriptor.priorNextAction ?? null,
+        startAt: descriptor.priorStartAt ?? null,
+        dueAt: descriptor.priorDueAt ?? null,
+        priority: descriptor.priorPriority ?? null,
       },
       occurredAt,
     );

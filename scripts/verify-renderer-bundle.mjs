@@ -8,11 +8,13 @@ import path from "node:path";
 // pozostaje na starym budżecie — nowe powierzchnie ładują się jako osobne
 // chunki (Access, Relacje, Onboarding, Recovery dołączyły do split-listy).
 // 2026-07-20: stylesheet podniesiony po R12.1 (kontekst roboczy zadania:
-// edytor w inspektorze i wiersz bezpośredniego tworzenia zadania).
+// edytor w inspektorze i wiersz bezpośredniego tworzenia zadania), a
+// totalJavaScript po dodaniu planowania w czasie (pola dat i priorytetu,
+// konwersja stref czasowych workspace, linia terminu w wierszach zadań).
 const limits = {
   entryBytes: 510_000,
   entryGzipBytes: 140_000,
-  totalJavaScriptBytes: 760_000,
+  totalJavaScriptBytes: 765_000,
   stylesheetBytes: 169_000,
 };
 

@@ -48,7 +48,13 @@ import {
   recurrenceCadenceLabels,
   strategicStateLabels,
 } from "./strategic-labels.js";
-import { countLabel, recordKindLabels } from "./i18n.js";
+import {
+  countLabel,
+  dateKeyInZone,
+  formatDate,
+  instantForZonedDate,
+  recordKindLabels,
+} from "./i18n.js";
 
 import {
   CaptureHistoryDetail,
@@ -137,6 +143,13 @@ type LoadState =
   | { readonly kind: "recovery"; readonly build: DesktopBuildInfo }
   | { readonly kind: "unavailable" | "error"; readonly message: string }
   | { readonly kind: "ready"; readonly snapshot: DesktopSnapshot };
+
+const taskPriorityLabels: Record<string, string> = {
+  urgent: "Pilny",
+  high: "Wysoki",
+  normal: "Normalny",
+  low: "Niski",
+};
 
 const loadDocumentsSurface = () => import("./DocumentsSurface.js");
 const DocumentsSurface = lazy(() =>
@@ -1358,6 +1371,9 @@ export const RealApp = ({
     title: "",
     description: "",
     nextAction: "",
+    startDate: "",
+    dueDate: "",
+    priority: "",
   });
   const [taskEditBusy, setTaskEditBusy] = useState(false);
   const taskEditButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -3615,10 +3631,56 @@ export const RealApp = ({
                   onSubmit={(event) => {
                     event.preventDefault();
                     if (!client || taskEditBusy) return;
+                    const timeZone =
+                      state.snapshot.bootstrap.workspace.timezone;
                     const title = taskDraft.title.trim();
                     const description = taskDraft.description.trim();
                     const nextAction = taskDraft.nextAction.trim();
                     if (title.length === 0) return;
+                    const currentStartDate =
+                      selectedTask.startAt === undefined
+                        ? ""
+                        : dateKeyInZone(selectedTask.startAt, timeZone);
+                    const currentDueDate =
+                      selectedTask.dueAt === undefined
+                        ? ""
+                        : dateKeyInZone(selectedTask.dueAt, timeZone);
+                    const startAt =
+                      taskDraft.startDate === ""
+                        ? null
+                        : instantForZonedDate(
+                            taskDraft.startDate,
+                            timeZone,
+                            "start",
+                          );
+                    const dueAt =
+                      taskDraft.dueDate === ""
+                        ? null
+                        : instantForZonedDate(
+                            taskDraft.dueDate,
+                            timeZone,
+                            "end",
+                          );
+                    if (startAt === undefined || dueAt === undefined) {
+                      showFailure({
+                        kind: "error",
+                        message: "Data ma nieprawidłowy format.",
+                      });
+                      return;
+                    }
+                    if (
+                      taskDraft.startDate !== "" &&
+                      taskDraft.dueDate !== "" &&
+                      taskDraft.startDate > taskDraft.dueDate
+                    ) {
+                      showFailure({
+                        kind: "error",
+                        message:
+                          "Start nie może wypadać po terminie. Popraw daty i zapisz ponownie.",
+                      });
+                      return;
+                    }
+                    const currentPriority = selectedTask.priority ?? "";
                     const draft = {
                       ...(title === selectedTask.title ? {} : { title }),
                       ...(description === (selectedTask.description ?? "")
@@ -3632,6 +3694,21 @@ export const RealApp = ({
                         : {
                             nextAction:
                               nextAction.length === 0 ? null : nextAction,
+                          }),
+                      ...(taskDraft.startDate === currentStartDate
+                        ? {}
+                        : { startAt }),
+                      ...(taskDraft.dueDate === currentDueDate
+                        ? {}
+                        : { dueAt }),
+                      ...(taskDraft.priority === currentPriority
+                        ? {}
+                        : {
+                            priority:
+                              taskDraft.priority === ""
+                                ? null
+                                : (taskDraft.priority as
+                                    "urgent" | "high" | "normal" | "low"),
                           }),
                     };
                     if (Object.keys(draft).length === 0) {
@@ -3703,6 +3780,55 @@ export const RealApp = ({
                       }
                     />
                   </label>
+                  <div className="task-context-dates">
+                    <label>
+                      <span>Start</span>
+                      <input
+                        type="date"
+                        value={taskDraft.startDate}
+                        disabled={taskEditBusy}
+                        onChange={(event) =>
+                          setTaskDraft((current) => ({
+                            ...current,
+                            startDate: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>Termin</span>
+                      <input
+                        type="date"
+                        value={taskDraft.dueDate}
+                        disabled={taskEditBusy}
+                        onChange={(event) =>
+                          setTaskDraft((current) => ({
+                            ...current,
+                            dueDate: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                  <label>
+                    <span>Priorytet</span>
+                    <select
+                      value={taskDraft.priority}
+                      disabled={taskEditBusy}
+                      onChange={(event) =>
+                        setTaskDraft((current) => ({
+                          ...current,
+                          priority: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Domyślny (normalny)</option>
+                      <option value="urgent">Pilny</option>
+                      <option value="high">Wysoki</option>
+                      <option value="normal">Normalny</option>
+                      <option value="low">Niski</option>
+                    </select>
+                  </label>
                   <div className="task-context-actions">
                     <button
                       type="submit"
@@ -3740,15 +3866,68 @@ export const RealApp = ({
                       <span>Następny krok:</span> {selectedTask.nextAction}
                     </p>
                   )}
+                  {(selectedTask.startAt !== undefined ||
+                    selectedTask.dueAt !== undefined ||
+                    selectedTask.priority !== undefined) && (
+                    <p className="task-timing-line">
+                      {selectedTask.startAt !== undefined && (
+                        <span>
+                          Start:{" "}
+                          {formatDate(
+                            selectedTask.startAt,
+                            state.snapshot.bootstrap.workspace.timezone,
+                          )}
+                        </span>
+                      )}
+                      {selectedTask.dueAt !== undefined && (
+                        <span
+                          className={
+                            selectedTask.completionState === "open" &&
+                            Date.parse(selectedTask.dueAt) < Date.now()
+                              ? "task-overdue"
+                              : undefined
+                          }
+                        >
+                          Termin:{" "}
+                          {formatDate(
+                            selectedTask.dueAt,
+                            state.snapshot.bootstrap.workspace.timezone,
+                          )}
+                          {selectedTask.completionState === "open" &&
+                          Date.parse(selectedTask.dueAt) < Date.now()
+                            ? " · po terminie"
+                            : ""}
+                        </span>
+                      )}
+                      {selectedTask.priority !== undefined &&
+                        selectedTask.priority !== "normal" && (
+                          <span>
+                            Priorytet:{" "}
+                            {taskPriorityLabels[selectedTask.priority]}
+                          </span>
+                        )}
+                    </p>
+                  )}
                   <button
                     type="button"
                     className="secondary-button"
                     ref={taskEditButtonRef}
                     onClick={() => {
+                      const timeZone =
+                        state.snapshot.bootstrap.workspace.timezone;
                       setTaskDraft({
                         title: selectedTask.title,
                         description: selectedTask.description ?? "",
                         nextAction: selectedTask.nextAction ?? "",
+                        startDate:
+                          selectedTask.startAt === undefined
+                            ? ""
+                            : dateKeyInZone(selectedTask.startAt, timeZone),
+                        dueDate:
+                          selectedTask.dueAt === undefined
+                            ? ""
+                            : dateKeyInZone(selectedTask.dueAt, timeZone),
+                        priority: selectedTask.priority ?? "",
                       });
                       setTaskEditOpen(true);
                     }}

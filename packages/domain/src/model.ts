@@ -243,6 +243,8 @@ export interface TaskStatusDefinition {
   readonly updatedAt: string;
 }
 
+export type TaskPriority = "urgent" | "high" | "normal" | "low";
+
 export interface Task {
   readonly id: TaskId;
   readonly workspaceId: WorkspaceId;
@@ -250,6 +252,9 @@ export interface Task {
   readonly title: string;
   readonly description?: string;
   readonly nextAction?: string;
+  readonly startAt?: string;
+  readonly dueAt?: string;
+  readonly priority?: TaskPriority;
   readonly statusId: TaskStatusId;
   readonly recordState: "active" | "removed";
   readonly completionState: "open" | "completed";
@@ -661,6 +666,9 @@ export type UndoDescriptor =
       readonly priorTitle: string;
       readonly priorDescription?: string;
       readonly priorNextAction?: string;
+      readonly priorStartAt?: string;
+      readonly priorDueAt?: string;
+      readonly priorPriority?: TaskPriority;
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }

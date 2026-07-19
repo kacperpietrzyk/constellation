@@ -2121,6 +2121,22 @@ kbd {
 .task-next-action span {
   color: var(--text-quaternary);
 }
+.task-timing-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.task-timing-line .task-overdue {
+  color: var(--status-error);
+}
+.task-context-dates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: var(--space-3);
+}
+.task-context-editor select {
+  width: 100%;
+}
 .task-context-editor {
   display: grid;
   gap: var(--space-3);

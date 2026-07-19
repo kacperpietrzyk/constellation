@@ -32,6 +32,11 @@ import type {
   NamedDocumentVersionId,
   StrategicRecordId,
 } from "@constellation/contracts";
+import {
+  compareTasksByDue,
+  effectiveTaskPriority,
+  taskMatchesFilters,
+} from "@constellation/domain";
 import type {
   AuditReceipt,
   Capture,
@@ -618,21 +623,29 @@ class ReadView implements ApplicationReadView {
   }
 
   public listTasks(request: TaskPageRequest): readonly Task[] | undefined {
+    const dueOrder = request.order === "due_asc";
     const tasks = [...this.state.tasks.values()]
       .filter(
         (task) =>
           task.recordState === "active" &&
           task.workspaceId === request.workspaceId &&
-          task.spaceId === request.spaceId,
+          task.spaceId === request.spaceId &&
+          (request.filters === undefined ||
+            taskMatchesFilters(task, request.filters)),
       )
-      .sort(compareTaskDescending);
+      .sort(dueOrder ? compareTasksByDue : compareTaskDescending);
     if (request.after === undefined) {
       return tasks.slice(0, request.limit);
     }
+    const after = request.after;
+    if (dueOrder !== (after.kind === "task_due")) return undefined;
     const cursorIndex = tasks.findIndex(
       (task) =>
-        task.id === request.after?.recordId &&
-        task.createdAt === request.after.orderedAt,
+        task.id === after.recordId &&
+        task.createdAt === after.orderedAt &&
+        (after.kind !== "task_due" ||
+          ((task.dueAt ?? null) === after.dueAt &&
+            effectiveTaskPriority(task) === after.priority)),
     );
     return cursorIndex < 0
       ? undefined

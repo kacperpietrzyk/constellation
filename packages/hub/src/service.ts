@@ -7,13 +7,12 @@ import {
 
 import {
   ApplicationKernel,
+  Base64JsonCursorCodec,
   CommandScopedIdGenerator,
   InMemoryReferenceStore,
   type AuthorizationRequest,
   type Clock,
   type CurrentAuthorizationPolicy,
-  type PaginationCursor,
-  type PaginationCursorCodec,
   type SemanticHasher,
 } from "@constellation/application";
 import {
@@ -26,7 +25,6 @@ import {
   HubSyncRequestSchema,
   HubSyncResultSchema,
   isCustodiedCaptureOriginal,
-  TaskIdSchema,
   type ExecutionContext,
   type HubEnrollmentRequest,
   type HubBootstrapSnapshotRequest,
@@ -101,36 +99,6 @@ class TrustedHubGrant implements CurrentAuthorizationPolicy {
         (request.context.spaceScope.includes(request.spaceId) &&
           this.trusted.spaceScope.includes(request.spaceId)))
     );
-  }
-}
-
-class CursorCodec implements PaginationCursorCodec {
-  public encode(cursor: PaginationCursor): string {
-    return Buffer.from(JSON.stringify(cursor)).toString("base64url");
-  }
-
-  public decode(value: string): PaginationCursor | undefined {
-    try {
-      const parsed = JSON.parse(
-        Buffer.from(value, "base64url").toString("utf8"),
-      ) as Record<string, unknown>;
-      if (typeof parsed.orderedAt !== "string") return undefined;
-      if (parsed.kind === "capture") {
-        const id = CaptureIdSchema.safeParse(parsed.recordId);
-        return id.success
-          ? { kind: "capture", orderedAt: parsed.orderedAt, recordId: id.data }
-          : undefined;
-      }
-      if (parsed.kind === "task") {
-        const id = TaskIdSchema.safeParse(parsed.recordId);
-        return id.success
-          ? { kind: "task", orderedAt: parsed.orderedAt, recordId: id.data }
-          : undefined;
-      }
-      return undefined;
-    } catch {
-      return undefined;
-    }
   }
 }
 
@@ -420,7 +388,7 @@ export class HubService {
           const kernel = new ApplicationKernel({
             authorization: new TrustedHubGrant(currentAuthorization),
             clock: new ServerClock(),
-            cursorCodec: new CursorCodec(),
+            cursorCodec: new Base64JsonCursorCodec(),
             hasher,
             ids,
             store,
@@ -596,7 +564,7 @@ export class HubService {
       const kernel = new ApplicationKernel({
         authorization: new TrustedHubGrant(internalAuthorization),
         clock: new ServerClock(),
-        cursorCodec: new CursorCodec(),
+        cursorCodec: new Base64JsonCursorCodec(),
         hasher,
         ids,
         store,

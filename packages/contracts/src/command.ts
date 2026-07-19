@@ -876,6 +876,8 @@ export const ProjectUpdateOutcomeCommandSchema = CommandMetadataSchema.extend({
 const TaskTitleSchema = z.string().trim().min(1).max(500);
 const TaskDescriptionSchema = z.string().trim().min(1).max(16_000);
 const TaskNextActionSchema = z.string().trim().min(1).max(500);
+const TaskInstantSchema = z.iso.datetime({ offset: true });
+export const TaskPrioritySchema = z.enum(["urgent", "high", "normal", "low"]);
 
 export const TaskCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("task.create"),
@@ -886,8 +888,18 @@ export const TaskCreateCommandSchema = CommandMetadataSchema.extend({
       title: TaskTitleSchema,
       description: TaskDescriptionSchema.optional(),
       nextAction: TaskNextActionSchema.optional(),
+      startAt: TaskInstantSchema.optional(),
+      dueAt: TaskInstantSchema.optional(),
+      priority: TaskPrioritySchema.optional(),
     })
-    .strict(),
+    .strict()
+    .refine(
+      (payload) =>
+        payload.startAt === undefined ||
+        payload.dueAt === undefined ||
+        Date.parse(payload.startAt) <= Date.parse(payload.dueAt),
+      { message: "task.create requires startAt to not exceed dueAt." },
+    ),
 }).strict();
 
 export const TaskUpdateDetailsCommandSchema = CommandMetadataSchema.extend({
@@ -898,13 +910,19 @@ export const TaskUpdateDetailsCommandSchema = CommandMetadataSchema.extend({
       title: TaskTitleSchema.optional(),
       description: TaskDescriptionSchema.nullable().optional(),
       nextAction: TaskNextActionSchema.nullable().optional(),
+      startAt: TaskInstantSchema.nullable().optional(),
+      dueAt: TaskInstantSchema.nullable().optional(),
+      priority: TaskPrioritySchema.nullable().optional(),
     })
     .strict()
     .refine(
       (payload) =>
         payload.title !== undefined ||
         payload.description !== undefined ||
-        payload.nextAction !== undefined,
+        payload.nextAction !== undefined ||
+        payload.startAt !== undefined ||
+        payload.dueAt !== undefined ||
+        payload.priority !== undefined,
       { message: "task.updateDetails requires at least one field change." },
     ),
 }).strict();

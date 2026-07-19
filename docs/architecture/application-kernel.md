@@ -160,16 +160,26 @@ Capture provenance is optional on the core Task model. A routed Task records
 its source Capture, while a directly created Task (`task.create`) does not
 invent one.
 
-A Task also carries optional bounded working context: a plain-text
-`description` and a separate one-line `nextAction`. Both travel through
-`task.create` and the expected-version `task.updateDetails` command with the
-standard attribution, idempotent replay, audit, activity, previewed undo, and
-Space authorization semantics. Clearing a field is an explicit null assignment
-rather than an omission, undo restores the exact prior title and context, and
-both fields are covered by permission-safe deterministic search. A richer
-collaborative Document remains an explicitly related, separately created
-record; no Task requires one merely to hold a few paragraphs of working
-context.
+A Task also carries optional bounded working context — a plain-text
+`description` and a separate one-line `nextAction` — and optional planning in
+time: `startAt`, `dueAt`, and a small closed `priority` vocabulary
+(`urgent`/`high`/`normal`/`low`). All of these travel through `task.create`
+and the expected-version `task.updateDetails` command with the standard
+attribution, idempotent replay, audit, activity, previewed undo, and Space
+authorization semantics. Clearing a field is an explicit null assignment
+rather than an omission, undo restores the exact prior values, and the text
+fields are covered by permission-safe deterministic search. A deadline is not
+reserved working time: Task timing never creates or edits a calendar event and
+never enters the calendar-consent path. `startAt` may not exceed `dueAt`;
+existing Tasks remain unscheduled rather than inheriting fabricated dates.
+Imported timing is preserved: a recurrence occurrence inherits the due moment
+it was generated for and a renewal follow-up carries its review deadline.
+`task.list` supports a tested due-aware ordering (`due_asc`: scheduled first
+by deadline, then priority, creation time, and id; unscheduled follow
+deterministically) plus status, priority, scheduled, and due-range filters
+with cursor pagination. A richer collaborative Document remains an explicitly
+related, separately created record; no Task requires one merely to hold a few
+paragraphs of working context.
 
 The application-owned rule is deliberately narrow: text becomes a Task, while
 URLs, file references, managed files, and screenshots become knowledge
