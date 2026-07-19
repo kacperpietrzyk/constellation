@@ -4654,6 +4654,109 @@ button.mention-chip:disabled {
 /* Exceptions ahead of the work queue: unread Attention signals with a
    deep-link to "Do uwagi". The bar renders only when signals exist, so amber
    stays strictly warning semantics. */
+/* Plan tygodnia: czasowa kompozycja kokpitu — realne terminy na dniach
+   tygodnia, praca po terminie przed planem, uczciwa notka o zadaniach bez
+   daty. Bez wynajdywania pojemności ani wykresów. */
+.week-plan {
+  max-width: var(--surface-measure, 58rem);
+  margin: 0 auto var(--space-5);
+}
+.week-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: var(--space-2);
+}
+.week-plan-day {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--panel-reading-bg);
+}
+.week-plan-day.today {
+  border-color: var(--border-strong);
+  background: var(--surface-selected);
+}
+.week-plan-day h3 {
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 500;
+}
+.week-plan-day.today h3 {
+  color: var(--text-secondary);
+}
+.week-plan-empty {
+  margin: 0;
+  color: var(--text-quaternary);
+}
+.week-plan-task {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.15rem 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  font-size: var(--text-2xs);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.week-plan-task:hover,
+.week-plan-task.selected {
+  color: var(--text-primary);
+}
+.week-plan-more {
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+.week-plan-overdue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid
+    color-mix(in oklch, var(--status-warning) 32%, var(--border-default));
+  border-radius: var(--radius-md);
+  background: var(--status-warning-bg);
+}
+.week-plan-overdue p {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+.week-plan-overdue-items {
+  min-width: 0;
+  flex: 1 1 14rem;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+.week-plan-overdue-items button {
+  padding: 0;
+  margin-right: var(--space-3);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  font-size: var(--text-2xs);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  text-decoration-color: transparent;
+}
+.week-plan-overdue-items button:hover {
+  color: var(--text-primary);
+  text-decoration-color: currentColor;
+}
+.week-plan-note {
+  margin: var(--space-2) 0 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
 .cockpit-exceptions {
   max-width: var(--surface-measure, 58rem);
   display: grid;

@@ -65,6 +65,7 @@ const taskRow = (
     label: "W toku",
   },
   assignment?: { readonly principalId: string; readonly displayName: string },
+  timing?: { readonly dueAt?: string; readonly priority?: string },
 ): Record<string, unknown> => ({
   id,
   spaceId,
@@ -75,6 +76,8 @@ const taskRow = (
     operationalSemantics: "actionable",
   },
   completionState: "open",
+  ...(timing?.dueAt === undefined ? {} : { dueAt: timing.dueAt }),
+  ...(timing?.priority === undefined ? {} : { priority: timing.priority }),
   ...(assignment
     ? {
         assignment: {
@@ -136,6 +139,7 @@ const baseClient = createScenarioClient({
           weekStart,
           { id: readyStatusId, label: "Do decyzji" },
           { principalId: ownerId, displayName: "Kacper" },
+          { dueAt: `${weekStart}T21:59:59.999Z`, priority: "high" },
         ),
         taskRow(
           task2,
@@ -143,6 +147,7 @@ const baseClient = createScenarioClient({
           "2026-07-14",
           undefined,
           { principalId: memberId, displayName: "Ada Nowak" },
+          { dueAt: `${weekEnd}T21:59:59.999Z` },
         ),
         taskRow(
           task3,
@@ -150,6 +155,7 @@ const baseClient = createScenarioClient({
           "2026-06-30",
           { id: waitingStatusId, label: "Czeka" },
           { principalId: guestId, displayName: "Marek Lis" },
+          { dueAt: "2026-06-30T21:59:59.999Z" },
         ),
         taskRow(task4, "Dowieźć harness kokpitu", "2026-07-15"),
         taskRow(task5, "Przejrzeć kopie w Ustawieniach", "2026-06-20"),
@@ -190,10 +196,17 @@ const baseClient = createScenarioClient({
         {
           taskId: task1,
           title: "Zatwierdzić model custody dla przechwyceń",
-          score: 130,
+          score: 170,
+          dueAt: `${weekStart}T21:59:59.999Z`,
+          priority: "high",
           reasons: [
             { code: "task_open", weight: 100 },
-            { code: "created_this_week", weight: 20 },
+            {
+              code: "due_this_week",
+              weight: 40,
+              dueAt: `${weekStart}T21:59:59.999Z`,
+            },
+            { code: "priority_high", weight: 15 },
             {
               code: "active_project",
               weight: 10,
@@ -206,10 +219,15 @@ const baseClient = createScenarioClient({
         {
           taskId: task2,
           title: "Opisać stan lattice kokpitu tygodnia",
-          score: 120,
+          score: 140,
+          dueAt: `${weekEnd}T21:59:59.999Z`,
           reasons: [
             { code: "task_open", weight: 100 },
-            { code: "created_this_week", weight: 20 },
+            {
+              code: "due_this_week",
+              weight: 40,
+              dueAt: `${weekEnd}T21:59:59.999Z`,
+            },
           ],
         },
         {

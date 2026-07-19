@@ -527,6 +527,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               .strict()
               .optional(),
             completionState: z.enum(["open", "completed"]),
+            startAt: z.iso.datetime({ offset: true }).optional(),
+            dueAt: z.iso.datetime({ offset: true }).optional(),
+            priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
           })
@@ -1198,6 +1201,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             taskId: TaskIdSchema,
             title: z.string(),
             score: z.int().nonnegative(),
+            startAt: z.iso.datetime({ offset: true }).optional(),
+            dueAt: z.iso.datetime({ offset: true }).optional(),
+            priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
             reasons: z.array(
               z.discriminatedUnion("code", [
                 z
@@ -1208,8 +1214,35 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
                   .strict(),
                 z
                   .object({
-                    code: z.literal("created_this_week"),
-                    weight: z.literal(20),
+                    code: z.literal("overdue"),
+                    weight: z.literal(60),
+                    dueAt: z.iso.datetime({ offset: true }),
+                  })
+                  .strict(),
+                z
+                  .object({
+                    code: z.literal("due_this_week"),
+                    weight: z.literal(40),
+                    dueAt: z.iso.datetime({ offset: true }),
+                  })
+                  .strict(),
+                z
+                  .object({
+                    code: z.literal("starts_this_week"),
+                    weight: z.literal(15),
+                    startAt: z.iso.datetime({ offset: true }),
+                  })
+                  .strict(),
+                z
+                  .object({
+                    code: z.literal("priority_urgent"),
+                    weight: z.literal(25),
+                  })
+                  .strict(),
+                z
+                  .object({
+                    code: z.literal("priority_high"),
+                    weight: z.literal(15),
                   })
                   .strict(),
                 z

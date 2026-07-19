@@ -107,13 +107,19 @@ const InlineState = ({
 };
 
 // The cockpit's differentiator is that its order is a deterministic *rule*, not
-// a model. The raw score (100/120/…) is an internal scale with no external
+// a model. The raw score (100/160/…) is an internal scale with no external
 // meaning, so it never reaches the product. Instead we surface only the reasons
 // that *distinguish* an entry. `task_open` is true of every eligible entry, so
-// it is dropped — it restates the eligibility filter, not a distinction.
+// it is dropped — it restates the eligibility filter, not a distinction. Since
+// R12.1 the distinctions are planning semantics (late, due, starting,
+// priority), never creation time.
 type CockpitFocusReason =
   | { readonly code: "task_open" }
-  | { readonly code: "created_this_week" }
+  | { readonly code: "overdue"; readonly dueAt: string }
+  | { readonly code: "due_this_week"; readonly dueAt: string }
+  | { readonly code: "starts_this_week"; readonly startAt: string }
+  | { readonly code: "priority_urgent" }
+  | { readonly code: "priority_high" }
   | {
       readonly code: "active_project";
       readonly projectId: ProjectId;
@@ -121,7 +127,12 @@ type CockpitFocusReason =
     };
 
 interface CuratedFocusReason {
-  readonly createdThisWeek: boolean;
+  readonly timing:
+    | { readonly kind: "overdue"; readonly dueAt: string }
+    | { readonly kind: "due"; readonly dueAt: string }
+    | { readonly kind: "starts"; readonly startAt: string }
+    | null;
+  readonly priority: "urgent" | "high" | null;
   readonly project: { readonly id: ProjectId; readonly title: string } | null;
 }
 
@@ -134,8 +145,35 @@ const curateFocusReason = (
     ): reason is Extract<CockpitFocusReason, { code: "active_project" }> =>
       reason.code === "active_project",
   );
+  const overdue = reasons.find(
+    (reason): reason is Extract<CockpitFocusReason, { code: "overdue" }> =>
+      reason.code === "overdue",
+  );
+  const due = reasons.find(
+    (
+      reason,
+    ): reason is Extract<CockpitFocusReason, { code: "due_this_week" }> =>
+      reason.code === "due_this_week",
+  );
+  const starts = reasons.find(
+    (
+      reason,
+    ): reason is Extract<CockpitFocusReason, { code: "starts_this_week" }> =>
+      reason.code === "starts_this_week",
+  );
   return {
-    createdThisWeek: reasons.some((r) => r.code === "created_this_week"),
+    timing: overdue
+      ? { kind: "overdue", dueAt: overdue.dueAt }
+      : due
+        ? { kind: "due", dueAt: due.dueAt }
+        : starts
+          ? { kind: "starts", startAt: starts.startAt }
+          : null,
+    priority: reasons.some((r) => r.code === "priority_urgent")
+      ? "urgent"
+      : reasons.some((r) => r.code === "priority_high")
+        ? "high"
+        : null,
     // The active_project reason carries the title used to label the link;
     // relatedProjectId alone has no title, so it cannot back a labelled link.
     project: active
@@ -144,17 +182,47 @@ const curateFocusReason = (
   };
 };
 
+// One short timing label per entry. "Dziś" sharpens the week-level phrasing
+// and is computed against the workspace timezone, never the machine locale.
+const focusTimingLabel = (
+  timing: CuratedFocusReason["timing"],
+  timeZone: string,
+  todayKey: string,
+): string | null => {
+  if (timing === null) return null;
+  if (timing.kind === "overdue")
+    return `Po terminie (${formatDate(timing.dueAt, timeZone)})`;
+  if (timing.kind === "due")
+    return dateKeyInTimeZone(new Date(timing.dueAt), timeZone) === todayKey
+      ? "Termin dziś"
+      : `Termin: ${formatDate(timing.dueAt, timeZone)}`;
+  return dateKeyInTimeZone(new Date(timing.startAt), timeZone) === todayKey
+    ? "Start dziś"
+    : "Start w tym tygodniu";
+};
+
+const focusPriorityLabel = (
+  priority: CuratedFocusReason["priority"],
+): string | null =>
+  priority === "urgent"
+    ? "Pilne"
+    : priority === "high"
+      ? "Wysoki priorytet"
+      : null;
+
 // Plain-text differentiator parts for the ranked rows (no nested controls:
-// rows stay single whole-row buttons). "Dziś" sharpens "w tym tygodniu" and is
-// computed against the workspace timezone, never the machine locale.
+// rows stay single whole-row buttons).
 const focusReasonParts = (
   reasons: readonly CockpitFocusReason[],
-  createdToday: boolean,
+  timeZone: string,
+  todayKey: string,
 ): string[] => {
-  const { createdThisWeek, project } = curateFocusReason(reasons);
+  const { timing, priority, project } = curateFocusReason(reasons);
   const parts: string[] = [];
-  if (createdToday) parts.push("Utworzone dziś");
-  else if (createdThisWeek) parts.push("Utworzone w tym tygodniu");
+  const timingLabel = focusTimingLabel(timing, timeZone, todayKey);
+  if (timingLabel) parts.push(timingLabel);
+  const priorityLabel = focusPriorityLabel(priority);
+  if (priorityLabel) parts.push(priorityLabel);
   if (project) parts.push(`Z projektu „${project.title}”`);
   return parts;
 };
@@ -208,37 +276,44 @@ const unreadSignalsLabel = (count: number): string =>
 // a non-button container, so a control here is valid).
 const HeroFocusReason = ({
   reasons,
-  createdToday,
+  timeZone,
+  todayKey,
   onOpenProject,
 }: {
   readonly reasons: readonly CockpitFocusReason[];
-  readonly createdToday: boolean;
+  readonly timeZone: string;
+  readonly todayKey: string;
   readonly onOpenProject: (id: ProjectId) => void;
 }) => {
-  const { createdThisWeek, project } = curateFocusReason(reasons);
-  const createdLabel = createdToday
-    ? "Utworzone dziś"
-    : createdThisWeek
-      ? "Utworzone w tym tygodniu"
-      : null;
-  if (!createdLabel && !project) {
+  const { timing, priority, project } = curateFocusReason(reasons);
+  const timingLabel = focusTimingLabel(timing, timeZone, todayKey);
+  const priorityLabel = focusPriorityLabel(priority);
+  const leadLabel =
+    timingLabel && priorityLabel
+      ? `${timingLabel} · ${priorityLabel}`
+      : (timingLabel ?? priorityLabel);
+  if (!leadLabel && !project) {
     return <p className="now-reason">Otwarte zadanie w kolejności tygodnia.</p>;
   }
   return (
     <p className="now-reason">
-      {createdLabel ? (
-        <span className={createdToday ? "now-reason-today" : undefined}>
-          {createdLabel}
+      {leadLabel ? (
+        <span
+          className={
+            timing?.kind === "overdue" ? "now-reason-today" : undefined
+          }
+        >
+          {leadLabel}
         </span>
       ) : null}
-      {createdLabel && project ? (
+      {leadLabel && project ? (
         <span className="now-reason-sep" aria-hidden="true">
           ·
         </span>
       ) : null}
       {project ? (
         <span>
-          {createdLabel ? "z projektu " : "Z projektu "}
+          {leadLabel ? "z projektu " : "Z projektu "}
           <button
             type="button"
             className="reason-link"
@@ -289,18 +364,10 @@ export const CockpitSurface = ({
   const taskRecords = new Map(
     snapshot.tasks.map((task) => [task.id, task] as const),
   );
-  // "Dziś" per workspace timezone: which of this week's entries were created
-  // today, in the workspace's calendar, not the machine's.
+  // "Dziś" per workspace timezone: planning labels agree with the workspace's
+  // calendar, not the machine's.
   const timezone = snapshot.bootstrap.workspace.timezone;
   const todayKey = dateKeyInTimeZone(new Date(), timezone);
-  const createdToday = new Set(
-    snapshot.tasks
-      .filter(
-        (task) =>
-          dateKeyInTimeZone(new Date(task.createdAt), timezone) === todayKey,
-      )
-      .map((task) => task.id),
-  );
   // One meta line per focus row: operational state as text (the state glyph is
   // shape only), assignment, then the differentiating reasons. Ellipsis, no
   // added colors.
@@ -320,7 +387,7 @@ export const CockpitSurface = ({
       );
     else if (record) parts.push(record.status.label);
     if (record?.assignment) parts.push(record.assignment.displayName);
-    parts.push(...focusReasonParts(reasons, createdToday.has(taskId)));
+    parts.push(...focusReasonParts(reasons, timezone, todayKey));
     return parts.length === 0
       ? "Otwarte zadanie w kolejności tygodnia"
       : parts.join(" · ");
@@ -444,6 +511,151 @@ export const CockpitSurface = ({
       active = false;
     };
   }, [client]);
+  // The week plan is the time-oriented composition of the cockpit: real
+  // deadlines placed on the days of the shown week, late work first, and an
+  // honest note about what has no date at all. It never invents capacity —
+  // it only shows what was deliberately planned.
+  const openTasks = snapshot.tasks.filter(
+    (task) => task.completionState === "open",
+  );
+  const weekStartKey = cockpit.kind === "ready" ? cockpit.data.weekStart : "";
+  const weekDays =
+    cockpit.kind === "ready"
+      ? Array.from({ length: 7 }, (_, index) => {
+          const date = new Date(`${cockpit.data.weekStart}T00:00:00`);
+          date.setDate(date.getDate() + index);
+          const key = dateKeyInTimeZone(date, timezone);
+          return {
+            key,
+            label: new Intl.DateTimeFormat("pl-PL", {
+              weekday: "short",
+              day: "numeric",
+            }).format(date),
+          };
+        })
+      : [];
+  const dueKeyOf = (dueAt: string): string =>
+    dateKeyInTimeZone(new Date(dueAt), timezone);
+  const overdueTasks = openTasks.filter(
+    (task) =>
+      task.dueAt !== undefined &&
+      Date.parse(task.dueAt) < Date.now() &&
+      dueKeyOf(task.dueAt) < todayKey,
+  );
+  const dueThisWeek = new Map<string, typeof openTasks>();
+  for (const task of openTasks) {
+    if (task.dueAt === undefined) continue;
+    const key = dueKeyOf(task.dueAt);
+    if (weekDays.some((day) => day.key === key)) {
+      dueThisWeek.set(key, [...(dueThisWeek.get(key) ?? []), task]);
+    }
+  }
+  const unscheduledCount = openTasks.filter(
+    (task) => task.dueAt === undefined,
+  ).length;
+  const scheduledThisWeek = [...dueThisWeek.values()].reduce(
+    (sum, tasks) => sum + tasks.length,
+    0,
+  );
+  const weekPlan =
+    cockpit.kind === "ready" && weekStartKey !== "" ? (
+      <section className="week-plan" aria-labelledby="week-plan-title">
+        <header className="section-heading">
+          <div>
+            <p className="eyebrow">Plan tygodnia</p>
+            <h2 id="week-plan-title">Terminy dzień po dniu</h2>
+          </div>
+          <span>
+            {countLabel(
+              scheduledThisWeek,
+              "termin w tym tygodniu",
+              "terminy w tym tygodniu",
+              "terminów w tym tygodniu",
+            )}
+          </span>
+        </header>
+        {overdueTasks.length > 0 ? (
+          <div
+            className="week-plan-overdue"
+            role="group"
+            aria-label="Po terminie"
+          >
+            <Mark kind="warning" />
+            <p>
+              <strong>
+                {countLabel(
+                  overdueTasks.length,
+                  "zadanie po terminie",
+                  "zadania po terminie",
+                  "zadań po terminie",
+                )}
+              </strong>
+            </p>
+            <span className="week-plan-overdue-items">
+              {overdueTasks.slice(0, 3).map((task) => (
+                <button
+                  type="button"
+                  key={task.id}
+                  onClick={() => onSelectTask(task.id)}
+                  onDoubleClick={() => onOpenTask(task.id)}
+                >
+                  {task.title}
+                </button>
+              ))}
+              {overdueTasks.length > 3
+                ? ` +${overdueTasks.length - 3} więcej`
+                : null}
+            </span>
+          </div>
+        ) : null}
+        <div className="week-plan-grid">
+          {weekDays.map((day) => {
+            const tasks = dueThisWeek.get(day.key) ?? [];
+            return (
+              <div
+                key={day.key}
+                className={`week-plan-day${day.key === todayKey ? " today" : ""}`}
+              >
+                <h3>{day.label}</h3>
+                {tasks.length === 0 ? (
+                  <p className="week-plan-empty" aria-hidden="true">
+                    —
+                  </p>
+                ) : (
+                  <>
+                    {tasks.slice(0, 3).map((task) => (
+                      <button
+                        type="button"
+                        key={task.id}
+                        className={`week-plan-task${
+                          task.id === selectedTaskId ? " selected" : ""
+                        }`}
+                        onClick={() => onSelectTask(task.id)}
+                        onDoubleClick={() => onOpenTask(task.id)}
+                      >
+                        {task.title}
+                      </button>
+                    ))}
+                    {tasks.length > 3 ? (
+                      <p className="week-plan-more">
+                        +{tasks.length - 3} więcej
+                      </p>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {unscheduledCount > 0 ? (
+          <p className="week-plan-note">
+            Bez terminu:{" "}
+            {countLabel(unscheduledCount, "zadanie", "zadania", "zadań")}.
+            Termin nadasz w inspektorze zadania — bez rezerwowania kalendarza.
+          </p>
+        ) : null}
+      </section>
+    ) : null;
   // The cross-workspace strip is administrative context, not this week's work,
   // so it renders after the hero and the exceptions bar: the brief's 30-second
   // orientation (first focus, exceptions) stays ahead of workspace switching.
@@ -629,7 +841,8 @@ export const CockpitSurface = ({
               {focus[0] ? (
                 <HeroFocusReason
                   reasons={focus[0].reasons as readonly CockpitFocusReason[]}
-                  createdToday={createdToday.has(focus[0].taskId)}
+                  timeZone={timezone}
+                  todayKey={todayKey}
                   onOpenProject={onOpenProject}
                 />
               ) : null}
@@ -643,6 +856,7 @@ export const CockpitSurface = ({
           </section>
           {exceptionsBar}
           {workspaceStrip}
+          {weekPlan}
           <div className="cockpit-grid">
             <section
               className="active-work reading-panel"
@@ -657,8 +871,9 @@ export const CockpitSurface = ({
               </header>
               <p className="ordering-rule">
                 <span>
-                  Kolejność jest deterministyczna: otwarte zadania — najpierw
-                  utworzone w tym tygodniu i z aktywnych projektów.
+                  Kolejność jest deterministyczna: otwarte zadania — najpierw po
+                  terminie i z terminem w tym tygodniu, potem pilne i z
+                  aktywnych projektów.
                 </span>
                 <button
                   type="button"
@@ -681,10 +896,12 @@ export const CockpitSurface = ({
               >
                 <p>
                   Widok nie generuje rekomendacji. Pokazuje wyłącznie otwarte
-                  zadania i porządkuje je zawsze tak samo: najpierw utworzone w
-                  tym tygodniu, potem powiązane z aktywnym projektem, a przy
-                  remisie alfabetycznie. Ta sama kolejność wyjdzie za każdym
-                  razem.
+                  zadania i porządkuje je zawsze tak samo: najpierw po terminie,
+                  potem z terminem w tym tygodniu, następnie pilne i o wysokim
+                  priorytecie, zaczynające się w tym tygodniu oraz powiązane z
+                  aktywnym projektem, a przy remisie alfabetycznie. Data
+                  utworzenia pozostaje historią i nie wpływa na kolejność. Ta
+                  sama kolejność wyjdzie za każdym razem.
                 </p>
               </div>
               <div

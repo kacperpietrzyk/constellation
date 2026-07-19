@@ -17,7 +17,7 @@ import {
   reportFirstEmptyRequiredField,
 } from "./components/InlinePopover.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
-import { countLabel } from "./i18n.js";
+import { countLabel, formatDate } from "./i18n.js";
 
 export type WorkContextKind = "area" | "initiative";
 
@@ -559,10 +559,33 @@ export const WorkSurface = ({
                   >
                     <strong>{task.title}</strong>
                     <span>
-                      {task.waitingOn?.label ??
-                        (dependencyTitle
-                          ? `Zależy od: ${dependencyTitle}`
-                          : "Gotowe do podjęcia")}
+                      {[
+                        task.waitingOn?.label ??
+                          (dependencyTitle
+                            ? `Zależy od: ${dependencyTitle}`
+                            : "Gotowe do podjęcia"),
+                        ...(task.dueAt === undefined
+                          ? []
+                          : [
+                              `Termin: ${formatDate(
+                                task.dueAt,
+                                snapshot.bootstrap.workspace.timezone,
+                              )}${
+                                Date.parse(task.dueAt) < Date.now()
+                                  ? " · po terminie"
+                                  : ""
+                              }`,
+                            ]),
+                        ...(task.priority === undefined ||
+                        task.priority === "normal" ||
+                        task.priority === "low"
+                          ? []
+                          : [
+                              task.priority === "urgent"
+                                ? "Pilne"
+                                : "Wysoki priorytet",
+                            ]),
+                      ].join(" · ")}
                     </span>
                   </button>
                   <InlinePopover
