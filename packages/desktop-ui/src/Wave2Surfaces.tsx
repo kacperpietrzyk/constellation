@@ -1892,13 +1892,25 @@ export const UndoDialog = ({
 }) => {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const returnTargetRef = useRef<HTMLElement | null>(null);
   const available =
     preview.recovery.available && preview.command.projection.available;
   useEffect(() => {
     const dialog = dialogRef.current;
+    const activeElement = document.activeElement;
+    returnTargetRef.current =
+      activeElement instanceof HTMLElement && activeElement !== document.body
+        ? activeElement
+        : null;
     dialog?.showModal();
     cancelRef.current?.focus();
-    return () => dialog?.close();
+    return () => {
+      dialog?.close();
+      const returnTarget = returnTargetRef.current;
+      if (returnTarget?.isConnected && !returnTarget.hasAttribute("disabled")) {
+        returnTarget.focus({ preventScroll: true });
+      }
+    };
   }, []);
   return (
     <dialog
