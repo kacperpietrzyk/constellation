@@ -1967,6 +1967,108 @@ export const updateTaskDetails = (
         : undefined,
   );
 
+export type TaskStatusSemantics =
+  "actionable" | "waiting" | "blocked" | "paused";
+
+export const createTaskStatusDefinition = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly label: string;
+    readonly operationalSemantics: TaskStatusSemantics;
+  },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "taskStatus.create",
+      payload: {
+        statusId: crypto.randomUUID(),
+        label: input.label,
+        operationalSemantics: input.operationalSemantics,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "taskStatus.created"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export type TaskStatusDefinitionChange =
+  | { readonly kind: "rename"; readonly label: string }
+  | {
+      readonly kind: "semantics";
+      readonly operationalSemantics: TaskStatusSemantics;
+    }
+  | { readonly kind: "reorder"; readonly position: number }
+  | { readonly kind: "archive" }
+  | { readonly kind: "restore" };
+
+export const changeTaskStatusDefinition = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  statusId: TaskStatusId,
+  statusVersion: number,
+  change: TaskStatusDefinitionChange,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [statusId]: statusVersion,
+      }),
+      ...(change.kind === "rename"
+        ? {
+            commandName: "taskStatus.rename",
+            payload: { statusId, label: change.label },
+          }
+        : change.kind === "semantics"
+          ? {
+              commandName: "taskStatus.setSemantics",
+              payload: {
+                statusId,
+                operationalSemantics: change.operationalSemantics,
+              },
+            }
+          : change.kind === "reorder"
+            ? {
+                commandName: "taskStatus.reorder",
+                payload: { statusId, position: change.position },
+              }
+            : change.kind === "archive"
+              ? { commandName: "taskStatus.archive", payload: { statusId } }
+              : { commandName: "taskStatus.restore", payload: { statusId } }),
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "taskStatus.changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const setDefaultTaskStatus = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  statusId: TaskStatusId,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [snapshot.bootstrap.workspace.id]: snapshot.bootstrap.workspace.version,
+      }),
+      commandName: "workspace.setDefaultTaskStatus",
+      payload: { statusId },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "workspace.default_status_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export const setTaskStatus = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,

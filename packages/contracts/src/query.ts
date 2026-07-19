@@ -791,7 +791,13 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           .object({
             id: TaskStatusIdSchema,
             label: z.string(),
-            operationalSemantics: z.literal("actionable"),
+            operationalSemantics: z.enum([
+              "actionable",
+              "waiting",
+              "blocked",
+              "paused",
+            ]),
+            state: z.enum(["active", "archived"]).optional(),
             position: z.int().nonnegative(),
             version: z.int().positive(),
           })
@@ -825,7 +831,13 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               .object({
                 id: TaskStatusIdSchema,
                 label: z.string(),
-                operationalSemantics: z.literal("actionable"),
+                operationalSemantics: z.enum([
+                  "actionable",
+                  "waiting",
+                  "blocked",
+                  "paused",
+                ]),
+                state: z.enum(["active", "archived"]).optional(),
               })
               .strict(),
             completionState: z.enum(["open", "completed"]),
@@ -1281,6 +1293,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "task_created",
               "task_details_updated",
               "task_parent_changed",
+              "task_status_definition_created",
+              "task_status_definition_changed",
+              "workspace_default_status_changed",
               "task_completed",
               "task_reopened",
               "task_assigned",
@@ -1316,6 +1331,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           "task.restore_state",
           "task.restore_details",
           "task.restore_parent",
+          "taskStatus.restore_definition",
+          "workspace.restore_default_status",
           "task.restore_operational_state",
           "work_link.restore_state",
           "relation.remove",

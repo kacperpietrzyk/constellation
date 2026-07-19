@@ -928,6 +928,71 @@ export const TaskUpdateDetailsCommandSchema = CommandMetadataSchema.extend({
     ),
 }).strict();
 
+const TaskStatusLabelSchema = z.string().trim().min(1).max(120);
+export const TaskStatusSemanticsSchema = z.enum([
+  "actionable",
+  "waiting",
+  "blocked",
+  "paused",
+]);
+
+export const TaskStatusCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("taskStatus.create"),
+  payload: z
+    .object({
+      statusId: TaskStatusIdSchema,
+      label: TaskStatusLabelSchema,
+      operationalSemantics: TaskStatusSemanticsSchema,
+      position: z.int().nonnegative().optional(),
+    })
+    .strict(),
+}).strict();
+
+export const TaskStatusRenameCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("taskStatus.rename"),
+  payload: z
+    .object({ statusId: TaskStatusIdSchema, label: TaskStatusLabelSchema })
+    .strict(),
+}).strict();
+
+export const TaskStatusSetSemanticsCommandSchema = CommandMetadataSchema.extend(
+  {
+    commandName: z.literal("taskStatus.setSemantics"),
+    payload: z
+      .object({
+        statusId: TaskStatusIdSchema,
+        operationalSemantics: TaskStatusSemanticsSchema,
+      })
+      .strict(),
+  },
+).strict();
+
+export const TaskStatusReorderCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("taskStatus.reorder"),
+  payload: z
+    .object({
+      statusId: TaskStatusIdSchema,
+      position: z.int().nonnegative(),
+    })
+    .strict(),
+}).strict();
+
+export const TaskStatusArchiveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("taskStatus.archive"),
+  payload: z.object({ statusId: TaskStatusIdSchema }).strict(),
+}).strict();
+
+export const TaskStatusRestoreCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("taskStatus.restore"),
+  payload: z.object({ statusId: TaskStatusIdSchema }).strict(),
+}).strict();
+
+export const WorkspaceSetDefaultTaskStatusCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("workspace.setDefaultTaskStatus"),
+    payload: z.object({ statusId: TaskStatusIdSchema }).strict(),
+  }).strict();
+
 export const TaskSetParentCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("task.setParent"),
   payload: z
@@ -1124,6 +1189,13 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   TaskCreateCommandSchema,
   TaskUpdateDetailsCommandSchema,
   TaskSetParentCommandSchema,
+  TaskStatusCreateCommandSchema,
+  TaskStatusRenameCommandSchema,
+  TaskStatusSetSemanticsCommandSchema,
+  TaskStatusReorderCommandSchema,
+  TaskStatusArchiveCommandSchema,
+  TaskStatusRestoreCommandSchema,
+  WorkspaceSetDefaultTaskStatusCommandSchema,
   TaskSetStatusCommandSchema,
   TaskSetOperationalStateCommandSchema,
   TaskCompleteCommandSchema,

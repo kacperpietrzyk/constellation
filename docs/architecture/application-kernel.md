@@ -72,6 +72,14 @@ Commands:
 - `meeting.upsertImported`
 - `task.create`
 - `task.updateDetails`
+- `task.setParent`
+- `taskStatus.create`
+- `taskStatus.rename`
+- `taskStatus.setSemantics`
+- `taskStatus.reorder`
+- `taskStatus.archive`
+- `taskStatus.restore`
+- `workspace.setDefaultTaskStatus`
 - `task.setStatus`
 - `task.setOperationalState`
 - `task.complete`
@@ -194,6 +202,19 @@ The lightweight `waitingOn` descriptor gains an explicit optional `direction`
 (`waiting_on_them` or `we_owe`) and an `expectedAt` review instant, so waiting
 work and owed commitments stay distinguishable without forcing dependencies
 into subtasks.
+
+Task workflow statuses are configurable workspace behavior. A status
+definition carries a workspace-owned label and ordering plus one closed broad
+operational meaning (`actionable`, `waiting`, `blocked`, or `paused`) so
+views, workload signals, and MCP agents behave predictably without depending
+on an exact label. Workspace maintainers create, rename, reorder, re-scope,
+archive, and restore definitions and change the workspace default through
+versioned commands with audit, activity, and previewed undo. Active labels
+stay unique; the default status cannot be archived; an archived status is no
+longer selectable, while Tasks already carrying it keep rendering its
+historical label — configuration never silently rewrites existing Tasks.
+Completion state remains a separate dimension from workflow status.
+Allowed-transition matrices are deliberately not introduced yet.
 
 The application-owned rule is deliberately narrow: text becomes a Task, while
 URLs, file references, managed files, and screenshots become knowledge

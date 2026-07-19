@@ -2092,6 +2092,26 @@ class SqliteTransaction
       ],
     );
   }
+  public updateTaskStatus(
+    record: TaskStatusDefinition,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE task_statuses SET position = ?, version = ?, payload_json = ? WHERE id = ? AND version = ? AND workspace_id = ?",
+        )
+        .run(
+          record.position,
+          record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+          record.workspaceId,
+        ),
+    );
+  }
+
   public insertCapture(record: Capture): void {
     this.insert(
       "captures",

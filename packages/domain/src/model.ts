@@ -232,11 +232,16 @@ export type Capture =
   | ReviewCapture
   | UnclassifiedCapture;
 
+export type TaskStatusSemantics =
+  "actionable" | "waiting" | "blocked" | "paused";
+
 export interface TaskStatusDefinition {
   readonly id: TaskStatusId;
   readonly workspaceId: WorkspaceId;
   readonly label: string;
-  readonly operationalSemantics: "actionable";
+  readonly operationalSemantics: TaskStatusSemantics;
+  readonly state?: "active" | "archived";
+  readonly archivedAt?: string;
   readonly position: number;
   readonly version: number;
   readonly createdAt: string;
@@ -664,6 +669,29 @@ export type UndoDescriptor =
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
+      readonly kind: "taskStatus.restore_definition";
+      readonly statusId: TaskStatusId;
+      readonly priorLabel: string;
+      readonly priorSemantics: TaskStatusSemantics;
+      readonly priorPosition: number;
+      readonly priorState: "active" | "archived";
+      readonly priorArchivedAt?: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "workspace.restore_default_status";
+      readonly priorDefaultTaskStatusId: TaskStatusId;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
       readonly kind: "task.restore_parent";
       readonly taskId: TaskId;
       readonly priorParentTaskId?: TaskId;
@@ -772,7 +800,9 @@ export type DomainEvent = { readonly commandId: CommandId } & (
   | {
       readonly id: EventId;
       readonly type:
-        "workspace.renamed" | "workspace.voice_audio_retention_changed";
+        | "workspace.renamed"
+        | "workspace.voice_audio_retention_changed"
+        | "workspace.default_status_changed";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: WorkspaceId;
@@ -802,6 +832,15 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: MembershipId;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "taskStatus.created" | "taskStatus.changed";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: TaskStatusId;
       readonly aggregateVersion: number;
       readonly occurredAt: string;
     }
