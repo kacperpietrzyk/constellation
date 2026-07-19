@@ -26,7 +26,8 @@ The repository contains the first durable desktop journey:
   and rollback at both interrupted activation boundaries;
 - one context-preserving desktop shell with bounded Task and Project tabs,
   Back/Forward history, favorites, deterministic command palette, restored
-  session state, native detached windows, and an attached inspector;
+  session state, native detached windows, and one on-demand, closable,
+  width-adjustable inspector;
 - Universal Quick Capture for text, URLs, and file references, preserving the
   original before deterministic routing to a traceable Task or knowledge source;
 - Projects, Task relations, status changes, deterministic search, and a weekly
@@ -243,6 +244,13 @@ destinations, and dismissing Quick Capture restores keyboard focus to its exact
 invoking control. The initial renderer also keeps the shell and weekly cockpit
 immediately available while loading heavier destinations on intent; a measured
 bundle budget now prevents startup cost from growing unnoticed.
+The accepted enterprise-shell correction now keeps the main work plane at full
+width until an object is deliberately activated. Its single context inspector
+can be closed, dismissed with Escape, and resized on wide windows. All 12
+destinations use the same hierarchy and recovery grammar; the weekly cockpit
+keeps first focus, exceptions, active work, and intended project outcomes in a
+stable reading order. Light-theme semantic status text now meets the measured
+contrast floor without turning status color into a competing accent.
 Local write failures now distinguish exhausted capacity from lost permission,
 confirm rollback before offering retry, and tell the user which environmental
 condition to correct without exposing paths or native errors.

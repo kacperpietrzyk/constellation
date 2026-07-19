@@ -80,10 +80,12 @@ desktop and MCP operators with Space-scoped authorization,
 task status/completion, deterministic scoped search,
 explainable weekly focus, Capture History, meaningful activity, and previewed
 undo. Destinations and open Task or Project contexts share one bounded tab rail
-with Back/Forward history and a context-preserving inspector. It can also export
-a verified encrypted workspace backup with a separate recovery code, preview a
-restore, retain the previous workspace, and reopen the restored logical
-identity. The production runtime keeps generated workspace
+with Back/Forward history. The context inspector stays out of the layout until
+a user deliberately activates an object; it can then be closed, dismissed with
+Escape, and resized on wide windows. The application can also export a verified
+encrypted workspace backup with a separate recovery code, preview a restore,
+retain the previous workspace, and reopen the restored logical identity. The
+production runtime keeps generated workspace
 identity and key custody in the operating-system credential store, has no
 plaintext or in-memory fallback, and stops in recovery instead of silently
 replacing a missing ready database. If an established workspace cannot open,
