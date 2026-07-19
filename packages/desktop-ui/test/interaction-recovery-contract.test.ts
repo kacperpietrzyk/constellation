@@ -24,6 +24,7 @@ const surfaces = readFileSync(
   "utf8",
 );
 const styles = readFileSync(path.join(root, "src", "styles.css"), "utf8");
+const tokens = readFileSync(path.join(root, "src", "tokens.css"), "utf8");
 const activitySurface = readFileSync(
   path.join(root, "src", "ActivitySurface.tsx"),
   "utf8",
@@ -380,6 +381,38 @@ describe("interaction recovery contracts", () => {
     assert.match(
       activityStyles,
       /\.activity-controls\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
+    );
+  });
+
+  it("keeps composite search and meeting-row focus visible in forced colors", () => {
+    assert.match(
+      styles,
+      /\.task-search-control:focus-within,\s*\.capture-field input:focus-visible,[\s\S]*?\{[^}]*box-shadow:\s*var\(--focus-ring\)/s,
+    );
+    assert.doesNotMatch(
+      styles,
+      /\.meeting-result-row:focus-visible\s*\{[^}]*outline:\s*(?:0|none)/s,
+      "Meeting rows must not override the shared forced-color outline.",
+    );
+    assert.match(
+      tokens,
+      /@media \(forced-colors: active\)[\s\S]*?outline-color:\s*Highlight/s,
+    );
+    assert.match(
+      styles,
+      /\.task-search-control input\s*\{[^}]*box-shadow:\s*none/s,
+    );
+    assert.doesNotMatch(
+      styles,
+      /\.task-search-control input\s*\{[^}]*outline:\s*(?:0|none)/s,
+    );
+    assert.match(
+      activityStyles,
+      /\.activity-search input\s*\{[^}]*box-shadow:\s*none/s,
+    );
+    assert.doesNotMatch(
+      activityStyles,
+      /\.activity-search input\s*\{[^}]*outline:\s*(?:0|none)/s,
     );
   });
 
