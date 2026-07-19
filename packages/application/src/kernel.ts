@@ -343,6 +343,7 @@ const isCurrentlyAuthorized = (
     case "project.updateOutcome":
     case "task.create":
     case "task.updateDetails":
+    case "task.setParent":
     case "task.setStatus":
     case "task.setOperationalState":
     case "task.complete":
@@ -680,6 +681,7 @@ export class ApplicationKernel {
       case "project.updateOutcome":
       case "task.create":
       case "task.updateDetails":
+      case "task.setParent":
       case "task.setStatus":
       case "task.setOperationalState":
       case "task.complete":
@@ -2946,6 +2948,9 @@ export class ApplicationKernel {
             ...(task.startAt === undefined ? {} : { startAt: task.startAt }),
             ...(task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
             ...(task.priority === undefined ? {} : { priority: task.priority }),
+            ...(task.parentTaskId === undefined
+              ? {}
+              : { parentTaskId: task.parentTaskId }),
             status: {
               id: status.id,
               label: status.label,

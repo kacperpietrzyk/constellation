@@ -73,7 +73,9 @@ const context = (): ExecutionContext =>
       "relationship.workspace",
       "task.create",
       "task.updateDetails",
+      "task.setParent",
       "task.setStatus",
+      "task.setOperationalState",
       "task.complete",
       "task.reopen",
       "task.assign",
@@ -1323,6 +1325,155 @@ describe("Wave 2 reference semantics", () => {
       (entry) => entry.taskId === taskIds.dueSoonHigh,
     );
     assert.equal(dueEntry?.dueAt, "2026-07-24T21:59:59.999Z");
+  });
+
+  it("decomposes an outcome into one bounded level of subtasks with waiting direction", () => {
+    const harness = setup();
+    const parentId = "10000000-0000-4000-8000-00000000f001";
+    const childA = "10000000-0000-4000-8000-00000000f002";
+    const childB = "10000000-0000-4000-8000-00000000f003";
+    const other = "10000000-0000-4000-8000-00000000f004";
+    const createOutcome = (taskId: string, title: string, parent?: string) =>
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`sub-${title}`),
+          commandName: "task.create",
+          payload: {
+            taskId,
+            spaceId: ids.rootSpace,
+            title,
+            ...(parent === undefined ? {} : { parentTaskId: parent }),
+          },
+        }),
+      );
+    assert.equal(
+      createOutcome(parentId, "Prepare the offer").diagnosticCode,
+      "task.created",
+    );
+    assert.equal(
+      createOutcome(childA, "Draft substantive content", parentId)
+        .diagnosticCode,
+      "task.created",
+    );
+    assert.equal(
+      createOutcome(other, "Unrelated errand").diagnosticCode,
+      "task.created",
+    );
+
+    const setParent = {
+      ...metadata("sub-adopt", { [childB]: 1 }),
+      commandName: "task.setParent",
+      payload: { taskId: childB, parentTaskId: parentId },
+    };
+    assert.equal(
+      createOutcome(childB, "Confirm distributor pricing").diagnosticCode,
+      "task.created",
+    );
+    const adopted = unwrap(harness.kernel.execute(context(), setParent));
+    assert.equal(adopted.diagnosticCode, "task.parent_changed");
+
+    const nested = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("sub-nested", { [other]: 1 }),
+        commandName: "task.setParent",
+        payload: { taskId: other, parentTaskId: childA },
+      }),
+    );
+    assert.equal(
+      nested.diagnosticCode,
+      "command.precondition_failed",
+      "a subtask cannot become a parent (one bounded level)",
+    );
+    const cycle = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("sub-cycle", { [parentId]: 1 }),
+        commandName: "task.setParent",
+        payload: { taskId: parentId, parentTaskId: childA },
+      }),
+    );
+    assert.equal(
+      cycle.diagnosticCode,
+      "command.precondition_failed",
+      "a parent with children cannot itself be adopted",
+    );
+
+    const waiting = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("sub-waiting", { [childB]: 2 }),
+        commandName: "task.setOperationalState",
+        payload: {
+          taskId: childB,
+          operationalState: "waiting",
+          waitingOn: {
+            kind: "external",
+            label: "Cennik dystrybutora",
+            direction: "waiting_on_them",
+            expectedAt: "2026-07-24T21:59:59.999Z",
+          },
+        },
+      }),
+    );
+    assert.equal(waiting.diagnosticCode, "task.operational_state_changed");
+    const storedChildB = harness.store
+      .snapshot()
+      .tasks.find((task) => task.id === childB);
+    assert.equal(storedChildB?.waitingOn?.direction, "waiting_on_them");
+    assert.equal(
+      storedChildB?.waitingOn?.expectedAt,
+      "2026-07-24T21:59:59.999Z",
+    );
+
+    const completeA = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("sub-complete-a", { [childA]: 1 }),
+        commandName: "task.complete",
+        payload: { taskId: childA },
+      }),
+    );
+    assert.equal(completeA.diagnosticCode, "task.completed");
+    const parentAfter = harness.store
+      .snapshot()
+      .tasks.find((task) => task.id === parentId);
+    assert.equal(
+      parentAfter?.completionState,
+      "open",
+      "completing children never completes the parent",
+    );
+
+    const undoAdopt = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("sub-undo", { [childB]: 3 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: setParent.commandId },
+      }),
+    );
+    assert.equal(
+      undoAdopt.diagnosticCode,
+      "undo.not_available",
+      "waiting change after adoption blocks the earlier structural undo",
+    );
+
+    const listed = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      listed.kind !== "query_result" ||
+      listed.result.outcome !== "success" ||
+      listed.result.projection.kind !== "task.list"
+    )
+      throw new Error("Expected task list.");
+    const byId = new Map<
+      string,
+      (typeof listed.result.projection.items)[number]
+    >(listed.result.projection.items.map((item) => [item.id, item]));
+    assert.equal(byId.get(childA)?.parentTaskId, parentId);
+    assert.equal(byId.get(childB)?.parentTaskId, parentId);
+    assert.equal(byId.get(other)?.parentTaskId, undefined);
   });
 
   it("previews and applies exact compensation, but refuses to overwrite later work", () => {

@@ -84,6 +84,7 @@ export const CapabilitySchema = z.enum([
   "meeting.upsertImported",
   "task.create",
   "task.updateDetails",
+  "task.setParent",
   "task.setStatus",
   "task.complete",
   "task.reopen",

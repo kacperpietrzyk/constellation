@@ -744,6 +744,7 @@ export const executeAgentAccessQuery = (
             return [descriptor.projectId];
           case "task.restore_state":
           case "task.restore_details":
+          case "task.restore_parent":
           case "task.restore_operational_state":
             return [descriptor.taskId];
           case "work_link.restore_state":

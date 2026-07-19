@@ -33,6 +33,7 @@ import {
   createProject,
   createTask,
   isTaskTimingValid,
+  setTaskParent,
   taskTimingAfterUpdate,
   updateTaskDetails,
   createNativeDocument,
@@ -146,6 +147,7 @@ export type Wave2Command = Extract<
       | "project.updateOutcome"
       | "task.create"
       | "task.updateDetails"
+      | "task.setParent"
       | "task.setStatus"
       | "task.setOperationalState"
       | "task.complete"
@@ -439,6 +441,7 @@ export const isWave2CommandAuthorized = (
       );
     }
     case "task.updateDetails":
+    case "task.setParent":
     case "task.setStatus":
     case "task.setOperationalState":
     case "task.complete":
@@ -2739,6 +2742,18 @@ export const executeWave2Command = (
       }
       const workspace = transaction.getWorkspace(command.workspaceId);
       if (workspace === undefined) return precondition(command, occurredAt);
+      if (command.payload.parentTaskId !== undefined) {
+        const parent = transaction.getTask(command.payload.parentTaskId);
+        if (
+          parent === undefined ||
+          parent.workspaceId !== command.workspaceId ||
+          parent.spaceId !== command.payload.spaceId ||
+          parent.recordState !== "active" ||
+          parent.parentTaskId !== undefined
+        ) {
+          return precondition(command, occurredAt);
+        }
+      }
       const task = createTask({
         id: command.payload.taskId,
         workspaceId: command.workspaceId,
@@ -2759,6 +2774,9 @@ export const executeWave2Command = (
         ...(command.payload.priority === undefined
           ? {}
           : { priority: command.payload.priority }),
+        ...(command.payload.parentTaskId === undefined
+          ? {}
+          : { parentTaskId: command.payload.parentTaskId }),
         statusId: workspace.defaultTaskStatusId,
         createdBy: context.principalId,
         occurredAt,
@@ -2787,6 +2805,7 @@ export const executeWave2Command = (
           "startAt",
           "dueAt",
           "priority",
+          "parentTaskId",
           "statusId",
         ],
         {
@@ -2918,6 +2937,91 @@ export const executeWave2Command = (
         },
       );
     }
+    case "task.setParent": {
+      const task = transaction.getTask(command.payload.taskId);
+      if (task === undefined) return precondition(command, occurredAt);
+      const nextParentId =
+        command.payload.parentTaskId === null
+          ? undefined
+          : command.payload.parentTaskId;
+      if (nextParentId !== undefined) {
+        const parent = transaction.getTask(nextParentId);
+        const children = transaction.listTasksInSpace(
+          task.workspaceId,
+          task.spaceId,
+        );
+        const taskHasChildren = children.some(
+          (candidate) => candidate.parentTaskId === task.id,
+        );
+        // One deliberate decomposition level: a parent cannot itself be a
+        // subtask and a Task that already has children cannot become one.
+        if (
+          parent === undefined ||
+          parent.id === task.id ||
+          parent.workspaceId !== task.workspaceId ||
+          parent.spaceId !== task.spaceId ||
+          parent.recordState !== "active" ||
+          parent.parentTaskId !== undefined ||
+          taskHasChildren
+        ) {
+          return precondition(command, occurredAt);
+        }
+      }
+      if ((task.parentTaskId ?? undefined) === nextParentId) {
+        return precondition(command, occurredAt);
+      }
+      if (!exactExpected(command, { [task.id]: task.version })) {
+        return versionConflict(command, occurredAt, {
+          [task.id]: task.version,
+        });
+      }
+      const updated = setTaskParent(task, nextParentId, occurredAt);
+      if (!transaction.updateTask(updated, task.version)) {
+        return versionConflict(command, occurredAt, {
+          [task.id]: task.version,
+        });
+      }
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "task.parent_changed",
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          aggregateId: task.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        ["parentTaskId"],
+        {
+          diagnosticCode: "task.parent_changed",
+          projection: {
+            kind: "task.parent_changed",
+            taskId: updated.id,
+            ...(updated.parentTaskId === undefined
+              ? {}
+              : { parentTaskId: updated.parentTaskId }),
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          kind: "task.restore_parent",
+          taskId: task.id,
+          ...(task.parentTaskId === undefined
+            ? {}
+            : { priorParentTaskId: task.parentTaskId }),
+          resultingVersion: updated.version,
+        },
+      );
+    }
     case "task.setOperationalState": {
       const task = transaction.getTask(command.payload.taskId);
       if (task === undefined) return precondition(command, occurredAt);
@@ -2944,6 +3048,12 @@ export const executeWave2Command = (
                 ...(waitingOn.recordId === undefined
                   ? {}
                   : { recordId: waitingOn.recordId }),
+                ...(waitingOn.direction === undefined
+                  ? {}
+                  : { direction: waitingOn.direction }),
+                ...(waitingOn.expectedAt === undefined
+                  ? {}
+                  : { expectedAt: waitingOn.expectedAt }),
               },
             }),
         occurredAt,
@@ -3773,6 +3883,7 @@ const descriptorState = (
             reason: "later_change",
           };
     }
+    case "task.restore_parent":
     case "task.restore_details": {
       const task = view.getTask(descriptor.taskId);
       return task?.version === descriptor.resultingVersion
@@ -4048,6 +4159,16 @@ const applyUndo = (
             delete withoutCompletedAt.completedAt;
             return { ...withoutCompletedAt, completionState: "open" };
           })();
+    transaction.updateTask(restored, task.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "task" };
+  } else if (descriptor.kind === "task.restore_parent") {
+    const task = transaction.getTask(descriptor.taskId) as Task;
+    const restored = setTaskParent(
+      task,
+      descriptor.priorParentTaskId,
+      occurredAt,
+    );
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "task" };
@@ -4457,6 +4578,9 @@ export const executeWave2Query = (
           ...(task.startAt === undefined ? {} : { startAt: task.startAt }),
           ...(task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
           ...(task.priority === undefined ? {} : { priority: task.priority }),
+          ...(task.parentTaskId === undefined
+            ? {}
+            : { parentTaskId: task.parentTaskId }),
           version: task.version,
           updatedAt: task.updatedAt,
         })),
@@ -5364,6 +5488,7 @@ export const executeWave2Query = (
     "project.outcome_updated": "project_outcome_changed",
     "task.created": "task_created",
     "task.details_updated": "task_details_updated",
+    "task.parent_changed": "task_parent_changed",
     "task.completed": "task_completed",
     "task.reopened": "task_reopened",
     "task.assigned": "task_assigned",

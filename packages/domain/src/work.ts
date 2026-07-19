@@ -24,6 +24,7 @@ export interface CreateTaskInput {
   readonly startAt?: string;
   readonly dueAt?: string;
   readonly priority?: TaskPriority;
+  readonly parentTaskId?: TaskId;
   readonly statusId: TaskStatusId;
   readonly createdBy: PrincipalId;
   readonly occurredAt: string;
@@ -41,6 +42,9 @@ export const createTask = (input: CreateTaskInput): Task => ({
   ...(input.startAt === undefined ? {} : { startAt: input.startAt }),
   ...(input.dueAt === undefined ? {} : { dueAt: input.dueAt }),
   ...(input.priority === undefined ? {} : { priority: input.priority }),
+  ...(input.parentTaskId === undefined
+    ? {}
+    : { parentTaskId: input.parentTaskId }),
   statusId: input.statusId,
   recordState: "active",
   completionState: "open",
@@ -190,6 +194,21 @@ export const taskMatchesFilters = (
       return false;
   }
   return true;
+};
+
+export const setTaskParent = (
+  task: Task,
+  parentTaskId: TaskId | undefined,
+  occurredAt: string,
+): Task => {
+  const { parentTaskId: _prior, ...base } = task;
+  void _prior;
+  return {
+    ...base,
+    ...(parentTaskId === undefined ? {} : { parentTaskId }),
+    version: task.version + 1,
+    updatedAt: occurredAt,
+  };
 };
 
 export const setTaskStatus = (

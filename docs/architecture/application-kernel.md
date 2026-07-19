@@ -181,6 +181,20 @@ with cursor pagination. A richer collaborative Document remains an explicitly
 related, separately created record; no Task requires one merely to hold a few
 paragraphs of working context.
 
+A Task may be decomposed into exactly one level of subtasks. `task.create`
+accepts an optional `parentTaskId` and the expected-version `task.setParent`
+command adopts, moves, or clears the relation with its own previewed undo
+(`task.restore_parent`). The invariant is transactional: a subtask cannot
+become a parent, a Task with children cannot be adopted, and parent and child
+must share a workspace and Space. Every subtask keeps fully independent
+status, completion, operational state, timing, priority, responsibility,
+comments, and recovery; completing all children never completes the parent —
+surfaces show explicit counts, never a percentage or an automatic transition.
+The lightweight `waitingOn` descriptor gains an explicit optional `direction`
+(`waiting_on_them` or `we_owe`) and an `expectedAt` review instant, so waiting
+work and owed commitments stay distinguishable without forcing dependencies
+into subtasks.
+
 The application-owned rule is deliberately narrow: text becomes a Task, while
 URLs, file references, managed files, and screenshots become knowledge
 sources. Managed payload duplicates use exact content digest and byte length;

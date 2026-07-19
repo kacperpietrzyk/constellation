@@ -1378,6 +1378,8 @@ export const RealApp = ({
   const [taskEditBusy, setTaskEditBusy] = useState(false);
   const taskEditButtonRef = useRef<HTMLButtonElement | null>(null);
   const taskEditWantsFocusRef = useRef(false);
+  const [subtaskDraft, setSubtaskDraft] = useState("");
+  const [subtaskBusy, setSubtaskBusy] = useState(false);
   useEffect(() => {
     if (!taskEditOpen && taskEditWantsFocusRef.current) {
       taskEditWantsFocusRef.current = false;
@@ -3935,6 +3937,121 @@ export const RealApp = ({
                     Edytuj kontekst
                   </button>
                 </>
+              )}
+            </section>
+            <section className="inspector-section subtasks-block">
+              <p className="section-label">Podzadania</p>
+              {selectedTask.parentTaskId !== undefined ? (
+                <p>
+                  Część zadania:{" "}
+                  <button
+                    type="button"
+                    className="inspector-link"
+                    onClick={() => {
+                      const parentId = selectedTask.parentTaskId;
+                      if (parentId !== undefined)
+                        selectTaskInInspector(parentId);
+                    }}
+                  >
+                    {tasks.find((item) => item.id === selectedTask.parentTaskId)
+                      ?.title ?? "Zadanie nadrzędne"}
+                  </button>
+                </p>
+              ) : (
+                (() => {
+                  const children = tasks.filter(
+                    (item) => item.parentTaskId === selectedTask.id,
+                  );
+                  const doneCount = children.filter(
+                    (child) => child.completionState === "completed",
+                  ).length;
+                  return (
+                    <>
+                      {children.length === 0 ? (
+                        <p>
+                          Rozbij wynik tylko wtedy, gdy część pracy ma własny
+                          stan, termin lub odpowiedzialność.
+                        </p>
+                      ) : (
+                        <>
+                          <p>
+                            Ukończone {doneCount} z {children.length}
+                            {doneCount === children.length
+                              ? " · wynik zamykasz świadomie"
+                              : ""}
+                          </p>
+                          <ul className="inspector-links subtask-list">
+                            {children.map((child) => (
+                              <li key={child.id}>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    selectTaskInInspector(child.id)
+                                  }
+                                >
+                                  <i
+                                    aria-hidden="true"
+                                    className={
+                                      child.completionState === "completed"
+                                        ? "subtask-done"
+                                        : "subtask-open"
+                                    }
+                                  />
+                                  {child.title}
+                                  {child.completionState === "completed"
+                                    ? " · ukończone"
+                                    : ""}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                      <form
+                        className="subtask-create"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          if (!client || subtaskBusy) return;
+                          const title = subtaskDraft.trim();
+                          if (title.length === 0) return;
+                          setSubtaskBusy(true);
+                          void createTask(client, state.snapshot, {
+                            title,
+                            parentTaskId: selectedTask.id,
+                          }).then(async (result) => {
+                            setSubtaskBusy(false);
+                            if (result.kind === "success") {
+                              setSubtaskDraft("");
+                              await refreshAfter("Podzadanie utworzono.");
+                            } else showFailure(result);
+                          });
+                        }}
+                      >
+                        <label>
+                          <span className="sr-only">
+                            Tytuł nowego podzadania
+                          </span>
+                          <input
+                            value={subtaskDraft}
+                            maxLength={500}
+                            disabled={subtaskBusy}
+                            placeholder="Dodaj podzadanie"
+                            onChange={(event) =>
+                              setSubtaskDraft(event.target.value)
+                            }
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          className="secondary-button"
+                          disabled={subtaskBusy || subtaskDraft.trim() === ""}
+                        >
+                          Dodaj
+                        </button>
+                      </form>
+                    </>
+                  );
+                })()
               )}
             </section>
             <section className="inspector-section assignment-block">
