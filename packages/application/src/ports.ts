@@ -38,6 +38,8 @@ import type {
   Project,
   Task,
   TaskAssignment,
+  TaskListFilters,
+  TaskPriority,
   TaskProjectRelation,
   TaskStatusDefinition,
   Workspace,
@@ -96,7 +98,16 @@ export interface TaskPaginationCursor {
   readonly recordId: TaskId;
 }
 
-export type PaginationCursor = CapturePaginationCursor | TaskPaginationCursor;
+export interface TaskDuePaginationCursor {
+  readonly kind: "task_due";
+  readonly dueAt: string | null;
+  readonly priority: TaskPriority;
+  readonly orderedAt: string;
+  readonly recordId: TaskId;
+}
+
+export type PaginationCursor =
+  CapturePaginationCursor | TaskPaginationCursor | TaskDuePaginationCursor;
 
 export interface PaginationCursorCodec {
   encode(cursor: PaginationCursor): string;
@@ -136,8 +147,10 @@ export interface CapturePageRequest {
 export interface TaskPageRequest {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
-  readonly after?: TaskPaginationCursor;
+  readonly after?: TaskPaginationCursor | TaskDuePaginationCursor;
   readonly limit: number;
+  readonly order?: "created_desc" | "due_asc";
+  readonly filters?: TaskListFilters;
 }
 
 export interface ApplicationReadView {

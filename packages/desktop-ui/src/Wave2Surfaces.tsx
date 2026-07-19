@@ -32,7 +32,12 @@ import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
 import { modifierLabel } from "./components/ShortcutsOverlay.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
-import { countLabel, formatDateTime, recordKindLabels } from "./i18n.js";
+import {
+  countLabel,
+  formatDate,
+  formatDateTime,
+  recordKindLabels,
+} from "./i18n.js";
 
 const Mark = ({ kind }: { readonly kind: string }) => (
   <span className={`record-mark mark-${kind}`} aria-hidden="true" />
@@ -985,9 +990,34 @@ export const TasksSurface = ({
                     >
                       <strong title={task.title}>{task.title}</strong>
                       <span>
-                        {task.sourceCaptureId
-                          ? "Z Quick Capture · oryginał zachowany"
-                          : "Root Space"}
+                        {[
+                          task.sourceCaptureId
+                            ? "Z Quick Capture · oryginał zachowany"
+                            : "Root Space",
+                          ...(task.dueAt === undefined
+                            ? []
+                            : [
+                                `Termin: ${formatDate(
+                                  task.dueAt,
+                                  snapshot.bootstrap.workspace.timezone,
+                                )}${
+                                  task.completionState === "open" &&
+                                  Date.parse(task.dueAt) < Date.now()
+                                    ? " · po terminie"
+                                    : ""
+                                }`,
+                              ]),
+                          ...(task.priority === undefined ||
+                          task.priority === "normal"
+                            ? []
+                            : [
+                                task.priority === "urgent"
+                                  ? "Pilny"
+                                  : task.priority === "high"
+                                    ? "Wysoki priorytet"
+                                    : "Niski priorytet",
+                              ]),
+                        ].join(" · ")}
                       </span>
                     </button>
                     <label className="sr-only" htmlFor={`status-${task.id}`}>

@@ -383,14 +383,21 @@ const TaskMutationProjectionFields = {
   version: z.int().positive(),
 } as const;
 
+const TaskDetailFields = {
+  title: z.string(),
+  description: z.string().optional(),
+  nextAction: z.string().optional(),
+  startAt: z.iso.datetime({ offset: true }).optional(),
+  dueAt: z.iso.datetime({ offset: true }).optional(),
+  priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
+} as const;
+
 export const TaskCreatedProjectionSchema = z
   .object({
     kind: z.literal("task.created"),
     taskId: TaskIdSchema,
     spaceId: SpaceIdSchema,
-    title: z.string(),
-    description: z.string().optional(),
-    nextAction: z.string().optional(),
+    ...TaskDetailFields,
     statusId: TaskStatusIdSchema,
     completionState: z.enum(["open", "completed"]),
     version: z.int().positive(),
@@ -400,9 +407,7 @@ export const TaskDetailsUpdatedProjectionSchema = z
   .object({
     kind: z.literal("task.details_updated"),
     taskId: TaskIdSchema,
-    title: z.string(),
-    description: z.string().optional(),
-    nextAction: z.string().optional(),
+    ...TaskDetailFields,
     version: z.int().positive(),
   })
   .strict();

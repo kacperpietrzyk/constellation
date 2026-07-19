@@ -29,7 +29,9 @@ import {
   type ExecutionContext,
   type ProjectId,
   type RelationId,
+  type SpaceId,
   type TaskId,
+  type WorkspaceId,
 } from "@constellation/contracts";
 import type { DomainEvent, Task } from "@constellation/domain";
 import {
@@ -1228,6 +1230,115 @@ describe("SQLite ApplicationStore", () => {
       assert.equal(matches("budżetu"), 0, "cleared next action leaves FTS");
       reopened.close();
     });
+  });
+
+  it("orders and filters Tasks by the shared due-aware contract", () => {
+    const database = new DatabaseSync(":memory:");
+    const store = new SqliteApplicationStore(sqlitePort(database));
+    const createdAt = "2026-07-19T09:00:00.000Z";
+    const workspaceId = ids.workspace as WorkspaceId;
+    const spaceId = ids.rootSpace as SpaceId;
+    store.transact((transaction) => {
+      transaction.insertWorkspace({
+        id: workspaceId,
+        version: 1,
+      } as never);
+      transaction.insertSpace({
+        id: spaceId,
+        workspaceId,
+        version: 1,
+      } as never);
+      const base = {
+        workspaceId,
+        spaceId,
+        statusId: "00000000-0000-4000-8000-0000000000b0",
+        recordState: "active",
+        completionState: "open",
+        operationalState: "actionable",
+        createdBy: ids.principal,
+        version: 1,
+        createdAt,
+        updatedAt: createdAt,
+      };
+      transaction.insertTask({
+        ...base,
+        id: "00000000-0000-4000-8000-0000000000b1",
+        title: "Later",
+        dueAt: "2026-07-30T21:59:59.999Z",
+      } as never);
+      transaction.insertTask({
+        ...base,
+        id: "00000000-0000-4000-8000-0000000000b2",
+        title: "Soon high",
+        dueAt: "2026-07-24T21:59:59.999Z",
+        priority: "high",
+      } as never);
+      transaction.insertTask({
+        ...base,
+        id: "00000000-0000-4000-8000-0000000000b3",
+        title: "Soon normal",
+        dueAt: "2026-07-24T21:59:59.999Z",
+      } as never);
+      transaction.insertTask({
+        ...base,
+        id: "00000000-0000-4000-8000-0000000000b4",
+        title: "Unscheduled urgent",
+        priority: "urgent",
+      } as never);
+    });
+    const page = store.read((view) =>
+      view.listTasks({
+        workspaceId,
+        spaceId,
+        limit: 10,
+        order: "due_asc",
+      }),
+    );
+    assert.deepEqual(
+      page?.map((task) => task.id),
+      [
+        "00000000-0000-4000-8000-0000000000b2",
+        "00000000-0000-4000-8000-0000000000b3",
+        "00000000-0000-4000-8000-0000000000b1",
+        "00000000-0000-4000-8000-0000000000b4",
+      ],
+    );
+    const continued = store.read((view) =>
+      view.listTasks({
+        workspaceId,
+        spaceId,
+        limit: 10,
+        order: "due_asc",
+        after: {
+          kind: "task_due",
+          dueAt: "2026-07-24T21:59:59.999Z",
+          priority: "normal",
+          orderedAt: createdAt,
+          recordId: "00000000-0000-4000-8000-0000000000b3" as TaskId,
+        },
+      }),
+    );
+    assert.deepEqual(
+      continued?.map((task) => task.id),
+      [
+        "00000000-0000-4000-8000-0000000000b1",
+        "00000000-0000-4000-8000-0000000000b4",
+      ],
+    );
+    const filtered = store.read((view) =>
+      view.listTasks({
+        workspaceId,
+        spaceId,
+        limit: 10,
+        order: "due_asc",
+        filters: { dueBefore: "2026-07-25T00:00:00.000Z" },
+      }),
+    );
+    assert.deepEqual(
+      filtered?.map((task) => task.title),
+      ["Soon high", "Soon normal"],
+    );
+    database.close();
   });
 
   it("rolls back an interrupted migration and retries from the same source", () => {

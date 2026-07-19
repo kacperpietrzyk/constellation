@@ -1106,6 +1106,175 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(blocked.diagnosticCode, "undo.not_available");
   });
 
+  it("plans Tasks in time with a repaired due ordering, filters, and undo-safe timing", () => {
+    const harness = setup();
+    const taskIds = {
+      dueSoonHigh: "10000000-0000-4000-8000-00000000e001",
+      dueSoonNormal: "10000000-0000-4000-8000-00000000e002",
+      dueLater: "10000000-0000-4000-8000-00000000e003",
+      unscheduledUrgent: "10000000-0000-4000-8000-00000000e004",
+      unscheduled: "10000000-0000-4000-8000-00000000e005",
+    } as const;
+    const create = (
+      taskId: string,
+      title: string,
+      timing: {
+        startAt?: string;
+        dueAt?: string;
+        priority?: "urgent" | "high" | "normal" | "low";
+      },
+    ) => {
+      const created = unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`plan-${title}`),
+          commandName: "task.create",
+          payload: { taskId, spaceId: ids.rootSpace, title, ...timing },
+        }),
+      );
+      assert.equal(created.diagnosticCode, "task.created");
+    };
+    create(taskIds.dueLater, "Later deadline", {
+      dueAt: "2026-07-28T21:59:59.999Z",
+    });
+    create(taskIds.unscheduledUrgent, "Unscheduled urgent", {
+      priority: "urgent",
+    });
+    create(taskIds.dueSoonNormal, "Soon normal", {
+      startAt: "2026-07-20T22:00:00.000Z",
+      dueAt: "2026-07-24T21:59:59.999Z",
+    });
+    create(taskIds.dueSoonHigh, "Soon high", {
+      dueAt: "2026-07-24T21:59:59.999Z",
+      priority: "high",
+    });
+    create(taskIds.unscheduled, "Unscheduled ordinary", {});
+
+    const invalidRange = harness.kernel.execute(context(), {
+      ...metadata("plan-invalid"),
+      commandName: "task.create",
+      payload: {
+        taskId: "10000000-0000-4000-8000-00000000e006",
+        spaceId: ids.rootSpace,
+        title: "Backwards range",
+        startAt: "2026-07-25T00:00:00.000Z",
+        dueAt: "2026-07-24T00:00:00.000Z",
+      },
+    });
+    assert.equal(invalidRange.kind, "contract_rejected");
+
+    const listDue = (parameters: Record<string, unknown>) => {
+      const result = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "task.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace, ...parameters },
+      });
+      if (
+        result.kind !== "query_result" ||
+        result.result.outcome !== "success" ||
+        result.result.projection.kind !== "task.list"
+      ) {
+        throw new Error("Expected task list.");
+      }
+      return result.result.projection;
+    };
+
+    const dueOrdered = listDue({ orderBy: "due_asc" });
+    assert.deepEqual(
+      dueOrdered.items.map((item) => item.id),
+      [
+        taskIds.dueSoonHigh,
+        taskIds.dueSoonNormal,
+        taskIds.dueLater,
+        taskIds.unscheduledUrgent,
+        taskIds.unscheduled,
+      ],
+      "scheduled first by deadline with priority tie-break; unscheduled follow",
+    );
+    assert.equal(dueOrdered.items[0]?.dueAt, "2026-07-24T21:59:59.999Z");
+    assert.equal(dueOrdered.items[1]?.startAt, "2026-07-20T22:00:00.000Z");
+
+    const firstPage = listDue({ orderBy: "due_asc", limit: 2 });
+    assert.equal(firstPage.items.length, 2);
+    assert.notEqual(firstPage.nextCursor, null);
+    const secondPage = listDue({
+      orderBy: "due_asc",
+      limit: 3,
+      cursor: firstPage.nextCursor,
+    });
+    assert.deepEqual(
+      secondPage.items.map((item) => item.id),
+      [taskIds.dueLater, taskIds.unscheduledUrgent, taskIds.unscheduled],
+    );
+
+    const unscheduledOnly = listDue({ orderBy: "due_asc", scheduled: false });
+    assert.deepEqual(
+      unscheduledOnly.items.map((item) => item.id),
+      [taskIds.unscheduledUrgent, taskIds.unscheduled],
+    );
+    const urgentOnly = listDue({ priorities: ["urgent"] });
+    assert.deepEqual(
+      urgentOnly.items.map((item) => item.id),
+      [taskIds.unscheduledUrgent],
+    );
+    const dueThisWeek = listDue({
+      orderBy: "due_asc",
+      dueBefore: "2026-07-27T00:00:00.000Z",
+    });
+    assert.deepEqual(
+      dueThisWeek.items.map((item) => item.id),
+      [taskIds.dueSoonHigh, taskIds.dueSoonNormal],
+    );
+
+    const mergedInvalid = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("plan-merged-invalid", { [taskIds.dueSoonNormal]: 1 }),
+        commandName: "task.updateDetails",
+        payload: {
+          taskId: taskIds.dueSoonNormal,
+          startAt: "2026-07-25T00:00:00.000Z",
+        },
+      }),
+    );
+    assert.equal(mergedInvalid.diagnosticCode, "command.precondition_failed");
+
+    const retime = {
+      ...metadata("plan-retime", { [taskIds.dueSoonNormal]: 1 }),
+      commandName: "task.updateDetails",
+      payload: {
+        taskId: taskIds.dueSoonNormal,
+        startAt: null,
+        dueAt: "2026-07-30T21:59:59.999Z",
+        priority: "low",
+      },
+    };
+    const retimed = unwrap(harness.kernel.execute(context(), retime));
+    assert.equal(retimed.diagnosticCode, "task.details_updated");
+    const afterRetime = harness.store
+      .snapshot()
+      .tasks.find((task) => task.id === taskIds.dueSoonNormal);
+    assert.equal(afterRetime?.startAt, undefined);
+    assert.equal(afterRetime?.dueAt, "2026-07-30T21:59:59.999Z");
+    assert.equal(afterRetime?.priority, "low");
+
+    const undone = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("plan-retime-undo", { [taskIds.dueSoonNormal]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: retime.commandId },
+      }),
+    );
+    assert.equal(undone.diagnosticCode, "command.undone");
+    const restored = harness.store
+      .snapshot()
+      .tasks.find((task) => task.id === taskIds.dueSoonNormal);
+    assert.equal(restored?.startAt, "2026-07-20T22:00:00.000Z");
+    assert.equal(restored?.dueAt, "2026-07-24T21:59:59.999Z");
+    assert.equal(restored?.priority, undefined);
+  });
+
   it("previews and applies exact compensation, but refuses to overwrite later work", () => {
     const harness = setup();
     const { projectId } = createProjectRecord(harness, "Undo-safe project");

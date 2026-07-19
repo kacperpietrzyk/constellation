@@ -46,6 +46,11 @@ import {
   type NamedDocumentVersionId,
   type StrategicRecordId,
 } from "@constellation/contracts";
+import {
+  compareTasksByDue,
+  effectiveTaskPriority,
+  taskMatchesFilters,
+} from "@constellation/domain";
 import type {
   AuditReceipt,
   Capture,
@@ -1646,7 +1651,42 @@ class SqliteReadView implements ApplicationWave2ReadView {
   }
 
   public listTasks(request: TaskPageRequest): readonly Task[] | undefined {
-    return this.listPage<Task>("tasks", "created_at", request, "task");
+    const dueOrder = request.order === "due_asc";
+    if (!dueOrder && request.filters === undefined) {
+      return this.listPage<Task>("tasks", "created_at", request, "task");
+    }
+    // Due-aware ordering and filters share one deterministic in-application
+    // contract with the reference store: rows stay whole typed payloads, so
+    // the scoped set is loaded and ordered by the shared domain comparator.
+    const tasks = this.listTasksInSpace(
+      request.workspaceId,
+      request.spaceId,
+    ).filter(
+      (task) =>
+        request.filters === undefined ||
+        taskMatchesFilters(task, request.filters),
+    );
+    const ordered = [...tasks].sort(
+      dueOrder
+        ? compareTasksByDue
+        : (left, right) =>
+            right.createdAt.localeCompare(left.createdAt) ||
+            right.id.localeCompare(left.id),
+    );
+    if (request.after === undefined) return ordered.slice(0, request.limit);
+    const after = request.after;
+    if (dueOrder !== (after.kind === "task_due")) return undefined;
+    const cursorIndex = ordered.findIndex(
+      (task) =>
+        task.id === after.recordId &&
+        task.createdAt === after.orderedAt &&
+        (after.kind !== "task_due" ||
+          ((task.dueAt ?? null) === after.dueAt &&
+            effectiveTaskPriority(task) === after.priority)),
+    );
+    return cursorIndex < 0
+      ? undefined
+      : ordered.slice(cursorIndex + 1, cursorIndex + 1 + request.limit);
   }
 
   public getAuditReceipt(id: AuditReceiptId): AuditReceipt | undefined {

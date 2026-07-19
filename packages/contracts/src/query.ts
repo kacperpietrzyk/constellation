@@ -94,6 +94,15 @@ export const TaskListQuerySchema = QueryMetadataSchema.extend({
       spaceId: SpaceIdSchema,
       limit: z.int().min(1).max(200).optional(),
       cursor: z.string().trim().min(1).max(500).optional(),
+      orderBy: z.enum(["created_desc", "due_asc"]).optional(),
+      statusIds: z.array(TaskStatusIdSchema).max(50).optional(),
+      priorities: z
+        .array(z.enum(["urgent", "high", "normal", "low"]))
+        .max(4)
+        .optional(),
+      scheduled: z.boolean().optional(),
+      dueBefore: z.iso.datetime({ offset: true }).optional(),
+      dueAfter: z.iso.datetime({ offset: true }).optional(),
     })
     .strict(),
 }).strict();
@@ -802,6 +811,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             title: z.string(),
             description: z.string().optional(),
             nextAction: z.string().optional(),
+            startAt: z.iso.datetime({ offset: true }).optional(),
+            dueAt: z.iso.datetime({ offset: true }).optional(),
+            priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
             status: z
               .object({
                 id: TaskStatusIdSchema,

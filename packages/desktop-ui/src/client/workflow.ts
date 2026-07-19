@@ -1913,6 +1913,9 @@ export interface TaskDetailsDraft {
   readonly title?: string;
   readonly description?: string | null;
   readonly nextAction?: string | null;
+  readonly startAt?: string | null;
+  readonly dueAt?: string | null;
+  readonly priority?: "urgent" | "high" | "normal" | "low" | null;
 }
 
 export const updateTaskDetails = (
@@ -1938,6 +1941,9 @@ export const updateTaskDetails = (
         ...(draft.nextAction === undefined
           ? {}
           : { nextAction: draft.nextAction }),
+        ...(draft.startAt === undefined ? {} : { startAt: draft.startAt }),
+        ...(draft.dueAt === undefined ? {} : { dueAt: draft.dueAt }),
+        ...(draft.priority === undefined ? {} : { priority: draft.priority }),
       },
     },
     (response) =>

@@ -80,6 +80,7 @@ import {
   type CurrentAuthorizationPolicy,
   type CapturePaginationCursor,
   type StoreFreshness,
+  type TaskDuePaginationCursor,
   type TaskPaginationCursor,
 } from "./ports.js";
 import {
@@ -2862,12 +2863,33 @@ export class ApplicationKernel {
       );
     }
 
-    let after: TaskPaginationCursor | undefined;
+    const order = query.parameters.orderBy ?? "created_desc";
+    const filters = {
+      ...(query.parameters.statusIds === undefined
+        ? {}
+        : { statusIds: query.parameters.statusIds }),
+      ...(query.parameters.priorities === undefined
+        ? {}
+        : { priorities: query.parameters.priorities }),
+      ...(query.parameters.scheduled === undefined
+        ? {}
+        : { scheduled: query.parameters.scheduled }),
+      ...(query.parameters.dueBefore === undefined
+        ? {}
+        : { dueBefore: query.parameters.dueBefore }),
+      ...(query.parameters.dueAfter === undefined
+        ? {}
+        : { dueAfter: query.parameters.dueAfter }),
+    };
+    let after: TaskPaginationCursor | TaskDuePaginationCursor | undefined;
     if (query.parameters.cursor !== undefined) {
       const decoded = this.dependencies.cursorCodec.decode(
         query.parameters.cursor,
       );
-      if (decoded?.kind !== "task") {
+      if (
+        decoded?.kind !== (order === "due_asc" ? "task_due" : "task") ||
+        (decoded.kind !== "task" && decoded.kind !== "task_due")
+      ) {
         return this.queryRejected(query, kernelTime, "query.cursor_invalid");
       }
       after = decoded;
@@ -2878,6 +2900,8 @@ export class ApplicationKernel {
       spaceId: query.parameters.spaceId,
       ...(after === undefined ? {} : { after }),
       limit: limit + 1,
+      order,
+      ...(Object.keys(filters).length === 0 ? {} : { filters }),
     });
     if (items === undefined) {
       return this.queryRejected(query, kernelTime, "query.cursor_invalid");
@@ -2919,6 +2943,9 @@ export class ApplicationKernel {
             ...(task.nextAction === undefined
               ? {}
               : { nextAction: task.nextAction }),
+            ...(task.startAt === undefined ? {} : { startAt: task.startAt }),
+            ...(task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
+            ...(task.priority === undefined ? {} : { priority: task.priority }),
             status: {
               id: status.id,
               label: status.label,
@@ -2970,11 +2997,21 @@ export class ApplicationKernel {
     const last = visibleItems.at(-1);
     const nextCursor =
       items.length > limit && last !== undefined
-        ? this.dependencies.cursorCodec.encode({
-            kind: "task",
-            orderedAt: last.createdAt,
-            recordId: last.id,
-          })
+        ? this.dependencies.cursorCodec.encode(
+            order === "due_asc"
+              ? {
+                  kind: "task_due",
+                  dueAt: last.dueAt ?? null,
+                  priority: last.priority ?? "normal",
+                  orderedAt: last.createdAt,
+                  recordId: last.id,
+                }
+              : {
+                  kind: "task",
+                  orderedAt: last.createdAt,
+                  recordId: last.id,
+                },
+          )
         : null;
 
     return QueryResultSchema.parse({

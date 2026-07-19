@@ -91,3 +91,104 @@ export const formatTime = (
   value: string | number | Date,
   timeZone?: string,
 ): string => cachedFormatter("time", timeZone).format(new Date(value));
+
+// Day-only variant for planning fields (start, deadline) where a clock time
+// would suggest false precision. Uses the same workspace-timezone rule.
+const dateFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
+export const formatDate = (
+  value: string | number | Date,
+  timeZone?: string,
+): string => {
+  const key = timeZone ?? "";
+  let formatter = dateFormatterCache.get(key);
+  if (!formatter) {
+    try {
+      formatter = new Intl.DateTimeFormat("pl-PL", {
+        dateStyle: "medium",
+        timeZone,
+      });
+    } catch {
+      formatter = new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium" });
+    }
+    dateFormatterCache.set(key, formatter);
+  }
+  return formatter.format(new Date(value));
+};
+
+// Calendar-day helpers for the workspace timezone. Task timing is stored as a
+// canonical UTC instant; the desktop edits it as a wall-clock date in the
+// workspace timezone. A deadline chosen without a time of day normalizes to
+// the end of that local day and a start to its beginning, so "do piątku"
+// means the user's Friday, not the server's.
+const zoneOffsetMs = (timeZone: string, utcMs: number): number => {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).formatToParts(new Date(utcMs));
+  } catch {
+    return 0;
+  }
+  const part = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((candidate) => candidate.type === type)?.value ?? 0);
+  const wallUtc = Date.UTC(
+    part("year"),
+    part("month") - 1,
+    part("day"),
+    part("hour") % 24,
+    part("minute"),
+    part("second"),
+  );
+  return wallUtc - utcMs;
+};
+
+// "YYYY-MM-DD" of an instant in the workspace timezone (for date inputs).
+export const dateKeyInZone = (
+  value: string | number | Date,
+  timeZone?: string,
+): string => {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      dateStyle: "short",
+      timeZone,
+    }).format(new Date(value));
+  } catch {
+    return new Intl.DateTimeFormat("en-CA", { dateStyle: "short" }).format(
+      new Date(value),
+    );
+  }
+};
+
+// The UTC instant for a "YYYY-MM-DD" wall-clock date in the workspace
+// timezone: the start (00:00:00.000) or end (23:59:59.999) of that local day.
+// Two offset probes converge across DST transitions.
+export const instantForZonedDate = (
+  date: string,
+  timeZone: string | undefined,
+  edge: "start" | "end",
+): string | undefined => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(date);
+  if (!match) return undefined;
+  const wallUtc = Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    edge === "start" ? 0 : 23,
+    edge === "start" ? 0 : 59,
+    edge === "start" ? 0 : 59,
+    edge === "start" ? 0 : 999,
+  );
+  if (Number.isNaN(wallUtc)) return undefined;
+  const zone = timeZone ?? "";
+  let utc = wallUtc - (zone === "" ? 0 : zoneOffsetMs(zone, wallUtc));
+  if (zone !== "") utc = wallUtc - zoneOffsetMs(zone, utc);
+  return new Date(utc).toISOString();
+};

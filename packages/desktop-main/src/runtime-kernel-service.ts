@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   ApplicationKernel,
+  Base64JsonCursorCodec,
   CommandScopedIdGenerator,
   type ApplicationCommandResponse,
   type ApplicationQueryResponse,
@@ -9,14 +10,10 @@ import {
   type AuthorizationRequest,
   type Clock,
   type CurrentAuthorizationPolicy,
-  type PaginationCursor,
-  type PaginationCursorCodec,
   type SemanticHasher,
 } from "@constellation/application";
 import {
-  CaptureIdSchema,
   CommandEnvelopeSchema,
-  TaskIdSchema,
   type ExecutionContext,
   type CaptureOriginal,
   type WorkspaceId,
@@ -47,61 +44,6 @@ class SystemClock implements Clock {
 class Sha256SemanticHasher implements SemanticHasher {
   public fingerprint(value: unknown): string {
     return createHash("sha256").update(canonicalJson(value)).digest("hex");
-  }
-}
-
-class Base64JsonCursorCodec implements PaginationCursorCodec {
-  public encode(cursor: PaginationCursor): string {
-    return Buffer.from(
-      JSON.stringify({
-        kind: cursor.kind,
-        orderedAt: cursor.orderedAt,
-        recordId: cursor.recordId,
-      }),
-      "utf8",
-    ).toString("base64url");
-  }
-
-  public decode(value: string): PaginationCursor | undefined {
-    try {
-      const parsed: unknown = JSON.parse(
-        Buffer.from(value, "base64url").toString("utf8"),
-      );
-      if (
-        typeof parsed !== "object" ||
-        parsed === null ||
-        Array.isArray(parsed)
-      ) {
-        return undefined;
-      }
-      const candidate = parsed as Record<string, unknown>;
-      if (
-        Object.keys(candidate).sort().join(",") !== "kind,orderedAt,recordId" ||
-        typeof candidate.orderedAt !== "string" ||
-        Number.isNaN(Date.parse(candidate.orderedAt))
-      ) {
-        return undefined;
-      }
-      if (candidate.kind === "capture") {
-        const id = CaptureIdSchema.safeParse(candidate.recordId);
-        return id.success
-          ? {
-              kind: "capture",
-              orderedAt: candidate.orderedAt,
-              recordId: id.data,
-            }
-          : undefined;
-      }
-      if (candidate.kind === "task") {
-        const id = TaskIdSchema.safeParse(candidate.recordId);
-        return id.success
-          ? { kind: "task", orderedAt: candidate.orderedAt, recordId: id.data }
-          : undefined;
-      }
-      return undefined;
-    } catch {
-      return undefined;
-    }
   }
 }
 

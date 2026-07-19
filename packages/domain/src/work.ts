@@ -7,7 +7,12 @@ import type {
   WorkspaceId,
 } from "@constellation/contracts";
 
-import type { Project, Task, TaskProjectRelation } from "./model.js";
+import type {
+  Project,
+  Task,
+  TaskPriority,
+  TaskProjectRelation,
+} from "./model.js";
 
 export interface CreateTaskInput {
   readonly id: TaskId;
@@ -16,6 +21,9 @@ export interface CreateTaskInput {
   readonly title: string;
   readonly description?: string;
   readonly nextAction?: string;
+  readonly startAt?: string;
+  readonly dueAt?: string;
+  readonly priority?: TaskPriority;
   readonly statusId: TaskStatusId;
   readonly createdBy: PrincipalId;
   readonly occurredAt: string;
@@ -30,6 +38,9 @@ export const createTask = (input: CreateTaskInput): Task => ({
     ? {}
     : { description: input.description }),
   ...(input.nextAction === undefined ? {} : { nextAction: input.nextAction }),
+  ...(input.startAt === undefined ? {} : { startAt: input.startAt }),
+  ...(input.dueAt === undefined ? {} : { dueAt: input.dueAt }),
+  ...(input.priority === undefined ? {} : { priority: input.priority }),
   statusId: input.statusId,
   recordState: "active",
   completionState: "open",
@@ -44,7 +55,16 @@ export interface TaskDetailsUpdate {
   readonly title?: string;
   readonly description?: string | null;
   readonly nextAction?: string | null;
+  readonly startAt?: string | null;
+  readonly dueAt?: string | null;
+  readonly priority?: TaskPriority | null;
 }
+
+const mergeOptional = <Value>(
+  current: Value | undefined,
+  update: Value | null | undefined,
+): Value | undefined =>
+  update === undefined ? current : update === null ? undefined : update;
 
 export const updateTaskDetails = (
   task: Task,
@@ -54,28 +74,122 @@ export const updateTaskDetails = (
   const {
     description: currentDescription,
     nextAction: currentNextAction,
+    startAt: currentStartAt,
+    dueAt: currentDueAt,
+    priority: currentPriority,
     ...base
   } = task;
-  const description =
-    update.description === undefined
-      ? currentDescription
-      : update.description === null
-        ? undefined
-        : update.description;
-  const nextAction =
-    update.nextAction === undefined
-      ? currentNextAction
-      : update.nextAction === null
-        ? undefined
-        : update.nextAction;
+  const description = mergeOptional(currentDescription, update.description);
+  const nextAction = mergeOptional(currentNextAction, update.nextAction);
+  const startAt = mergeOptional(currentStartAt, update.startAt);
+  const dueAt = mergeOptional(currentDueAt, update.dueAt);
+  const priority = mergeOptional(currentPriority, update.priority);
   return {
     ...base,
     title: update.title ?? task.title,
     ...(description === undefined ? {} : { description }),
     ...(nextAction === undefined ? {} : { nextAction }),
+    ...(startAt === undefined ? {} : { startAt }),
+    ...(dueAt === undefined ? {} : { dueAt }),
+    ...(priority === undefined ? {} : { priority }),
     version: task.version + 1,
     updatedAt: occurredAt,
   };
+};
+
+/** The resulting timing of a details update, before it is applied. */
+export const taskTimingAfterUpdate = (
+  task: Task,
+  update: TaskDetailsUpdate,
+): { startAt?: string; dueAt?: string } => {
+  const startAt = mergeOptional(task.startAt, update.startAt);
+  const dueAt = mergeOptional(task.dueAt, update.dueAt);
+  return {
+    ...(startAt === undefined ? {} : { startAt }),
+    ...(dueAt === undefined ? {} : { dueAt }),
+  };
+};
+
+export const isTaskTimingValid = (timing: {
+  startAt?: string;
+  dueAt?: string;
+}): boolean =>
+  timing.startAt === undefined ||
+  timing.dueAt === undefined ||
+  Date.parse(timing.startAt) <= Date.parse(timing.dueAt);
+
+export const effectiveTaskPriority = (task: Task): TaskPriority =>
+  task.priority ?? "normal";
+
+const TASK_PRIORITY_RANK: Record<TaskPriority, number> = {
+  urgent: 3,
+  high: 2,
+  normal: 1,
+  low: 0,
+};
+
+/**
+ * The due-aware null-ordering contract: scheduled Tasks first by ascending
+ * deadline, then priority (urgent first), creation time, and id; unscheduled
+ * Tasks follow in the same deterministic sub-order. Overdue items are ordinary
+ * scheduled items, not a separate bucket.
+ */
+export const compareTasksByDue = (left: Task, right: Task): number => {
+  if (left.dueAt !== undefined || right.dueAt !== undefined) {
+    if (left.dueAt === undefined) return 1;
+    if (right.dueAt === undefined) return -1;
+    const byDue = Date.parse(left.dueAt) - Date.parse(right.dueAt);
+    if (byDue !== 0) return byDue;
+  }
+  const byPriority =
+    TASK_PRIORITY_RANK[effectiveTaskPriority(right)] -
+    TASK_PRIORITY_RANK[effectiveTaskPriority(left)];
+  if (byPriority !== 0) return byPriority;
+  const byCreated = Date.parse(left.createdAt) - Date.parse(right.createdAt);
+  if (byCreated !== 0) return byCreated;
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+};
+
+export interface TaskListFilters {
+  readonly statusIds?: readonly TaskStatusId[];
+  readonly priorities?: readonly TaskPriority[];
+  readonly scheduled?: boolean;
+  readonly dueBefore?: string;
+  readonly dueAfter?: string;
+}
+
+export const taskMatchesFilters = (
+  task: Task,
+  filters: TaskListFilters,
+): boolean => {
+  if (
+    filters.statusIds !== undefined &&
+    !filters.statusIds.includes(task.statusId)
+  )
+    return false;
+  if (
+    filters.priorities !== undefined &&
+    !filters.priorities.includes(effectiveTaskPriority(task))
+  )
+    return false;
+  if (filters.scheduled !== undefined) {
+    if (filters.scheduled !== (task.dueAt !== undefined)) return false;
+  }
+  if (filters.dueBefore !== undefined) {
+    if (
+      task.dueAt === undefined ||
+      Date.parse(task.dueAt) >= Date.parse(filters.dueBefore)
+    )
+      return false;
+  }
+  if (filters.dueAfter !== undefined) {
+    if (
+      task.dueAt === undefined ||
+      Date.parse(task.dueAt) < Date.parse(filters.dueAfter)
+    )
+      return false;
+  }
+  return true;
 };
 
 export const setTaskStatus = (
