@@ -523,6 +523,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
                 kind: z.enum(["person", "task", "external"]),
                 label: z.string(),
                 recordId: z.uuid().optional(),
+                direction: z.enum(["waiting_on_them", "we_owe"]).optional(),
+                expectedAt: z.iso.datetime({ offset: true }).optional(),
               })
               .strict()
               .optional(),
@@ -530,6 +532,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             startAt: z.iso.datetime({ offset: true }).optional(),
             dueAt: z.iso.datetime({ offset: true }).optional(),
             priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
+            parentTaskId: TaskIdSchema.optional(),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
           })
@@ -817,6 +820,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             startAt: z.iso.datetime({ offset: true }).optional(),
             dueAt: z.iso.datetime({ offset: true }).optional(),
             priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
+            parentTaskId: TaskIdSchema.optional(),
             status: z
               .object({
                 id: TaskStatusIdSchema,
@@ -1276,6 +1280,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "project_outcome_changed",
               "task_created",
               "task_details_updated",
+              "task_parent_changed",
               "task_completed",
               "task_reopened",
               "task_assigned",
@@ -1310,6 +1315,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           "project.restore_outcome",
           "task.restore_state",
           "task.restore_details",
+          "task.restore_parent",
           "task.restore_operational_state",
           "work_link.restore_state",
           "relation.remove",

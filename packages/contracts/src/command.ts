@@ -891,6 +891,7 @@ export const TaskCreateCommandSchema = CommandMetadataSchema.extend({
       startAt: TaskInstantSchema.optional(),
       dueAt: TaskInstantSchema.optional(),
       priority: TaskPrioritySchema.optional(),
+      parentTaskId: TaskIdSchema.optional(),
     })
     .strict()
     .refine(
@@ -927,6 +928,16 @@ export const TaskUpdateDetailsCommandSchema = CommandMetadataSchema.extend({
     ),
 }).strict();
 
+export const TaskSetParentCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("task.setParent"),
+  payload: z
+    .object({
+      taskId: TaskIdSchema,
+      parentTaskId: TaskIdSchema.nullable(),
+    })
+    .strict(),
+}).strict();
+
 export const TaskSetStatusCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("task.setStatus"),
   payload: z
@@ -946,6 +957,8 @@ export const TaskSetOperationalStateCommandSchema =
             kind: z.enum(["person", "task", "external"]),
             label: z.string().trim().min(1).max(500),
             recordId: z.uuid().optional(),
+            direction: z.enum(["waiting_on_them", "we_owe"]).optional(),
+            expectedAt: z.iso.datetime({ offset: true }).optional(),
           })
           .strict()
           .optional(),
@@ -1110,6 +1123,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   ProjectUpdateOutcomeCommandSchema,
   TaskCreateCommandSchema,
   TaskUpdateDetailsCommandSchema,
+  TaskSetParentCommandSchema,
   TaskSetStatusCommandSchema,
   TaskSetOperationalStateCommandSchema,
   TaskCompleteCommandSchema,

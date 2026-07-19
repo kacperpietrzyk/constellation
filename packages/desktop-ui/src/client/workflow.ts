@@ -1327,6 +1327,10 @@ export const setTaskOperationalState = (
   task: WorkOverviewProjection["tasks"][number],
   operationalState: "actionable" | "waiting" | "blocked",
   waitingLabel?: string,
+  waitingDetails?: {
+    readonly direction?: "waiting_on_them" | "we_owe";
+    readonly expectedAt?: string;
+  },
 ) =>
   execute(
     client,
@@ -1343,6 +1347,12 @@ export const setTaskOperationalState = (
               waitingOn: {
                 kind: "external",
                 label: waitingLabel.trim(),
+                ...(waitingDetails?.direction === undefined
+                  ? {}
+                  : { direction: waitingDetails.direction }),
+                ...(waitingDetails?.expectedAt === undefined
+                  ? {}
+                  : { expectedAt: waitingDetails.expectedAt }),
               },
             }
           : {}),
@@ -1883,6 +1893,7 @@ export const createTask = (
     readonly title: string;
     readonly description?: string;
     readonly nextAction?: string;
+    readonly parentTaskId?: TaskId;
   },
 ) =>
   execute(
@@ -1900,6 +1911,9 @@ export const createTask = (
         ...(input.nextAction === undefined || input.nextAction === ""
           ? {}
           : { nextAction: input.nextAction }),
+        ...(input.parentTaskId === undefined
+          ? {}
+          : { parentTaskId: input.parentTaskId }),
       },
     },
     (response) =>

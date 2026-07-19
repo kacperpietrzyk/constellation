@@ -17,7 +17,12 @@ import {
   reportFirstEmptyRequiredField,
 } from "./components/InlinePopover.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
-import { countLabel, formatDate } from "./i18n.js";
+import {
+  countLabel,
+  dateKeyInZone,
+  formatDate,
+  instantForZonedDate,
+} from "./i18n.js";
 
 export type WorkContextKind = "area" | "initiative";
 
@@ -85,6 +90,12 @@ export const WorkSurface = ({
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
   const [openPopover, setOpenPopover] = useState<string>();
   const [waitingDraft, setWaitingDraft] = useState<Record<string, string>>({});
+  const [waitingDirectionDraft, setWaitingDirectionDraft] = useState<
+    Record<string, "waiting_on_them" | "we_owe">
+  >({});
+  const [waitingExpectedDraft, setWaitingExpectedDraft] = useState<
+    Record<string, string>
+  >({});
   const projection = work.kind === "ready" ? work.data : undefined;
   const taskNav = useListNavigation({
     itemCount: projection?.tasks.length ?? 0,
@@ -287,10 +298,21 @@ export const WorkSurface = ({
     task: (typeof projection.tasks)[number],
     state: "actionable" | "waiting" | "blocked",
     waitingLabel?: string,
+    waitingDetails?: {
+      readonly direction?: "waiting_on_them" | "we_owe";
+      readonly expectedAt?: string;
+    },
   ) => {
     if (!client) return;
     void run(`state:${task.id}`, () =>
-      setTaskOperationalState(client, snapshot, task, state, waitingLabel),
+      setTaskOperationalState(
+        client,
+        snapshot,
+        task,
+        state,
+        waitingLabel,
+        waitingDetails,
+      ),
     );
   };
 
@@ -560,10 +582,22 @@ export const WorkSurface = ({
                     <strong>{task.title}</strong>
                     <span>
                       {[
-                        task.waitingOn?.label ??
-                          (dependencyTitle
+                        task.waitingOn
+                          ? `${
+                              task.waitingOn.direction === "we_owe"
+                                ? "Zobowiązanie: "
+                                : "Czekamy na: "
+                            }${task.waitingOn.label}${
+                              task.waitingOn.expectedAt === undefined
+                                ? ""
+                                : ` · przegląd ${formatDate(
+                                    task.waitingOn.expectedAt,
+                                    snapshot.bootstrap.workspace.timezone,
+                                  )}`
+                            }`
+                          : dependencyTitle
                             ? `Zależy od: ${dependencyTitle}`
-                            : "Gotowe do podjęcia"),
+                            : "Gotowe do podjęcia",
                         ...(task.dueAt === undefined
                           ? []
                           : [
@@ -618,6 +652,43 @@ export const WorkSurface = ({
                         placeholder="Na kogo lub co czekasz?"
                         aria-label={`Powód oczekiwania: ${task.title}`}
                       />
+                      <select
+                        value={
+                          waitingDirectionDraft[task.id] ??
+                          task.waitingOn?.direction ??
+                          "waiting_on_them"
+                        }
+                        aria-label={`Kierunek oczekiwania: ${task.title}`}
+                        onChange={(event) =>
+                          setWaitingDirectionDraft((current) => ({
+                            ...current,
+                            [task.id]: event.target.value as
+                              "waiting_on_them" | "we_owe",
+                          }))
+                        }
+                      >
+                        <option value="waiting_on_them">Czekamy na nich</option>
+                        <option value="we_owe">Nasze zobowiązanie</option>
+                      </select>
+                      <input
+                        type="date"
+                        value={
+                          waitingExpectedDraft[task.id] ??
+                          (task.waitingOn?.expectedAt === undefined
+                            ? ""
+                            : dateKeyInZone(
+                                task.waitingOn.expectedAt,
+                                snapshot.bootstrap.workspace.timezone,
+                              ))
+                        }
+                        aria-label={`Data przeglądu oczekiwania: ${task.title}`}
+                        onChange={(event) =>
+                          setWaitingExpectedDraft((current) => ({
+                            ...current,
+                            [task.id]: event.target.value,
+                          }))
+                        }
+                      />
                       <button
                         type="button"
                         disabled={
@@ -627,13 +698,38 @@ export const WorkSurface = ({
                             waitingDraft[task.id] ?? task.waitingOn?.label
                           )?.trim()
                         }
-                        onClick={() =>
+                        onClick={() => {
+                          const expectedDate =
+                            waitingExpectedDraft[task.id] ??
+                            (task.waitingOn?.expectedAt === undefined
+                              ? ""
+                              : dateKeyInZone(
+                                  task.waitingOn.expectedAt,
+                                  snapshot.bootstrap.workspace.timezone,
+                                ));
+                          const expectedAt =
+                            expectedDate === ""
+                              ? undefined
+                              : instantForZonedDate(
+                                  expectedDate,
+                                  snapshot.bootstrap.workspace.timezone,
+                                  "end",
+                                );
                           applyTaskState(
                             task,
                             "waiting",
                             waitingDraft[task.id] ?? task.waitingOn?.label,
-                          )
-                        }
+                            {
+                              direction:
+                                waitingDirectionDraft[task.id] ??
+                                task.waitingOn?.direction ??
+                                "waiting_on_them",
+                              ...(expectedAt === undefined
+                                ? {}
+                                : { expectedAt }),
+                            },
+                          );
+                        }}
                       >
                         Ustaw oczekiwanie
                       </button>

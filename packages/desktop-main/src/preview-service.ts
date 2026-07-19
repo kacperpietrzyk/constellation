@@ -69,6 +69,7 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "project.operationalOverview",
   "task.create",
   "task.updateDetails",
+  "task.setParent",
   "task.setStatus",
   "task.setOperationalState",
   "task.complete",

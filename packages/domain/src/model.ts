@@ -255,6 +255,7 @@ export interface Task {
   readonly startAt?: string;
   readonly dueAt?: string;
   readonly priority?: TaskPriority;
+  readonly parentTaskId?: TaskId;
   readonly statusId: TaskStatusId;
   readonly recordState: "active" | "removed";
   readonly completionState: "open" | "completed";
@@ -263,6 +264,8 @@ export interface Task {
     readonly kind: "person" | "task" | "external";
     readonly label: string;
     readonly recordId?: string;
+    readonly direction?: "waiting_on_them" | "we_owe";
+    readonly expectedAt?: string;
   };
   readonly completedAt?: string;
   readonly sourceCaptureId?: CaptureId;
@@ -661,6 +664,16 @@ export type UndoDescriptor =
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
+      readonly kind: "task.restore_parent";
+      readonly taskId: TaskId;
+      readonly priorParentTaskId?: TaskId;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
       readonly kind: "task.restore_details";
       readonly taskId: TaskId;
       readonly priorTitle: string;
@@ -908,6 +921,7 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly type:
         | "task.created"
         | "task.details_updated"
+        | "task.parent_changed"
         | "task.status_changed"
         | "task.operational_state_changed"
         | "task.completed"

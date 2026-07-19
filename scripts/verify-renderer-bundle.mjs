@@ -11,11 +11,14 @@ import path from "node:path";
 // edytor w inspektorze i wiersz bezpośredniego tworzenia zadania), a
 // totalJavaScript po dodaniu planowania w czasie (pola dat i priorytetu,
 // konwersja stref czasowych workspace, linia terminu w wierszach zadań).
+// 2026-07-20 (R12.2): oba podniesione po podzadaniach (sekcja inspektora,
+// wiersz dodawania, link do rodzica) i jawnym kierunku/terminie oczekiwania
+// w Work.
 const limits = {
-  entryBytes: 510_000,
+  entryBytes: 512_000,
   entryGzipBytes: 140_000,
-  totalJavaScriptBytes: 765_000,
-  stylesheetBytes: 169_000,
+  totalJavaScriptBytes: 775_000,
+  stylesheetBytes: 172_000,
 };
 
 const dist = path.join(process.cwd(), "packages", "desktop-ui", "dist");
