@@ -1600,10 +1600,22 @@ export const SearchOverlay = ({
   const [activeIndex, setActiveIndex] = useState(0);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const returnTargetRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const dialog = dialogRef.current;
+    const activeElement = document.activeElement;
+    returnTargetRef.current =
+      activeElement instanceof HTMLElement && activeElement !== document.body
+        ? activeElement
+        : null;
     dialog?.showModal();
-    return () => dialog?.close();
+    return () => {
+      dialog?.close();
+      const returnTarget = returnTargetRef.current;
+      if (returnTarget?.isConnected && !returnTarget.hasAttribute("disabled")) {
+        returnTarget.focus({ preventScroll: true });
+      }
+    };
   }, []);
   useEffect(() => {
     const text = query.trim();

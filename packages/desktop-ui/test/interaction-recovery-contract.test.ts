@@ -61,6 +61,10 @@ const strategicCreate = readFileSync(
   path.join(root, "src", "StrategicCreatePanel.tsx"),
   "utf8",
 );
+const searchOverlay = surfaces.slice(
+  surfaces.indexOf("export const SearchOverlay"),
+  surfaces.indexOf("export const UndoDialog"),
+);
 
 describe("interaction recovery contracts", () => {
   it("keeps global-search failure content-safe and explicitly recoverable", () => {
@@ -77,6 +81,25 @@ describe("interaction recovery contracts", () => {
       surfaces,
       /error instanceof Error\s*\?\s*error\.message/,
       "Renderer errors can contain paths or provider details and must not be shown verbatim.",
+    );
+  });
+
+  it("returns focus from global search to the exact invoking control", () => {
+    assert.match(
+      searchOverlay,
+      /const returnTargetRef = useRef<HTMLElement \| null>/,
+    );
+    assert.match(
+      searchOverlay,
+      /const activeElement = document\.activeElement/,
+    );
+    assert.match(
+      searchOverlay,
+      /returnTarget\?\.isConnected && !returnTarget\.hasAttribute\("disabled"\)/,
+    );
+    assert.match(
+      searchOverlay,
+      /returnTarget\.focus\(\{ preventScroll: true \}\)/,
     );
   });
 
