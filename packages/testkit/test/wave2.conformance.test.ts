@@ -823,7 +823,8 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(cockpit.result.projection.focus[0]?.taskId, taskId);
     assert.deepEqual(
       cockpit.result.projection.focus[0]?.reasons.map((reason) => reason.code),
-      ["task_open", "created_this_week", "active_project"],
+      ["task_open", "active_project"],
+      "creation time is history, not a focus reason",
     );
 
     const activity = harness.kernel.query(context(), {
@@ -1273,6 +1274,55 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(restored?.startAt, "2026-07-20T22:00:00.000Z");
     assert.equal(restored?.dueAt, "2026-07-24T21:59:59.999Z");
     assert.equal(restored?.priority, undefined);
+
+    const overdueId = "10000000-0000-4000-8000-00000000e007";
+    create(overdueId, "Missed deadline", {
+      dueAt: "2026-07-10T21:59:59.999Z",
+    });
+    const cockpit = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "cockpit.week",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace, weekStart: "2026-07-20" },
+    });
+    if (
+      cockpit.kind !== "query_result" ||
+      cockpit.result.outcome !== "success" ||
+      cockpit.result.projection.kind !== "cockpit.week"
+    )
+      throw new Error("Expected cockpit.");
+    const focusCodes = new Map<string, readonly string[]>(
+      cockpit.result.projection.focus.map((entry) => [
+        entry.taskId,
+        entry.reasons.map((reason) => reason.code),
+      ]),
+    );
+    assert.deepEqual(focusCodes.get(overdueId), ["task_open", "overdue"]);
+    assert.deepEqual(focusCodes.get(taskIds.dueSoonHigh), [
+      "task_open",
+      "due_this_week",
+      "priority_high",
+    ]);
+    assert.deepEqual(focusCodes.get(taskIds.dueSoonNormal), [
+      "task_open",
+      "due_this_week",
+      "starts_this_week",
+    ]);
+    assert.deepEqual(focusCodes.get(taskIds.unscheduledUrgent), [
+      "task_open",
+      "priority_urgent",
+    ]);
+    assert.equal(
+      cockpit.result.projection.focus[0]?.taskId,
+      overdueId,
+      "late work outranks planned and prioritized work",
+    );
+    const dueEntry = cockpit.result.projection.focus.find(
+      (entry) => entry.taskId === taskIds.dueSoonHigh,
+    );
+    assert.equal(dueEntry?.dueAt, "2026-07-24T21:59:59.999Z");
   });
 
   it("previews and applies exact compensation, but refuses to overwrite later work", () => {

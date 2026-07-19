@@ -4454,6 +4454,9 @@ export const executeWave2Query = (
             ? {}
             : { waitingOn: task.waitingOn }),
           completionState: task.completionState,
+          ...(task.startAt === undefined ? {} : { startAt: task.startAt }),
+          ...(task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
+          ...(task.priority === undefined ? {} : { priority: task.priority }),
           version: task.version,
           updatedAt: task.updatedAt,
         })),
@@ -5275,6 +5278,9 @@ export const executeWave2Query = (
         .listProjects(query.workspaceId, query.parameters.spaceId)
         .map((project) => [project.id, project]),
     );
+    // Planned time replaces the old creation-time proxy: what is late, due,
+    // or starting this week outranks what merely exists, and priority is a
+    // deliberate signal instead of recency. Creation time remains history.
     const focus = view
       .listTasksInSpace(query.workspaceId, query.parameters.spaceId)
       .filter((task) => task.completionState === "open")
@@ -5287,11 +5293,35 @@ export const executeWave2Query = (
         const reasons: Array<Record<string, unknown>> = [
           { code: "task_open", weight: 100 },
         ];
+        if (task.dueAt !== undefined) {
+          if (task.dueAt < kernelTime) {
+            reasons.push({ code: "overdue", weight: 60, dueAt: task.dueAt });
+          } else if (
+            task.dueAt.slice(0, 10) >= query.parameters.weekStart &&
+            task.dueAt.slice(0, 10) <= weekEnd
+          ) {
+            reasons.push({
+              code: "due_this_week",
+              weight: 40,
+              dueAt: task.dueAt,
+            });
+          }
+        }
         if (
-          task.createdAt.slice(0, 10) >= query.parameters.weekStart &&
-          task.createdAt.slice(0, 10) <= weekEnd
-        )
-          reasons.push({ code: "created_this_week", weight: 20 });
+          task.startAt !== undefined &&
+          task.startAt.slice(0, 10) >= query.parameters.weekStart &&
+          task.startAt.slice(0, 10) <= weekEnd
+        ) {
+          reasons.push({
+            code: "starts_this_week",
+            weight: 15,
+            startAt: task.startAt,
+          });
+        }
+        if (task.priority === "urgent")
+          reasons.push({ code: "priority_urgent", weight: 25 });
+        else if (task.priority === "high")
+          reasons.push({ code: "priority_high", weight: 15 });
         if (project !== undefined)
           reasons.push({
             code: "active_project",
@@ -5306,6 +5336,9 @@ export const executeWave2Query = (
             (sum, reason) => sum + Number(reason.weight),
             0,
           ),
+          ...(task.startAt === undefined ? {} : { startAt: task.startAt }),
+          ...(task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
+          ...(task.priority === undefined ? {} : { priority: task.priority }),
           reasons,
           ...(project === undefined ? {} : { relatedProjectId: project.id }),
         };
