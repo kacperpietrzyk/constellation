@@ -258,6 +258,24 @@ Release packaging also preserves Constellation, runtime dependency, SQLCipher,
 and platform-native license notices as externally inspectable files and fails
 closed if the required notice set is incomplete.
 
+The everyday work model has now closed its first accepted gaps. A Task
+carries optional bounded working context and a separate next action, so
+resuming work does not require a linked document; optional start and deadline
+instants plus a small closed priority vocabulary make planning real, with the
+previously unsatisfiable due ordering replaced by a tested null-ordering
+contract and cursor-safe filters. The weekly cockpit composes the week around
+real deadlines — late work first, a day-by-day week plan, and an honest note
+for undated work — instead of treating creation time as a plan. Outcomes can
+be decomposed into one deliberate level of subtasks with fully independent
+state and no automatic parent completion, and lightweight waiting work
+records an explicit direction and review date. Task workflow statuses are
+configurable workspace behavior with a closed broad operational meaning, an
+archived lifecycle that never rewrites existing Tasks, and a managed default.
+Saved work views apply a typed, closed filter vocabulary with deterministic
+ordering and honest empty states. Imported timing provenance is preserved:
+recurring occurrences inherit their due moment and renewal follow-ups carry
+their review deadline.
+
 ## Later — desktop ecosystem after product readiness
 
 - a signed public Windows installer when a maintainer or sponsor provisions a
