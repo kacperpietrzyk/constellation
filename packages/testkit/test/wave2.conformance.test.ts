@@ -114,6 +114,7 @@ const context = (): ExecutionContext =>
       "attention.dismiss",
       "record.relate",
       "record.unrelate",
+      "project.close",
       "task.list",
       "search.global",
       "cockpit.week",
@@ -2787,5 +2788,115 @@ describe("Wave 2 reference semantics", () => {
       ).diagnosticCode,
       "task.removed",
     );
+  });
+
+  it("filters task.list by a relation-path condition, kernel-side", () => {
+    const harness = setup();
+    const p1 = createProjectRecord(harness, "Vendor project").projectId;
+    const p2 = createProjectRecord(harness, "Other project").projectId;
+    const taskInP1 = createTask(harness, "Work on the vendor project");
+    const taskInP2 = createTask(harness, "Work on the other project");
+    const unrelated = createTask(harness, "Free-floating work");
+
+    const relate = (taskId: TaskId, projectId: ProjectId) => {
+      const task = harness.store.snapshot().tasks.find((t) => t.id === taskId)!;
+      const project = harness.store
+        .snapshot()
+        .projects.find((r) => r.id === projectId)!;
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`relate-${taskId}`, {
+            [taskId]: task.version,
+            [projectId]: project.version,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_project",
+            taskId,
+            projectId,
+          },
+        }),
+      );
+    };
+    relate(taskInP1, p1);
+    relate(taskInP2, p2);
+
+    const listWith = (conditions: unknown): readonly string[] => {
+      const r = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "task.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace, relationConditions: conditions },
+      } as never);
+      if (r.kind !== "query_result" || r.result.outcome !== "success")
+        assert.fail("Expected a task.list result");
+      return r.result.projection.kind === "task.list"
+        ? r.result.projection.items.map((item) => item.id)
+        : assert.fail("Expected task.list projection");
+    };
+
+    // project.id — only the task related to p1 survives; the task related only
+    // to p2 and the unrelated task are both excluded. This is the R12.4
+    // projectIds intent, now honoured kernel-side instead of dropped.
+    const byP1 = listWith([
+      { path: "project", predicate: { field: "id", in: [p1] } },
+    ]);
+    assert.deepEqual([...byP1].sort(), [taskInP1].sort());
+    assert.equal(byP1.includes(taskInP2), false);
+    assert.equal(byP1.includes(unrelated), false);
+
+    // Closing p1 lets a lifecycle condition prove the existential project scan:
+    // "active" excludes the task whose only project is now closed.
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("close-p1", {
+          [p1]: harness.store.snapshot().projects.find((r) => r.id === p1)!
+            .version,
+        }),
+        commandName: "project.close",
+        payload: { projectId: p1 },
+      }),
+    );
+    const activeProjectTasks = listWith([
+      { path: "project", predicate: { field: "lifecycle", equals: "active" } },
+    ]);
+    assert.equal(activeProjectTasks.includes(taskInP2), true);
+    assert.equal(activeProjectTasks.includes(taskInP1), false);
+
+    // A condition matching no project yields an empty set, not an unfiltered
+    // list — "conditions present but nothing matched" still constrains.
+    const noProject = listWith([
+      {
+        path: "project",
+        predicate: {
+          field: "id",
+          in: ["00000000-0000-4000-8000-0000000000ff"],
+        },
+      },
+    ]);
+    assert.equal(noProject.length, 0);
+  });
+
+  it("rejects an unknown relation path instead of silently ignoring it", () => {
+    const harness = setup();
+    createTask(harness, "Some task");
+    // ADR-044 §4 / the "Filtr po relacji" acceptance test: an unsupported path
+    // is refused at the contract boundary, never accepted-and-dropped.
+    const rejected = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: {
+        spaceId: ids.rootSpace,
+        relationConditions: [
+          { path: "project.customer", predicate: { field: "id", in: [] } },
+        ],
+      },
+    } as never);
+    assert.equal(rejected.kind, "contract_rejected");
   });
 });
