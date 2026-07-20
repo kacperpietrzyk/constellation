@@ -1064,7 +1064,13 @@ export const MeetingsSurface = ({
                                             workItemId: item.id,
                                             taskId: crypto.randomUUID(),
                                           },
-                                          `promote:${item.id}`,
+                                          // The meeting version keeps a
+                                          // re-promotion after undo a
+                                          // distinct command; a stable key
+                                          // would collide with the original
+                                          // attempt's fingerprint and make
+                                          // the item permanently unpromotable.
+                                          `promote:${item.id}:${selectedMeeting.version}`,
                                         ).then((changed) => {
                                           setBusyItemId(undefined);
                                           if (changed) load();

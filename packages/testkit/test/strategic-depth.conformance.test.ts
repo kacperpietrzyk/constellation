@@ -1410,4 +1410,27 @@ it("projects a meeting into routed, promoted, and identified work-graph records"
       .length,
     1,
   );
+
+  // The work item is genuinely promotable again, not merely cleared: undo
+  // followed by a fresh promotion is an ordinary supported cycle.
+  const rePromotedTaskId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("meeting-graph-promote-after-undo", {
+          [meetingId]: meetingRecord().version,
+        }),
+        commandName: "meeting.promoteWorkItem",
+        payload: {
+          meetingId,
+          workItemId: followUpId,
+          taskId: rePromotedTaskId,
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const rePromoted = meetingRecord();
+  if (rePromoted.kind !== "meeting") throw new Error("Expected a meeting");
+  assert.equal(rePromoted.meeting.workItems[0]?.taskId, rePromotedTaskId);
 });
