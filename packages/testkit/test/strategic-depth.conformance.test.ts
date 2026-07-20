@@ -72,6 +72,7 @@ const context = (): ExecutionContext =>
       "task.updateDetails",
       "task.complete",
       "task.reopen",
+      "cockpit.week",
       "project.close",
       "project.reopen",
       "radar.candidateUpsert",
@@ -1798,6 +1799,32 @@ it("reserves time for a Task without touching its deadline", () => {
   );
   assert.deepEqual(taskOf().calendarBlock, block);
   assert.equal(taskOf().dueAt, "2026-07-25T17:00:00.000Z");
+
+  // The weekly cockpit carries the reservation beside the deadline, so a day
+  // view can show "due Friday, doing it Wednesday" without a second query.
+  const cockpitResponse = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "cockpit.week",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space, weekStart: "2026-07-20" },
+  } as never);
+  assert.equal(cockpitResponse.kind, "query_result");
+  if (cockpitResponse.kind !== "query_result")
+    throw new Error("Expected a cockpit result");
+  const cockpit = cockpitResponse.result;
+  if (
+    cockpit.outcome !== "success" ||
+    cockpit.projection.kind !== "cockpit.week"
+  )
+    assert.fail("Expected a weekly cockpit projection");
+  const focused = cockpit.projection.focus.find(
+    (entry) => entry.taskId === taskId,
+  );
+  assert.deepEqual(focused?.calendarBlock, block);
+  // Both facts travel together: the deadline and the time reserved for it.
+  assert.equal(focused?.dueAt, "2026-07-25T17:00:00.000Z");
 
   // Undoing a first reservation must clear the descriptor, not restore some
   // earlier block — the prior state was "no block at all".
