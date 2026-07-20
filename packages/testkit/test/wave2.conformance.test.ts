@@ -75,6 +75,10 @@ const context = (): ExecutionContext =>
       "task.updateDetails",
       "task.setParent",
       "template.create",
+      "automation.create",
+      "automation.rename",
+      "automation.setState",
+      "automation.sweep",
       "template.rename",
       "template.updateContents",
       "template.archive",
@@ -2048,6 +2052,231 @@ describe("Wave 2 reference semantics", () => {
       "command.precondition_failed",
       "a retired template is no longer applicable",
     );
+  });
+
+  it("automates completion status and elapsed waiting reviews within declared bounds", () => {
+    const harness = setup();
+    const doneStatusId = "10000000-0000-4000-8000-00000000d401";
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("auto-status"),
+          commandName: "taskStatus.create",
+          payload: {
+            statusId: doneStatusId,
+            label: "Zrobione",
+            operationalSemantics: "actionable",
+          },
+        }),
+      ).diagnosticCode,
+      "taskStatus.created",
+    );
+    const completionRuleId = "10000000-0000-4000-8000-00000000d402";
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("auto-rule"),
+          commandName: "automation.create",
+          payload: {
+            ruleId: completionRuleId,
+            name: "Ukończone ląduje w Zrobione",
+            recipe: { kind: "complete_sets_status", statusId: doneStatusId },
+          },
+        }),
+      ).diagnosticCode,
+      "automation.created",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("auto-rule-duplicate"),
+          commandName: "automation.create",
+          payload: {
+            ruleId: "10000000-0000-4000-8000-00000000d403",
+            name: "ukończone LĄDUJE w Zrobione",
+            recipe: { kind: "waiting_review_signals" },
+          },
+        }),
+      ).diagnosticCode,
+      "command.precondition_failed",
+      "active rule names stay unique case-insensitively",
+    );
+
+    const taskId = createTask(harness, "Automated completion evidence");
+    const completeCommand = {
+      ...metadata("auto-complete", { [taskId]: 1 }),
+      commandName: "task.complete",
+      payload: { taskId },
+    };
+    const completed = unwrap(
+      harness.kernel.execute(context(), completeCommand),
+    );
+    assert.equal(completed.diagnosticCode, "task.completed");
+    if (
+      completed.outcome !== "success" ||
+      completed.projection.kind !== "task.completed"
+    ) {
+      throw new Error("Expected completion.");
+    }
+    assert.equal(
+      completed.projection.appliedAutomationRuleId,
+      completionRuleId,
+      "the automated effect is attributed to its rule",
+    );
+    assert.equal(completed.projection.statusId, doneStatusId);
+    const afterComplete = harness.store
+      .snapshot()
+      .tasks.find((task) => task.id === taskId);
+    assert.equal(afterComplete?.statusId, doneStatusId);
+    assert.equal(afterComplete?.completionState, "completed");
+
+    const undone = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("auto-complete-undo", { [taskId]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: completeCommand.commandId },
+      }),
+    );
+    assert.equal(undone.diagnosticCode, "command.undone");
+    const afterUndo = harness.store
+      .snapshot()
+      .tasks.find((task) => task.id === taskId);
+    assert.equal(
+      afterUndo?.statusId,
+      harness.store.snapshot().workspaces[0]?.defaultTaskStatusId,
+      "undo restores the pre-automation status exactly",
+    );
+    assert.equal(afterUndo?.completionState, "open");
+
+    const disableCommand = {
+      ...metadata("auto-disable", { [completionRuleId]: 1 }),
+      commandName: "automation.setState",
+      payload: { ruleId: completionRuleId, state: "disabled" },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), disableCommand)).diagnosticCode,
+      "automation.changed",
+    );
+    const secondComplete = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("auto-complete-2", { [taskId]: 3 }),
+        commandName: "task.complete",
+        payload: { taskId },
+      }),
+    );
+    assert.equal(secondComplete.diagnosticCode, "task.completed");
+    if (
+      secondComplete.outcome !== "success" ||
+      secondComplete.projection.kind !== "task.completed"
+    ) {
+      throw new Error("Expected second completion.");
+    }
+    assert.equal(
+      secondComplete.projection.appliedAutomationRuleId,
+      undefined,
+      "a disabled rule is inert",
+    );
+
+    const waitingRuleId = "10000000-0000-4000-8000-00000000d404";
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("auto-waiting-rule"),
+          commandName: "automation.create",
+          payload: {
+            ruleId: waitingRuleId,
+            name: "Sygnalizuj minięte przeglądy oczekiwania",
+            recipe: { kind: "waiting_review_signals" },
+          },
+        }),
+      ).diagnosticCode,
+      "automation.created",
+    );
+    const waitingTaskId = createTask(harness, "Waiting for pricing");
+    const freshTaskId = createTask(harness, "Waiting fresh");
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("auto-waiting", { [waitingTaskId]: 1 }),
+          commandName: "task.setOperationalState",
+          payload: {
+            taskId: waitingTaskId,
+            operationalState: "waiting",
+            waitingOn: {
+              kind: "external",
+              label: "Cennik dystrybutora",
+              direction: "waiting_on_them",
+              expectedAt: "2020-01-01T00:00:00.000Z",
+            },
+          },
+        }),
+      ).diagnosticCode,
+      "task.operational_state_changed",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("auto-waiting-fresh", { [freshTaskId]: 1 }),
+          commandName: "task.setOperationalState",
+          payload: {
+            taskId: freshTaskId,
+            operationalState: "waiting",
+            waitingOn: {
+              kind: "external",
+              label: "Odległy przegląd",
+              expectedAt: "2999-01-01T00:00:00.000Z",
+            },
+          },
+        }),
+      ).diagnosticCode,
+      "task.operational_state_changed",
+    );
+
+    const swept = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("auto-sweep"),
+        commandName: "automation.sweep",
+        payload: {},
+      }),
+    );
+    assert.equal(swept.diagnosticCode, "automation.swept");
+    if (
+      swept.outcome !== "success" ||
+      swept.projection.kind !== "automation.swept"
+    ) {
+      throw new Error("Expected sweep.");
+    }
+    assert.deepEqual(
+      swept.projection.raisedTaskIds,
+      [waitingTaskId],
+      "only elapsed review dates raise signals",
+    );
+    const signals = harness.store.snapshot().attentionSignals ?? [];
+    assert.equal(
+      signals.filter((signal) => signal.reason === "waiting_review_elapsed")
+        .length,
+      1,
+    );
+
+    const reswept = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("auto-sweep-2"),
+        commandName: "automation.sweep",
+        payload: {},
+      }),
+    );
+    if (
+      reswept.outcome !== "success" ||
+      reswept.projection.kind !== "automation.swept"
+    ) {
+      throw new Error("Expected second sweep.");
+    }
+    assert.deepEqual(
+      reswept.projection.raisedTaskIds,
+      [],
+      "re-sweeping is idempotent through dedup keys",
+    );
+    assert.equal(reswept.projection.alreadySignaledCount, 1);
   });
 
   it("previews and applies exact compensation, but refuses to overwrite later work", () => {

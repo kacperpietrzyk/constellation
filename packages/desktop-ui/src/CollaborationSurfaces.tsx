@@ -427,6 +427,7 @@ const reasonLabels: { readonly [reason in AttentionItem["reason"]]: string } = {
   sync_conflict: "Konflikt synchronizacji",
   knowledge_evidence_changed: "Zmiana dowodów wiedzy",
   renewal_due: "Termin odnowienia",
+  waiting_review_elapsed: "Minął termin przeglądu oczekiwania",
   relationship_fact_stale: "Nieaktualny fakt relacji",
   decision_impact_review: "Skutki decyzji do przeglądu",
   capture_duplicate: "Duplikat Capture",

@@ -25,6 +25,7 @@ import type {
   AttentionSignalId,
   TaskStatusId,
   FieldDefinitionId,
+  AutomationRuleId,
   ProjectTemplateId,
   WorkspaceId,
   GrantId,
@@ -44,6 +45,7 @@ import type {
   Capture,
   DomainEvent,
   FieldDefinition,
+  AutomationRule,
   ProjectTemplate,
   OutboxEntry,
   Project,
@@ -142,6 +144,7 @@ interface MutableState {
   readonly taskStatuses: Map<TaskStatusId, TaskStatusDefinition>;
   readonly fieldDefinitions: Map<FieldDefinitionId, FieldDefinition>;
   readonly projectTemplates: Map<ProjectTemplateId, ProjectTemplate>;
+  readonly automationRules: Map<AutomationRuleId, AutomationRule>;
   readonly captures: Map<CaptureId, Capture>;
   readonly tasks: Map<TaskId, Task>;
   readonly projects: Map<ProjectId, Project>;
@@ -176,6 +179,7 @@ const emptyState = (): MutableState => ({
   taskStatuses: new Map(),
   fieldDefinitions: new Map(),
   projectTemplates: new Map(),
+  automationRules: new Map(),
   captures: new Map(),
   tasks: new Map(),
   projects: new Map(),
@@ -207,6 +211,7 @@ const cloneState = (state: MutableState): MutableState => ({
   taskStatuses: new Map(state.taskStatuses),
   fieldDefinitions: new Map(state.fieldDefinitions),
   projectTemplates: new Map(state.projectTemplates),
+  automationRules: new Map(state.automationRules),
   captures: new Map(state.captures),
   tasks: new Map(state.tasks),
   projects: new Map(state.projects),
@@ -286,6 +291,21 @@ class ReadView implements ApplicationReadView {
     id: ProjectTemplateId,
   ): ProjectTemplate | undefined {
     return this.state.projectTemplates.get(id);
+  }
+
+  public getAutomationRule(id: AutomationRuleId): AutomationRule | undefined {
+    return this.state.automationRules.get(id);
+  }
+
+  public listAutomationRules(
+    workspaceId: WorkspaceId,
+  ): readonly AutomationRule[] {
+    return [...this.state.automationRules.values()]
+      .filter((rule) => rule.workspaceId === workspaceId)
+      .sort(
+        (left, right) =>
+          left.position - right.position || left.id.localeCompare(right.id),
+      );
   }
 
   public listProjectTemplates(
@@ -899,6 +919,25 @@ class Transaction extends ReadView implements ApplicationTransaction {
     return true;
   }
 
+  public insertAutomationRule(rule: AutomationRule): void {
+    if (this.state.automationRules.has(rule.id)) {
+      throw new Error(`Duplicate automation rule ID: ${rule.id}`);
+    }
+    this.state.automationRules.set(rule.id, rule);
+  }
+
+  public updateAutomationRule(
+    rule: AutomationRule,
+    expectedVersion: number,
+  ): boolean {
+    const current = this.state.automationRules.get(rule.id);
+    if (current === undefined || current.version !== expectedVersion) {
+      return false;
+    }
+    this.state.automationRules.set(rule.id, rule);
+    return true;
+  }
+
   public insertFieldDefinition(definition: FieldDefinition): void {
     if (this.state.fieldDefinitions.has(definition.id)) {
       throw new Error(`Duplicate field definition ID: ${definition.id}`);
@@ -1224,6 +1263,9 @@ const stateFromSnapshot = (snapshot: ReferenceStateSnapshot): MutableState => ({
   projectTemplates: new Map(
     (snapshot.projectTemplates ?? []).map((value) => [value.id, value]),
   ),
+  automationRules: new Map(
+    (snapshot.automationRules ?? []).map((value) => [value.id, value]),
+  ),
   captures: new Map(snapshot.captures.map((value) => [value.id, value])),
   tasks: new Map(snapshot.tasks.map((value) => [value.id, value])),
   projects: new Map(snapshot.projects.map((value) => [value.id, value])),
@@ -1311,6 +1353,7 @@ export class InMemoryReferenceStore implements ApplicationStore {
       taskStatuses: [...this.state.taskStatuses.values()],
       fieldDefinitions: [...this.state.fieldDefinitions.values()],
       projectTemplates: [...this.state.projectTemplates.values()],
+      automationRules: [...this.state.automationRules.values()],
       captures: [...this.state.captures.values()],
       tasks: [...this.state.tasks.values()],
       projects: [...this.state.projects.values()],

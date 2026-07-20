@@ -1,3 +1,4 @@
+export * from "./automations.js";
 export * from "./capture.js";
 export * from "./collaboration.js";
 export * from "./agent-access.js";

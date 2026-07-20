@@ -17,6 +17,7 @@ import {
   AttentionSignalIdSchema,
   TaskStatusIdSchema,
   FieldDefinitionIdSchema,
+  AutomationRuleIdSchema,
   ProjectTemplateIdSchema,
   WorkspaceIdSchema,
   GrantIdSchema,
@@ -67,6 +68,9 @@ export const DiagnosticCodeSchema = z.enum([
   "task.parent_changed",
   "template.created",
   "template.changed",
+  "automation.created",
+  "automation.changed",
+  "automation.swept",
   "project.template_applied",
   "fieldDef.created",
   "fieldDef.changed",
@@ -126,6 +130,7 @@ export const RecordKindSchema = z.enum([
   "taskStatus",
   "fieldDefinition",
   "projectTemplate",
+  "automationRule",
   "project",
   "document",
   "knowledgeSource",
@@ -457,6 +462,43 @@ export const ProjectTemplateAppliedProjectionSchema = z
     version: z.int().positive(),
   })
   .strict();
+const AutomationRecipeSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("complete_sets_status"),
+      statusId: TaskStatusIdSchema,
+    })
+    .strict(),
+  z.object({ kind: z.literal("waiting_review_signals") }).strict(),
+]);
+const AutomationRuleProjectionFields = {
+  ruleId: AutomationRuleIdSchema,
+  name: z.string(),
+  recipe: AutomationRecipeSchema,
+  state: z.enum(["active", "disabled"]),
+  position: z.int().nonnegative(),
+  version: z.int().positive(),
+} as const;
+export const AutomationCreatedProjectionSchema = z
+  .object({
+    kind: z.literal("automation.created"),
+    ...AutomationRuleProjectionFields,
+  })
+  .strict();
+export const AutomationChangedProjectionSchema = z
+  .object({
+    kind: z.literal("automation.changed"),
+    ...AutomationRuleProjectionFields,
+  })
+  .strict();
+export const AutomationSweptProjectionSchema = z
+  .object({
+    kind: z.literal("automation.swept"),
+    raisedTaskIds: z.array(TaskIdSchema),
+    alreadySignaledCount: z.int().nonnegative(),
+    truncated: z.boolean(),
+  })
+  .strict();
 const FieldDefinitionProjectionFields = {
   fieldId: FieldDefinitionIdSchema,
   targetKind: z.enum(["task", "project"]),
@@ -551,6 +593,7 @@ export const TaskCompletedProjectionSchema = z
   .object({
     kind: z.literal("task.completed"),
     ...TaskMutationProjectionFields,
+    appliedAutomationRuleId: AutomationRuleIdSchema.optional(),
   })
   .strict();
 export const TaskReopenedProjectionSchema = z
@@ -714,6 +757,9 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   FieldDefChangedProjectionSchema,
   RecordFieldValueSetProjectionSchema,
   TemplateCreatedProjectionSchema,
+  AutomationCreatedProjectionSchema,
+  AutomationChangedProjectionSchema,
+  AutomationSweptProjectionSchema,
   TemplateChangedProjectionSchema,
   ProjectTemplateAppliedProjectionSchema,
   WorkspaceDefaultStatusChangedProjectionSchema,
@@ -928,6 +974,24 @@ const TaskDetailsUpdatedSuccessOutcomeSchema =
     outcome: z.literal("success"),
     diagnosticCode: z.literal("task.details_updated"),
     projection: TaskDetailsUpdatedProjectionSchema,
+  }).strict();
+const AutomationCreatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("automation.created"),
+    projection: AutomationCreatedProjectionSchema,
+  }).strict();
+const AutomationChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("automation.changed"),
+    projection: AutomationChangedProjectionSchema,
+  }).strict();
+const AutomationSweptSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("automation.swept"),
+    projection: AutomationSweptProjectionSchema,
   }).strict();
 const TemplateCreatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
@@ -1146,6 +1210,9 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   FieldDefChangedSuccessOutcomeSchema,
   RecordFieldValueSetSuccessOutcomeSchema,
   TemplateCreatedSuccessOutcomeSchema,
+  AutomationCreatedSuccessOutcomeSchema,
+  AutomationChangedSuccessOutcomeSchema,
+  AutomationSweptSuccessOutcomeSchema,
   TemplateChangedSuccessOutcomeSchema,
   ProjectTemplateAppliedSuccessOutcomeSchema,
   WorkspaceDefaultStatusChangedSuccessOutcomeSchema,
@@ -1190,6 +1257,7 @@ export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
           "fieldDef.restore_definition",
           "record.restore_field_value",
           "template.restore_definition",
+          "automation.restore_definition",
           "project.unapply_template",
           "task.restore_operational_state",
           "work_link.restore_state",

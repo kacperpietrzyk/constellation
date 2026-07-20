@@ -21,6 +21,7 @@ import {
   AttentionSignalIdSchema,
   TaskStatusIdSchema,
   FieldDefinitionIdSchema,
+  AutomationRuleIdSchema,
   ProjectTemplateIdSchema,
   WorkspaceIdSchema,
   AgentRunIdSchema,
@@ -1102,6 +1103,52 @@ export const TemplateRestoreCommandSchema = CommandMetadataSchema.extend({
   payload: z.object({ templateId: ProjectTemplateIdSchema }).strict(),
 }).strict();
 
+const AutomationRecipeSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("complete_sets_status"),
+      statusId: TaskStatusIdSchema,
+    })
+    .strict(),
+  z.object({ kind: z.literal("waiting_review_signals") }).strict(),
+]);
+
+export const AutomationCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("automation.create"),
+  payload: z
+    .object({
+      ruleId: AutomationRuleIdSchema,
+      name: z.string().trim().min(1).max(120),
+      recipe: AutomationRecipeSchema,
+    })
+    .strict(),
+}).strict();
+
+export const AutomationRenameCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("automation.rename"),
+  payload: z
+    .object({
+      ruleId: AutomationRuleIdSchema,
+      name: z.string().trim().min(1).max(120),
+    })
+    .strict(),
+}).strict();
+
+export const AutomationSetStateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("automation.setState"),
+  payload: z
+    .object({
+      ruleId: AutomationRuleIdSchema,
+      state: z.enum(["active", "disabled"]),
+    })
+    .strict(),
+}).strict();
+
+export const AutomationSweepCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("automation.sweep"),
+  payload: z.object({}).strict(),
+}).strict();
+
 export const ProjectApplyTemplateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("project.applyTemplate"),
   payload: z
@@ -1413,6 +1460,10 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   TaskUpdateDetailsCommandSchema,
   TaskSetParentCommandSchema,
   TemplateCreateCommandSchema,
+  AutomationCreateCommandSchema,
+  AutomationRenameCommandSchema,
+  AutomationSetStateCommandSchema,
+  AutomationSweepCommandSchema,
   TemplateRenameCommandSchema,
   TemplateUpdateContentsCommandSchema,
   TemplateArchiveCommandSchema,

@@ -15,7 +15,9 @@ import type {
 import {
   changeFieldDefinition,
   changeTaskStatusDefinition,
+  changeAutomationRuleDefinition,
   changeProjectTemplateDefinition,
+  createAutomationRuleDefinition,
   createFieldDefinition,
   createProjectTemplateDefinition,
   createTaskStatusDefinition,
@@ -113,8 +115,32 @@ export const SettingsSurface = ({
   >("text");
   const [newFieldOptions, setNewFieldOptions] = useState("");
   const [templateBusyId, setTemplateBusyId] = useState<string>();
+  const [automationBusyId, setAutomationBusyId] = useState<string>();
+  const [newAutomationName, setNewAutomationName] = useState("");
+  const [newAutomationRecipe, setNewAutomationRecipe] = useState<
+    "complete_sets_status" | "waiting_review_signals"
+  >("waiting_review_signals");
+  const [newAutomationStatusId, setNewAutomationStatusId] = useState("");
   const [newTemplateName, setNewTemplateName] = useState("");
   const [newTemplateTasks, setNewTemplateTasks] = useState("");
+  const runAutomationOperation = async (
+    id: string,
+    operation: () => Promise<{ readonly kind: string }>,
+  ): Promise<boolean> => {
+    if (automationBusyId !== undefined) return false;
+    setAutomationBusyId(id);
+    try {
+      const result = await operation();
+      if (result.kind === "success") {
+        await onReload();
+        return true;
+      }
+      onFailure(result as MutationFailure);
+      return false;
+    } finally {
+      setAutomationBusyId(undefined);
+    }
+  };
   const runTemplateOperation = async (
     id: string,
     operation: () => Promise<{ readonly kind: string }>,
@@ -1233,6 +1259,168 @@ export const SettingsSurface = ({
                     disabled={
                       templateBusyId === "create" ||
                       newTemplateName.trim() === "" ||
+                      !client
+                    }
+                  >
+                    Dodaj
+                  </button>
+                </form>
+              </div>
+            </section>
+
+            <section>
+              <div className="settings-copy">
+                <h2>Automatyzacje</h2>
+                <p>
+                  Ograniczone, deterministyczne reguły: bez skryptów i bez
+                  efektów poza workspace. Wyłączona reguła niczego nie cofa;
+                  efekty pozostają w audycie z atrybucją reguły.
+                </p>
+              </div>
+              <div className="settings-control status-manager">
+                <ul className="status-list">
+                  {(snapshot.bootstrap.automationRules ?? []).map((rule) => {
+                    const disabled = rule.state === "disabled";
+                    const busy = automationBusyId === rule.id;
+                    const statusLabel =
+                      rule.recipe.kind === "complete_sets_status"
+                        ? (snapshot.bootstrap.taskStatuses.find(
+                            (status) =>
+                              rule.recipe.kind === "complete_sets_status" &&
+                              status.id === rule.recipe.statusId,
+                          )?.label ?? "status historyczny")
+                        : undefined;
+                    return (
+                      <li
+                        key={rule.id}
+                        className={disabled ? "status-archived" : undefined}
+                      >
+                        <span className="status-label">
+                          <strong>{rule.name}</strong>
+                          <small>
+                            {rule.recipe.kind === "complete_sets_status"
+                              ? `Ukończone zadanie trafia do „${statusLabel}”`
+                              : "Sygnał po miniętym terminie przeglądu oczekiwania"}
+                            {disabled ? " · wyłączona" : ""}
+                          </small>
+                        </span>
+                        <span className="status-actions">
+                          <button
+                            type="button"
+                            disabled={busy || !client}
+                            onClick={() => {
+                              if (!client) return;
+                              void runAutomationOperation(rule.id, () =>
+                                changeAutomationRuleDefinition(
+                                  client,
+                                  snapshot,
+                                  rule.id,
+                                  rule.version,
+                                  {
+                                    kind: "setState",
+                                    state: disabled ? "active" : "disabled",
+                                  },
+                                ),
+                              );
+                            }}
+                          >
+                            {disabled ? "Włącz" : "Wyłącz"}
+                          </button>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <form
+                  className="status-create"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const name = newAutomationName.trim();
+                    if (name.length === 0 || !client) return;
+                    if (
+                      newAutomationRecipe === "complete_sets_status" &&
+                      newAutomationStatusId === ""
+                    ) {
+                      onFailure({
+                        kind: "error",
+                        message:
+                          "Reguła ukończenia wymaga wybranego statusu docelowego.",
+                      });
+                      return;
+                    }
+                    void runAutomationOperation("create", () =>
+                      createAutomationRuleDefinition(client, snapshot, {
+                        name,
+                        recipe:
+                          newAutomationRecipe === "complete_sets_status"
+                            ? {
+                                kind: "complete_sets_status",
+                                statusId: newAutomationStatusId,
+                              }
+                            : { kind: "waiting_review_signals" },
+                      }),
+                    ).then((ok) => {
+                      if (ok) {
+                        setNewAutomationName("");
+                        setNewAutomationStatusId("");
+                      }
+                    });
+                  }}
+                >
+                  <label>
+                    <span className="sr-only">Nazwa nowej reguły</span>
+                    <input
+                      value={newAutomationName}
+                      maxLength={120}
+                      placeholder="Nowa reguła — nazwa"
+                      disabled={automationBusyId === "create"}
+                      onChange={(event) =>
+                        setNewAutomationName(event.target.value)
+                      }
+                    />
+                  </label>
+                  <select
+                    aria-label="Rodzaj reguły"
+                    value={newAutomationRecipe}
+                    disabled={automationBusyId === "create"}
+                    onChange={(event) =>
+                      setNewAutomationRecipe(
+                        event.target.value as
+                          "complete_sets_status" | "waiting_review_signals",
+                      )
+                    }
+                  >
+                    <option value="waiting_review_signals">
+                      Sygnał po miniętym przeglądzie oczekiwania
+                    </option>
+                    <option value="complete_sets_status">
+                      Ukończone zadanie trafia do statusu
+                    </option>
+                  </select>
+                  {newAutomationRecipe === "complete_sets_status" && (
+                    <select
+                      aria-label="Status docelowy"
+                      value={newAutomationStatusId}
+                      disabled={automationBusyId === "create"}
+                      onChange={(event) =>
+                        setNewAutomationStatusId(event.target.value)
+                      }
+                    >
+                      <option value="">Wybierz status…</option>
+                      {snapshot.bootstrap.taskStatuses
+                        .filter((status) => status.state !== "archived")
+                        .map((status) => (
+                          <option key={status.id} value={status.id}>
+                            {status.label}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={
+                      automationBusyId === "create" ||
+                      newAutomationName.trim() === "" ||
                       !client
                     }
                   >

@@ -21,6 +21,7 @@ import type {
   AttentionSignalId,
   TaskStatusId,
   FieldDefinitionId,
+  AutomationRuleId,
   ProjectTemplateId,
   WorkspaceId,
   GrantId,
@@ -39,6 +40,7 @@ import type {
   Space,
   Project,
   FieldDefinition,
+  AutomationRule,
   ProjectTemplate,
   Task,
   TaskAssignment,
@@ -168,6 +170,8 @@ export interface ApplicationReadView {
   listFieldDefinitions(workspaceId: WorkspaceId): readonly FieldDefinition[];
   getProjectTemplate(id: ProjectTemplateId): ProjectTemplate | undefined;
   listProjectTemplates(workspaceId: WorkspaceId): readonly ProjectTemplate[];
+  getAutomationRule(id: AutomationRuleId): AutomationRule | undefined;
+  listAutomationRules(workspaceId: WorkspaceId): readonly AutomationRule[];
   getMembership(
     workspaceId: WorkspaceId,
     principalId: PrincipalId,
@@ -303,6 +307,8 @@ export interface ApplicationTransaction extends ApplicationReadView {
     template: ProjectTemplate,
     expectedVersion: number,
   ): boolean;
+  insertAutomationRule(rule: AutomationRule): void;
+  updateAutomationRule(rule: AutomationRule, expectedVersion: number): boolean;
   insertCapture(capture: Capture): void;
   updateCapture(capture: Capture, expectedVersion: number): boolean;
   insertTask(task: Task): void;
@@ -438,6 +444,7 @@ export interface ReferenceStateSnapshot {
   readonly taskStatuses: readonly TaskStatusDefinition[];
   readonly fieldDefinitions?: readonly FieldDefinition[];
   readonly projectTemplates?: readonly ProjectTemplate[];
+  readonly automationRules?: readonly AutomationRule[];
   readonly tasks: readonly Task[];
   readonly projects: readonly Project[];
   readonly documents?: readonly NativeDocument[];

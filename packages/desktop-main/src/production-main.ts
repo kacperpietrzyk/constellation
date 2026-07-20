@@ -1105,6 +1105,44 @@ const startProductionDesktop = async (): Promise<void> => {
         capture.audioState === "deletion_pending",
     )
     .forEach((capture) => finalizeVoiceAudio(capture.id));
+  // One automation sweep per unlocked day: waiting Tasks whose review date
+  // elapsed raise deduplicated attention signals. The daily idempotency key
+  // makes restarts replay the stored outcome instead of re-sweeping.
+  if (
+    recoveredKernel !== undefined &&
+    recoveredKernel.store.read((view) =>
+      view
+        .listAutomationRules(recoveredKernel.identity.workspaceId)
+        .some(
+          (rule) =>
+            (rule.state ?? "active") === "active" &&
+            rule.recipe.kind === "waiting_review_signals",
+        ),
+    )
+  ) {
+    createRuntimeKernelService({
+      context: {
+        ...recoveredKernel.context,
+        capabilityScope: [
+          ...new Set([
+            ...recoveredKernel.context.capabilityScope,
+            "automation.sweep" as const,
+          ]),
+        ],
+        origin: "maintenance",
+      },
+      store: recoveredKernel.store,
+    }).execute({
+      contractVersion: 1,
+      commandName: "automation.sweep",
+      commandId: randomUUID(),
+      workspaceId: recoveredKernel.identity.workspaceId,
+      idempotencyKey: `automation-sweep:${new Date().toISOString().slice(0, 10)}`,
+      expectedVersions: {},
+      correlationId: randomUUID(),
+      payload: {},
+    });
+  }
   if (
     workspaceRecovery?.kernel !== undefined &&
     coordinatedDataHomeProvider === undefined

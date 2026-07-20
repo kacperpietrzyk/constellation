@@ -26,10 +26,13 @@ import path from "node:path";
 // 2026-07-20 (R13.3): totalJavaScript po cyklu życia widoków (zmiana nazwy,
 // dwustopniowe usunięcie, warunek pola i grupowanie w popoverze zapisu,
 // nagłówki grup listy zadań, wrappery savedView.rename/update/delete).
+// 2026-07-20 (R13.4): entry i totalJavaScript po ograniczonych
+// automatyzacjach (blok reguł w Ustawieniach z zamkniętym słownikiem
+// przepisów, wrappery automation.*, etykieta nowego powodu Do uwagi).
 const limits = {
-  entryBytes: 526_000,
-  entryGzipBytes: 142_000,
-  totalJavaScriptBytes: 808_000,
+  entryBytes: 531_000,
+  entryGzipBytes: 143_000,
+  totalJavaScriptBytes: 814_000,
   stylesheetBytes: 174_000,
 };
 
