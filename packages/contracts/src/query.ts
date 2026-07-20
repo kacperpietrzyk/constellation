@@ -18,6 +18,7 @@ import {
   AgentRunIdSchema,
   TaskStatusIdSchema,
   FieldDefinitionIdSchema,
+  AutomationRuleIdSchema,
   ProjectTemplateIdSchema,
   WorkspaceIdSchema,
   CheckpointIdSchema,
@@ -915,6 +916,30 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             .strict(),
         )
         .optional(),
+      automationRules: z
+        .array(
+          z
+            .object({
+              id: AutomationRuleIdSchema,
+              name: z.string(),
+              recipe: z.discriminatedUnion("kind", [
+                z
+                  .object({
+                    kind: z.literal("complete_sets_status"),
+                    statusId: TaskStatusIdSchema,
+                  })
+                  .strict(),
+                z
+                  .object({ kind: z.literal("waiting_review_signals") })
+                  .strict(),
+              ]),
+              state: z.enum(["active", "disabled"]).optional(),
+              position: z.int().nonnegative(),
+              version: z.int().positive(),
+            })
+            .strict(),
+        )
+        .optional(),
     })
     .strict(),
   z
@@ -1166,6 +1191,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "sync_conflict",
               "knowledge_evidence_changed",
               "renewal_due",
+              "waiting_review_elapsed",
               "relationship_fact_stale",
               "decision_impact_review",
               "capture_duplicate",
@@ -1436,6 +1462,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "template_definition_created",
               "template_definition_changed",
               "project_template_applied",
+              "automation_rule_created",
+              "automation_rule_changed",
+              "automation_swept",
               "workspace_default_status_changed",
               "task_completed",
               "task_reopened",
@@ -1477,6 +1506,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           "fieldDef.restore_definition",
           "record.restore_field_value",
           "template.restore_definition",
+          "automation.restore_definition",
           "project.unapply_template",
           "task.restore_operational_state",
           "work_link.restore_state",

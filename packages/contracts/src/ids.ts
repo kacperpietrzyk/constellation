@@ -74,6 +74,8 @@ export const FieldDefinitionIdSchema = opaqueId<"FieldDefinitionId">();
 export type FieldDefinitionId = z.infer<typeof FieldDefinitionIdSchema>;
 export const ProjectTemplateIdSchema = opaqueId<"ProjectTemplateId">();
 export type ProjectTemplateId = z.infer<typeof ProjectTemplateIdSchema>;
+export const AutomationRuleIdSchema = opaqueId<"AutomationRuleId">();
+export type AutomationRuleId = z.infer<typeof AutomationRuleIdSchema>;
 
 export const MembershipIdSchema = opaqueId<"MembershipId">();
 export type MembershipId = z.infer<typeof MembershipIdSchema>;

@@ -40,6 +40,7 @@ export const HubWorkspaceSnapshotSchema = z
     taskStatuses: z.array(JsonObjectSchema),
     fieldDefinitions: z.array(JsonObjectSchema).default([]),
     projectTemplates: z.array(JsonObjectSchema).default([]),
+    automationRules: z.array(JsonObjectSchema).default([]),
     captures: z.array(JsonObjectSchema),
     tasks: z.array(JsonObjectSchema),
     projects: z.array(JsonObjectSchema),

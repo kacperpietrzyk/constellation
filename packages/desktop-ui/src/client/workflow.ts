@@ -2225,6 +2225,65 @@ export const applyTemplateToProject = (
         : undefined,
   );
 
+export type AutomationRecipeInput =
+  | { readonly kind: "complete_sets_status"; readonly statusId: string }
+  | { readonly kind: "waiting_review_signals" };
+
+export const createAutomationRuleDefinition = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: { readonly name: string; readonly recipe: AutomationRecipeInput },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "automation.create",
+      payload: {
+        ruleId: crypto.randomUUID(),
+        name: input.name,
+        recipe: input.recipe,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "automation.created"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const changeAutomationRuleDefinition = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  ruleId: string,
+  ruleVersion: number,
+  change:
+    | { readonly kind: "rename"; readonly name: string }
+    | { readonly kind: "setState"; readonly state: "active" | "disabled" },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [ruleId]: ruleVersion,
+      }),
+      ...(change.kind === "rename"
+        ? {
+            commandName: "automation.rename",
+            payload: { ruleId, name: change.name },
+          }
+        : {
+            commandName: "automation.setState",
+            payload: { ruleId, state: change.state },
+          }),
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "automation.changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export type TaskStatusSemantics =
   "actionable" | "waiting" | "blocked" | "paused";
 

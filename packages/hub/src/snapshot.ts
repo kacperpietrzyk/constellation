@@ -83,6 +83,9 @@ export const fromHubSnapshot = (
     (parsed.projectTemplates ?? []).some(
       (value) => value.workspaceId !== workspaceId,
     ) ||
+    (parsed.automationRules ?? []).some(
+      (value) => value.workspaceId !== workspaceId,
+    ) ||
     parsed.captures.some((value) => value.workspaceId !== workspaceId) ||
     parsed.tasks.some((value) => value.workspaceId !== workspaceId) ||
     parsed.projects.some((value) => value.workspaceId !== workspaceId) ||
@@ -313,6 +316,7 @@ export const scopeHubSnapshot = (
   // authorized device needs them to render and edit values it can see.
   const fieldDefinitions = state.fieldDefinitions ?? [];
   const projectTemplates = state.projectTemplates ?? [];
+  const automationRules = state.automationRules ?? [];
   const allowedRecordIds = new Set<string>([
     ...state.workspaces.map((value) => value.id),
     ...memberships.map((value) => value.id),
@@ -323,6 +327,7 @@ export const scopeHubSnapshot = (
     ...taskStatuses.map((value) => value.id),
     ...fieldDefinitions.map((value) => value.id),
     ...projectTemplates.map((value) => value.id),
+    ...automationRules.map((value) => value.id),
     ...captures.map((value) => value.id),
     ...tasks.map((value) => value.id),
     ...projects.map((value) => value.id),
@@ -362,6 +367,7 @@ export const scopeHubSnapshot = (
     taskStatuses,
     fieldDefinitions,
     projectTemplates,
+    automationRules,
     captures,
     tasks,
     projects,

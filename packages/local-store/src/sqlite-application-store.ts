@@ -39,6 +39,7 @@ import {
   type AttentionSignalId,
   type TaskStatusId,
   type FieldDefinitionId,
+  type AutomationRuleId,
   type ProjectTemplateId,
   type WorkspaceId,
   type GrantId,
@@ -58,6 +59,7 @@ import type {
   Capture,
   DomainEvent,
   FieldDefinition,
+  AutomationRule,
   ProjectTemplate,
   OutboxEntry,
   Project,
@@ -88,7 +90,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-export const LOCAL_STORE_SCHEMA_VERSION = 18;
+export const LOCAL_STORE_SCHEMA_VERSION = 19;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -124,6 +126,7 @@ const COORDINATED_PROJECTION_TABLES = [
   "task_statuses",
   "field_definitions",
   "project_templates",
+  "automation_rules",
   "space_grants",
   "memberships",
   "spaces",
@@ -693,6 +696,18 @@ const schemaV18 = `
     ON project_templates(workspace_id, position, id);
 `;
 
+const schemaV19 = `
+  CREATE TABLE automation_rules (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    position INTEGER NOT NULL,
+    version INTEGER NOT NULL CHECK (version > 0),
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX automation_rules_workspace
+    ON automation_rules(workspace_id, position, id);
+`;
+
 const localStoreMigrations = [
   schemaV1,
   schemaV2,
@@ -712,6 +727,7 @@ const localStoreMigrations = [
   schemaV16,
   schemaV17,
   schemaV18,
+  schemaV19,
 ] as const;
 
 export interface LocalCoordinationState {
@@ -1039,6 +1055,35 @@ class SqliteReadView implements ApplicationWave2ReadView {
           "task status",
           { workspaceId },
         );
+      });
+  }
+
+  public getAutomationRule(id: AutomationRuleId): AutomationRule | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, payload_json FROM automation_rules WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<AutomationRule>(row, "id", id, "automation rule", {
+          workspaceId: stringValue(row, "workspace_id", "automation rule"),
+        });
+  }
+
+  public listAutomationRules(
+    workspaceId: WorkspaceId,
+  ): readonly AutomationRule[] {
+    return this.database
+      .prepare(
+        "SELECT id, payload_json FROM automation_rules WHERE workspace_id = ? ORDER BY position, id",
+      )
+      .all(workspaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "automation rule");
+        return parsePayload<AutomationRule>(row, "id", id, "automation rule", {
+          workspaceId,
+        });
       });
   }
 
@@ -2240,6 +2285,40 @@ class SqliteTransaction
       this.database
         .prepare(
           "UPDATE project_templates SET position = ?, version = ?, payload_json = ? WHERE id = ? AND version = ? AND workspace_id = ?",
+        )
+        .run(
+          record.position,
+          record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+          record.workspaceId,
+        ),
+    );
+  }
+
+  public insertAutomationRule(record: AutomationRule): void {
+    this.insert(
+      "automation_rules",
+      ["id", "workspace_id", "position", "version", "payload_json"],
+      [
+        record.id,
+        record.workspaceId,
+        record.position,
+        record.version,
+        payload(record),
+      ],
+    );
+  }
+
+  public updateAutomationRule(
+    record: AutomationRule,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE automation_rules SET position = ?, version = ?, payload_json = ? WHERE id = ? AND version = ? AND workspace_id = ?",
         )
         .run(
           record.position,
@@ -3479,6 +3558,18 @@ export class SqliteApplicationStore
         "id",
         "field definition",
       ),
+      projectTemplates: records(
+        "project_templates",
+        "id",
+        "id",
+        "project template",
+      ),
+      automationRules: records(
+        "automation_rules",
+        "id",
+        "id",
+        "automation rule",
+      ),
       captures: records("captures", "id", "id", "capture"),
       tasks: records("tasks", "id", "id", "task"),
       projects: records("projects", "id", "id", "project"),
@@ -3836,6 +3927,9 @@ export class SqliteApplicationStore
     );
     (snapshot.projectTemplates ?? []).forEach((value) =>
       transaction.insertProjectTemplate(value),
+    );
+    (snapshot.automationRules ?? []).forEach((value) =>
+      transaction.insertAutomationRule(value),
     );
     snapshot.taskStatuses.forEach((value) =>
       transaction.insertTaskStatus(value),

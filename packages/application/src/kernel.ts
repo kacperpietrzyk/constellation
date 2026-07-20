@@ -352,6 +352,10 @@ const isCurrentlyAuthorized = (
     case "template.updateContents":
     case "template.archive":
     case "template.restore":
+    case "automation.create":
+    case "automation.rename":
+    case "automation.setState":
+    case "automation.sweep":
     case "project.applyTemplate":
     case "fieldDef.create":
     case "fieldDef.rename":
@@ -712,29 +716,10 @@ export class ApplicationKernel {
       case "template.archive":
       case "template.restore":
       case "project.applyTemplate":
-      case "template.create":
-      case "template.rename":
-      case "template.updateContents":
-      case "template.archive":
-      case "template.restore":
-      case "project.applyTemplate":
-      case "fieldDef.create":
-      case "fieldDef.rename":
-      case "fieldDef.archive":
-      case "fieldDef.restore":
-      case "record.setFieldValue":
-      case "template.create":
-      case "template.rename":
-      case "template.updateContents":
-      case "template.archive":
-      case "template.restore":
-      case "project.applyTemplate":
-      case "template.create":
-      case "template.rename":
-      case "template.updateContents":
-      case "template.archive":
-      case "template.restore":
-      case "project.applyTemplate":
+      case "automation.create":
+      case "automation.rename":
+      case "automation.setState":
+      case "automation.sweep":
       case "fieldDef.create":
       case "fieldDef.rename":
       case "fieldDef.archive":
@@ -2792,6 +2777,14 @@ export class ApplicationKernel {
             position: template.position,
             version: template.version,
           })),
+        automationRules: view.listAutomationRules(workspace.id).map((rule) => ({
+          id: rule.id,
+          name: rule.name,
+          recipe: rule.recipe,
+          ...(rule.state === undefined ? {} : { state: rule.state }),
+          position: rule.position,
+          version: rule.version,
+        })),
       },
     });
   }

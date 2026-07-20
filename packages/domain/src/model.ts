@@ -24,6 +24,7 @@ import type {
   CommentId,
   AttentionSignalId,
   TaskStatusId,
+  AutomationRuleId,
   FieldDefinitionId,
   ProjectTemplateId,
   WorkspaceId,
@@ -293,6 +294,23 @@ export interface ProjectTemplate {
   readonly updatedAt: string;
 }
 
+export type AutomationRecipe =
+  | { readonly kind: "complete_sets_status"; readonly statusId: TaskStatusId }
+  | { readonly kind: "waiting_review_signals" };
+
+export interface AutomationRule {
+  readonly id: AutomationRuleId;
+  readonly workspaceId: WorkspaceId;
+  readonly name: string;
+  readonly recipe: AutomationRecipe;
+  readonly state?: "active" | "disabled";
+  readonly disabledAt?: string;
+  readonly position: number;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
 export type TaskPriority = "urgent" | "high" | "normal" | "low";
 
 export interface Task {
@@ -387,6 +405,7 @@ export interface AttentionSignal {
     | "sync_conflict"
     | "knowledge_evidence_changed"
     | "renewal_due"
+    | "waiting_review_elapsed"
     | "relationship_fact_stale"
     | "decision_impact_review"
     | "capture_duplicate"
@@ -749,6 +768,19 @@ export type UndoDescriptor =
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
+      readonly kind: "automation.restore_definition";
+      readonly ruleId: AutomationRuleId;
+      readonly priorName: string;
+      readonly priorState: "active" | "disabled";
+      readonly priorDisabledAt?: string;
+      readonly priorPosition: number;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
       readonly kind: "template.restore_definition";
       readonly templateId: ProjectTemplateId;
       readonly priorName: string;
@@ -975,6 +1007,16 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: ProjectTemplateId;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type:
+        "automation.created" | "automation.changed" | "automation.swept";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: AutomationRuleId;
       readonly aggregateVersion: number;
       readonly occurredAt: string;
     }

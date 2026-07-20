@@ -16,6 +16,7 @@ import {
   RelationIdSchema,
   TaskIdSchema,
   type RelationId,
+  type AutomationRuleId,
   type TaskId,
   TaskAssignmentIdSchema,
   AttentionSignalIdSchema,
@@ -34,10 +35,13 @@ import {
   completeTask,
   assignTask,
   createProject,
+  automationRuleState,
+  createAutomationRule,
   createFieldDefinition,
   createProjectTemplate,
   createTask,
   projectTemplateState,
+  updateAutomationRule,
   updateProjectTemplate,
   updateSavedView,
   type SavedViewUpdate,
@@ -92,6 +96,8 @@ import {
   type DomainEvent,
   type FieldDefinition,
   type FieldDefinitionUpdate,
+  type AutomationRule,
+  type AutomationRuleUpdate,
   type ProjectTemplate,
   type ProjectTemplateUpdate,
   type TaskStatusDefinition,
@@ -176,6 +182,10 @@ export type Wave2Command = Extract<
       | "task.updateDetails"
       | "task.setParent"
       | "template.create"
+      | "automation.create"
+      | "automation.rename"
+      | "automation.setState"
+      | "automation.sweep"
       | "template.rename"
       | "template.updateContents"
       | "template.archive"
@@ -504,6 +514,10 @@ export const isWave2CommandAuthorized = (
     case "template.updateContents":
     case "template.archive":
     case "template.restore":
+    case "automation.create":
+    case "automation.rename":
+    case "automation.setState":
+    case "automation.sweep":
     case "fieldDef.create":
     case "fieldDef.rename":
     case "fieldDef.archive":
@@ -765,6 +779,7 @@ const appendJournal = (
       | "workspace"
       | "fieldDefinition"
       | "projectTemplate"
+      | "automationRule"
     >
   >,
 ): CommandOutcome => {
@@ -981,6 +996,8 @@ const attentionDetail = (reason: AttentionSignal["reason"]): string => {
       return "The external result is unknown. Reconcile and retry without creating a second record.";
     case "sync_conflict":
       return "An offline change needs reconciliation.";
+    case "waiting_review_elapsed":
+      return "A waiting Task's review date has passed. Check on the waiting work.";
   }
 };
 
@@ -3170,6 +3187,278 @@ export const executeWave2Command = (
         },
       );
     }
+    case "automation.create": {
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (workspace === undefined) return precondition(command, occurredAt);
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      if (transaction.getAutomationRule(command.payload.ruleId) !== undefined) {
+        return precondition(command, occurredAt);
+      }
+      const recipe = command.payload.recipe;
+      if (recipe.kind === "complete_sets_status") {
+        const status = transaction.getTaskStatus(recipe.statusId);
+        if (
+          status?.workspaceId !== command.workspaceId ||
+          taskStatusState(status) === "archived"
+        ) {
+          return precondition(command, occurredAt);
+        }
+      }
+      const rules = transaction.listAutomationRules(command.workspaceId);
+      const normalizedName = command.payload.name.toLocaleLowerCase("pl-PL");
+      if (
+        rules.some(
+          (rule) =>
+            automationRuleState(rule) === "active" &&
+            rule.name.toLocaleLowerCase("pl-PL") === normalizedName,
+        )
+      ) {
+        return precondition(command, occurredAt);
+      }
+      const rule = createAutomationRule({
+        id: command.payload.ruleId,
+        workspaceId: command.workspaceId,
+        name: command.payload.name,
+        recipe,
+        position:
+          rules.reduce((max, entry) => Math.max(max, entry.position), -1) + 1,
+        occurredAt,
+      });
+      transaction.insertAutomationRule(rule);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "automation.created",
+          workspaceId: command.workspaceId,
+          spaceId: workspace.rootSpaceId,
+          aggregateId: rule.id,
+          aggregateVersion: rule.version,
+          occurredAt,
+        },
+        { [rule.id]: rule.version },
+        ["name", "recipe", "state"],
+        {
+          diagnosticCode: "automation.created",
+          projection: {
+            kind: "automation.created",
+            ruleId: rule.id,
+            name: rule.name,
+            recipe: rule.recipe,
+            state: "active",
+            position: rule.position,
+            version: rule.version,
+          },
+        },
+        undefined,
+        { [rule.id]: "automationRule" },
+      );
+    }
+    case "automation.rename":
+    case "automation.setState": {
+      const rule = transaction.getAutomationRule(command.payload.ruleId);
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (
+        rule === undefined ||
+        rule.workspaceId !== command.workspaceId ||
+        workspace === undefined
+      ) {
+        return precondition(command, occurredAt);
+      }
+      const currentState = automationRuleState(rule);
+      let update: AutomationRuleUpdate;
+      let changedFields: readonly string[];
+      if (command.commandName === "automation.rename") {
+        const normalizedName = command.payload.name.toLocaleLowerCase("pl-PL");
+        if (
+          command.payload.name === rule.name ||
+          transaction
+            .listAutomationRules(command.workspaceId)
+            .some(
+              (entry) =>
+                entry.id !== rule.id &&
+                automationRuleState(entry) === "active" &&
+                entry.name.toLocaleLowerCase("pl-PL") === normalizedName,
+            )
+        ) {
+          return precondition(command, occurredAt);
+        }
+        update = { name: command.payload.name };
+        changedFields = ["name"];
+      } else {
+        if (command.payload.state === currentState) {
+          return precondition(command, occurredAt);
+        }
+        update = { state: command.payload.state };
+        changedFields = ["state"];
+      }
+      if (!exactExpected(command, { [rule.id]: rule.version })) {
+        return versionConflict(command, occurredAt, {
+          [rule.id]: rule.version,
+        });
+      }
+      const updated = updateAutomationRule(rule, update, occurredAt);
+      if (!transaction.updateAutomationRule(updated, rule.version)) {
+        return versionConflict(command, occurredAt, {
+          [rule.id]: rule.version,
+        });
+      }
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "automation.changed",
+          workspaceId: command.workspaceId,
+          spaceId: workspace.rootSpaceId,
+          aggregateId: updated.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        changedFields,
+        {
+          diagnosticCode: "automation.changed",
+          projection: {
+            kind: "automation.changed",
+            ruleId: updated.id,
+            name: updated.name,
+            recipe: updated.recipe,
+            state: automationRuleState(updated),
+            position: updated.position,
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: command.workspaceId,
+          spaceId: workspace.rootSpaceId,
+          kind: "automation.restore_definition",
+          ruleId: rule.id,
+          priorName: rule.name,
+          priorState: currentState,
+          ...(rule.disabledAt === undefined
+            ? {}
+            : { priorDisabledAt: rule.disabledAt }),
+          priorPosition: rule.position,
+          resultingVersion: updated.version,
+        },
+        { [updated.id]: "automationRule" },
+      );
+    }
+    case "automation.sweep": {
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (workspace === undefined) return precondition(command, occurredAt);
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      const rule = transaction
+        .listAutomationRules(command.workspaceId)
+        .find(
+          (entry) =>
+            automationRuleState(entry) === "active" &&
+            entry.recipe.kind === "waiting_review_signals",
+        );
+      if (rule === undefined) return precondition(command, occurredAt);
+      // One sweep raises at most 50 signals: a deterministic rate bound, not
+      // a completeness promise — the next sweep continues where dedup keys
+      // left off.
+      const limit = 50;
+      const raisedTaskIds: TaskId[] = [];
+      let alreadySignaledCount = 0;
+      let truncated = false;
+      const owner = transaction
+        .listMemberships(command.workspaceId)
+        .find(
+          (membership) =>
+            membership.role === "owner" && membership.status !== "revoked",
+        );
+      for (const space of transaction.listSpaces(command.workspaceId)) {
+        for (const task of transaction.listTasksInSpace(
+          command.workspaceId,
+          space.id,
+        )) {
+          if (
+            task.recordState !== "active" ||
+            task.completionState !== "open" ||
+            task.operationalState !== "waiting" ||
+            task.waitingOn?.expectedAt === undefined ||
+            task.waitingOn.expectedAt > occurredAt
+          ) {
+            continue;
+          }
+          const targetPrincipalId =
+            transaction.getActiveTaskAssignment(task.id)?.assigneePrincipalId ??
+            owner?.principalId;
+          if (targetPrincipalId === undefined) continue;
+          if (raisedTaskIds.length >= limit) {
+            truncated = true;
+            break;
+          }
+          const deduplicationKey = `automation:${rule.id}:${task.id}:${task.waitingOn.expectedAt}`;
+          const existing = transaction.findAttentionSignalByDeduplicationKey(
+            command.workspaceId,
+            targetPrincipalId,
+            deduplicationKey,
+          );
+          if (existing !== undefined) {
+            alreadySignaledCount += 1;
+            continue;
+          }
+          upsertAttention(
+            dependencies,
+            transaction,
+            {
+              workspaceId: command.workspaceId,
+              spaceId: task.spaceId,
+              targetPrincipalId,
+              reason: "waiting_review_elapsed",
+              destination: { kind: "task", taskId: task.id },
+              sourceRecordId: rule.id,
+              deduplicationKey,
+              urgency: "in_app",
+            },
+            occurredAt,
+          );
+          raisedTaskIds.push(task.id);
+        }
+        if (truncated) break;
+      }
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "automation.swept",
+          workspaceId: command.workspaceId,
+          spaceId: workspace.rootSpaceId,
+          aggregateId: rule.id,
+          aggregateVersion: rule.version,
+          occurredAt,
+        },
+        { [rule.id]: rule.version },
+        ["signals"],
+        {
+          diagnosticCode: "automation.swept",
+          projection: {
+            kind: "automation.swept",
+            raisedTaskIds,
+            alreadySignaledCount,
+            truncated,
+          },
+        },
+        undefined,
+        { [rule.id]: "automationRule" },
+      );
+    }
     case "template.create": {
       const workspace = transaction.getWorkspace(command.workspaceId);
       if (workspace === undefined) return precondition(command, occurredAt);
@@ -4277,6 +4566,7 @@ export const executeWave2Command = (
         });
       }
       let updated: Task;
+      let appliedAutomationRuleId: AutomationRuleId | undefined;
       let eventType: "task.status_changed" | "task.completed" | "task.reopened";
       let diagnosticCode:
         "task.status_changed" | "task.completed" | "task.reopened";
@@ -4301,6 +4591,34 @@ export const executeWave2Command = (
           });
         }
         updated = completeTask(task, occurredAt);
+        // Bounded reactive automation: an active complete_sets_status rule
+        // rides the same transaction, journal entry, and undo descriptor as
+        // the completion (task.restore_state already captures the prior
+        // status), so the effect is attributed, audited, and exactly
+        // undoable. Automated effects never trigger further rules.
+        const completionRule = transaction
+          .listAutomationRules(command.workspaceId)
+          .find(
+            (rule) =>
+              automationRuleState(rule) === "active" &&
+              rule.recipe.kind === "complete_sets_status",
+          );
+        if (
+          completionRule !== undefined &&
+          completionRule.recipe.kind === "complete_sets_status"
+        ) {
+          const target = transaction.getTaskStatus(
+            completionRule.recipe.statusId,
+          );
+          if (
+            target?.workspaceId === task.workspaceId &&
+            taskStatusState(target) !== "archived" &&
+            target.id !== updated.statusId
+          ) {
+            updated = { ...updated, statusId: target.id };
+            appliedAutomationRuleId = completionRule.id;
+          }
+        }
         eventType = "task.completed";
         diagnosticCode = "task.completed";
       } else {
@@ -4338,8 +4656,18 @@ export const executeWave2Command = (
         { [updated.id]: updated.version },
         command.commandName === "task.setStatus"
           ? ["statusId"]
-          : ["completionState", "completedAt"],
-        { diagnosticCode, projection: taskProjection(diagnosticCode, updated) },
+          : appliedAutomationRuleId === undefined
+            ? ["completionState", "completedAt"]
+            : ["completionState", "completedAt", "statusId"],
+        {
+          diagnosticCode,
+          projection: {
+            ...taskProjection(diagnosticCode, updated),
+            ...(appliedAutomationRuleId === undefined
+              ? {}
+              : { appliedAutomationRuleId }),
+          },
+        },
         {
           targetCommandId: command.commandId,
           workspaceId: task.workspaceId,
@@ -5044,6 +5372,21 @@ const descriptorState = (
             reason: "later_change",
           };
     }
+    case "automation.restore_definition": {
+      const rule = view.getAutomationRule(descriptor.ruleId);
+      return rule?.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [rule.id],
+            versions: { [rule.id]: rule.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
     case "template.restore_definition": {
       const template = view.getProjectTemplate(descriptor.templateId);
       return template?.version === descriptor.resultingVersion
@@ -5416,6 +5759,7 @@ const applyUndo = (
     | "workspace"
     | "fieldDefinition"
     | "projectTemplate"
+    | "automationRule"
   >;
   if (descriptor.kind === "project.restore_outcome") {
     const project = transaction.getProject(descriptor.projectId) as Project;
@@ -5449,6 +5793,26 @@ const applyUndo = (
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "task" };
+  } else if (descriptor.kind === "automation.restore_definition") {
+    const rule = transaction.getAutomationRule(
+      descriptor.ruleId,
+    ) as AutomationRule;
+    const { disabledAt: _disabledAt, ...base } = rule;
+    void _disabledAt;
+    const restored: AutomationRule = {
+      ...base,
+      name: descriptor.priorName,
+      state: descriptor.priorState,
+      ...(descriptor.priorDisabledAt === undefined
+        ? {}
+        : { disabledAt: descriptor.priorDisabledAt }),
+      position: descriptor.priorPosition,
+      version: rule.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateAutomationRule(restored, rule.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "automationRule" };
   } else if (descriptor.kind === "template.restore_definition") {
     const template = transaction.getProjectTemplate(
       descriptor.templateId,
@@ -6961,6 +7325,9 @@ export const executeWave2Query = (
     "task.created": "task_created",
     "task.details_updated": "task_details_updated",
     "task.parent_changed": "task_parent_changed",
+    "automation.created": "automation_rule_created",
+    "automation.changed": "automation_rule_changed",
+    "automation.swept": "automation_swept",
     "template.created": "template_definition_created",
     "template.changed": "template_definition_changed",
     "project.template_applied": "project_template_applied",

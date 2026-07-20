@@ -748,6 +748,8 @@ export const executeAgentAccessQuery = (
             return [descriptor.fieldId];
           case "template.restore_definition":
             return [descriptor.templateId];
+          case "automation.restore_definition":
+            return [descriptor.ruleId];
           case "project.unapply_template":
             return [descriptor.projectId, ...descriptor.createdTaskIds];
           case "record.restore_field_value":

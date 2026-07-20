@@ -243,6 +243,19 @@ created — refusing when any of them has been edited since. Starting a project
 without a template stays first-class; a templated start composes creation
 with application in the UI.
 
+Automations are bounded, deterministic recipes — never scripts. A rule is
+workspace-scoped configuration (managed by maintainers with audit,
+activity, and previewed undo of the definition) drawn from a closed recipe
+vocabulary: a completed Task also enters a configured workflow status, and
+a waiting Task whose explicit review date has elapsed raises a deduplicated
+in-app attention signal. The reactive effect rides the triggering command's
+transaction, journal entry, audit receipt, and undo descriptor, with the
+applied rule attributed in the outcome; the date-driven effect runs through
+an explicit idempotent sweep command (at most 50 signals per run, one
+signal per elapsed review date). Automated effects never trigger further
+rules, never touch anything outside the workspace, and disabling a rule
+never rewrites history.
+
 Saved work views carry a typed, closed filter vocabulary — operational
 states, workflow statuses, priorities, a deadline window (overdue, today,
 this week in the workspace calendar), scheduled/unscheduled,
