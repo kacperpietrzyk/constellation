@@ -36,6 +36,7 @@ import {
   countLabel,
   formatDate,
   formatDateTime,
+  formatTime,
   recordKindLabels,
 } from "./i18n.js";
 
@@ -550,6 +551,30 @@ export const CockpitSurface = ({
       dueThisWeek.set(key, [...(dueThisWeek.get(key) ?? []), task]);
     }
   }
+  // R12.6 / ADR-042 — reserved time placed on the day it was reserved for.
+  // Sourced from snapshot.tasks, the same array the deadlines above come from,
+  // rather than from cockpit.week focus entries: the cockpit projection is
+  // capped, so reading blocks from it would silently drop reservations once a
+  // workspace has more focus items than the cap.
+  //
+  // A Task can legitimately appear twice in one week — a deadline on Friday, a
+  // reservation on Wednesday. That is the whole point of keeping the two facts
+  // separate, so it is shown as two entries rather than deduplicated.
+  const reservedThisWeek = new Map<string, typeof openTasks>();
+  for (const task of openTasks) {
+    if (task.calendarBlock === undefined) continue;
+    const key = dateKeyInTimeZone(
+      new Date(task.calendarBlock.startsAt),
+      timezone,
+    );
+    if (weekDays.some((day) => day.key === key)) {
+      reservedThisWeek.set(key, [...(reservedThisWeek.get(key) ?? []), task]);
+    }
+  }
+  const reservedCount = [...reservedThisWeek.values()].reduce(
+    (sum, tasks) => sum + tasks.length,
+    0,
+  );
   const unscheduledCount = openTasks.filter(
     (task) => task.dueAt === undefined,
   ).length;
@@ -563,7 +588,9 @@ export const CockpitSurface = ({
         <header className="section-heading">
           <div>
             <p className="eyebrow">Plan tygodnia</p>
-            <h2 id="week-plan-title">Terminy dzień po dniu</h2>
+            <h2 id="week-plan-title">
+              Terminy i zarezerwowany czas dzień po dniu
+            </h2>
           </div>
           <span>
             {countLabel(
@@ -572,6 +599,13 @@ export const CockpitSurface = ({
               "terminy w tym tygodniu",
               "terminów w tym tygodniu",
             )}
+            {reservedThisWeek.size > 0 &&
+              ` · ${countLabel(
+                reservedCount,
+                "zarezerwowany blok",
+                "zarezerwowane bloki",
+                "zarezerwowanych bloków",
+              )}`}
           </span>
         </header>
         {overdueTasks.length > 0 ? (
@@ -611,17 +645,19 @@ export const CockpitSurface = ({
         <div className="week-plan-grid">
           {weekDays.map((day) => {
             const tasks = dueThisWeek.get(day.key) ?? [];
+            const reserved = reservedThisWeek.get(day.key) ?? [];
             return (
               <div
                 key={day.key}
                 className={`week-plan-day${day.key === todayKey ? " today" : ""}`}
               >
                 <h3>{day.label}</h3>
-                {tasks.length === 0 ? (
+                {/* A day holding only reserved time is not an empty day. */}
+                {tasks.length === 0 && reserved.length === 0 ? (
                   <p className="week-plan-empty" aria-hidden="true">
                     —
                   </p>
-                ) : (
+                ) : tasks.length === 0 ? null : (
                   <>
                     {tasks.slice(0, 3).map((task) => (
                       <button
@@ -643,6 +679,30 @@ export const CockpitSurface = ({
                     ) : null}
                   </>
                 )}
+                {reserved.length > 0 && (
+                  <div
+                    className="week-plan-reserved"
+                    role="group"
+                    aria-label={`Zarezerwowany czas, ${day.label}`}
+                  >
+                    {reserved.map((task) => (
+                      <button
+                        type="button"
+                        key={`reserved-${task.id}`}
+                        className={`week-plan-block${
+                          task.id === selectedTaskId ? " selected" : ""
+                        }`}
+                        onClick={() => onSelectTask(task.id)}
+                        onDoubleClick={() => onOpenTask(task.id)}
+                      >
+                        <span className="week-plan-block-time">
+                          {formatTime(task.calendarBlock!.startsAt, timezone)}
+                        </span>
+                        {task.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -651,7 +711,8 @@ export const CockpitSurface = ({
           <p className="week-plan-note">
             Bez terminu:{" "}
             {countLabel(unscheduledCount, "zadanie", "zadania", "zadań")}.
-            Termin nadasz w inspektorze zadania — bez rezerwowania kalendarza.
+            Termin i rezerwację czasu nadasz w inspektorze zadania — to dwie
+            różne rzeczy: kiedy ma być zrobione i kiedy to zrobisz.
           </p>
         ) : null}
       </section>

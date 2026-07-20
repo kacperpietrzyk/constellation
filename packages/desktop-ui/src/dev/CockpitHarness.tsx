@@ -65,7 +65,13 @@ const taskRow = (
     label: "W toku",
   },
   assignment?: { readonly principalId: string; readonly displayName: string },
-  timing?: { readonly dueAt?: string; readonly priority?: string },
+  timing?: {
+    readonly dueAt?: string;
+    readonly priority?: string;
+    // R12.6 — reserved time, deliberately on a different day than the
+    // deadline so the harness shows the two facts are independent.
+    readonly reservedAt?: string;
+  },
 ): Record<string, unknown> => ({
   id,
   spaceId,
@@ -78,6 +84,19 @@ const taskRow = (
   completionState: "open",
   ...(timing?.dueAt === undefined ? {} : { dueAt: timing.dueAt }),
   ...(timing?.priority === undefined ? {} : { priority: timing.priority }),
+  ...(timing?.reservedAt === undefined
+    ? {}
+    : {
+        calendarBlock: {
+          ownedBlockExternalId: `task-block:${id}`,
+          calendarExternalId: "calendar-default",
+          revision: "rev-1",
+          startsAt: timing.reservedAt,
+          endsAt: new Date(
+            Date.parse(timing.reservedAt) + 3_600_000,
+          ).toISOString(),
+        },
+      }),
   ...(assignment
     ? {
         assignment: {
@@ -139,7 +158,12 @@ const baseClient = createScenarioClient({
           weekStart,
           { id: readyStatusId, label: "Do decyzji" },
           { principalId: ownerId, displayName: "Kacper" },
-          { dueAt: `${weekStart}T21:59:59.999Z`, priority: "high" },
+          {
+            dueAt: `${weekStart}T21:59:59.999Z`,
+            priority: "high",
+            // Due Monday, being done Wednesday.
+            reservedAt: "2026-07-15T07:00:00.000Z",
+          },
         ),
         taskRow(
           task2,
