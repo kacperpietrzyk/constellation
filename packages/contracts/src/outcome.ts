@@ -71,6 +71,7 @@ export const DiagnosticCodeSchema = z.enum([
   "automation.created",
   "automation.changed",
   "automation.swept",
+  "recurrence.swept",
   "project.template_applied",
   "fieldDef.created",
   "fieldDef.changed",
@@ -496,6 +497,16 @@ export const AutomationSweptProjectionSchema = z
     kind: z.literal("automation.swept"),
     raisedTaskIds: z.array(TaskIdSchema),
     alreadySignaledCount: z.int().nonnegative(),
+    truncated: z.boolean(),
+  })
+  .strict();
+export const RecurrenceSweptProjectionSchema = z
+  .object({
+    kind: z.literal("recurrence.swept"),
+    generatedTaskIds: z.array(TaskIdSchema),
+    // Recurrences examined and found not yet due — the honest counterpart to
+    // generatedTaskIds, so an empty sweep is distinguishable from no cadences.
+    pendingCount: z.int().nonnegative(),
     truncated: z.boolean(),
   })
   .strict();
@@ -1005,6 +1016,12 @@ const TemplateChangedSuccessOutcomeSchema =
     diagnosticCode: z.literal("template.changed"),
     projection: TemplateChangedProjectionSchema,
   }).strict();
+const RecurrenceSweptSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("recurrence.swept"),
+    projection: RecurrenceSweptProjectionSchema,
+  }).strict();
 const ProjectTemplateAppliedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1213,6 +1230,7 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   AutomationCreatedSuccessOutcomeSchema,
   AutomationChangedSuccessOutcomeSchema,
   AutomationSweptSuccessOutcomeSchema,
+  RecurrenceSweptSuccessOutcomeSchema,
   TemplateChangedSuccessOutcomeSchema,
   ProjectTemplateAppliedSuccessOutcomeSchema,
   WorkspaceDefaultStatusChangedSuccessOutcomeSchema,

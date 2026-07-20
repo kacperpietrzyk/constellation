@@ -191,6 +191,7 @@ export type Wave2Command = Extract<
       | "automation.rename"
       | "automation.setState"
       | "automation.sweep"
+      | "recurrence.sweep"
       | "template.rename"
       | "template.updateContents"
       | "template.archive"
@@ -576,6 +577,25 @@ export const isWave2CommandAuthorized = (
     case "automation.create":
     case "automation.rename":
     case "automation.setState":
+    case "recurrence.sweep": {
+      // Maintenance like automation.sweep, but it inserts Tasks directly, so
+      // it carries the Task-creation grant too rather than becoming a path
+      // around it (the rule ADR-040 §7 established for meeting promotion).
+      return (
+        view.getWorkspace(command.workspaceId) !== undefined &&
+        canManageWorkspaceAccess(view, context, command.workspaceId) &&
+        dependencies.authorization.authorize({
+          context,
+          capability: command.commandName,
+          workspaceId: command.workspaceId,
+        }) &&
+        dependencies.authorization.authorize({
+          context,
+          capability: "task.create",
+          workspaceId: command.workspaceId,
+        })
+      );
+    }
     case "automation.sweep":
     case "fieldDef.create":
     case "fieldDef.rename":
@@ -929,6 +949,53 @@ const savedViewFilters = (filters: {
   ...(filters.scheduled === undefined ? {} : { scheduled: filters.scheduled }),
   ...(filters.fields === undefined ? {} : { fields: filters.fields }),
 });
+
+// ADR-041 §4. Cadence arithmetic is UTC and clamps a day-of-month that does
+// not exist in the target month to that month's last day, so a month-end
+// cadence still fires every month. The accepted consequence is that a 31st
+// cadence drifts down once it passes through February.
+const advanceCadence = (
+  instant: string,
+  cadence: "daily" | "weekly" | "monthly" | "yearly",
+): string => {
+  const date = new Date(instant);
+  if (cadence === "daily" || cadence === "weekly") {
+    date.setUTCDate(date.getUTCDate() + (cadence === "daily" ? 1 : 7));
+    return date.toISOString();
+  }
+  const day = date.getUTCDate();
+  const target = new Date(instant);
+  // Move to the first of the month before shifting, so a long month never
+  // rolls the shift into the month after the intended one.
+  target.setUTCDate(1);
+  if (cadence === "monthly") target.setUTCMonth(target.getUTCMonth() + 1);
+  else target.setUTCFullYear(target.getUTCFullYear() + 1);
+  const lastDay = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString();
+};
+
+// ADR-041 §3. A missed cadence produces one occurrence, not a backlog: roll
+// forward by whole steps until the next due instant is in the future.
+const rollForward = (
+  instant: string,
+  cadence: "daily" | "weekly" | "monthly" | "yearly",
+  now: string,
+): string => {
+  let next = advanceCadence(instant, cadence);
+  // Bounded so a corrupt far-past instant can never spin: a daily cadence
+  // five years behind still converges well inside this budget.
+  for (let step = 0; step < 2000 && Date.parse(next) <= Date.parse(now); step++)
+    next = advanceCadence(next, cadence);
+  // Exhausting the budget must still yield a future instant. Returning a past
+  // one would leave the cadence permanently due, generating one occurrence
+  // every day instead of resuming its real rhythm. Re-anchor on now instead.
+  return Date.parse(next) > Date.parse(now)
+    ? next
+    : advanceCadence(now, cadence);
+};
 
 const appendStrategicJournal = (
   dependencies: ApplicationKernelDependencies,
@@ -3767,6 +3834,130 @@ export const executeWave2Command = (
           resultingVersion: updated.version,
         },
         { [updated.id]: "automationRule" },
+      );
+    }
+    case "recurrence.sweep": {
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (workspace === undefined) return precondition(command, occurredAt);
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      // Bounded like automation.sweep: a rate limit, not a completeness
+      // promise. Each generation advances nextDueAt, so successive sweeps
+      // make forward progress rather than repeating the same work.
+      const limit = 50;
+      const generatedTaskIds: TaskId[] = [];
+      const recordVersions: Record<string, number> = {};
+      const affectedKinds: Record<
+        string,
+        "task" | "project" | "attentionSignal" | "relation" | "strategicRecord"
+      > = {};
+      let pendingCount = 0;
+      let truncated = false;
+      let lastRecurrence: StrategicRecord | undefined;
+      for (const space of transaction.listSpaces(command.workspaceId)) {
+        // Workspace-level maintenance rights are not Space access. Sweeping a
+        // Space the caller cannot edit would both write there on their behalf
+        // and echo its task identifiers back through `affected`, which is the
+        // cross-Space leak the authorization model exists to prevent. A
+        // cadence in an unreadable Space simply waits for a sweep by someone
+        // who can edit it.
+        if (!canEditSpace(transaction, context, command.workspaceId, space.id))
+          continue;
+        for (const record of transaction.listStrategicRecords(
+          command.workspaceId,
+          space.id,
+        )) {
+          // Paused and ended cadences are skipped by the scan rather than
+          // attempted and refused, so they produce no failed commands.
+          if (record.kind !== "recurrence" || record.state !== "active")
+            continue;
+          if (Date.parse(record.nextDueAt) > Date.parse(occurredAt)) {
+            pendingCount += 1;
+            continue;
+          }
+          if (generatedTaskIds.length >= limit) {
+            truncated = true;
+            break;
+          }
+          const task = createTask({
+            id: TaskIdSchema.parse(dependencies.ids.next("task")),
+            workspaceId: record.workspaceId,
+            spaceId: record.spaceId,
+            title: record.taskTitle,
+            // The occurrence keeps the due moment it was generated for, which
+            // is the semantics recurrence.generateOccurrence already uses.
+            dueAt: record.nextDueAt,
+            statusId: workspace.defaultTaskStatusId,
+            createdBy: context.principalId,
+            occurredAt,
+          });
+          transaction.insertTask(task);
+          const advanced: StrategicRecord = {
+            ...record,
+            lastOccurrenceTaskId: task.id,
+            nextDueAt: rollForward(
+              record.nextDueAt,
+              record.cadence,
+              occurredAt,
+            ),
+            version: record.version + 1,
+            updatedAt: occurredAt,
+          };
+          // The Task is already inserted, so skipping here would orphan it and
+          // let the next sweep generate a duplicate for the same period. The
+          // record was read from this same transaction, so a failure is an
+          // invariant violation rather than ordinary contention: fail the whole
+          // sweep and let it roll back, matching project.applyTemplate.
+          if (!transaction.updateStrategicRecord(advanced, record.version)) {
+            return versionConflict(command, occurredAt, {
+              [record.id]: record.version,
+            });
+          }
+          generatedTaskIds.push(task.id);
+          recordVersions[task.id] = task.version;
+          affectedKinds[task.id] = "task";
+          recordVersions[advanced.id] = advanced.version;
+          affectedKinds[advanced.id] = "strategicRecord";
+          lastRecurrence = advanced;
+        }
+        if (truncated) break;
+      }
+      // Nothing was due: report an honest no-op rather than inventing a
+      // journal entry against an unrelated aggregate.
+      if (lastRecurrence === undefined)
+        return precondition(command, occurredAt);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "strategic.record_changed",
+          workspaceId: command.workspaceId,
+          // A sweep is a workspace-level operation, so it anchors on the root
+          // Space like automation.sweep rather than on whichever cadence the
+          // iteration happened to reach last. An arbitrary Space in the event
+          // header would suggest the sweep was scoped to it. Every touched
+          // record still reports its own version through `affected`.
+          spaceId: workspace.rootSpaceId,
+          aggregateId: lastRecurrence.id,
+          aggregateVersion: lastRecurrence.version,
+          occurredAt,
+        },
+        recordVersions,
+        ["lastOccurrenceTaskId", "nextDueAt"],
+        {
+          diagnosticCode: "recurrence.swept",
+          projection: {
+            kind: "recurrence.swept",
+            generatedTaskIds,
+            pendingCount,
+            truncated,
+          },
+        },
+        undefined,
+        affectedKinds,
       );
     }
     case "automation.sweep": {

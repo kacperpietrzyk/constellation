@@ -100,6 +100,7 @@ const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "automation.rename",
   "automation.setState",
   "automation.sweep",
+  "recurrence.sweep",
   "template.rename",
   "template.updateContents",
   "template.archive",

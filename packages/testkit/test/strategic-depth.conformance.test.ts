@@ -10,6 +10,7 @@ import {
   ProjectIdSchema,
   SpaceGrantIdSchema,
   SpaceIdSchema,
+  StrategicRecordIdSchema,
   type CommandOutcome,
   type ExecutionContext,
 } from "@constellation/contracts";
@@ -66,6 +67,7 @@ const context = (): ExecutionContext =>
       "capture.routeAsTask",
       "recurrence.create",
       "recurrence.generateOccurrence",
+      "recurrence.sweep",
       "project.close",
       "project.reopen",
       "radar.candidateUpsert",
@@ -1433,4 +1435,225 @@ it("projects a meeting into routed, promoted, and identified work-graph records"
   const rePromoted = meetingRecord();
   if (rePromoted.kind !== "meeting") throw new Error("Expected a meeting");
   assert.equal(rePromoted.meeting.workItems[0]?.taskId, rePromotedTaskId);
+});
+
+it("generates due recurrence occurrences on a sweep without building a backlog", () => {
+  // ADR-041 / R12.7 (F13). Recurring work must advance on its own rhythm; the
+  // handler behind the manual button does no date arithmetic at all, so the
+  // due test, the cadence maths, and the no-backlog rule all live here.
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("sweep-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Cadence",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  const overdueDailyId = uuid();
+  const monthEndId = uuid();
+  const futureId = uuid();
+  const yearEndId = uuid();
+  const ancientId = uuid();
+  const pausedId = uuid();
+  for (const [key, recurrenceId, cadence, nextDueAt, title] of [
+    // Three weeks behind: a naive loop would mint 21 backdated Tasks.
+    [
+      "sweep-daily",
+      overdueDailyId,
+      "daily",
+      "2026-06-21T09:00:00.000Z",
+      "Daily standup note",
+    ],
+    // 31 January monthly, due long ago: exercises short-month clamping.
+    [
+      "sweep-monthly",
+      monthEndId,
+      "monthly",
+      "2026-01-31T09:00:00.000Z",
+      "Month-end close",
+    ],
+    // Crosses a year boundary while rolling forward, clamping on the way.
+    [
+      "sweep-yearend",
+      yearEndId,
+      "monthly",
+      "2025-12-31T09:00:00.000Z",
+      "Year-end carry",
+    ],
+    [
+      "sweep-future",
+      futureId,
+      "weekly",
+      "2026-09-01T09:00:00.000Z",
+      "Not yet due",
+    ],
+    // Far enough behind to exhaust the roll-forward budget: the cadence must
+    // still come back with a future instant rather than staying permanently
+    // due and generating one occurrence every single day.
+    [
+      "sweep-ancient",
+      ancientId,
+      "daily",
+      "2010-01-01T09:00:00.000Z",
+      "Ancient cadence",
+    ],
+    [
+      "sweep-paused",
+      pausedId,
+      "daily",
+      "2026-06-01T09:00:00.000Z",
+      "Paused cadence",
+    ],
+  ] as const) {
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(key),
+          commandName: "recurrence.create",
+          payload: {
+            recurrenceId,
+            spaceId: ids.space,
+            title,
+            taskTitle: title,
+            cadence,
+            nextDueAt,
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+  }
+  const pausedRecord = harness.store
+    .snapshot()
+    .strategicRecords!.find((record) => record.id === pausedId)!;
+  if (pausedRecord.kind !== "recurrence")
+    throw new Error("Expected a recurrence record");
+  harness.store.transact((transaction) => {
+    if (!isApplicationWave2Transaction(transaction))
+      throw new Error("Expected the Wave 2 reference transaction.");
+    transaction.updateStrategicRecord(
+      { ...pausedRecord, state: "paused", version: pausedRecord.version + 1 },
+      pausedRecord.version,
+    );
+  });
+
+  // A due cadence in a Space the sweeper cannot edit must not be swept:
+  // workspace maintenance rights are not Space access, and echoing its task
+  // id back through `affected` would leak across the boundary.
+  const foreignSpaceId = "18000000-0000-4000-8000-0000000008a1";
+  const foreignRecurrenceId = "18000000-0000-4000-8000-0000000008a2";
+  harness.store.transact((transaction) => {
+    if (!isApplicationWave2Transaction(transaction))
+      throw new Error("Expected the Wave 2 reference transaction.");
+    transaction.insertSpace({
+      id: SpaceIdSchema.parse(foreignSpaceId),
+      workspaceId: context().workspaceId,
+      name: "Private Space",
+      version: 1,
+      createdAt: "2026-07-12T12:00:00.000Z",
+    });
+    transaction.insertStrategicRecord({
+      id: StrategicRecordIdSchema.parse(foreignRecurrenceId),
+      workspaceId: context().workspaceId,
+      spaceId: SpaceIdSchema.parse(foreignSpaceId),
+      kind: "recurrence",
+      title: "Private cadence",
+      taskTitle: "Private cadence occurrence",
+      cadence: "daily",
+      nextDueAt: "2026-06-01T09:00:00.000Z",
+      state: "active",
+      createdBy: context().principalId,
+      version: 1,
+      createdAt: "2026-07-12T12:00:00.000Z",
+      updatedAt: "2026-07-12T12:00:00.000Z",
+    });
+  });
+
+  const swept = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("sweep-run"),
+      commandName: "recurrence.sweep",
+      payload: {},
+    }),
+  );
+  if (
+    swept.outcome !== "success" ||
+    swept.projection.kind !== "recurrence.swept"
+  )
+    assert.fail("Expected a recurrence sweep projection");
+  // One occurrence per due cadence — never one per missed period.
+  assert.equal(swept.projection.generatedTaskIds.length, 4);
+  assert.equal(swept.projection.truncated, false);
+  // The future cadence is reported as pending; the paused one is not counted
+  // at all, because a paused cadence is skipped rather than attempted.
+  assert.equal(swept.projection.pendingCount, 1);
+
+  const recurrenceOf = (id: string) => {
+    const record = harness.store
+      .snapshot()
+      .strategicRecords!.find((candidate) => candidate.id === id)!;
+    if (record.kind !== "recurrence") throw new Error("Expected a recurrence");
+    return record;
+  };
+  const tasks = harness.store.snapshot().tasks;
+  // The generated occurrence keeps the due moment it was generated for.
+  const daily = tasks.find((task) => task.title === "Daily standup note");
+  assert.equal(daily?.dueAt, "2026-06-21T09:00:00.000Z");
+  assert.equal(daily?.completionState, "open");
+  // Rolled forward past now rather than one step at a time.
+  assert.ok(
+    Date.parse(recurrenceOf(overdueDailyId).nextDueAt) >
+      Date.parse("2026-07-12T00:00:00.000Z"),
+  );
+  // 31 January monthly clamps into February and keeps advancing from there.
+  assert.equal(recurrenceOf(monthEndId).nextDueAt.slice(0, 10), "2026-07-28");
+  // 31 December 2025 monthly rolls across the year boundary and clamps in
+  // February on the way, landing on the same drifted day of month.
+  assert.equal(recurrenceOf(yearEndId).nextDueAt.slice(0, 10), "2026-07-28");
+  assert.ok(
+    Date.parse(recurrenceOf(ancientId).nextDueAt) >
+      Date.parse("2026-07-12T00:00:00.000Z"),
+  );
+  assert.equal(recurrenceOf(futureId).lastOccurrenceTaskId, undefined);
+  // The unreachable Space was never touched, and none of its identifiers
+  // appear in the outcome.
+  assert.equal(
+    recurrenceOf(foreignRecurrenceId).lastOccurrenceTaskId,
+    undefined,
+  );
+  assert.equal(
+    tasks.some((task) => task.title === "Private cadence occurrence"),
+    false,
+  );
+  assert.equal(recurrenceOf(pausedId).lastOccurrenceTaskId, undefined);
+
+  // Nothing is due any more, so a second sweep is an honest no-op rather than
+  // a second batch of occurrences.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("sweep-run-again"),
+        commandName: "recurrence.sweep",
+        payload: {},
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+  );
+  assert.equal(
+    harness.store
+      .snapshot()
+      .tasks.filter((task) => task.title === "Daily standup note").length,
+    1,
+  );
 });
