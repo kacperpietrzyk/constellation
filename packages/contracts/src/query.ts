@@ -1381,6 +1381,18 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             startAt: z.iso.datetime({ offset: true }).optional(),
             dueAt: z.iso.datetime({ offset: true }).optional(),
             priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
+            // Time reserved to do the work, distinct from the deadline above,
+            // so a day view can show both without a second query.
+            calendarBlock: z
+              .object({
+                ownedBlockExternalId: z.string(),
+                calendarExternalId: z.string(),
+                revision: z.string(),
+                startsAt: z.iso.datetime({ offset: true }),
+                endsAt: z.iso.datetime({ offset: true }),
+              })
+              .strict()
+              .optional(),
             reasons: z.array(
               z.discriminatedUnion("code", [
                 z

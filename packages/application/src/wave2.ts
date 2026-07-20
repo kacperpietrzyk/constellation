@@ -8161,6 +8161,9 @@ export const executeWave2Query = (
           ...(task.startAt === undefined ? {} : { startAt: task.startAt }),
           ...(task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
           ...(task.priority === undefined ? {} : { priority: task.priority }),
+          ...(task.calendarBlock === undefined
+            ? {}
+            : { calendarBlock: task.calendarBlock }),
           reasons,
           ...(project === undefined ? {} : { relatedProjectId: project.id }),
         };
