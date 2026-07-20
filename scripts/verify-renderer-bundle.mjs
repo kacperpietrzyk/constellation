@@ -36,10 +36,13 @@ import path from "node:path";
 // task.list niesie calendarBlock, doszedl wrapper task.setCalendarBlock, a
 // dialog zgody oddaje rewizje wywolujacemu (Task musi zapisac blok, inaczej
 // nie da sie go pozniej zaktualizowac ani zwolnic).
+// 2026-07-20 (R12.6): sekcja rezerwacji czasu w inspektorze zadania —
+// formularz dnia/godziny/dlugosci, rozstrzyganie celu zapisu z capability
+// kalendarza i osobne komunikaty dla kazdego powodu odmowy.
 const limits = {
   entryBytes: 531_000,
   entryGzipBytes: 143_000,
-  totalJavaScriptBytes: 819_000,
+  totalJavaScriptBytes: 824_000,
   stylesheetBytes: 176_000,
 };
 

@@ -38,6 +38,7 @@ import {
   surfaceShortcutHint,
   type SurfaceShortcutHint,
 } from "./components/ShortcutsOverlay.js";
+import { TaskReservationSection } from "./components/TaskReservationSection.js";
 import { useDismissiblePanel } from "./hooks/useDismissiblePanel.js";
 import {
   AttentionDetail,
@@ -3973,6 +3974,19 @@ export const RealApp = ({
                 </>
               )}
             </section>
+            {client && (
+              <TaskReservationSection
+                client={client}
+                snapshot={state.snapshot}
+                taskId={selectedTask.id}
+                taskVersion={selectedTask.version}
+                taskTitle={selectedTask.title}
+                block={selectedTask.calendarBlock}
+                timeZone={state.snapshot.bootstrap.workspace.timezone}
+                onRecorded={refreshAfter}
+                onFailure={showFailure}
+              />
+            )}
             <section className="inspector-section subtasks-block">
               <p className="section-label">Podzadania</p>
               {selectedTask.parentTaskId !== undefined ? (
