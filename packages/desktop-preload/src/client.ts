@@ -169,6 +169,7 @@ export type StarterWorkspacePreviewResponse =
   | {
       readonly outcome: "failure";
       readonly code: "manifest_invalid" | "unavailable";
+      readonly errors?: readonly string[];
     };
 
 export type StarterWorkspaceImportResponse =
@@ -179,6 +180,7 @@ export type StarterWorkspaceImportResponse =
   | {
       readonly outcome: "failure";
       readonly code: "manifest_invalid" | "import_failed" | "unavailable";
+      readonly errors?: readonly string[];
     };
 
 export type CapturePayloadResponse =
