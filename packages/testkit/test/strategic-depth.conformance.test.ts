@@ -1463,6 +1463,7 @@ it("generates due recurrence occurrences on a sweep without building a backlog",
   const overdueDailyId = uuid();
   const monthEndId = uuid();
   const futureId = uuid();
+  const yearEndId = uuid();
   const pausedId = uuid();
   for (const [key, recurrenceId, cadence, nextDueAt, title] of [
     // Three weeks behind: a naive loop would mint 21 backdated Tasks.
@@ -1480,6 +1481,14 @@ it("generates due recurrence occurrences on a sweep without building a backlog",
       "monthly",
       "2026-01-31T09:00:00.000Z",
       "Month-end close",
+    ],
+    // Crosses a year boundary while rolling forward, clamping on the way.
+    [
+      "sweep-yearend",
+      yearEndId,
+      "monthly",
+      "2025-12-31T09:00:00.000Z",
+      "Year-end carry",
     ],
     [
       "sweep-future",
@@ -1573,7 +1582,7 @@ it("generates due recurrence occurrences on a sweep without building a backlog",
   )
     assert.fail("Expected a recurrence sweep projection");
   // One occurrence per due cadence — never one per missed period.
-  assert.equal(swept.projection.generatedTaskIds.length, 2);
+  assert.equal(swept.projection.generatedTaskIds.length, 3);
   assert.equal(swept.projection.truncated, false);
   // The future cadence is reported as pending; the paused one is not counted
   // at all, because a paused cadence is skipped rather than attempted.
@@ -1598,6 +1607,9 @@ it("generates due recurrence occurrences on a sweep without building a backlog",
   );
   // 31 January monthly clamps into February and keeps advancing from there.
   assert.equal(recurrenceOf(monthEndId).nextDueAt.slice(0, 10), "2026-07-28");
+  // 31 December 2025 monthly rolls across the year boundary and clamps in
+  // February on the way, landing on the same drifted day of month.
+  assert.equal(recurrenceOf(yearEndId).nextDueAt.slice(0, 10), "2026-07-28");
   assert.equal(recurrenceOf(futureId).lastOccurrenceTaskId, undefined);
   // The unreachable Space was never touched, and none of its identifiers
   // appear in the outcome.
