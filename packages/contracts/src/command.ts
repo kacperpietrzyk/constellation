@@ -782,6 +782,14 @@ const SavedViewFiltersSchema = z
     areaIds: z.array(StrategicRecordIdSchema).max(100).optional(),
     initiativeIds: z.array(StrategicRecordIdSchema).max(100).optional(),
     unassigned: z.boolean().optional(),
+    statusIds: z.array(TaskStatusIdSchema).max(50).optional(),
+    assigneePrincipalIds: z.array(PrincipalIdSchema).max(50).optional(),
+    priorities: z
+      .array(z.enum(["urgent", "high", "normal", "low"]))
+      .max(4)
+      .optional(),
+    dueWindow: z.enum(["overdue", "today", "this_week"]).optional(),
+    scheduled: z.boolean().optional(),
   })
   .strict();
 

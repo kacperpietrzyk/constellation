@@ -567,6 +567,11 @@ export type StrategicRecord =
         readonly areaIds?: readonly StrategicRecordId[];
         readonly initiativeIds?: readonly StrategicRecordId[];
         readonly unassigned?: boolean;
+        readonly statusIds?: readonly TaskStatusId[];
+        readonly assigneePrincipalIds?: readonly PrincipalId[];
+        readonly priorities?: readonly TaskPriority[];
+        readonly dueWindow?: "overdue" | "today" | "this_week";
+        readonly scheduled?: boolean;
       };
       readonly sort: "updated_desc" | "due_asc" | "title_asc";
       readonly state: "active" | "deleted";

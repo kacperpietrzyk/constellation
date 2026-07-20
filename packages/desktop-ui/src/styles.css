@@ -8466,6 +8466,12 @@ button.mention-chip:disabled {
   background: var(--surface-pressed);
 }
 
+.view-chip.active {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--surface-selected);
+}
+
 .view-chip:disabled {
   cursor: default;
   opacity: 0.38;

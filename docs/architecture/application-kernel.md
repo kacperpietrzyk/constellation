@@ -216,6 +216,16 @@ historical label — configuration never silently rewrites existing Tasks.
 Completion state remains a separate dimension from workflow status.
 Allowed-transition matrices are deliberately not introduced yet.
 
+Saved work views carry a typed, closed filter vocabulary — operational
+states, workflow statuses, priorities, a deadline window (overdue, today,
+this week in the workspace calendar), scheduled/unscheduled, and
+responsibility including unassigned — plus one deterministic ordering
+(recently updated, nearest deadline with the shared null-ordering
+contract, or alphabetical). Applying a view is an explainable projection
+over the permission-safe work overview: the same filters produce the same
+result every time, and a view that matches nothing says so instead of
+hiding work.
+
 The application-owned rule is deliberately narrow: text becomes a Task, while
 URLs, file references, managed files, and screenshots become knowledge
 sources. Managed payload duplicates use exact content digest and byte length;
