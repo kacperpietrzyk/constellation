@@ -1,3 +1,4 @@
+import type { MeetingLoopSurface } from "@constellation/contracts";
 import type { RendererQueryResponse } from "@constellation/desktop-preload/client";
 
 import { RealApp } from "../RealApp.js";
@@ -413,8 +414,49 @@ const baseClient = createScenarioClient({
 });
 
 let injectedSearchAttempt = 0;
+// R12.6 — the shared scenario fixture reports provider_unavailable, which is
+// the right default and exercises the honest refusal. The cockpit harness
+// overrides it locally so the day composition's meeting rendering can be
+// driven too; overriding the shared fixture would change every other surface.
 const client = {
   ...baseClient,
+  getMeetingLoop: async (): Promise<MeetingLoopSurface> => ({
+    capability: {
+      platform: "macos" as const,
+      provider: "eventkit" as const,
+      availability: "available" as const,
+      canRead: true,
+      canWriteOwnedBlocks: true,
+      detailCode: "harness",
+      defaultWriteCalendarExternalId: "calendar-default",
+    },
+    upcoming: [
+      {
+        event: {
+          provider: "fixture" as const,
+          calendarExternalId: "calendar-default",
+          eventExternalId: "event-1",
+          revision: "rev-1",
+          title: "Przegląd tygodnia z zespołem",
+          startsAt: "2026-07-14T08:00:00.000Z",
+          endsAt: "2026-07-14T09:00:00.000Z",
+          isAllDay: false,
+          attendees: [],
+        },
+        brief: {
+          eventExternalId: "event-1",
+          orientation: [],
+          openLoops: [],
+          relevantSources: [],
+          generatedAt: "2026-07-13T06:00:00.000Z",
+          deterministic: true as const,
+        },
+      },
+    ],
+    completed: [],
+    freshness: "current" as const,
+    generatedAt: "2026-07-13T06:00:00.000Z",
+  }),
   runQuery: async (...parameters: Parameters<typeof baseClient.runQuery>) => {
     const [query] = parameters;
     const searchFailureMode = new URLSearchParams(window.location.search).get(

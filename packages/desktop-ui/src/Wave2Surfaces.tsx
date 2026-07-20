@@ -31,6 +31,7 @@ import {
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
 import { modifierLabel } from "./components/ShortcutsOverlay.js";
+import { calendarReadRefusal } from "./client/calendar-reservation.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
 import {
   countLabel,
@@ -512,6 +513,51 @@ export const CockpitSurface = ({
       active = false;
     };
   }, [client]);
+  // R12.6 / ADR-042 — meetings complete the day composition, and they cannot
+  // come from the kernel: calendar state is deliberately device-local, so the
+  // renderer composes them in beside the kernel-sourced deadlines and blocks.
+  //
+  // The window is the shown week rather than a rolling fortnight, so the
+  // fetched events line up with the days actually rendered.
+  const [weekMeetings, setWeekMeetings] = useState<
+    readonly { readonly startsAt: string; readonly title: string }[]
+  >([]);
+  const [meetingsRefusal, setMeetingsRefusal] = useState<string>();
+  const cockpitWeekStart =
+    cockpit.kind === "ready" ? cockpit.data.weekStart : "";
+  const cockpitWeekEnd = cockpit.kind === "ready" ? cockpit.data.weekEnd : "";
+  useEffect(() => {
+    if (!client?.getMeetingLoop || cockpitWeekStart === "") return;
+    let active = true;
+    void client
+      .getMeetingLoop({
+        from: `${cockpitWeekStart}T00:00:00.000Z`,
+        to: `${cockpitWeekEnd}T23:59:59.999Z`,
+      })
+      .then((surface) => {
+        if (!active) return;
+        const refusal = calendarReadRefusal(surface.capability);
+        setMeetingsRefusal(refusal);
+        setWeekMeetings(
+          refusal !== undefined
+            ? []
+            : surface.upcoming.map((entry) => ({
+                startsAt: entry.event.startsAt,
+                title: entry.event.title,
+              })),
+        );
+      })
+      // The loop being absent is itself an answer, and calendarReadRefusal
+      // words it. Swallowing it would render a week that looks meeting-free.
+      .catch(() => {
+        if (!active) return;
+        setMeetingsRefusal(calendarReadRefusal(undefined));
+        setWeekMeetings([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, cockpitWeekStart, cockpitWeekEnd]);
   // The week plan is the time-oriented composition of the cockpit: real
   // deadlines placed on the days of the shown week, late work first, and an
   // honest note about what has no date at all. It never invents capacity —
@@ -575,6 +621,11 @@ export const CockpitSurface = ({
     (sum, tasks) => sum + tasks.length,
     0,
   );
+  const meetingsByDay = new Map<string, typeof weekMeetings>();
+  for (const meeting of weekMeetings) {
+    const key = dateKeyInTimeZone(new Date(meeting.startsAt), timezone);
+    meetingsByDay.set(key, [...(meetingsByDay.get(key) ?? []), meeting]);
+  }
   const unscheduledCount = openTasks.filter(
     (task) => task.dueAt === undefined,
   ).length;
@@ -589,7 +640,7 @@ export const CockpitSurface = ({
           <div>
             <p className="eyebrow">Plan tygodnia</p>
             <h2 id="week-plan-title">
-              Terminy i zarezerwowany czas dzień po dniu
+              Terminy, spotkania i zarezerwowany czas dzień po dniu
             </h2>
           </div>
           <span>
@@ -646,6 +697,7 @@ export const CockpitSurface = ({
           {weekDays.map((day) => {
             const tasks = dueThisWeek.get(day.key) ?? [];
             const reserved = reservedThisWeek.get(day.key) ?? [];
+            const meetings = meetingsByDay.get(day.key) ?? [];
             return (
               <div
                 key={day.key}
@@ -653,7 +705,9 @@ export const CockpitSurface = ({
               >
                 <h3>{day.label}</h3>
                 {/* A day holding only reserved time is not an empty day. */}
-                {tasks.length === 0 && reserved.length === 0 ? (
+                {tasks.length === 0 &&
+                reserved.length === 0 &&
+                meetings.length === 0 ? (
                   <p className="week-plan-empty" aria-hidden="true">
                     —
                   </p>
@@ -703,10 +757,32 @@ export const CockpitSurface = ({
                     ))}
                   </div>
                 )}
+                {meetings.length > 0 && (
+                  <div
+                    className="week-plan-meetings"
+                    role="group"
+                    aria-label={`Spotkania, ${day.label}`}
+                  >
+                    {meetings.map((meeting) => (
+                      <p
+                        key={`${meeting.startsAt}-${meeting.title}`}
+                        className="week-plan-meeting"
+                      >
+                        <span className="week-plan-block-time">
+                          {formatTime(meeting.startsAt, timezone)}
+                        </span>
+                        {meeting.title}
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
+        {meetingsRefusal !== undefined && (
+          <p className="week-plan-note">{meetingsRefusal}</p>
+        )}
         {unscheduledCount > 0 ? (
           <p className="week-plan-note">
             Bez terminu:{" "}

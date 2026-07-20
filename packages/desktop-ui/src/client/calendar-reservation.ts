@@ -11,6 +11,27 @@ import type { CalendarCapability } from "@constellation/contracts";
 // Kept as a pure function so every refusal path is testable without a browser
 // or a real calendar provider: the interesting cases are all refusals, and
 // they are the ones a surface is most likely to get silently wrong.
+// Reading a calendar and writing to it are separate permissions, so they get
+// separate answers. This one asks only "can meetings be shown here", and
+// returns the reason when they cannot — a day view that silently omits
+// meetings looks like a day with no meetings, which is a lie the owner would
+// plan around.
+export const calendarReadRefusal = (
+  capability: CalendarCapability | undefined,
+): string | undefined => {
+  if (capability === undefined)
+    return "Na tym urządzeniu nie ma obsługiwanego kalendarza, więc spotkania nie są tu widoczne.";
+  if (capability.availability === "permission_required")
+    return "Pokazanie spotkań wymaga dostępu do Kalendarza. Przyznaj uprawnienie w Spotkaniach.";
+  if (capability.availability === "permission_denied")
+    return "Dostęp do Kalendarza jest wyłączony, więc spotkania nie są tu widoczne.";
+  if (capability.availability === "provider_unavailable")
+    return "Provider kalendarza nie jest dostępny, więc spotkania nie są tu widoczne.";
+  if (!capability.canRead)
+    return "Ten kalendarz nie pozwala na odczyt, więc spotkania nie są tu widoczne.";
+  return undefined;
+};
+
 export type ReservationTarget =
   | { readonly kind: "ready"; readonly calendarExternalId: string }
   | { readonly kind: "unavailable"; readonly reason: string };
