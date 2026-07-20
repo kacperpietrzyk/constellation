@@ -986,10 +986,15 @@ const rollForward = (
 ): string => {
   let next = advanceCadence(instant, cadence);
   // Bounded so a corrupt far-past instant can never spin: a daily cadence
-  // three years behind still converges well inside this budget.
+  // five years behind still converges well inside this budget.
   for (let step = 0; step < 2000 && Date.parse(next) <= Date.parse(now); step++)
     next = advanceCadence(next, cadence);
-  return next;
+  // Exhausting the budget must still yield a future instant. Returning a past
+  // one would leave the cadence permanently due, generating one occurrence
+  // every day instead of resuming its real rhythm. Re-anchor on now instead.
+  return Date.parse(next) > Date.parse(now)
+    ? next
+    : advanceCadence(now, cadence);
 };
 
 const appendStrategicJournal = (
@@ -3897,8 +3902,16 @@ export const executeWave2Command = (
             version: record.version + 1,
             updatedAt: occurredAt,
           };
-          if (!transaction.updateStrategicRecord(advanced, record.version))
-            continue;
+          // The Task is already inserted, so skipping here would orphan it and
+          // let the next sweep generate a duplicate for the same period. The
+          // record was read from this same transaction, so a failure is an
+          // invariant violation rather than ordinary contention: fail the whole
+          // sweep and let it roll back, matching project.applyTemplate.
+          if (!transaction.updateStrategicRecord(advanced, record.version)) {
+            return versionConflict(command, occurredAt, {
+              [record.id]: record.version,
+            });
+          }
           generatedTaskIds.push(task.id);
           recordVersions[task.id] = task.version;
           affectedKinds[task.id] = "task";

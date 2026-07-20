@@ -1464,6 +1464,7 @@ it("generates due recurrence occurrences on a sweep without building a backlog",
   const monthEndId = uuid();
   const futureId = uuid();
   const yearEndId = uuid();
+  const ancientId = uuid();
   const pausedId = uuid();
   for (const [key, recurrenceId, cadence, nextDueAt, title] of [
     // Three weeks behind: a naive loop would mint 21 backdated Tasks.
@@ -1496,6 +1497,16 @@ it("generates due recurrence occurrences on a sweep without building a backlog",
       "weekly",
       "2026-09-01T09:00:00.000Z",
       "Not yet due",
+    ],
+    // Far enough behind to exhaust the roll-forward budget: the cadence must
+    // still come back with a future instant rather than staying permanently
+    // due and generating one occurrence every single day.
+    [
+      "sweep-ancient",
+      ancientId,
+      "daily",
+      "2010-01-01T09:00:00.000Z",
+      "Ancient cadence",
     ],
     [
       "sweep-paused",
@@ -1582,7 +1593,7 @@ it("generates due recurrence occurrences on a sweep without building a backlog",
   )
     assert.fail("Expected a recurrence sweep projection");
   // One occurrence per due cadence — never one per missed period.
-  assert.equal(swept.projection.generatedTaskIds.length, 3);
+  assert.equal(swept.projection.generatedTaskIds.length, 4);
   assert.equal(swept.projection.truncated, false);
   // The future cadence is reported as pending; the paused one is not counted
   // at all, because a paused cadence is skipped rather than attempted.
@@ -1610,6 +1621,10 @@ it("generates due recurrence occurrences on a sweep without building a backlog",
   // 31 December 2025 monthly rolls across the year boundary and clamps in
   // February on the way, landing on the same drifted day of month.
   assert.equal(recurrenceOf(yearEndId).nextDueAt.slice(0, 10), "2026-07-28");
+  assert.ok(
+    Date.parse(recurrenceOf(ancientId).nextDueAt) >
+      Date.parse("2026-07-12T00:00:00.000Z"),
+  );
   assert.equal(recurrenceOf(futureId).lastOccurrenceTaskId, undefined);
   // The unreachable Space was never touched, and none of its identifiers
   // appear in the outcome.
