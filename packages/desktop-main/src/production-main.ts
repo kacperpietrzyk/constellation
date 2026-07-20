@@ -31,6 +31,7 @@ import {
   type DesktopWorkspaceCockpitEntry,
 } from "@constellation/desktop-preload/client";
 import {
+  canEditSpace,
   isApplicationWave2ReadView,
   normalizeJamieApiMeeting,
   type DataHomeProvider,
@@ -1222,20 +1223,30 @@ const startProductionDesktop = async (): Promise<void> => {
     recoveredKernel.store.read((view) => {
       if (!isApplicationWave2ReadView(view)) return false;
       const now = Date.now();
+      // The guard mirrors the handler's Space scoping. Without it, a due
+      // cadence in a Space this principal cannot edit would fire a command
+      // that finds nothing to do on every unlock, forever.
       return view
         .listSpaces(recoveredKernel.identity.workspaceId)
-        .some((space) =>
-          view
-            .listStrategicRecords(
+        .some(
+          (space) =>
+            canEditSpace(
+              view,
+              recoveredKernel.context,
               recoveredKernel.identity.workspaceId,
               space.id,
-            )
-            .some(
-              (record) =>
-                record.kind === "recurrence" &&
-                record.state === "active" &&
-                Date.parse(record.nextDueAt) <= now,
-            ),
+            ) &&
+            view
+              .listStrategicRecords(
+                recoveredKernel.identity.workspaceId,
+                space.id,
+              )
+              .some(
+                (record) =>
+                  record.kind === "recurrence" &&
+                  record.state === "active" &&
+                  Date.parse(record.nextDueAt) <= now,
+              ),
         );
     })
   ) {
