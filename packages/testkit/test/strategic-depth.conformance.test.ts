@@ -70,6 +70,8 @@ const context = (): ExecutionContext =>
       "recurrence.sweep",
       "task.setCalendarBlock",
       "task.updateDetails",
+      "task.complete",
+      "task.reopen",
       "project.close",
       "project.reopen",
       "radar.candidateUpsert",
@@ -1733,6 +1735,32 @@ it("reserves time for a Task without touching its deadline", () => {
   );
   assert.deepEqual(taskOf().calendarBlock, block);
   assert.equal(taskOf().dueAt, "2026-07-25T17:00:00.000Z");
+
+  // Completing the work does not release the reservation: the block is a
+  // provider-owned event that outlives the Task's completion state, and
+  // dropping it here would strand a real calendar entry.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("block-complete", { [taskId]: taskOf().version }),
+        commandName: "task.complete",
+        payload: { taskId },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.deepEqual(taskOf().calendarBlock, block);
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("block-reopen", { [taskId]: taskOf().version }),
+        commandName: "task.reopen",
+        payload: { taskId },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.deepEqual(taskOf().calendarBlock, block);
 
   // Releasing the claim clears the descriptor and is undoable to the exact
   // prior block rather than to "some block".
