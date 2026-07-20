@@ -3935,7 +3935,12 @@ export const executeWave2Command = (
         {
           type: "strategic.record_changed",
           workspaceId: command.workspaceId,
-          spaceId: lastRecurrence.spaceId,
+          // A sweep is a workspace-level operation, so it anchors on the root
+          // Space like automation.sweep rather than on whichever cadence the
+          // iteration happened to reach last. An arbitrary Space in the event
+          // header would suggest the sweep was scoped to it. Every touched
+          // record still reports its own version through `affected`.
+          spaceId: workspace.rootSpaceId,
           aggregateId: lastRecurrence.id,
           aggregateVersion: lastRecurrence.version,
           occurredAt,
