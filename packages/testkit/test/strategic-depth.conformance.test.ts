@@ -73,6 +73,7 @@ const context = (): ExecutionContext =>
       "task.complete",
       "task.reopen",
       "cockpit.week",
+      "task.list",
       "project.close",
       "project.reopen",
       "radar.candidateUpsert",
@@ -1825,6 +1826,43 @@ it("reserves time for a Task without touching its deadline", () => {
   assert.deepEqual(focused?.calendarBlock, block);
   // Both facts travel together: the deadline and the time reserved for it.
   assert.equal(focused?.dueAt, "2026-07-25T17:00:00.000Z");
+
+  // task.list carries it too, and that is the projection the Task inspector
+  // actually reads. The cockpit cannot stand in for it: cockpit.week is
+  // week-scoped and capped, so a block reserved outside the current week
+  // would be invisible to a surface trying to show or release it.
+  const listBlock = (): unknown => {
+    const response = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space },
+    } as never);
+    if (response.kind !== "query_result")
+      throw new Error("Expected a task.list result");
+    const result = response.result;
+    if (result.outcome !== "success" || result.projection.kind !== "task.list")
+      assert.fail("Expected a task.list projection");
+    return result.projection.items.find((item) => item.id === taskId)
+      ?.calendarBlock;
+  };
+  assert.deepEqual(listBlock(), block);
+
+  // Releasing the claim removes the key from the projection rather than
+  // leaving a hollow descriptor behind.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("block-release-again", { [taskId]: taskOf().version }),
+        commandName: "task.setCalendarBlock",
+        payload: { taskId, block: null },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(listBlock(), undefined);
 
   // Undoing a first reservation must clear the descriptor, not restore some
   // earlier block — the prior state was "no block at all".

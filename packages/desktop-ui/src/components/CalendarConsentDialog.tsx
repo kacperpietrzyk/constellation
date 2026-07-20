@@ -10,6 +10,13 @@ import { formatWeekdayTime } from "../i18n.js";
 // CalendarBlockDraft — a meeting, and now a Task reserving time — opens the
 // same exact-consent dialog. The consent contract is unchanged: one preview,
 // one single-use token, five-minute expiry, and the concrete save verb.
+//
+// onApplied receives the provider revisions the confirm returned, positionally
+// matching preview.blocks. A meeting-prep block is fire-and-forget and ignores
+// them; a Task must record the revision through task.setCalendarBlock or it
+// owns a block it can never update or release — the whole point of ADR-042.
+// The dialog stays generic by handing the revisions back rather than recording
+// anything itself.
 export const CalendarConsentDialog = ({
   client,
   preview,
@@ -19,7 +26,7 @@ export const CalendarConsentDialog = ({
   readonly client: ConstellationRendererClient;
   readonly preview: CalendarWritePreview;
   readonly onClose: () => void;
-  readonly onApplied: () => void;
+  readonly onApplied: (revisions: readonly string[]) => void;
 }) => {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -110,7 +117,7 @@ export const CalendarConsentDialog = ({
                 })
                 .then((result) => {
                   setBusy(false);
-                  if (result.outcome === "applied") onApplied();
+                  if (result.outcome === "applied") onApplied(result.revisions);
                   else
                     setError(
                       result.code === "stale_revision"

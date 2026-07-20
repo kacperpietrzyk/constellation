@@ -2037,6 +2037,43 @@ export const updateTaskDetails = (
         : undefined,
   );
 
+// R12.6 / ADR-042 — records the calendar block a Task owns, or releases the
+// claim with null. Recording only: the provider write already happened through
+// the exact single-use consent preview, and `revision` is the value that write
+// returned. Callers must pass the task version they read *before* confirming,
+// and must not treat a failure here as a failed reservation — the provider
+// event exists either way.
+export interface TaskCalendarBlockDraft {
+  readonly ownedBlockExternalId: string;
+  readonly calendarExternalId: string;
+  readonly revision: string;
+  readonly startsAt: string;
+  readonly endsAt: string;
+}
+
+export const setTaskCalendarBlock = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  taskId: TaskId,
+  taskVersion: number,
+  block: TaskCalendarBlockDraft | null,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [taskId]: taskVersion,
+      }),
+      commandName: "task.setCalendarBlock",
+      payload: { taskId, block },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "task.details_updated"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export type FieldType =
   | { readonly kind: "text" }
   | { readonly kind: "number" }
