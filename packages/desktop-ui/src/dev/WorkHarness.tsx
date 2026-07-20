@@ -15,6 +15,9 @@ const ids = {
   link1: "00000000-0000-4000-8000-000000000411",
   link2: "00000000-0000-4000-8000-000000000412",
   view: "00000000-0000-4000-8000-000000000413",
+  status2: "00000000-0000-4000-8000-000000000414",
+  segmentField: "00000000-0000-4000-8000-000000000415",
+  view2: "00000000-0000-4000-8000-000000000416",
 } as const;
 
 const now = "2026-07-15T10:00:00.000Z";
@@ -46,6 +49,23 @@ export const workHarnessSnapshot = {
         position: 0,
         version: 1,
       },
+      {
+        id: ids.status2,
+        label: "W przeglądzie",
+        operationalSemantics: "waiting",
+        position: 1,
+        version: 1,
+      },
+    ],
+    fieldDefinitions: [
+      {
+        id: ids.segmentField,
+        targetKind: "task",
+        label: "Segment",
+        type: { kind: "choice", options: ["MSSP", "Enterprise"] },
+        position: 0,
+        version: 1,
+      },
     ],
   },
   captures: [],
@@ -59,18 +79,23 @@ export const workHarnessSnapshot = {
         {
           id: ids.task2,
           title: "Zatwierdzić model treści",
+          statusId: ids.status2,
           operationalState: "waiting",
           waitingOn: {
             kind: "person",
             label: "Kacper · decyzja o nazewnictwie",
           },
           completionState: "open",
+          fields: {
+            [ids.segmentField]: { kind: "choice", value: "MSSP" },
+          },
           version: 2,
           updatedAt: now,
         },
         {
           id: ids.task3,
           title: "Sprawdzić migrację SQLCipher",
+          statusId: ids.status,
           operationalState: "blocked",
           completionState: "open",
           version: 1,
@@ -79,8 +104,12 @@ export const workHarnessSnapshot = {
         {
           id: ids.task1,
           title: "Dowieźć ekran Praca",
+          statusId: ids.status,
           operationalState: "actionable",
           completionState: "open",
+          fields: {
+            [ids.segmentField]: { kind: "choice", value: "MSSP" },
+          },
           version: 1,
           updatedAt: now,
         },
@@ -138,6 +167,22 @@ export const workHarnessSnapshot = {
           name: "Czekam na",
           filters: { operationalStates: ["waiting"] },
           sort: "updated_desc",
+          state: "active",
+          version: 1,
+        },
+        {
+          id: ids.view2,
+          name: "Segment MSSP",
+          filters: {
+            fields: [
+              {
+                fieldId: ids.segmentField,
+                predicate: { kind: "choice_is", option: "MSSP" },
+              },
+            ],
+          },
+          sort: "updated_desc",
+          groupBy: "status",
           state: "active",
           version: 1,
         },

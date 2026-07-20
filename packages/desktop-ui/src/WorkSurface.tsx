@@ -1,4 +1,10 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  Fragment,
+  useMemo,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 
 import type {
   PrincipalId,
@@ -12,6 +18,8 @@ import {
   createArea,
   createInitiative,
   createSavedWorkView,
+  deleteSavedWorkView,
+  renameSavedWorkView,
   createWorkLink,
   setTaskOperationalState,
   type DesktopSnapshot,
@@ -103,6 +111,8 @@ export const WorkSurface = ({
   >({});
   const projection = work.kind === "ready" ? work.data : undefined;
   const [activeViewId, setActiveViewId] = useState<string>();
+  const [viewFieldId, setViewFieldId] = useState("");
+  const [confirmingViewDelete, setConfirmingViewDelete] = useState(false);
   const timeZone = snapshot.bootstrap.workspace.timezone;
   // The applied saved view is a deterministic client-side projection of the
   // already permission-safe work overview: same filters, same order, every
@@ -169,12 +179,72 @@ export const WorkSurface = ({
         if (dueKey !== todayKey) return false;
       } else if (dueKey < weekStartKey || dueKey > weekEndKey) return false;
     }
+    for (const filter of filters.fields ?? []) {
+      const value = task.fields?.[filter.fieldId];
+      if (filter.predicate.kind === "set" && value === undefined) return false;
+      if (filter.predicate.kind === "empty" && value !== undefined)
+        return false;
+      if (
+        filter.predicate.kind === "choice_is" &&
+        (value?.kind !== "choice" || value.value !== filter.predicate.option)
+      )
+        return false;
+    }
     return true;
   };
   const priorityRank = { urgent: 3, high: 2, normal: 1, low: 0 } as const;
+  const priorityLabels = {
+    urgent: "Pilne",
+    high: "Wysoki priorytet",
+    normal: "Normalny priorytet",
+    low: "Niski priorytet",
+  } as const;
+  const groupBy = activeView?.groupBy;
+  // Group order is declared, never inferred: status position, priority rank,
+  // or the definition's option order, with an explicit trailing "Bez
+  // wartości" group. Grouping composes before the view's sort.
+  const groupFor = (
+    task: NonNullable<typeof projection>["tasks"][number],
+  ): { readonly rank: number; readonly label: string } => {
+    if (groupBy === "status") {
+      const index = snapshot.bootstrap.taskStatuses.findIndex(
+        (status) => status.id === task.statusId,
+      );
+      return {
+        rank: index === -1 ? Number.MAX_SAFE_INTEGER : index,
+        label:
+          snapshot.bootstrap.taskStatuses[index]?.label ?? "Status historyczny",
+      };
+    }
+    if (groupBy === "priority") {
+      const priority = task.priority ?? "normal";
+      return {
+        rank: 3 - priorityRank[priority],
+        label: priorityLabels[priority],
+      };
+    }
+    if (groupBy !== undefined) {
+      const definition = (snapshot.bootstrap.fieldDefinitions ?? []).find(
+        (candidate) => candidate.id === groupBy.fieldId,
+      );
+      const value = task.fields?.[groupBy.fieldId];
+      const options =
+        definition?.type.kind === "choice" ? definition.type.options : [];
+      const index =
+        value?.kind === "choice" ? options.indexOf(value.value) : -1;
+      return index === -1
+        ? { rank: Number.MAX_SAFE_INTEGER, label: "Bez wartości" }
+        : { rank: index, label: options[index]! };
+    }
+    return { rank: 0, label: "" };
+  };
   const visibleTasks = (projection?.tasks ?? [])
     .filter(matchesActiveView)
     .toSorted((left, right) => {
+      if (groupBy !== undefined) {
+        const byGroup = groupFor(left).rank - groupFor(right).rank;
+        if (byGroup !== 0) return byGroup;
+      }
       if (activeView?.sort === "title_asc")
         return (
           left.title.localeCompare(right.title, "pl-PL") ||
@@ -339,6 +409,8 @@ export const WorkSurface = ({
     const priority = String(data.get("priority") ?? "");
     const dueWindow = String(data.get("dueWindow") ?? "");
     const assignee = String(data.get("assignee") ?? "");
+    const fieldPredicate = String(data.get("fieldPredicate") ?? "");
+    const group = String(data.get("groupBy") ?? "");
     const sort = String(data.get("sort") ?? "updated_desc") as
       "updated_desc" | "due_asc" | "title_asc";
     if (!client) return;
@@ -375,10 +447,35 @@ export const WorkSurface = ({
             : assignee === "unassigned"
               ? { unassigned: true }
               : { assigneePrincipalIds: [assignee as PrincipalId] }),
+          ...(viewFieldId === "" || fieldPredicate === ""
+            ? {}
+            : {
+                fields: [
+                  {
+                    fieldId: viewFieldId,
+                    predicate:
+                      fieldPredicate === "set"
+                        ? { kind: "set" as const }
+                        : fieldPredicate === "empty"
+                          ? { kind: "empty" as const }
+                          : {
+                              kind: "choice_is" as const,
+                              option: fieldPredicate.slice("opt:".length),
+                            },
+                  },
+                ],
+              }),
         },
         sort,
+        group === ""
+          ? undefined
+          : group === "status" || group === "priority"
+            ? group
+            : { fieldId: group.slice("field:".length) },
       ),
-    );
+    ).then((created) => {
+      if (created) setViewFieldId("");
+    });
   };
   const submitProjectLink = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -489,15 +586,84 @@ export const WorkSurface = ({
               key={view.id}
               className={`view-chip${activeViewId === view.id ? " active" : ""}`}
               aria-pressed={activeViewId === view.id}
-              onClick={() =>
+              onClick={() => {
+                setConfirmingViewDelete(false);
                 setActiveViewId((current) =>
                   current === view.id ? undefined : view.id,
-                )
-              }
+                );
+              }}
             >
               {view.name}
             </button>
           ))
+        )}
+        {activeView !== undefined && (
+          <span className="view-chip-actions">
+            <InlinePopover
+              label="Zmień nazwę"
+              panelLabel="Zmień nazwę widoku"
+              open={openPopover === "view-rename"}
+              onOpenChange={(next) =>
+                setOpenPopover(next ? "view-rename" : undefined)
+              }
+            >
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const name = String(
+                    new FormData(event.currentTarget).get("name") ?? "",
+                  ).trim();
+                  if (!client || name === "" || name === activeView.name)
+                    return;
+                  void run("view-rename", () =>
+                    renameSavedWorkView(
+                      client,
+                      snapshot,
+                      activeView.id,
+                      activeView.version,
+                      name,
+                    ),
+                  );
+                }}
+              >
+                <input
+                  name="name"
+                  aria-label="Nowa nazwa widoku"
+                  defaultValue={activeView.name}
+                  maxLength={200}
+                  required
+                />
+                <button disabled={busyIds.has("view-rename") || !client}>
+                  {busyIds.has("view-rename") ? "Zapisuję…" : "Zapisz nazwę"}
+                </button>
+              </form>
+            </InlinePopover>
+            <button
+              type="button"
+              className="view-chip-remove"
+              disabled={busyIds.has("view-delete") || !client}
+              onClick={() => {
+                if (!confirmingViewDelete) {
+                  setConfirmingViewDelete(true);
+                  return;
+                }
+                setConfirmingViewDelete(false);
+                if (!client) return;
+                void run("view-delete", () =>
+                  deleteSavedWorkView(
+                    client,
+                    snapshot,
+                    activeView.id,
+                    activeView.version,
+                  ),
+                ).then((deleted) => {
+                  if (deleted) setActiveViewId(undefined);
+                });
+              }}
+            >
+              {confirmingViewDelete ? "Potwierdź usunięcie" : "Usuń widok"}
+            </button>
+          </span>
         )}
         <InlinePopover
           label="Zapisz widok"
@@ -559,6 +725,75 @@ export const WorkSurface = ({
                   {candidate.displayName}
                 </option>
               ))}
+            </select>
+            {(snapshot.bootstrap.fieldDefinitions ?? []).some(
+              (definition) =>
+                definition.targetKind === "task" &&
+                definition.state !== "retired",
+            ) && (
+              <>
+                <select
+                  aria-label="Pole"
+                  value={viewFieldId}
+                  onChange={(event) => setViewFieldId(event.target.value)}
+                >
+                  <option value="">Bez warunku pola</option>
+                  {(snapshot.bootstrap.fieldDefinitions ?? [])
+                    .filter(
+                      (definition) =>
+                        definition.targetKind === "task" &&
+                        definition.state !== "retired",
+                    )
+                    .map((definition) => (
+                      <option key={definition.id} value={definition.id}>
+                        {definition.label}
+                      </option>
+                    ))}
+                </select>
+                {viewFieldId !== "" && (
+                  <select
+                    name="fieldPredicate"
+                    aria-label="Warunek pola"
+                    defaultValue="set"
+                  >
+                    <option value="set">Ma wartość</option>
+                    <option value="empty">Puste</option>
+                    {(snapshot.bootstrap.fieldDefinitions ?? [])
+                      .filter(
+                        (definition) =>
+                          definition.id === viewFieldId &&
+                          definition.type.kind === "choice",
+                      )
+                      .flatMap((definition) =>
+                        definition.type.kind === "choice"
+                          ? definition.type.options
+                          : [],
+                      )
+                      .map((option) => (
+                        <option key={option} value={`opt:${option}`}>
+                          = {option}
+                        </option>
+                      ))}
+                  </select>
+                )}
+              </>
+            )}
+            <select name="groupBy" aria-label="Grupowanie" defaultValue="">
+              <option value="">Bez grupowania</option>
+              <option value="status">Według statusu</option>
+              <option value="priority">Według priorytetu</option>
+              {(snapshot.bootstrap.fieldDefinitions ?? [])
+                .filter(
+                  (definition) =>
+                    definition.targetKind === "task" &&
+                    definition.state !== "retired" &&
+                    definition.type.kind === "choice",
+                )
+                .map((definition) => (
+                  <option key={definition.id} value={`field:${definition.id}`}>
+                    Według pola „{definition.label}”
+                  </option>
+                ))}
             </select>
             <select
               name="sort"
@@ -749,6 +984,12 @@ export const WorkSurface = ({
             aria-label="Następne działania"
           >
             {visibleTasks.map((task, index) => {
+              const group = groupBy === undefined ? undefined : groupFor(task);
+              const previous = visibleTasks[index - 1];
+              const groupStarts =
+                group !== undefined &&
+                (previous === undefined ||
+                  groupFor(previous).label !== group.label);
               const dependency = activeLinks.find(
                 (link) =>
                   link.linkType === "task_depends_on_task" &&
@@ -758,189 +999,208 @@ export const WorkSurface = ({
                 (item) => item.id === dependency?.targetRecordId,
               )?.title;
               return (
-                <article
-                  className={`work-task-row state-${task.operationalState}${
-                    task.id === selectedTaskId ? " selected" : ""
-                  }`}
-                  key={task.id}
-                >
-                  <span className="task-state-mark" aria-hidden="true" />
-                  <button
-                    type="button"
-                    className="work-task-copy work-row-copy"
-                    role="option"
-                    aria-selected={task.id === selectedTaskId}
-                    {...taskNav(index)}
-                    onClick={(event) => {
-                      if (event.metaKey || event.ctrlKey) onOpenTask(task.id);
-                      else onSelectTask(task.id);
-                    }}
-                    onDoubleClick={() => onOpenTask(task.id)}
+                <Fragment key={task.id}>
+                  {groupStarts && group !== undefined && (
+                    <div className="work-group-heading" role="presentation">
+                      <span>{group.label}</span>
+                      <small>
+                        {countLabel(
+                          visibleTasks.filter(
+                            (candidate) =>
+                              groupFor(candidate).label === group.label,
+                          ).length,
+                          "zadanie",
+                          "zadania",
+                          "zadań",
+                        )}
+                      </small>
+                    </div>
+                  )}
+                  <article
+                    className={`work-task-row state-${task.operationalState}${
+                      task.id === selectedTaskId ? " selected" : ""
+                    }`}
                   >
-                    <strong>{task.title}</strong>
-                    <span>
-                      {[
-                        task.waitingOn
-                          ? `${
-                              task.waitingOn.direction === "we_owe"
-                                ? "Zobowiązanie: "
-                                : "Czekamy na: "
-                            }${task.waitingOn.label}${
-                              task.waitingOn.expectedAt === undefined
-                                ? ""
-                                : ` · przegląd ${formatDate(
-                                    task.waitingOn.expectedAt,
-                                    snapshot.bootstrap.workspace.timezone,
-                                  )}`
-                            }`
-                          : dependencyTitle
-                            ? `Zależy od: ${dependencyTitle}`
-                            : "Gotowe do podjęcia",
-                        ...(task.dueAt === undefined
-                          ? []
-                          : [
-                              `Termin: ${formatDate(
-                                task.dueAt,
-                                snapshot.bootstrap.workspace.timezone,
-                              )}${
-                                Date.parse(task.dueAt) < Date.now()
-                                  ? " · po terminie"
-                                  : ""
-                              }`,
-                            ]),
-                        ...(task.priority === undefined ||
-                        task.priority === "normal" ||
-                        task.priority === "low"
-                          ? []
-                          : [
-                              task.priority === "urgent"
-                                ? "Pilne"
-                                : "Wysoki priorytet",
-                            ]),
-                      ].join(" · ")}
-                    </span>
-                  </button>
-                  <InlinePopover
-                    label={stateLabel[task.operationalState]}
-                    panelLabel={`Zmień stan zadania: ${task.title}`}
-                    triggerClassName="task-state-trigger"
-                    open={openPopover === `state:${task.id}`}
-                    onOpenChange={(next) =>
-                      setOpenPopover(next ? `state:${task.id}` : undefined)
-                    }
-                  >
-                    <div className="task-state-actions">
-                      <button
-                        type="button"
-                        disabled={busyIds.has(`state:${task.id}`) || !client}
-                        onClick={() => applyTaskState(task, "actionable")}
-                      >
-                        Do działania
-                      </button>
-                      <input
-                        value={
-                          waitingDraft[task.id] ?? task.waitingOn?.label ?? ""
-                        }
-                        onChange={(event) =>
-                          setWaitingDraft((current) => ({
-                            ...current,
-                            [task.id]: event.target.value,
-                          }))
-                        }
-                        placeholder="Na kogo lub co czekasz?"
-                        aria-label={`Powód oczekiwania: ${task.title}`}
-                      />
-                      <select
-                        value={
-                          waitingDirectionDraft[task.id] ??
-                          task.waitingOn?.direction ??
-                          "waiting_on_them"
-                        }
-                        aria-label={`Kierunek oczekiwania: ${task.title}`}
-                        onChange={(event) =>
-                          setWaitingDirectionDraft((current) => ({
-                            ...current,
-                            [task.id]: event.target.value as
-                              "waiting_on_them" | "we_owe",
-                          }))
-                        }
-                      >
-                        <option value="waiting_on_them">Czekamy na nich</option>
-                        <option value="we_owe">Nasze zobowiązanie</option>
-                      </select>
-                      <input
-                        type="date"
-                        value={
-                          waitingExpectedDraft[task.id] ??
-                          (task.waitingOn?.expectedAt === undefined
-                            ? ""
-                            : dateKeyInZone(
-                                task.waitingOn.expectedAt,
-                                snapshot.bootstrap.workspace.timezone,
-                              ))
-                        }
-                        aria-label={`Data przeglądu oczekiwania: ${task.title}`}
-                        onChange={(event) =>
-                          setWaitingExpectedDraft((current) => ({
-                            ...current,
-                            [task.id]: event.target.value,
-                          }))
-                        }
-                      />
-                      <button
-                        type="button"
-                        disabled={
-                          busyIds.has(`state:${task.id}`) ||
-                          !client ||
-                          !(
-                            waitingDraft[task.id] ?? task.waitingOn?.label
-                          )?.trim()
-                        }
-                        onClick={() => {
-                          const expectedDate =
+                    <span className="task-state-mark" aria-hidden="true" />
+                    <button
+                      type="button"
+                      className="work-task-copy work-row-copy"
+                      role="option"
+                      aria-selected={task.id === selectedTaskId}
+                      {...taskNav(index)}
+                      onClick={(event) => {
+                        if (event.metaKey || event.ctrlKey) onOpenTask(task.id);
+                        else onSelectTask(task.id);
+                      }}
+                      onDoubleClick={() => onOpenTask(task.id)}
+                    >
+                      <strong>{task.title}</strong>
+                      <span>
+                        {[
+                          task.waitingOn
+                            ? `${
+                                task.waitingOn.direction === "we_owe"
+                                  ? "Zobowiązanie: "
+                                  : "Czekamy na: "
+                              }${task.waitingOn.label}${
+                                task.waitingOn.expectedAt === undefined
+                                  ? ""
+                                  : ` · przegląd ${formatDate(
+                                      task.waitingOn.expectedAt,
+                                      snapshot.bootstrap.workspace.timezone,
+                                    )}`
+                              }`
+                            : dependencyTitle
+                              ? `Zależy od: ${dependencyTitle}`
+                              : "Gotowe do podjęcia",
+                          ...(task.dueAt === undefined
+                            ? []
+                            : [
+                                `Termin: ${formatDate(
+                                  task.dueAt,
+                                  snapshot.bootstrap.workspace.timezone,
+                                )}${
+                                  Date.parse(task.dueAt) < Date.now()
+                                    ? " · po terminie"
+                                    : ""
+                                }`,
+                              ]),
+                          ...(task.priority === undefined ||
+                          task.priority === "normal" ||
+                          task.priority === "low"
+                            ? []
+                            : [
+                                task.priority === "urgent"
+                                  ? "Pilne"
+                                  : "Wysoki priorytet",
+                              ]),
+                        ].join(" · ")}
+                      </span>
+                    </button>
+                    <InlinePopover
+                      label={stateLabel[task.operationalState]}
+                      panelLabel={`Zmień stan zadania: ${task.title}`}
+                      triggerClassName="task-state-trigger"
+                      open={openPopover === `state:${task.id}`}
+                      onOpenChange={(next) =>
+                        setOpenPopover(next ? `state:${task.id}` : undefined)
+                      }
+                    >
+                      <div className="task-state-actions">
+                        <button
+                          type="button"
+                          disabled={busyIds.has(`state:${task.id}`) || !client}
+                          onClick={() => applyTaskState(task, "actionable")}
+                        >
+                          Do działania
+                        </button>
+                        <input
+                          value={
+                            waitingDraft[task.id] ?? task.waitingOn?.label ?? ""
+                          }
+                          onChange={(event) =>
+                            setWaitingDraft((current) => ({
+                              ...current,
+                              [task.id]: event.target.value,
+                            }))
+                          }
+                          placeholder="Na kogo lub co czekasz?"
+                          aria-label={`Powód oczekiwania: ${task.title}`}
+                        />
+                        <select
+                          value={
+                            waitingDirectionDraft[task.id] ??
+                            task.waitingOn?.direction ??
+                            "waiting_on_them"
+                          }
+                          aria-label={`Kierunek oczekiwania: ${task.title}`}
+                          onChange={(event) =>
+                            setWaitingDirectionDraft((current) => ({
+                              ...current,
+                              [task.id]: event.target.value as
+                                "waiting_on_them" | "we_owe",
+                            }))
+                          }
+                        >
+                          <option value="waiting_on_them">
+                            Czekamy na nich
+                          </option>
+                          <option value="we_owe">Nasze zobowiązanie</option>
+                        </select>
+                        <input
+                          type="date"
+                          value={
                             waitingExpectedDraft[task.id] ??
                             (task.waitingOn?.expectedAt === undefined
                               ? ""
                               : dateKeyInZone(
                                   task.waitingOn.expectedAt,
                                   snapshot.bootstrap.workspace.timezone,
-                                ));
-                          const expectedAt =
-                            expectedDate === ""
-                              ? undefined
-                              : instantForZonedDate(
-                                  expectedDate,
-                                  snapshot.bootstrap.workspace.timezone,
-                                  "end",
-                                );
-                          applyTaskState(
-                            task,
-                            "waiting",
-                            waitingDraft[task.id] ?? task.waitingOn?.label,
-                            {
-                              direction:
-                                waitingDirectionDraft[task.id] ??
-                                task.waitingOn?.direction ??
-                                "waiting_on_them",
-                              ...(expectedAt === undefined
-                                ? {}
-                                : { expectedAt }),
-                            },
-                          );
-                        }}
-                      >
-                        Ustaw oczekiwanie
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busyIds.has(`state:${task.id}`) || !client}
-                        onClick={() => applyTaskState(task, "blocked")}
-                      >
-                        Zablokowane
-                      </button>
-                    </div>
-                  </InlinePopover>
-                </article>
+                                ))
+                          }
+                          aria-label={`Data przeglądu oczekiwania: ${task.title}`}
+                          onChange={(event) =>
+                            setWaitingExpectedDraft((current) => ({
+                              ...current,
+                              [task.id]: event.target.value,
+                            }))
+                          }
+                        />
+                        <button
+                          type="button"
+                          disabled={
+                            busyIds.has(`state:${task.id}`) ||
+                            !client ||
+                            !(
+                              waitingDraft[task.id] ?? task.waitingOn?.label
+                            )?.trim()
+                          }
+                          onClick={() => {
+                            const expectedDate =
+                              waitingExpectedDraft[task.id] ??
+                              (task.waitingOn?.expectedAt === undefined
+                                ? ""
+                                : dateKeyInZone(
+                                    task.waitingOn.expectedAt,
+                                    snapshot.bootstrap.workspace.timezone,
+                                  ));
+                            const expectedAt =
+                              expectedDate === ""
+                                ? undefined
+                                : instantForZonedDate(
+                                    expectedDate,
+                                    snapshot.bootstrap.workspace.timezone,
+                                    "end",
+                                  );
+                            applyTaskState(
+                              task,
+                              "waiting",
+                              waitingDraft[task.id] ?? task.waitingOn?.label,
+                              {
+                                direction:
+                                  waitingDirectionDraft[task.id] ??
+                                  task.waitingOn?.direction ??
+                                  "waiting_on_them",
+                                ...(expectedAt === undefined
+                                  ? {}
+                                  : { expectedAt }),
+                              },
+                            );
+                          }}
+                        >
+                          Ustaw oczekiwanie
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busyIds.has(`state:${task.id}`) || !client}
+                          onClick={() => applyTaskState(task, "blocked")}
+                        >
+                          Zablokowane
+                        </button>
+                      </div>
+                    </InlinePopover>
+                  </article>
+                </Fragment>
               );
             })}
           </div>

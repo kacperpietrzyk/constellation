@@ -333,6 +333,9 @@ const isCurrentlyAuthorized = (
     case "work.linkCreate":
     case "work.linkRemove":
     case "savedView.create":
+    case "savedView.rename":
+    case "savedView.update":
+    case "savedView.delete":
     case "recurrence.create":
     case "recurrence.generateOccurrence":
     case "project.close":
@@ -689,6 +692,9 @@ export class ApplicationKernel {
       case "work.linkCreate":
       case "work.linkRemove":
       case "savedView.create":
+      case "savedView.rename":
+      case "savedView.update":
+      case "savedView.delete":
       case "recurrence.create":
       case "recurrence.generateOccurrence":
       case "project.close":

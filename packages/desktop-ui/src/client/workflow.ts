@@ -1271,7 +1271,17 @@ export interface SavedWorkViewFilters {
   readonly priorities?: readonly ("urgent" | "high" | "normal" | "low")[];
   readonly dueWindow?: "overdue" | "today" | "this_week";
   readonly scheduled?: boolean;
+  readonly fields?: readonly {
+    readonly fieldId: string;
+    readonly predicate:
+      | { readonly kind: "choice_is"; readonly option: string }
+      | { readonly kind: "set" }
+      | { readonly kind: "empty" };
+  }[];
 }
+
+export type SavedWorkViewGroupBy =
+  "status" | "priority" | { readonly fieldId: string };
 
 export const createSavedWorkView = (
   client: ConstellationRendererClient,
@@ -1279,6 +1289,7 @@ export const createSavedWorkView = (
   name: string,
   filters: SavedWorkViewFilters,
   sort: "updated_desc" | "due_asc" | "title_asc" = "updated_desc",
+  groupBy?: SavedWorkViewGroupBy,
 ) => {
   const savedViewId = crypto.randomUUID() as StrategicRecordId;
   return execute(
@@ -1292,6 +1303,7 @@ export const createSavedWorkView = (
         name,
         filters,
         sort,
+        ...(groupBy === undefined ? {} : { groupBy }),
       },
     },
     (response) =>
@@ -1301,6 +1313,51 @@ export const createSavedWorkView = (
         : undefined,
   );
 };
+
+export const renameSavedWorkView = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  savedViewId: string,
+  savedViewVersion: number,
+  name: string,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [savedViewId]: savedViewVersion,
+      }),
+      commandName: "savedView.rename",
+      payload: { savedViewId, name },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const deleteSavedWorkView = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  savedViewId: string,
+  savedViewVersion: number,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [savedViewId]: savedViewVersion,
+      }),
+      commandName: "savedView.delete",
+      payload: { savedViewId },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
 
 export const createWorkLink = (
   client: ConstellationRendererClient,

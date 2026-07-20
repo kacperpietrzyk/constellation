@@ -792,8 +792,34 @@ const SavedViewFiltersSchema = z
       .optional(),
     dueWindow: z.enum(["overdue", "today", "this_week"]).optional(),
     scheduled: z.boolean().optional(),
+    fields: z
+      .array(
+        z
+          .object({
+            fieldId: FieldDefinitionIdSchema,
+            predicate: z.discriminatedUnion("kind", [
+              z
+                .object({
+                  kind: z.literal("choice_is"),
+                  option: z.string().min(1).max(120),
+                })
+                .strict(),
+              z.object({ kind: z.literal("set") }).strict(),
+              z.object({ kind: z.literal("empty") }).strict(),
+            ]),
+          })
+          .strict(),
+      )
+      .max(8)
+      .optional(),
   })
   .strict();
+
+const SavedViewGroupBySchema = z.union([
+  z.literal("status"),
+  z.literal("priority"),
+  z.object({ fieldId: FieldDefinitionIdSchema }).strict(),
+]);
 
 export const SavedViewCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("savedView.create"),
@@ -804,8 +830,43 @@ export const SavedViewCreateCommandSchema = CommandMetadataSchema.extend({
       name: z.string().trim().min(1).max(200),
       filters: SavedViewFiltersSchema,
       sort: z.enum(["updated_desc", "due_asc", "title_asc"]),
+      groupBy: SavedViewGroupBySchema.optional(),
     })
     .strict(),
+}).strict();
+
+export const SavedViewRenameCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("savedView.rename"),
+  payload: z
+    .object({
+      savedViewId: StrategicRecordIdSchema,
+      name: z.string().trim().min(1).max(200),
+    })
+    .strict(),
+}).strict();
+
+export const SavedViewUpdateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("savedView.update"),
+  payload: z
+    .object({
+      savedViewId: StrategicRecordIdSchema,
+      filters: SavedViewFiltersSchema.optional(),
+      sort: z.enum(["updated_desc", "due_asc", "title_asc"]).optional(),
+      groupBy: SavedViewGroupBySchema.nullable().optional(),
+    })
+    .strict()
+    .refine(
+      (payload) =>
+        payload.filters !== undefined ||
+        payload.sort !== undefined ||
+        payload.groupBy !== undefined,
+      { message: "savedView.update requires at least one change." },
+    ),
+}).strict();
+
+export const SavedViewDeleteCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("savedView.delete"),
+  payload: z.object({ savedViewId: StrategicRecordIdSchema }).strict(),
 }).strict();
 
 export const RecurrenceCreateCommandSchema = CommandMetadataSchema.extend({
@@ -1337,6 +1398,9 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   WorkLinkCreateCommandSchema,
   WorkLinkRemoveCommandSchema,
   SavedViewCreateCommandSchema,
+  SavedViewRenameCommandSchema,
+  SavedViewUpdateCommandSchema,
+  SavedViewDeleteCommandSchema,
   RecurrenceCreateCommandSchema,
   RecurrenceGenerateOccurrenceCommandSchema,
   ProjectCloseCommandSchema,

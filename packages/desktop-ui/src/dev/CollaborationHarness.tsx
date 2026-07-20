@@ -86,6 +86,16 @@ const client = createScenarioClient({
           version: 1,
         },
       ],
+      fieldDefinitions: [
+        {
+          id: "00000000-0000-4000-8000-0000000000e1",
+          targetKind: "task",
+          label: "Segment",
+          type: { kind: "choice", options: ["MSSP", "Enterprise"] },
+          position: 0,
+          version: 1,
+        },
+      ],
       projectTemplates: [
         {
           id: "00000000-0000-4000-8000-0000000000c1",
@@ -126,6 +136,53 @@ const client = createScenarioClient({
         },
       ],
       nextCursor: null,
+    }),
+    "work.overview": result({
+      kind: "work.overview",
+      tasks: [
+        {
+          id: taskId,
+          title: "Potwierdź wariant recovery",
+          statusId,
+          operationalState: "actionable",
+          completionState: "open",
+          fields: {
+            "00000000-0000-4000-8000-0000000000e1": {
+              kind: "choice",
+              value: "MSSP",
+            },
+          },
+          version: 3,
+          updatedAt: "2026-07-14T11:30:00.000Z",
+        },
+      ],
+      projects: [],
+      areas: [],
+      initiatives: [],
+      links: [],
+      savedViews: [
+        {
+          id: "00000000-0000-4000-8000-0000000000e2",
+          name: "Segment MSSP",
+          filters: {
+            fields: [
+              {
+                fieldId: "00000000-0000-4000-8000-0000000000e1",
+                predicate: { kind: "choice_is", option: "MSSP" },
+              },
+            ],
+          },
+          sort: "updated_desc",
+          groupBy: "status",
+          state: "active",
+          version: 1,
+        },
+      ],
+      freshness: {
+        mode: "local_authoritative",
+        checkpoint: null,
+        missingCapabilities: [],
+      },
     }),
     "project.list": result({
       kind: "project.list",

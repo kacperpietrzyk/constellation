@@ -1193,6 +1193,7 @@ export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
           "project.unapply_template",
           "task.restore_operational_state",
           "work_link.restore_state",
+          "savedView.restore_definition",
           "relation.remove",
           "relation.restore",
           "capture.undo_route",

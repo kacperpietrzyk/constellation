@@ -545,6 +545,28 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             dueAt: z.iso.datetime({ offset: true }).optional(),
             priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
             parentTaskId: TaskIdSchema.optional(),
+            fields: z
+              .record(
+                z.string(),
+                z.discriminatedUnion("kind", [
+                  z
+                    .object({ kind: z.literal("text"), value: z.string() })
+                    .strict(),
+                  z
+                    .object({ kind: z.literal("number"), value: z.number() })
+                    .strict(),
+                  z
+                    .object({
+                      kind: z.literal("date"),
+                      value: z.iso.datetime({ offset: true }),
+                    })
+                    .strict(),
+                  z
+                    .object({ kind: z.literal("choice"), value: z.string() })
+                    .strict(),
+                ]),
+              )
+              .optional(),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
           })
@@ -624,9 +646,35 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
                   .optional(),
                 dueWindow: z.enum(["overdue", "today", "this_week"]).optional(),
                 scheduled: z.boolean().optional(),
+                fields: z
+                  .array(
+                    z
+                      .object({
+                        fieldId: FieldDefinitionIdSchema,
+                        predicate: z.discriminatedUnion("kind", [
+                          z
+                            .object({
+                              kind: z.literal("choice_is"),
+                              option: z.string(),
+                            })
+                            .strict(),
+                          z.object({ kind: z.literal("set") }).strict(),
+                          z.object({ kind: z.literal("empty") }).strict(),
+                        ]),
+                      })
+                      .strict(),
+                  )
+                  .optional(),
               })
               .strict(),
             sort: z.enum(["updated_desc", "due_asc", "title_asc"]),
+            groupBy: z
+              .union([
+                z.literal("status"),
+                z.literal("priority"),
+                z.object({ fieldId: FieldDefinitionIdSchema }).strict(),
+              ])
+              .optional(),
             state: z.enum(["active", "deleted"]),
             version: z.int().positive(),
           })
@@ -1432,6 +1480,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           "project.unapply_template",
           "task.restore_operational_state",
           "work_link.restore_state",
+          "savedView.restore_definition",
           "relation.remove",
           "relation.restore",
           "capture.undo_route",
