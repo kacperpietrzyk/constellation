@@ -359,6 +359,7 @@ const isCurrentlyAuthorized = (
     case "automation.rename":
     case "automation.setState":
     case "automation.sweep":
+    case "recurrence.sweep":
     case "project.applyTemplate":
     case "fieldDef.create":
     case "fieldDef.rename":
@@ -726,6 +727,7 @@ export class ApplicationKernel {
       case "automation.rename":
       case "automation.setState":
       case "automation.sweep":
+      case "recurrence.sweep":
       case "fieldDef.create":
       case "fieldDef.rename":
       case "fieldDef.archive":

@@ -65,6 +65,7 @@ Commands:
 - `savedView.create`
 - `recurrence.create`
 - `recurrence.generateOccurrence`
+- `recurrence.sweep`
 - `project.close`
 - `project.reopen`
 - `radar.candidateUpsert`
@@ -191,6 +192,19 @@ never enters the calendar-consent path. `startAt` may not exceed `dueAt`;
 existing Tasks remain unscheduled rather than inheriting fabricated dates.
 Imported timing is preserved: a recurrence occurrence inherits the due moment
 it was generated for and a renewal follow-up carries its review deadline.
+
+Recurring work advances on its own. `recurrence.sweep` runs once per unlocked
+day under a maintenance origin, generates an occurrence for every active
+cadence whose next due instant has passed, and rolls that instant forward. A
+missed stretch produces exactly one current occurrence per cadence rather than
+a backdated backlog, so a fortnight away yields one honestly overdue item
+instead of fourteen. Cadence arithmetic is UTC and clamps a day-of-month the
+target month lacks to that month's last day, which means a month-end cadence
+still fires every month and settles on the 28th once it has passed through
+February. Paused and ended cadences are skipped rather than attempted. The
+sweep is bounded to 50 occurrences per run as a rate limit; because each
+generation advances its cadence, successive runs make forward progress.
+`recurrence.generateOccurrence` remains the precise manual path for one record.
 `task.list` supports a tested due-aware ordering (`due_asc`: scheduled first
 by deadline, then priority, creation time, and id; unscheduled follow
 deterministically) plus status, priority, scheduled, and due-range filters

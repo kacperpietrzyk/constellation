@@ -31,6 +31,7 @@ import {
   type DesktopWorkspaceCockpitEntry,
 } from "@constellation/desktop-preload/client";
 import {
+  isApplicationWave2ReadView,
   normalizeJamieApiMeeting,
   type DataHomeProvider,
 } from "@constellation/application";
@@ -1205,6 +1206,58 @@ const startProductionDesktop = async (): Promise<void> => {
       commandId: randomUUID(),
       workspaceId: recoveredKernel.identity.workspaceId,
       idempotencyKey: `automation-sweep:${new Date().toISOString().slice(0, 10)}`,
+      expectedVersions: {},
+      correlationId: randomUUID(),
+      payload: {},
+    });
+  }
+
+  // One recurrence sweep per unlocked day, on the same rhythm and for the same
+  // reason: recurring work should advance without the owner remembering to ask
+  // for it. Guarded on a due cadence existing so an ordinary launch does no
+  // work, and made replay-safe by the daily idempotency key. A missed stretch
+  // produces one current occurrence per cadence, not a backlog (ADR-041 §3).
+  if (
+    recoveredKernel !== undefined &&
+    recoveredKernel.store.read((view) => {
+      if (!isApplicationWave2ReadView(view)) return false;
+      const now = Date.now();
+      return view
+        .listSpaces(recoveredKernel.identity.workspaceId)
+        .some((space) =>
+          view
+            .listStrategicRecords(
+              recoveredKernel.identity.workspaceId,
+              space.id,
+            )
+            .some(
+              (record) =>
+                record.kind === "recurrence" &&
+                record.state === "active" &&
+                Date.parse(record.nextDueAt) <= now,
+            ),
+        );
+    })
+  ) {
+    createRuntimeKernelService({
+      context: {
+        ...recoveredKernel.context,
+        capabilityScope: [
+          ...new Set([
+            ...recoveredKernel.context.capabilityScope,
+            "recurrence.sweep" as const,
+            "task.create" as const,
+          ]),
+        ],
+        origin: "maintenance",
+      },
+      store: recoveredKernel.store,
+    }).execute({
+      contractVersion: 1,
+      commandName: "recurrence.sweep",
+      commandId: randomUUID(),
+      workspaceId: recoveredKernel.identity.workspaceId,
+      idempotencyKey: `recurrence-sweep:${new Date().toISOString().slice(0, 10)}`,
       expectedVersions: {},
       correlationId: randomUUID(),
       payload: {},

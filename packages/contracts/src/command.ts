@@ -1213,6 +1213,13 @@ export const AutomationSweepCommandSchema = CommandMetadataSchema.extend({
   payload: z.object({}).strict(),
 }).strict();
 
+// R12.7 / ADR-041 — scheduled recurrence generation. Mirrors automation.sweep:
+// empty payload, no optimistic lock, bounded work, one journal entry.
+export const RecurrenceSweepCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("recurrence.sweep"),
+  payload: z.object({}).strict(),
+}).strict();
+
 export const ProjectApplyTemplateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("project.applyTemplate"),
   payload: z
@@ -1531,6 +1538,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   AutomationRenameCommandSchema,
   AutomationSetStateCommandSchema,
   AutomationSweepCommandSchema,
+  RecurrenceSweepCommandSchema,
   TemplateRenameCommandSchema,
   TemplateUpdateContentsCommandSchema,
   TemplateArchiveCommandSchema,
