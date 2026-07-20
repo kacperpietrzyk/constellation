@@ -36,6 +36,9 @@ import {
   type QueryEnvelope,
   type QueryResult,
   type SpaceId,
+  type WorkspaceId,
+  type TaskId,
+  type ProjectId,
   type CaptureOriginal,
   type CaptureId,
   type CaptureReviewReason,
@@ -72,9 +75,11 @@ import {
 
 import {
   isApplicationWave2Transaction,
+  isApplicationWave2ReadView,
   RetryableUnitOfWorkError,
   type ApplicationKernelDependencies,
   type ApplicationReadView,
+  type ApplicationWave2ReadView,
   type ApplicationTransaction,
   type ApplicationWave2Transaction,
   type CurrentAuthorizationPolicy,
@@ -2930,6 +2935,69 @@ export class ApplicationKernel {
     });
   }
 
+  // R13.5 / ADR-044 — evaluate relation-path conditions into an allow-set of
+  // Task ids. Conditions AND together; within a condition the match is
+  // existential (a task matches when any project it is related to satisfies
+  // the predicate). Slice 1 carries the one-hop `project` path; the two-hop
+  // paths extend the predicate resolution here without changing this join.
+  private evaluateRelationConditions(
+    view: ApplicationWave2ReadView,
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    conditions: NonNullable<
+      Extract<
+        QueryEnvelope,
+        { queryName: "task.list" }
+      >["parameters"]["relationConditions"]
+    >,
+  ): ReadonlySet<TaskId> {
+    const relations = view.listRelations(workspaceId, spaceId);
+    let allowed: Set<TaskId> | undefined;
+    for (const condition of conditions) {
+      const matchingProjectIds = this.projectsMatchingCondition(
+        view,
+        workspaceId,
+        spaceId,
+        condition,
+      );
+      const tasksForCondition = new Set<TaskId>();
+      for (const relation of relations) {
+        if (matchingProjectIds.has(relation.projectId))
+          tasksForCondition.add(relation.taskId);
+      }
+      allowed =
+        allowed === undefined
+          ? tasksForCondition
+          : new Set(
+              [...allowed].filter((taskId) => tasksForCondition.has(taskId)),
+            );
+    }
+    return allowed ?? new Set<TaskId>();
+  }
+
+  private projectsMatchingCondition(
+    view: ApplicationWave2ReadView,
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    condition: NonNullable<
+      Extract<
+        QueryEnvelope,
+        { queryName: "task.list" }
+      >["parameters"]["relationConditions"]
+    >[number],
+  ): ReadonlySet<ProjectId> {
+    // condition.path === "project" — the one-hop terminus is the Project.
+    if (condition.predicate.field === "id")
+      return new Set(condition.predicate.in);
+    const lifecycle = condition.predicate.equals;
+    return new Set(
+      view
+        .listProjects(workspaceId, spaceId)
+        .filter((project) => project.lifecycle === lifecycle)
+        .map((project) => project.id),
+    );
+  }
+
   private taskList(
     view: ApplicationReadView,
     context: ExecutionContext,
@@ -2964,7 +3032,26 @@ export class ApplicationKernel {
     }
 
     const order = query.parameters.orderBy ?? "created_desc";
+    // R13.5 / ADR-044 — relation-path conditions evaluate here, kernel-side,
+    // into an allow-set of Task ids. Threading them as a task-intrinsic filter
+    // (rather than post-filtering a drawn page) keeps pagination correct.
+    // undefined means "no relation conditions"; an empty set means "conditions
+    // present but nothing matched", which must still constrain the result.
+    let taskIdAllowList: ReadonlySet<TaskId> | undefined;
+    if (query.parameters.relationConditions !== undefined) {
+      // Honest-or-error (ADR-044 §4): if the read view cannot resolve
+      // relations, the filter is refused rather than silently ignored.
+      if (!isApplicationWave2ReadView(view))
+        return this.queryRejected(query, kernelTime, "query.not_available");
+      taskIdAllowList = this.evaluateRelationConditions(
+        view,
+        query.workspaceId,
+        query.parameters.spaceId,
+        query.parameters.relationConditions,
+      );
+    }
     const filters = {
+      ...(taskIdAllowList === undefined ? {} : { taskIdAllowList }),
       ...(query.parameters.statusIds === undefined
         ? {}
         : { statusIds: query.parameters.statusIds }),

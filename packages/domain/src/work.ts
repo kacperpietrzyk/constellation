@@ -160,12 +160,22 @@ export interface TaskListFilters {
   readonly scheduled?: boolean;
   readonly dueBefore?: string;
   readonly dueAfter?: string;
+  // R13.5 / ADR-044 — an allow-set of Task ids the kernel computed by
+  // evaluating relation-path conditions. It stays a task-intrinsic membership
+  // test (task.id ∈ set) so pagination is applied over the already-constrained
+  // set rather than filtered after a page is drawn.
+  readonly taskIdAllowList?: ReadonlySet<TaskId>;
 }
 
 export const taskMatchesFilters = (
   task: Task,
   filters: TaskListFilters,
 ): boolean => {
+  if (
+    filters.taskIdAllowList !== undefined &&
+    !filters.taskIdAllowList.has(task.id)
+  )
+    return false;
   if (
     filters.statusIds !== undefined &&
     !filters.statusIds.includes(task.statusId)

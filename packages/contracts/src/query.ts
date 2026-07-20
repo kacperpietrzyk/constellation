@@ -106,6 +106,40 @@ export const TaskListQuerySchema = QueryMetadataSchema.extend({
       scheduled: z.boolean().optional(),
       dueBefore: z.iso.datetime({ offset: true }).optional(),
       dueAfter: z.iso.datetime({ offset: true }).optional(),
+      // R13.5 / ADR-044 — typed relation-path conditions, a closed vocabulary
+      // rather than a query language. Each names a bounded path from the Task
+      // and a predicate on the record at its end; the kernel evaluates them,
+      // and an unknown path or field is a parse-time rejection, never a
+      // silently-dropped filter. Slice 1 carries the one-hop `project` path;
+      // the two-hop paths (project.area / project.initiative /
+      // project.organization) extend this same union in slice 2.
+      relationConditions: z
+        .array(
+          z.discriminatedUnion("path", [
+            z
+              .object({
+                path: z.literal("project"),
+                predicate: z.discriminatedUnion("field", [
+                  z
+                    .object({
+                      field: z.literal("id"),
+                      in: z.array(ProjectIdSchema).min(1).max(50),
+                    })
+                    .strict(),
+                  z
+                    .object({
+                      field: z.literal("lifecycle"),
+                      equals: z.enum(["active", "closed"]),
+                    })
+                    .strict(),
+                ]),
+              })
+              .strict(),
+          ]),
+        )
+        .min(1)
+        .max(10)
+        .optional(),
     })
     .strict(),
 }).strict();
