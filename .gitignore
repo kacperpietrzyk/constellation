@@ -62,3 +62,6 @@ logs/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Local Playwright MCP verification artifacts (snapshots, console logs, shots)
+.playwright-mcp/

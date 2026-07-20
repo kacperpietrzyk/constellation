@@ -4,6 +4,7 @@ import {
   PrincipalIdSchema,
   ProjectIdSchema,
   SpaceIdSchema,
+  StrategicRecordIdSchema,
   TaskIdSchema,
   WorkspaceIdSchema,
 } from "./ids.js";
@@ -274,6 +275,8 @@ export const MeetingWorkItemSchema = z
     responsibilityOverride:
       MeetingWorkItemResponsibilityOverrideSchema.optional(),
     sourceValueInConflict: z.string().max(4000).optional(),
+    // Source due instant, carried onto the Task at promotion (ADR-040 §3).
+    dueAt: z.iso.datetime({ offset: true }).optional(),
     taskId: TaskIdSchema.optional(),
     projectId: ProjectIdSchema.optional(),
     version: z.int().positive(),
@@ -294,15 +297,22 @@ export const ImportedMeetingSchema = z
     calendarEventId: z.string().optional(),
     summaryMarkdown: z.string().optional(),
     transcriptMarkdown: z.string().optional(),
+    // `personId` is workspace-owned, not source-owned: it is written only by
+    // meeting.linkParticipants and carried across re-import (ADR-040 §5).
     participants: z.array(
       z
         .object({
           externalId: z.string(),
           name: z.string(),
           email: z.email().optional(),
+          personId: StrategicRecordIdSchema.optional(),
         })
         .strict(),
     ),
+    // Meeting-level routing, replacing the first-editable-Space placement as
+    // the only expression of where a meeting belongs (ADR-040 §2).
+    projectId: ProjectIdSchema.optional(),
+    organizationId: StrategicRecordIdSchema.optional(),
     workItems: z.array(MeetingWorkItemSchema),
     contentHash: z.string().regex(/^[a-f0-9]{64}$/),
     triage: z.enum(["ready", "partial", "conflicted", "needs_review"]),

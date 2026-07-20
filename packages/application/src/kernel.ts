@@ -343,6 +343,9 @@ const isCurrentlyAuthorized = (
     case "radar.candidateUpsert":
     case "radar.resolve":
     case "meeting.upsertImported":
+    case "meeting.route":
+    case "meeting.promoteWorkItem":
+    case "meeting.linkParticipants":
     case "project.updateOutcome":
     case "task.create":
     case "task.updateDetails":
@@ -706,6 +709,9 @@ export class ApplicationKernel {
       case "radar.candidateUpsert":
       case "radar.resolve":
       case "meeting.upsertImported":
+      case "meeting.route":
+      case "meeting.promoteWorkItem":
+      case "meeting.linkParticipants":
       case "project.updateOutcome":
       case "task.create":
       case "task.updateDetails":

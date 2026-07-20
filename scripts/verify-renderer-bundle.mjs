@@ -29,11 +29,14 @@ import path from "node:path";
 // 2026-07-20 (R13.4): entry i totalJavaScript po ograniczonych
 // automatyzacjach (blok reguł w Ustawieniach z zamkniętym słownikiem
 // przepisów, wrappery automation.*, etykieta nowego powodu Do uwagi).
+// 2026-07-20 (R12.5): totalJavaScript i stylesheet po projekcji spotkania w
+// graf pracy (sekcje kontekstu i uczestnikow w inspektorze, akcja tworzenia
+// zadania z zapisu, wrappery meeting.route/promoteWorkItem/linkParticipants).
 const limits = {
   entryBytes: 531_000,
   entryGzipBytes: 143_000,
-  totalJavaScriptBytes: 814_000,
-  stylesheetBytes: 174_000,
+  totalJavaScriptBytes: 818_000,
+  stylesheetBytes: 176_000,
 };
 
 const dist = path.join(process.cwd(), "packages", "desktop-ui", "dist");
