@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
 
-import type { ApplicationCommandResponse } from "@constellation/application";
+import {
+  isApplicationWave2Transaction,
+  type ApplicationCommandResponse,
+} from "@constellation/application";
 import {
   ExecutionContextSchema,
+  SpaceGrantIdSchema,
+  SpaceIdSchema,
   type CommandOutcome,
   type ExecutionContext,
 } from "@constellation/contracts";
@@ -66,6 +71,11 @@ const context = (): ExecutionContext =>
       "radar.resolve",
       "radar.review",
       "meeting.upsertImported",
+      "meeting.route",
+      "meeting.promoteWorkItem",
+      "meeting.linkParticipants",
+      "task.create",
+      "relationship.personCreate",
       "knowledge.sourceCreate",
       "document.create",
       "project.create",
@@ -1049,4 +1059,320 @@ it("manages saved view lifecycle with field filters and grouping", () => {
     "command.undone",
   );
   assert.equal(overview()[0]?.name, "Segment MSSP", "undo restores the view");
+});
+
+it("projects a meeting into routed, promoted, and identified work-graph records", () => {
+  // ADR-040 / R12.5. One meeting becomes: a routed context (project +
+  // organization), a real Task from its follow-up, and Person records for its
+  // participants — each through an explicit, authorized, undoable command.
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("meeting-graph-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Meeting graph",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  const organizationId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("meeting-graph-org"),
+        commandName: "relationship.organizationCreate",
+        payload: {
+          organizationId,
+          spaceId: ids.space,
+          name: "IT Card",
+          relationshipState: "active",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("meeting-graph-project"),
+        commandName: "project.create",
+        payload: {
+          spaceId: ids.space,
+          title: "CrowdStrike rollout",
+          intendedOutcome: "The rollout is accepted by the client.",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const projectId = harness.store.snapshot().projects[0]!.id;
+
+  const meetingId = uuid();
+  const followUpId = uuid();
+  const importMeeting = (version: number, expectedVersions = {}) =>
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(`meeting-graph-import-${version}`, expectedVersions),
+        commandName: "meeting.upsertImported",
+        payload: {
+          meeting: {
+            id: meetingId,
+            workspaceId: ids.workspace,
+            spaceId: ids.space,
+            connectionId: "jamie-workspace",
+            externalMeetingId: "meeting-99",
+            title: "Kwalifikacja klientow",
+            startedAt: "2026-07-20T09:00:00.000Z",
+            participants: [
+              {
+                externalId: "participant-1",
+                name: "Antek",
+                email: "antek@example.com",
+              },
+              { externalId: "participant-2", name: "Nieznany" },
+            ],
+            workItems: [
+              {
+                id: followUpId,
+                kind: "follow_up",
+                sourceExternalId: "task-99",
+                title: "Send the qualification summary",
+                state: "open",
+                sourceControlled: true,
+                locallyModified: false,
+                dueAt: "2026-07-24T09:00:00.000Z",
+                version: 1,
+              },
+            ],
+            contentHash: "a".repeat(64),
+            triage: "ready",
+            missingComponents: [],
+            version,
+            updatedAt: "2026-07-20T10:00:00.000Z",
+          },
+        },
+      }),
+    );
+  assert.equal(importMeeting(1).outcome, "success");
+
+  const meetingRecord = () =>
+    harness.store
+      .snapshot()
+      .strategicRecords!.find((record) => record.id === meetingId)!;
+
+  // Routing: the meeting stops being an orphan in the first editable Space.
+  const routed = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("meeting-graph-route", {
+        [meetingId]: meetingRecord().version,
+      }),
+      commandName: "meeting.route",
+      payload: { meetingId, projectId, organizationId },
+    }),
+  );
+  assert.equal(routed.outcome, "success");
+
+  // Promotion: the follow-up becomes a real Task, related to the project.
+  const promotedTaskId = uuid();
+  const promoted = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("meeting-graph-promote", {
+        [meetingId]: meetingRecord().version,
+      }),
+      commandName: "meeting.promoteWorkItem",
+      payload: { meetingId, workItemId: followUpId, taskId: promotedTaskId },
+    }),
+  );
+  assert.equal(promoted.outcome, "success");
+  const task = harness.store
+    .snapshot()
+    .tasks.find((candidate) => candidate.id === promotedTaskId);
+  assert.equal(task?.title, "Send the qualification summary");
+  // The Jamie due instant survives into real planning data.
+  assert.equal(task?.dueAt, "2026-07-24T09:00:00.000Z");
+  const record = meetingRecord();
+  assert.equal(record.kind === "meeting", true);
+  if (record.kind !== "meeting") throw new Error("Expected a meeting record");
+  assert.equal(record.meeting.workItems[0]?.taskId, promotedTaskId);
+  assert.equal(record.meeting.projectId, projectId);
+  assert.equal(record.meeting.organizationId, organizationId);
+
+  // Promoting the same work item again is refused: the back-reference makes
+  // duplicate Tasks structurally impossible, not merely unlikely.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("meeting-graph-promote-again", {
+          [meetingId]: meetingRecord().version,
+        }),
+        commandName: "meeting.promoteWorkItem",
+        payload: { meetingId, workItemId: followUpId, taskId: uuid() },
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+    "a promoted work item cannot mint a second Task",
+  );
+
+  // A Space move is refused once work is promoted, because the promoted Task
+  // and its relation already live in the meeting's Space (ADR-040 §6).
+  const secondSpaceId = "18000000-0000-4000-8000-000000000777";
+  harness.store.transact((transaction) => {
+    if (!isApplicationWave2Transaction(transaction))
+      throw new Error("Expected the Wave 2 reference transaction.");
+    transaction.insertSpace({
+      id: SpaceIdSchema.parse(secondSpaceId),
+      workspaceId: context().workspaceId,
+      name: "Client delivery",
+      version: 1,
+      createdAt: "2026-07-20T08:00:00.000Z",
+    });
+    // Grant real edit access, so the refusal below is the routing rule itself
+    // rather than an authorization failure standing in for it.
+    transaction.insertSpaceGrant({
+      id: SpaceGrantIdSchema.parse("18000000-0000-4000-8000-000000000778"),
+      workspaceId: context().workspaceId,
+      spaceId: SpaceIdSchema.parse(secondSpaceId),
+      principalId: context().principalId,
+      access: "edit",
+      status: "active",
+      version: 1,
+      createdAt: "2026-07-20T08:00:00.000Z",
+      updatedAt: "2026-07-20T08:00:00.000Z",
+    });
+  });
+  const twoSpaceContext = ExecutionContextSchema.parse({
+    ...context(),
+    spaceScope: [ids.space, secondSpaceId],
+  });
+  harness.authorization.register(twoSpaceContext);
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(twoSpaceContext, {
+        ...metadata("meeting-graph-move", {
+          [meetingId]: meetingRecord().version,
+        }),
+        commandName: "meeting.route",
+        payload: { meetingId, spaceId: secondSpaceId },
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+    "routing must precede promotion, not split it across Spaces",
+  );
+
+  // An unknown Space is refused by authorization before any routing logic.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("meeting-graph-move-unknown", {
+          [meetingId]: meetingRecord().version,
+        }),
+        commandName: "meeting.route",
+        payload: {
+          meetingId,
+          spaceId: "18000000-0000-4000-8000-000000000999",
+        },
+      }),
+    ).diagnosticCode,
+    "authorization.denied",
+    "an unknown Space is not a routing destination",
+  );
+
+  // Identity linking: the participant with an email becomes a Person; the
+  // name-only participant is left for explicit review, never guessed.
+  const createdPersonId = uuid();
+  const linked = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("meeting-graph-link", {
+        [meetingId]: meetingRecord().version,
+      }),
+      commandName: "meeting.linkParticipants",
+      payload: { meetingId, personIdPool: [createdPersonId] },
+    }),
+  );
+  assert.equal(linked.outcome, "success");
+  const afterLink = meetingRecord();
+  if (afterLink.kind !== "meeting") throw new Error("Expected a meeting");
+  assert.equal(afterLink.meeting.participants[0]?.personId, createdPersonId);
+  assert.equal(afterLink.meeting.participants[1]?.personId, undefined);
+  const person = harness.store
+    .snapshot()
+    .strategicRecords!.find((candidate) => candidate.id === createdPersonId);
+  assert.equal(person?.kind === "person" ? person.name : undefined, "Antek");
+  // The created Person inherits the meeting's routed organization.
+  assert.equal(
+    person?.kind === "person" ? person.organizationId : undefined,
+    organizationId,
+  );
+
+  // Re-linking is a no-op rather than a second Person for the same human.
+  const relinked = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("meeting-graph-link-again", {
+        [meetingId]: meetingRecord().version,
+      }),
+      commandName: "meeting.linkParticipants",
+      payload: { meetingId, personIdPool: [uuid()] },
+    }),
+  );
+  assert.equal(relinked.outcome, "success");
+  assert.equal(
+    harness.store
+      .snapshot()
+      .strategicRecords!.filter((candidate) => candidate.kind === "person")
+      .length,
+    1,
+  );
+
+  // Promotion is reversible through the ordinary previewed-undo path: the
+  // Task is removed and the work item returns to promotable state.
+  const promoteCommandId = promoted.commandId;
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("meeting-graph-undo-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: promoteCommandId },
+    }),
+  );
+  if (preview.outcome !== "preview")
+    assert.fail("Expected a promotion undo preview");
+  assert.equal(
+    preview.projection.compensationKind,
+    "meeting.unpromote_work_item",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("meeting-graph-undo", preview.projection.requiredVersions),
+        commandName: "command.undo",
+        payload: { targetCommandId: promoteCommandId },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    harness.store
+      .snapshot()
+      .tasks.find((candidate) => candidate.id === promotedTaskId)?.recordState,
+    "removed",
+  );
+  const afterUndo = meetingRecord();
+  if (afterUndo.kind !== "meeting") throw new Error("Expected a meeting");
+  assert.equal(afterUndo.meeting.workItems[0]?.taskId, undefined);
+  // Undo unlinks identity but never deletes a Person (ADR-040 §4).
+  assert.equal(
+    harness.store
+      .snapshot()
+      .strategicRecords!.filter((candidate) => candidate.kind === "person")
+      .length,
+    1,
+  );
 });

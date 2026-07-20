@@ -12,7 +12,10 @@ import {
 } from "@constellation/application";
 import {
   PrincipalIdSchema,
+  ProjectIdSchema,
   SpaceIdSchema,
+  StrategicRecordIdSchema,
+  TaskIdSchema,
   WorkspaceIdSchema,
   type CalendarBlockDraft,
   type NormalizedJamieMeeting,
@@ -607,4 +610,170 @@ test("expired and stale calendar previews fail closed", async () => {
     }),
     { outcome: "rejected", code: "expired" },
   );
+});
+
+test("a corrected Jamie redelivery preserves promotion, identity links, and routing", () => {
+  // ADR-040 §5. This is the load-bearing guarantee behind the "Powtórzony
+  // webhook Jamie" acceptance test: a repeated delivery must never strand a
+  // promoted Task by clearing the back-reference that makes promotion
+  // idempotent. A byte-identical redelivery proves nothing here — it takes the
+  // no_change fast path — so this exercises a *content-changed* delivery.
+  const { service, repository } = createHarness();
+  const applied = service.importJamie({
+    authorization,
+    spaceId,
+    source: source({ hash: "d".repeat(64), taskId: "task-1" }),
+  });
+  assert.equal(applied.outcome, "applied");
+
+  // Stand in for the kernel commands, which write these workspace-owned refs
+  // onto the coordinated record and raise the meeting version.
+  const promotedTaskId = TaskIdSchema.parse(
+    "00000000-0000-4000-8000-0000000000a1",
+  );
+  const linkedPersonId = StrategicRecordIdSchema.parse(
+    "00000000-0000-4000-8000-0000000000a2",
+  );
+  const routedProjectId = ProjectIdSchema.parse(
+    "00000000-0000-4000-8000-0000000000a3",
+  );
+  const routedOrganizationId = StrategicRecordIdSchema.parse(
+    "00000000-0000-4000-8000-0000000000a4",
+  );
+  const state = repository.load(workspaceId);
+  const stored = state.meetings.find(
+    (meeting) => meeting.id === applied.meeting.id,
+  )!;
+  assert.ok(
+    repository.save(workspaceId, state.revision, {
+      ...state,
+      meetings: [
+        {
+          ...stored,
+          projectId: routedProjectId,
+          organizationId: routedOrganizationId,
+          participants: stored.participants.map((participant) => ({
+            ...participant,
+            personId: linkedPersonId,
+          })),
+          workItems: stored.workItems.map((item) =>
+            item.sourceExternalId === "task-1"
+              ? { ...item, taskId: promotedTaskId }
+              : item,
+          ),
+        },
+      ],
+    }),
+  );
+
+  // Jamie corrects the meeting: new content hash and a retitled action item.
+  const corrected = service.importJamie({
+    authorization,
+    spaceId,
+    source: source({
+      hash: "e".repeat(64),
+      taskId: "task-1",
+      taskTitle: "Confirm rollout owner before Friday",
+    }),
+  });
+  assert.equal(corrected.outcome, "corrected");
+  assert.equal(corrected.meeting.projectId, routedProjectId);
+  assert.equal(corrected.meeting.organizationId, routedOrganizationId);
+  assert.equal(corrected.meeting.participants[0]?.personId, linkedPersonId);
+  const item = corrected.meeting.workItems.find(
+    (candidate) => candidate.sourceExternalId === "task-1",
+  )!;
+  // Source content refreshed, workspace-owned reference intact: the next
+  // promotion attempt is a no-op instead of minting a duplicate Task.
+  assert.equal(item.title, "Confirm rollout owner before Friday");
+  assert.equal(item.taskId, promotedTaskId);
+});
+
+test("re-import keeps a routed Space instead of snapping back to the caller's", () => {
+  const { service, repository } = createHarness();
+  const applied = service.importJamie({
+    authorization,
+    spaceId,
+    source: source({ hash: "f".repeat(64), taskId: "task-1" }),
+  });
+  assert.notEqual(applied.outcome, "rejected");
+  assert.equal(
+    applied.outcome === "rejected" ? undefined : applied.meeting.spaceId,
+    spaceId,
+  );
+  const routedSpaceId = SpaceIdSchema.parse(
+    "00000000-0000-4000-8000-0000000000b1",
+  );
+  const state = repository.load(workspaceId);
+  assert.ok(
+    repository.save(workspaceId, state.revision, {
+      ...state,
+      meetings: state.meetings.map((meeting) => ({
+        ...meeting,
+        spaceId: routedSpaceId,
+      })),
+    }),
+  );
+  const corrected = service.importJamie({
+    authorization,
+    spaceId,
+    source: source({
+      hash: "0".repeat(64),
+      taskId: "task-1",
+      taskTitle: "Confirm rollout owner again",
+    }),
+  });
+  assert.equal(corrected.outcome, "corrected");
+  assert.equal(corrected.meeting.spaceId, routedSpaceId);
+});
+
+test("Jamie due dates reach the work item and clear when the source drops them", () => {
+  const { service } = createHarness();
+  const withDue: NormalizedJamieMeeting = {
+    ...source({ hash: "1".repeat(64), taskId: "task-1" }),
+    actionItems: [
+      {
+        externalTaskId: "task-1",
+        content: "Confirm rollout owner",
+        completed: false,
+        dueAt: "2026-07-20T09:00:00.000Z",
+      },
+    ],
+  };
+  const applied = service.importJamie({
+    authorization,
+    spaceId,
+    source: withDue,
+  });
+  assert.notEqual(applied.outcome, "rejected");
+  const dueItem =
+    applied.outcome === "rejected"
+      ? undefined
+      : applied.meeting.workItems.find(
+          (item) => item.sourceExternalId === "task-1",
+        );
+  assert.equal(dueItem?.dueAt, "2026-07-20T09:00:00.000Z");
+
+  const withoutDue: NormalizedJamieMeeting = {
+    ...withDue,
+    contentHash: "2".repeat(64),
+    actionItems: [
+      {
+        externalTaskId: "task-1",
+        content: "Confirm rollout owner",
+        completed: false,
+      },
+    ],
+  };
+  const cleared = service.importJamie({
+    authorization,
+    spaceId,
+    source: withoutDue,
+  });
+  assert.equal(cleared.outcome, "corrected");
+  const clearedItem = cleared.meeting.workItems.find(
+    (item) => item.sourceExternalId === "task-1",
+  );
+  assert.equal(clearedItem?.title, "Confirm rollout owner");
+  assert.equal(clearedItem?.dueAt, undefined);
 });

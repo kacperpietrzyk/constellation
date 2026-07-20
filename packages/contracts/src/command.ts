@@ -935,6 +935,70 @@ export const MeetingUpsertImportedCommandSchema = CommandMetadataSchema.extend({
   payload: z.object({ meeting: ImportedMeetingSchema }).strict(),
 }).strict();
 
+// R12.5 / ADR-040 — meeting-to-work-graph projection. These are explicit
+// operator commands: import itself never creates Tasks, People, or routing.
+
+export const MeetingRouteCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("meeting.route"),
+  payload: z
+    .object({
+      meetingId: StrategicRecordIdSchema,
+      // Each field is tri-state: absent leaves it untouched, null clears it,
+      // a value sets it. Space may only move while nothing is promoted.
+      projectId: ProjectIdSchema.nullable().optional(),
+      organizationId: StrategicRecordIdSchema.nullable().optional(),
+      spaceId: SpaceIdSchema.optional(),
+    })
+    .strict()
+    .refine(
+      (value) =>
+        value.projectId !== undefined ||
+        value.organizationId !== undefined ||
+        value.spaceId !== undefined,
+      { error: "Routing must change at least one destination." },
+    ),
+}).strict();
+
+export const MeetingPromoteWorkItemCommandSchema = CommandMetadataSchema.extend(
+  {
+    commandName: z.literal("meeting.promoteWorkItem"),
+    payload: z
+      .object({
+        meetingId: StrategicRecordIdSchema,
+        workItemId: z.uuid(),
+        taskId: TaskIdSchema,
+      })
+      .strict(),
+  },
+).strict();
+
+export const MeetingLinkParticipantsCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("meeting.linkParticipants"),
+    payload: z
+      .object({
+        meetingId: StrategicRecordIdSchema,
+        // Ids the handler may consume when it needs to create a Person, in
+        // order. Supplying none restricts the command to linking existing
+        // People, which keeps a read-only-ish invocation possible.
+        personIdPool: z.array(StrategicRecordIdSchema).max(500).default([]),
+        // Explicit operator resolutions for participants that cannot be
+        // matched automatically (name-only). Never inferred.
+        resolutions: z
+          .array(
+            z
+              .object({
+                participantExternalId: z.string().trim().min(1).max(500),
+                personId: StrategicRecordIdSchema,
+              })
+              .strict(),
+          )
+          .max(500)
+          .default([]),
+      })
+      .strict(),
+  }).strict();
+
 export const ProjectUpdateOutcomeCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("project.updateOutcome"),
   payload: z
@@ -1455,6 +1519,9 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   RadarCandidateUpsertCommandSchema,
   RadarResolveCommandSchema,
   MeetingUpsertImportedCommandSchema,
+  MeetingRouteCommandSchema,
+  MeetingPromoteWorkItemCommandSchema,
+  MeetingLinkParticipantsCommandSchema,
   ProjectUpdateOutcomeCommandSchema,
   TaskCreateCommandSchema,
   TaskUpdateDetailsCommandSchema,

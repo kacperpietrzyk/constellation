@@ -26,6 +26,8 @@ import {
   type CommandEnvelope,
   type CommandOutcome,
   type ExecutionContext,
+  type ImportedMeeting,
+  type StrategicRecordId,
   type QueryEnvelope,
   type QueryResult,
   type SpaceId,
@@ -177,6 +179,9 @@ export type Wave2Command = Extract<
       | "radar.candidateUpsert"
       | "radar.resolve"
       | "meeting.upsertImported"
+      | "meeting.route"
+      | "meeting.promoteWorkItem"
+      | "meeting.linkParticipants"
       | "project.updateOutcome"
       | "task.create"
       | "task.updateDetails"
@@ -485,6 +490,60 @@ export const isWave2CommandAuthorized = (
         meeting.workspaceId === command.workspaceId
           ? meeting.spaceId
           : undefined,
+      );
+    }
+    case "meeting.route": {
+      const record = view.getStrategicRecord(command.payload.meetingId);
+      if (record?.kind !== "meeting") return false;
+      // A Space move must be permitted in both the current and target Space.
+      if (
+        command.commandName === "meeting.route" &&
+        command.payload.spaceId !== undefined &&
+        command.payload.spaceId !== record.spaceId
+      ) {
+        const target = view.getSpace(command.payload.spaceId);
+        if (
+          target?.workspaceId !== command.workspaceId ||
+          !canEditSpace(view, context, command.workspaceId, target.id) ||
+          !dependencies.authorization.authorize({
+            context,
+            capability: command.commandName,
+            workspaceId: command.workspaceId,
+            spaceId: target.id,
+          })
+        ) {
+          return false;
+        }
+      }
+      return authorized(dependencies, view, context, command, record.spaceId);
+    }
+    case "meeting.promoteWorkItem": {
+      const record = view.getStrategicRecord(command.payload.meetingId);
+      if (record?.kind !== "meeting") return false;
+      // ADR-040 §7: promotion inserts a Task directly, so it must not become a
+      // privilege path around the Task-creation grant.
+      return (
+        authorized(dependencies, view, context, command, record.spaceId) &&
+        dependencies.authorization.authorize({
+          context,
+          capability: "task.create",
+          workspaceId: command.workspaceId,
+          spaceId: record.spaceId,
+        })
+      );
+    }
+    case "meeting.linkParticipants": {
+      const record = view.getStrategicRecord(command.payload.meetingId);
+      if (record?.kind !== "meeting") return false;
+      // Linking can create a Person, so it carries the relationship grant too.
+      return (
+        authorized(dependencies, view, context, command, record.spaceId) &&
+        dependencies.authorization.authorize({
+          context,
+          capability: "relationship.personCreate",
+          workspaceId: command.workspaceId,
+          spaceId: record.spaceId,
+        })
       );
     }
     case "project.updateOutcome": {
@@ -882,7 +941,10 @@ const appendStrategicJournal = (
   changedFields: readonly string[],
   additionalVersions: Readonly<Record<string, number>> = {},
   additionalKinds: Readonly<
-    Record<string, "task" | "project" | "attentionSignal">
+    Record<
+      string,
+      "task" | "project" | "attentionSignal" | "relation" | "strategicRecord"
+    >
   > = {},
   undoDescriptor?: UndoDescriptor,
 ): CommandOutcome =>
@@ -2879,6 +2941,345 @@ export const executeWave2Command = (
         occurredAt,
         record,
         ["meeting", "triage", "workItems"],
+      );
+    }
+    case "meeting.route": {
+      const current = transaction.getStrategicRecord(command.payload.meetingId);
+      if (current?.kind !== "meeting") return precondition(command, occurredAt);
+      if (!exactExpected(command, { [current.id]: current.version })) {
+        return versionConflict(command, occurredAt, {
+          [current.id]: current.version,
+        });
+      }
+      const meeting = current.meeting;
+      // ADR-040 §6: promoted Tasks already live in the meeting's Space, so a
+      // Space move is refused rather than silently splitting the graph.
+      const movesSpace =
+        command.payload.spaceId !== undefined &&
+        command.payload.spaceId !== meeting.spaceId;
+      if (movesSpace && meeting.workItems.some((item) => item.taskId))
+        return precondition(command, occurredAt);
+      if (command.payload.projectId != null) {
+        const project = transaction.getProject(command.payload.projectId);
+        if (
+          project === undefined ||
+          project.workspaceId !== command.workspaceId
+        ) {
+          return precondition(command, occurredAt);
+        }
+      }
+      if (command.payload.organizationId != null) {
+        const organization = transaction.getStrategicRecord(
+          command.payload.organizationId,
+        );
+        if (
+          organization?.kind !== "organization" ||
+          organization.workspaceId !== command.workspaceId
+        ) {
+          return precondition(command, occurredAt);
+        }
+      }
+      const nextSpaceId = command.payload.spaceId ?? meeting.spaceId;
+      const {
+        projectId: priorProjectId,
+        organizationId: priorOrganizationId,
+        ...meetingBase
+      } = meeting;
+      const nextProjectId =
+        command.payload.projectId === undefined
+          ? priorProjectId
+          : (command.payload.projectId ?? undefined);
+      const nextOrganizationId =
+        command.payload.organizationId === undefined
+          ? priorOrganizationId
+          : (command.payload.organizationId ?? undefined);
+      const routed: ImportedMeeting = {
+        ...meetingBase,
+        spaceId: nextSpaceId,
+        ...(nextProjectId === undefined ? {} : { projectId: nextProjectId }),
+        ...(nextOrganizationId === undefined
+          ? {}
+          : { organizationId: nextOrganizationId }),
+        version: meeting.version + 1,
+        updatedAt: occurredAt,
+      };
+      const record: StrategicRecord = {
+        ...current,
+        spaceId: nextSpaceId,
+        meeting: routed,
+        version: current.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateStrategicRecord(record, current.version)) {
+        return versionConflict(command, occurredAt, {
+          [current.id]: current.version,
+        });
+      }
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["projectId", "organizationId", "spaceId"],
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: record.workspaceId,
+          spaceId: meeting.spaceId,
+          kind: "meeting.restore_routing",
+          meetingId: current.id,
+          ...(priorProjectId === undefined
+            ? {}
+            : { priorProjectId: priorProjectId }),
+          ...(priorOrganizationId === undefined
+            ? {}
+            : { priorOrganizationId: priorOrganizationId }),
+          priorSpaceId: meeting.spaceId,
+          resultingVersion: record.version,
+        },
+      );
+    }
+    case "meeting.promoteWorkItem": {
+      const current = transaction.getStrategicRecord(command.payload.meetingId);
+      if (current?.kind !== "meeting") return precondition(command, occurredAt);
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (workspace === undefined) return precondition(command, occurredAt);
+      const meeting = current.meeting;
+      const item = meeting.workItems.find(
+        (candidate) => candidate.id === command.payload.workItemId,
+      );
+      // Only actionable kinds promote; decisions and notes are not work.
+      if (
+        item === undefined ||
+        (item.kind !== "task" && item.kind !== "follow_up")
+      )
+        return precondition(command, occurredAt);
+      // Idempotent by construction: a live back-reference means done already.
+      if (
+        item.taskId !== undefined &&
+        transaction.getTask(item.taskId) !== undefined
+      ) {
+        return precondition(command, occurredAt);
+      }
+      if (transaction.getTask(command.payload.taskId) !== undefined)
+        return precondition(command, occurredAt);
+      if (!exactExpected(command, { [current.id]: current.version })) {
+        return versionConflict(command, occurredAt, {
+          [current.id]: current.version,
+        });
+      }
+      const task = createTask({
+        id: command.payload.taskId,
+        workspaceId: current.workspaceId,
+        spaceId: current.spaceId,
+        title: item.title.slice(0, 500),
+        ...(item.dueAt === undefined ? {} : { dueAt: item.dueAt }),
+        statusId: workspace.defaultTaskStatusId,
+        createdBy: context.principalId,
+        occurredAt,
+      });
+      transaction.insertTask(task);
+      const recordVersions: Record<string, number> = {
+        [task.id]: task.version,
+      };
+      const affectedKinds: Record<
+        string,
+        "task" | "project" | "attentionSignal" | "relation" | "strategicRecord"
+      > = { [task.id]: "task" };
+      // Relate to the routed project when the meeting has one, so the Task
+      // lands in the same place a manually created one would.
+      let createdRelationId: RelationId | undefined;
+      const project =
+        meeting.projectId === undefined
+          ? undefined
+          : transaction.getProject(meeting.projectId);
+      if (project !== undefined && project.spaceId === current.spaceId) {
+        const relation = relateTaskToProject({
+          id: RelationIdSchema.parse(dependencies.ids.next("relation")),
+          task,
+          project,
+          createdBy: context.principalId,
+          occurredAt,
+        });
+        transaction.insertRelation(relation);
+        createdRelationId = relation.id;
+        recordVersions[relation.id] = relation.version;
+        affectedKinds[relation.id] = "relation";
+      }
+      const promoted: ImportedMeeting = {
+        ...meeting,
+        workItems: meeting.workItems.map((candidate) =>
+          candidate.id === item.id
+            ? { ...candidate, taskId: task.id, version: candidate.version + 1 }
+            : candidate,
+        ),
+        version: meeting.version + 1,
+        updatedAt: occurredAt,
+      };
+      const record: StrategicRecord = {
+        ...current,
+        meeting: promoted,
+        version: current.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateStrategicRecord(record, current.version)) {
+        return versionConflict(command, occurredAt, {
+          [current.id]: current.version,
+        });
+      }
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["workItems"],
+        recordVersions,
+        affectedKinds,
+        {
+          targetCommandId: command.commandId,
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          kind: "meeting.unpromote_work_item",
+          meetingId: current.id,
+          workItemId: item.id,
+          createdTaskId: task.id,
+          ...(createdRelationId === undefined
+            ? {}
+            : { createdRelationId: createdRelationId }),
+          resultingMeetingVersion: record.version,
+          resultingTaskVersion: task.version,
+        },
+      );
+    }
+    case "meeting.linkParticipants": {
+      const current = transaction.getStrategicRecord(command.payload.meetingId);
+      if (current?.kind !== "meeting") return precondition(command, occurredAt);
+      if (!exactExpected(command, { [current.id]: current.version })) {
+        return versionConflict(command, occurredAt, {
+          [current.id]: current.version,
+        });
+      }
+      const meeting = current.meeting;
+      const priorLinks = meeting.participants.map((participant) => ({
+        externalId: participant.externalId,
+        ...(participant.personId === undefined
+          ? {}
+          : { personId: participant.personId }),
+      }));
+      // Existing People in this Space, indexed by exact normalized email.
+      // Name is deliberately not an index: ADR-040 §4 forbids name matching.
+      const peopleByEmail = new Map<string, StrategicRecordId>();
+      for (const candidate of transaction.listStrategicRecords(
+        current.workspaceId,
+        current.spaceId,
+      )) {
+        if (candidate.kind === "person" && candidate.email !== undefined)
+          peopleByEmail.set(candidate.email.trim().toLowerCase(), candidate.id);
+      }
+      const resolutions = new Map(
+        command.payload.resolutions.map((resolution) => [
+          resolution.participantExternalId,
+          resolution.personId,
+        ]),
+      );
+      const availableIds = [...command.payload.personIdPool];
+      const createdPersonIds: StrategicRecordId[] = [];
+      const ambiguousParticipants: string[] = [];
+      const recordVersions: Record<string, number> = {};
+      const affectedKinds: Record<
+        string,
+        "task" | "project" | "attentionSignal" | "relation" | "strategicRecord"
+      > = {};
+      const organizationId = meeting.organizationId;
+      const participants = meeting.participants.map((participant) => {
+        if (participant.personId !== undefined) return participant;
+        const resolved = resolutions.get(participant.externalId);
+        if (resolved !== undefined) {
+          const person = transaction.getStrategicRecord(resolved);
+          if (person?.kind === "person")
+            return { ...participant, personId: resolved };
+          ambiguousParticipants.push(participant.externalId);
+          return participant;
+        }
+        const email = participant.email?.trim().toLowerCase();
+        if (email === undefined) {
+          // Name-only: never matched, never created. Explicit review only.
+          ambiguousParticipants.push(participant.externalId);
+          return participant;
+        }
+        const existing = peopleByEmail.get(email);
+        if (existing !== undefined)
+          return { ...participant, personId: existing };
+        const personId = availableIds.shift();
+        if (personId === undefined) {
+          ambiguousParticipants.push(participant.externalId);
+          return participant;
+        }
+        const person = createPerson({
+          id: personId,
+          workspaceId: current.workspaceId,
+          spaceId: current.spaceId,
+          name: participant.name,
+          ...(organizationId === undefined ? {} : { organizationId }),
+          ...(participant.email === undefined
+            ? {}
+            : { email: participant.email }),
+          createdBy: context.principalId,
+          occurredAt,
+        });
+        transaction.insertStrategicRecord(person);
+        peopleByEmail.set(email, person.id);
+        createdPersonIds.push(person.id);
+        recordVersions[person.id] = person.version;
+        affectedKinds[person.id] = "strategicRecord";
+        return { ...participant, personId: person.id };
+      });
+      const linked: ImportedMeeting = {
+        ...meeting,
+        participants,
+        version: meeting.version + 1,
+        updatedAt: occurredAt,
+      };
+      const record: StrategicRecord = {
+        ...current,
+        meeting: linked,
+        version: current.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateStrategicRecord(record, current.version)) {
+        return versionConflict(command, occurredAt, {
+          [current.id]: current.version,
+        });
+      }
+      void ambiguousParticipants;
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["participants"],
+        recordVersions,
+        affectedKinds,
+        {
+          targetCommandId: command.commandId,
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          kind: "meeting.restore_participant_links",
+          meetingId: current.id,
+          priorLinks,
+          createdPersonIds,
+          resultingVersion: record.version,
+        },
       );
     }
     case "project.create": {
@@ -5402,6 +5803,55 @@ const descriptorState = (
             reason: "later_change",
           };
     }
+    case "meeting.unpromote_work_item": {
+      const meeting = view.getStrategicRecord(descriptor.meetingId);
+      const task = view.getTask(descriptor.createdTaskId);
+      // Refuse once the promoted Task has been worked on, matching the
+      // later-write refusal project.unapply_template established. The gate is
+      // the Task and this work item's back-reference — not the meeting
+      // version, which unrelated routing or linking legitimately bumps.
+      return meeting?.kind === "meeting" &&
+        meeting.meeting.workItems.some(
+          (item) =>
+            item.id === descriptor.workItemId &&
+            item.taskId === descriptor.createdTaskId,
+        ) &&
+        task !== undefined &&
+        task.recordState === "active" &&
+        task.completionState === "open" &&
+        task.version === descriptor.resultingTaskVersion
+        ? {
+            available: true,
+            recordIds: [meeting.id, task.id],
+            versions: {
+              [meeting.id]: meeting.version,
+              [task.id]: task.version,
+            },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "meeting.restore_routing":
+    case "meeting.restore_participant_links": {
+      const meeting = view.getStrategicRecord(descriptor.meetingId);
+      return meeting?.kind === "meeting" &&
+        meeting.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [meeting.id],
+            versions: { [meeting.id]: meeting.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
     case "project.unapply_template": {
       const project = view.getProject(descriptor.projectId);
       const tasksUnchanged = descriptor.createdTaskIds.every((taskId) => {
@@ -5843,6 +6293,118 @@ const applyUndo = (
     transaction.updateProjectTemplate(restored, template.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "projectTemplate" };
+  } else if (descriptor.kind === "meeting.unpromote_work_item") {
+    const record = transaction.getStrategicRecord(descriptor.meetingId);
+    compensatedVersions = {};
+    compensatedKinds = {};
+    if (descriptor.createdRelationId !== undefined) {
+      const relation = transaction.getRelation(descriptor.createdRelationId);
+      if (relation !== undefined && relation.state === "active") {
+        const removed = removeTaskProjectRelation(relation, occurredAt);
+        transaction.updateRelation(removed, relation.version);
+        compensatedVersions[removed.id] = removed.version;
+        compensatedKinds[removed.id] = "relation";
+      }
+    }
+    const task = transaction.getTask(descriptor.createdTaskId);
+    if (task !== undefined) {
+      const removedTask: Task = {
+        ...task,
+        recordState: "removed",
+        version: task.version + 1,
+        updatedAt: occurredAt,
+      };
+      transaction.updateTask(removedTask, task.version);
+      compensatedVersions[removedTask.id] = removedTask.version;
+      compensatedKinds[removedTask.id] = "task";
+    }
+    if (record?.kind === "meeting") {
+      // Clearing taskId returns the work item to promotable state.
+      const restored: StrategicRecord = {
+        ...record,
+        meeting: {
+          ...record.meeting,
+          workItems: record.meeting.workItems.map((item) => {
+            if (item.id !== descriptor.workItemId) return item;
+            const { taskId: _taskId, ...base } = item;
+            void _taskId;
+            return { ...base, version: item.version + 1 };
+          }),
+          version: record.meeting.version + 1,
+          updatedAt: occurredAt,
+        },
+        version: record.version + 1,
+        updatedAt: occurredAt,
+      };
+      transaction.updateStrategicRecord(restored, record.version);
+      compensatedVersions[restored.id] = restored.version;
+      compensatedKinds[restored.id] = "strategicRecord";
+    }
+  } else if (descriptor.kind === "meeting.restore_routing") {
+    const record = transaction.getStrategicRecord(
+      descriptor.meetingId,
+    ) as Extract<StrategicRecord, { kind: "meeting" }>;
+    const {
+      projectId: _projectId,
+      organizationId: _organizationId,
+      ...meetingBase
+    } = record.meeting;
+    void _projectId;
+    void _organizationId;
+    const restored: StrategicRecord = {
+      ...record,
+      spaceId: descriptor.priorSpaceId,
+      meeting: {
+        ...meetingBase,
+        spaceId: descriptor.priorSpaceId,
+        ...(descriptor.priorProjectId === undefined
+          ? {}
+          : { projectId: descriptor.priorProjectId }),
+        ...(descriptor.priorOrganizationId === undefined
+          ? {}
+          : { organizationId: descriptor.priorOrganizationId }),
+        version: record.meeting.version + 1,
+        updatedAt: occurredAt,
+      },
+      version: record.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateStrategicRecord(restored, record.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
+  } else if (descriptor.kind === "meeting.restore_participant_links") {
+    const record = transaction.getStrategicRecord(
+      descriptor.meetingId,
+    ) as Extract<StrategicRecord, { kind: "meeting" }>;
+    const priorById = new Map(
+      descriptor.priorLinks.map((link) => [link.externalId, link.personId]),
+    );
+    compensatedVersions = {};
+    compensatedKinds = {};
+    // Undo unlinks; it deliberately does not delete People the command
+    // created. A Person may already be referenced by other records, and
+    // deleting identity on undo is destructive in a way unlinking is not
+    // (ADR-040 §4). `createdPersonIds` stays on the descriptor as the audit
+    // trail of what linking brought into existence.
+    const restored: StrategicRecord = {
+      ...record,
+      meeting: {
+        ...record.meeting,
+        participants: record.meeting.participants.map((participant) => {
+          const prior = priorById.get(participant.externalId);
+          const { personId: _personId, ...base } = participant;
+          void _personId;
+          return prior === undefined ? base : { ...base, personId: prior };
+        }),
+        version: record.meeting.version + 1,
+        updatedAt: occurredAt,
+      },
+      version: record.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateStrategicRecord(restored, record.version);
+    compensatedVersions[restored.id] = restored.version;
+    compensatedKinds[restored.id] = "strategicRecord";
   } else if (descriptor.kind === "project.unapply_template") {
     const project = transaction.getProject(descriptor.projectId) as Project;
     compensatedVersions = {};

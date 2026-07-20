@@ -752,6 +752,12 @@ export const executeAgentAccessQuery = (
             return [descriptor.ruleId];
           case "project.unapply_template":
             return [descriptor.projectId, ...descriptor.createdTaskIds];
+          case "meeting.unpromote_work_item":
+            return [descriptor.meetingId, descriptor.createdTaskId];
+          case "meeting.restore_routing":
+            return [descriptor.meetingId];
+          case "meeting.restore_participant_links":
+            return [descriptor.meetingId, ...descriptor.createdPersonIds];
           case "record.restore_field_value":
             return [descriptor.recordId];
           case "workspace.restore_default_status":

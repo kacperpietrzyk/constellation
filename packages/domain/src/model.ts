@@ -797,6 +797,46 @@ export type UndoDescriptor =
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
+      readonly kind: "meeting.unpromote_work_item";
+      readonly meetingId: StrategicRecordId;
+      readonly workItemId: string;
+      readonly createdTaskId: TaskId;
+      readonly createdRelationId?: RelationId;
+      readonly resultingMeetingVersion: number;
+      readonly resultingTaskVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "meeting.restore_routing";
+      readonly meetingId: StrategicRecordId;
+      readonly priorProjectId?: ProjectId;
+      readonly priorOrganizationId?: StrategicRecordId;
+      readonly priorSpaceId: SpaceId;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "meeting.restore_participant_links";
+      readonly meetingId: StrategicRecordId;
+      // Exact prior link state, so undo restores rather than merely clearing.
+      readonly priorLinks: readonly {
+        readonly externalId: string;
+        readonly personId?: StrategicRecordId;
+      }[];
+      readonly createdPersonIds: readonly StrategicRecordId[];
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
       readonly kind: "project.unapply_template";
       readonly projectId: ProjectId;
       readonly templateId: ProjectTemplateId;

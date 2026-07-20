@@ -298,6 +298,7 @@ const sourceItems = (
       state: item.completed ? ("completed" as const) : ("open" as const),
       sourceControlled: true,
       locallyModified: false,
+      ...(item.dueAt === undefined ? {} : { dueAt: item.dueAt }),
       ...(item.assigneeName === undefined
         ? {}
         : {
@@ -327,6 +328,17 @@ const sameAssignee = (
   right: MeetingWorkItem["assignee"],
 ): boolean => left?.name === right?.name && left?.email === right?.email;
 
+// `dueAt` is Jamie-owned content: it refreshes from source and clears when the
+// source drops it, unlike the workspace-owned `taskId` beside it (ADR-040 §5).
+const withSourceDue = (
+  item: MeetingWorkItem,
+  dueAt: string | undefined,
+): MeetingWorkItem => {
+  const { dueAt: _prior, ...rest } = item;
+  void _prior;
+  return dueAt === undefined ? rest : { ...rest, dueAt };
+};
+
 const withSourceAssignee = (
   item: MeetingWorkItem,
   assignee: MeetingWorkItem["assignee"],
@@ -355,7 +367,9 @@ const sourceProjectionIsCurrent = (
       return false;
     return (
       prior.locallyModified ||
-      (prior.title === source.title && prior.state === source.state)
+      (prior.title === source.title &&
+        prior.state === source.state &&
+        prior.dueAt === source.dueAt)
     );
   });
   if (!incomingMatches) return false;
@@ -408,12 +422,16 @@ const reconcileItems = (
       continue;
     }
     next.push({
-      ...withSourceAssignee(prior, source.assignee),
+      ...withSourceDue(
+        withSourceAssignee(prior, source.assignee),
+        source.dueAt,
+      ),
       title: source.title,
       state: source.state,
       version:
         prior.title === source.title &&
         prior.state === source.state &&
+        prior.dueAt === source.dueAt &&
         sameAssignee(prior.assignee, source.assignee)
           ? prior.version
           : prior.version + 1,
@@ -550,7 +568,9 @@ export class MeetingLoopService {
       const meeting: ImportedMeeting = {
         id: meetingId,
         workspaceId: input.authorization.workspaceId,
-        spaceId: input.spaceId,
+        // An already-imported meeting keeps the Space it was routed to; the
+        // caller's Space is only the placement for a first import (ADR-040 §5).
+        spaceId: current?.spaceId ?? input.spaceId,
         connectionId: source.connectionId,
         externalMeetingId: source.externalMeetingId,
         title: source.title,
@@ -565,7 +585,26 @@ export class MeetingLoopService {
         ...(source.transcriptMarkdown === undefined
           ? {}
           : { transcriptMarkdown: source.transcriptMarkdown }),
-        participants: source.participants,
+        // ADR-040 §5: local graph references are workspace-owned. Jamie owns
+        // meeting content; it must never clear routing or identity links.
+        // Participants reconcile by externalId so a linked person survives a
+        // corrected re-delivery, while name/email refresh from source.
+        participants: source.participants.map((participant) => {
+          const linked = current?.participants.find(
+            (prior) =>
+              prior.externalId === participant.externalId &&
+              prior.personId !== undefined,
+          );
+          return linked === undefined
+            ? participant
+            : { ...participant, personId: linked.personId };
+        }),
+        ...(current?.projectId === undefined
+          ? {}
+          : { projectId: current.projectId }),
+        ...(current?.organizationId === undefined
+          ? {}
+          : { organizationId: current.organizationId }),
         workItems: [...reconciled.items],
         contentHash: source.contentHash,
         triage,
