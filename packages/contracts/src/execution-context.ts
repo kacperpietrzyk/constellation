@@ -97,6 +97,7 @@ export const CapabilitySchema = z.enum([
   "automation.setState",
   "automation.sweep",
   "recurrence.sweep",
+  "task.setCalendarBlock",
   "template.rename",
   "template.updateContents",
   "template.archive",

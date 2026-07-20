@@ -192,6 +192,7 @@ export type Wave2Command = Extract<
       | "automation.setState"
       | "automation.sweep"
       | "recurrence.sweep"
+      | "task.setCalendarBlock"
       | "template.rename"
       | "template.updateContents"
       | "template.archive"
@@ -649,6 +650,7 @@ export const isWave2CommandAuthorized = (
       );
     }
     case "task.updateDetails":
+    case "task.setCalendarBlock":
     case "task.setParent":
     case "task.setStatus":
     case "task.setOperationalState":
@@ -3564,6 +3566,82 @@ export const executeWave2Command = (
         },
       );
     }
+    case "task.setCalendarBlock": {
+      const task = transaction.getTask(command.payload.taskId);
+      if (task === undefined || task.recordState !== "active")
+        return precondition(command, occurredAt);
+      if (!exactExpected(command, { [task.id]: task.version })) {
+        return versionConflict(command, occurredAt, {
+          [task.id]: task.version,
+        });
+      }
+      const { calendarBlock: priorBlock, ...taskBase } = task;
+      const updated: Task = {
+        ...taskBase,
+        ...(command.payload.block === null
+          ? {}
+          : { calendarBlock: command.payload.block }),
+        version: task.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateTask(updated, task.version)) {
+        return versionConflict(command, occurredAt, {
+          [task.id]: task.version,
+        });
+      }
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "task.details_updated",
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          aggregateId: task.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        ["calendarBlock"],
+        {
+          diagnosticCode: "task.details_updated",
+          projection: {
+            kind: "task.details_updated",
+            taskId: updated.id,
+            title: updated.title,
+            ...(updated.description === undefined
+              ? {}
+              : { description: updated.description }),
+            ...(updated.nextAction === undefined
+              ? {}
+              : { nextAction: updated.nextAction }),
+            ...(updated.startAt === undefined
+              ? {}
+              : { startAt: updated.startAt }),
+            // The deadline is echoed unchanged: reserving time never edits it
+            // and never enters the calendar-consent path (ADR-042 §3).
+            ...(updated.dueAt === undefined ? {} : { dueAt: updated.dueAt }),
+            ...(updated.priority === undefined
+              ? {}
+              : { priority: updated.priority }),
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          kind: "task.restore_calendar_block",
+          taskId: task.id,
+          ...(priorBlock === undefined ? {} : { priorBlock }),
+          resultingVersion: updated.version,
+        },
+        { [updated.id]: "task" },
+      );
+    }
     case "task.updateDetails": {
       const task = transaction.getTask(command.payload.taskId);
       if (task === undefined) return precondition(command, occurredAt);
@@ -6150,6 +6228,7 @@ const descriptorState = (
           };
     }
     case "task.restore_parent":
+    case "task.restore_calendar_block":
     case "task.restore_details": {
       const task = view.getTask(descriptor.taskId);
       return task?.version === descriptor.resultingVersion
@@ -6740,6 +6819,21 @@ const applyUndo = (
       descriptor.priorParentTaskId,
       occurredAt,
     );
+    transaction.updateTask(restored, task.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "task" };
+  } else if (descriptor.kind === "task.restore_calendar_block") {
+    const task = transaction.getTask(descriptor.taskId) as Task;
+    const { calendarBlock: _current, ...base } = task;
+    void _current;
+    const restored: Task = {
+      ...base,
+      ...(descriptor.priorBlock === undefined
+        ? {}
+        : { calendarBlock: descriptor.priorBlock }),
+      version: task.version + 1,
+      updatedAt: occurredAt,
+    };
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "task" };

@@ -66,6 +66,7 @@ Commands:
 - `recurrence.create`
 - `recurrence.generateOccurrence`
 - `recurrence.sweep`
+- `task.setCalendarBlock`
 - `project.close`
 - `project.reopen`
 - `radar.candidateUpsert`
@@ -192,6 +193,19 @@ never enters the calendar-consent path. `startAt` may not exceed `dueAt`;
 existing Tasks remain unscheduled rather than inheriting fabricated dates.
 Imported timing is preserved: a recurrence occurrence inherits the due moment
 it was generated for and a renewal follow-up carries its review deadline.
+
+A Task can also carry the time reserved to do it. `task.setCalendarBlock`
+records or clears the calendar block a Task owns — its owned-block identifier,
+provider calendar, last known revision, and reserved window — so any authorized
+device or agent can later update or release that block. It is deliberately a
+recording command: it never contacts a calendar provider and never bypasses the
+exact, single-use consent preview that governs every calendar write, which
+stays device-local. Because the provider write and this record are two steps, a
+crash between them can leave an event the Task does not yet know about; the
+next preview for that Task reconciles against the existing marker.
+
+A deadline and a reserved block remain independent facts. Setting `dueAt` never
+touches the calendar-consent path, and reserving time never edits the deadline.
 
 Recurring work advances on its own. `recurrence.sweep` runs once per unlocked
 day under a maintenance origin, generates an occurrence for every active

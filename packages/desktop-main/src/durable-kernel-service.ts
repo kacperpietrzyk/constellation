@@ -101,6 +101,7 @@ const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "automation.setState",
   "automation.sweep",
   "recurrence.sweep",
+  "task.setCalendarBlock",
   "template.rename",
   "template.updateContents",
   "template.archive",

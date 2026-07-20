@@ -337,6 +337,16 @@ export interface Task {
     readonly expectedAt?: string;
   };
   readonly completedAt?: string;
+  // ADR-042: time reserved to do the work, distinct from `dueAt`. The write
+  // itself is device-local; this identity is graph data so any authorized
+  // device or agent can update or release the block.
+  readonly calendarBlock?: {
+    readonly ownedBlockExternalId: string;
+    readonly calendarExternalId: string;
+    readonly revision: string;
+    readonly startsAt: string;
+    readonly endsAt: string;
+  };
   readonly sourceCaptureId?: CaptureId;
   readonly createdBy: PrincipalId;
   readonly version: number;
@@ -901,6 +911,16 @@ export type UndoDescriptor =
       readonly kind: "task.restore_parent";
       readonly taskId: TaskId;
       readonly priorParentTaskId?: TaskId;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "task.restore_calendar_block";
+      readonly taskId: TaskId;
+      readonly priorBlock?: Task["calendarBlock"];
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }

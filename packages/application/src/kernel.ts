@@ -349,6 +349,7 @@ const isCurrentlyAuthorized = (
     case "project.updateOutcome":
     case "task.create":
     case "task.updateDetails":
+    case "task.setCalendarBlock":
     case "task.setParent":
     case "template.create":
     case "template.rename":
@@ -716,6 +717,7 @@ export class ApplicationKernel {
       case "project.updateOutcome":
       case "task.create":
       case "task.updateDetails":
+      case "task.setCalendarBlock":
       case "task.setParent":
       case "template.create":
       case "template.rename":
