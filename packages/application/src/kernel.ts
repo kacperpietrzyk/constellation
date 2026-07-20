@@ -3047,6 +3047,9 @@ export class ApplicationKernel {
             ...(task.parentTaskId === undefined
               ? {}
               : { parentTaskId: task.parentTaskId }),
+            ...(task.calendarBlock === undefined
+              ? {}
+              : { calendarBlock: task.calendarBlock }),
             ...(task.fields === undefined ? {} : { fields: task.fields }),
             status: {
               id: status.id,

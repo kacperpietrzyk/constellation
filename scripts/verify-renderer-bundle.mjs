@@ -32,10 +32,14 @@ import path from "node:path";
 // 2026-07-20 (R12.5): totalJavaScript i stylesheet po projekcji spotkania w
 // graf pracy (sekcje kontekstu i uczestnikow w inspektorze, akcja tworzenia
 // zadania z zapisu, wrappery meeting.route/promoteWorkItem/linkParticipants).
+// 2026-07-20 (R12.6): totalJavaScript po stronie odczytu rezerwacji czasu —
+// task.list niesie calendarBlock, doszedl wrapper task.setCalendarBlock, a
+// dialog zgody oddaje rewizje wywolujacemu (Task musi zapisac blok, inaczej
+// nie da sie go pozniej zaktualizowac ani zwolnic).
 const limits = {
   entryBytes: 531_000,
   entryGzipBytes: 143_000,
-  totalJavaScriptBytes: 818_000,
+  totalJavaScriptBytes: 819_000,
   stylesheetBytes: 176_000,
 };
 

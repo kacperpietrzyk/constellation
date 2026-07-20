@@ -964,6 +964,21 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             dueAt: z.iso.datetime({ offset: true }).optional(),
             priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
             parentTaskId: TaskIdSchema.optional(),
+            // R12.6 / ADR-042 — the calendar block reserving time to do this
+            // work, distinct from dueAt above. It rides task.list rather than
+            // being read from cockpit.week because the cockpit is week-scoped
+            // and capped, so a block reserved outside the current week would
+            // be invisible to a surface trying to show or release it.
+            calendarBlock: z
+              .object({
+                ownedBlockExternalId: z.string(),
+                calendarExternalId: z.string(),
+                revision: z.string(),
+                startsAt: z.iso.datetime({ offset: true }),
+                endsAt: z.iso.datetime({ offset: true }),
+              })
+              .strict()
+              .optional(),
             fields: z
               .record(
                 z.string(),
