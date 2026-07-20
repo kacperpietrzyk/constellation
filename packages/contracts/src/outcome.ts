@@ -16,6 +16,7 @@ import {
   CommentIdSchema,
   AttentionSignalIdSchema,
   TaskStatusIdSchema,
+  FieldDefinitionIdSchema,
   WorkspaceIdSchema,
   GrantIdSchema,
   CredentialIdSchema,
@@ -63,6 +64,9 @@ export const DiagnosticCodeSchema = z.enum([
   "task.created",
   "task.details_updated",
   "task.parent_changed",
+  "fieldDef.created",
+  "fieldDef.changed",
+  "record.field_value_set",
   "taskStatus.created",
   "taskStatus.changed",
   "workspace.default_status_changed",
@@ -116,6 +120,7 @@ export const RecordKindSchema = z.enum([
   "comment",
   "attentionSignal",
   "taskStatus",
+  "fieldDefinition",
   "project",
   "document",
   "knowledgeSource",
@@ -416,6 +421,36 @@ export const TaskDetailsUpdatedProjectionSchema = z
     version: z.int().positive(),
   })
   .strict();
+const FieldDefinitionProjectionFields = {
+  fieldId: FieldDefinitionIdSchema,
+  targetKind: z.enum(["task", "project"]),
+  label: z.string(),
+  state: z.enum(["active", "retired"]),
+  position: z.int().nonnegative(),
+  version: z.int().positive(),
+} as const;
+export const FieldDefCreatedProjectionSchema = z
+  .object({
+    kind: z.literal("fieldDef.created"),
+    ...FieldDefinitionProjectionFields,
+  })
+  .strict();
+export const FieldDefChangedProjectionSchema = z
+  .object({
+    kind: z.literal("fieldDef.changed"),
+    ...FieldDefinitionProjectionFields,
+  })
+  .strict();
+export const RecordFieldValueSetProjectionSchema = z
+  .object({
+    kind: z.literal("record.field_value_set"),
+    targetKind: z.enum(["task", "project"]),
+    recordId: z.uuid(),
+    fieldId: FieldDefinitionIdSchema,
+    cleared: z.boolean(),
+    version: z.int().positive(),
+  })
+  .strict();
 const TaskStatusDefinitionProjectionFields = {
   statusId: TaskStatusIdSchema,
   label: z.string(),
@@ -639,6 +674,9 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   TaskParentChangedProjectionSchema,
   TaskStatusCreatedProjectionSchema,
   TaskStatusChangedDefinitionProjectionSchema,
+  FieldDefCreatedProjectionSchema,
+  FieldDefChangedProjectionSchema,
+  RecordFieldValueSetProjectionSchema,
   WorkspaceDefaultStatusChangedProjectionSchema,
   TaskStatusChangedProjectionSchema,
   TaskOperationalStateChangedProjectionSchema,
@@ -852,6 +890,24 @@ const TaskDetailsUpdatedSuccessOutcomeSchema =
     diagnosticCode: z.literal("task.details_updated"),
     projection: TaskDetailsUpdatedProjectionSchema,
   }).strict();
+const FieldDefCreatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("fieldDef.created"),
+    projection: FieldDefCreatedProjectionSchema,
+  }).strict();
+const FieldDefChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("fieldDef.changed"),
+    projection: FieldDefChangedProjectionSchema,
+  }).strict();
+const RecordFieldValueSetSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("record.field_value_set"),
+    projection: RecordFieldValueSetProjectionSchema,
+  }).strict();
 const TaskStatusDefinitionCreatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1029,6 +1085,9 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   TaskParentChangedSuccessOutcomeSchema,
   TaskStatusDefinitionCreatedSuccessOutcomeSchema,
   TaskStatusDefinitionChangedSuccessOutcomeSchema,
+  FieldDefCreatedSuccessOutcomeSchema,
+  FieldDefChangedSuccessOutcomeSchema,
+  RecordFieldValueSetSuccessOutcomeSchema,
   WorkspaceDefaultStatusChangedSuccessOutcomeSchema,
   TaskStatusChangedSuccessOutcomeSchema,
   TaskOperationalStateChangedSuccessOutcomeSchema,
@@ -1068,6 +1127,8 @@ export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
           "task.restore_parent",
           "taskStatus.restore_definition",
           "workspace.restore_default_status",
+          "fieldDef.restore_definition",
+          "record.restore_field_value",
           "task.restore_operational_state",
           "work_link.restore_state",
           "relation.remove",

@@ -216,6 +216,19 @@ historical label — configuration never silently rewrites existing Tasks.
 Completion state remains a separate dimension from workflow status.
 Allowed-transition matrices are deliberately not introduced yet.
 
+Core records accept typed workspace extension fields. A field definition is
+workspace-scoped (target kind Task or Project, label, closed type union of
+text/number/date/constrained choice, active/retired lifecycle) and is managed
+by workspace maintainers through versioned `fieldDef.*` commands with audit
+and previewed undo. Values live on the target record itself
+(`record.setFieldValue`, expected-version, explicit null to clear, at most 32
+populated fields), so Space authorization, audit, export, backup, Hub
+projection, and revocation are inherited from the record — a value can never
+out-scope its record, definitions cannot bypass authorization, and no
+arbitrary JSON enters the graph. A retired definition stops being assignable
+while existing values keep rendering with a historical marker. Field-based
+saved-view filters and search indexing are deliberately later steps.
+
 Saved work views carry a typed, closed filter vocabulary — operational
 states, workflow statuses, priorities, a deadline window (overdue, today,
 this week in the workspace calendar), scheduled/unscheduled, and

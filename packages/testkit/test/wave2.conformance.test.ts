@@ -74,6 +74,11 @@ const context = (): ExecutionContext =>
       "task.create",
       "task.updateDetails",
       "task.setParent",
+      "fieldDef.create",
+      "fieldDef.rename",
+      "fieldDef.archive",
+      "fieldDef.restore",
+      "record.setFieldValue",
       "taskStatus.create",
       "taskStatus.rename",
       "taskStatus.setSemantics",
@@ -1619,6 +1624,146 @@ describe("Wave 2 reference semantics", () => {
       undoRename.diagnosticCode,
       "undo.not_available",
       "the later archive blocks undoing the earlier rename",
+    );
+  });
+
+  it("extends records with typed workspace fields without an authorization bypass", () => {
+    const harness = setup();
+    const taskId = createTask(harness, "Contract renewal for Orbit");
+    const dateFieldId = "10000000-0000-4000-8000-00000000b201";
+    const choiceFieldId = "10000000-0000-4000-8000-00000000b202";
+    const createField = (
+      fieldId: string,
+      label: string,
+      type: Record<string, unknown>,
+    ) =>
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`field-${label}`),
+          commandName: "fieldDef.create",
+          payload: { fieldId, targetKind: "task", label, type },
+        }),
+      );
+    assert.equal(
+      createField(dateFieldId, "Data umowy", { kind: "date" }).diagnosticCode,
+      "fieldDef.created",
+    );
+    assert.equal(
+      createField(choiceFieldId, "Segment", {
+        kind: "choice",
+        options: ["MSSP", "Enterprise", "SMB"],
+      }).diagnosticCode,
+      "fieldDef.created",
+    );
+    assert.equal(
+      createField("10000000-0000-4000-8000-00000000b203", "data umowy", {
+        kind: "text",
+      }).diagnosticCode,
+      "command.precondition_failed",
+      "active labels stay unique per target kind",
+    );
+
+    const setValue = {
+      ...metadata("field-set", { [taskId]: 1 }),
+      commandName: "record.setFieldValue",
+      payload: {
+        targetKind: "task",
+        recordId: taskId,
+        fieldId: dateFieldId,
+        value: { kind: "date", value: "2026-09-30T12:00:00.000Z" },
+      },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), setValue)).diagnosticCode,
+      "record.field_value_set",
+    );
+    const wrongType = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("field-wrong-type", { [taskId]: 2 }),
+        commandName: "record.setFieldValue",
+        payload: {
+          targetKind: "task",
+          recordId: taskId,
+          fieldId: dateFieldId,
+          value: { kind: "text", value: "wrzesień" },
+        },
+      }),
+    );
+    assert.equal(wrongType.diagnosticCode, "command.precondition_failed");
+    const wrongChoice = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("field-wrong-choice", { [taskId]: 2 }),
+        commandName: "record.setFieldValue",
+        payload: {
+          targetKind: "task",
+          recordId: taskId,
+          fieldId: choiceFieldId,
+          value: { kind: "choice", value: "Startup" },
+        },
+      }),
+    );
+    assert.equal(wrongChoice.diagnosticCode, "command.precondition_failed");
+
+    const listed = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      listed.kind !== "query_result" ||
+      listed.result.outcome !== "success" ||
+      listed.result.projection.kind !== "task.list"
+    )
+      throw new Error("Expected task list.");
+    const item = listed.result.projection.items.find(
+      (entry) => entry.id === taskId,
+    );
+    assert.deepEqual(item?.fields?.[dateFieldId], {
+      kind: "date",
+      value: "2026-09-30T12:00:00.000Z",
+    });
+
+    const undoSet = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("field-undo", { [taskId]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: setValue.commandId },
+      }),
+    );
+    assert.equal(undoSet.diagnosticCode, "command.undone");
+    assert.equal(
+      harness.store.snapshot().tasks.find((task) => task.id === taskId)?.fields,
+      undefined,
+      "undo restores the exact prior (absent) value",
+    );
+
+    const archive = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("field-archive", { [dateFieldId]: 1 }),
+        commandName: "fieldDef.archive",
+        payload: { fieldId: dateFieldId },
+      }),
+    );
+    assert.equal(archive.diagnosticCode, "fieldDef.changed");
+    const setOnRetired = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("field-set-retired", { [taskId]: 3 }),
+        commandName: "record.setFieldValue",
+        payload: {
+          targetKind: "task",
+          recordId: taskId,
+          fieldId: dateFieldId,
+          value: { kind: "date", value: "2026-10-01T12:00:00.000Z" },
+        },
+      }),
+    );
+    assert.equal(
+      setOnRetired.diagnosticCode,
+      "command.precondition_failed",
+      "a retired definition is no longer assignable",
     );
   });
 

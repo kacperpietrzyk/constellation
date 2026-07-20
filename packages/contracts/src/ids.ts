@@ -70,6 +70,8 @@ export type RelationId = z.infer<typeof RelationIdSchema>;
 
 export const TaskStatusIdSchema = opaqueId<"TaskStatusId">();
 export type TaskStatusId = z.infer<typeof TaskStatusIdSchema>;
+export const FieldDefinitionIdSchema = opaqueId<"FieldDefinitionId">();
+export type FieldDefinitionId = z.infer<typeof FieldDefinitionIdSchema>;
 
 export const MembershipIdSchema = opaqueId<"MembershipId">();
 export type MembershipId = z.infer<typeof MembershipIdSchema>;

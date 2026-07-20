@@ -3,6 +3,7 @@ export * from "./collaboration.js";
 export * from "./agent-access.js";
 export * from "./comment.js";
 export * from "./document.js";
+export * from "./fields.js";
 export * from "./knowledge.js";
 export * from "./strategic-depth.js";
 export * from "./assignment.js";

@@ -24,6 +24,7 @@ import type {
   CommentId,
   AttentionSignalId,
   TaskStatusId,
+  FieldDefinitionId,
   WorkspaceId,
   GrantId,
   AgentRunId,
@@ -41,6 +42,7 @@ import type {
   AuditReceipt,
   Capture,
   DomainEvent,
+  FieldDefinition,
   OutboxEntry,
   Project,
   Space,
@@ -136,6 +138,7 @@ interface MutableState {
   readonly comments: Map<CommentId, RecordComment>;
   readonly attentionSignals: Map<AttentionSignalId, AttentionSignal>;
   readonly taskStatuses: Map<TaskStatusId, TaskStatusDefinition>;
+  readonly fieldDefinitions: Map<FieldDefinitionId, FieldDefinition>;
   readonly captures: Map<CaptureId, Capture>;
   readonly tasks: Map<TaskId, Task>;
   readonly projects: Map<ProjectId, Project>;
@@ -168,6 +171,7 @@ const emptyState = (): MutableState => ({
   comments: new Map(),
   attentionSignals: new Map(),
   taskStatuses: new Map(),
+  fieldDefinitions: new Map(),
   captures: new Map(),
   tasks: new Map(),
   projects: new Map(),
@@ -197,6 +201,7 @@ const cloneState = (state: MutableState): MutableState => ({
   comments: new Map(state.comments),
   attentionSignals: new Map(state.attentionSignals),
   taskStatuses: new Map(state.taskStatuses),
+  fieldDefinitions: new Map(state.fieldDefinitions),
   captures: new Map(state.captures),
   tasks: new Map(state.tasks),
   projects: new Map(state.projects),
@@ -264,6 +269,23 @@ class ReadView implements ApplicationReadView {
 
   public getTaskStatus(id: TaskStatusId): TaskStatusDefinition | undefined {
     return this.state.taskStatuses.get(id);
+  }
+
+  public getFieldDefinition(
+    id: FieldDefinitionId,
+  ): FieldDefinition | undefined {
+    return this.state.fieldDefinitions.get(id);
+  }
+
+  public listFieldDefinitions(
+    workspaceId: WorkspaceId,
+  ): readonly FieldDefinition[] {
+    return [...this.state.fieldDefinitions.values()]
+      .filter((definition) => definition.workspaceId === workspaceId)
+      .sort(
+        (left, right) =>
+          left.position - right.position || left.id.localeCompare(right.id),
+      );
   }
 
   public listTaskStatuses(
@@ -836,6 +858,25 @@ class Transaction extends ReadView implements ApplicationTransaction {
     return true;
   }
 
+  public insertFieldDefinition(definition: FieldDefinition): void {
+    if (this.state.fieldDefinitions.has(definition.id)) {
+      throw new Error(`Duplicate field definition ID: ${definition.id}`);
+    }
+    this.state.fieldDefinitions.set(definition.id, definition);
+  }
+
+  public updateFieldDefinition(
+    definition: FieldDefinition,
+    expectedVersion: number,
+  ): boolean {
+    const current = this.state.fieldDefinitions.get(definition.id);
+    if (current === undefined || current.version !== expectedVersion) {
+      return false;
+    }
+    this.state.fieldDefinitions.set(definition.id, definition);
+    return true;
+  }
+
   public insertTaskStatus(status: TaskStatusDefinition): void {
     if (this.state.taskStatuses.has(status.id)) {
       throw new Error(`Duplicate task status ID: ${status.id}`);
@@ -1136,6 +1177,9 @@ const stateFromSnapshot = (snapshot: ReferenceStateSnapshot): MutableState => ({
   taskStatuses: new Map(
     snapshot.taskStatuses.map((value) => [value.id, value]),
   ),
+  fieldDefinitions: new Map(
+    (snapshot.fieldDefinitions ?? []).map((value) => [value.id, value]),
+  ),
   captures: new Map(snapshot.captures.map((value) => [value.id, value])),
   tasks: new Map(snapshot.tasks.map((value) => [value.id, value])),
   projects: new Map(snapshot.projects.map((value) => [value.id, value])),
@@ -1221,6 +1265,7 @@ export class InMemoryReferenceStore implements ApplicationStore {
       comments: [...this.state.comments.values()],
       attentionSignals: [...this.state.attentionSignals.values()],
       taskStatuses: [...this.state.taskStatuses.values()],
+      fieldDefinitions: [...this.state.fieldDefinitions.values()],
       captures: [...this.state.captures.values()],
       tasks: [...this.state.tasks.values()],
       projects: [...this.state.projects.values()],
