@@ -74,6 +74,12 @@ const context = (): ExecutionContext =>
       "task.create",
       "task.updateDetails",
       "task.setParent",
+      "template.create",
+      "template.rename",
+      "template.updateContents",
+      "template.archive",
+      "template.restore",
+      "project.applyTemplate",
       "fieldDef.create",
       "fieldDef.rename",
       "fieldDef.archive",
@@ -1764,6 +1770,283 @@ describe("Wave 2 reference semantics", () => {
       setOnRetired.diagnosticCode,
       "command.precondition_failed",
       "a retired definition is no longer assignable",
+    );
+  });
+
+  it("bundles project starters into templates applied prospectively with scoped undo", () => {
+    const harness = setup();
+    const templateId = "10000000-0000-4000-8000-00000000c301";
+    const projectFieldId = "10000000-0000-4000-8000-00000000c302";
+    const taskFieldId = "10000000-0000-4000-8000-00000000c303";
+    for (const [fieldId, targetKind, label] of [
+      [projectFieldId, "project", "Segment klienta"],
+      [taskFieldId, "task", "Estymata"],
+    ] as const) {
+      assert.equal(
+        unwrap(
+          harness.kernel.execute(context(), {
+            ...metadata(`template-field-${label}`),
+            commandName: "fieldDef.create",
+            payload: { fieldId, targetKind, label, type: { kind: "text" } },
+          }),
+        ).diagnosticCode,
+        "fieldDef.created",
+      );
+    }
+    const created = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("template-create"),
+        commandName: "template.create",
+        payload: {
+          templateId,
+          name: "Wdrożenie klienta",
+          taskTitles: ["Kickoff", "Retro"],
+          fieldIds: [projectFieldId],
+        },
+      }),
+    );
+    assert.equal(created.diagnosticCode, "template.created");
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("template-duplicate"),
+          commandName: "template.create",
+          payload: {
+            templateId: "10000000-0000-4000-8000-00000000c304",
+            name: "wdrożenie KLIENTA",
+          },
+        }),
+      ).diagnosticCode,
+      "command.precondition_failed",
+      "active template names stay unique case-insensitively",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("template-task-field"),
+          commandName: "template.create",
+          payload: {
+            templateId: "10000000-0000-4000-8000-00000000c305",
+            name: "Zły szablon",
+            fieldIds: [taskFieldId],
+          },
+        }),
+      ).diagnosticCode,
+      "command.precondition_failed",
+      "templates only reference project-targeted field definitions",
+    );
+
+    const { projectId } = createProjectRecord(harness, "Orbit onboarding");
+    const kickoffId = createTask(harness, "Kickoff");
+    const snapshotBefore = harness.store.snapshot();
+    const kickoff = snapshotBefore.tasks.find((task) => task.id === kickoffId);
+    const projectBefore = snapshotBefore.projects.find(
+      (project) => project.id === projectId,
+    );
+    assert.ok(kickoff);
+    assert.ok(projectBefore);
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("template-relate", {
+            [kickoffId]: kickoff.version,
+            [projectId]: projectBefore.version,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_project",
+            taskId: kickoffId,
+            projectId,
+          },
+        }),
+      ).diagnosticCode,
+      "relation.created",
+    );
+
+    const projectVersion = harness.store
+      .snapshot()
+      .projects.find((project) => project.id === projectId)?.version;
+    assert.ok(projectVersion !== undefined);
+    const applyCommand = {
+      ...metadata("template-apply", { [projectId]: projectVersion }),
+      commandName: "project.applyTemplate",
+      payload: { projectId, templateId },
+    };
+    const applied = unwrap(harness.kernel.execute(context(), applyCommand));
+    assert.equal(applied.diagnosticCode, "project.template_applied");
+    if (
+      applied.outcome !== "success" ||
+      applied.projection.kind !== "project.template_applied"
+    ) {
+      throw new Error("Expected template application.");
+    }
+    assert.deepEqual(
+      applied.projection.skippedExistingTitles,
+      ["Kickoff"],
+      "existing related Tasks with a starter title are skipped, not rewritten",
+    );
+    assert.equal(applied.projection.createdTaskIds.length, 1);
+    const retroId = applied.projection.createdTaskIds[0];
+    assert.ok(retroId !== undefined);
+    const afterApply = harness.store.snapshot();
+    assert.equal(
+      afterApply.tasks.find((task) => task.id === retroId)?.title,
+      "Retro",
+    );
+    assert.equal(
+      afterApply.relations.filter(
+        (relation) =>
+          relation.projectId === projectId && relation.state === "active",
+      ).length,
+      2,
+      "the created starter joins the project through an ordinary relation",
+    );
+    assert.equal(
+      afterApply.projects.find((project) => project.id === projectId)
+        ?.appliedTemplateId,
+      templateId,
+      "application stamps provenance on the project",
+    );
+
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("template-reapply", {
+            [projectId]: applied.projection.version,
+          }),
+          commandName: "project.applyTemplate",
+          payload: { projectId, templateId },
+        }),
+      ).diagnosticCode,
+      "command.precondition_failed",
+      "re-applying the same template is refused",
+    );
+
+    const retroVersion = afterApply.tasks.find(
+      (task) => task.id === retroId,
+    )?.version;
+    assert.ok(retroVersion !== undefined);
+    const undoApply = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("template-unapply", {
+          [projectId]: applied.projection.version,
+          [retroId]: retroVersion,
+        }),
+        commandName: "command.undo",
+        payload: { targetCommandId: applyCommand.commandId },
+      }),
+    );
+    assert.equal(undoApply.diagnosticCode, "command.undone");
+    const afterUndo = harness.store.snapshot();
+    assert.equal(
+      afterUndo.tasks.find((task) => task.id === retroId)?.recordState,
+      "removed",
+      "unapply removes exactly the Tasks the application created",
+    );
+    assert.equal(
+      afterUndo.projects.find((project) => project.id === projectId)
+        ?.appliedTemplateId,
+      undefined,
+      "unapply clears the provenance stamp",
+    );
+    assert.equal(
+      afterUndo.tasks.find((task) => task.id === kickoffId)?.recordState,
+      "active",
+      "pre-existing Tasks are untouched by unapply",
+    );
+
+    const projectAfterUndo = afterUndo.projects.find(
+      (project) => project.id === projectId,
+    );
+    assert.ok(projectAfterUndo);
+    const reapplyCommand = {
+      ...metadata("template-apply-2", {
+        [projectId]: projectAfterUndo.version,
+      }),
+      commandName: "project.applyTemplate",
+      payload: { projectId, templateId },
+    };
+    const reapplied = unwrap(harness.kernel.execute(context(), reapplyCommand));
+    assert.equal(reapplied.diagnosticCode, "project.template_applied");
+    if (
+      reapplied.outcome !== "success" ||
+      reapplied.projection.kind !== "project.template_applied"
+    ) {
+      throw new Error("Expected second application.");
+    }
+    const secondRetroId = reapplied.projection.createdTaskIds[0];
+    assert.ok(secondRetroId !== undefined);
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("template-later-write", { [secondRetroId]: 1 }),
+          commandName: "task.updateDetails",
+          payload: { taskId: secondRetroId, description: "Notatki z retro" },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("template-unapply-blocked"),
+          commandName: "command.undo",
+          payload: { targetCommandId: reapplyCommand.commandId },
+        }),
+      ).diagnosticCode,
+      "undo.not_available",
+      "a later edit to a created Task blocks unapplying",
+    );
+
+    const renameCommand = {
+      ...metadata("template-rename", { [templateId]: 1 }),
+      commandName: "template.rename",
+      payload: { templateId, name: "Wdrożenie enterprise" },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), renameCommand)).diagnosticCode,
+      "template.changed",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("template-rename-undo", { [templateId]: 2 }),
+          commandName: "command.undo",
+          payload: { targetCommandId: renameCommand.commandId },
+        }),
+      ).diagnosticCode,
+      "command.undone",
+      "definition mutations restore exactly through undo",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("template-archive", { [templateId]: 3 }),
+          commandName: "template.archive",
+          payload: { templateId },
+        }),
+      ).diagnosticCode,
+      "template.changed",
+    );
+    const projectFinal = harness.store
+      .snapshot()
+      .projects.find((project) => project.id === projectId);
+    assert.ok(projectFinal);
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("template-apply-retired", {
+            [projectId]: projectFinal.version,
+          }),
+          commandName: "project.applyTemplate",
+          payload: {
+            projectId,
+            templateId: "10000000-0000-4000-8000-00000000c301",
+          },
+        }),
+      ).diagnosticCode,
+      "command.precondition_failed",
+      "a retired template is no longer applicable",
     );
   });
 

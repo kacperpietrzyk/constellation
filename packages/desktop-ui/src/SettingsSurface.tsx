@@ -15,7 +15,9 @@ import type {
 import {
   changeFieldDefinition,
   changeTaskStatusDefinition,
+  changeProjectTemplateDefinition,
   createFieldDefinition,
+  createProjectTemplateDefinition,
   createTaskStatusDefinition,
   renameWorkspace,
   setDefaultTaskStatus,
@@ -110,6 +112,27 @@ export const SettingsSurface = ({
     "text" | "number" | "date" | "choice"
   >("text");
   const [newFieldOptions, setNewFieldOptions] = useState("");
+  const [templateBusyId, setTemplateBusyId] = useState<string>();
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateTasks, setNewTemplateTasks] = useState("");
+  const runTemplateOperation = async (
+    id: string,
+    operation: () => Promise<{ readonly kind: string }>,
+  ): Promise<boolean> => {
+    if (templateBusyId !== undefined) return false;
+    setTemplateBusyId(id);
+    try {
+      const result = await operation();
+      if (result.kind === "success") {
+        await onReload();
+        return true;
+      }
+      onFailure(result as MutationFailure);
+      return false;
+    } finally {
+      setTemplateBusyId(undefined);
+    }
+  };
   const runFieldOperation = async (
     id: string,
     operation: () => Promise<{ readonly kind: string }>,
@@ -1092,6 +1115,124 @@ export const SettingsSurface = ({
                     disabled={
                       fieldBusyId === "create" ||
                       newFieldLabel.trim() === "" ||
+                      !client
+                    }
+                  >
+                    Dodaj
+                  </button>
+                </form>
+              </div>
+            </section>
+
+            <section>
+              <div className="settings-copy">
+                <h2>Szablony projektów</h2>
+                <p>
+                  Szablon startuje projekt z gotowymi zadaniami. Zastosowanie
+                  jest zawsze jawne i niczego nie nadpisuje; zmiana szablonu
+                  dotyczy tylko przyszłych zastosowań.
+                </p>
+              </div>
+              <div className="settings-control status-manager">
+                <ul className="status-list">
+                  {(snapshot.bootstrap.projectTemplates ?? []).map(
+                    (template) => {
+                      const retired = template.state === "retired";
+                      const busy = templateBusyId === template.id;
+                      return (
+                        <li
+                          key={template.id}
+                          className={retired ? "status-archived" : undefined}
+                        >
+                          <span className="status-label">
+                            <strong>{template.name}</strong>
+                            <small>
+                              {template.taskTitles.length === 1
+                                ? "1 zadanie startowe"
+                                : `${template.taskTitles.length} zadań startowych`}
+                              {retired ? " · wycofany" : ""}
+                            </small>
+                          </span>
+                          <span className="status-actions">
+                            <button
+                              type="button"
+                              disabled={busy || !client}
+                              onClick={() => {
+                                if (!client) return;
+                                void runTemplateOperation(template.id, () =>
+                                  changeProjectTemplateDefinition(
+                                    client,
+                                    snapshot,
+                                    template.id,
+                                    template.version,
+                                    retired
+                                      ? { kind: "restore" }
+                                      : { kind: "archive" },
+                                  ),
+                                );
+                              }}
+                            >
+                              {retired ? "Przywróć" : "Wycofaj"}
+                            </button>
+                          </span>
+                        </li>
+                      );
+                    },
+                  )}
+                </ul>
+                <form
+                  className="status-create"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const name = newTemplateName.trim();
+                    if (name.length === 0 || !client) return;
+                    const taskTitles = newTemplateTasks
+                      .split(",")
+                      .map((entry) => entry.trim())
+                      .filter((entry) => entry.length > 0);
+                    void runTemplateOperation("create", () =>
+                      createProjectTemplateDefinition(client, snapshot, {
+                        name,
+                        taskTitles,
+                      }),
+                    ).then((ok) => {
+                      if (ok) {
+                        setNewTemplateName("");
+                        setNewTemplateTasks("");
+                      }
+                    });
+                  }}
+                >
+                  <label>
+                    <span className="sr-only">Nazwa nowego szablonu</span>
+                    <input
+                      value={newTemplateName}
+                      maxLength={120}
+                      placeholder="Nowy szablon — nazwa"
+                      disabled={templateBusyId === "create"}
+                      onChange={(event) =>
+                        setNewTemplateName(event.target.value)
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span className="sr-only">
+                      Zadania startowe rozdzielone przecinkami
+                    </span>
+                    <input
+                      value={newTemplateTasks}
+                      placeholder="Zadania startowe po przecinku"
+                      disabled={templateBusyId === "create"}
+                      onChange={(event) =>
+                        setNewTemplateTasks(event.target.value)
+                      }
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={
+                      templateBusyId === "create" ||
+                      newTemplateName.trim() === "" ||
                       !client
                     }
                   >

@@ -21,6 +21,7 @@ import {
   AttentionSignalIdSchema,
   TaskStatusIdSchema,
   FieldDefinitionIdSchema,
+  ProjectTemplateIdSchema,
   WorkspaceIdSchema,
   AgentRunIdSchema,
   AgentHandoffIdSchema,
@@ -982,6 +983,74 @@ export const FieldValueSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
+const TemplateTaskTitlesSchema = z
+  .array(z.string().trim().min(1).max(500))
+  .max(24);
+
+export const TemplateCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("template.create"),
+  payload: z
+    .object({
+      templateId: ProjectTemplateIdSchema,
+      name: z.string().trim().min(1).max(120),
+      description: z.string().trim().min(1).max(2_000).optional(),
+      taskTitles: TemplateTaskTitlesSchema.default([]),
+      fieldIds: z.array(FieldDefinitionIdSchema).max(32).default([]),
+    })
+    .strict(),
+}).strict();
+
+export const TemplateRenameCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("template.rename"),
+  payload: z
+    .object({
+      templateId: ProjectTemplateIdSchema,
+      name: z.string().trim().min(1).max(120),
+    })
+    .strict(),
+}).strict();
+
+export const TemplateUpdateContentsCommandSchema = CommandMetadataSchema.extend(
+  {
+    commandName: z.literal("template.updateContents"),
+    payload: z
+      .object({
+        templateId: ProjectTemplateIdSchema,
+        description: z.string().trim().min(1).max(2_000).nullable().optional(),
+        taskTitles: TemplateTaskTitlesSchema.optional(),
+        fieldIds: z.array(FieldDefinitionIdSchema).max(32).optional(),
+      })
+      .strict()
+      .refine(
+        (payload) =>
+          payload.description !== undefined ||
+          payload.taskTitles !== undefined ||
+          payload.fieldIds !== undefined,
+        { message: "template.updateContents requires at least one change." },
+      ),
+  },
+).strict();
+
+export const TemplateArchiveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("template.archive"),
+  payload: z.object({ templateId: ProjectTemplateIdSchema }).strict(),
+}).strict();
+
+export const TemplateRestoreCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("template.restore"),
+  payload: z.object({ templateId: ProjectTemplateIdSchema }).strict(),
+}).strict();
+
+export const ProjectApplyTemplateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("project.applyTemplate"),
+  payload: z
+    .object({
+      projectId: ProjectIdSchema,
+      templateId: ProjectTemplateIdSchema,
+    })
+    .strict(),
+}).strict();
+
 export const FieldDefCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("fieldDef.create"),
   payload: z
@@ -1279,6 +1348,12 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   TaskCreateCommandSchema,
   TaskUpdateDetailsCommandSchema,
   TaskSetParentCommandSchema,
+  TemplateCreateCommandSchema,
+  TemplateRenameCommandSchema,
+  TemplateUpdateContentsCommandSchema,
+  TemplateArchiveCommandSchema,
+  TemplateRestoreCommandSchema,
+  ProjectApplyTemplateCommandSchema,
   FieldDefCreateCommandSchema,
   FieldDefRenameCommandSchema,
   FieldDefArchiveCommandSchema,

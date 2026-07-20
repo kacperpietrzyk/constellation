@@ -229,6 +229,20 @@ arbitrary JSON enters the graph. A retired definition stops being assignable
 while existing values keep rendering with a historical marker. Field-based
 saved-view filters and search indexing are deliberately later steps.
 
+Project templates bundle a reusable start: a workspace-scoped template
+definition (name, up to 24 starter Task titles, referenced project-targeted
+field definitions, active/retired lifecycle) managed by maintainers through
+versioned `template.*` commands with audit and previewed undo. Application is
+always an explicit, prospective command — `project.applyTemplate` creates only
+the starter Tasks the project does not already have (exact-title matches are
+reported as skipped, never rewritten), relates them through the ordinary
+relation semantics, and stamps `appliedTemplateId` provenance on the project.
+Editing a template never touches existing projects, re-applying the same
+template is refused, and undo removes exactly the Tasks the application
+created — refusing when any of them has been edited since. Starting a project
+without a template stays first-class; a templated start composes creation
+with application in the UI.
+
 Saved work views carry a typed, closed filter vocabulary — operational
 states, workflow statuses, priorities, a deadline window (overdue, today,
 this week in the workspace calendar), scheduled/unscheduled, and

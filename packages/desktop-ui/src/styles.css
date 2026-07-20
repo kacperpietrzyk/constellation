@@ -5355,6 +5355,28 @@ button.mention-chip:disabled {
   min-height: 7rem;
   resize: vertical;
 }
+.project-template-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+.project-template-row small {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+.project-template-row select {
+  max-width: 16rem;
+  padding: var(--space-1) var(--space-2);
+  color: var(--input-text);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  font-size: var(--text-sm);
+}
 .overview-intent input:hover,
 .overview-intent textarea:hover {
   border-color: var(--input-border-hover);

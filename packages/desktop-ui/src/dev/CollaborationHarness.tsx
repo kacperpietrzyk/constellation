@@ -86,6 +86,16 @@ const client = createScenarioClient({
           version: 1,
         },
       ],
+      projectTemplates: [
+        {
+          id: "00000000-0000-4000-8000-0000000000c1",
+          name: "Wdrożenie klienta",
+          taskTitles: ["Kickoff", "Plan wdrożenia", "Retro"],
+          fieldIds: [],
+          position: 0,
+          version: 1,
+        },
+      ],
     }),
     "task.list": result({
       kind: "task.list",
@@ -116,6 +126,34 @@ const client = createScenarioClient({
         },
       ],
       nextCursor: null,
+    }),
+    "project.list": result({
+      kind: "project.list",
+      items: [
+        {
+          id: "00000000-0000-4000-8000-0000000000d1",
+          spaceId,
+          title: "Orbit onboarding",
+          intendedOutcome: "Klient pracuje samodzielnie w Constellation",
+          lifecycle: "active",
+          relatedOpenTaskCount: 0,
+          version: 2,
+          updatedAt: "2026-07-14T11:00:00.000Z",
+        },
+      ],
+    }),
+    "project.operationalOverview": result({
+      kind: "project.operationalOverview",
+      project: {
+        id: "00000000-0000-4000-8000-0000000000d1",
+        spaceId,
+        title: "Orbit onboarding",
+        intendedOutcome: "Klient pracuje samodzielnie w Constellation",
+        lifecycle: "active",
+        version: 2,
+        updatedAt: "2026-07-14T11:00:00.000Z",
+      },
+      relatedTasks: [],
     }),
     "capture.history": result({
       kind: "capture.history",

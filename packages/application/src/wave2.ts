@@ -15,6 +15,8 @@ import {
   QueryResultSchema,
   RelationIdSchema,
   TaskIdSchema,
+  type RelationId,
+  type TaskId,
   TaskAssignmentIdSchema,
   AttentionSignalIdSchema,
   KnowledgeSourceIdSchema,
@@ -33,7 +35,10 @@ import {
   assignTask,
   createProject,
   createFieldDefinition,
+  createProjectTemplate,
   createTask,
+  projectTemplateState,
+  updateProjectTemplate,
   createTaskStatus,
   fieldDefinitionState,
   fieldValueMatchesType,
@@ -85,6 +90,8 @@ import {
   type DomainEvent,
   type FieldDefinition,
   type FieldDefinitionUpdate,
+  type ProjectTemplate,
+  type ProjectTemplateUpdate,
   type TaskStatusDefinition,
   type TaskStatusDefinitionUpdate,
   type Workspace,
@@ -163,6 +170,12 @@ export type Wave2Command = Extract<
       | "task.create"
       | "task.updateDetails"
       | "task.setParent"
+      | "template.create"
+      | "template.rename"
+      | "template.updateContents"
+      | "template.archive"
+      | "template.restore"
+      | "project.applyTemplate"
       | "fieldDef.create"
       | "fieldDef.rename"
       | "fieldDef.archive"
@@ -467,6 +480,11 @@ export const isWave2CommandAuthorized = (
         space?.workspaceId === command.workspaceId ? space.id : undefined,
       );
     }
+    case "template.create":
+    case "template.rename":
+    case "template.updateContents":
+    case "template.archive":
+    case "template.restore":
     case "fieldDef.create":
     case "fieldDef.rename":
     case "fieldDef.archive":
@@ -489,6 +507,18 @@ export const isWave2CommandAuthorized = (
           capability: command.commandName,
           workspaceId: command.workspaceId,
         })
+      );
+    }
+    case "project.applyTemplate": {
+      const project = view.getProject(command.payload.projectId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        project?.workspaceId === command.workspaceId
+          ? project.spaceId
+          : undefined,
       );
     }
     case "record.setFieldValue": {
@@ -715,6 +745,7 @@ const appendJournal = (
       | "taskStatus"
       | "workspace"
       | "fieldDefinition"
+      | "projectTemplate"
     >
   >,
 ): CommandOutcome => {
@@ -3006,6 +3037,367 @@ export const executeWave2Command = (
         },
       );
     }
+    case "template.create": {
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (workspace === undefined) return precondition(command, occurredAt);
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      const existing = transaction.getProjectTemplate(
+        command.payload.templateId,
+      );
+      if (existing !== undefined) {
+        return outcome(command, occurredAt, {
+          outcome: "conflict",
+          diagnosticCode: "record.already_exists",
+          currentVersions: { [existing.id]: existing.version },
+        });
+      }
+      const templates = transaction.listProjectTemplates(command.workspaceId);
+      const normalizedName = command.payload.name.toLocaleLowerCase("pl-PL");
+      if (
+        templates.some(
+          (template) =>
+            projectTemplateState(template) === "active" &&
+            template.name.toLocaleLowerCase("pl-PL") === normalizedName,
+        ) ||
+        command.payload.fieldIds.some((fieldId) => {
+          const definition = transaction.getFieldDefinition(fieldId);
+          return (
+            definition === undefined ||
+            definition.workspaceId !== command.workspaceId ||
+            definition.targetKind !== "project"
+          );
+        })
+      ) {
+        return precondition(command, occurredAt);
+      }
+      const template = createProjectTemplate({
+        id: command.payload.templateId,
+        workspaceId: command.workspaceId,
+        name: command.payload.name,
+        ...(command.payload.description === undefined
+          ? {}
+          : { description: command.payload.description }),
+        taskTitles: command.payload.taskTitles,
+        fieldIds: command.payload.fieldIds,
+        position:
+          templates.reduce((max, entry) => Math.max(max, entry.position), -1) +
+          1,
+        occurredAt,
+      });
+      transaction.insertProjectTemplate(template);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "template.created",
+          workspaceId: command.workspaceId,
+          spaceId: workspace.rootSpaceId,
+          aggregateId: template.id,
+          aggregateVersion: template.version,
+          occurredAt,
+        },
+        { [template.id]: template.version },
+        ["name", "description", "taskTitles", "fieldIds", "state"],
+        {
+          diagnosticCode: "template.created",
+          projection: {
+            kind: "template.created",
+            templateId: template.id,
+            name: template.name,
+            taskTitles: template.taskTitles,
+            fieldIds: template.fieldIds,
+            state: "active",
+            position: template.position,
+            version: template.version,
+          },
+        },
+        undefined,
+        { [template.id]: "projectTemplate" },
+      );
+    }
+    case "template.rename":
+    case "template.updateContents":
+    case "template.archive":
+    case "template.restore": {
+      const template = transaction.getProjectTemplate(
+        command.payload.templateId,
+      );
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (
+        template === undefined ||
+        template.workspaceId !== command.workspaceId ||
+        workspace === undefined
+      ) {
+        return precondition(command, occurredAt);
+      }
+      const currentState = projectTemplateState(template);
+      let update: ProjectTemplateUpdate;
+      let changedFields: readonly string[];
+      if (command.commandName === "template.rename") {
+        const normalizedName = command.payload.name.toLocaleLowerCase("pl-PL");
+        if (
+          command.payload.name === template.name ||
+          transaction
+            .listProjectTemplates(command.workspaceId)
+            .some(
+              (entry) =>
+                entry.id !== template.id &&
+                projectTemplateState(entry) === "active" &&
+                entry.name.toLocaleLowerCase("pl-PL") === normalizedName,
+            )
+        ) {
+          return precondition(command, occurredAt);
+        }
+        update = { name: command.payload.name };
+        changedFields = ["name"];
+      } else if (command.commandName === "template.updateContents") {
+        if (
+          command.payload.fieldIds !== undefined &&
+          command.payload.fieldIds.some((fieldId) => {
+            const definition = transaction.getFieldDefinition(fieldId);
+            return (
+              definition === undefined ||
+              definition.workspaceId !== command.workspaceId ||
+              definition.targetKind !== "project"
+            );
+          })
+        ) {
+          return precondition(command, occurredAt);
+        }
+        update = {
+          ...(command.payload.description === undefined
+            ? {}
+            : { description: command.payload.description }),
+          ...(command.payload.taskTitles === undefined
+            ? {}
+            : { taskTitles: command.payload.taskTitles }),
+          ...(command.payload.fieldIds === undefined
+            ? {}
+            : { fieldIds: command.payload.fieldIds }),
+        };
+        changedFields = [
+          ...(command.payload.description === undefined ? [] : ["description"]),
+          ...(command.payload.taskTitles === undefined ? [] : ["taskTitles"]),
+          ...(command.payload.fieldIds === undefined ? [] : ["fieldIds"]),
+        ];
+      } else if (command.commandName === "template.archive") {
+        if (currentState === "retired")
+          return precondition(command, occurredAt);
+        update = { state: "retired" };
+        changedFields = ["state"];
+      } else {
+        const normalizedName = template.name.toLocaleLowerCase("pl-PL");
+        if (
+          currentState === "active" ||
+          transaction
+            .listProjectTemplates(command.workspaceId)
+            .some(
+              (entry) =>
+                entry.id !== template.id &&
+                projectTemplateState(entry) === "active" &&
+                entry.name.toLocaleLowerCase("pl-PL") === normalizedName,
+            )
+        ) {
+          return precondition(command, occurredAt);
+        }
+        update = { state: "active" };
+        changedFields = ["state"];
+      }
+      if (!exactExpected(command, { [template.id]: template.version })) {
+        return versionConflict(command, occurredAt, {
+          [template.id]: template.version,
+        });
+      }
+      const updated = updateProjectTemplate(template, update, occurredAt);
+      if (!transaction.updateProjectTemplate(updated, template.version)) {
+        return versionConflict(command, occurredAt, {
+          [template.id]: template.version,
+        });
+      }
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "template.changed",
+          workspaceId: command.workspaceId,
+          spaceId: workspace.rootSpaceId,
+          aggregateId: updated.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        changedFields,
+        {
+          diagnosticCode: "template.changed",
+          projection: {
+            kind: "template.changed",
+            templateId: updated.id,
+            name: updated.name,
+            taskTitles: updated.taskTitles,
+            fieldIds: updated.fieldIds,
+            state: projectTemplateState(updated),
+            position: updated.position,
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: command.workspaceId,
+          spaceId: workspace.rootSpaceId,
+          kind: "template.restore_definition",
+          templateId: template.id,
+          priorName: template.name,
+          ...(template.description === undefined
+            ? {}
+            : { priorDescription: template.description }),
+          priorTaskTitles: template.taskTitles,
+          priorFieldIds: template.fieldIds,
+          priorPosition: template.position,
+          priorState: currentState,
+          ...(template.retiredAt === undefined
+            ? {}
+            : { priorRetiredAt: template.retiredAt }),
+          resultingVersion: updated.version,
+        },
+        { [updated.id]: "projectTemplate" },
+      );
+    }
+    case "project.applyTemplate": {
+      const project = transaction.getProject(command.payload.projectId);
+      const template = transaction.getProjectTemplate(
+        command.payload.templateId,
+      );
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (
+        project === undefined ||
+        workspace === undefined ||
+        template?.workspaceId !== project.workspaceId ||
+        projectTemplateState(template) !== "active" ||
+        project.appliedTemplateId === template.id
+      ) {
+        return precondition(command, occurredAt);
+      }
+      if (!exactExpected(command, { [project.id]: project.version })) {
+        return versionConflict(command, occurredAt, {
+          [project.id]: project.version,
+        });
+      }
+      // Application is prospective and additive: existing related Tasks with
+      // an exact starter title are skipped explicitly, never rewritten.
+      const relations = transaction.listRelations(
+        project.workspaceId,
+        project.spaceId,
+      );
+      const existingTitles = new Set(
+        relations
+          .filter(
+            (relation) =>
+              relation.projectId === project.id && relation.state === "active",
+          )
+          .map((relation) => transaction.getTask(relation.taskId)?.title ?? ""),
+      );
+      const skippedExistingTitles = template.taskTitles.filter((title) =>
+        existingTitles.has(title),
+      );
+      const createdTaskIds: TaskId[] = [];
+      const createdRelationIds: RelationId[] = [];
+      const resultingTaskVersions: Record<string, number> = {};
+      const recordVersions: Record<string, number> = {};
+      const affectedKinds: Record<string, "task" | "project" | "relation"> = {};
+      for (const title of template.taskTitles) {
+        if (existingTitles.has(title)) continue;
+        const task = createTask({
+          id: TaskIdSchema.parse(dependencies.ids.next("task")),
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          title,
+          statusId: workspace.defaultTaskStatusId,
+          createdBy: context.principalId,
+          occurredAt,
+        });
+        transaction.insertTask(task);
+        const relation = relateTaskToProject({
+          id: RelationIdSchema.parse(dependencies.ids.next("relation")),
+          task,
+          project,
+          createdBy: context.principalId,
+          occurredAt,
+        });
+        transaction.insertRelation(relation);
+        createdTaskIds.push(task.id);
+        createdRelationIds.push(relation.id);
+        resultingTaskVersions[task.id] = task.version;
+        recordVersions[task.id] = task.version;
+        recordVersions[relation.id] = relation.version;
+        affectedKinds[task.id] = "task";
+        affectedKinds[relation.id] = "relation";
+      }
+      const { appliedTemplateId: _prior, ...projectBase } = project;
+      void _prior;
+      const updatedProject: Project = {
+        ...projectBase,
+        appliedTemplateId: template.id,
+        version: project.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateProject(updatedProject, project.version)) {
+        return versionConflict(command, occurredAt, {
+          [project.id]: project.version,
+        });
+      }
+      recordVersions[project.id] = updatedProject.version;
+      affectedKinds[project.id] = "project";
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "project.template_applied",
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          aggregateId: project.id,
+          aggregateVersion: updatedProject.version,
+          occurredAt,
+        },
+        recordVersions,
+        ["appliedTemplateId", "templateTasks"],
+        {
+          diagnosticCode: "project.template_applied",
+          projection: {
+            kind: "project.template_applied",
+            projectId: project.id,
+            templateId: template.id,
+            createdTaskIds,
+            skippedExistingTitles,
+            version: updatedProject.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          kind: "project.unapply_template",
+          projectId: project.id,
+          templateId: template.id,
+          createdTaskIds,
+          createdRelationIds,
+          resultingProjectVersion: updatedProject.version,
+          resultingTaskVersions,
+        },
+        affectedKinds,
+      );
+    }
     case "fieldDef.create": {
       const workspace = transaction.getWorkspace(command.workspaceId);
       if (workspace === undefined) return precondition(command, occurredAt);
@@ -4519,6 +4911,49 @@ const descriptorState = (
             reason: "later_change",
           };
     }
+    case "template.restore_definition": {
+      const template = view.getProjectTemplate(descriptor.templateId);
+      return template?.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [template.id],
+            versions: { [template.id]: template.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "project.unapply_template": {
+      const project = view.getProject(descriptor.projectId);
+      const tasksUnchanged = descriptor.createdTaskIds.every((taskId) => {
+        const task = view.getTask(taskId);
+        return (
+          task !== undefined &&
+          task.recordState === "active" &&
+          task.completionState === "open" &&
+          task.version === descriptor.resultingTaskVersions[taskId]
+        );
+      });
+      return project?.version === descriptor.resultingProjectVersion &&
+        tasksUnchanged
+        ? {
+            available: true,
+            recordIds: [project.id, ...descriptor.createdTaskIds],
+            versions: {
+              [project.id]: project.version,
+              ...descriptor.resultingTaskVersions,
+            },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
     case "fieldDef.restore_definition": {
       const definition = view.getFieldDefinition(descriptor.fieldId);
       return definition?.version === descriptor.resultingVersion
@@ -4831,6 +5266,7 @@ const applyUndo = (
     | "taskStatus"
     | "workspace"
     | "fieldDefinition"
+    | "projectTemplate"
   >;
   if (descriptor.kind === "project.restore_outcome") {
     const project = transaction.getProject(descriptor.projectId) as Project;
@@ -4864,6 +5300,72 @@ const applyUndo = (
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "task" };
+  } else if (descriptor.kind === "template.restore_definition") {
+    const template = transaction.getProjectTemplate(
+      descriptor.templateId,
+    ) as ProjectTemplate;
+    const {
+      description: _description,
+      retiredAt: _retiredAt,
+      ...base
+    } = template;
+    void _description;
+    void _retiredAt;
+    const restored: ProjectTemplate = {
+      ...base,
+      name: descriptor.priorName,
+      ...(descriptor.priorDescription === undefined
+        ? {}
+        : { description: descriptor.priorDescription }),
+      taskTitles: descriptor.priorTaskTitles,
+      fieldIds: descriptor.priorFieldIds,
+      position: descriptor.priorPosition,
+      state: descriptor.priorState,
+      ...(descriptor.priorRetiredAt === undefined
+        ? {}
+        : { retiredAt: descriptor.priorRetiredAt }),
+      version: template.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateProjectTemplate(restored, template.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "projectTemplate" };
+  } else if (descriptor.kind === "project.unapply_template") {
+    const project = transaction.getProject(descriptor.projectId) as Project;
+    compensatedVersions = {};
+    compensatedKinds = {};
+    for (const relationId of descriptor.createdRelationIds) {
+      const relation = transaction.getRelation(relationId);
+      if (relation !== undefined && relation.state === "active") {
+        const removed = removeTaskProjectRelation(relation, occurredAt);
+        transaction.updateRelation(removed, relation.version);
+        compensatedVersions[removed.id] = removed.version;
+        compensatedKinds[removed.id] = "relation";
+      }
+    }
+    for (const taskId of descriptor.createdTaskIds) {
+      const task = transaction.getTask(taskId);
+      if (task === undefined) continue;
+      const removedTask: Task = {
+        ...task,
+        recordState: "removed",
+        version: task.version + 1,
+        updatedAt: occurredAt,
+      };
+      transaction.updateTask(removedTask, task.version);
+      compensatedVersions[removedTask.id] = removedTask.version;
+      compensatedKinds[removedTask.id] = "task";
+    }
+    const { appliedTemplateId: _applied, ...projectBase } = project;
+    void _applied;
+    const restoredProject: Project = {
+      ...projectBase,
+      version: project.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateProject(restoredProject, project.version);
+    compensatedVersions[restoredProject.id] = restoredProject.version;
+    compensatedKinds[restoredProject.id] = "project";
   } else if (descriptor.kind === "fieldDef.restore_definition") {
     const definition = transaction.getFieldDefinition(
       descriptor.fieldId,
@@ -5863,6 +6365,9 @@ export const executeWave2Query = (
         title: project.title,
         intendedOutcome: project.intendedOutcome,
         lifecycle: project.lifecycle,
+        ...(project.appliedTemplateId === undefined
+          ? {}
+          : { appliedTemplateId: project.appliedTemplateId }),
         version: project.version,
         updatedAt: project.updatedAt,
       },
@@ -6285,6 +6790,9 @@ export const executeWave2Query = (
     "task.created": "task_created",
     "task.details_updated": "task_details_updated",
     "task.parent_changed": "task_parent_changed",
+    "template.created": "template_definition_created",
+    "template.changed": "template_definition_changed",
+    "project.template_applied": "project_template_applied",
     "fieldDef.created": "field_definition_created",
     "fieldDef.changed": "field_definition_changed",
     "record.field_value_set": "record_field_value_set",
