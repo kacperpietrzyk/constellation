@@ -39,6 +39,8 @@ import {
   createTask,
   projectTemplateState,
   updateProjectTemplate,
+  updateSavedView,
+  type SavedViewUpdate,
   createTaskStatus,
   fieldDefinitionState,
   fieldValueMatchesType,
@@ -159,6 +161,9 @@ export type Wave2Command = Extract<
       | "work.linkCreate"
       | "work.linkRemove"
       | "savedView.create"
+      | "savedView.rename"
+      | "savedView.update"
+      | "savedView.delete"
       | "recurrence.create"
       | "recurrence.generateOccurrence"
       | "project.close"
@@ -366,6 +371,20 @@ export const isWave2CommandAuthorized = (
         context,
         command,
         space?.workspaceId === command.workspaceId ? space.id : undefined,
+      );
+    }
+    case "savedView.rename":
+    case "savedView.update":
+    case "savedView.delete": {
+      const record = view.getStrategicRecord(command.payload.savedViewId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        record?.workspaceId === command.workspaceId
+          ? record.spaceId
+          : undefined,
       );
     }
     case "relationship.renewalResolve": {
@@ -803,6 +822,39 @@ const appendJournal = (
     transaction.insertUndoDescriptor(undoDescriptor);
   return committed;
 };
+
+type SavedViewFilters = Extract<
+  StrategicRecord,
+  { kind: "saved_view" }
+>["filters"];
+
+const savedViewFilters = (filters: {
+  readonly [K in keyof SavedViewFilters]?: SavedViewFilters[K] | undefined;
+}): SavedViewFilters => ({
+  ...(filters.operationalStates === undefined
+    ? {}
+    : { operationalStates: filters.operationalStates }),
+  ...(filters.projectIds === undefined
+    ? {}
+    : { projectIds: filters.projectIds }),
+  ...(filters.areaIds === undefined ? {} : { areaIds: filters.areaIds }),
+  ...(filters.initiativeIds === undefined
+    ? {}
+    : { initiativeIds: filters.initiativeIds }),
+  ...(filters.unassigned === undefined
+    ? {}
+    : { unassigned: filters.unassigned }),
+  ...(filters.statusIds === undefined ? {} : { statusIds: filters.statusIds }),
+  ...(filters.assigneePrincipalIds === undefined
+    ? {}
+    : { assigneePrincipalIds: filters.assigneePrincipalIds }),
+  ...(filters.priorities === undefined
+    ? {}
+    : { priorities: filters.priorities }),
+  ...(filters.dueWindow === undefined ? {} : { dueWindow: filters.dueWindow }),
+  ...(filters.scheduled === undefined ? {} : { scheduled: filters.scheduled }),
+  ...(filters.fields === undefined ? {} : { fields: filters.fields }),
+});
 
 const appendStrategicJournal = (
   dependencies: ApplicationKernelDependencies,
@@ -2095,6 +2147,102 @@ export const executeWave2Command = (
         },
       );
     }
+    case "savedView.rename":
+    case "savedView.update":
+    case "savedView.delete": {
+      const record = transaction.getStrategicRecord(
+        command.payload.savedViewId,
+      );
+      if (
+        record?.kind !== "saved_view" ||
+        record.workspaceId !== command.workspaceId ||
+        record.state === "deleted"
+      ) {
+        return precondition(command, occurredAt);
+      }
+      let update: SavedViewUpdate;
+      let changedFields: readonly string[];
+      if (command.commandName === "savedView.rename") {
+        if (command.payload.name === record.name) {
+          return precondition(command, occurredAt);
+        }
+        update = { name: command.payload.name };
+        changedFields = ["name"];
+      } else if (command.commandName === "savedView.update") {
+        update = {
+          ...(command.payload.filters === undefined
+            ? {}
+            : { filters: savedViewFilters(command.payload.filters) }),
+          ...(command.payload.sort === undefined
+            ? {}
+            : { sort: command.payload.sort }),
+          ...(command.payload.groupBy === undefined
+            ? {}
+            : { groupBy: command.payload.groupBy }),
+        };
+        changedFields = [
+          ...(command.payload.filters === undefined ? [] : ["filters"]),
+          ...(command.payload.sort === undefined ? [] : ["sort"]),
+          ...(command.payload.groupBy === undefined ? [] : ["groupBy"]),
+        ];
+        if (
+          update.groupBy !== undefined &&
+          update.groupBy !== null &&
+          typeof update.groupBy === "object"
+        ) {
+          const definition = transaction.getFieldDefinition(
+            update.groupBy.fieldId,
+          );
+          if (
+            definition?.workspaceId !== command.workspaceId ||
+            definition.type.kind !== "choice"
+          ) {
+            return precondition(command, occurredAt);
+          }
+        }
+      } else {
+        update = { state: "deleted" };
+        changedFields = ["state"];
+      }
+      if (!exactExpected(command, { [record.id]: record.version })) {
+        return versionConflict(command, occurredAt, {
+          [record.id]: record.version,
+        });
+      }
+      const updated = updateSavedView(record, update, occurredAt);
+      if (!transaction.updateStrategicRecord(updated, record.version)) {
+        return versionConflict(command, occurredAt, {
+          [record.id]: record.version,
+        });
+      }
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        updated,
+        changedFields,
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          kind: "savedView.restore_definition",
+          savedViewId: record.id,
+          priorName: record.name,
+          priorFilters: record.filters,
+          priorSort: record.sort,
+          ...(record.groupBy === undefined
+            ? {}
+            : { priorGroupBy: record.groupBy }),
+          priorState: record.state,
+          resultingVersion: updated.version,
+        },
+      );
+    }
     case "savedView.create": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       if (
@@ -2107,26 +2255,11 @@ export const executeWave2Command = (
         workspaceId: command.workspaceId,
         spaceId: command.payload.spaceId,
         name: command.payload.name,
-        filters: {
-          ...(command.payload.filters.operationalStates === undefined
-            ? {}
-            : {
-                operationalStates: command.payload.filters.operationalStates,
-              }),
-          ...(command.payload.filters.projectIds === undefined
-            ? {}
-            : { projectIds: command.payload.filters.projectIds }),
-          ...(command.payload.filters.areaIds === undefined
-            ? {}
-            : { areaIds: command.payload.filters.areaIds }),
-          ...(command.payload.filters.initiativeIds === undefined
-            ? {}
-            : { initiativeIds: command.payload.filters.initiativeIds }),
-          ...(command.payload.filters.unassigned === undefined
-            ? {}
-            : { unassigned: command.payload.filters.unassigned }),
-        },
+        filters: savedViewFilters(command.payload.filters),
         sort: command.payload.sort,
+        ...(command.payload.groupBy === undefined
+          ? {}
+          : { groupBy: command.payload.groupBy }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -5033,6 +5166,22 @@ const descriptorState = (
             reason: "later_change",
           };
     }
+    case "savedView.restore_definition": {
+      const record = view.getStrategicRecord(descriptor.savedViewId);
+      return record?.kind === "saved_view" &&
+        record.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [record.id],
+            versions: { [record.id]: record.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
     case "work_link.restore_state": {
       const link = view.getStrategicRecord(descriptor.linkId);
       return link?.kind === "work_link" &&
@@ -5491,6 +5640,24 @@ const applyUndo = (
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "task" };
+  } else if (descriptor.kind === "savedView.restore_definition") {
+    const record = transaction.getStrategicRecord(
+      descriptor.savedViewId,
+    ) as Extract<StrategicRecord, { kind: "saved_view" }>;
+    const restored = updateSavedView(
+      record,
+      {
+        name: descriptor.priorName,
+        filters: descriptor.priorFilters,
+        sort: descriptor.priorSort,
+        groupBy: descriptor.priorGroupBy ?? null,
+        state: descriptor.priorState,
+      },
+      occurredAt,
+    );
+    transaction.updateStrategicRecord(restored, record.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
   } else if (descriptor.kind === "work_link.restore_state") {
     const link = transaction.getStrategicRecord(descriptor.linkId);
     if (link?.kind !== "work_link") {
@@ -5879,6 +6046,7 @@ export const executeWave2Query = (
           ...(task.parentTaskId === undefined
             ? {}
             : { parentTaskId: task.parentTaskId }),
+          ...(task.fields === undefined ? {} : { fields: task.fields }),
           version: task.version,
           updatedAt: task.updatedAt,
         })),
@@ -5942,6 +6110,9 @@ export const executeWave2Query = (
           name: savedView.name,
           filters: savedView.filters,
           sort: savedView.sort,
+          ...(savedView.groupBy === undefined
+            ? {}
+            : { groupBy: savedView.groupBy }),
           state: savedView.state,
           version: savedView.version,
         })),

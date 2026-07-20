@@ -241,6 +241,10 @@ export const createSavedView = (
       { kind: "saved_view" }
     >["filters"];
     readonly sort: Extract<StrategicRecord, { kind: "saved_view" }>["sort"];
+    readonly groupBy?: Extract<
+      StrategicRecord,
+      { kind: "saved_view" }
+    >["groupBy"];
   },
 ): Extract<StrategicRecord, { kind: "saved_view" }> => ({
   ...base(input),
@@ -248,8 +252,47 @@ export const createSavedView = (
   name: input.name,
   filters: input.filters,
   sort: input.sort,
+  ...(input.groupBy === undefined ? {} : { groupBy: input.groupBy }),
   state: "active",
 });
+
+export interface SavedViewUpdate {
+  readonly name?: string;
+  readonly filters?: Extract<
+    StrategicRecord,
+    { kind: "saved_view" }
+  >["filters"];
+  readonly sort?: Extract<StrategicRecord, { kind: "saved_view" }>["sort"];
+  readonly groupBy?: Exclude<
+    Extract<StrategicRecord, { kind: "saved_view" }>["groupBy"],
+    undefined
+  > | null;
+  readonly state?: "active" | "deleted";
+}
+
+export const updateSavedView = (
+  record: Extract<StrategicRecord, { kind: "saved_view" }>,
+  update: SavedViewUpdate,
+  occurredAt: string,
+): Extract<StrategicRecord, { kind: "saved_view" }> => {
+  const { groupBy: priorGroupBy, ...rest } = record;
+  const groupBy =
+    update.groupBy === undefined
+      ? priorGroupBy
+      : update.groupBy === null
+        ? undefined
+        : update.groupBy;
+  return {
+    ...rest,
+    name: update.name ?? record.name,
+    filters: update.filters ?? record.filters,
+    sort: update.sort ?? record.sort,
+    ...(groupBy === undefined ? {} : { groupBy }),
+    state: update.state ?? record.state,
+    version: record.version + 1,
+    updatedAt: occurredAt,
+  };
+};
 
 export const createRecurrence = (
   input: Common & {

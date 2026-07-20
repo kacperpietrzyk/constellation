@@ -620,8 +620,17 @@ export type StrategicRecord =
         readonly priorities?: readonly TaskPriority[];
         readonly dueWindow?: "overdue" | "today" | "this_week";
         readonly scheduled?: boolean;
+        readonly fields?: readonly {
+          readonly fieldId: FieldDefinitionId;
+          readonly predicate:
+            | { readonly kind: "choice_is"; readonly option: string }
+            | { readonly kind: "set" }
+            | { readonly kind: "empty" };
+        }[];
       };
       readonly sort: "updated_desc" | "due_asc" | "title_asc";
+      readonly groupBy?:
+        "status" | "priority" | { readonly fieldId: FieldDefinitionId };
       readonly state: "active" | "deleted";
     })
   | (StrategicRecordBase & {
@@ -692,6 +701,24 @@ export type UndoDescriptor =
       readonly linkId: StrategicRecordId;
       readonly priorState: "active" | "removed";
       readonly priorRemovedAt?: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "savedView.restore_definition";
+      readonly savedViewId: StrategicRecordId;
+      readonly priorName: string;
+      readonly priorFilters: Extract<
+        StrategicRecord,
+        { kind: "saved_view" }
+      >["filters"];
+      readonly priorSort: "updated_desc" | "due_asc" | "title_asc";
+      readonly priorGroupBy?:
+        "status" | "priority" | { readonly fieldId: FieldDefinitionId };
+      readonly priorState: "active" | "deleted";
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }

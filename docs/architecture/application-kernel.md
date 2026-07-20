@@ -245,13 +245,20 @@ with application in the UI.
 
 Saved work views carry a typed, closed filter vocabulary — operational
 states, workflow statuses, priorities, a deadline window (overdue, today,
-this week in the workspace calendar), scheduled/unscheduled, and
-responsibility including unassigned — plus one deterministic ordering
-(recently updated, nearest deadline with the shared null-ordering
-contract, or alphabetical). Applying a view is an explainable projection
-over the permission-safe work overview: the same filters produce the same
-result every time, and a view that matches nothing says so instead of
-hiding work.
+this week in the workspace calendar), scheduled/unscheduled,
+responsibility including unassigned, and typed field conditions (has a
+value, empty, or equals a declared choice option) — plus one deterministic
+ordering (recently updated, nearest deadline with the shared null-ordering
+contract, or alphabetical) and optional declared grouping by status,
+priority, or a constrained-choice field. Applying a view is an explainable
+projection over the permission-safe work overview: the same filters
+produce the same result every time, group order follows declared
+configuration (status position, priority rank, option order, with an
+explicit trailing no-value group), and a view that matches nothing says so
+instead of hiding work. Views have a full lifecycle — rename, update, and
+soft delete are versioned commands with audit and previewed undo restoring
+the exact prior definition; a filter referencing a retired field
+definition deterministically matches nothing rather than erroring.
 
 The application-owned rule is deliberately narrow: text becomes a Task, while
 URLs, file references, managed files, and screenshots become knowledge

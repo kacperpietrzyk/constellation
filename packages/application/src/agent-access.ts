@@ -759,6 +759,8 @@ export const executeAgentAccessQuery = (
           case "task.restore_parent":
           case "task.restore_operational_state":
             return [descriptor.taskId];
+          case "savedView.restore_definition":
+            return [descriptor.savedViewId];
           case "work_link.restore_state":
             return [descriptor.linkId];
           case "relation.remove":

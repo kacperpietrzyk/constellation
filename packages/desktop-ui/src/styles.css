@@ -8538,6 +8538,62 @@ button.mention-chip:disabled {
   opacity: 0.38;
 }
 
+.saved-view-strip > .view-chip-actions {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.view-chip-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+  padding: 0.38rem 0.3rem;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  white-space: nowrap;
+}
+
+.view-chip-remove:not(:disabled):hover {
+  color: var(--text-primary);
+}
+
+.view-chip-remove:disabled {
+  cursor: default;
+  opacity: 0.38;
+}
+
+.work-group-heading {
+  align-items: baseline;
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+  margin-top: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.work-group-heading:first-child {
+  margin-top: 0;
+}
+
+.work-group-heading span {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 620;
+}
+
+.work-group-heading small {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+
 .support-report-details summary::before,
 .technical-revisions summary::before {
   content: "";

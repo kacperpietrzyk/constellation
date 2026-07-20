@@ -41,6 +41,7 @@ const context = (): ExecutionContext =>
       "relationship.renewalResolve",
       "relationship.factCreate",
       "decision.create",
+      "fieldDef.create",
       "decision.supersede",
       "decision.resolveImpact",
       "area.create",
@@ -48,6 +49,9 @@ const context = (): ExecutionContext =>
       "work.linkCreate",
       "work.linkRemove",
       "savedView.create",
+      "savedView.rename",
+      "savedView.update",
+      "savedView.delete",
       "task.setOperationalState",
       "work.overview",
       "command.previewUndo",
@@ -883,4 +887,166 @@ it("keeps opportunity history while linking an evidence-backed offer and Project
   )
     assert.fail("Expected scoped export");
   assert.equal(exported.result.projection.counts.strategicRecords, 4);
+});
+
+it("manages saved view lifecycle with field filters and grouping", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("view-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Work graph",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const fieldId = "18000000-0000-4000-8000-0000000000f1";
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("view-field"),
+        commandName: "fieldDef.create",
+        payload: {
+          fieldId,
+          targetKind: "task",
+          label: "Segment",
+          type: { kind: "choice", options: ["MSSP", "Enterprise"] },
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const savedViewId = uuid();
+  const createCommand = {
+    ...metadata("view-create"),
+    commandName: "savedView.create" as const,
+    payload: {
+      savedViewId,
+      spaceId: ids.space,
+      name: "Segment MSSP",
+      filters: {
+        priorities: ["urgent" as const, "high" as const],
+        dueWindow: "this_week" as const,
+        fields: [
+          {
+            fieldId,
+            predicate: { kind: "choice_is" as const, option: "MSSP" },
+          },
+        ],
+      },
+      sort: "due_asc" as const,
+      groupBy: "priority" as const,
+    },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), createCommand)).outcome,
+    "success",
+  );
+
+  const overview = () => {
+    const result = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "work.overview",
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space },
+    });
+    if (
+      result.kind !== "query_result" ||
+      result.result.outcome !== "success" ||
+      result.result.projection.kind !== "work.overview"
+    )
+      assert.fail("Expected Work overview");
+    return result.result.projection.savedViews;
+  };
+
+  const created = overview()[0];
+  assert.deepEqual(
+    created?.filters.priorities,
+    ["urgent", "high"],
+    "the closed R12.4 vocabulary persists through the kernel",
+  );
+  assert.deepEqual(created?.filters.fields, [
+    { fieldId, predicate: { kind: "choice_is", option: "MSSP" } },
+  ]);
+  assert.equal(created?.groupBy, "priority");
+
+  const renameCommand = {
+    ...metadata("view-rename", { [savedViewId]: 1 }),
+    commandName: "savedView.rename" as const,
+    payload: { savedViewId, name: "Segment MSSP — pilne" },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), renameCommand)).outcome,
+    "success",
+  );
+  assert.equal(overview()[0]?.name, "Segment MSSP — pilne");
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("view-rename-undo", { [savedViewId]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: renameCommand.commandId },
+      }),
+    ).diagnosticCode,
+    "command.undone",
+  );
+  assert.equal(overview()[0]?.name, "Segment MSSP");
+
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("view-group-field", { [savedViewId]: 3 }),
+        commandName: "savedView.update",
+        payload: { savedViewId, groupBy: { fieldId } },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.deepEqual(overview()[0]?.groupBy, { fieldId });
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("view-group-unknown", { [savedViewId]: 4 }),
+        commandName: "savedView.update",
+        payload: {
+          savedViewId,
+          groupBy: { fieldId: "18000000-0000-4000-8000-0000000000f2" },
+        },
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+    "grouping requires an existing choice definition",
+  );
+
+  const deleteCommand = {
+    ...metadata("view-delete", { [savedViewId]: 4 }),
+    commandName: "savedView.delete" as const,
+    payload: { savedViewId },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), deleteCommand)).outcome,
+    "success",
+  );
+  assert.equal(overview().length, 0, "deleted views leave the strip");
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("view-delete-undo", { [savedViewId]: 5 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: deleteCommand.commandId },
+      }),
+    ).diagnosticCode,
+    "command.undone",
+  );
+  assert.equal(overview()[0]?.name, "Segment MSSP", "undo restores the view");
 });
