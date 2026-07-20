@@ -11,6 +11,7 @@ import {
   type MeetingLoopAuthorization,
 } from "@constellation/application";
 import {
+  CalendarCapabilitySchema,
   PrincipalIdSchema,
   ProjectIdSchema,
   SpaceIdSchema,
@@ -813,4 +814,35 @@ test("a local completion survives an unrelated Jamie correction", () => {
   // to Jamie's "open" with no conflict raised — losing the user's work.
   assert.equal(after.state, "completed");
   assert.equal(after.title, item.title);
+});
+
+test("the calendar capability declares where a Task block would be written", () => {
+  // ADR-042. A meeting block inherits its calendar from the event it prepares.
+  // A Task has no event, so without a declared default there is no honest
+  // target and the surface would have to guess — possibly at a read-only or
+  // shared calendar. The capability therefore carries the default write
+  // target, and its absence is a first-class answer meaning "time cannot be
+  // reserved here", not a reason to fall back to some calendar we happen to
+  // have seen.
+  const writable = CalendarCapabilitySchema.parse({
+    platform: "macos",
+    provider: "eventkit",
+    availability: "available",
+    canRead: true,
+    canWriteOwnedBlocks: true,
+    defaultWriteCalendarExternalId: "calendar-work",
+    detailCode: "full_access",
+  });
+  assert.equal(writable.defaultWriteCalendarExternalId, "calendar-work");
+
+  // Windows and unwritable providers stay valid without the field.
+  const unwritable = CalendarCapabilitySchema.parse({
+    platform: "windows",
+    provider: "unconfigured",
+    availability: "provider_unavailable",
+    canRead: false,
+    canWriteOwnedBlocks: false,
+    detailCode: "no_provider",
+  });
+  assert.equal(unwritable.defaultWriteCalendarExternalId, undefined);
 });
