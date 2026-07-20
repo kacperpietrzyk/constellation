@@ -925,6 +925,19 @@ export type UndoDescriptor =
       readonly consumedByCommandId?: CommandId;
     }
   | {
+      // ADR-043 — undoing task.remove restores recordState to active and
+      // nothing else. Deliberately separate from task.restore_state, which
+      // restores only status and completion.
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "task.restore_record_state";
+      readonly taskId: TaskId;
+      readonly priorRecordState: "active" | "removed";
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
@@ -1236,7 +1249,8 @@ export type DomainEvent = { readonly commandId: CommandId } & (
         | "task.status_changed"
         | "task.operational_state_changed"
         | "task.completed"
-        | "task.reopened";
+        | "task.reopened"
+        | "task.removed";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: TaskId;

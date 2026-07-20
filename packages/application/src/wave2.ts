@@ -214,6 +214,7 @@ export type Wave2Command = Extract<
       | "task.setOperationalState"
       | "task.complete"
       | "task.reopen"
+      | "task.remove"
       | "task.assign"
       | "task.unassign"
       | "comment.add"
@@ -656,6 +657,7 @@ export const isWave2CommandAuthorized = (
     case "task.setOperationalState":
     case "task.complete":
     case "task.reopen":
+    case "task.remove":
     case "task.assign":
     case "task.unassign": {
       const task = view.getTask(command.payload.taskId);
@@ -1090,6 +1092,22 @@ const targetRecord = (
       : target.kind === "document"
         ? view.getDocument(target.documentId)
         : view.getCapture(target.captureId);
+
+// ADR-043 §4 — the read-side view of a target record: a removed Task must be
+// invisible, the same way the list primitives already hide it. targetRecord
+// itself stays unfiltered because write-side guards need to see a removed Task
+// to reject an operation on it; the filtering belongs at the read callsite.
+const activeTargetRecord = (
+  view: ApplicationWave2ReadView,
+  target: AttentionDestination,
+): Task | Project | NativeDocument | Capture | undefined => {
+  const record = targetRecord(view, target);
+  return record !== undefined &&
+    "recordState" in record &&
+    record.recordState === "removed"
+    ? undefined
+    : record;
+};
 
 const attentionDetail = (reason: AttentionSignal["reason"]): string => {
   switch (reason) {
@@ -3642,6 +3660,71 @@ export const executeWave2Command = (
         { [updated.id]: "task" },
       );
     }
+    case "task.remove": {
+      const task = transaction.getTask(command.payload.taskId);
+      if (task === undefined || task.recordState !== "active")
+        return precondition(command, occurredAt);
+      if (!exactExpected(command, { [task.id]: task.version })) {
+        return versionConflict(command, occurredAt, {
+          [task.id]: task.version,
+        });
+      }
+      // ADR-043 §3 — a Task that still has active children is not a leaf.
+      // listTasksInSpace already filters to recordState "active", so a child
+      // that was itself removed does not block. Refuse rather than orphan.
+      const activeChildren = transaction
+        .listTasksInSpace(task.workspaceId, task.spaceId)
+        .filter((candidate) => candidate.parentTaskId === task.id).length;
+      if (activeChildren > 0) return precondition(command, occurredAt);
+      const priorRecordState = task.recordState;
+      const updated: Task = {
+        ...task,
+        recordState: "removed",
+        version: task.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateTask(updated, task.version)) {
+        return versionConflict(command, occurredAt, {
+          [task.id]: task.version,
+        });
+      }
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "task.removed",
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          aggregateId: task.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        ["recordState"],
+        {
+          diagnosticCode: "task.removed",
+          projection: {
+            kind: "task.removed",
+            taskId: updated.id,
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          kind: "task.restore_record_state",
+          taskId: task.id,
+          priorRecordState,
+          resultingVersion: updated.version,
+        },
+        { [updated.id]: "task" },
+      );
+    }
     case "task.updateDetails": {
       const task = transaction.getTask(command.payload.taskId);
       if (task === undefined) return precondition(command, occurredAt);
@@ -5370,7 +5453,9 @@ export const executeWave2Command = (
     }
     case "task.assign": {
       const task = transaction.getTask(command.payload.taskId);
-      if (task === undefined) return precondition(command, occurredAt);
+      // ADR-043 §5 — a removed Task takes no new assignment.
+      if (task === undefined || task.recordState !== "active")
+        return precondition(command, occurredAt);
       const membership = transaction.getMembership(
         command.workspaceId,
         command.payload.assigneePrincipalId,
@@ -5546,6 +5631,9 @@ export const executeWave2Command = (
       const mentions = [...new Set(command.payload.mentionPrincipalIds)];
       if (
         record === undefined ||
+        // ADR-043 §5 — no new association may attach to a removed Task, or the
+        // read-path fix would hide a Task that is still accreting comments.
+        ("recordState" in record && record.recordState === "removed") ||
         transaction.getComment(command.payload.commentId) !== undefined ||
         (parent !== undefined &&
           (parent.workspaceId !== record.workspaceId ||
@@ -5857,7 +5945,12 @@ export const executeWave2Command = (
     case "record.relate": {
       const task = transaction.getTask(command.payload.taskId);
       const project = transaction.getProject(command.payload.projectId);
-      if (task === undefined || project === undefined)
+      // ADR-043 §5 — a removed Task takes no new relation.
+      if (
+        task === undefined ||
+        project === undefined ||
+        task.recordState !== "active"
+      )
         return precondition(command, occurredAt);
       if (
         !exactExpected(command, {
@@ -6229,6 +6322,7 @@ const descriptorState = (
     }
     case "task.restore_parent":
     case "task.restore_calendar_block":
+    case "task.restore_record_state":
     case "task.restore_details": {
       const task = view.getTask(descriptor.taskId);
       return task?.version === descriptor.resultingVersion
@@ -6822,6 +6916,17 @@ const applyUndo = (
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "task" };
+  } else if (descriptor.kind === "task.restore_record_state") {
+    const task = transaction.getTask(descriptor.taskId) as Task;
+    const restored: Task = {
+      ...task,
+      recordState: descriptor.priorRecordState,
+      version: task.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateTask(restored, task.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "task" };
   } else if (descriptor.kind === "task.restore_calendar_block") {
     const task = transaction.getTask(descriptor.taskId) as Task;
     const { calendarBlock: _current, ...base } = task;
@@ -7398,7 +7503,7 @@ export const executeWave2Query = (
     });
   }
   if (query.queryName === "comment.list") {
-    const record = targetRecord(view, query.parameters.target);
+    const record = activeTargetRecord(view, query.parameters.target);
     if (
       record?.workspaceId !== query.workspaceId ||
       !canViewSpace(view, context, query.workspaceId, record.spaceId) ||
@@ -7485,7 +7590,7 @@ export const executeWave2Query = (
       )
       .slice(0, query.parameters.limit ?? 50)
       .flatMap((signal) => {
-        const record = targetRecord(view, signal.destination);
+        const record = activeTargetRecord(view, signal.destination);
         if (record === undefined) return [];
         return [
           {

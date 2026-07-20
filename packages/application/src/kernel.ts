@@ -378,6 +378,7 @@ const isCurrentlyAuthorized = (
     case "task.setOperationalState":
     case "task.complete":
     case "task.reopen":
+    case "task.remove":
     case "task.assign":
     case "task.unassign":
     case "comment.add":
@@ -746,6 +747,7 @@ export class ApplicationKernel {
       case "task.setOperationalState":
       case "task.complete":
       case "task.reopen":
+      case "task.remove":
       case "comment.add":
       case "comment.edit":
       case "comment.resolve":
