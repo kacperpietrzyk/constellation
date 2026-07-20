@@ -68,6 +68,10 @@ const context = (): ExecutionContext =>
       "recurrence.create",
       "recurrence.generateOccurrence",
       "recurrence.sweep",
+      "task.setCalendarBlock",
+      "task.updateDetails",
+      "task.complete",
+      "task.reopen",
       "project.close",
       "project.reopen",
       "radar.candidateUpsert",
@@ -1656,4 +1660,188 @@ it("generates due recurrence occurrences on a sweep without building a backlog",
       .tasks.filter((task) => task.title === "Daily standup note").length,
     1,
   );
+});
+
+it("reserves time for a Task without touching its deadline", () => {
+  // ADR-042 / R12.6 (F7). "When it is due" and "when I will do it" are
+  // different facts: a deadline never enters the calendar-consent path, and
+  // reserving time never edits the deadline.
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("block-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Time blocking",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const taskId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("block-task"),
+        commandName: "task.create",
+        payload: {
+          taskId,
+          spaceId: ids.space,
+          title: "Draft the migration plan",
+          dueAt: "2026-07-24T17:00:00.000Z",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const taskOf = () =>
+    harness.store.snapshot().tasks.find((t) => t.id === taskId)!;
+
+  const block = {
+    ownedBlockExternalId: "block-1",
+    calendarExternalId: "calendar-1",
+    revision: "rev-1",
+    startsAt: "2026-07-22T09:00:00.000Z",
+    endsAt: "2026-07-22T11:00:00.000Z",
+  };
+  const reserved = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("block-set", { [taskId]: taskOf().version }),
+      commandName: "task.setCalendarBlock",
+      payload: { taskId, block },
+    }),
+  );
+  assert.equal(reserved.outcome, "success");
+  assert.deepEqual(taskOf().calendarBlock, block);
+  // The deadline is untouched by reserving time to do the work.
+  assert.equal(taskOf().dueAt, "2026-07-24T17:00:00.000Z");
+
+  // Moving the deadline does not disturb the reserved block either.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("block-move-deadline", { [taskId]: taskOf().version }),
+        commandName: "task.updateDetails",
+        payload: { taskId, dueAt: "2026-07-25T17:00:00.000Z" },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.deepEqual(taskOf().calendarBlock, block);
+  assert.equal(taskOf().dueAt, "2026-07-25T17:00:00.000Z");
+
+  // Completing the work does not release the reservation: the block is a
+  // provider-owned event that outlives the Task's completion state, and
+  // dropping it here would strand a real calendar entry.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("block-complete", { [taskId]: taskOf().version }),
+        commandName: "task.complete",
+        payload: { taskId },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.deepEqual(taskOf().calendarBlock, block);
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("block-reopen", { [taskId]: taskOf().version }),
+        commandName: "task.reopen",
+        payload: { taskId },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.deepEqual(taskOf().calendarBlock, block);
+
+  // Releasing the claim clears the descriptor and is undoable to the exact
+  // prior block rather than to "some block".
+  const released = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("block-release", { [taskId]: taskOf().version }),
+      commandName: "task.setCalendarBlock",
+      payload: { taskId, block: null },
+    }),
+  );
+  assert.equal(released.outcome, "success");
+  assert.equal(taskOf().calendarBlock, undefined);
+
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("block-undo-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: released.commandId },
+    }),
+  );
+  if (preview.outcome !== "preview") assert.fail("Expected an undo preview");
+  assert.equal(
+    preview.projection.compensationKind,
+    "task.restore_calendar_block",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("block-undo", preview.projection.requiredVersions),
+        commandName: "command.undo",
+        payload: { targetCommandId: released.commandId },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.deepEqual(taskOf().calendarBlock, block);
+  assert.equal(taskOf().dueAt, "2026-07-25T17:00:00.000Z");
+
+  // Undoing a first reservation must clear the descriptor, not restore some
+  // earlier block — the prior state was "no block at all".
+  const freshTaskId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("block-fresh-task"),
+        commandName: "task.create",
+        payload: { taskId: freshTaskId, spaceId: ids.space, title: "Fresh" },
+      }),
+    ).outcome,
+    "success",
+  );
+  const freshOf = () =>
+    harness.store.snapshot().tasks.find((t) => t.id === freshTaskId)!;
+  const firstReservation = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("block-fresh-set", { [freshTaskId]: freshOf().version }),
+      commandName: "task.setCalendarBlock",
+      payload: { taskId: freshTaskId, block },
+    }),
+  );
+  assert.equal(firstReservation.outcome, "success");
+  const freshPreview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("block-fresh-undo-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: firstReservation.commandId },
+    }),
+  );
+  if (freshPreview.outcome !== "preview") assert.fail("Expected a preview");
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(
+          "block-fresh-undo",
+          freshPreview.projection.requiredVersions,
+        ),
+        commandName: "command.undo",
+        payload: { targetCommandId: firstReservation.commandId },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(freshOf().calendarBlock, undefined);
 });

@@ -762,6 +762,7 @@ export const executeAgentAccessQuery = (
             return [descriptor.recordId];
           case "workspace.restore_default_status":
             return [descriptor.workspaceId];
+          case "task.restore_calendar_block":
           case "task.restore_state":
           case "task.restore_details":
           case "task.restore_parent":

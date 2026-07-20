@@ -1215,6 +1215,36 @@ export const AutomationSweepCommandSchema = CommandMetadataSchema.extend({
 
 // R12.7 / ADR-041 — scheduled recurrence generation. Mirrors automation.sweep:
 // empty payload, no optimistic lock, bounded work, one journal entry.
+// R12.6 / ADR-042 — records or clears the calendar block a Task owns. This is
+// a recording command: it never touches a provider and never bypasses the
+// exact single-use consent preview that governs every calendar write.
+export const TaskSetCalendarBlockCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("task.setCalendarBlock"),
+  payload: z
+    .object({
+      taskId: TaskIdSchema,
+      block: z
+        .object({
+          ownedBlockExternalId: z.string().trim().min(1).max(500),
+          calendarExternalId: z.string().trim().min(1).max(500),
+          revision: z.string().trim().min(1).max(500),
+          startsAt: z.iso.datetime({ offset: true }),
+          endsAt: z.iso.datetime({ offset: true }),
+        })
+        .strict()
+        .refine(
+          (value) => Date.parse(value.endsAt) > Date.parse(value.startsAt),
+          {
+            error: "A reserved block must end after it starts.",
+            path: ["endsAt"],
+          },
+        )
+        // null releases Constellation's claim on the block.
+        .nullable(),
+    })
+    .strict(),
+}).strict();
+
 export const RecurrenceSweepCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("recurrence.sweep"),
   payload: z.object({}).strict(),
@@ -1539,6 +1569,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   AutomationSetStateCommandSchema,
   AutomationSweepCommandSchema,
   RecurrenceSweepCommandSchema,
+  TaskSetCalendarBlockCommandSchema,
   TemplateRenameCommandSchema,
   TemplateUpdateContentsCommandSchema,
   TemplateArchiveCommandSchema,

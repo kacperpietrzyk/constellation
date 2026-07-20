@@ -82,6 +82,7 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "automation.setState",
   "automation.sweep",
   "recurrence.sweep",
+  "task.setCalendarBlock",
   "template.rename",
   "template.updateContents",
   "template.archive",

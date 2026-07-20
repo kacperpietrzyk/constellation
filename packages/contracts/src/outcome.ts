@@ -1269,6 +1269,7 @@ export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
           "project.restore_outcome",
           "task.restore_state",
           "task.restore_details",
+          "task.restore_calendar_block",
           "task.restore_parent",
           "taskStatus.restore_definition",
           "workspace.restore_default_status",
