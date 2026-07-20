@@ -2129,6 +2129,38 @@ kbd {
 .task-timing-line .task-overdue {
   color: var(--status-error);
 }
+/* R12.6 — reserved time in the Task inspector. Deliberately quieter than the
+   deadline above it: a reservation is a plan, not an obligation. */
+.task-reservation-block {
+  display: grid;
+  gap: var(--space-3);
+}
+.task-reservation-block .muted-text {
+  color: var(--text-quaternary);
+}
+.task-reservation-window {
+  font-variant-numeric: tabular-nums;
+}
+.task-reservation-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: var(--space-3);
+}
+.task-reservation-form label {
+  display: grid;
+  gap: 0.2rem;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+.task-reservation-form input,
+.task-reservation-form select {
+  width: 100%;
+}
+.task-reservation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
 .task-context-dates {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
