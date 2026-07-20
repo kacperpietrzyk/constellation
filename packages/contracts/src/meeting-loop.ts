@@ -23,6 +23,17 @@ export const CalendarCapabilitySchema = z
     ]),
     canRead: z.boolean(),
     canWriteOwnedBlocks: z.boolean(),
+    // Where a block that has no event of its own belongs. A meeting block
+    // inherits its calendar from the event it prepares; a Task has none, so
+    // reserving time needs a declared default. Absent when the provider
+    // cannot write or reports no default writable calendar — the surface must
+    // then say time cannot be reserved rather than guessing a calendar.
+    defaultWriteCalendarExternalId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(500)
+      .optional(),
     detailCode: z.string().trim().min(1).max(120),
   })
   .strict();

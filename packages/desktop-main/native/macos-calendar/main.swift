@@ -8,6 +8,11 @@ struct Capability: Encodable {
     let canRead: Bool
     let canWriteOwnedBlocks: Bool
     let detailCode: String
+    // Where a block with no event of its own should be written. A meeting
+    // block inherits its calendar from the event it prepares; a Task has no
+    // event, so without this there is no honest target. Absent when we cannot
+    // write, or when EventKit reports no default writable calendar.
+    var defaultWriteCalendarExternalId: String?
 }
 
 struct AttendeeProjection: Encodable {
@@ -76,6 +81,17 @@ func capability() -> Capability {
         : Capability(availability: "permission_required", canRead: false, canWriteOwnedBlocks: false, detailCode: "legacy_not_authorized")
 }
 
+// Decorates the authorization-only capability with the default write target,
+// which requires the store and therefore cannot live in capability() itself.
+func capabilityWithWriteTarget() -> Capability {
+    var value = capability()
+    guard value.canWriteOwnedBlocks else { return value }
+    if let identifier = store.defaultCalendarForNewEvents?.calendarIdentifier {
+        value.defaultWriteCalendarExternalId = identifier
+    }
+    return value
+}
+
 guard CommandLine.arguments.count == 3,
       let requestData = Data(base64Encoded: CommandLine.arguments[2]) else {
     FileHandle.standardError.write(Data("Expected read/write and a base64 JSON payload.\n".utf8))
@@ -83,7 +99,7 @@ guard CommandLine.arguments.count == 3,
 }
 
 let store = EKEventStore()
-let currentCapability = capability()
+let currentCapability = capabilityWithWriteTarget()
 
 if CommandLine.arguments[1] == "request-access" {
     let semaphore = DispatchSemaphore(value: 0)
@@ -93,7 +109,7 @@ if CommandLine.arguments[1] == "request-access" {
         store.requestAccess(to: .event) { _, _ in semaphore.signal() }
     }
     _ = semaphore.wait(timeout: .now() + 30)
-    emit(ReadResponse(capability: capability(), events: []))
+    emit(ReadResponse(capability: capabilityWithWriteTarget(), events: []))
 }
 
 if CommandLine.arguments[1] == "read" {
