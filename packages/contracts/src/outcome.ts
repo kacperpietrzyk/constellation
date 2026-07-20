@@ -83,6 +83,7 @@ export const DiagnosticCodeSchema = z.enum([
   "task.operational_state_changed",
   "task.completed",
   "task.reopened",
+  "task.removed",
   "task.assigned",
   "task.unassigned",
   "comment.added",
@@ -610,6 +611,15 @@ export const TaskCompletedProjectionSchema = z
 export const TaskReopenedProjectionSchema = z
   .object({ kind: z.literal("task.reopened"), ...TaskMutationProjectionFields })
   .strict();
+// R12.7 / ADR-043 — removal touches only recordState, so the projection
+// carries just the identity and the resulting version.
+export const TaskRemovedProjectionSchema = z
+  .object({
+    kind: z.literal("task.removed"),
+    taskId: TaskIdSchema,
+    version: z.int().positive(),
+  })
+  .strict();
 
 const TaskAssignmentProjectionFields = {
   assignmentId: TaskAssignmentIdSchema,
@@ -778,6 +788,7 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   TaskOperationalStateChangedProjectionSchema,
   TaskCompletedProjectionSchema,
   TaskReopenedProjectionSchema,
+  TaskRemovedProjectionSchema,
   TaskAssignedProjectionSchema,
   TaskUnassignedProjectionSchema,
   CommentAddedProjectionSchema,
@@ -1094,6 +1105,11 @@ const TaskReopenedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
   diagnosticCode: z.literal("task.reopened"),
   projection: TaskReopenedProjectionSchema,
 }).strict();
+const TaskRemovedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
+  outcome: z.literal("success"),
+  diagnosticCode: z.literal("task.removed"),
+  projection: TaskRemovedProjectionSchema,
+}).strict();
 const TaskAssignedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend({
   outcome: z.literal("success"),
   diagnosticCode: z.literal("task.assigned"),
@@ -1238,6 +1254,7 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   TaskOperationalStateChangedSuccessOutcomeSchema,
   TaskCompletedSuccessOutcomeSchema,
   TaskReopenedSuccessOutcomeSchema,
+  TaskRemovedSuccessOutcomeSchema,
   TaskAssignedSuccessOutcomeSchema,
   TaskUnassignedSuccessOutcomeSchema,
   CommentAddedSuccessOutcomeSchema,
@@ -1270,6 +1287,7 @@ export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
           "task.restore_state",
           "task.restore_details",
           "task.restore_calendar_block",
+          "task.restore_record_state",
           "task.restore_parent",
           "taskStatus.restore_definition",
           "workspace.restore_default_status",

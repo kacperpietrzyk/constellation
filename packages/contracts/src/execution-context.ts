@@ -118,6 +118,7 @@ export const CapabilitySchema = z.enum([
   "task.setStatus",
   "task.complete",
   "task.reopen",
+  "task.remove",
   "task.assign",
   "task.unassign",
   "record.relate",

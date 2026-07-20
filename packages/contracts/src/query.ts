@@ -1528,6 +1528,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           "task.restore_state",
           "task.restore_details",
           "task.restore_calendar_block",
+          "task.restore_record_state",
           "task.restore_parent",
           "taskStatus.restore_definition",
           "workspace.restore_default_status",

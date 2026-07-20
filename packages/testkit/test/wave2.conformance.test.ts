@@ -100,6 +100,7 @@ const context = (): ExecutionContext =>
       "task.setOperationalState",
       "task.complete",
       "task.reopen",
+      "task.remove",
       "task.assign",
       "task.unassign",
       "comment.add",
@@ -2613,5 +2614,178 @@ describe("Wave 2 reference semantics", () => {
     );
     assert.equal(deniedRelation.diagnosticCode, "authorization.denied");
     assert.equal(harness.store.snapshot().relations.length, 0);
+  });
+
+  it("removes a Task, hides it from singular reads, and restores it on undo", () => {
+    const harness = setup();
+    const taskId = createTask(harness, "Retire the stale onboarding draft");
+    const versionOf = (): number =>
+      harness.store.snapshot().tasks.find((t) => t.id === taskId)!.version;
+
+    // A comment and an attention signal exist before removal, so we can prove
+    // the two singular read paths stop surfacing the Task once it is removed.
+    const commentId = requestId();
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("pre-remove-comment", { [taskId]: versionOf() }),
+        commandName: "comment.add",
+        payload: {
+          commentId,
+          target: { kind: "task", taskId },
+          body: "Does this still matter?",
+          mentionPrincipalIds: [ids.principal],
+        },
+      }),
+    );
+    // Returns the thread count when the Task is visible, or "hidden" when the
+    // query is rejected — a removed Task is indistinguishable from one that
+    // never existed, so comment.list rejects rather than returning an empty
+    // list, and that rejection IS the leak being closed.
+    const listComments = (): number | "hidden" => {
+      const r = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "comment.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { target: { kind: "task", taskId } },
+      });
+      if (r.kind !== "query_result") assert.fail("Expected a query result");
+      if (r.result.outcome !== "success") return "hidden";
+      return r.result.projection.kind === "comment.list"
+        ? r.result.projection.threads.length
+        : assert.fail("Expected comment.list projection");
+    };
+    assert.equal(listComments(), 1);
+
+    const removed = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("remove", { [taskId]: versionOf() }),
+        commandName: "task.remove",
+        payload: { taskId },
+      }),
+    );
+    assert.equal(removed.diagnosticCode, "task.removed");
+    assert.equal(
+      harness.store.snapshot().tasks.find((t) => t.id === taskId)!.recordState,
+      "removed",
+    );
+
+    // The leak fix (ADR-043 §4): a removed Task is invisible to comment.list.
+    assert.equal(listComments(), "hidden");
+    // It is also gone from task.list, as the list primitives already ensured.
+    const listResult = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (listResult.kind !== "query_result")
+      assert.fail("Expected a task.list result");
+    if (
+      listResult.result.outcome === "success" &&
+      listResult.result.projection.kind === "task.list"
+    ) {
+      assert.equal(
+        listResult.result.projection.items.some((t) => t.id === taskId),
+        false,
+      );
+    }
+
+    // §5 — no new association may attach to a removed Task.
+    const deniedComment = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("post-remove-comment", { [taskId]: versionOf() }),
+        commandName: "comment.add",
+        payload: {
+          commentId: requestId(),
+          target: { kind: "task", taskId },
+          body: "Sneaking a comment onto a removed task",
+          mentionPrincipalIds: [],
+        },
+      }),
+    );
+    assert.equal(deniedComment.diagnosticCode, "command.precondition_failed");
+
+    // Undo restores the Task to exactly active, and it reappears.
+    const preview = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("remove-undo-preview"),
+        commandName: "command.previewUndo",
+        payload: { targetCommandId: removed.commandId },
+      }),
+    );
+    if (preview.outcome !== "preview") assert.fail("Expected an undo preview");
+    assert.equal(
+      preview.projection.compensationKind,
+      "task.restore_record_state",
+    );
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("remove-undo", preview.projection.requiredVersions),
+        commandName: "command.undo",
+        payload: { targetCommandId: removed.commandId },
+      }),
+    );
+    assert.equal(
+      harness.store.snapshot().tasks.find((t) => t.id === taskId)!.recordState,
+      "active",
+    );
+    assert.equal(listComments(), 1);
+  });
+
+  it("refuses to remove a Task that still has an active subtask", () => {
+    const harness = setup();
+    const parentId = createTask(harness, "Parent with a child");
+    const childId = createTask(harness, "Child of the parent");
+    const versionOf = (id: TaskId): number =>
+      harness.store.snapshot().tasks.find((t) => t.id === id)!.version;
+
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("adopt-child", { [childId]: versionOf(childId) }),
+        commandName: "task.setParent",
+        payload: { taskId: childId, parentTaskId: parentId },
+      }),
+    );
+
+    // The parent is not a leaf, so removing it would orphan the child.
+    const refused = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("remove-parent", { [parentId]: versionOf(parentId) }),
+        commandName: "task.remove",
+        payload: { taskId: parentId },
+      }),
+    );
+    assert.equal(refused.diagnosticCode, "command.precondition_failed");
+    assert.equal(
+      harness.store.snapshot().tasks.find((t) => t.id === parentId)!
+        .recordState,
+      "active",
+    );
+
+    // Removing the leaf child first is allowed; then the parent is a leaf too.
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("remove-child", { [childId]: versionOf(childId) }),
+          commandName: "task.remove",
+          payload: { taskId: childId },
+        }),
+      ).diagnosticCode,
+      "task.removed",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("remove-parent-2", { [parentId]: versionOf(parentId) }),
+          commandName: "task.remove",
+          payload: { taskId: parentId },
+        }),
+      ).diagnosticCode,
+      "task.removed",
+    );
   });
 });

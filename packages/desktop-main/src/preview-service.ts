@@ -104,6 +104,7 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "task.setOperationalState",
   "task.complete",
   "task.reopen",
+  "task.remove",
   "task.assign",
   "task.unassign",
   "record.relate",

@@ -1409,6 +1409,14 @@ export const TaskReopenCommandSchema = CommandMetadataSchema.extend({
   payload: z.object({ taskId: TaskIdSchema }).strict(),
 }).strict();
 
+// R12.7 / ADR-043 — user-facing Task removal. A soft delete: it sets
+// recordState to "removed" and is reversible by undo. It never hard-deletes
+// and it refuses a Task that still has active subtasks.
+export const TaskRemoveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("task.remove"),
+  payload: z.object({ taskId: TaskIdSchema }).strict(),
+}).strict();
+
 export const TaskAssignCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("task.assign"),
   payload: z
@@ -1591,6 +1599,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   TaskSetOperationalStateCommandSchema,
   TaskCompleteCommandSchema,
   TaskReopenCommandSchema,
+  TaskRemoveCommandSchema,
   TaskAssignCommandSchema,
   TaskUnassignCommandSchema,
   CommentAddCommandSchema,
