@@ -38,6 +38,7 @@ import {
   surfaceShortcutHint,
   type SurfaceShortcutHint,
 } from "./components/ShortcutsOverlay.js";
+import { TaskRemovalSection } from "./components/TaskRemovalSection.js";
 import { TaskReservationSection } from "./components/TaskReservationSection.js";
 import { useDismissiblePanel } from "./hooks/useDismissiblePanel.js";
 import {
@@ -4311,6 +4312,23 @@ export const RealApp = ({
                 </p>
               )}
             </section>
+            {client && (
+              <TaskRemovalSection
+                client={client}
+                snapshot={state.snapshot}
+                taskId={selectedTask.id}
+                taskVersion={selectedTask.version}
+                activeChildCount={
+                  tasks.filter((item) => item.parentTaskId === selectedTask.id)
+                    .length
+                }
+                onRemoved={async (message) => {
+                  await refreshAfter(message);
+                  setSelectedTaskId(undefined);
+                }}
+                onFailure={showFailure}
+              />
+            )}
             <CommentsPanel
               key={`task-${selectedTask.id}`}
               comments={comments}

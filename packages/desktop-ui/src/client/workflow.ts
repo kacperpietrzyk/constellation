@@ -2074,6 +2074,33 @@ export const setTaskCalendarBlock = (
         : undefined,
   );
 
+// R12.7 / ADR-043 — a soft delete. It is reversible with the undo affordance
+// that follows every mutation, so the surface confirms once and does not
+// pretend the Task is gone forever. Removal is refused by the kernel when the
+// Task still has an active subtask; the caller surfaces that as a precondition
+// failure rather than a generic error.
+export const removeTask = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  taskId: TaskId,
+  taskVersion: number,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [taskId]: taskVersion,
+      }),
+      commandName: "task.remove",
+      payload: { taskId },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "task.removed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export type FieldType =
   | { readonly kind: "text" }
   | { readonly kind: "number" }

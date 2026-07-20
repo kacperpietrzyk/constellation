@@ -43,10 +43,12 @@ import path from "node:path";
 // dla ktorego go zarezerwowano, obok terminow.
 // 2026-07-20 (R12.6): spotkania w kompozycji dnia — device-local meeting-loop
 // w kokpicie plus uczciwa odmowa, gdy kalendarza nie da sie odczytac.
+// 2026-07-20 (R12.7): usuwanie zadania w inspektorze — dwustopniowe
+// potwierdzenie plus wyjasnienie blokady, gdy zadanie ma podzadania.
 const limits = {
-  entryBytes: 533_000,
+  entryBytes: 535_000,
   entryGzipBytes: 143_000,
-  totalJavaScriptBytes: 827_000,
+  totalJavaScriptBytes: 829_000,
   stylesheetBytes: 177_000,
 };
 
