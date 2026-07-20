@@ -141,6 +141,15 @@ contains only an opaque payload ID, digest, byte length, media type, display
 name, and custody state. A voice original additionally freezes bounded duration
 and the chosen post-transcript retention policy. Bytes and local paths never enter the command, audit,
 outbox, or MCP projection. The original text command remains compatible.
+MCP operations are discoverable in-band: the `constellation://v1/operations`
+resource lists every command and query the active grant authorizes, each
+with its full strict envelope JSON Schema plus shared invocation guidance
+(expected versions, idempotency, recovery). The catalog is generated at
+read time from the same Zod contract unions the kernel validates with and
+filtered by the grant's capability scope, so it can never drift from the
+kernel or reveal an unauthorized operation; the three generic tools remain
+the only invocation surface.
+
 An explicitly requested MCP payload resource is the only agent byte path. Voice
 audio additionally requires the independent `capture.audioRead` capability;
 ordinary managed files and screenshots do not imply access to microphone data. It
