@@ -3,7 +3,10 @@ import test from "node:test";
 
 import type { CalendarCapability } from "@constellation/contracts";
 
-import { reservationTarget } from "../src/client/calendar-reservation.js";
+import {
+  calendarReadRefusal,
+  reservationTarget,
+} from "../src/client/calendar-reservation.js";
 
 const writable: CalendarCapability = {
   platform: "macos",
@@ -65,4 +68,33 @@ test("a readable but unwritable calendar cannot reserve time", () => {
     canWriteOwnedBlocks: false,
   });
   assert.equal(target.kind, "unavailable");
+});
+
+test("reading and writing a calendar are answered separately", () => {
+  // A calendar that can be read but not written to must still show meetings.
+  // Collapsing the two permissions would hide a day's meetings just because
+  // the owner cannot reserve time in it.
+  assert.equal(
+    calendarReadRefusal({ ...writable, canWriteOwnedBlocks: false }),
+    undefined,
+  );
+  assert.equal(
+    reservationTarget({ ...writable, canRead: false }).kind,
+    "ready",
+  );
+});
+
+test("meetings that cannot be shown say why instead of looking like none", () => {
+  // A day view that silently omits meetings looks like a day with no
+  // meetings — a lie the owner would plan around.
+  for (const capability of [
+    undefined,
+    { ...writable, availability: "permission_required" as const },
+    { ...writable, availability: "permission_denied" as const },
+    { ...writable, availability: "provider_unavailable" as const },
+    { ...writable, canRead: false },
+  ]) {
+    assert.notEqual(calendarReadRefusal(capability), undefined);
+  }
+  assert.equal(calendarReadRefusal(writable), undefined);
 });

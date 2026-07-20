@@ -41,11 +41,13 @@ import path from "node:path";
 // kalendarza i osobne komunikaty dla kazdego powodu odmowy.
 // 2026-07-20 (R12.6): kompozycja dnia w kokpicie — zarezerwowany czas na dniu,
 // dla ktorego go zarezerwowano, obok terminow.
+// 2026-07-20 (R12.6): spotkania w kompozycji dnia — device-local meeting-loop
+// w kokpicie plus uczciwa odmowa, gdy kalendarza nie da sie odczytac.
 const limits = {
-  entryBytes: 532_000,
+  entryBytes: 533_000,
   entryGzipBytes: 143_000,
-  totalJavaScriptBytes: 825_000,
-  stylesheetBytes: 176_000,
+  totalJavaScriptBytes: 827_000,
+  stylesheetBytes: 177_000,
 };
 
 const dist = path.join(process.cwd(), "packages", "desktop-ui", "dist");
