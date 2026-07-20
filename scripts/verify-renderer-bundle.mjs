@@ -39,10 +39,12 @@ import path from "node:path";
 // 2026-07-20 (R12.6): sekcja rezerwacji czasu w inspektorze zadania —
 // formularz dnia/godziny/dlugosci, rozstrzyganie celu zapisu z capability
 // kalendarza i osobne komunikaty dla kazdego powodu odmowy.
+// 2026-07-20 (R12.6): kompozycja dnia w kokpicie — zarezerwowany czas na dniu,
+// dla ktorego go zarezerwowano, obok terminow.
 const limits = {
-  entryBytes: 531_000,
+  entryBytes: 532_000,
   entryGzipBytes: 143_000,
-  totalJavaScriptBytes: 824_000,
+  totalJavaScriptBytes: 825_000,
   stylesheetBytes: 176_000,
 };
 

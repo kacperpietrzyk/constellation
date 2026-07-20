@@ -4915,6 +4915,39 @@ button.mention-chip:disabled {
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
 }
+/* R12.6 — reserved time on the day it was reserved for. Separated from the
+   deadlines above by a rule rather than a colour, so the day column reads as
+   two distinct facts (due / doing) without adding a second accent. */
+.week-plan-reserved {
+  display: grid;
+  gap: 0.1rem;
+  margin-top: 0.25rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border-subtle);
+}
+.week-plan-block {
+  display: flex;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.15rem 0;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 0;
+  font-size: var(--text-2xs);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.week-plan-block:hover,
+.week-plan-block.selected {
+  color: var(--text-primary);
+}
+.week-plan-block-time {
+  flex: none;
+  color: var(--text-quaternary);
+  font-variant-numeric: tabular-nums;
+}
 .week-plan-overdue {
   display: flex;
   flex-wrap: wrap;
