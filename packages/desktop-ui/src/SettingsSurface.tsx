@@ -13,7 +13,9 @@ import type {
 } from "@constellation/desktop-preload/client";
 
 import {
+  changeFieldDefinition,
   changeTaskStatusDefinition,
+  createFieldDefinition,
   createTaskStatusDefinition,
   renameWorkspace,
   setDefaultTaskStatus,
@@ -28,6 +30,13 @@ import {
   type ConceptHelpTopicId,
 } from "./components/ConceptHelpDialog.js";
 import type { SurfaceId } from "./client/wave2-fixtures.js";
+
+const fieldTypeLabels: Record<string, string> = {
+  text: "Tekst",
+  number: "Liczba",
+  date: "Data",
+  choice: "Wybór",
+};
 
 const statusSemanticsLabels: Record<string, string> = {
   actionable: "Do działania",
@@ -92,6 +101,33 @@ export const SettingsSurface = ({
   const [newStatusSemantics, setNewStatusSemantics] = useState<
     "actionable" | "waiting" | "blocked" | "paused"
   >("actionable");
+  const [fieldBusyId, setFieldBusyId] = useState<string>();
+  const [newFieldLabel, setNewFieldLabel] = useState("");
+  const [newFieldTarget, setNewFieldTarget] = useState<"task" | "project">(
+    "task",
+  );
+  const [newFieldType, setNewFieldType] = useState<
+    "text" | "number" | "date" | "choice"
+  >("text");
+  const [newFieldOptions, setNewFieldOptions] = useState("");
+  const runFieldOperation = async (
+    id: string,
+    operation: () => Promise<{ readonly kind: string }>,
+  ): Promise<boolean> => {
+    if (fieldBusyId !== undefined) return false;
+    setFieldBusyId(id);
+    try {
+      const result = await operation();
+      if (result.kind === "success") {
+        await onReload();
+        return true;
+      }
+      onFailure(result as MutationFailure);
+      return false;
+    } finally {
+      setFieldBusyId(undefined);
+    }
+  };
   const runStatusOperation = async (
     id: string,
     operation: () => Promise<{ readonly kind: string }>,
@@ -874,6 +910,188 @@ export const SettingsSurface = ({
                     disabled={
                       statusBusyId === "create" ||
                       newStatusLabel.trim() === "" ||
+                      !client
+                    }
+                  >
+                    Dodaj
+                  </button>
+                </form>
+              </div>
+            </section>
+
+            <section>
+              <div className="settings-copy">
+                <h2>Pola rekordów</h2>
+                <p>
+                  Typowane pola workspace rozszerzają zadania i projekty bez
+                  wydania aplikacji. Wartości dziedziczą uprawnienia rekordu;
+                  wycofana definicja nie zmienia zapisanych wartości.
+                </p>
+              </div>
+              <div className="settings-control status-manager">
+                <ul className="status-list">
+                  {(snapshot.bootstrap.fieldDefinitions ?? []).map(
+                    (definition) => {
+                      const retired = definition.state === "retired";
+                      const busy = fieldBusyId === definition.id;
+                      return (
+                        <li
+                          key={definition.id}
+                          className={retired ? "status-archived" : undefined}
+                        >
+                          <span className="status-label">
+                            <strong>{definition.label}</strong>
+                            <small>
+                              {definition.targetKind === "task"
+                                ? "Zadanie"
+                                : "Projekt"}
+                              {" · "}
+                              {fieldTypeLabels[definition.type.kind]}
+                              {definition.type.kind === "choice"
+                                ? ` (${definition.type.options.join(", ")})`
+                                : ""}
+                              {retired ? " · wycofane" : ""}
+                            </small>
+                          </span>
+                          <span className="status-actions">
+                            {retired ? (
+                              <button
+                                type="button"
+                                disabled={busy || !client}
+                                onClick={() => {
+                                  if (!client) return;
+                                  void runFieldOperation(definition.id, () =>
+                                    changeFieldDefinition(
+                                      client,
+                                      snapshot,
+                                      definition.id,
+                                      definition.version,
+                                      { kind: "restore" },
+                                    ),
+                                  );
+                                }}
+                              >
+                                Przywróć
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={busy || !client}
+                                onClick={() => {
+                                  if (!client) return;
+                                  void runFieldOperation(definition.id, () =>
+                                    changeFieldDefinition(
+                                      client,
+                                      snapshot,
+                                      definition.id,
+                                      definition.version,
+                                      { kind: "archive" },
+                                    ),
+                                  );
+                                }}
+                              >
+                                Wycofaj
+                              </button>
+                            )}
+                          </span>
+                        </li>
+                      );
+                    },
+                  )}
+                </ul>
+                <form
+                  className="status-create"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const label = newFieldLabel.trim();
+                    if (label.length === 0 || !client) return;
+                    const type =
+                      newFieldType === "choice"
+                        ? {
+                            kind: "choice" as const,
+                            options: newFieldOptions
+                              .split(",")
+                              .map((option) => option.trim())
+                              .filter((option) => option.length > 0),
+                          }
+                        : { kind: newFieldType };
+                    if (type.kind === "choice" && type.options.length === 0) {
+                      onFailure({
+                        kind: "error",
+                        message:
+                          "Pole wyboru wymaga co najmniej jednej opcji (rozdziel przecinkami).",
+                      });
+                      return;
+                    }
+                    void runFieldOperation("create", () =>
+                      createFieldDefinition(client, snapshot, {
+                        targetKind: newFieldTarget,
+                        label,
+                        type,
+                      }),
+                    ).then((ok) => {
+                      if (ok) {
+                        setNewFieldLabel("");
+                        setNewFieldOptions("");
+                      }
+                    });
+                  }}
+                >
+                  <label>
+                    <span className="sr-only">Etykieta nowego pola</span>
+                    <input
+                      value={newFieldLabel}
+                      maxLength={120}
+                      placeholder="Nowe pole — etykieta"
+                      disabled={fieldBusyId === "create"}
+                      onChange={(event) => setNewFieldLabel(event.target.value)}
+                    />
+                  </label>
+                  <select
+                    aria-label="Rekord docelowy"
+                    value={newFieldTarget}
+                    disabled={fieldBusyId === "create"}
+                    onChange={(event) =>
+                      setNewFieldTarget(
+                        event.target.value as "task" | "project",
+                      )
+                    }
+                  >
+                    <option value="task">Zadanie</option>
+                    <option value="project">Projekt</option>
+                  </select>
+                  <select
+                    aria-label="Typ pola"
+                    value={newFieldType}
+                    disabled={fieldBusyId === "create"}
+                    onChange={(event) =>
+                      setNewFieldType(
+                        event.target.value as
+                          "text" | "number" | "date" | "choice",
+                      )
+                    }
+                  >
+                    <option value="text">Tekst</option>
+                    <option value="number">Liczba</option>
+                    <option value="date">Data</option>
+                    <option value="choice">Wybór</option>
+                  </select>
+                  {newFieldType === "choice" && (
+                    <input
+                      value={newFieldOptions}
+                      placeholder="Opcje po przecinku"
+                      aria-label="Opcje pola wyboru"
+                      disabled={fieldBusyId === "create"}
+                      onChange={(event) =>
+                        setNewFieldOptions(event.target.value)
+                      }
+                    />
+                  )}
+                  <button
+                    type="submit"
+                    disabled={
+                      fieldBusyId === "create" ||
+                      newFieldLabel.trim() === "" ||
                       !client
                     }
                   >

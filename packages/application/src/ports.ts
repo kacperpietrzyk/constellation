@@ -20,6 +20,7 @@ import type {
   CommentId,
   AttentionSignalId,
   TaskStatusId,
+  FieldDefinitionId,
   WorkspaceId,
   GrantId,
   AgentRunId,
@@ -36,6 +37,7 @@ import type {
   OutboxEntry,
   Space,
   Project,
+  FieldDefinition,
   Task,
   TaskAssignment,
   TaskListFilters,
@@ -160,6 +162,8 @@ export interface ApplicationReadView {
   listSpaces(workspaceId: WorkspaceId): readonly Space[];
   getTaskStatus(id: TaskStatusId): TaskStatusDefinition | undefined;
   listTaskStatuses(workspaceId: WorkspaceId): readonly TaskStatusDefinition[];
+  getFieldDefinition(id: FieldDefinitionId): FieldDefinition | undefined;
+  listFieldDefinitions(workspaceId: WorkspaceId): readonly FieldDefinition[];
   getMembership(
     workspaceId: WorkspaceId,
     principalId: PrincipalId,
@@ -283,6 +287,11 @@ export interface ApplicationTransaction extends ApplicationReadView {
   insertTaskStatus(status: TaskStatusDefinition): void;
   updateTaskStatus(
     status: TaskStatusDefinition,
+    expectedVersion: number,
+  ): boolean;
+  insertFieldDefinition(definition: FieldDefinition): void;
+  updateFieldDefinition(
+    definition: FieldDefinition,
     expectedVersion: number,
   ): boolean;
   insertCapture(capture: Capture): void;
@@ -418,6 +427,7 @@ export interface ReferenceStateSnapshot {
   readonly attentionSignals?: readonly AttentionSignal[];
   readonly captures: readonly Capture[];
   readonly taskStatuses: readonly TaskStatusDefinition[];
+  readonly fieldDefinitions?: readonly FieldDefinition[];
   readonly tasks: readonly Task[];
   readonly projects: readonly Project[];
   readonly documents?: readonly NativeDocument[];

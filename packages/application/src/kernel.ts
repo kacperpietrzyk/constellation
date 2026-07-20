@@ -344,6 +344,11 @@ const isCurrentlyAuthorized = (
     case "task.create":
     case "task.updateDetails":
     case "task.setParent":
+    case "fieldDef.create":
+    case "fieldDef.rename":
+    case "fieldDef.archive":
+    case "fieldDef.restore":
+    case "record.setFieldValue":
     case "taskStatus.create":
     case "taskStatus.rename":
     case "taskStatus.setSemantics":
@@ -689,6 +694,16 @@ export class ApplicationKernel {
       case "task.create":
       case "task.updateDetails":
       case "task.setParent":
+      case "fieldDef.create":
+      case "fieldDef.rename":
+      case "fieldDef.archive":
+      case "fieldDef.restore":
+      case "record.setFieldValue":
+      case "fieldDef.create":
+      case "fieldDef.rename":
+      case "fieldDef.archive":
+      case "fieldDef.restore":
+      case "record.setFieldValue":
       case "taskStatus.create":
       case "taskStatus.rename":
       case "taskStatus.setSemantics":
@@ -2714,6 +2729,19 @@ export class ApplicationKernel {
           position: status.position,
           version: status.version,
         })),
+        fieldDefinitions: view
+          .listFieldDefinitions(workspace.id)
+          .map((definition) => ({
+            id: definition.id,
+            targetKind: definition.targetKind,
+            label: definition.label,
+            type: definition.type,
+            ...(definition.state === undefined
+              ? {}
+              : { state: definition.state }),
+            position: definition.position,
+            version: definition.version,
+          })),
       },
     });
   }
@@ -2966,6 +2994,7 @@ export class ApplicationKernel {
             ...(task.parentTaskId === undefined
               ? {}
               : { parentTaskId: task.parentTaskId }),
+            ...(task.fields === undefined ? {} : { fields: task.fields }),
             status: {
               id: status.id,
               label: status.label,

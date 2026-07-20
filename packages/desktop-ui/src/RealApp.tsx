@@ -71,7 +71,9 @@ import {
   editComment,
   createProject,
   createTask,
+  setRecordFieldValue,
   updateTaskDetails,
+  type FieldValue,
   loadDesktopSnapshot,
   loadProjectOverview,
   loadComments,
@@ -1380,6 +1382,8 @@ export const RealApp = ({
   const taskEditWantsFocusRef = useRef(false);
   const [subtaskDraft, setSubtaskDraft] = useState("");
   const [subtaskBusy, setSubtaskBusy] = useState(false);
+  const [fieldDrafts, setFieldDrafts] = useState<Record<string, string>>({});
+  const [fieldSaveBusy, setFieldSaveBusy] = useState(false);
   useEffect(() => {
     if (!taskEditOpen && taskEditWantsFocusRef.current) {
       taskEditWantsFocusRef.current = false;
@@ -4054,6 +4058,175 @@ export const RealApp = ({
                 })()
               )}
             </section>
+            {(state.snapshot.bootstrap.fieldDefinitions ?? []).some(
+              (definition) =>
+                definition.targetKind === "task" &&
+                (definition.state !== "retired" ||
+                  selectedTask.fields?.[definition.id] !== undefined),
+            ) && (
+              <section className="inspector-section task-fields-block">
+                <p className="section-label">Pola</p>
+                {(state.snapshot.bootstrap.fieldDefinitions ?? [])
+                  .filter(
+                    (definition) =>
+                      definition.targetKind === "task" &&
+                      (definition.state !== "retired" ||
+                        selectedTask.fields?.[definition.id] !== undefined),
+                  )
+                  .map((definition) => {
+                    const current = selectedTask.fields?.[definition.id];
+                    const retired = definition.state === "retired";
+                    const draft = fieldDrafts[definition.id];
+                    const commit = (value: FieldValue | null) => {
+                      if (!client || fieldSaveBusy) return;
+                      setFieldSaveBusy(true);
+                      void setRecordFieldValue(client, state.snapshot, {
+                        targetKind: "task",
+                        recordId: selectedTask.id,
+                        recordVersion: selectedTask.version,
+                        fieldId: definition.id,
+                        value,
+                      }).then(async (result) => {
+                        setFieldSaveBusy(false);
+                        if (result.kind === "success") {
+                          setFieldDrafts((currentDrafts) => {
+                            const next = { ...currentDrafts };
+                            delete next[definition.id];
+                            return next;
+                          });
+                          await refreshAfter("Wartość pola zapisano.");
+                        } else showFailure(result);
+                      });
+                    };
+                    return (
+                      <div className="task-field-row" key={definition.id}>
+                        <span className="task-field-label">
+                          {definition.label}
+                          {retired ? " (wycofane)" : ""}
+                        </span>
+                        {retired ? (
+                          <span className="task-field-value">
+                            {current?.kind === "date"
+                              ? formatDate(
+                                  current.value,
+                                  state.snapshot.bootstrap.workspace.timezone,
+                                )
+                              : String(current?.value ?? "—")}
+                          </span>
+                        ) : definition.type.kind === "choice" ? (
+                          <select
+                            aria-label={definition.label}
+                            disabled={fieldSaveBusy}
+                            value={
+                              current?.kind === "choice" ? current.value : ""
+                            }
+                            onChange={(event) =>
+                              commit(
+                                event.target.value === ""
+                                  ? null
+                                  : {
+                                      kind: "choice",
+                                      value: event.target.value,
+                                    },
+                              )
+                            }
+                          >
+                            <option value="">—</option>
+                            {definition.type.options.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        ) : definition.type.kind === "date" ? (
+                          <input
+                            type="date"
+                            aria-label={definition.label}
+                            disabled={fieldSaveBusy}
+                            value={
+                              current?.kind === "date"
+                                ? dateKeyInZone(
+                                    current.value,
+                                    state.snapshot.bootstrap.workspace.timezone,
+                                  )
+                                : ""
+                            }
+                            onChange={(event) => {
+                              const date = event.target.value;
+                              if (date === "") {
+                                if (current !== undefined) commit(null);
+                                return;
+                              }
+                              const instant = instantForZonedDate(
+                                date,
+                                state.snapshot.bootstrap.workspace.timezone,
+                                "end",
+                              );
+                              if (instant !== undefined)
+                                commit({ kind: "date", value: instant });
+                            }}
+                          />
+                        ) : (
+                          <form
+                            className="task-field-edit"
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              const raw = (
+                                draft ?? String(current?.value ?? "")
+                              ).trim();
+                              if (raw === "") {
+                                if (current !== undefined) commit(null);
+                                return;
+                              }
+                              if (definition.type.kind === "number") {
+                                const parsed = Number(raw);
+                                if (!Number.isFinite(parsed)) {
+                                  showFailure({
+                                    kind: "error",
+                                    message:
+                                      "Wartość liczbowa jest nieprawidłowa.",
+                                  });
+                                  return;
+                                }
+                                commit({ kind: "number", value: parsed });
+                              } else {
+                                commit({ kind: "text", value: raw });
+                              }
+                            }}
+                          >
+                            <input
+                              aria-label={definition.label}
+                              disabled={fieldSaveBusy}
+                              inputMode={
+                                definition.type.kind === "number"
+                                  ? "decimal"
+                                  : undefined
+                              }
+                              value={draft ?? String(current?.value ?? "")}
+                              onChange={(event) =>
+                                setFieldDrafts((currentDrafts) => ({
+                                  ...currentDrafts,
+                                  [definition.id]: event.target.value,
+                                }))
+                              }
+                            />
+                            {draft !== undefined &&
+                              draft !== String(current?.value ?? "") && (
+                                <button
+                                  type="submit"
+                                  className="secondary-button"
+                                  disabled={fieldSaveBusy}
+                                >
+                                  Zapisz
+                                </button>
+                              )}
+                          </form>
+                        )}
+                      </div>
+                    );
+                  })}
+              </section>
+            )}
             <section className="inspector-section assignment-block">
               <p className="section-label">Odpowiedzialność</p>
               <p>

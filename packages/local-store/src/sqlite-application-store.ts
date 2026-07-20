@@ -38,6 +38,7 @@ import {
   type CommentId,
   type AttentionSignalId,
   type TaskStatusId,
+  type FieldDefinitionId,
   type WorkspaceId,
   type GrantId,
   type AgentRunId,
@@ -55,6 +56,7 @@ import type {
   AuditReceipt,
   Capture,
   DomainEvent,
+  FieldDefinition,
   OutboxEntry,
   Project,
   Space,
@@ -84,7 +86,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-export const LOCAL_STORE_SCHEMA_VERSION = 16;
+export const LOCAL_STORE_SCHEMA_VERSION = 17;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -118,6 +120,7 @@ const COORDINATED_PROJECTION_TABLES = [
   "tasks",
   "captures",
   "task_statuses",
+  "field_definitions",
   "space_grants",
   "memberships",
   "spaces",
@@ -663,6 +666,18 @@ const schemaV16 = `
     WHERE record_state = 'active';
 `;
 
+const schemaV17 = `
+  CREATE TABLE field_definitions (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    position INTEGER NOT NULL,
+    version INTEGER NOT NULL CHECK (version > 0),
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX field_definitions_workspace
+    ON field_definitions(workspace_id, position, id);
+`;
+
 const localStoreMigrations = [
   schemaV1,
   schemaV2,
@@ -680,6 +695,7 @@ const localStoreMigrations = [
   schemaV14,
   schemaV15,
   schemaV16,
+  schemaV17,
 ] as const;
 
 export interface LocalCoordinationState {
@@ -1006,6 +1022,43 @@ class SqliteReadView implements ApplicationWave2ReadView {
           id,
           "task status",
           { workspaceId },
+        );
+      });
+  }
+
+  public getFieldDefinition(
+    id: FieldDefinitionId,
+  ): FieldDefinition | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, payload_json FROM field_definitions WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<FieldDefinition>(row, "id", id, "field definition", {
+          workspaceId: stringValue(row, "workspace_id", "field definition"),
+        });
+  }
+
+  public listFieldDefinitions(
+    workspaceId: WorkspaceId,
+  ): readonly FieldDefinition[] {
+    return this.database
+      .prepare(
+        "SELECT id, payload_json FROM field_definitions WHERE workspace_id = ? ORDER BY position, id",
+      )
+      .all(workspaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "field definition");
+        return parsePayload<FieldDefinition>(
+          row,
+          "id",
+          id,
+          "field definition",
+          {
+            workspaceId,
+          },
         );
       });
   }
@@ -2100,6 +2153,40 @@ class SqliteTransaction
       this.database
         .prepare(
           "UPDATE task_statuses SET position = ?, version = ?, payload_json = ? WHERE id = ? AND version = ? AND workspace_id = ?",
+        )
+        .run(
+          record.position,
+          record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+          record.workspaceId,
+        ),
+    );
+  }
+
+  public insertFieldDefinition(record: FieldDefinition): void {
+    this.insert(
+      "field_definitions",
+      ["id", "workspace_id", "position", "version", "payload_json"],
+      [
+        record.id,
+        record.workspaceId,
+        record.position,
+        record.version,
+        payload(record),
+      ],
+    );
+  }
+
+  public updateFieldDefinition(
+    record: FieldDefinition,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE field_definitions SET position = ?, version = ?, payload_json = ? WHERE id = ? AND version = ? AND workspace_id = ?",
         )
         .run(
           record.position,
@@ -3299,6 +3386,12 @@ export class SqliteApplicationStore
         "attention signal",
       ),
       taskStatuses: records("task_statuses", "id", "id", "task status"),
+      fieldDefinitions: records(
+        "field_definitions",
+        "id",
+        "id",
+        "field definition",
+      ),
       captures: records("captures", "id", "id", "capture"),
       tasks: records("tasks", "id", "id", "task"),
       projects: records("projects", "id", "id", "project"),
@@ -3650,6 +3743,9 @@ export class SqliteApplicationStore
     );
     (snapshot.spaceGrants ?? []).forEach((value) =>
       transaction.insertSpaceGrant(value),
+    );
+    (snapshot.fieldDefinitions ?? []).forEach((value) =>
+      transaction.insertFieldDefinition(value),
     );
     snapshot.taskStatuses.forEach((value) =>
       transaction.insertTaskStatus(value),

@@ -1980,6 +1980,110 @@ export const updateTaskDetails = (
         : undefined,
   );
 
+export type FieldType =
+  | { readonly kind: "text" }
+  | { readonly kind: "number" }
+  | { readonly kind: "date" }
+  | { readonly kind: "choice"; readonly options: readonly string[] };
+
+export type FieldValue =
+  | { readonly kind: "text"; readonly value: string }
+  | { readonly kind: "number"; readonly value: number }
+  | { readonly kind: "date"; readonly value: string }
+  | { readonly kind: "choice"; readonly value: string };
+
+export const createFieldDefinition = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly targetKind: "task" | "project";
+    readonly label: string;
+    readonly type: FieldType;
+  },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "fieldDef.create",
+      payload: {
+        fieldId: crypto.randomUUID(),
+        targetKind: input.targetKind,
+        label: input.label,
+        type: input.type,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "fieldDef.created"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const changeFieldDefinition = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  fieldId: string,
+  fieldVersion: number,
+  change:
+    | { readonly kind: "rename"; readonly label: string }
+    | { readonly kind: "archive" }
+    | { readonly kind: "restore" },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [fieldId]: fieldVersion,
+      }),
+      ...(change.kind === "rename"
+        ? {
+            commandName: "fieldDef.rename",
+            payload: { fieldId, label: change.label },
+          }
+        : change.kind === "archive"
+          ? { commandName: "fieldDef.archive", payload: { fieldId } }
+          : { commandName: "fieldDef.restore", payload: { fieldId } }),
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "fieldDef.changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const setRecordFieldValue = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly targetKind: "task" | "project";
+    readonly recordId: string;
+    readonly recordVersion: number;
+    readonly fieldId: string;
+    readonly value: FieldValue | null;
+  },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [input.recordId]: input.recordVersion,
+      }),
+      commandName: "record.setFieldValue",
+      payload: {
+        targetKind: input.targetKind,
+        recordId: input.recordId,
+        fieldId: input.fieldId,
+        value: input.value,
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "record.field_value_set"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export type TaskStatusSemantics =
   "actionable" | "waiting" | "blocked" | "paused";
 

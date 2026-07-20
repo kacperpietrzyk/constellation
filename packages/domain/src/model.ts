@@ -24,6 +24,7 @@ import type {
   CommentId,
   AttentionSignalId,
   TaskStatusId,
+  FieldDefinitionId,
   WorkspaceId,
   Capability,
   AgentRunId,
@@ -248,6 +249,34 @@ export interface TaskStatusDefinition {
   readonly updatedAt: string;
 }
 
+export type FieldDefinitionType =
+  | { readonly kind: "text" }
+  | { readonly kind: "number" }
+  | { readonly kind: "date" }
+  | { readonly kind: "choice"; readonly options: readonly string[] };
+
+export interface FieldDefinition {
+  readonly id: FieldDefinitionId;
+  readonly workspaceId: WorkspaceId;
+  readonly targetKind: "task" | "project";
+  readonly label: string;
+  readonly type: FieldDefinitionType;
+  readonly state?: "active" | "retired";
+  readonly retiredAt?: string;
+  readonly position: number;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export type FieldValue =
+  | { readonly kind: "text"; readonly value: string }
+  | { readonly kind: "number"; readonly value: number }
+  | { readonly kind: "date"; readonly value: string }
+  | { readonly kind: "choice"; readonly value: string };
+
+export type FieldValueMap = Readonly<Record<string, FieldValue>>;
+
 export type TaskPriority = "urgent" | "high" | "normal" | "low";
 
 export interface Task {
@@ -261,6 +290,7 @@ export interface Task {
   readonly dueAt?: string;
   readonly priority?: TaskPriority;
   readonly parentTaskId?: TaskId;
+  readonly fields?: FieldValueMap;
   readonly statusId: TaskStatusId;
   readonly recordState: "active" | "removed";
   readonly completionState: "open" | "completed";
@@ -370,6 +400,7 @@ export interface Project {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
   readonly title: string;
+  readonly fields?: FieldValueMap;
   readonly intendedOutcome: string;
   readonly lifecycle: "active" | "closed";
   readonly closedAt?: string;
@@ -674,6 +705,31 @@ export type UndoDescriptor =
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
+      readonly kind: "fieldDef.restore_definition";
+      readonly fieldId: FieldDefinitionId;
+      readonly priorLabel: string;
+      readonly priorPosition: number;
+      readonly priorState: "active" | "retired";
+      readonly priorRetiredAt?: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "record.restore_field_value";
+      readonly targetKind: "task" | "project";
+      readonly recordId: string;
+      readonly fieldId: FieldDefinitionId;
+      readonly priorValue?: FieldValue;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
       readonly kind: "taskStatus.restore_definition";
       readonly statusId: TaskStatusId;
       readonly priorLabel: string;
@@ -837,6 +893,24 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: MembershipId;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "fieldDef.created" | "fieldDef.changed";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: FieldDefinitionId;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      readonly id: EventId;
+      readonly type: "record.field_value_set";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: string;
       readonly aggregateVersion: number;
       readonly occurredAt: string;
     }

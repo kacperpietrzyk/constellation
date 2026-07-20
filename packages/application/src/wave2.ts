@@ -32,8 +32,14 @@ import {
   completeTask,
   assignTask,
   createProject,
+  createFieldDefinition,
   createTask,
   createTaskStatus,
+  fieldDefinitionState,
+  fieldValueMatchesType,
+  MAX_POPULATED_FIELDS,
+  updateFieldDefinition,
+  withFieldValue,
   isTaskTimingValid,
   setTaskParent,
   taskStatusState,
@@ -77,6 +83,8 @@ import {
   updateProjectOutcome,
   type AuditReceipt,
   type DomainEvent,
+  type FieldDefinition,
+  type FieldDefinitionUpdate,
   type TaskStatusDefinition,
   type TaskStatusDefinitionUpdate,
   type Workspace,
@@ -155,6 +163,11 @@ export type Wave2Command = Extract<
       | "task.create"
       | "task.updateDetails"
       | "task.setParent"
+      | "fieldDef.create"
+      | "fieldDef.rename"
+      | "fieldDef.archive"
+      | "fieldDef.restore"
+      | "record.setFieldValue"
       | "taskStatus.create"
       | "taskStatus.rename"
       | "taskStatus.setSemantics"
@@ -454,6 +467,10 @@ export const isWave2CommandAuthorized = (
         space?.workspaceId === command.workspaceId ? space.id : undefined,
       );
     }
+    case "fieldDef.create":
+    case "fieldDef.rename":
+    case "fieldDef.archive":
+    case "fieldDef.restore":
     case "taskStatus.create":
     case "taskStatus.rename":
     case "taskStatus.setSemantics":
@@ -472,6 +489,21 @@ export const isWave2CommandAuthorized = (
           capability: command.commandName,
           workspaceId: command.workspaceId,
         })
+      );
+    }
+    case "record.setFieldValue": {
+      const record =
+        command.payload.targetKind === "task"
+          ? view.getTask(TaskIdSchema.parse(command.payload.recordId))
+          : view.getProject(ProjectIdSchema.parse(command.payload.recordId));
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        record?.workspaceId === command.workspaceId
+          ? record.spaceId
+          : undefined,
       );
     }
     case "task.updateDetails":
@@ -682,6 +714,7 @@ const appendJournal = (
       | "attentionSignal"
       | "taskStatus"
       | "workspace"
+      | "fieldDefinition"
     >
   >,
 ): CommandOutcome => {
@@ -2973,6 +3006,302 @@ export const executeWave2Command = (
         },
       );
     }
+    case "fieldDef.create": {
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (workspace === undefined) return precondition(command, occurredAt);
+      if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      const existing = transaction.getFieldDefinition(command.payload.fieldId);
+      if (existing !== undefined) {
+        return outcome(command, occurredAt, {
+          outcome: "conflict",
+          diagnosticCode: "record.already_exists",
+          currentVersions: { [existing.id]: existing.version },
+        });
+      }
+      const definitions = transaction.listFieldDefinitions(command.workspaceId);
+      const normalizedLabel = command.payload.label.toLocaleLowerCase("pl-PL");
+      if (
+        definitions.some(
+          (definition) =>
+            definition.targetKind === command.payload.targetKind &&
+            fieldDefinitionState(definition) === "active" &&
+            definition.label.toLocaleLowerCase("pl-PL") === normalizedLabel,
+        )
+      ) {
+        return precondition(command, occurredAt);
+      }
+      const definition = createFieldDefinition({
+        id: command.payload.fieldId,
+        workspaceId: command.workspaceId,
+        targetKind: command.payload.targetKind,
+        label: command.payload.label,
+        type: command.payload.type,
+        position:
+          definitions.reduce(
+            (max, entry) => Math.max(max, entry.position),
+            -1,
+          ) + 1,
+        occurredAt,
+      });
+      transaction.insertFieldDefinition(definition);
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "fieldDef.created",
+          workspaceId: command.workspaceId,
+          spaceId: workspace.rootSpaceId,
+          aggregateId: definition.id,
+          aggregateVersion: definition.version,
+          occurredAt,
+        },
+        { [definition.id]: definition.version },
+        ["label", "targetKind", "type", "position", "state"],
+        {
+          diagnosticCode: "fieldDef.created",
+          projection: {
+            kind: "fieldDef.created",
+            fieldId: definition.id,
+            targetKind: definition.targetKind,
+            label: definition.label,
+            state: "active",
+            position: definition.position,
+            version: definition.version,
+          },
+        },
+        undefined,
+        { [definition.id]: "fieldDefinition" },
+      );
+    }
+    case "fieldDef.rename":
+    case "fieldDef.archive":
+    case "fieldDef.restore": {
+      const definition = transaction.getFieldDefinition(
+        command.payload.fieldId,
+      );
+      const workspace = transaction.getWorkspace(command.workspaceId);
+      if (
+        definition === undefined ||
+        definition.workspaceId !== command.workspaceId ||
+        workspace === undefined
+      ) {
+        return precondition(command, occurredAt);
+      }
+      const currentState = fieldDefinitionState(definition);
+      let update: FieldDefinitionUpdate;
+      let changedFields: readonly string[];
+      if (command.commandName === "fieldDef.rename") {
+        const normalizedLabel =
+          command.payload.label.toLocaleLowerCase("pl-PL");
+        if (
+          command.payload.label === definition.label ||
+          transaction
+            .listFieldDefinitions(command.workspaceId)
+            .some(
+              (entry) =>
+                entry.id !== definition.id &&
+                entry.targetKind === definition.targetKind &&
+                fieldDefinitionState(entry) === "active" &&
+                entry.label.toLocaleLowerCase("pl-PL") === normalizedLabel,
+            )
+        ) {
+          return precondition(command, occurredAt);
+        }
+        update = { label: command.payload.label };
+        changedFields = ["label"];
+      } else if (command.commandName === "fieldDef.archive") {
+        if (currentState === "retired")
+          return precondition(command, occurredAt);
+        update = { state: "retired" };
+        changedFields = ["state"];
+      } else {
+        const normalizedLabel = definition.label.toLocaleLowerCase("pl-PL");
+        if (
+          currentState === "active" ||
+          transaction
+            .listFieldDefinitions(command.workspaceId)
+            .some(
+              (entry) =>
+                entry.id !== definition.id &&
+                entry.targetKind === definition.targetKind &&
+                fieldDefinitionState(entry) === "active" &&
+                entry.label.toLocaleLowerCase("pl-PL") === normalizedLabel,
+            )
+        ) {
+          return precondition(command, occurredAt);
+        }
+        update = { state: "active" };
+        changedFields = ["state"];
+      }
+      if (!exactExpected(command, { [definition.id]: definition.version })) {
+        return versionConflict(command, occurredAt, {
+          [definition.id]: definition.version,
+        });
+      }
+      const updated = updateFieldDefinition(definition, update, occurredAt);
+      if (!transaction.updateFieldDefinition(updated, definition.version)) {
+        return versionConflict(command, occurredAt, {
+          [definition.id]: definition.version,
+        });
+      }
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "fieldDef.changed",
+          workspaceId: command.workspaceId,
+          spaceId: workspace.rootSpaceId,
+          aggregateId: updated.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        changedFields,
+        {
+          diagnosticCode: "fieldDef.changed",
+          projection: {
+            kind: "fieldDef.changed",
+            fieldId: updated.id,
+            targetKind: updated.targetKind,
+            label: updated.label,
+            state: fieldDefinitionState(updated),
+            position: updated.position,
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: command.workspaceId,
+          spaceId: workspace.rootSpaceId,
+          kind: "fieldDef.restore_definition",
+          fieldId: definition.id,
+          priorLabel: definition.label,
+          priorPosition: definition.position,
+          priorState: currentState,
+          ...(definition.retiredAt === undefined
+            ? {}
+            : { priorRetiredAt: definition.retiredAt }),
+          resultingVersion: updated.version,
+        },
+        { [updated.id]: "fieldDefinition" },
+      );
+    }
+    case "record.setFieldValue": {
+      const targetKind = command.payload.targetKind;
+      const record =
+        targetKind === "task"
+          ? transaction.getTask(TaskIdSchema.parse(command.payload.recordId))
+          : transaction.getProject(
+              ProjectIdSchema.parse(command.payload.recordId),
+            );
+      const definition = transaction.getFieldDefinition(
+        command.payload.fieldId,
+      );
+      if (
+        record === undefined ||
+        definition === undefined ||
+        definition.workspaceId !== record.workspaceId ||
+        definition.targetKind !== targetKind ||
+        fieldDefinitionState(definition) !== "active"
+      ) {
+        return precondition(command, occurredAt);
+      }
+      const priorValue = record.fields?.[definition.id];
+      const nextValue =
+        command.payload.value === null ? undefined : command.payload.value;
+      if (nextValue === undefined && priorValue === undefined) {
+        return precondition(command, occurredAt);
+      }
+      if (
+        nextValue !== undefined &&
+        !fieldValueMatchesType(definition.type, nextValue)
+      ) {
+        return precondition(command, occurredAt);
+      }
+      if (
+        nextValue !== undefined &&
+        priorValue === undefined &&
+        Object.keys(record.fields ?? {}).length >= MAX_POPULATED_FIELDS
+      ) {
+        return precondition(command, occurredAt);
+      }
+      if (!exactExpected(command, { [record.id]: record.version })) {
+        return versionConflict(command, occurredAt, {
+          [record.id]: record.version,
+        });
+      }
+      const nextFields = withFieldValue(
+        record.fields,
+        definition.id,
+        nextValue,
+      );
+      const { fields: _priorFields, ...base } = record;
+      void _priorFields;
+      const updatedRecord = {
+        ...base,
+        ...(nextFields === undefined ? {} : { fields: nextFields }),
+        version: record.version + 1,
+        updatedAt: occurredAt,
+      };
+      const stored =
+        targetKind === "task"
+          ? transaction.updateTask(updatedRecord as Task, record.version)
+          : transaction.updateProject(updatedRecord as Project, record.version);
+      if (!stored) {
+        return versionConflict(command, occurredAt, {
+          [record.id]: record.version,
+        });
+      }
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "record.field_value_set",
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          aggregateId: record.id,
+          aggregateVersion: updatedRecord.version,
+          occurredAt,
+        },
+        { [record.id]: updatedRecord.version },
+        [`fields.${definition.id}`],
+        {
+          diagnosticCode: "record.field_value_set",
+          projection: {
+            kind: "record.field_value_set",
+            targetKind,
+            recordId: record.id,
+            fieldId: definition.id,
+            cleared: nextValue === undefined,
+            version: updatedRecord.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          kind: "record.restore_field_value",
+          targetKind,
+          recordId: record.id,
+          fieldId: definition.id,
+          ...(priorValue === undefined ? {} : { priorValue }),
+          resultingVersion: updatedRecord.version,
+        },
+        { [record.id]: targetKind === "task" ? "task" : "project" },
+      );
+    }
     case "taskStatus.create": {
       const workspace = transaction.getWorkspace(command.workspaceId);
       if (workspace === undefined) return precondition(command, occurredAt);
@@ -4190,6 +4519,39 @@ const descriptorState = (
             reason: "later_change",
           };
     }
+    case "fieldDef.restore_definition": {
+      const definition = view.getFieldDefinition(descriptor.fieldId);
+      return definition?.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [definition.id],
+            versions: { [definition.id]: definition.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "record.restore_field_value": {
+      const record =
+        descriptor.targetKind === "task"
+          ? view.getTask(TaskIdSchema.parse(descriptor.recordId))
+          : view.getProject(ProjectIdSchema.parse(descriptor.recordId));
+      return record?.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [record.id],
+            versions: { [record.id]: record.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
     case "taskStatus.restore_definition": {
       const status = view.getTaskStatus(descriptor.statusId);
       return status?.version === descriptor.resultingVersion
@@ -4468,6 +4830,7 @@ const applyUndo = (
     | "strategicRecord"
     | "taskStatus"
     | "workspace"
+    | "fieldDefinition"
   >;
   if (descriptor.kind === "project.restore_outcome") {
     const project = transaction.getProject(descriptor.projectId) as Project;
@@ -4501,6 +4864,58 @@ const applyUndo = (
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "task" };
+  } else if (descriptor.kind === "fieldDef.restore_definition") {
+    const definition = transaction.getFieldDefinition(
+      descriptor.fieldId,
+    ) as FieldDefinition;
+    const { retiredAt: _retiredAt, ...base } = definition;
+    void _retiredAt;
+    const restored: FieldDefinition = {
+      ...base,
+      label: descriptor.priorLabel,
+      position: descriptor.priorPosition,
+      state: descriptor.priorState,
+      ...(descriptor.priorRetiredAt === undefined
+        ? {}
+        : { retiredAt: descriptor.priorRetiredAt }),
+      version: definition.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateFieldDefinition(restored, definition.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "fieldDefinition" };
+  } else if (descriptor.kind === "record.restore_field_value") {
+    const record =
+      descriptor.targetKind === "task"
+        ? transaction.getTask(TaskIdSchema.parse(descriptor.recordId))
+        : transaction.getProject(ProjectIdSchema.parse(descriptor.recordId));
+    if (record === undefined) {
+      return outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "undo.not_available",
+        currentVersions: state.versions,
+      });
+    }
+    const nextFields = withFieldValue(
+      record.fields,
+      descriptor.fieldId,
+      descriptor.priorValue,
+    );
+    const { fields: _fields, ...base } = record;
+    void _fields;
+    const restored = {
+      ...base,
+      ...(nextFields === undefined ? {} : { fields: nextFields }),
+      version: record.version + 1,
+      updatedAt: occurredAt,
+    };
+    if (descriptor.targetKind === "task")
+      transaction.updateTask(restored as Task, record.version);
+    else transaction.updateProject(restored as Project, record.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = {
+      [restored.id]: descriptor.targetKind === "task" ? "task" : "project",
+    };
   } else if (descriptor.kind === "taskStatus.restore_definition") {
     const status = transaction.getTaskStatus(
       descriptor.statusId,
@@ -5870,6 +6285,9 @@ export const executeWave2Query = (
     "task.created": "task_created",
     "task.details_updated": "task_details_updated",
     "task.parent_changed": "task_parent_changed",
+    "fieldDef.created": "field_definition_created",
+    "fieldDef.changed": "field_definition_changed",
+    "record.field_value_set": "record_field_value_set",
     "taskStatus.created": "task_status_definition_created",
     "taskStatus.changed": "task_status_definition_changed",
     "workspace.default_status_changed": "workspace_default_status_changed",

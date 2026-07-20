@@ -20,6 +20,7 @@ import {
   CommentIdSchema,
   AttentionSignalIdSchema,
   TaskStatusIdSchema,
+  FieldDefinitionIdSchema,
   WorkspaceIdSchema,
   AgentRunIdSchema,
   AgentHandoffIdSchema,
@@ -944,6 +945,87 @@ export const TaskStatusSemanticsSchema = z.enum([
   "paused",
 ]);
 
+const FieldTypeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("text") }).strict(),
+  z.object({ kind: z.literal("number") }).strict(),
+  z.object({ kind: z.literal("date") }).strict(),
+  z
+    .object({
+      kind: z.literal("choice"),
+      options: z
+        .array(z.string().trim().min(1).max(80))
+        .min(1)
+        .max(24)
+        .refine((options) => new Set(options).size === options.length, {
+          message: "Choice options must be unique.",
+        }),
+    })
+    .strict(),
+]);
+
+export const FieldValueSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("text"),
+      value: z.string().trim().min(1).max(2_000),
+    })
+    .strict(),
+  z.object({ kind: z.literal("number"), value: z.number().finite() }).strict(),
+  z
+    .object({
+      kind: z.literal("date"),
+      value: z.iso.datetime({ offset: true }),
+    })
+    .strict(),
+  z
+    .object({ kind: z.literal("choice"), value: z.string().min(1).max(80) })
+    .strict(),
+]);
+
+export const FieldDefCreateCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("fieldDef.create"),
+  payload: z
+    .object({
+      fieldId: FieldDefinitionIdSchema,
+      targetKind: z.enum(["task", "project"]),
+      label: z.string().trim().min(1).max(120),
+      type: FieldTypeSchema,
+    })
+    .strict(),
+}).strict();
+
+export const FieldDefRenameCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("fieldDef.rename"),
+  payload: z
+    .object({
+      fieldId: FieldDefinitionIdSchema,
+      label: z.string().trim().min(1).max(120),
+    })
+    .strict(),
+}).strict();
+
+export const FieldDefArchiveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("fieldDef.archive"),
+  payload: z.object({ fieldId: FieldDefinitionIdSchema }).strict(),
+}).strict();
+
+export const FieldDefRestoreCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("fieldDef.restore"),
+  payload: z.object({ fieldId: FieldDefinitionIdSchema }).strict(),
+}).strict();
+
+export const RecordSetFieldValueCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("record.setFieldValue"),
+  payload: z
+    .object({
+      targetKind: z.enum(["task", "project"]),
+      recordId: z.uuid(),
+      fieldId: FieldDefinitionIdSchema,
+      value: FieldValueSchema.nullable(),
+    })
+    .strict(),
+}).strict();
+
 export const TaskStatusCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("taskStatus.create"),
   payload: z
@@ -1197,6 +1279,11 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   TaskCreateCommandSchema,
   TaskUpdateDetailsCommandSchema,
   TaskSetParentCommandSchema,
+  FieldDefCreateCommandSchema,
+  FieldDefRenameCommandSchema,
+  FieldDefArchiveCommandSchema,
+  FieldDefRestoreCommandSchema,
+  RecordSetFieldValueCommandSchema,
   TaskStatusCreateCommandSchema,
   TaskStatusRenameCommandSchema,
   TaskStatusSetSemanticsCommandSchema,

@@ -17,11 +17,14 @@ import path from "node:path";
 // 2026-07-20 (R12.3): totalJavaScript i entry po bloku zarządzania statusami
 // zadań w Ustawieniach (wiersze definicji, dwustopniowa archiwizacja,
 // wiersz dodawania, wrappery komend taskStatus.*).
+// 2026-07-20 (R13.1): wszystkie trzy po typowanych polach rekordów
+// (zarządzanie definicjami w Ustawieniach, kontrolki wartości per typ w
+// inspektorze, wrappery fieldDef.*/record.setFieldValue).
 const limits = {
-  entryBytes: 515_000,
-  entryGzipBytes: 141_000,
-  totalJavaScriptBytes: 782_000,
-  stylesheetBytes: 172_000,
+  entryBytes: 522_000,
+  entryGzipBytes: 142_000,
+  totalJavaScriptBytes: 796_000,
+  stylesheetBytes: 174_000,
 };
 
 const dist = path.join(process.cwd(), "packages", "desktop-ui", "dist");

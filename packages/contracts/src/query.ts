@@ -17,6 +17,7 @@ import {
   AttentionSignalIdSchema,
   AgentRunIdSchema,
   TaskStatusIdSchema,
+  FieldDefinitionIdSchema,
   WorkspaceIdSchema,
   CheckpointIdSchema,
   KnowledgeSourceIdSchema,
@@ -824,6 +825,31 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           })
           .strict(),
       ),
+      fieldDefinitions: z
+        .array(
+          z
+            .object({
+              id: FieldDefinitionIdSchema,
+              targetKind: z.enum(["task", "project"]),
+              label: z.string(),
+              type: z.discriminatedUnion("kind", [
+                z.object({ kind: z.literal("text") }).strict(),
+                z.object({ kind: z.literal("number") }).strict(),
+                z.object({ kind: z.literal("date") }).strict(),
+                z
+                  .object({
+                    kind: z.literal("choice"),
+                    options: z.array(z.string()),
+                  })
+                  .strict(),
+              ]),
+              state: z.enum(["active", "retired"]).optional(),
+              position: z.int().nonnegative(),
+              version: z.int().positive(),
+            })
+            .strict(),
+        )
+        .optional(),
     })
     .strict(),
   z
@@ -848,6 +874,28 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             dueAt: z.iso.datetime({ offset: true }).optional(),
             priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
             parentTaskId: TaskIdSchema.optional(),
+            fields: z
+              .record(
+                z.string(),
+                z.discriminatedUnion("kind", [
+                  z
+                    .object({ kind: z.literal("text"), value: z.string() })
+                    .strict(),
+                  z
+                    .object({ kind: z.literal("number"), value: z.number() })
+                    .strict(),
+                  z
+                    .object({
+                      kind: z.literal("date"),
+                      value: z.iso.datetime({ offset: true }),
+                    })
+                    .strict(),
+                  z
+                    .object({ kind: z.literal("choice"), value: z.string() })
+                    .strict(),
+                ]),
+              )
+              .optional(),
             status: z
               .object({
                 id: TaskStatusIdSchema,
@@ -1316,6 +1364,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "task_parent_changed",
               "task_status_definition_created",
               "task_status_definition_changed",
+              "field_definition_created",
+              "field_definition_changed",
+              "record_field_value_set",
               "workspace_default_status_changed",
               "task_completed",
               "task_reopened",
@@ -1354,6 +1405,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           "task.restore_parent",
           "taskStatus.restore_definition",
           "workspace.restore_default_status",
+          "fieldDef.restore_definition",
+          "record.restore_field_value",
           "task.restore_operational_state",
           "work_link.restore_state",
           "relation.remove",

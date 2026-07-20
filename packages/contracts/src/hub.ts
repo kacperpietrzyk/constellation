@@ -38,6 +38,7 @@ export const HubWorkspaceSnapshotSchema = z
     comments: z.array(JsonObjectSchema).default([]),
     attentionSignals: z.array(JsonObjectSchema).default([]),
     taskStatuses: z.array(JsonObjectSchema),
+    fieldDefinitions: z.array(JsonObjectSchema).default([]),
     captures: z.array(JsonObjectSchema),
     tasks: z.array(JsonObjectSchema),
     projects: z.array(JsonObjectSchema),
