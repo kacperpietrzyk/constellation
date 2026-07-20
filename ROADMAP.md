@@ -276,6 +276,34 @@ ordering and honest empty states. Imported timing provenance is preserved:
 recurring occurrences inherit their due moment and renewal follow-ups carry
 their review deadline.
 
+On top of that model sits a configurable workspace layer, delivered as the
+same kind of versioned, audited, undoable workspace records as statuses.
+Typed extension fields (text, number, date, constrained choice) attach
+values to Tasks and Projects that inherit the record's own authorization, so
+configuration can never become a permission bypass and no free-form JSON
+enters the graph. Project templates bundle starter Tasks and field
+references; applying one is always an explicit, prospective command that
+only adds what is missing, stamps provenance, and is exactly undoable —
+editing a template never rewrites existing projects. Saved views gained a
+full lifecycle (rename, update, soft delete), typed field conditions, and
+declared grouping with deterministic group order. Automations are bounded,
+deterministic recipes rather than scripts: completing a Task can enter a
+configured status inside the same transaction, audit entry, and undo as the
+completion, and an elapsed waiting-review date raises a deduplicated
+attention signal through an idempotent, rate-bounded sweep — automated
+effects never cascade and disabling a rule never rewrites history.
+
+Data also moves in and out honestly. One import engine covers a versioned
+JSON exchange format and a documented tasks CSV, both validated whole-file
+at preview with row-numbered errors, executed only through the ordinary
+versioned commands, and safe to re-run: the same file idempotently
+completes an interrupted import instead of duplicating records. For
+external agents, the local MCP endpoint now publishes a grant-filtered
+operation catalog — every command and query the grant authorizes, each
+with its full strict envelope schema, generated from the kernel's own
+contracts so it cannot drift — making the agent surface discoverable
+without out-of-band documentation.
+
 ## Later — desktop ecosystem after product readiness
 
 - a signed public Windows installer when a maintainer or sponsor provisions a
