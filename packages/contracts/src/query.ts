@@ -18,6 +18,7 @@ import {
   AgentRunIdSchema,
   TaskStatusIdSchema,
   FieldDefinitionIdSchema,
+  ProjectTemplateIdSchema,
   WorkspaceIdSchema,
   CheckpointIdSchema,
   KnowledgeSourceIdSchema,
@@ -850,6 +851,22 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             .strict(),
         )
         .optional(),
+      projectTemplates: z
+        .array(
+          z
+            .object({
+              id: ProjectTemplateIdSchema,
+              name: z.string(),
+              description: z.string().optional(),
+              taskTitles: z.array(z.string()),
+              fieldIds: z.array(FieldDefinitionIdSchema),
+              state: z.enum(["active", "retired"]).optional(),
+              position: z.int().nonnegative(),
+              version: z.int().positive(),
+            })
+            .strict(),
+        )
+        .optional(),
     })
     .strict(),
   z
@@ -1194,6 +1211,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           title: z.string(),
           intendedOutcome: z.string(),
           lifecycle: z.enum(["active", "closed"]),
+          appliedTemplateId: ProjectTemplateIdSchema.optional(),
           version: z.int().positive(),
           updatedAt: z.iso.datetime({ offset: true }),
         })
@@ -1367,6 +1385,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "field_definition_created",
               "field_definition_changed",
               "record_field_value_set",
+              "template_definition_created",
+              "template_definition_changed",
+              "project_template_applied",
               "workspace_default_status_changed",
               "task_completed",
               "task_reopened",
@@ -1407,6 +1428,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           "workspace.restore_default_status",
           "fieldDef.restore_definition",
           "record.restore_field_value",
+          "template.restore_definition",
+          "project.unapply_template",
           "task.restore_operational_state",
           "work_link.restore_state",
           "relation.remove",

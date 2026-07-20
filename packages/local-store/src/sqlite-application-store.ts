@@ -39,6 +39,7 @@ import {
   type AttentionSignalId,
   type TaskStatusId,
   type FieldDefinitionId,
+  type ProjectTemplateId,
   type WorkspaceId,
   type GrantId,
   type AgentRunId,
@@ -57,6 +58,7 @@ import type {
   Capture,
   DomainEvent,
   FieldDefinition,
+  ProjectTemplate,
   OutboxEntry,
   Project,
   Space,
@@ -86,7 +88,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-export const LOCAL_STORE_SCHEMA_VERSION = 17;
+export const LOCAL_STORE_SCHEMA_VERSION = 18;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -121,6 +123,7 @@ const COORDINATED_PROJECTION_TABLES = [
   "captures",
   "task_statuses",
   "field_definitions",
+  "project_templates",
   "space_grants",
   "memberships",
   "spaces",
@@ -678,6 +681,18 @@ const schemaV17 = `
     ON field_definitions(workspace_id, position, id);
 `;
 
+const schemaV18 = `
+  CREATE TABLE project_templates (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    position INTEGER NOT NULL,
+    version INTEGER NOT NULL CHECK (version > 0),
+    payload_json TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX project_templates_workspace
+    ON project_templates(workspace_id, position, id);
+`;
+
 const localStoreMigrations = [
   schemaV1,
   schemaV2,
@@ -696,6 +711,7 @@ const localStoreMigrations = [
   schemaV15,
   schemaV16,
   schemaV17,
+  schemaV18,
 ] as const;
 
 export interface LocalCoordinationState {
@@ -1022,6 +1038,43 @@ class SqliteReadView implements ApplicationWave2ReadView {
           id,
           "task status",
           { workspaceId },
+        );
+      });
+  }
+
+  public getProjectTemplate(
+    id: ProjectTemplateId,
+  ): ProjectTemplate | undefined {
+    const row = this.database
+      .prepare(
+        "SELECT workspace_id, payload_json FROM project_templates WHERE id = ?",
+      )
+      .get(id);
+    return row === undefined
+      ? undefined
+      : parsePayload<ProjectTemplate>(row, "id", id, "project template", {
+          workspaceId: stringValue(row, "workspace_id", "project template"),
+        });
+  }
+
+  public listProjectTemplates(
+    workspaceId: WorkspaceId,
+  ): readonly ProjectTemplate[] {
+    return this.database
+      .prepare(
+        "SELECT id, payload_json FROM project_templates WHERE workspace_id = ? ORDER BY position, id",
+      )
+      .all(workspaceId)
+      .map((row) => {
+        const id = stringValue(row, "id", "project template");
+        return parsePayload<ProjectTemplate>(
+          row,
+          "id",
+          id,
+          "project template",
+          {
+            workspaceId,
+          },
         );
       });
   }
@@ -2153,6 +2206,40 @@ class SqliteTransaction
       this.database
         .prepare(
           "UPDATE task_statuses SET position = ?, version = ?, payload_json = ? WHERE id = ? AND version = ? AND workspace_id = ?",
+        )
+        .run(
+          record.position,
+          record.version,
+          payload(record),
+          record.id,
+          expectedVersion,
+          record.workspaceId,
+        ),
+    );
+  }
+
+  public insertProjectTemplate(record: ProjectTemplate): void {
+    this.insert(
+      "project_templates",
+      ["id", "workspace_id", "position", "version", "payload_json"],
+      [
+        record.id,
+        record.workspaceId,
+        record.position,
+        record.version,
+        payload(record),
+      ],
+    );
+  }
+
+  public updateProjectTemplate(
+    record: ProjectTemplate,
+    expectedVersion: number,
+  ): boolean {
+    return changed(
+      this.database
+        .prepare(
+          "UPDATE project_templates SET position = ?, version = ?, payload_json = ? WHERE id = ? AND version = ? AND workspace_id = ?",
         )
         .run(
           record.position,
@@ -3746,6 +3833,9 @@ export class SqliteApplicationStore
     );
     (snapshot.fieldDefinitions ?? []).forEach((value) =>
       transaction.insertFieldDefinition(value),
+    );
+    (snapshot.projectTemplates ?? []).forEach((value) =>
+      transaction.insertProjectTemplate(value),
     );
     snapshot.taskStatuses.forEach((value) =>
       transaction.insertTaskStatus(value),

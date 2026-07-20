@@ -1333,6 +1333,7 @@ export const ProjectsSurface = ({
   onSelectProject,
   onBackToProjects,
   onCreate,
+  onApplyTemplate,
   onUpdateOutcome,
   onSetLifecycle,
   onRelate,
@@ -1353,7 +1354,12 @@ export const ProjectsSurface = ({
   readonly onOpenProject: (id: ProjectId) => void;
   readonly onSelectProject: (id: ProjectId) => void;
   readonly onBackToProjects: () => void;
-  readonly onCreate: (title: string, outcome: string) => Promise<boolean>;
+  readonly onCreate: (
+    title: string,
+    outcome: string,
+    templateId?: string,
+  ) => Promise<boolean>;
+  readonly onApplyTemplate: (templateId: string) => void;
   readonly onUpdateOutcome: (outcome: string) => void;
   readonly onSetLifecycle: (lifecycle: "active" | "closed") => void;
   readonly onRelate: (taskId: TaskId) => void;
@@ -1363,6 +1369,8 @@ export const ProjectsSurface = ({
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState("");
   const [newOutcome, setNewOutcome] = useState("");
+  const [createTemplateId, setCreateTemplateId] = useState("");
+  const [applyTemplateId, setApplyTemplateId] = useState("");
   const createTriggerRef = useRef<HTMLButtonElement>(null);
   const createTitleRef = useRef<HTMLInputElement>(null);
   const [editedOutcome, setEditedOutcome] = useState(
@@ -1377,6 +1385,10 @@ export const ProjectsSurface = ({
   }, [creating]);
   const projects = snapshot.projects;
   const projectItems = projects.kind === "ready" ? projects.data.items : [];
+  const projectTemplates = snapshot.bootstrap.projectTemplates ?? [];
+  const activeTemplates = projectTemplates.filter(
+    (template) => template.state !== "retired",
+  );
   const fullView =
     activeProjectId !== undefined && overview?.project.id === activeProjectId;
   const projectNav = useListNavigation({
@@ -1435,11 +1447,16 @@ export const ProjectsSurface = ({
           onSubmit={(event: FormEvent) => {
             event.preventDefault();
             if (title.trim() && newOutcome.trim()) {
-              void onCreate(title, newOutcome).then((created) => {
+              void onCreate(
+                title,
+                newOutcome,
+                createTemplateId === "" ? undefined : createTemplateId,
+              ).then((created) => {
                 if (!created) return;
                 setCreating(false);
                 setTitle("");
                 setNewOutcome("");
+                setCreateTemplateId("");
                 requestAnimationFrame(() => createTriggerRef.current?.focus());
               });
             }
@@ -1463,6 +1480,25 @@ export const ProjectsSurface = ({
               maxLength={2_000}
               required
             />
+            {activeTemplates.length > 0 && (
+              <>
+                <label htmlFor="project-create-template">
+                  Szablon startowy (opcjonalnie)
+                </label>
+                <select
+                  id="project-create-template"
+                  value={createTemplateId}
+                  onChange={(event) => setCreateTemplateId(event.target.value)}
+                >
+                  <option value="">Bez szablonu</option>
+                  {activeTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
             <button className="primary-button" disabled={busy} type="submit">
               {busy ? "Tworzę…" : "Utwórz projekt"}
             </button>
@@ -1553,6 +1589,68 @@ export const ProjectsSurface = ({
                     </button>
                   </div>
                 </>
+              )}
+              {(overview.project.appliedTemplateId !== undefined ||
+                activeTemplates.some(
+                  (template) =>
+                    template.id !== overview.project.appliedTemplateId,
+                )) && (
+                <div className="project-template-row">
+                  {overview.project.appliedTemplateId !== undefined && (
+                    <small>
+                      Szablon:{" "}
+                      {projectTemplates.find(
+                        (template) =>
+                          template.id === overview.project.appliedTemplateId,
+                      )?.name ?? "wycofany szablon"}
+                    </small>
+                  )}
+                  {activeTemplates.some(
+                    (template) =>
+                      template.id !== overview.project.appliedTemplateId,
+                  ) && (
+                    <>
+                      <label
+                        className="sr-only"
+                        htmlFor="project-apply-template"
+                      >
+                        Szablon do zastosowania
+                      </label>
+                      <select
+                        id="project-apply-template"
+                        value={applyTemplateId}
+                        disabled={busy}
+                        onChange={(event) =>
+                          setApplyTemplateId(event.target.value)
+                        }
+                      >
+                        <option value="">Zastosuj szablon…</option>
+                        {activeTemplates
+                          .filter(
+                            (template) =>
+                              template.id !==
+                              overview.project.appliedTemplateId,
+                          )
+                          .map((template) => (
+                            <option key={template.id} value={template.id}>
+                              {template.name}
+                            </option>
+                          ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="secondary-button compact"
+                        disabled={busy || applyTemplateId === ""}
+                        onClick={() => {
+                          onApplyTemplate(applyTemplateId);
+                          setApplyTemplateId("");
+                        }}
+                      >
+                        Zastosuj
+                      </button>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           </section>

@@ -20,10 +20,13 @@ import path from "node:path";
 // 2026-07-20 (R13.1): wszystkie trzy po typowanych polach rekordów
 // (zarządzanie definicjami w Ustawieniach, kontrolki wartości per typ w
 // inspektorze, wrappery fieldDef.*/record.setFieldValue).
+// 2026-07-20 (R13.2): entry i totalJavaScript po szablonach projektów
+// (blok zarządzania w Ustawieniach, wybór szablonu przy tworzeniu projektu,
+// rząd zastosowania z prowieniencją, wrappery template.*/project.applyTemplate).
 const limits = {
-  entryBytes: 522_000,
+  entryBytes: 526_000,
   entryGzipBytes: 142_000,
-  totalJavaScriptBytes: 796_000,
+  totalJavaScriptBytes: 802_000,
   stylesheetBytes: 174_000,
 };
 

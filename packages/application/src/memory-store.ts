@@ -25,6 +25,7 @@ import type {
   AttentionSignalId,
   TaskStatusId,
   FieldDefinitionId,
+  ProjectTemplateId,
   WorkspaceId,
   GrantId,
   AgentRunId,
@@ -43,6 +44,7 @@ import type {
   Capture,
   DomainEvent,
   FieldDefinition,
+  ProjectTemplate,
   OutboxEntry,
   Project,
   Space,
@@ -139,6 +141,7 @@ interface MutableState {
   readonly attentionSignals: Map<AttentionSignalId, AttentionSignal>;
   readonly taskStatuses: Map<TaskStatusId, TaskStatusDefinition>;
   readonly fieldDefinitions: Map<FieldDefinitionId, FieldDefinition>;
+  readonly projectTemplates: Map<ProjectTemplateId, ProjectTemplate>;
   readonly captures: Map<CaptureId, Capture>;
   readonly tasks: Map<TaskId, Task>;
   readonly projects: Map<ProjectId, Project>;
@@ -172,6 +175,7 @@ const emptyState = (): MutableState => ({
   attentionSignals: new Map(),
   taskStatuses: new Map(),
   fieldDefinitions: new Map(),
+  projectTemplates: new Map(),
   captures: new Map(),
   tasks: new Map(),
   projects: new Map(),
@@ -202,6 +206,7 @@ const cloneState = (state: MutableState): MutableState => ({
   attentionSignals: new Map(state.attentionSignals),
   taskStatuses: new Map(state.taskStatuses),
   fieldDefinitions: new Map(state.fieldDefinitions),
+  projectTemplates: new Map(state.projectTemplates),
   captures: new Map(state.captures),
   tasks: new Map(state.tasks),
   projects: new Map(state.projects),
@@ -275,6 +280,23 @@ class ReadView implements ApplicationReadView {
     id: FieldDefinitionId,
   ): FieldDefinition | undefined {
     return this.state.fieldDefinitions.get(id);
+  }
+
+  public getProjectTemplate(
+    id: ProjectTemplateId,
+  ): ProjectTemplate | undefined {
+    return this.state.projectTemplates.get(id);
+  }
+
+  public listProjectTemplates(
+    workspaceId: WorkspaceId,
+  ): readonly ProjectTemplate[] {
+    return [...this.state.projectTemplates.values()]
+      .filter((template) => template.workspaceId === workspaceId)
+      .sort(
+        (left, right) =>
+          left.position - right.position || left.id.localeCompare(right.id),
+      );
   }
 
   public listFieldDefinitions(
@@ -858,6 +880,25 @@ class Transaction extends ReadView implements ApplicationTransaction {
     return true;
   }
 
+  public insertProjectTemplate(template: ProjectTemplate): void {
+    if (this.state.projectTemplates.has(template.id)) {
+      throw new Error(`Duplicate project template ID: ${template.id}`);
+    }
+    this.state.projectTemplates.set(template.id, template);
+  }
+
+  public updateProjectTemplate(
+    template: ProjectTemplate,
+    expectedVersion: number,
+  ): boolean {
+    const current = this.state.projectTemplates.get(template.id);
+    if (current === undefined || current.version !== expectedVersion) {
+      return false;
+    }
+    this.state.projectTemplates.set(template.id, template);
+    return true;
+  }
+
   public insertFieldDefinition(definition: FieldDefinition): void {
     if (this.state.fieldDefinitions.has(definition.id)) {
       throw new Error(`Duplicate field definition ID: ${definition.id}`);
@@ -1180,6 +1221,9 @@ const stateFromSnapshot = (snapshot: ReferenceStateSnapshot): MutableState => ({
   fieldDefinitions: new Map(
     (snapshot.fieldDefinitions ?? []).map((value) => [value.id, value]),
   ),
+  projectTemplates: new Map(
+    (snapshot.projectTemplates ?? []).map((value) => [value.id, value]),
+  ),
   captures: new Map(snapshot.captures.map((value) => [value.id, value])),
   tasks: new Map(snapshot.tasks.map((value) => [value.id, value])),
   projects: new Map(snapshot.projects.map((value) => [value.id, value])),
@@ -1266,6 +1310,7 @@ export class InMemoryReferenceStore implements ApplicationStore {
       attentionSignals: [...this.state.attentionSignals.values()],
       taskStatuses: [...this.state.taskStatuses.values()],
       fieldDefinitions: [...this.state.fieldDefinitions.values()],
+      projectTemplates: [...this.state.projectTemplates.values()],
       captures: [...this.state.captures.values()],
       tasks: [...this.state.tasks.values()],
       projects: [...this.state.projects.values()],

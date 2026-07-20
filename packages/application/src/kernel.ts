@@ -344,6 +344,12 @@ const isCurrentlyAuthorized = (
     case "task.create":
     case "task.updateDetails":
     case "task.setParent":
+    case "template.create":
+    case "template.rename":
+    case "template.updateContents":
+    case "template.archive":
+    case "template.restore":
+    case "project.applyTemplate":
     case "fieldDef.create":
     case "fieldDef.rename":
     case "fieldDef.archive":
@@ -694,11 +700,35 @@ export class ApplicationKernel {
       case "task.create":
       case "task.updateDetails":
       case "task.setParent":
+      case "template.create":
+      case "template.rename":
+      case "template.updateContents":
+      case "template.archive":
+      case "template.restore":
+      case "project.applyTemplate":
+      case "template.create":
+      case "template.rename":
+      case "template.updateContents":
+      case "template.archive":
+      case "template.restore":
+      case "project.applyTemplate":
       case "fieldDef.create":
       case "fieldDef.rename":
       case "fieldDef.archive":
       case "fieldDef.restore":
       case "record.setFieldValue":
+      case "template.create":
+      case "template.rename":
+      case "template.updateContents":
+      case "template.archive":
+      case "template.restore":
+      case "project.applyTemplate":
+      case "template.create":
+      case "template.rename":
+      case "template.updateContents":
+      case "template.archive":
+      case "template.restore":
+      case "project.applyTemplate":
       case "fieldDef.create":
       case "fieldDef.rename":
       case "fieldDef.archive":
@@ -2741,6 +2771,20 @@ export class ApplicationKernel {
               : { state: definition.state }),
             position: definition.position,
             version: definition.version,
+          })),
+        projectTemplates: view
+          .listProjectTemplates(workspace.id)
+          .map((template) => ({
+            id: template.id,
+            name: template.name,
+            ...(template.description === undefined
+              ? {}
+              : { description: template.description }),
+            taskTitles: template.taskTitles,
+            fieldIds: template.fieldIds,
+            ...(template.state === undefined ? {} : { state: template.state }),
+            position: template.position,
+            version: template.version,
           })),
       },
     });

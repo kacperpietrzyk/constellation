@@ -69,6 +69,7 @@ import {
   addWorkspaceMember,
   addComment,
   editComment,
+  applyTemplateToProject,
   createProject,
   createTask,
   setRecordFieldValue,
@@ -3188,7 +3189,7 @@ export const RealApp = ({
               onBackToProjects={() =>
                 openContext(destinationContext("projects", "Projekty"))
               }
-              onCreate={async (title, outcome) => {
+              onCreate={async (title, outcome, templateId) => {
                 if (!client) return false;
                 setProjectBusy(true);
                 const result = await createProject(
@@ -3197,16 +3198,45 @@ export const RealApp = ({
                   title,
                   outcome,
                 );
-                setProjectBusy(false);
-                if (result.kind === "success") {
-                  openContext(
-                    projectContext(result.data.projectId, title.trim()),
-                  );
-                  await refreshAfter("Projekt utworzono.");
-                  return true;
+                if (result.kind !== "success") {
+                  setProjectBusy(false);
+                  showFailure(result);
+                  return false;
                 }
-                showFailure(result);
-                return false;
+                if (templateId !== undefined) {
+                  const applied = await applyTemplateToProject(
+                    client,
+                    state.snapshot,
+                    {
+                      projectId: result.data.projectId,
+                      projectVersion: 1,
+                      templateId,
+                    },
+                  );
+                  if (applied.kind !== "success") showFailure(applied);
+                }
+                setProjectBusy(false);
+                openContext(
+                  projectContext(result.data.projectId, title.trim()),
+                );
+                await refreshAfter("Projekt utworzono.");
+                return true;
+              }}
+              onApplyTemplate={(templateId) => {
+                if (!client || !projectOverview) return;
+                setProjectBusy(true);
+                void applyTemplateToProject(client, state.snapshot, {
+                  projectId: projectOverview.project.id,
+                  projectVersion: projectOverview.project.version,
+                  templateId,
+                }).then(async (result) => {
+                  setProjectBusy(false);
+                  if (result.kind === "success") {
+                    await refreshAfter("Szablon zastosowano.");
+                  } else {
+                    showFailure(result);
+                  }
+                });
               }}
               onUpdateOutcome={(outcome) => {
                 if (!client || !projectOverview) return;

@@ -10,5 +10,6 @@ export * from "./assignment.js";
 export * from "./model.js";
 export * from "./project.js";
 export * from "./task.js";
+export * from "./templates.js";
 export * from "./work.js";
 export * from "./workspace.js";

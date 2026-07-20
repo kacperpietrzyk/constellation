@@ -2084,6 +2084,90 @@ export const setRecordFieldValue = (
         : undefined,
   );
 
+export const createProjectTemplateDefinition = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly name: string;
+    readonly taskTitles: readonly string[];
+  },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {}),
+      commandName: "template.create",
+      payload: {
+        templateId: crypto.randomUUID(),
+        name: input.name,
+        taskTitles: input.taskTitles,
+        fieldIds: [],
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "template.created"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const changeProjectTemplateDefinition = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  templateId: string,
+  templateVersion: number,
+  change:
+    | { readonly kind: "rename"; readonly name: string }
+    | { readonly kind: "archive" }
+    | { readonly kind: "restore" },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [templateId]: templateVersion,
+      }),
+      ...(change.kind === "rename"
+        ? {
+            commandName: "template.rename",
+            payload: { templateId, name: change.name },
+          }
+        : change.kind === "archive"
+          ? { commandName: "template.archive", payload: { templateId } }
+          : { commandName: "template.restore", payload: { templateId } }),
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "template.changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const applyTemplateToProject = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  input: {
+    readonly projectId: string;
+    readonly projectVersion: number;
+    readonly templateId: string;
+  },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [input.projectId]: input.projectVersion,
+      }),
+      commandName: "project.applyTemplate",
+      payload: { projectId: input.projectId, templateId: input.templateId },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "project.template_applied"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export type TaskStatusSemantics =
   "actionable" | "waiting" | "blocked" | "paused";
 

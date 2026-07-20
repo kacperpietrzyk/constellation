@@ -17,6 +17,7 @@ import {
   AttentionSignalIdSchema,
   TaskStatusIdSchema,
   FieldDefinitionIdSchema,
+  ProjectTemplateIdSchema,
   WorkspaceIdSchema,
   GrantIdSchema,
   CredentialIdSchema,
@@ -64,6 +65,9 @@ export const DiagnosticCodeSchema = z.enum([
   "task.created",
   "task.details_updated",
   "task.parent_changed",
+  "template.created",
+  "template.changed",
+  "project.template_applied",
   "fieldDef.created",
   "fieldDef.changed",
   "record.field_value_set",
@@ -121,6 +125,7 @@ export const RecordKindSchema = z.enum([
   "attentionSignal",
   "taskStatus",
   "fieldDefinition",
+  "projectTemplate",
   "project",
   "document",
   "knowledgeSource",
@@ -421,6 +426,37 @@ export const TaskDetailsUpdatedProjectionSchema = z
     version: z.int().positive(),
   })
   .strict();
+const ProjectTemplateProjectionFields = {
+  templateId: ProjectTemplateIdSchema,
+  name: z.string(),
+  taskTitles: z.array(z.string()),
+  fieldIds: z.array(FieldDefinitionIdSchema),
+  state: z.enum(["active", "retired"]),
+  position: z.int().nonnegative(),
+  version: z.int().positive(),
+} as const;
+export const TemplateCreatedProjectionSchema = z
+  .object({
+    kind: z.literal("template.created"),
+    ...ProjectTemplateProjectionFields,
+  })
+  .strict();
+export const TemplateChangedProjectionSchema = z
+  .object({
+    kind: z.literal("template.changed"),
+    ...ProjectTemplateProjectionFields,
+  })
+  .strict();
+export const ProjectTemplateAppliedProjectionSchema = z
+  .object({
+    kind: z.literal("project.template_applied"),
+    projectId: ProjectIdSchema,
+    templateId: ProjectTemplateIdSchema,
+    createdTaskIds: z.array(TaskIdSchema),
+    skippedExistingTitles: z.array(z.string()),
+    version: z.int().positive(),
+  })
+  .strict();
 const FieldDefinitionProjectionFields = {
   fieldId: FieldDefinitionIdSchema,
   targetKind: z.enum(["task", "project"]),
@@ -677,6 +713,9 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   FieldDefCreatedProjectionSchema,
   FieldDefChangedProjectionSchema,
   RecordFieldValueSetProjectionSchema,
+  TemplateCreatedProjectionSchema,
+  TemplateChangedProjectionSchema,
+  ProjectTemplateAppliedProjectionSchema,
   WorkspaceDefaultStatusChangedProjectionSchema,
   TaskStatusChangedProjectionSchema,
   TaskOperationalStateChangedProjectionSchema,
@@ -890,6 +929,24 @@ const TaskDetailsUpdatedSuccessOutcomeSchema =
     diagnosticCode: z.literal("task.details_updated"),
     projection: TaskDetailsUpdatedProjectionSchema,
   }).strict();
+const TemplateCreatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("template.created"),
+    projection: TemplateCreatedProjectionSchema,
+  }).strict();
+const TemplateChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("template.changed"),
+    projection: TemplateChangedProjectionSchema,
+  }).strict();
+const ProjectTemplateAppliedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("project.template_applied"),
+    projection: ProjectTemplateAppliedProjectionSchema,
+  }).strict();
 const FieldDefCreatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1088,6 +1145,9 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   FieldDefCreatedSuccessOutcomeSchema,
   FieldDefChangedSuccessOutcomeSchema,
   RecordFieldValueSetSuccessOutcomeSchema,
+  TemplateCreatedSuccessOutcomeSchema,
+  TemplateChangedSuccessOutcomeSchema,
+  ProjectTemplateAppliedSuccessOutcomeSchema,
   WorkspaceDefaultStatusChangedSuccessOutcomeSchema,
   TaskStatusChangedSuccessOutcomeSchema,
   TaskOperationalStateChangedSuccessOutcomeSchema,
@@ -1129,6 +1189,8 @@ export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
           "workspace.restore_default_status",
           "fieldDef.restore_definition",
           "record.restore_field_value",
+          "template.restore_definition",
+          "project.unapply_template",
           "task.restore_operational_state",
           "work_link.restore_state",
           "relation.remove",

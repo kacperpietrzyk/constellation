@@ -80,6 +80,9 @@ export const fromHubSnapshot = (
     (parsed.fieldDefinitions ?? []).some(
       (value) => value.workspaceId !== workspaceId,
     ) ||
+    (parsed.projectTemplates ?? []).some(
+      (value) => value.workspaceId !== workspaceId,
+    ) ||
     parsed.captures.some((value) => value.workspaceId !== workspaceId) ||
     parsed.tasks.some((value) => value.workspaceId !== workspaceId) ||
     parsed.projects.some((value) => value.workspaceId !== workspaceId) ||
@@ -309,6 +312,7 @@ export const scopeHubSnapshot = (
   // Field definitions are workspace-level configuration like statuses: every
   // authorized device needs them to render and edit values it can see.
   const fieldDefinitions = state.fieldDefinitions ?? [];
+  const projectTemplates = state.projectTemplates ?? [];
   const allowedRecordIds = new Set<string>([
     ...state.workspaces.map((value) => value.id),
     ...memberships.map((value) => value.id),
@@ -318,6 +322,7 @@ export const scopeHubSnapshot = (
     ...attentionSignals.map((value) => value.id),
     ...taskStatuses.map((value) => value.id),
     ...fieldDefinitions.map((value) => value.id),
+    ...projectTemplates.map((value) => value.id),
     ...captures.map((value) => value.id),
     ...tasks.map((value) => value.id),
     ...projects.map((value) => value.id),
@@ -356,6 +361,7 @@ export const scopeHubSnapshot = (
     attentionSignals,
     taskStatuses,
     fieldDefinitions,
+    projectTemplates,
     captures,
     tasks,
     projects,
