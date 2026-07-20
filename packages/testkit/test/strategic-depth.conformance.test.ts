@@ -10,6 +10,7 @@ import {
   ProjectIdSchema,
   SpaceGrantIdSchema,
   SpaceIdSchema,
+  StrategicRecordIdSchema,
   type CommandOutcome,
   type ExecutionContext,
 } from "@constellation/contracts";
@@ -1527,6 +1528,38 @@ it("generates due recurrence occurrences on a sweep without building a backlog",
     );
   });
 
+  // A due cadence in a Space the sweeper cannot edit must not be swept:
+  // workspace maintenance rights are not Space access, and echoing its task
+  // id back through `affected` would leak across the boundary.
+  const foreignSpaceId = "18000000-0000-4000-8000-0000000008a1";
+  const foreignRecurrenceId = "18000000-0000-4000-8000-0000000008a2";
+  harness.store.transact((transaction) => {
+    if (!isApplicationWave2Transaction(transaction))
+      throw new Error("Expected the Wave 2 reference transaction.");
+    transaction.insertSpace({
+      id: SpaceIdSchema.parse(foreignSpaceId),
+      workspaceId: context().workspaceId,
+      name: "Private Space",
+      version: 1,
+      createdAt: "2026-07-12T12:00:00.000Z",
+    });
+    transaction.insertStrategicRecord({
+      id: StrategicRecordIdSchema.parse(foreignRecurrenceId),
+      workspaceId: context().workspaceId,
+      spaceId: SpaceIdSchema.parse(foreignSpaceId),
+      kind: "recurrence",
+      title: "Private cadence",
+      taskTitle: "Private cadence occurrence",
+      cadence: "daily",
+      nextDueAt: "2026-06-01T09:00:00.000Z",
+      state: "active",
+      createdBy: context().principalId,
+      version: 1,
+      createdAt: "2026-07-12T12:00:00.000Z",
+      updatedAt: "2026-07-12T12:00:00.000Z",
+    });
+  });
+
   const swept = unwrap(
     harness.kernel.execute(context(), {
       ...metadata("sweep-run"),
@@ -1566,6 +1599,16 @@ it("generates due recurrence occurrences on a sweep without building a backlog",
   // 31 January monthly clamps into February and keeps advancing from there.
   assert.equal(recurrenceOf(monthEndId).nextDueAt.slice(0, 10), "2026-07-28");
   assert.equal(recurrenceOf(futureId).lastOccurrenceTaskId, undefined);
+  // The unreachable Space was never touched, and none of its identifiers
+  // appear in the outcome.
+  assert.equal(
+    recurrenceOf(foreignRecurrenceId).lastOccurrenceTaskId,
+    undefined,
+  );
+  assert.equal(
+    tasks.some((task) => task.title === "Private cadence occurrence"),
+    false,
+  );
   assert.equal(recurrenceOf(pausedId).lastOccurrenceTaskId, undefined);
 
   // Nothing is due any more, so a second sweep is an honest no-op rather than

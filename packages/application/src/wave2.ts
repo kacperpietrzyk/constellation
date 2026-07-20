@@ -3849,6 +3849,14 @@ export const executeWave2Command = (
       let truncated = false;
       let lastRecurrence: StrategicRecord | undefined;
       for (const space of transaction.listSpaces(command.workspaceId)) {
+        // Workspace-level maintenance rights are not Space access. Sweeping a
+        // Space the caller cannot edit would both write there on their behalf
+        // and echo its task identifiers back through `affected`, which is the
+        // cross-Space leak the authorization model exists to prevent. A
+        // cadence in an unreadable Space simply waits for a sweep by someone
+        // who can edit it.
+        if (!canEditSpace(transaction, context, command.workspaceId, space.id))
+          continue;
         for (const record of transaction.listStrategicRecords(
           command.workspaceId,
           space.id,
