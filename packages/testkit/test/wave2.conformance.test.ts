@@ -2899,4 +2899,145 @@ describe("Wave 2 reference semantics", () => {
     } as never);
     assert.equal(rejected.kind, "contract_rejected");
   });
+
+  it("answers the two-hop cross-query across Task, Project, and Organization", () => {
+    const harness = setup();
+    // Build the bridge: Organization → Opportunity(projectIds) → Project, then
+    // relate a Task to that project. This is the founding "Zapytanie
+    // przekrojowe" shape, expressed as one server-side query.
+    const vendorOrg = "20000000-0000-4000-8000-0000000000a1";
+    const otherOrg = "20000000-0000-4000-8000-0000000000a2";
+    const createOrg = (id: string, state: "active" | "inactive") =>
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`org-${id}`),
+          commandName: "relationship.organizationCreate",
+          payload: {
+            organizationId: id,
+            spaceId: ids.rootSpace,
+            name: `Org ${id}`,
+            relationshipState: state,
+          },
+        }),
+      );
+    createOrg(vendorOrg, "active");
+    createOrg(otherOrg, "inactive");
+
+    const vendorProject = createProjectRecord(harness, "Vendor work").projectId;
+    const otherProject = createProjectRecord(harness, "Other work").projectId;
+
+    const linkOrgToProject = (
+      opportunityId: string,
+      organizationId: string,
+      projectId: ProjectId,
+    ) => {
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`opp-${opportunityId}`),
+          commandName: "opportunity.create",
+          payload: {
+            opportunityId,
+            spaceId: ids.rootSpace,
+            title: `Opp ${opportunityId}`,
+            organizationId,
+            personIds: [],
+            need: "n",
+            qualification: "q",
+            stage: "s",
+            nextAction: "a",
+            evidenceSourceIds: [],
+          },
+        }),
+      );
+      const opp = (harness.store.snapshot().strategicRecords ?? []).find(
+        (r) => r.id === opportunityId,
+      )!;
+      const projectVersion = harness.store
+        .snapshot()
+        .projects.find((r) => r.id === projectId)!.version;
+      const linked = unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`link-${opportunityId}`, {
+            [opportunityId]: opp.version,
+            [projectId]: projectVersion,
+          }),
+          commandName: "opportunity.linkOutcomes",
+          payload: {
+            opportunityId,
+            offerIds: [],
+            projectIds: [projectId],
+            state: "open",
+            nextAction: "a",
+          },
+        }),
+      );
+      // Guard the silent failure this test first hit: linkOutcomes requires the
+      // project versions in expectedVersions; without them it returns a
+      // versionConflict that leaves projectIds empty, and the two-hop finds
+      // nothing.
+      assert.equal(linked.diagnosticCode, "strategic.record_changed");
+    };
+    linkOrgToProject(
+      "20000000-0000-4000-8000-0000000000b1",
+      vendorOrg,
+      vendorProject,
+    );
+    linkOrgToProject(
+      "20000000-0000-4000-8000-0000000000b2",
+      otherOrg,
+      otherProject,
+    );
+
+    const taskVendor = createTask(harness, "Do the vendor work");
+    const taskOther = createTask(harness, "Do the other work");
+    const relate = (taskId: TaskId, projectId: ProjectId) => {
+      const task = harness.store.snapshot().tasks.find((t) => t.id === taskId)!;
+      const project = harness.store
+        .snapshot()
+        .projects.find((r) => r.id === projectId)!;
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`rel-${taskId}`, {
+            [taskId]: task.version,
+            [projectId]: project.version,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_project",
+            taskId,
+            projectId,
+          },
+        }),
+      );
+    };
+    relate(taskVendor, vendorProject);
+    relate(taskOther, otherProject);
+
+    const query = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: {
+        spaceId: ids.rootSpace,
+        relationConditions: [
+          {
+            path: "project.organization",
+            predicate: { field: "relationshipState", equals: "active" },
+          },
+        ],
+      },
+    } as never);
+    if (query.kind !== "query_result" || query.result.outcome !== "success")
+      assert.fail("Expected a task.list result");
+    const ids2 =
+      query.result.projection.kind === "task.list"
+        ? query.result.projection.items.map((i) => i.id)
+        : assert.fail("Expected task.list projection");
+    // Only the task whose project's organization is active survives the
+    // two-hop. No host-side N+1: one query crossed Task→Project→Organization.
+    assert.equal(ids2.includes(taskVendor), true);
+    assert.equal(ids2.includes(taskOther), false);
+  });
 });

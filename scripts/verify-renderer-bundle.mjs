@@ -45,8 +45,10 @@ import path from "node:path";
 // w kokpicie plus uczciwa odmowa, gdy kalendarza nie da sie odczytac.
 // 2026-07-20 (R12.7): usuwanie zadania w inspektorze — dwustopniowe
 // potwierdzenie plus wyjasnienie blokady, gdy zadanie ma podzadania.
+// 2026-07-21 (R13.5 slice 2): dwuhopowe warunki relacyjne w kontrakcie
+// task.list (project.area/initiative/organization) rosną wspólny schemat.
 const limits = {
-  entryBytes: 535_000,
+  entryBytes: 536_000,
   entryGzipBytes: 143_000,
   totalJavaScriptBytes: 829_000,
   stylesheetBytes: 177_000,

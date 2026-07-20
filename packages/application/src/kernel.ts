@@ -65,6 +65,7 @@ import {
   type AuditReceipt,
   type AttentionSignal,
   type DomainEvent,
+  type StrategicRecord,
   type OutboxEntry,
   type WorkspaceMembership,
   type ReviewCapture,
@@ -2986,16 +2987,97 @@ export class ApplicationKernel {
       >["parameters"]["relationConditions"]
     >[number],
   ): ReadonlySet<ProjectId> {
-    // condition.path === "project" — the one-hop terminus is the Project.
-    if (condition.predicate.field === "id")
-      return new Set(condition.predicate.in);
-    const lifecycle = condition.predicate.equals;
-    return new Set(
-      view
-        .listProjects(workspaceId, spaceId)
-        .filter((project) => project.lifecycle === lifecycle)
-        .map((project) => project.id),
-    );
+    // One-hop: the terminus is the Project itself.
+    if (condition.path === "project") {
+      if (condition.predicate.field === "id")
+        return new Set(condition.predicate.in);
+      const lifecycle = condition.predicate.equals;
+      return new Set(
+        view
+          .listProjects(workspaceId, spaceId)
+          .filter((project) => project.lifecycle === lifecycle)
+          .map((project) => project.id),
+      );
+    }
+
+    // Two-hop: resolve the set of terminus strategic-record ids the predicate
+    // matches, then map back to the projects that reach them. All strategic
+    // records are loaded once and indexed in memory — bounded, no traversal.
+    const strategic = view.listStrategicRecords(workspaceId, spaceId);
+    const terminusIds = new Set<string>();
+    if (condition.path === "project.area") {
+      const p = condition.predicate;
+      for (const record of strategic) {
+        if (record.kind !== "area") continue;
+        if (
+          p.field === "id"
+            ? p.in.includes(record.id)
+            : record.state === p.equals
+        )
+          terminusIds.add(record.id);
+      }
+      return this.projectsReachingWorkLink(
+        strategic,
+        "project_serves_area",
+        terminusIds,
+      );
+    }
+    if (condition.path === "project.initiative") {
+      const p = condition.predicate;
+      for (const record of strategic) {
+        if (record.kind !== "initiative") continue;
+        if (
+          p.field === "id"
+            ? p.in.includes(record.id)
+            : record.state === p.equals
+        )
+          terminusIds.add(record.id);
+      }
+      return this.projectsReachingWorkLink(
+        strategic,
+        "project_advances_initiative",
+        terminusIds,
+      );
+    }
+    // condition.path === "project.organization" — via the opportunity bridge.
+    const p = condition.predicate;
+    for (const record of strategic) {
+      if (record.kind !== "organization") continue;
+      if (
+        p.field === "id"
+          ? p.in.includes(record.id)
+          : record.relationshipState === p.equals
+      )
+        terminusIds.add(record.id);
+    }
+    const projectIds = new Set<ProjectId>();
+    for (const record of strategic) {
+      if (record.kind !== "opportunity") continue;
+      if (!terminusIds.has(record.organizationId)) continue;
+      for (const projectId of record.projectIds) projectIds.add(projectId);
+    }
+    return projectIds;
+  }
+
+  // Projects on the source side of an active work link whose target is one of
+  // the matched terminus records. Source is always the project for the
+  // project_serves_area / project_advances_initiative link types.
+  private projectsReachingWorkLink(
+    strategic: readonly StrategicRecord[],
+    linkType: "project_serves_area" | "project_advances_initiative",
+    terminusIds: ReadonlySet<string>,
+  ): ReadonlySet<ProjectId> {
+    const projectIds = new Set<ProjectId>();
+    for (const record of strategic) {
+      if (
+        record.kind === "work_link" &&
+        record.state === "active" &&
+        record.linkType === linkType &&
+        terminusIds.has(record.targetRecordId)
+      )
+        projectIds.add(record.sourceRecordId as ProjectId);
+    }
+    return projectIds;
   }
 
   private taskList(
