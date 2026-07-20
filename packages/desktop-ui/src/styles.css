@@ -2161,6 +2161,25 @@ kbd {
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+/* R12.7 — Task removal. A quiet, reversible destructive action: muted until
+   the confirm step, where the danger colour appears only on the confirm
+   button, not the whole section. */
+.task-removal-block {
+  display: grid;
+  gap: var(--space-3);
+}
+.task-removal-block .muted-text {
+  color: var(--text-quaternary);
+}
+.task-removal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.task-removal-actions .status-danger {
+  border-color: color-mix(in oklch, var(--status-error) 55%, transparent);
+  color: var(--status-error);
+}
 .task-context-dates {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
