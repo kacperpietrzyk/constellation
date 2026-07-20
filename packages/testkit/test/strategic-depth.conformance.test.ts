@@ -1798,4 +1798,50 @@ it("reserves time for a Task without touching its deadline", () => {
   );
   assert.deepEqual(taskOf().calendarBlock, block);
   assert.equal(taskOf().dueAt, "2026-07-25T17:00:00.000Z");
+
+  // Undoing a first reservation must clear the descriptor, not restore some
+  // earlier block — the prior state was "no block at all".
+  const freshTaskId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("block-fresh-task"),
+        commandName: "task.create",
+        payload: { taskId: freshTaskId, spaceId: ids.space, title: "Fresh" },
+      }),
+    ).outcome,
+    "success",
+  );
+  const freshOf = () =>
+    harness.store.snapshot().tasks.find((t) => t.id === freshTaskId)!;
+  const firstReservation = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("block-fresh-set", { [freshTaskId]: freshOf().version }),
+      commandName: "task.setCalendarBlock",
+      payload: { taskId: freshTaskId, block },
+    }),
+  );
+  assert.equal(firstReservation.outcome, "success");
+  const freshPreview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("block-fresh-undo-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: firstReservation.commandId },
+    }),
+  );
+  if (freshPreview.outcome !== "preview") assert.fail("Expected a preview");
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(
+          "block-fresh-undo",
+          freshPreview.projection.requiredVersions,
+        ),
+        commandName: "command.undo",
+        payload: { targetCommandId: firstReservation.commandId },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(freshOf().calendarBlock, undefined);
 });
