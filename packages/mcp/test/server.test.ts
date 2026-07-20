@@ -233,3 +233,97 @@ test("fails the complete resource when payload integrity changes", async () => {
     await server.close();
   }
 });
+
+test("serves a grant-filtered operation catalog generated from the contract", async () => {
+  const capabilityScope = [
+    "project.create",
+    "task.create",
+    "task.updateDetails",
+    "task.list",
+    "work.overview",
+    "record.relate",
+    "agent.checkpoint.create",
+    "agent.checkpoint.revert",
+    "capture.audioRead",
+  ];
+  const server = createConstellationMcpServer({
+    invoke: (invocation) =>
+      Promise.resolve({
+        contractVersion: 1,
+        requestId: invocation.requestId,
+        outcome: "success",
+        result: { grant: { capabilityScope } },
+      } satisfies McpOperatorResponse),
+  });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "catalog-test", version: "1.0.0" });
+  await Promise.all([
+    server.connect(serverTransport),
+    client.connect(clientTransport),
+  ]);
+  try {
+    const resources = await client.listResources();
+    assert.ok(
+      resources.resources.some(
+        (resource) => resource.uri === "constellation://v1/operations",
+      ),
+      "the catalog is announced as the first read",
+    );
+    const read = await client.readResource({
+      uri: "constellation://v1/operations",
+    });
+    const content = read.contents[0];
+    const text =
+      content !== undefined && "text" in content ? content.text : undefined;
+    assert.ok(typeof text === "string");
+    const catalog = JSON.parse(text) as {
+      readonly guidance: Record<string, string>;
+      readonly operations: readonly {
+        readonly name: string;
+        readonly kind: string;
+        readonly tool: string;
+        readonly envelopeSchema: {
+          readonly properties?: Record<string, unknown>;
+          readonly required?: readonly string[];
+        };
+      }[];
+    };
+    const names = catalog.operations.map((operation) => operation.name);
+    assert.deepEqual(
+      [...names].sort(),
+      [
+        "agent.checkpoint.revert",
+        "agent.checkpointCreate",
+        "project.create",
+        "record.relate",
+        "task.create",
+        "task.list",
+        "task.updateDetails",
+        "work.overview",
+      ],
+      "only in-scope operations with envelopes appear; capture.audioRead has no envelope and no entry",
+    );
+    const taskCreate = catalog.operations.find(
+      (operation) => operation.name === "task.create",
+    );
+    assert.equal(taskCreate?.kind, "command");
+    assert.equal(taskCreate?.tool, "constellation.command.v1");
+    assert.ok(
+      taskCreate !== undefined &&
+        taskCreate.envelopeSchema.properties !== undefined &&
+        "payload" in taskCreate.envelopeSchema.properties &&
+        "expectedVersions" in taskCreate.envelopeSchema.properties,
+      "the envelope schema is the full strict contract shape",
+    );
+    const taskList = catalog.operations.find(
+      (operation) => operation.name === "task.list",
+    );
+    assert.equal(taskList?.kind, "query");
+    assert.equal(taskList?.tool, "constellation.query.v1");
+    assert.ok(catalog.guidance["command"]?.includes("expectedVersions"));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});

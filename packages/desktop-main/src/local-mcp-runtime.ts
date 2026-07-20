@@ -303,6 +303,7 @@ export class LocalMcpRuntime {
           "constellation.checkpoint.revert.v1",
         ],
         resources: [
+          "constellation://v1/operations",
           "constellation://v1/capabilities",
           MCP_PAYLOAD_RESOURCE_TEMPLATE,
         ],
