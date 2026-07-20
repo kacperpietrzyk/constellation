@@ -135,6 +135,68 @@ export const TaskListQuerySchema = QueryMetadataSchema.extend({
                 ]),
               })
               .strict(),
+            // Two-hop: Task→Project→Area via the project_serves_area work link.
+            z
+              .object({
+                path: z.literal("project.area"),
+                predicate: z.discriminatedUnion("field", [
+                  z
+                    .object({
+                      field: z.literal("id"),
+                      in: z.array(StrategicRecordIdSchema).min(1).max(50),
+                    })
+                    .strict(),
+                  z
+                    .object({
+                      field: z.literal("state"),
+                      equals: z.enum(["active", "archived"]),
+                    })
+                    .strict(),
+                ]),
+              })
+              .strict(),
+            // Two-hop: Task→Project→Initiative via project_advances_initiative.
+            z
+              .object({
+                path: z.literal("project.initiative"),
+                predicate: z.discriminatedUnion("field", [
+                  z
+                    .object({
+                      field: z.literal("id"),
+                      in: z.array(StrategicRecordIdSchema).min(1).max(50),
+                    })
+                    .strict(),
+                  z
+                    .object({
+                      field: z.literal("state"),
+                      equals: z.enum(["active", "closed"]),
+                    })
+                    .strict(),
+                ]),
+              })
+              .strict(),
+            // Two-hop: Task→Project→Organization via the opportunity bridge
+            // (opportunity.projectIds + opportunity.organizationId). The bridge
+            // is many-to-many, so a match is existential (ADR-044 §3).
+            z
+              .object({
+                path: z.literal("project.organization"),
+                predicate: z.discriminatedUnion("field", [
+                  z
+                    .object({
+                      field: z.literal("id"),
+                      in: z.array(StrategicRecordIdSchema).min(1).max(50),
+                    })
+                    .strict(),
+                  z
+                    .object({
+                      field: z.literal("relationshipState"),
+                      equals: z.enum(["prospect", "active", "inactive"]),
+                    })
+                    .strict(),
+                ]),
+              })
+              .strict(),
           ]),
         )
         .min(1)
