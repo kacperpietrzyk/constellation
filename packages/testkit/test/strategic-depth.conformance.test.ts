@@ -7,6 +7,7 @@ import {
 } from "@constellation/application";
 import {
   ExecutionContextSchema,
+  ProjectIdSchema,
   SpaceGrantIdSchema,
   SpaceIdSchema,
   type CommandOutcome,
@@ -1266,6 +1267,40 @@ it("projects a meeting into routed, promoted, and identified work-graph records"
     ).diagnosticCode,
     "command.precondition_failed",
     "routing must precede promotion, not split it across Spaces",
+  );
+
+  // A project in another Space is not a routing destination. Without this,
+  // routing would succeed and promotion — which only relates within the
+  // meeting's Space — would silently create a Task connected to nothing.
+  const foreignProjectId = uuid();
+  harness.store.transact((transaction) => {
+    if (!isApplicationWave2Transaction(transaction))
+      throw new Error("Expected the Wave 2 reference transaction.");
+    transaction.insertProject({
+      id: ProjectIdSchema.parse(foreignProjectId),
+      workspaceId: context().workspaceId,
+      spaceId: SpaceIdSchema.parse(secondSpaceId),
+      title: "Praca w innej przestrzeni",
+      intendedOutcome: "Nie powinna być celem routingu tego spotkania.",
+      lifecycle: "active",
+      createdBy: context().principalId,
+      version: 1,
+      createdAt: "2026-07-20T08:00:00.000Z",
+      updatedAt: "2026-07-20T08:00:00.000Z",
+    });
+  });
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(twoSpaceContext, {
+        ...metadata("meeting-graph-foreign-project", {
+          [meetingId]: meetingRecord().version,
+        }),
+        commandName: "meeting.route",
+        payload: { meetingId, projectId: foreignProjectId },
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+    "a cross-Space project would leave a promoted Task unconnected",
   );
 
   // An unknown Space is refused by authorization before any routing logic.

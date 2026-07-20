@@ -2959,26 +2959,6 @@ export const executeWave2Command = (
         command.payload.spaceId !== meeting.spaceId;
       if (movesSpace && meeting.workItems.some((item) => item.taskId))
         return precondition(command, occurredAt);
-      if (command.payload.projectId != null) {
-        const project = transaction.getProject(command.payload.projectId);
-        if (
-          project === undefined ||
-          project.workspaceId !== command.workspaceId
-        ) {
-          return precondition(command, occurredAt);
-        }
-      }
-      if (command.payload.organizationId != null) {
-        const organization = transaction.getStrategicRecord(
-          command.payload.organizationId,
-        );
-        if (
-          organization?.kind !== "organization" ||
-          organization.workspaceId !== command.workspaceId
-        ) {
-          return precondition(command, occurredAt);
-        }
-      }
       const nextSpaceId = command.payload.spaceId ?? meeting.spaceId;
       const {
         projectId: priorProjectId,
@@ -2993,6 +2973,32 @@ export const executeWave2Command = (
         command.payload.organizationId === undefined
           ? priorOrganizationId
           : (command.payload.organizationId ?? undefined);
+      // Every resulting destination must live in the resulting Space — the
+      // newly supplied one and any carried over across a Space move alike.
+      // Space is the access boundary, so a cross-Space destination is never
+      // routable: relating across it would leak scope, while accepting it
+      // silently would leave promotion unable to relate, producing a Task
+      // disconnected from the project it came from.
+      if (nextProjectId !== undefined) {
+        const project = transaction.getProject(nextProjectId);
+        if (
+          project === undefined ||
+          project.workspaceId !== command.workspaceId ||
+          project.spaceId !== nextSpaceId
+        ) {
+          return precondition(command, occurredAt);
+        }
+      }
+      if (nextOrganizationId !== undefined) {
+        const organization = transaction.getStrategicRecord(nextOrganizationId);
+        if (
+          organization?.kind !== "organization" ||
+          organization.workspaceId !== command.workspaceId ||
+          organization.spaceId !== nextSpaceId
+        ) {
+          return precondition(command, occurredAt);
+        }
+      }
       const routed: ImportedMeeting = {
         ...meetingBase,
         spaceId: nextSpaceId,
