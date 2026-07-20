@@ -396,7 +396,9 @@ export const SettingsSurface = ({
       text: "Waliduję pakiet. Nic nie zostało jeszcze zapisane…",
     });
     try {
-      const manifest: unknown = JSON.parse(await file.text());
+      const manifest: unknown = file.name.toLocaleLowerCase().endsWith(".csv")
+        ? { format: "tasks_csv", text: await file.text() }
+        : (JSON.parse(await file.text()) as unknown);
       const result = await client.previewStarterWorkspace(manifest);
       if (result.outcome === "success") {
         setImportCandidate({
@@ -412,15 +414,21 @@ export const SettingsSurface = ({
         setImportMessage({
           tone: "alert",
           text:
-            result.code === "manifest_invalid"
-              ? "Plik nie pasuje do ścisłego formatu pakietu startowego."
-              : "Podgląd jest dostępny w trwałej aplikacji desktopowej.",
+            result.errors !== undefined && result.errors.length > 0
+              ? `Plik odrzucono: ${result.errors.slice(0, 5).join(" ")}${
+                  result.errors.length > 5
+                    ? ` (i ${result.errors.length - 5} dalszych problemów)`
+                    : ""
+                }`
+              : result.code === "manifest_invalid"
+                ? "Plik nie pasuje do udokumentowanego formatu importu."
+                : "Podgląd jest dostępny w trwałej aplikacji desktopowej.",
         });
       }
     } catch {
       setImportMessage({
         tone: "alert",
-        text: "Plik nie jest poprawnym JSON-em.",
+        text: "Plik nie jest poprawnym JSON-em ani CSV.",
       });
     } finally {
       setBusyImport(false);
@@ -1733,11 +1741,14 @@ export const SettingsSurface = ({
           >
             <section>
               <div className="settings-copy">
-                <h2>Powtarzalny start bez ukrytych zapisów</h2>
+                <h2>Import bez ukrytych zapisów</h2>
                 <p>
-                  Pakiet startowy tworzy Areas, Initiatives, Projects, Tasks i
-                  jawne powiązania wyłącznie przez te same wersjonowane komendy
-                  co UI i MCP. Ponowienie tego samego importu jest bezpieczne.
+                  Wersjonowany pakiet JSON tworzy Areas, Initiatives, Projects i
+                  Tasks; CSV zadań (kolumny: title, project, status, priority,
+                  due, start, description, state, waitingOn) mapuje się na ten
+                  sam silnik. Wyłącznie te same wersjonowane komendy co UI i
+                  MCP; podgląd przed zapisem; ponowienie tego samego pliku
+                  bezpiecznie dokańcza przerwany import.
                 </p>
               </div>
               <div className="settings-control settings-actions">
@@ -1746,11 +1757,11 @@ export const SettingsSurface = ({
                 >
                   <input
                     type="file"
-                    accept="application/json,.json"
+                    accept="application/json,.json,text/csv,.csv"
                     disabled={busyImport || !client?.previewStarterWorkspace}
                     onChange={(event) => void importStarter(event)}
                   />
-                  <span>Wybierz pakiet startowy JSON</span>
+                  <span>Wybierz plik importu (JSON lub CSV zadań)</span>
                 </label>
                 {importCandidate && (
                   <div

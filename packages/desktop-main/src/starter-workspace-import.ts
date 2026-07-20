@@ -40,10 +40,15 @@ interface StarterTask {
   readonly projectKey?: string;
   readonly operationalState?: "actionable" | "waiting" | "blocked";
   readonly waitingOn?: string;
+  readonly description?: string;
+  readonly priority?: "urgent" | "high" | "normal" | "low";
+  readonly startAt?: string;
+  readonly dueAt?: string;
+  readonly statusLabel?: string;
 }
 
 export interface StarterWorkspaceManifest {
-  readonly version: 1;
+  readonly version: 1 | 2;
   readonly importId: string;
   readonly areas: readonly StarterArea[];
   readonly initiatives: readonly StarterInitiative[];
@@ -127,7 +132,7 @@ export const parseStarterWorkspaceManifest = (
       "projects",
       "tasks",
     ]) ||
-    value.version !== 1 ||
+    (value.version !== 1 && value.version !== 2) ||
     typeof value.importId !== "string" ||
     !/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(value.importId)
   )
@@ -194,13 +199,33 @@ export const parseStarterWorkspaceManifest = (
       };
     },
   );
+  const version = value.version;
+  const instant = (candidate: unknown): string | undefined =>
+    typeof candidate === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/.test(
+      candidate,
+    ) &&
+    !Number.isNaN(Date.parse(candidate))
+      ? candidate
+      : undefined;
   const tasks = parseArray(value.tasks, (item): StarterTask | undefined => {
     if (
       !isRecord(item) ||
       !exactKeys(
         item,
         ["key", "title"],
-        ["projectKey", "operationalState", "waitingOn"],
+        version === 2
+          ? [
+              "projectKey",
+              "operationalState",
+              "waitingOn",
+              "description",
+              "priority",
+              "startAt",
+              "dueAt",
+              "statusLabel",
+            ]
+          : ["projectKey", "operationalState", "waitingOn"],
       )
     )
       return undefined;
@@ -211,6 +236,16 @@ export const parseStarterWorkspaceManifest = (
     const operationalState = item.operationalState;
     const waitingOn =
       item.waitingOn === undefined ? undefined : text(item.waitingOn, 500);
+    const description =
+      item.description === undefined
+        ? undefined
+        : text(item.description, 8_000);
+    const priority = item.priority;
+    const startAt =
+      item.startAt === undefined ? undefined : instant(item.startAt);
+    const dueAt = item.dueAt === undefined ? undefined : instant(item.dueAt);
+    const statusLabel =
+      item.statusLabel === undefined ? undefined : text(item.statusLabel, 120);
     if (
       !parsedKey ||
       !title ||
@@ -221,7 +256,16 @@ export const parseStarterWorkspaceManifest = (
         operationalState !== "blocked") ||
       (item.waitingOn !== undefined && !waitingOn) ||
       ((operationalState === "waiting" || operationalState === "blocked") &&
-        !waitingOn)
+        !waitingOn) ||
+      (item.description !== undefined && !description) ||
+      (priority !== undefined &&
+        priority !== "urgent" &&
+        priority !== "high" &&
+        priority !== "normal" &&
+        priority !== "low") ||
+      (item.startAt !== undefined && !startAt) ||
+      (item.dueAt !== undefined && !dueAt) ||
+      (item.statusLabel !== undefined && !statusLabel)
     )
       return undefined;
     return {
@@ -230,6 +274,11 @@ export const parseStarterWorkspaceManifest = (
       ...(projectKey ? { projectKey } : {}),
       ...(operationalState ? { operationalState } : {}),
       ...(waitingOn ? { waitingOn } : {}),
+      ...(description ? { description } : {}),
+      ...(priority ? { priority } : {}),
+      ...(startAt ? { startAt } : {}),
+      ...(dueAt ? { dueAt } : {}),
+      ...(statusLabel ? { statusLabel } : {}),
     };
   });
   if (!areas || !initiatives || !projects || !tasks) return undefined;
@@ -258,13 +307,254 @@ export const parseStarterWorkspaceManifest = (
   )
     return undefined;
   return {
-    version: 1,
+    version,
     importId: value.importId,
     areas,
     initiatives,
     projects,
     tasks,
   };
+};
+
+// The CSV surface is a fixed, documented header set mapped onto the v2
+// exchange manifest: inspectable input, one engine, production commands
+// only. A file with any malformed row does not execute.
+const CSV_HEADERS = [
+  "title",
+  "project",
+  "status",
+  "priority",
+  "due",
+  "start",
+  "description",
+  "state",
+  "waitingOn",
+] as const;
+
+const parseCsvRows = (input: string): readonly (readonly string[])[] => {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+  const pushField = () => {
+    row.push(field);
+    field = "";
+  };
+  const pushRow = () => {
+    pushField();
+    rows.push(row);
+    row = [];
+  };
+  const textInput = input.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
+  for (let index = 0; index < textInput.length; index += 1) {
+    const character = textInput[index]!;
+    if (quoted) {
+      if (character === '"') {
+        if (textInput[index + 1] === '"') {
+          field += '"';
+          index += 1;
+        } else {
+          quoted = false;
+        }
+      } else {
+        field += character;
+      }
+    } else if (character === '"' && field === "") {
+      quoted = true;
+    } else if (character === ",") {
+      pushField();
+    } else if (character === "\n") {
+      pushRow();
+    } else {
+      field += character;
+    }
+  }
+  if (field !== "" || row.length > 0) pushRow();
+  return rows.filter(
+    (candidate) => !(candidate.length === 1 && candidate[0] === ""),
+  );
+};
+
+const slugKey = (value: string, fallback: string): string => {
+  const slug = value
+    .toLocaleLowerCase("pl-PL")
+    .replaceAll(/[^a-z0-9]+/gu, "-")
+    .replaceAll(/^-+|-+$/gu, "")
+    .slice(0, 60);
+  return /^[a-z0-9][a-z0-9._-]*$/.test(slug) ? slug : fallback;
+};
+
+export type TasksCsvResult =
+  | { readonly outcome: "success"; readonly manifest: StarterWorkspaceManifest }
+  | { readonly outcome: "failure"; readonly errors: readonly string[] };
+
+export const parseTasksCsv = (input: string): TasksCsvResult => {
+  if (Buffer.byteLength(input, "utf8") > 256 * 1024) {
+    return { outcome: "failure", errors: ["Plik przekracza limit 256 KB."] };
+  }
+  const rows = parseCsvRows(input);
+  const header = rows[0];
+  if (header === undefined) {
+    return { outcome: "failure", errors: ["Plik CSV jest pusty."] };
+  }
+  const columns = header.map((name) => name.trim());
+  if (
+    !columns.includes("title") ||
+    columns.some(
+      (name) => !(CSV_HEADERS as readonly string[]).includes(name),
+    ) ||
+    new Set(columns).size !== columns.length
+  ) {
+    return {
+      outcome: "failure",
+      errors: [
+        `Nagłówek CSV musi używać wyłącznie kolumn: ${CSV_HEADERS.join(", ")} (kolumna "title" jest wymagana).`,
+      ],
+    };
+  }
+  if (rows.length - 1 > 100) {
+    return {
+      outcome: "failure",
+      errors: ["Plik CSV może mieć najwyżej 100 wierszy zadań."],
+    };
+  }
+  const errors: string[] = [];
+  const cell = (row: readonly string[], name: string): string | undefined => {
+    const index = columns.indexOf(name);
+    if (index === -1) return undefined;
+    const value = (row[index] ?? "").trim();
+    return value === "" ? undefined : value;
+  };
+  const projectTitles: string[] = [];
+  const tasks: StarterTask[] = [];
+  rows.slice(1).forEach((row, offset) => {
+    const rowNumber = offset + 2;
+    if (row.length !== columns.length) {
+      errors.push(
+        `Wiersz ${rowNumber}: liczba pól (${row.length}) nie zgadza się z nagłówkiem (${columns.length}).`,
+      );
+      return;
+    }
+    const title = cell(row, "title");
+    if (title === undefined || title.length > 500) {
+      errors.push(`Wiersz ${rowNumber}: wymagany tytuł (do 500 znaków).`);
+      return;
+    }
+    const project = cell(row, "project");
+    if (project !== undefined && !projectTitles.includes(project)) {
+      projectTitles.push(project);
+    }
+    const priority = cell(row, "priority");
+    if (
+      priority !== undefined &&
+      !["urgent", "high", "normal", "low"].includes(priority)
+    ) {
+      errors.push(
+        `Wiersz ${rowNumber}: priorytet musi być jednym z urgent, high, normal, low.`,
+      );
+      return;
+    }
+    const date = (name: string): string | undefined | null => {
+      const value = cell(row, name);
+      if (value === undefined) return undefined;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return `${value}T12:00:00.000Z`;
+      }
+      if (!Number.isNaN(Date.parse(value)) && value.includes("T")) return value;
+      errors.push(
+        `Wiersz ${rowNumber}: kolumna "${name}" wymaga daty YYYY-MM-DD albo pełnego znacznika ISO.`,
+      );
+      return null;
+    };
+    const dueAt = date("due");
+    const startAt = date("start");
+    if (dueAt === null || startAt === null) return;
+    const state = cell(row, "state");
+    if (
+      state !== undefined &&
+      !["actionable", "waiting", "blocked"].includes(state)
+    ) {
+      errors.push(
+        `Wiersz ${rowNumber}: stan musi być jednym z actionable, waiting, blocked.`,
+      );
+      return;
+    }
+    const waitingOn = cell(row, "waitingOn");
+    if (
+      (state === "waiting" || state === "blocked") &&
+      waitingOn === undefined
+    ) {
+      errors.push(
+        `Wiersz ${rowNumber}: stan "${state}" wymaga wypełnionej kolumny "waitingOn".`,
+      );
+      return;
+    }
+    const description = cell(row, "description");
+    if (description !== undefined && description.length > 8_000) {
+      errors.push(`Wiersz ${rowNumber}: opis przekracza 8000 znaków.`);
+      return;
+    }
+    const statusLabel = cell(row, "status");
+    tasks.push({
+      key: `row${rowNumber}`,
+      title,
+      ...(project === undefined
+        ? {}
+        : {
+            projectKey: slugKey(
+              project,
+              `project-${projectTitles.indexOf(project) + 1}`,
+            ),
+          }),
+      ...(state === undefined || state === "actionable"
+        ? {}
+        : { operationalState: state as "waiting" | "blocked" }),
+      ...(waitingOn === undefined ? {} : { waitingOn }),
+      ...(description === undefined ? {} : { description }),
+      ...(priority === undefined
+        ? {}
+        : { priority: priority as "urgent" | "high" | "normal" | "low" }),
+      ...(startAt === undefined ? {} : { startAt }),
+      ...(dueAt === undefined ? {} : { dueAt }),
+      ...(statusLabel === undefined ? {} : { statusLabel }),
+    });
+  });
+  if (errors.length > 0) return { outcome: "failure", errors };
+  const importId = deterministicUuid(`tasks-csv:${input}`);
+  return {
+    outcome: "success",
+    manifest: {
+      version: 2,
+      importId,
+      areas: [],
+      initiatives: [],
+      projects: projectTitles.map((title, index) => ({
+        key: slugKey(title, `project-${index + 1}`),
+        title,
+        intendedOutcome: `Zaimportowano z pliku CSV (${importId.slice(0, 8)}).`,
+      })),
+      tasks,
+    },
+  };
+};
+
+export const manifestStatusErrors = (
+  manifest: StarterWorkspaceManifest,
+  knownStatusLabels: readonly string[],
+): readonly string[] => {
+  const known = new Set(
+    knownStatusLabels.map((label) => label.toLocaleLowerCase("pl-PL")),
+  );
+  return manifest.tasks
+    .filter(
+      (task) =>
+        task.statusLabel !== undefined &&
+        !known.has(task.statusLabel.toLocaleLowerCase("pl-PL")),
+    )
+    .map(
+      (task) =>
+        `Zadanie „${task.title}": status „${task.statusLabel}" nie istnieje w tym workspace.`,
+    );
 };
 
 const deterministicUuid = (seed: string): string => {
@@ -294,6 +584,8 @@ export const importStarterWorkspace = (input: {
   readonly spaceId: SpaceId;
   readonly deviceId: DeviceId;
   readonly manifest: StarterWorkspaceManifest;
+  readonly resolveStatusId?: (label: string) => string | undefined;
+  readonly defaultTaskStatusId?: string;
 }): StarterWorkspaceImportResult => {
   const base = (
     keyName: string,
@@ -426,6 +718,40 @@ export const importStarterWorkspace = (input: {
       throw new Error("STARTER_WORKSPACE_TASK_INVALID");
     const taskId: TaskId = routed.projection.taskId;
     let taskVersion = routed.projection.taskVersion;
+    if (task.description || task.priority || task.startAt || task.dueAt) {
+      const details = execute(input.service, {
+        ...base(`task:${task.key}:details`, { [taskId]: taskVersion }),
+        commandName: "task.updateDetails",
+        payload: {
+          taskId,
+          ...(task.description ? { description: task.description } : {}),
+          ...(task.priority ? { priority: task.priority } : {}),
+          ...(task.startAt ? { startAt: task.startAt } : {}),
+          ...(task.dueAt ? { dueAt: task.dueAt } : {}),
+        },
+      });
+      if (details.projection.kind !== "task.details_updated")
+        throw new Error("STARTER_WORKSPACE_TASK_DETAILS_INVALID");
+      taskVersion = details.projection.version;
+    }
+    if (task.statusLabel) {
+      const statusId = input.resolveStatusId?.(task.statusLabel);
+      if (statusId === undefined)
+        throw new Error("STARTER_WORKSPACE_STATUS_UNKNOWN");
+      if (statusId === input.defaultTaskStatusId) {
+        // Routing already left the Task in the default status; setStatus
+        // would refuse a no-op change.
+      } else {
+        const status = execute(input.service, {
+          ...base(`task:${task.key}:status`, { [taskId]: taskVersion }),
+          commandName: "task.setStatus",
+          payload: { taskId, statusId },
+        });
+        if (status.projection.kind !== "task.status_changed")
+          throw new Error("STARTER_WORKSPACE_TASK_STATUS_INVALID");
+        taskVersion = status.projection.version;
+      }
+    }
     if (task.operationalState && task.operationalState !== "actionable") {
       const state = execute(input.service, {
         ...base(`task:${task.key}:state`, { [taskId]: taskVersion }),

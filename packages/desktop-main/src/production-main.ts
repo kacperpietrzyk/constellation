@@ -116,6 +116,8 @@ import {
 } from "./workspace-registry.js";
 import {
   importStarterWorkspace,
+  manifestStatusErrors,
+  parseTasksCsv,
   parseStarterWorkspaceManifest,
   previewStarterWorkspace,
   type StarterWorkspaceManifest,
@@ -937,25 +939,69 @@ const startProductionDesktop = async (): Promise<void> => {
   });
   const parseStarterWorkspaceInput = (
     input: unknown,
-  ): StarterWorkspaceManifest | undefined => {
+  ):
+    | { readonly manifest: StarterWorkspaceManifest }
+    | { readonly errors: readonly string[] }
+    | undefined => {
     try {
-      return Buffer.byteLength(JSON.stringify(input), "utf8") <= 256 * 1024
-        ? parseStarterWorkspaceManifest(input)
-        : undefined;
+      if (
+        typeof input === "object" &&
+        input !== null &&
+        !Array.isArray(input) &&
+        (input as Record<string, unknown>).format === "tasks_csv" &&
+        typeof (input as Record<string, unknown>).text === "string"
+      ) {
+        const parsed = parseTasksCsv(
+          (input as Record<string, unknown>).text as string,
+        );
+        return parsed.outcome === "success"
+          ? { manifest: parsed.manifest }
+          : { errors: parsed.errors };
+      }
+      if (Buffer.byteLength(JSON.stringify(input), "utf8") > 256 * 1024)
+        return undefined;
+      const manifest = parseStarterWorkspaceManifest(input);
+      return manifest === undefined ? undefined : { manifest };
     } catch {
       return undefined;
     }
+  };
+  const workspaceStatusLabels = (): readonly string[] => {
+    const kernel = workspaceRecovery?.kernel;
+    return kernel === undefined
+      ? []
+      : kernel.store.read((view) =>
+          view
+            .listTaskStatuses(kernel.identity.workspaceId)
+            .map((status) => status.label),
+        );
   };
   ipcMain.handle(
     DESKTOP_CHANNELS.previewStarterWorkspace,
     (event, input: unknown) => {
       assertTrustedSender(event);
-      const manifest = parseStarterWorkspaceInput(input);
-      if (manifest === undefined)
+      const parsed = parseStarterWorkspaceInput(input);
+      if (parsed === undefined)
         return { outcome: "failure", code: "manifest_invalid" } as const;
+      if ("errors" in parsed)
+        return {
+          outcome: "failure",
+          code: "manifest_invalid",
+          errors: parsed.errors,
+        } as const;
+      const statusErrors =
+        workspaceRecovery?.kernel === undefined
+          ? []
+          : manifestStatusErrors(parsed.manifest, workspaceStatusLabels());
+      if (statusErrors.length > 0)
+        return {
+          outcome: "failure",
+          code: "manifest_invalid",
+          errors: statusErrors,
+        } as const;
       return {
         outcome: "success",
-        counts: previewStarterWorkspace(manifest),
+        counts: previewStarterWorkspace(parsed.manifest),
       } as const;
     },
   );
@@ -963,19 +1009,40 @@ const startProductionDesktop = async (): Promise<void> => {
     DESKTOP_CHANNELS.importStarterWorkspace,
     (event, input: unknown) => {
       assertTrustedSender(event);
-      const manifest = parseStarterWorkspaceInput(input);
-      if (manifest === undefined)
-        return { outcome: "failure", code: "manifest_invalid" } as const;
+      const parsed = parseStarterWorkspaceInput(input);
+      if (parsed === undefined || "errors" in parsed)
+        return {
+          outcome: "failure",
+          code: "manifest_invalid",
+          ...(parsed !== undefined && "errors" in parsed
+            ? { errors: parsed.errors }
+            : {}),
+        } as const;
       const kernel = workspaceRecovery?.kernel;
       if (kernel === undefined || installationDeviceId === undefined)
         return { outcome: "failure", code: "unavailable" } as const;
       try {
+        const statuses = kernel.store.read((view) =>
+          view.listTaskStatuses(kernel.identity.workspaceId),
+        );
+        const workspaceRecord = kernel.store.read((view) =>
+          view.getWorkspace(kernel.identity.workspaceId),
+        );
         const counts = importStarterWorkspace({
           service: runtime.service,
           workspaceId: kernel.identity.workspaceId,
           spaceId: kernel.identity.rootSpaceId,
           deviceId: installationDeviceId,
-          manifest,
+          manifest: parsed.manifest,
+          resolveStatusId: (label) =>
+            statuses.find(
+              (status) =>
+                status.label.toLocaleLowerCase("pl-PL") ===
+                label.toLocaleLowerCase("pl-PL"),
+            )?.id,
+          ...(workspaceRecord === undefined
+            ? {}
+            : { defaultTaskStatusId: workspaceRecord.defaultTaskStatusId }),
         });
         if (coordinatedDataHomeProvider !== undefined) scheduleHubSync(0);
         deliverUrgentAttention(runtime.service);

@@ -450,10 +450,19 @@ action, closes the store immediately, and never joins records across workspace
 boundaries. Unavailable or unauthorized projections remain unavailable without
 affecting the active workspace.
 
-Starter manifests are a bounded convenience format, not an alternate import
-kernel. Main validates their exact shape and references, derives stable record
-IDs, and executes the normal commands with stable idempotency keys. Partial
-progress remains auditable and retrying the same `importId` cannot duplicate
+Import is one engine over general documented exchange formats, not an
+alternate write kernel. The versioned JSON exchange manifest (v2 adds
+optional task description, priority, start/deadline instants, and a status
+label matched case-insensitively against existing workspace statuses) and
+the documented tasks CSV (fixed header vocabulary, RFC-4180-style quoting,
+row-numbered validation errors) both map onto the same model. Main
+validates the whole file strictly at preview — any malformed row or unknown
+status label rejects the file before anything executes — derives stable
+record IDs and per-step idempotency keys from the file's content-derived
+`importId`, and executes only the normal versioned commands. Partial
+progress remains auditable, every imported record is individually
+undoable through the ordinary recovery surface, and re-running the same
+file idempotently completes an interrupted import instead of duplicating
 records.
 
 ## Verification
