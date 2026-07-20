@@ -86,6 +86,21 @@ export const formatDateTime = (
   timeZone?: string,
 ): string => cachedFormatter("dateTime", timeZone).format(new Date(value));
 
+// Weekday-and-time variant for calendar rows, where the weekday carries real
+// planning meaning and the year does not. Distinct from formatDateTime (which
+// shows the year) and formatTime (time only); the meeting and calendar
+// surfaces share this exact shape.
+const weekdayTimeFormatter = new Intl.DateTimeFormat("pl-PL", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+export const formatWeekdayTime = (value: string | number | Date): string =>
+  weekdayTimeFormatter.format(new Date(value));
+
 // Time-only variant for rows whose surrounding copy already fixes the day.
 export const formatTime = (
   value: string | number | Date,

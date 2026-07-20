@@ -12,9 +12,9 @@ import type { ConstellationRendererClient } from "@constellation/desktop-preload
 import { createPortal } from "react-dom";
 
 import { MeetingMarkdown, toMeetingResultPreview } from "./MeetingMarkdown.js";
-import { Icon } from "./components/Icon.js";
+import { CalendarConsentDialog } from "./components/CalendarConsentDialog.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
-import { countLabel } from "./i18n.js";
+import { countLabel, formatWeekdayTime } from "./i18n.js";
 
 type MeetingState =
   | { readonly kind: "loading" }
@@ -86,15 +86,6 @@ const workItemMetadata = (item: MeetingWorkItem) =>
       ? workItemStateLabel(item)
       : `${workItemStateLabel(item)} · Jamie: ${item.assignee.name}`;
 
-const formatTime = (value: string) =>
-  new Intl.DateTimeFormat("pl-PL", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
-
 const capabilityCopy = (surface: MeetingLoopSurface) => {
   switch (surface.capability.availability) {
     case "available":
@@ -112,124 +103,6 @@ const capabilityCopy = (surface: MeetingLoopSurface) => {
     case "error":
       return "Nie udało się odczytać kalendarza. Spróbuj ponownie; żadne wydarzenie nie zostało zmienione.";
   }
-};
-
-const CalendarConsentDialog = ({
-  client,
-  preview,
-  onClose,
-  onApplied,
-}: {
-  readonly client: ConstellationRendererClient;
-  readonly preview: CalendarWritePreview;
-  readonly onClose: () => void;
-  readonly onApplied: () => void;
-}) => {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-  useEffect(() => {
-    dialogRef.current?.showModal();
-    cancelRef.current?.focus();
-    return () => dialogRef.current?.close();
-  }, []);
-  const block = preview.blocks[0]!;
-  return (
-    <dialog
-      ref={dialogRef}
-      className="meeting-consent-backdrop"
-      aria-labelledby="calendar-consent-title"
-      onCancel={(event) => {
-        event.preventDefault();
-        if (!busy) onClose();
-      }}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !busy) onClose();
-      }}
-    >
-      <section className="meeting-consent-dialog">
-        <header>
-          <div>
-            <p className="eyebrow">Dokładny zapis do kalendarza</p>
-            <h2 id="calendar-consent-title">Potwierdź ten blok pracy</h2>
-          </div>
-          <button
-            className="icon-button"
-            aria-label="Zamknij podgląd"
-            onClick={onClose}
-            disabled={busy}
-          >
-            <Icon name="close" />
-          </button>
-        </header>
-        <dl className="calendar-preview-facts">
-          <div>
-            <dt>Tytuł</dt>
-            <dd>{block.title}</dd>
-          </div>
-          <div>
-            <dt>Początek</dt>
-            <dd>{formatTime(block.startsAt)}</dd>
-          </div>
-          <div>
-            <dt>Koniec</dt>
-            <dd>{formatTime(block.endsAt)}</dd>
-          </div>
-          <div>
-            <dt>Kalendarz</dt>
-            <dd>{block.calendarExternalId}</dd>
-          </div>
-        </dl>
-        <p className="meeting-consent-note">
-          Zgoda dotyczy wyłącznie tych wartości i wygasa po pięciu minutach.
-          Zmiana treści albo rewizji wymaga nowego podglądu.
-        </p>
-        {error && (
-          <p id="calendar-consent-error" className="inline-error" role="alert">
-            {error}
-          </p>
-        )}
-        <footer>
-          <button
-            ref={cancelRef}
-            className="secondary-button"
-            onClick={onClose}
-            disabled={busy}
-          >
-            Anuluj
-          </button>
-          <button
-            className="primary-button"
-            disabled={busy}
-            aria-describedby={error ? "calendar-consent-error" : undefined}
-            onClick={() => {
-              setBusy(true);
-              setError(undefined);
-              void client
-                .confirmCalendarBlocks({
-                  previewId: preview.previewId,
-                  consentToken: preview.consentToken,
-                  blocks: preview.blocks,
-                })
-                .then((result) => {
-                  setBusy(false);
-                  if (result.outcome === "applied") onApplied();
-                  else
-                    setError(
-                      result.code === "stale_revision"
-                        ? "Kalendarz zmienił się od czasu podglądu. Otwórz nowy podgląd."
-                        : "Zapis nie został wykonany. Sprawdź uprawnienie i spróbuj ponownie.",
-                    );
-                });
-            }}
-          >
-            {busy ? "Zapisuję blok…" : "Zapisz ten blok"}
-          </button>
-        </footer>
-      </section>
-    </dialog>
-  );
 };
 
 export const MeetingsSurface = ({
@@ -713,7 +586,7 @@ export const MeetingsSurface = ({
                         type="button"
                         role="option"
                         className={`meeting-result-row${selected ? " is-selected" : ""}`}
-                        aria-label={`${title}. ${healthLabel(meeting)}. ${formatTime(meeting.startedAt)}. ${workCount}.`}
+                        aria-label={`${title}. ${healthLabel(meeting)}. ${formatWeekdayTime(meeting.startedAt)}. ${workCount}.`}
                         aria-describedby={previewId}
                         aria-selected={selected}
                         {...(selected && inspectorHost
@@ -731,7 +604,7 @@ export const MeetingsSurface = ({
                           </span>
                         </span>
                         <time dateTime={meeting.startedAt}>
-                          {formatTime(meeting.startedAt)}
+                          {formatWeekdayTime(meeting.startedAt)}
                         </time>
                         <span
                           className="meeting-result-row-summary"
@@ -765,7 +638,7 @@ export const MeetingsSurface = ({
                         </h3>
                         <p>
                           <time dateTime={selectedMeeting.startedAt}>
-                            {formatTime(selectedMeeting.startedAt)}
+                            {formatWeekdayTime(selectedMeeting.startedAt)}
                           </time>
                           <span aria-hidden="true"> · </span>
                           {countLabel(
@@ -1436,7 +1309,7 @@ export const MeetingsSurface = ({
                   key={`${event.calendarExternalId}:${event.eventExternalId}`}
                 >
                   <div className="meeting-time">
-                    <strong>{formatTime(event.startsAt)}</strong>
+                    <strong>{formatWeekdayTime(event.startsAt)}</strong>
                     <span>
                       {event.isAllDay
                         ? "Cały dzień"
