@@ -35,7 +35,31 @@ foreach ($RequiredFile in @("sqlite3.c", "sqlite3.h", "SQLCipher-LICENSE.md")) {
 
 Remove-Item $Archive -Force -ErrorAction SilentlyContinue
 Remove-Item $SourceRoot -Recurse -Force -ErrorAction SilentlyContinue
-Invoke-WebRequest -Uri "https://www.openssl.org/source/openssl-$OpenSslVersion.tar.gz" -OutFile $Archive
+
+# The build fetches OpenSSL from openssl.org at build time, and a single
+# unlucky connection used to fail the whole packaged Windows job — observed
+# 2026-07-20 on PR #87 as a connect timeout with no bytes transferred.
+#
+# Retrying is safe here precisely because the digest below is checked after the
+# download: a truncated, corrupted, or substituted archive still fails that
+# check and stops the build. The retry only buys another attempt at reaching
+# the host; it never widens what is accepted.
+$Attempts = 4
+for ($Attempt = 1; $Attempt -le $Attempts; $Attempt++) {
+  try {
+    Remove-Item $Archive -Force -ErrorAction SilentlyContinue
+    Invoke-WebRequest -Uri "https://www.openssl.org/source/openssl-$OpenSslVersion.tar.gz" -OutFile $Archive
+    break
+  }
+  catch {
+    if ($Attempt -eq $Attempts) {
+      throw "OpenSSL source download failed after $Attempts attempts: $_"
+    }
+    $Delay = [Math]::Pow(2, $Attempt)
+    Write-Host "OpenSSL download attempt $Attempt failed; retrying in $Delay s."
+    Start-Sleep -Seconds $Delay
+  }
+}
 
 $ActualHash = (Get-FileHash -Algorithm SHA256 $Archive).Hash.ToLowerInvariant()
 if ($ActualHash -ne $OpenSslSha256) {
