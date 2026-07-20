@@ -273,7 +273,9 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     const read = await client.readResource({
       uri: "constellation://v1/operations",
     });
-    const text = read.contents[0]?.text;
+    const content = read.contents[0];
+    const text =
+      content !== undefined && "text" in content ? content.text : undefined;
     assert.ok(typeof text === "string");
     const catalog = JSON.parse(text) as {
       readonly guidance: Record<string, string>;
@@ -319,7 +321,7 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     );
     assert.equal(taskList?.kind, "query");
     assert.equal(taskList?.tool, "constellation.query.v1");
-    assert.ok(catalog.guidance.command.includes("expectedVersions"));
+    assert.ok(catalog.guidance["command"]?.includes("expectedVersions"));
   } finally {
     await client.close();
     await server.close();
