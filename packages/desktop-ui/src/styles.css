@@ -8844,3 +8844,80 @@ button.work-task-copy {
     justify-self: start;
   }
 }
+
+/* R12.5 — meeting routing, participants, and promotion (PAT-33).
+   These sections read as quiet context above the summary, not as competing
+   cards: the meeting result stays the dominant reading plane. */
+.meeting-result-routing,
+.meeting-result-participants {
+  display: grid;
+  gap: var(--space-3);
+  padding-block: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.meeting-result-routing > header,
+.meeting-result-participants > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.meeting-result-routing h4,
+.meeting-result-participants h4 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 550;
+}
+.meeting-result-routing > header p,
+.meeting-result-participants > header p {
+  margin: var(--space-1) 0 0;
+  max-width: 44ch;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+}
+.meeting-routing-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-3);
+}
+.meeting-routing-fields label {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+.meeting-routing-fields select {
+  min-height: 2.75rem;
+}
+.meeting-participants {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.meeting-participants li {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.meeting-participants strong {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.meeting-participants small {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+/* A promoted item states the fact plainly instead of adding a coloured badge:
+   "already a Task" is status, not a warning. */
+.meeting-item-promoted {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}

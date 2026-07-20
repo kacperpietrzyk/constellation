@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type {
-  CalendarBlockDraft,
-  CalendarWritePreview,
-  MeetingLoopSurface,
+import {
+  CommandEnvelopeSchema,
+  QueryEnvelopeSchema,
+  type CalendarBlockDraft,
+  type CalendarWritePreview,
+  type ImportedMeeting,
+  type MeetingLoopSurface,
 } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 import { createPortal } from "react-dom";
@@ -258,6 +261,44 @@ export const MeetingsSurface = ({
     "task" | "waiting" | "decision" | "note" | "follow_up"
   >("task");
   const [newItemTitle, setNewItemTitle] = useState("");
+  // Routing destinations are read lazily for the selected meeting's Space, so
+  // an unrouted meeting never pays for them and the Jamie plane stays first.
+  const [routingOptions, setRoutingOptions] = useState<{
+    readonly projects: readonly {
+      readonly id: string;
+      readonly title: string;
+    }[];
+    readonly organizations: readonly {
+      readonly id: string;
+      readonly name: string;
+    }[];
+  }>({ projects: [], organizations: [] });
+  const runMeetingCommand = async (
+    meeting: ImportedMeeting,
+    commandName:
+      "meeting.route" | "meeting.promoteWorkItem" | "meeting.linkParticipants",
+    payload: Record<string, unknown>,
+    idempotencySuffix: string,
+  ): Promise<boolean> => {
+    const response = await client.executeCommand(
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName,
+        commandId: crypto.randomUUID(),
+        workspaceId: meeting.workspaceId,
+        idempotencyKey: `${commandName}:${meeting.id}:${idempotencySuffix}`,
+        // The meeting version is the single optimistic guard: a Jamie sync or
+        // another operator landing first is reported, never overwritten.
+        expectedVersions: { [meeting.id]: meeting.version },
+        correlationId: crypto.randomUUID(),
+        payload: { meetingId: meeting.id, ...payload },
+      }),
+    );
+    return (
+      response.kind !== "contract_rejected" &&
+      response.outcome.outcome === "success"
+    );
+  };
   const loadJamieStatus = () => {
     setJamie({ kind: "loading" });
     void client
@@ -265,10 +306,54 @@ export const MeetingsSurface = ({
       .then((status) => setJamie({ kind: "ready", ...status }))
       .catch(() => setJamie({ kind: "error" }));
   };
+  const loadRoutingOptions = (meeting: ImportedMeeting) => {
+    const read = async (
+      queryName: "project.list" | "relationship.workspace",
+    ) => {
+      const response = await client.runQuery(
+        QueryEnvelopeSchema.parse({
+          contractVersion: 1,
+          queryName,
+          queryId: crypto.randomUUID(),
+          workspaceId: meeting.workspaceId,
+          correlationId: crypto.randomUUID(),
+          parameters: { spaceId: meeting.spaceId },
+        }),
+      );
+      return response.kind === "contract_rejected" ||
+        response.result.outcome !== "success"
+        ? undefined
+        : response.result.projection;
+    };
+    void Promise.all([read("project.list"), read("relationship.workspace")])
+      .then(([projects, relationships]) => {
+        setRoutingOptions({
+          projects:
+            projects?.kind === "project.list"
+              ? projects.items
+                  .filter((project) => project.lifecycle === "active")
+                  .map((project) => ({ id: project.id, title: project.title }))
+              : [],
+          organizations:
+            relationships?.kind === "relationship.workspace"
+              ? relationships.records.flatMap((record) =>
+                  record.kind === "organization"
+                    ? [{ id: record.id, name: record.name }]
+                    : [],
+                )
+              : [],
+        });
+      })
+      // Routing is an enhancement over a readable meeting: if destinations
+      // cannot be read the rest of the inspector still works, and the section
+      // reports that it has nothing to offer rather than failing the view.
+      .catch(() => setRoutingOptions({ projects: [], organizations: [] }));
+  };
   const selectResult = (index: number) => {
     if (state.kind !== "ready") return;
     const meeting = state.data.completed[index];
     if (meeting === undefined) return;
+    loadRoutingOptions(meeting);
     setSelectedMeetingId(meeting.id);
     setVisibleTranscriptMeetingId(undefined);
     setNewItemMeetingId(undefined);
@@ -696,6 +781,96 @@ export const MeetingsSurface = ({
                     </header>
 
                     <section
+                      className="meeting-result-routing"
+                      aria-labelledby="meeting-result-routing-title"
+                    >
+                      <header>
+                        <div>
+                          <h4 id="meeting-result-routing-title">
+                            Projekt i klient
+                          </h4>
+                          <p>
+                            {selectedMeeting.projectId ||
+                            selectedMeeting.organizationId
+                              ? "Spotkanie należy do wybranego projektu i klienta."
+                              : "To spotkanie nie ma jeszcze projektu ani klienta."}
+                          </p>
+                        </div>
+                      </header>
+                      <div className="meeting-routing-fields">
+                        <label htmlFor="meeting-routing-project">
+                          Projekt
+                          <select
+                            id="meeting-routing-project"
+                            value={selectedMeeting.projectId ?? ""}
+                            disabled={busyItemId === selectedMeeting.id}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setBusyItemId(selectedMeeting.id);
+                              void runMeetingCommand(
+                                selectedMeeting,
+                                "meeting.route",
+                                { projectId: value === "" ? null : value },
+                                `project:${value}:${selectedMeeting.version}`,
+                              ).then((changed) => {
+                                setBusyItemId(undefined);
+                                if (changed) load();
+                                else
+                                  setNotice(
+                                    "Nie udało się zmienić projektu. Wynik mógł zmienić się w międzyczasie — odśwież i spróbuj ponownie.",
+                                  );
+                              });
+                            }}
+                          >
+                            <option value="">Bez projektu</option>
+                            {routingOptions.projects.map((project) => (
+                              <option key={project.id} value={project.id}>
+                                {project.title}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label htmlFor="meeting-routing-organization">
+                          Klient
+                          <select
+                            id="meeting-routing-organization"
+                            value={selectedMeeting.organizationId ?? ""}
+                            disabled={busyItemId === selectedMeeting.id}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setBusyItemId(selectedMeeting.id);
+                              void runMeetingCommand(
+                                selectedMeeting,
+                                "meeting.route",
+                                { organizationId: value === "" ? null : value },
+                                `organization:${value}:${selectedMeeting.version}`,
+                              ).then((changed) => {
+                                setBusyItemId(undefined);
+                                if (changed) load();
+                                else
+                                  setNotice(
+                                    "Nie udało się zmienić klienta. Wynik mógł zmienić się w międzyczasie — odśwież i spróbuj ponownie.",
+                                  );
+                              });
+                            }}
+                          >
+                            <option value="">Bez klienta</option>
+                            {routingOptions.organizations.map(
+                              (organization) => (
+                                <option
+                                  key={organization.id}
+                                  value={organization.id}
+                                >
+                                  {organization.name}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </label>
+                      </div>
+                    </section>
+
+                    <section
                       className="meeting-result-summary"
                       aria-labelledby="meeting-result-summary-title"
                     >
@@ -758,6 +933,82 @@ export const MeetingsSurface = ({
                     )}
 
                     <section
+                      className="meeting-result-participants"
+                      aria-labelledby="meeting-result-participants-title"
+                    >
+                      <header>
+                        <div>
+                          <h4 id="meeting-result-participants-title">
+                            Uczestnicy
+                          </h4>
+                          <p>
+                            Uczestnicy z adresem e-mail stają się Osobami.
+                            Pozostali czekają na Twoją decyzję — nikt nie jest
+                            łączony na podstawie samego imienia.
+                          </p>
+                        </div>
+                        {selectedMeeting.participants.some(
+                          (participant) =>
+                            participant.personId === undefined &&
+                            participant.email !== undefined,
+                        ) && (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            disabled={busyItemId === selectedMeeting.id}
+                            onClick={() => {
+                              setBusyItemId(selectedMeeting.id);
+                              // One identifier per unlinked participant that
+                              // carries an email; the kernel consumes only what
+                              // it needs and leaves name-only people alone.
+                              const personIdPool = selectedMeeting.participants
+                                .filter(
+                                  (participant) =>
+                                    participant.personId === undefined &&
+                                    participant.email !== undefined,
+                                )
+                                .map(() => crypto.randomUUID());
+                              void runMeetingCommand(
+                                selectedMeeting,
+                                "meeting.linkParticipants",
+                                { personIdPool, resolutions: [] },
+                                `link:${selectedMeeting.version}`,
+                              ).then((changed) => {
+                                setBusyItemId(undefined);
+                                if (changed) load();
+                                else
+                                  setNotice(
+                                    "Nie udało się połączyć uczestników. Odśwież i spróbuj ponownie.",
+                                  );
+                              });
+                            }}
+                          >
+                            Połącz z Osobami
+                          </button>
+                        )}
+                      </header>
+                      {selectedMeeting.participants.length === 0 && (
+                        <p className="meeting-result-empty-copy">
+                          Jamie nie zwrócił uczestników dla tego spotkania.
+                        </p>
+                      )}
+                      <ul className="meeting-participants">
+                        {selectedMeeting.participants.map((participant) => (
+                          <li key={participant.externalId}>
+                            <strong>{participant.name}</strong>
+                            <small>
+                              {participant.personId
+                                ? "Osoba w przestrzeni roboczej"
+                                : participant.email
+                                  ? "Nie połączony"
+                                  : "Brak adresu e-mail — wymaga decyzji"}
+                            </small>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+
+                    <section
                       className="meeting-result-work"
                       aria-labelledby="meeting-result-work-title"
                     >
@@ -794,6 +1045,39 @@ export const MeetingsSurface = ({
                                 <small>{workItemMetadata(item)}</small>
                               </div>
                               <div className="meeting-item-actions">
+                                {(item.kind === "task" ||
+                                  item.kind === "follow_up") &&
+                                  (item.taskId ? (
+                                    <span className="meeting-item-promoted">
+                                      Jest zadaniem
+                                    </span>
+                                  ) : (
+                                    <button
+                                      className="secondary-button"
+                                      disabled={busyItemId === item.id}
+                                      onClick={() => {
+                                        setBusyItemId(item.id);
+                                        void runMeetingCommand(
+                                          selectedMeeting,
+                                          "meeting.promoteWorkItem",
+                                          {
+                                            workItemId: item.id,
+                                            taskId: crypto.randomUUID(),
+                                          },
+                                          `promote:${item.id}`,
+                                        ).then((changed) => {
+                                          setBusyItemId(undefined);
+                                          if (changed) load();
+                                          else
+                                            setNotice(
+                                              "Nie udało się utworzyć zadania. Wynik mógł zmienić się w międzyczasie — odśwież i spróbuj ponownie.",
+                                            );
+                                        });
+                                      }}
+                                    >
+                                      Utwórz zadanie
+                                    </button>
+                                  ))}
                                 <button
                                   className="secondary-button"
                                   disabled={busyItemId === item.id}

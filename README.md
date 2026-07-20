@@ -231,7 +231,14 @@ surface builds factual preparation only from authorized graph evidence. It can
 store a personal or workspace Jamie API key in operating-system credential
 protection, import the last 90 days with stable meeting and task identity, and
 preserve local edits when Jamie later corrects a result. Each imported action
-has its own version and lifecycle. Creating or changing a Constellation-owned
+has its own version and lifecycle. An imported meeting can then be routed to a
+project and an organization, its task and follow-up items promoted into real
+Tasks, and its participants linked to People. Those decisions are explicit
+commands rather than import side effects: only participants carrying an exact
+email address are linked or created, participants known by name alone wait for a
+decision instead of being guessed at, and a repeated Jamie delivery never
+duplicates a meeting, a person, or a task. Creating or changing a
+Constellation-owned
 calendar block always requires an exact, five-minute, single-use preview. The
 normalized imported meeting is also published through the existing Hub
 command/receipt feed, so another authorized device receives the same stable

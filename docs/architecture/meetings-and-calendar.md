@@ -40,6 +40,42 @@ and exposes a conflict when both sides changed the same value. If stable task
 IDs are temporarily unavailable, the meeting is retained as a partial import
 and can converge on a later retry.
 
+## Work-graph projection
+
+Import never mutates the work graph. Turning a meeting into connected work is
+three explicit, authorized, undoable commands:
+
+- `meeting.route` sets a project and an organization at meeting level, and may
+  move the meeting to another Space. A Space move is refused once any work item
+  has been promoted, because the created Tasks and their relations already live
+  in the meeting's Space.
+- `meeting.promoteWorkItem` turns a `task` or `follow_up` item into a real Task,
+  carrying the source due instant, relating it to the routed project, and
+  writing the Task identifier back onto the work item. That back-reference makes
+  the operation idempotent: promoting the same item twice is refused rather than
+  creating a second Task. Promotion requires the Task-creation capability in
+  addition to its own, so it cannot become a path around the Task grant.
+- `meeting.linkParticipants` links participants to People. An exact email match
+  links an existing Person; a participant with an unmatched email becomes a new
+  Person; a participant known only by name is reported for explicit review.
+  Name similarity is never a matching signal, so two people who share a name are
+  never merged.
+
+A Jamie assignee remains source provenance and never becomes a Constellation
+responsibility by import or promotion.
+
+Routing, participant links, and promoted Task identifiers are workspace-owned:
+they are carried across re-import and are never accepted from a Jamie payload.
+A corrected redelivery therefore refreshes meeting content while leaving the
+graph intact, which is what keeps repeated delivery free of duplicate meetings,
+people, and tasks.
+
+Undo runs on the ordinary previewed-undo path. Undoing a promotion removes the
+created Task and returns the work item to promotable state, refusing when the
+Task already has later writes. Undoing participant linking restores the prior
+links but deliberately does not delete People it created, since a Person may
+already be referenced elsewhere.
+
 ## Calendar-write consent
 
 A preview is bound to the workspace, human principal, provider calendar,
