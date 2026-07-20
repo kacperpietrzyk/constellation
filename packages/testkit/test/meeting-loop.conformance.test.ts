@@ -777,3 +777,40 @@ test("Jamie due dates reach the work item and clear when the source drops them",
   assert.equal(clearedItem?.title, "Confirm rollout owner");
   assert.equal(clearedItem?.dueAt, undefined);
 });
+
+test("a local completion survives an unrelated Jamie correction", () => {
+  const { service } = createHarness();
+  const applied = service.importJamie({
+    authorization,
+    spaceId,
+    source: source({ hash: "7".repeat(64), taskId: "task-1" }),
+  });
+  if (applied.outcome === "rejected") throw new Error("expected import");
+  const item = applied.meeting.workItems.find(
+    (candidate) => candidate.sourceExternalId === "task-1",
+  )!;
+  const edited = service.editWorkItem({
+    authorization,
+    meetingId: applied.meeting.id,
+    workItemId: item.id,
+    expectedVersion: item.version,
+    title: item.title,
+    state: "completed",
+  });
+  assert.ok(edited);
+  // Jamie changes something else about the meeting; this item is untouched.
+  const corrected = service.importJamie({
+    authorization,
+    spaceId,
+    source: source({ hash: "8".repeat(64), taskId: "task-1" }),
+  });
+  if (corrected.outcome === "rejected") throw new Error("expected correction");
+  const after = corrected.meeting.workItems.find(
+    (candidate) => candidate.sourceExternalId === "task-1",
+  )!;
+  // The title-based conflict check cannot see a state-only divergence, so
+  // without an explicit lifecycle guard this completion was silently reverted
+  // to Jamie's "open" with no conflict raised — losing the user's work.
+  assert.equal(after.state, "completed");
+  assert.equal(after.title, item.title);
+});

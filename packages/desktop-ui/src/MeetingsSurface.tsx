@@ -244,6 +244,9 @@ export const MeetingsSurface = ({
   const [state, setState] = useState<MeetingState>({ kind: "loading" });
   const [preview, setPreview] = useState<CalendarWritePreview>();
   const [notice, setNotice] = useState<string>();
+  // One in-flight mutation at a time across the whole inspector. A per-target
+  // flag would re-enable a still-pending control as soon as a different one
+  // started, allowing a second submission against an already-stale version.
   const [busyItemId, setBusyItemId] = useState<string>();
   const [responsibilityItemId, setResponsibilityItemId] = useState<string>();
   const [responsibilityName, setResponsibilityName] = useState("");
@@ -803,7 +806,7 @@ export const MeetingsSurface = ({
                           <select
                             id="meeting-routing-project"
                             value={selectedMeeting.projectId ?? ""}
-                            disabled={busyItemId === selectedMeeting.id}
+                            disabled={busyItemId !== undefined}
                             onChange={(event) => {
                               const value = event.target.value;
                               setBusyItemId(selectedMeeting.id);
@@ -835,7 +838,7 @@ export const MeetingsSurface = ({
                           <select
                             id="meeting-routing-organization"
                             value={selectedMeeting.organizationId ?? ""}
-                            disabled={busyItemId === selectedMeeting.id}
+                            disabled={busyItemId !== undefined}
                             onChange={(event) => {
                               const value = event.target.value;
                               setBusyItemId(selectedMeeting.id);
@@ -955,7 +958,7 @@ export const MeetingsSurface = ({
                           <button
                             type="button"
                             className="secondary-button"
-                            disabled={busyItemId === selectedMeeting.id}
+                            disabled={busyItemId !== undefined}
                             onClick={() => {
                               setBusyItemId(selectedMeeting.id);
                               // One identifier per unlinked participant that
@@ -1054,7 +1057,7 @@ export const MeetingsSurface = ({
                                   ) : (
                                     <button
                                       className="secondary-button"
-                                      disabled={busyItemId === item.id}
+                                      disabled={busyItemId !== undefined}
                                       onClick={() => {
                                         setBusyItemId(item.id);
                                         void runMeetingCommand(
@@ -1086,7 +1089,7 @@ export const MeetingsSurface = ({
                                   ))}
                                 <button
                                   className="secondary-button"
-                                  disabled={busyItemId === item.id}
+                                  disabled={busyItemId !== undefined}
                                   onClick={() => {
                                     setBusyItemId(item.id);
                                     const nextState =
@@ -1121,7 +1124,7 @@ export const MeetingsSurface = ({
                                   item.sourceValueInConflict && (
                                     <button
                                       className="secondary-button"
-                                      disabled={busyItemId === item.id}
+                                      disabled={busyItemId !== undefined}
                                       onClick={() => {
                                         setBusyItemId(item.id);
                                         void client
@@ -1148,7 +1151,7 @@ export const MeetingsSurface = ({
                                 {item.state === "open" && (
                                   <button
                                     className="secondary-button"
-                                    disabled={busyItemId === item.id}
+                                    disabled={busyItemId !== undefined}
                                     onClick={() => {
                                       setBusyItemId(item.id);
                                       void client
@@ -1177,7 +1180,7 @@ export const MeetingsSurface = ({
                                   item.kind === "follow_up") && (
                                   <button
                                     className="secondary-button"
-                                    disabled={busyItemId === item.id}
+                                    disabled={busyItemId !== undefined}
                                     onClick={() => {
                                       setResponsibilityItemId(item.id);
                                       setResponsibilityName(
@@ -1253,7 +1256,7 @@ export const MeetingsSurface = ({
                                     undefined && (
                                     <button
                                       className="quiet-button"
-                                      disabled={busyItemId === item.id}
+                                      disabled={busyItemId !== undefined}
                                       type="button"
                                       onClick={() => {
                                         setBusyItemId(item.id);

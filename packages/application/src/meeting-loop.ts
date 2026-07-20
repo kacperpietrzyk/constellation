@@ -421,16 +421,22 @@ const reconcileItems = (
       });
       continue;
     }
+    // A locally modified item keeps its own lifecycle. Completing a follow-up
+    // here and then receiving an unrelated Jamie correction must not silently
+    // reopen it: the title conflict above only catches divergent text, so
+    // without this a local completion was lost with no conflict raised.
+    // Source still owns the descriptive fields.
+    const nextState = prior.locallyModified ? prior.state : source.state;
     next.push({
       ...withSourceDue(
         withSourceAssignee(prior, source.assignee),
         source.dueAt,
       ),
       title: source.title,
-      state: source.state,
+      state: nextState,
       version:
         prior.title === source.title &&
-        prior.state === source.state &&
+        prior.state === nextState &&
         prior.dueAt === source.dueAt &&
         sameAssignee(prior.assignee, source.assignee)
           ? prior.version

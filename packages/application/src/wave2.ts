@@ -3209,8 +3209,17 @@ export const executeWave2Command = (
         const resolved = resolutions.get(participant.externalId);
         if (resolved !== undefined) {
           const person = transaction.getStrategicRecord(resolved);
-          if (person?.kind === "person")
+          // An operator-supplied identifier is still subject to Space scoping:
+          // linking a Person the caller happens to know the id of but cannot
+          // see here would cross the access boundary the rest of this handler
+          // preserves. Out-of-scope ids are treated as unresolved, not honoured.
+          if (
+            person?.kind === "person" &&
+            person.workspaceId === current.workspaceId &&
+            person.spaceId === current.spaceId
+          ) {
             return { ...participant, personId: resolved };
+          }
           ambiguousParticipants.push(participant.externalId);
           return participant;
         }
