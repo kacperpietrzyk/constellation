@@ -39,6 +39,7 @@ const recordKey = (prefix: string, id: string): string =>
 export interface ExchangeExportResult {
   readonly manifest: StarterWorkspaceManifest;
   readonly counts: {
+    readonly taskStatuses: number;
     readonly areas: number;
     readonly initiatives: number;
     readonly projects: number;
@@ -62,6 +63,18 @@ export const buildExchangeManifest = (input: {
         .listTaskStatuses(input.workspaceId)
         .map((status) => [status.id, status.label]),
     );
+    // v3: the statuses the exported tasks name travel with them, so a target
+    // workspace that has never heard of a custom status can still accept the
+    // package (ADR-052). Archived statuses are left behind: nothing active
+    // names them.
+    const taskStatuses = view
+      .listTaskStatuses(input.workspaceId)
+      .filter((status) => status.state !== "archived")
+      .map((status) => ({
+        key: recordKey("status", status.id),
+        label: status.label,
+        operationalSemantics: status.operationalSemantics,
+      }));
     const areas = strategic.flatMap((record) =>
       record.kind === "area" && record.state !== "archived"
         ? [
@@ -159,7 +172,14 @@ export const buildExchangeManifest = (input: {
           ...(statusLabel === undefined ? {} : { statusLabel }),
         };
       });
-    const body = { version: 2 as const, areas, initiatives, projects, tasks };
+    const body = {
+      version: 3 as const,
+      areas,
+      initiatives,
+      projects,
+      tasks,
+      taskStatuses,
+    };
     // The importId is a digest of the content, so exporting the same workspace
     // twice produces the same package and re-importing one is idempotent
     // through the import's own `starter:<importId>:<key>` keys.
@@ -170,6 +190,7 @@ export const buildExchangeManifest = (input: {
     return {
       manifest,
       counts: {
+        taskStatuses: taskStatuses.length,
         areas: areas.length,
         initiatives: initiatives.length,
         projects: projects.length,

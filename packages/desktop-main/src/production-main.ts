@@ -1052,6 +1052,7 @@ const startProductionDesktop = async (): Promise<void> => {
                 status.label.toLocaleLowerCase("pl-PL") ===
                 label.toLocaleLowerCase("pl-PL"),
             )?.id,
+          existingStatusLabels: statuses.map((status) => status.label),
           ...(workspaceRecord === undefined
             ? {}
             : { defaultTaskStatusId: workspaceRecord.defaultTaskStatusId }),
