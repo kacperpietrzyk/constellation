@@ -244,6 +244,33 @@ test("tasks CSV maps onto the v2 exchange manifest through the same engine", () 
     "an unknown status label is a preview-visible validation error",
   );
   assert.equal(manifestStatusErrors(parsed.manifest, ["w TOKU"]).length, 0);
+  // A v3 package brings its own statuses and creates them before routing any
+  // task, so a label the package carries is known even to a workspace that has
+  // never seen it. Checking only the workspace made the preview refuse exactly
+  // the packages v3 exists to accept — the feature was unreachable from the
+  // surface while the import underneath worked, and only the installed journey
+  // showed it.
+  assert.deepEqual(
+    manifestStatusErrors(
+      {
+        ...parsed.manifest,
+        version: 3,
+        tasks: parsed.manifest.tasks.map((task) => ({
+          ...task,
+          statusLabel: "Czeka na klienta",
+        })),
+        taskStatuses: [
+          {
+            key: "status-waiting-client",
+            label: "Czeka na klienta",
+            operationalSemantics: "waiting",
+          },
+        ],
+      },
+      ["To do"],
+    ),
+    [],
+  );
 
   const service = createRuntimeKernelService({
     context,

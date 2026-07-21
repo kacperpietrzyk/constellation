@@ -597,8 +597,17 @@ export const manifestStatusErrors = (
   manifest: StarterWorkspaceManifest,
   knownStatusLabels: readonly string[],
 ): readonly string[] => {
+  // A v3 package brings its own statuses, and they are created before any
+  // task is routed — so a label the package carries is known even though the
+  // workspace has never seen it. Checking only the workspace made the preview
+  // refuse exactly the packages manifest v3 exists to accept, which left the
+  // feature unreachable from the surface even though the import itself worked
+  // (caught by the installed journey, not by any unit test).
   const known = new Set(
-    knownStatusLabels.map((label) => label.toLocaleLowerCase("pl-PL")),
+    [
+      ...knownStatusLabels,
+      ...(manifest.taskStatuses ?? []).map((status) => status.label),
+    ].map((label) => label.toLocaleLowerCase("pl-PL")),
   );
   return manifest.tasks
     .filter(
