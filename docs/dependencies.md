@@ -36,7 +36,7 @@ errors are converted to content-safe code/path pairs and never echo input values
 | TypeScript 6.0.3                         | Strict compilation and project references                             | Apache-2.0   |
 | ESLint 10.7.0 + typescript-eslint 8.63.0 | TypeScript static checks                                              | MIT          |
 | Prettier 3.9.5                           | Deterministic formatting                                              | MIT          |
-| markdownlint-cli2 0.23.0                 | Public Markdown checks                                                | MIT          |
+| markdownlint-cli2 0.23.1                 | Public Markdown checks                                                | MIT          |
 | `@types/node` 24.13.3                    | Node.js 24 compile-time declarations                                  | MIT          |
 | Vite 8.1.4 + React plugin 6.0.3          | Renderer and sandboxed preload builds                                 | MIT          |
 | React type declarations 19.2             | React compile-time declarations                                       | MIT          |
