@@ -12,6 +12,7 @@ import {
   type SpaceId,
   type TaskId,
   type TaskStatusId,
+  type RelationCondition,
   type CommentId,
   type AttentionSignalId,
   type DocumentId,
@@ -1265,6 +1266,10 @@ export interface SavedWorkViewFilters {
   readonly operationalStates?: readonly (
     "actionable" | "waiting" | "blocked"
   )[];
+  // ADR-045. Relation conditions are authorable from the desktop now. The
+  // absence of these keys was the whole basis for calling "Filtr po relacji"
+  // met while the kernel still accepted-and-dropped the R12.4 relation filters.
+  readonly relationConditions?: readonly RelationCondition[];
   readonly unassigned?: boolean;
   readonly statusIds?: readonly TaskStatusId[];
   readonly assigneePrincipalIds?: readonly PrincipalId[];
