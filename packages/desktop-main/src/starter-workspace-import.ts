@@ -661,6 +661,12 @@ export const importStarterWorkspace = (input: {
   // skipped rather than duplicated — labels are how a task names its status,
   // so two with one label would be ambiguous.
   let createdStatuses = 0;
+  // Statuses this run creates, so a task naming one resolves without the
+  // caller re-reading the workspace mid-import. A caller that snapshots its
+  // status list before the call — which the desktop does, and which is the
+  // obvious way to write it — would otherwise fail on exactly the package
+  // this section exists to make importable.
+  const createdStatusIds = new Map<string, string>();
   const existingStatusLabels = new Set(
     (input.existingStatusLabels ?? []).map((label) =>
       label.toLocaleLowerCase("pl-PL"),
@@ -674,14 +680,15 @@ export const importStarterWorkspace = (input: {
     // with that label, and skipping is the same outcome the enumerated path
     // reaches. Any other refusal (authorization, for instance) still aborts,
     // because it means the package cannot be applied as written.
+    const statusId = deterministicUuid(
+      `${input.manifest.importId}:task-status:${status.key}`,
+    );
     const created = input.service.execute(
       CommandEnvelopeSchema.parse({
         ...base(`task-status:${status.key}`),
         commandName: "taskStatus.create",
         payload: {
-          statusId: deterministicUuid(
-            `${input.manifest.importId}:task-status:${status.key}`,
-          ),
+          statusId,
           label: status.label,
           operationalSemantics: status.operationalSemantics,
         },
@@ -691,6 +698,7 @@ export const importStarterWorkspace = (input: {
       created.kind === "command_outcome" ? created.outcome : undefined;
     if (outcome?.outcome === "success") {
       existingStatusLabels.add(status.label.toLocaleLowerCase("pl-PL"));
+      createdStatusIds.set(status.label.toLocaleLowerCase("pl-PL"), statusId);
       createdStatuses += 1;
       continue;
     }
@@ -835,7 +843,9 @@ export const importStarterWorkspace = (input: {
       taskVersion = details.projection.version;
     }
     if (task.statusLabel) {
-      const statusId = input.resolveStatusId?.(task.statusLabel);
+      const statusId =
+        createdStatusIds.get(task.statusLabel.toLocaleLowerCase("pl-PL")) ??
+        input.resolveStatusId?.(task.statusLabel);
       if (statusId === undefined)
         throw new Error("STARTER_WORKSPACE_STATUS_UNKNOWN");
       if (statusId === input.defaultTaskStatusId) {
