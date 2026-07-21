@@ -169,6 +169,16 @@ without adding generated answers to the desktop application. These records use
 the same deterministic search, activity, export, audit, recovery, MCP, local
 store, and Space-scoped Hub projection rules as the earlier graph.
 
+Native documents have crossed the first connected-document boundary. The
+desktop now edits versioned structured Yjs content with paragraphs, headings,
+lists, emphasis, links, and code blocks; existing plaintext documents migrate
+once, named revisions restore rich structure, and schema negotiation prevents
+an older client from silently flattening newer work. This keeps rich writing on
+the same encrypted local and self-hosted collaboration path as the original
+document editor. Typed inline entity links, permission-safe backlinks,
+document-body search, and structured local/remote agent parity remain current
+work rather than delivered claims.
+
 ## Delivered foundation — coherent desktop Alpha and release candidate
 
 The desktop application is now one coherent, recoverable product surface rather

@@ -350,6 +350,16 @@ outbox for coordinated workspaces; the Hub persists bounded binary state and
 revision checkpoints in PostgreSQL. Revision restore applies a new Yjs change
 and records which immutable revision it came from.
 
+Collaborative content is format-versioned inside that single Yjs source of
+truth. Legacy `plain-v1` uses `Y.Text("content")`; current `rich-v1` uses a
+ProseMirror-compatible `Y.XmlFragment("rich-content")` plus bounded metadata.
+The adapter owns deterministic migration, plaintext projection, checkpointing,
+and format-aware restore. Desktop and Hub session negotiation refuse writes
+from clients that do not support the stored format, preventing a plaintext
+client from flattening rich structure. Local schema v20 closes the equivalent
+downgrade window for local-only workspaces; recovery across that boundary uses
+the pre-upgrade backup.
+
 Knowledge Sources remain separate versioned records. A Native Document declares
 whether it is a Note, Document, or Deliverable and keeps an explicit current
 evidence set. A named version freezes one realtime revision, its content

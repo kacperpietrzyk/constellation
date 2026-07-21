@@ -6423,6 +6423,47 @@ button.mention-chip:disabled {
 .document-presence.denied > span {
   background: var(--status-error);
 }
+.document-presence.upgrade_required > span,
+.document-presence.migration_failed > span {
+  background: var(--status-error);
+}
+.document-editor-actions {
+  display: grid;
+  justify-items: end;
+  gap: var(--space-2);
+}
+.document-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+.document-toolbar > button,
+.document-toolbar > .inline-popover-trigger {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0 var(--space-2);
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+.document-toolbar > button:hover:not(:disabled),
+.document-toolbar > .inline-popover-trigger:hover:not(:disabled),
+.document-toolbar > button[aria-pressed="true"] {
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+  background: var(--surface-hover);
+}
+.document-toolbar > button:focus-visible,
+.document-toolbar > .inline-popover-trigger:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.document-link-form {
+  display: grid;
+  min-width: min(20rem, calc(100vw - 2rem));
+  gap: var(--space-3);
+}
 .document-canvas {
   width: min(100%, 50rem);
   min-height: 100%;
@@ -6438,6 +6479,52 @@ button.mention-chip:disabled {
   font-family: var(--font-sans);
   font-size: clamp(1rem, 0.92rem + 0.3vw, 1.18rem);
   line-height: 1.75;
+}
+.document-canvas > :first-child {
+  margin-top: 0;
+}
+.document-canvas > :last-child {
+  margin-bottom: 0;
+}
+.document-canvas h1,
+.document-canvas h2,
+.document-canvas h3 {
+  margin: 1.6em 0 0.55em;
+  color: var(--text-primary);
+  line-height: 1.22;
+  text-wrap: balance;
+}
+.document-canvas p,
+.document-canvas ul,
+.document-canvas ol,
+.document-canvas pre,
+.document-canvas blockquote {
+  margin: 0 0 1em;
+}
+.document-canvas ul,
+.document-canvas ol {
+  padding-left: 1.6em;
+}
+.document-canvas pre {
+  overflow-x: auto;
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+.document-canvas a {
+  color: var(--text-primary);
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.16em;
+}
+.document-canvas p.is-editor-empty:first-child::before {
+  float: left;
+  height: 0;
+  color: var(--text-tertiary);
+  content: attr(data-placeholder);
+  pointer-events: none;
 }
 .document-canvas:focus-visible {
   box-shadow: var(--focus-ring);
@@ -6529,9 +6616,12 @@ button.mention-chip:disabled {
   border-bottom: 1px solid var(--border-subtle);
 }
 .knowledge-create-bar .inline-popover-trigger {
+  min-width: 0;
   min-height: 2.25rem;
   justify-content: center;
+  overflow: hidden;
   padding-inline: var(--space-2);
+  text-overflow: ellipsis;
   width: 100%;
 }
 .inline-popover .knowledge-create-form {
@@ -6783,6 +6873,16 @@ button.mention-chip:disabled {
   display: block;
   min-height: 30rem;
 }
+.knowledge-writing-plane > .document-editor-shell {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 30rem;
+  justify-items: center;
+}
+.document-editor-shell > .document-canvas {
+  min-height: 30rem;
+}
 .named-versions {
   padding-top: var(--space-4);
   border-top: 1px solid var(--border-subtle);
@@ -6990,6 +7090,14 @@ button.mention-chip:disabled {
   .named-versions {
     padding-inline: var(--space-4);
   }
+  .document-editor-actions {
+    width: 100%;
+    justify-items: start;
+  }
+  .document-toolbar {
+    width: 100%;
+    justify-content: flex-start;
+  }
   .knowledge-create-bar .inline-popover-trigger {
     min-height: 2.75rem;
   }
@@ -6997,6 +7105,7 @@ button.mention-chip:disabled {
     padding: var(--space-3);
   }
   .document-canvas,
+  .document-editor-shell,
   .knowledge-welcome {
     border-radius: var(--radius-lg);
   }

@@ -14,6 +14,7 @@ import {
 } from "@constellation/contracts";
 import type { SqliteApplicationStore } from "@constellation/local-store";
 import {
+  type DocumentContentFormat,
   MAX_DOCUMENT_TEXT_LENGTH,
   YjsRealtimeDocumentAdapter,
 } from "@constellation/realtime-documents";
@@ -40,6 +41,7 @@ export interface RendererDocumentOpenResult {
     readonly token: string;
     readonly expiresAt: string;
     readonly access: "view" | "comment" | "edit";
+    readonly documentFormat: DocumentContentFormat;
   };
 }
 
@@ -60,6 +62,20 @@ const boundedBytes = (value: unknown): Uint8Array => {
     throw new Error("Document binary payload is outside the supported limit.");
   }
   return value;
+};
+
+const supportedFormats = (value: unknown): readonly DocumentContentFormat[] => {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 2) {
+    throw new Error("DOCUMENT_FORMAT_CAPABILITY_INVALID");
+  }
+  const formats = [...new Set(value)];
+  if (
+    formats.length !== value.length ||
+    formats.some((format) => format !== "plain-v1" && format !== "rich-v1")
+  ) {
+    throw new Error("DOCUMENT_FORMAT_CAPABILITY_INVALID");
+  }
+  return formats as DocumentContentFormat[];
 };
 
 export class DocumentCollaborationBridge {
@@ -106,16 +122,40 @@ export class DocumentCollaborationBridge {
       }),
       signal: AbortSignal.timeout(15_000),
     });
-    if (!response.ok) throw new Error("DOCUMENT_NOT_AVAILABLE");
+    if (!response.ok) {
+      const failure = (await response.json().catch(() => undefined)) as
+        { readonly code?: unknown } | undefined;
+      if (
+        response.status === 409 &&
+        failure?.code === "document_format_upgrade_required"
+      ) {
+        throw new Error("DOCUMENT_SCHEMA_UPGRADE_REQUIRED");
+      }
+      throw new Error("DOCUMENT_NOT_AVAILABLE");
+    }
     return response.json() as Promise<unknown>;
   }
 
   public async open(raw: {
     readonly documentId: unknown;
     readonly spaceId: unknown;
+    readonly supportedDocumentFormats?: unknown;
   }): Promise<RendererDocumentOpenResult> {
     const scope = this.scope(raw);
     const state = this.input.store.loadDocumentCollaborationState(scope)?.state;
+    const formats = supportedFormats(
+      raw.supportedDocumentFormats ?? ["plain-v1"],
+    );
+    if (state !== undefined) {
+      const adapter = new YjsRealtimeDocumentAdapter(state);
+      try {
+        if (!formats.includes(adapter.getFormat())) {
+          throw new Error("DOCUMENT_SCHEMA_UPGRADE_REQUIRED");
+        }
+      } finally {
+        adapter.destroy();
+      }
+    }
     const pendingUpdateCount =
       this.input.store.listPendingDocumentUpdates(scope).length;
     const connection = this.input.connection();
@@ -130,6 +170,7 @@ export class DocumentCollaborationBridge {
     try {
       value = (await this.post("/v1/documents/session", {
         documentId: scope.documentId,
+        supportedDocumentFormats: formats,
       })) as Record<string, unknown>;
     } catch (error) {
       if (
@@ -148,6 +189,8 @@ export class DocumentCollaborationBridge {
       typeof value.token !== "string" ||
       typeof value.room !== "string" ||
       typeof value.expiresAt !== "string" ||
+      (value.documentFormat !== "plain-v1" &&
+        value.documentFormat !== "rich-v1") ||
       !["view", "comment", "edit"].includes(String(value.access))
     ) {
       throw new Error("DOCUMENT_SESSION_INVALID");
@@ -166,6 +209,7 @@ export class DocumentCollaborationBridge {
         token: value.token,
         expiresAt: value.expiresAt,
         access: value.access as "view" | "comment" | "edit",
+        documentFormat: value.documentFormat,
       },
     };
   }
@@ -179,6 +223,28 @@ export class DocumentCollaborationBridge {
     const scope = this.scope(raw);
     const state = boundedBytes(raw.state);
     const update = boundedBytes(raw.update);
+    const incoming = new YjsRealtimeDocumentAdapter(state);
+    try {
+      if (incoming.getText().length > MAX_DOCUMENT_TEXT_LENGTH) {
+        throw new Error("DOCUMENT_TEXT_SIZE_INVALID");
+      }
+      const stored = this.input.store.loadDocumentCollaborationState(scope);
+      if (stored !== undefined) {
+        const current = new YjsRealtimeDocumentAdapter(stored.state);
+        try {
+          if (
+            current.getFormat() === "rich-v1" &&
+            incoming.getFormat() !== "rich-v1"
+          ) {
+            throw new Error("DOCUMENT_SCHEMA_DOWNGRADE_REFUSED");
+          }
+        } finally {
+          current.destroy();
+        }
+      }
+    } finally {
+      incoming.destroy();
+    }
     const updatedAt = this.now();
     if (this.input.connection() === undefined) {
       this.input.store.storeDocumentCollaborationState({

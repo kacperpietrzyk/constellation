@@ -22,16 +22,18 @@ preload bridge.
   their row identity when loaded;
 - malformed JSON, mismatched identity, and unsupported schema versions fail
   closed;
-- the versioned migration chain through schema v19 runs exclusively and
+- the versioned migration chain through schema v20 runs exclusively and
   backfills the accumulated event/audit, full-text, collaboration, agent,
   knowledge, strategic, meeting, and managed-payload structures in the same
   transaction;
 - this build opens and upgrades every historical local schema from v1 through
-  the current v19 (v17 adds the workspace field-definition table, v18 the
-  project-template table, v19 the automation-rule table); it refuses v20 or
-  newer before changing the database and does not support opening a v19
-  workspace with an older build unless that build's documented schema window
-  includes v19;
+  the current v20 (v17 adds the workspace field-definition table, v18 the
+  project-template table, v19 the automation-rule table, and v20 closes the
+  local downgrade window before structured document content can be written);
+  it refuses v21 or newer before changing the database. An older v19 build
+  cannot open a v20 workspace: rollback across the rich-document boundary must
+  restore the pre-upgrade backup instead of exposing rich state to a client
+  that only understands plaintext documents;
 - the FTS5 index carries Workspace and Space scope on every Capture, Task, and
   Project entry; since v16 the Task entry also indexes the optional working
   `description` and `nextAction` fields; application search still authorizes

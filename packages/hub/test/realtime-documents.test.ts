@@ -10,6 +10,7 @@ import {
   DeviceIdSchema,
   DocumentIdSchema,
   ExecutionContextSchema,
+  SpaceIdSchema,
   WorkspaceIdSchema,
 } from "@constellation/contracts";
 import { createReferenceHarness } from "@constellation/testkit";
@@ -29,7 +30,7 @@ import {
 const workspaceId = WorkspaceIdSchema.parse(
   "00000000-0000-4000-8000-000000000901",
 );
-const spaceId = "00000000-0000-4000-8000-000000000902";
+const spaceId = SpaceIdSchema.parse("00000000-0000-4000-8000-000000000902");
 const principalId = "00000000-0000-4000-8000-000000000903";
 const collaboratorPrincipalId = "00000000-0000-4000-8000-000000000907";
 const collaboratorMembershipId = "00000000-0000-4000-8000-000000000908";
@@ -204,6 +205,44 @@ describe("self-hosted realtime document gateway", () => {
     const credentialA = await enroll(deviceA);
     const credentialB = await enroll(deviceB, collaboratorAuthorization());
     const gateway = new RealtimeDocumentGateway(service, repository);
+    const rich = new YjsRealtimeDocumentAdapter();
+    rich.replaceText("Dokument po migracji", {
+      kind: "human",
+      principalId,
+    });
+    rich.migrateToRich("a".repeat(64), {
+      kind: "human",
+      principalId,
+    });
+    await repository.storeDocumentState({
+      workspaceId,
+      documentId,
+      spaceId,
+      engine: "yjs-13",
+      state: rich.encodeState(),
+      updatedAt: "2026-07-14T12:05:00.000Z",
+    });
+    rich.destroy();
+    assert.equal(
+      await gateway.createSession({
+        credential: credentialA,
+        workspaceId,
+        deviceId: deviceA,
+        documentId,
+        supportedDocumentFormats: ["plain-v1"],
+      }),
+      "upgrade_required",
+    );
+    const emptyLegacy = new YjsRealtimeDocumentAdapter();
+    await repository.storeDocumentState({
+      workspaceId,
+      documentId,
+      spaceId,
+      engine: "yjs-13",
+      state: emptyLegacy.encodeState(),
+      updatedAt: "2026-07-14T12:06:00.000Z",
+    });
+    emptyLegacy.destroy();
     server = await startHubServer({
       service,
       realtimeDocuments: gateway,
@@ -216,15 +255,27 @@ describe("self-hosted realtime document gateway", () => {
       workspaceId,
       deviceId: deviceA,
       documentId,
+      supportedDocumentFormats: ["plain-v1", "rich-v1"],
     });
     const sessionB = await gateway.createSession({
       credential: credentialB,
       workspaceId,
       deviceId: deviceB,
       documentId,
+      supportedDocumentFormats: ["plain-v1", "rich-v1"],
     });
     assert.ok(sessionA);
     assert.ok(sessionB);
+    assert.notEqual(sessionA, "upgrade_required");
+    assert.notEqual(sessionB, "upgrade_required");
+    if (
+      sessionA === undefined ||
+      sessionA === "upgrade_required" ||
+      sessionB === undefined ||
+      sessionB === "upgrade_required"
+    ) {
+      throw new Error("Document sessions unavailable.");
+    }
     const alice = new Y.Doc();
     const bob = new Y.Doc();
     const statuses: string[] = [];
