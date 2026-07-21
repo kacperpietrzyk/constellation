@@ -39,6 +39,7 @@ import {
 } from "@constellation/application";
 import {
   CredentialIdSchema,
+  DocumentIdSchema,
   GrantIdSchema,
   HubEnrollmentResultSchema,
   HubWorkspaceSnapshotSchema,
@@ -1053,6 +1054,27 @@ const startProductionDesktop = async (): Promise<void> => {
                 label.toLocaleLowerCase("pl-PL"),
             )?.id,
           existingStatusLabels: statuses.map((status) => status.label),
+          ...(installationDeviceId === undefined
+            ? {}
+            : (() => {
+                const deviceId = installationDeviceId;
+                return {
+                  writeDocumentText: ({ documentId, spaceId, text }) => {
+                    createAgentDocumentTextPort({
+                      workspaceId: kernel.identity.workspaceId,
+                      store: kernel.store,
+                      connection: () => activeHubConnection,
+                    }).replace({
+                      documentId: DocumentIdSchema.parse(documentId),
+                      spaceId,
+                      text,
+                      // An import is the person's act, not an agent run.
+                      principalId: kernel.context.principalId,
+                      deviceId,
+                    });
+                  },
+                };
+              })()),
           ...(workspaceRecord === undefined
             ? {}
             : { defaultTaskStatusId: workspaceRecord.defaultTaskStatusId }),
@@ -2264,10 +2286,16 @@ const startProductionDesktop = async (): Promise<void> => {
     assertTrustedSender(event);
     const kernel = workspaceRecovery?.kernel;
     if (kernel === undefined) return { outcome: "failure" } as const;
+    const documentTextPort = createAgentDocumentTextPort({
+      workspaceId: kernel.identity.workspaceId,
+      store: kernel.store,
+      connection: () => activeHubConnection,
+    });
     const built = buildExchangeManifest({
       store: kernel.store,
       workspaceId: kernel.identity.workspaceId,
       spaceId: kernel.identity.rootSpaceId,
+      readDocumentText: documentTextPort.read,
     });
     if (built === undefined) return { outcome: "failure" } as const;
     const result = await dialog.showSaveDialog({

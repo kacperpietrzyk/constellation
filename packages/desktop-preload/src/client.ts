@@ -159,6 +159,7 @@ export interface DesktopWorkspaceCockpitEntry extends DesktopWorkspaceEntry {
 
 export interface StarterWorkspaceCounts {
   readonly taskStatuses: number;
+  readonly documents: number;
   readonly areas: number;
   readonly initiatives: number;
   readonly projects: number;
@@ -303,6 +304,8 @@ export interface ConstellationRendererClient {
         readonly outcome: "success";
         readonly fileLabel: string;
         readonly counts: {
+          readonly taskStatuses: number;
+          readonly documents: number;
           readonly areas: number;
           readonly initiatives: number;
           readonly projects: number;
