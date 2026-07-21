@@ -349,6 +349,9 @@ const isCurrentlyAuthorized = (
     case "meeting.route":
     case "meeting.promoteWorkItem":
     case "meeting.linkParticipants":
+    case "meeting.editWorkItem":
+    case "meeting.correctWorkItemResponsibility":
+    case "meeting.addWorkItem":
     case "project.updateOutcome":
     case "task.create":
     case "task.updateDetails":
@@ -718,6 +721,9 @@ export class ApplicationKernel {
       case "meeting.route":
       case "meeting.promoteWorkItem":
       case "meeting.linkParticipants":
+      case "meeting.editWorkItem":
+      case "meeting.correctWorkItemResponsibility":
+      case "meeting.addWorkItem":
       case "project.updateOutcome":
       case "task.create":
       case "task.updateDetails":

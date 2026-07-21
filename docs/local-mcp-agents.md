@@ -125,6 +125,14 @@ Capture History.
   Missing-payload replacement succeeds only when the desktop runtime already
   holds and verifies the referenced staged bytes.
 
+Meeting corrections run through the same commands as the desktop: an
+authorized grant can fix a work item's title or state, correct who is
+responsible for it, and add one the recording missed, each attributed and
+undoable. Calendar preview and confirmation stay device-only by design —
+consent for a calendar write is bound to one device and one use, which a
+remote or headless host cannot supply, so those operations are absent from the
+catalog rather than failing at the last step.
+
 Multiple full-access agents may run concurrently. Their principal, grant,
 external run, idempotency scope, audit receipts, and checkpoints remain distinct.
 

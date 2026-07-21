@@ -137,6 +137,11 @@ import type {
 } from "./ports.js";
 import { evaluateRelationConditions } from "./relation-conditions.js";
 import {
+  addMeetingWorkItem,
+  correctMeetingWorkItemResponsibility,
+  editMeetingWorkItem,
+} from "./meeting-work-items.js";
+import {
   isApplicationWave2ReadView,
   isApplicationWave2Transaction,
   RetryableUnitOfWorkError,
@@ -188,6 +193,9 @@ export type Wave2Command = Extract<
       | "meeting.route"
       | "meeting.promoteWorkItem"
       | "meeting.linkParticipants"
+      | "meeting.editWorkItem"
+      | "meeting.correctWorkItemResponsibility"
+      | "meeting.addWorkItem"
       | "project.updateOutcome"
       | "task.create"
       | "task.updateDetails"
@@ -540,6 +548,16 @@ export const isWave2CommandAuthorized = (
           spaceId: record.spaceId,
         })
       );
+    }
+    case "meeting.editWorkItem":
+    case "meeting.correctWorkItemResponsibility":
+    case "meeting.addWorkItem": {
+      const record = view.getStrategicRecord(command.payload.meetingId);
+      if (record?.kind !== "meeting") return false;
+      // Correcting a work item is ordinary meeting work: it writes nothing
+      // outside the meeting record, so it carries no additional grant the way
+      // promotion (task.create) and linking (relationship.personCreate) do.
+      return authorized(dependencies, view, context, command, record.spaceId);
     }
     case "meeting.linkParticipants": {
       const record = view.getStrategicRecord(command.payload.meetingId);
@@ -3189,6 +3207,64 @@ export const executeWave2Command = (
             ? {}
             : { priorOrganizationId: priorOrganizationId }),
           priorSpaceId: meeting.spaceId,
+          resultingVersion: record.version,
+        },
+      );
+    }
+    case "meeting.editWorkItem":
+    case "meeting.correctWorkItemResponsibility":
+    case "meeting.addWorkItem": {
+      const current = transaction.getStrategicRecord(command.payload.meetingId);
+      if (current?.kind !== "meeting") return precondition(command, occurredAt);
+      if (!exactExpected(command, { [current.id]: current.version })) {
+        return versionConflict(command, occurredAt, {
+          [current.id]: current.version,
+        });
+      }
+      const meeting = current.meeting;
+      const priorItem = meeting.workItems.find(
+        (candidate) => candidate.id === command.payload.workItemId,
+      );
+      const updated =
+        command.commandName === "meeting.editWorkItem"
+          ? editMeetingWorkItem(meeting, { ...command.payload, occurredAt })
+          : command.commandName === "meeting.correctWorkItemResponsibility"
+            ? correctMeetingWorkItemResponsibility(meeting, {
+                ...command.payload,
+                occurredAt,
+              })
+            : addMeetingWorkItem(meeting, { ...command.payload, occurredAt });
+      if (updated === undefined) return precondition(command, occurredAt);
+      const record: StrategicRecord = {
+        ...current,
+        meeting: updated,
+        version: current.version + 1,
+        updatedAt: occurredAt,
+      };
+      if (!transaction.updateStrategicRecord(record, current.version)) {
+        return versionConflict(command, occurredAt, {
+          [current.id]: current.version,
+        });
+      }
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["workItems", "triage"],
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          kind: "meeting.restore_work_item",
+          meetingId: current.id,
+          workItemId: command.payload.workItemId,
+          ...(priorItem === undefined ? {} : { priorItem }),
           resultingVersion: record.version,
         },
       );
@@ -6270,6 +6346,7 @@ const descriptorState = (
           };
     }
     case "meeting.restore_routing":
+    case "meeting.restore_work_item":
     case "meeting.restore_participant_links": {
       const meeting = view.getStrategicRecord(descriptor.meetingId);
       return meeting?.kind === "meeting" &&
@@ -6799,6 +6876,38 @@ const applyUndo = (
         ...(descriptor.priorOrganizationId === undefined
           ? {}
           : { organizationId: descriptor.priorOrganizationId }),
+        version: record.meeting.version + 1,
+        updatedAt: occurredAt,
+      },
+      version: record.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateStrategicRecord(restored, record.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
+  } else if (descriptor.kind === "meeting.restore_work_item") {
+    const record = transaction.getStrategicRecord(
+      descriptor.meetingId,
+    ) as Extract<StrategicRecord, { kind: "meeting" }>;
+    const priorItem = descriptor.priorItem;
+    const workItems =
+      priorItem === undefined
+        ? record.meeting.workItems.filter(
+            (item) => item.id !== descriptor.workItemId,
+          )
+        : record.meeting.workItems.map((item) =>
+            item.id === descriptor.workItemId ? priorItem : item,
+          );
+    const restored: StrategicRecord = {
+      ...record,
+      meeting: {
+        ...record.meeting,
+        workItems,
+        triage: workItems.some((item) => item.state === "conflicted")
+          ? "conflicted"
+          : record.meeting.missingComponents.length > 0
+            ? "partial"
+            : "ready",
         version: record.meeting.version + 1,
         updatedAt: occurredAt,
       },

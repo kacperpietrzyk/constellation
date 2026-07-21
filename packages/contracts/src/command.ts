@@ -37,7 +37,12 @@ import {
   AgentAccessPresetSchema,
   CapabilitySchema,
 } from "./execution-context.js";
-import { ImportedMeetingSchema } from "./meeting-loop.js";
+import {
+  ImportedMeetingSchema,
+  MeetingWorkItemKindSchema,
+  MeetingWorkItemStateSchema,
+  MeetingWorkItemTitleSchema,
+} from "./meeting-loop.js";
 
 export const ContractVersionSchema = z.literal(1);
 export type ContractVersion = z.infer<typeof ContractVersionSchema>;
@@ -1132,6 +1137,53 @@ export const MeetingLinkParticipantsCommandSchema =
       .strict(),
   }).strict();
 
+// R14.3 / ADR-047 — the three work-item corrections the desktop has always
+// made through IPC. They operate on the meeting strategic record, because a
+// remote operator reaches the Hub, where the device meeting-loop table does
+// not exist.
+
+export const MeetingEditWorkItemCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("meeting.editWorkItem"),
+  payload: z
+    .object({
+      meetingId: StrategicRecordIdSchema,
+      workItemId: z.uuid(),
+      // The work item's own version, separate from the meeting's: two
+      // operators correcting different items must not conflict.
+      expectedWorkItemVersion: z.int().positive(),
+      title: MeetingWorkItemTitleSchema,
+      state: MeetingWorkItemStateSchema,
+    })
+    .strict(),
+}).strict();
+
+export const MeetingCorrectWorkItemResponsibilityCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("meeting.correctWorkItemResponsibility"),
+    payload: z
+      .object({
+        meetingId: StrategicRecordIdSchema,
+        workItemId: z.uuid(),
+        expectedWorkItemVersion: z.int().positive(),
+        // null clears the override and returns the item to its source
+        // responsibility; a value overrides it.
+        name: z.string().trim().min(1).max(300).nullable(),
+      })
+      .strict(),
+  }).strict();
+
+export const MeetingAddWorkItemCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("meeting.addWorkItem"),
+  payload: z
+    .object({
+      meetingId: StrategicRecordIdSchema,
+      workItemId: z.uuid(),
+      kind: MeetingWorkItemKindSchema,
+      title: MeetingWorkItemTitleSchema,
+    })
+    .strict(),
+}).strict();
+
 export const ProjectUpdateOutcomeCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("project.updateOutcome"),
   payload: z
@@ -1700,6 +1752,9 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   MeetingRouteCommandSchema,
   MeetingPromoteWorkItemCommandSchema,
   MeetingLinkParticipantsCommandSchema,
+  MeetingEditWorkItemCommandSchema,
+  MeetingCorrectWorkItemResponsibilityCommandSchema,
+  MeetingAddWorkItemCommandSchema,
   ProjectUpdateOutcomeCommandSchema,
   TaskCreateCommandSchema,
   TaskUpdateDetailsCommandSchema,

@@ -120,6 +120,7 @@ const context = (): ExecutionContext =>
       "opportunity.linkOutcomes",
       "relationship.workspace",
       "meeting.upsertImported",
+      "meeting.editWorkItem",
     ],
     origin: "desktop",
   });
@@ -271,6 +272,100 @@ describe("meeting loop persistence", () => {
     );
     sourceDatabase.close();
     targetDatabase.close();
+  });
+
+  it("carries a kernel work-item edit into the device meeting-loop state", () => {
+    // ADR-047 §2. The desktop delegates work-item corrections to the kernel,
+    // which writes the strategic record. That is only safe because this store
+    // merges a record whose inner meeting version is higher into the
+    // device-local state — an edit that failed to advance that version would
+    // be discarded here, silently, on the next read.
+    const database = new DatabaseSync(":memory:");
+    const device = createKernel(database);
+    assert.equal(
+      unwrap(device.kernel.execute(context(), workspaceCommand)).outcome,
+      "success",
+    );
+    const meetingId = "00000000-0000-4000-8000-000000000291";
+    const workItemId = "00000000-0000-4000-8000-000000000292";
+    assert.equal(
+      unwrap(
+        device.kernel.execute(
+          context(),
+          CommandEnvelopeSchema.parse({
+            contractVersion: 1,
+            commandName: "meeting.upsertImported",
+            commandId: "00000000-0000-4000-8000-000000000293",
+            workspaceId: ids.workspace,
+            idempotencyKey: "meeting-291-v1",
+            expectedVersions: {},
+            correlationId: "00000000-0000-4000-8000-000000000294",
+            payload: {
+              meeting: {
+                id: meetingId,
+                workspaceId: ids.workspace,
+                spaceId: ids.rootSpace,
+                connectionId: "jamie-personal",
+                externalMeetingId: "jamie-meeting-291",
+                title: "Delivery review",
+                startedAt: "2026-07-21T10:00:00.000Z",
+                participants: [],
+                workItems: [
+                  {
+                    id: workItemId,
+                    kind: "task" as const,
+                    sourceExternalId: "task-291",
+                    title: "Confirm the rollout owner",
+                    state: "open" as const,
+                    sourceControlled: true,
+                    locallyModified: false,
+                    version: 1,
+                  },
+                ],
+                contentHash: "c".repeat(64),
+                triage: "ready" as const,
+                missingComponents: [],
+                version: 1,
+                updatedAt: "2026-07-21T10:05:00.000Z",
+              },
+            },
+          }),
+        ),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        device.kernel.execute(
+          context(),
+          CommandEnvelopeSchema.parse({
+            contractVersion: 1,
+            commandName: "meeting.editWorkItem",
+            commandId: "00000000-0000-4000-8000-000000000295",
+            workspaceId: ids.workspace,
+            idempotencyKey: "meeting-291-edit",
+            expectedVersions: { [meetingId]: 1 },
+            correlationId: "00000000-0000-4000-8000-000000000296",
+            payload: {
+              meetingId,
+              workItemId,
+              expectedWorkItemVersion: 1,
+              title: "Confirm the rollout owner this week",
+              state: "open",
+            },
+          }),
+        ),
+      ).outcome,
+      "success",
+    );
+    const meeting = device.store.load(context().workspaceId).meetings[0];
+    assert.equal(meeting?.version, 2);
+    assert.equal(
+      meeting?.workItems[0]?.title,
+      "Confirm the rollout owner this week",
+    );
+    assert.equal(meeting?.workItems[0]?.locallyModified, true);
+    database.close();
   });
 });
 

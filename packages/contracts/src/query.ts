@@ -1492,6 +1492,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           "project.unapply_template",
           "meeting.unpromote_work_item",
           "meeting.restore_routing",
+          "meeting.restore_work_item",
           "meeting.restore_participant_links",
           "task.restore_operational_state",
           "work_link.restore_state",

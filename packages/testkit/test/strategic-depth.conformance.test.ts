@@ -83,6 +83,9 @@ const context = (): ExecutionContext =>
       "meeting.route",
       "meeting.promoteWorkItem",
       "meeting.linkParticipants",
+      "meeting.editWorkItem",
+      "meeting.correctWorkItemResponsibility",
+      "meeting.addWorkItem",
       "task.create",
       "relationship.personCreate",
       "knowledge.sourceCreate",
@@ -1944,4 +1947,264 @@ it("reserves time for a Task without touching its deadline", () => {
     "success",
   );
   assert.equal(freshOf().calendarBlock, undefined);
+});
+
+it("corrects meeting work items through the kernel, attributed and undoable", () => {
+  // ADR-047 / R14.3. The three corrections the desktop has always made
+  // through IPC are kernel commands, so an authorized agent makes them under
+  // the same grants, audit, and undo — and the inner meeting version moves,
+  // which is what both reconciliation points compare.
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("meeting-items-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Meeting corrections",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const meetingId = uuid();
+  const sourceItemId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("meeting-items-import"),
+        commandName: "meeting.upsertImported",
+        payload: {
+          meeting: {
+            id: meetingId,
+            workspaceId: ids.workspace,
+            spaceId: ids.space,
+            connectionId: "jamie-workspace",
+            externalMeetingId: "meeting-77",
+            title: "Delivery review",
+            startedAt: "2026-07-21T09:00:00.000Z",
+            participants: [],
+            workItems: [
+              {
+                id: sourceItemId,
+                kind: "task",
+                sourceExternalId: "task-77",
+                title: "Confirm the rollout owner",
+                state: "open",
+                sourceControlled: true,
+                locallyModified: false,
+                sourceValueInConflict: "Confirm the rollout owner today",
+                version: 1,
+              },
+            ],
+            contentHash: "b".repeat(64),
+            triage: "ready",
+            missingComponents: [],
+            version: 1,
+            updatedAt: "2026-07-21T10:00:00.000Z",
+          },
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const meetingRecord = () => {
+    const record = harness.store
+      .snapshot()
+      .strategicRecords!.find((candidate) => candidate.id === meetingId)!;
+    if (record.kind !== "meeting") throw new Error("Expected a meeting.");
+    return record;
+  };
+  const item = () =>
+    meetingRecord().meeting.workItems.find(
+      (candidate) => candidate.id === sourceItemId,
+    )!;
+
+  const innerVersionBefore = meetingRecord().meeting.version;
+
+  // A stale work-item version is refused rather than applied to whatever the
+  // item happens to be now.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("meeting-items-edit-stale", {
+          [meetingId]: meetingRecord().version,
+        }),
+        commandName: "meeting.editWorkItem",
+        payload: {
+          meetingId,
+          workItemId: sourceItemId,
+          expectedWorkItemVersion: 7,
+          title: "Something else",
+          state: "open",
+        },
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+  );
+
+  // Typing the conflicting source value back accepts the source instead of
+  // recording a local edit that would keep reporting the same conflict.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("meeting-items-accept-source", {
+          [meetingId]: meetingRecord().version,
+        }),
+        commandName: "meeting.editWorkItem",
+        payload: {
+          meetingId,
+          workItemId: sourceItemId,
+          expectedWorkItemVersion: item().version,
+          title: "Confirm the rollout owner today",
+          state: "open",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(item().sourceControlled, true);
+  assert.equal(item().sourceValueInConflict, undefined);
+
+  const edit = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("meeting-items-edit", {
+        [meetingId]: meetingRecord().version,
+      }),
+      commandName: "meeting.editWorkItem",
+      payload: {
+        meetingId,
+        workItemId: sourceItemId,
+        expectedWorkItemVersion: item().version,
+        title: "Confirm the rollout owner this week",
+        state: "open",
+      },
+    }),
+  );
+  assert.equal(edit.outcome, "success");
+  assert.equal(item().title, "Confirm the rollout owner this week");
+  assert.equal(item().locallyModified, true);
+  assert.equal(item().sourceControlled, false);
+  // The inner version is load-bearing: the device store and the desktop
+  // publisher both compare it, so an edit that left it alone would be
+  // discarded as stale on the next device load (ADR-047 §2).
+  assert.equal(meetingRecord().meeting.version, innerVersionBefore + 2);
+
+  const correction = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("meeting-items-responsibility", {
+        [meetingId]: meetingRecord().version,
+      }),
+      commandName: "meeting.correctWorkItemResponsibility",
+      payload: {
+        meetingId,
+        workItemId: sourceItemId,
+        expectedWorkItemVersion: item().version,
+        name: " Antek ",
+      },
+    }),
+  );
+  assert.equal(correction.outcome, "success");
+  assert.deepEqual(item().responsibilityOverride, { name: "Antek" });
+  // Attribution is a real receipt, replacing a device trail nothing read.
+  assert.equal(
+    harness.store
+      .snapshot()
+      .auditReceipts.some(
+        (receipt) =>
+          receipt.commandName === "meeting.correctWorkItemResponsibility" &&
+          receipt.principalId === ids.principal,
+      ),
+    true,
+  );
+
+  const addedId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("meeting-items-add", {
+          [meetingId]: meetingRecord().version,
+        }),
+        commandName: "meeting.addWorkItem",
+        payload: {
+          meetingId,
+          workItemId: addedId,
+          kind: "waiting",
+          title: "Wait for legal review",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const added = meetingRecord().meeting.workItems.find(
+    (candidate) => candidate.id === addedId,
+  );
+  assert.equal(added?.state, "open");
+  assert.equal(added?.sourceControlled, false);
+  assert.equal(added?.sourceExternalId, `local:${addedId}`);
+
+  // Reusing an id is refused: the caller believes it is creating something.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("meeting-items-add-again", {
+          [meetingId]: meetingRecord().version,
+        }),
+        commandName: "meeting.addWorkItem",
+        payload: {
+          meetingId,
+          workItemId: addedId,
+          kind: "waiting",
+          title: "Wait for legal review",
+        },
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+  );
+
+  // Undo removes exactly the added item and leaves the corrections standing.
+  const addCommandId = harness.store
+    .snapshot()
+    .auditReceipts.find(
+      (receipt) => receipt.commandName === "meeting.addWorkItem",
+    )!.commandId;
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("meeting-items-undo-preview", {}),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: addCommandId },
+    }),
+  );
+  assert.equal(preview.outcome, "preview");
+  if (
+    preview.outcome !== "preview" ||
+    preview.projection.kind !== "undo.previewed"
+  )
+    assert.fail("Expected an added-work-item undo preview");
+  assert.equal(
+    preview.projection.compensationKind,
+    "meeting.restore_work_item",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("meeting-items-undo", preview.projection.requiredVersions),
+        commandName: "command.undo",
+        payload: { targetCommandId: addCommandId },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    meetingRecord().meeting.workItems.some(
+      (candidate) => candidate.id === addedId,
+    ),
+    false,
+  );
+  assert.deepEqual(item().responsibilityOverride, { name: "Antek" });
 });
