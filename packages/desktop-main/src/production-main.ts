@@ -1100,6 +1100,49 @@ const startProductionDesktop = async (): Promise<void> => {
       throw new Error("Meeting change could not enter the coordinated feed.");
     }
   };
+  /**
+   * ADR-047: work-item corrections run through the kernel, not the device
+   * meeting-loop table. A remote operator reaches the Hub, where that table
+   * does not exist, so the kernel owns the write and the desktop delegates —
+   * leaving both writers alive would give one meeting two concurrency models.
+   */
+  const executeMeetingWorkItemCommand = (
+    meetingId: string,
+    build: (input: {
+      readonly meetingId: string;
+      readonly workspaceId: string;
+      readonly recordVersion: number;
+    }) => { readonly commandName: string; readonly payload: unknown },
+  ): boolean => {
+    const store = workspaceRecovery?.kernel?.store;
+    if (store === undefined) throw new Error("Meeting loop is unavailable.");
+    const current = store
+      .snapshot()
+      .strategicRecords?.find((record) => record.id === meetingId);
+    if (current?.kind !== "meeting") return false;
+    const built = build({
+      meetingId,
+      workspaceId: current.workspaceId,
+      recordVersion: current.version,
+    });
+    const result = runtime.service.execute(
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: built.commandName,
+        commandId: randomUUID(),
+        workspaceId: current.workspaceId,
+        // The record version rides in the key: a successful command binds it,
+        // so a repeat after undo must not collide with the earlier attempt.
+        idempotencyKey: `meeting-work-item:${built.commandName}:${meetingId}:v${current.version}`,
+        expectedVersions: { [current.id]: current.version },
+        correlationId: randomUUID(),
+        payload: built.payload,
+      }),
+    );
+    return (
+      result.kind === "command_outcome" && result.outcome.outcome === "success"
+    );
+  };
   const jamieCustody = new JamieConnectionCustody(
     stateRoot,
     electronSafeStorage,
@@ -1933,17 +1976,20 @@ const startProductionDesktop = async (): Promise<void> => {
       )
         throw new Error("Invalid meeting work item edit.");
       const state = MeetingWorkItemSchema.shape.state.parse(candidate.state);
-      const updated = meetingLoop.service.editWorkItem({
-        authorization: meetingLoop.authorization(),
-        meetingId: candidate.meetingId,
-        workItemId: candidate.workItemId,
-        expectedVersion: candidate.expectedVersion,
-        title: candidate.title,
-        state,
-      });
-      if (updated === undefined) return false;
-      publishMeetingToCommandFeed(updated);
-      return true;
+      const meetingId = candidate.meetingId;
+      const workItemId = candidate.workItemId;
+      const expectedWorkItemVersion = candidate.expectedVersion;
+      const title = candidate.title;
+      return executeMeetingWorkItemCommand(meetingId, () => ({
+        commandName: "meeting.editWorkItem",
+        payload: {
+          meetingId,
+          workItemId,
+          expectedWorkItemVersion,
+          title: title.trim(),
+          state,
+        },
+      }));
     },
   );
   ipcMain.handle(
@@ -1970,16 +2016,18 @@ const startProductionDesktop = async (): Promise<void> => {
           : MeetingWorkItemResponsibilityOverrideSchema.parse({
               name: candidate.name,
             });
-      const updated = meetingLoop.service.correctWorkItemResponsibility({
-        authorization: meetingLoop.authorization(),
-        meetingId: candidate.meetingId,
-        workItemId: candidate.workItemId,
-        expectedVersion: candidate.expectedVersion,
-        ...(override === undefined ? {} : { name: override.name }),
-      });
-      if (updated === undefined) return false;
-      publishMeetingToCommandFeed(updated);
-      return true;
+      const meetingId = candidate.meetingId;
+      const workItemId = candidate.workItemId;
+      const expectedWorkItemVersion = candidate.expectedVersion;
+      return executeMeetingWorkItemCommand(meetingId, () => ({
+        commandName: "meeting.correctWorkItemResponsibility",
+        payload: {
+          meetingId,
+          workItemId,
+          expectedWorkItemVersion,
+          name: override === undefined ? null : override.name,
+        },
+      }));
     },
   );
   ipcMain.handle(DESKTOP_CHANNELS.addMeetingWorkItem, (event, raw: unknown) => {
@@ -2003,16 +2051,16 @@ const startProductionDesktop = async (): Promise<void> => {
     )
       throw new Error("Invalid meeting work item.");
     const kind = MeetingWorkItemSchema.shape.kind.parse(candidate.kind);
-    const updated = meetingLoop.service.addWorkItem({
-      authorization: meetingLoop.authorization(),
-      meetingId: candidate.meetingId,
-      requestId: candidate.requestId,
-      kind,
-      title: candidate.title,
-    });
-    if (updated === undefined) return false;
-    publishMeetingToCommandFeed(updated);
-    return true;
+    const meetingId = candidate.meetingId;
+    // The renderer's requestId is the work item's id: it is already a v4 UUID
+    // generated once per attempt, so retrying the same attempt stays
+    // idempotent while the kernel keeps owning id ownership explicitly.
+    const workItemId = candidate.requestId;
+    const title = candidate.title;
+    return executeMeetingWorkItemCommand(meetingId, () => ({
+      commandName: "meeting.addWorkItem",
+      payload: { meetingId, workItemId, kind, title: title.trim() },
+    }));
   });
   ipcMain.handle(
     DESKTOP_CHANNELS.previewCalendarBlocks,

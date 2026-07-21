@@ -35,6 +35,7 @@ import type {
   NamedDocumentVersionId,
   StrategicRecordId,
   ImportedMeeting,
+  MeetingWorkItem,
   RelationCondition,
 } from "@constellation/contracts";
 
@@ -830,6 +831,20 @@ export type UndoDescriptor =
       readonly priorProjectId?: ProjectId;
       readonly priorOrganizationId?: StrategicRecordId;
       readonly priorSpaceId: SpaceId;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "meeting.restore_work_item";
+      readonly meetingId: StrategicRecordId;
+      readonly workItemId: string;
+      // Absent means the command added the item, so undo removes it again.
+      // Present is the exact prior item, so an edit undoes to what it was
+      // rather than to a guess at what it probably was.
+      readonly priorItem?: MeetingWorkItem;
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }

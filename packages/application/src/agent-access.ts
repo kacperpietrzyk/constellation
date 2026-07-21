@@ -754,6 +754,7 @@ export const executeAgentAccessQuery = (
             return [descriptor.projectId, ...descriptor.createdTaskIds];
           case "meeting.unpromote_work_item":
             return [descriptor.meetingId, descriptor.createdTaskId];
+          case "meeting.restore_work_item":
           case "meeting.restore_routing":
             return [descriptor.meetingId];
           case "meeting.restore_participant_links":

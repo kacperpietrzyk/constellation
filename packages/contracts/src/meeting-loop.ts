@@ -267,19 +267,35 @@ export const MeetingWorkItemResponsibilityOverrideSchema = z
   })
   .strict();
 
+// Extracted so the ADR-047 commands share this vocabulary instead of
+// restating it: a restated shape is how the saved-view filters drifted (#95).
+export const MeetingWorkItemKindSchema = z.enum([
+  "task",
+  "waiting",
+  "decision",
+  "note",
+  "follow_up",
+]);
+export type MeetingWorkItemKind = z.infer<typeof MeetingWorkItemKindSchema>;
+
+export const MeetingWorkItemStateSchema = z.enum([
+  "open",
+  "completed",
+  "dismissed",
+  "withdrawn",
+  "conflicted",
+]);
+export type MeetingWorkItemState = z.infer<typeof MeetingWorkItemStateSchema>;
+
+export const MeetingWorkItemTitleSchema = z.string().trim().min(1).max(4000);
+
 export const MeetingWorkItemSchema = z
   .object({
     id: z.uuid(),
-    kind: z.enum(["task", "waiting", "decision", "note", "follow_up"]),
+    kind: MeetingWorkItemKindSchema,
     sourceExternalId: z.string().trim().min(1).max(500),
-    title: z.string().trim().min(1).max(4000),
-    state: z.enum([
-      "open",
-      "completed",
-      "dismissed",
-      "withdrawn",
-      "conflicted",
-    ]),
+    title: MeetingWorkItemTitleSchema,
+    state: MeetingWorkItemStateSchema,
     sourceControlled: z.boolean(),
     locallyModified: z.boolean(),
     assignee: MeetingWorkItemAssigneeSchema.optional(),

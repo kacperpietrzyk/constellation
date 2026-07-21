@@ -5,6 +5,9 @@ import test from "node:test";
 import {
   MemoryMeetingLoopRepository,
   MeetingLoopService,
+  addMeetingWorkItem,
+  correctMeetingWorkItemResponsibility,
+  editMeetingWorkItem,
   normalizeJamieApiMeeting,
   type CalendarReader,
   type CalendarWriter,
@@ -19,6 +22,7 @@ import {
   TaskIdSchema,
   WorkspaceIdSchema,
   type CalendarBlockDraft,
+  type ImportedMeeting,
   type NormalizedJamieMeeting,
 } from "@constellation/contracts";
 
@@ -143,7 +147,39 @@ const createHarness = (writer?: CalendarWriter) => {
     ids: { uuid, opaqueToken: () => randomUUID().replaceAll("-", "") },
     repository,
   });
-  return { service, repository, setNow: (value: string) => (now = value) };
+  /**
+   * ADR-047 moved the work-item corrections to kernel commands. These tests
+   * are about Jamie reconciliation, not about the envelope, so they apply the
+   * same shared transformation the kernel handler applies and persist it the
+   * way the kernel's strategic-record write later reaches this state through
+   * the store's meeting merge. A refusal stays a refusal: `undefined`.
+   */
+  const applyLocally = (
+    meetingId: string,
+    transform: (meeting: ImportedMeeting) => ImportedMeeting | undefined,
+  ): ImportedMeeting | undefined => {
+    const state = repository.load(workspaceId);
+    const meeting = state.meetings.find((item) => item.id === meetingId);
+    if (meeting === undefined) return undefined;
+    const updated = transform(meeting);
+    if (updated === undefined) return undefined;
+    return repository.save(workspaceId, state.revision, {
+      ...state,
+      revision: state.revision + 1,
+      meetings: state.meetings.map((item) =>
+        item.id === meeting.id ? updated : item,
+      ),
+    })
+      ? updated
+      : undefined;
+  };
+  return {
+    service,
+    repository,
+    applyLocally,
+    now: () => now,
+    setNow: (value: string) => (now = value),
+  };
 };
 
 const jamieApiMeeting = {
@@ -274,7 +310,7 @@ test("exact Jamie redelivery is a no-op and does not churn meeting versions", ()
 });
 
 test("backfills source responsibility once without turning it into a workspace assignment", () => {
-  const { service } = createHarness();
+  const { service, applyLocally, now } = createHarness();
   const hash = "9".repeat(64);
   const legacy = service.importJamie({
     authorization,
@@ -285,14 +321,15 @@ test("backfills source responsibility once without turning it into a workspace a
   const legacyTask = legacy.meeting.workItems.find(
     (item) => item.sourceExternalId === "task-1",
   )!;
-  const edited = service.editWorkItem({
-    authorization,
-    meetingId: legacy.meeting.id,
-    workItemId: legacyTask.id,
-    expectedVersion: legacyTask.version,
-    title: "Call IT Card after the RFI review",
-    state: "open",
-  });
+  const edited = applyLocally(legacy.meeting.id, (meeting) =>
+    editMeetingWorkItem(meeting, {
+      workItemId: legacyTask.id,
+      expectedWorkItemVersion: legacyTask.version,
+      title: "Call IT Card after the RFI review",
+      state: "open",
+      occurredAt: now(),
+    }),
+  );
   assert.ok(edited);
 
   const withResponsibility = source({
@@ -327,8 +364,8 @@ test("backfills source responsibility once without turning it into a workspace a
   assert.equal(redelivered.meeting.version, corrected.meeting.version);
 });
 
-test("keeps an audited local responsibility correction across Jamie reconciliation", () => {
-  const { service, repository } = createHarness();
+test("keeps a local responsibility correction across Jamie reconciliation", () => {
+  const { service, applyLocally, now } = createHarness();
   const fromJamie = source({
     hash: "8".repeat(64),
     taskId: "task-1",
@@ -348,23 +385,25 @@ test("keeps an audited local responsibility correction across Jamie reconciliati
     (item) => item.kind === "decision",
   )!;
   assert.equal(
-    service.correctWorkItemResponsibility({
-      authorization,
-      meetingId: imported.meeting.id,
-      workItemId: decision.id,
-      expectedVersion: decision.version,
-      name: "Antek",
-    }),
+    applyLocally(imported.meeting.id, (meeting) =>
+      correctMeetingWorkItemResponsibility(meeting, {
+        workItemId: decision.id,
+        expectedWorkItemVersion: decision.version,
+        name: "Antek",
+        occurredAt: now(),
+      }),
+    ),
     undefined,
   );
 
-  const corrected = service.correctWorkItemResponsibility({
-    authorization,
-    meetingId: imported.meeting.id,
-    workItemId: importedTask.id,
-    expectedVersion: importedTask.version,
-    name: " Antek ",
-  });
+  const corrected = applyLocally(imported.meeting.id, (meeting) =>
+    correctMeetingWorkItemResponsibility(meeting, {
+      workItemId: importedTask.id,
+      expectedWorkItemVersion: importedTask.version,
+      name: " Antek ",
+      occurredAt: now(),
+    }),
+  );
   const correctedTask = corrected?.workItems.find(
     (item) => item.id === importedTask.id,
   );
@@ -403,34 +442,36 @@ test("keeps an audited local responsibility correction across Jamie reconciliati
   assert.equal(reconciledTask.assignee?.name, "Kacper P.");
   assert.deepEqual(reconciledTask.responsibilityOverride, { name: "Antek" });
   assert.equal(
-    service.correctWorkItemResponsibility({
-      authorization,
-      meetingId: imported.meeting.id,
-      workItemId: importedTask.id,
-      expectedVersion: importedTask.version,
-    }),
+    applyLocally(imported.meeting.id, (meeting) =>
+      correctMeetingWorkItemResponsibility(meeting, {
+        workItemId: importedTask.id,
+        expectedWorkItemVersion: importedTask.version,
+        name: null,
+        occurredAt: now(),
+      }),
+    ),
     undefined,
   );
 
-  const cleared = service.correctWorkItemResponsibility({
-    authorization,
-    meetingId: imported.meeting.id,
-    workItemId: importedTask.id,
-    expectedVersion: reconciledTask.version,
-  });
+  const cleared = applyLocally(imported.meeting.id, (meeting) =>
+    correctMeetingWorkItemResponsibility(meeting, {
+      workItemId: importedTask.id,
+      expectedWorkItemVersion: reconciledTask.version,
+      name: null,
+      occurredAt: now(),
+    }),
+  );
   assert.equal(
     cleared?.workItems.find((item) => item.id === importedTask.id)
       ?.responsibilityOverride,
     undefined,
   );
-  assert.deepEqual(
-    repository.load(workspaceId).audits.map((audit) => audit.action),
-    ["edited", "edited"],
-  );
+  // Attribution for a correction is now a kernel audit receipt (ADR-047), not
+  // a device-local trail nothing read; the kernel conformance covers it.
 });
 
 test("Jamie correction preserves a locally edited work item and exposes conflict", () => {
-  const { service } = createHarness();
+  const { service, applyLocally, now } = createHarness();
   const applied = service.importJamie({
     authorization,
     spaceId,
@@ -439,14 +480,15 @@ test("Jamie correction preserves a locally edited work item and exposes conflict
   assert.notEqual(applied.outcome, "rejected");
   if (applied.outcome === "rejected") return;
   const task = applied.meeting.workItems.find((item) => item.kind === "task")!;
-  const edited = service.editWorkItem({
-    authorization,
-    meetingId: applied.meeting.id,
-    workItemId: task.id,
-    expectedVersion: task.version,
-    title: "Confirm rollout owner with security",
-    state: "open",
-  });
+  const edited = applyLocally(applied.meeting.id, (meeting) =>
+    editMeetingWorkItem(meeting, {
+      workItemId: task.id,
+      expectedWorkItemVersion: task.version,
+      title: "Confirm rollout owner with security",
+      state: "open",
+      occurredAt: now(),
+    }),
+  );
   assert.ok(edited);
   const corrected = service.importJamie({
     authorization,
@@ -466,14 +508,15 @@ test("Jamie correction preserves a locally edited work item and exposes conflict
     conflicted.sourceValueInConflict,
     "Assign rollout owner immediately",
   );
-  const resolved = service.editWorkItem({
-    authorization,
-    meetingId: corrected.meeting.id,
-    workItemId: conflicted.id,
-    expectedVersion: conflicted.version,
-    title: conflicted.sourceValueInConflict!,
-    state: "open",
-  });
+  const resolved = applyLocally(corrected.meeting.id, (meeting) =>
+    editMeetingWorkItem(meeting, {
+      workItemId: conflicted.id,
+      expectedWorkItemVersion: conflicted.version,
+      title: conflicted.sourceValueInConflict!,
+      state: "open",
+      occurredAt: now(),
+    }),
+  );
   const resolvedTask = resolved?.workItems.find(
     (item) => item.id === conflicted.id,
   );
@@ -483,8 +526,8 @@ test("Jamie correction preserves a locally edited work item and exposes conflict
   assert.equal(resolvedTask?.sourceControlled, true);
 });
 
-test("independent meeting work is idempotent, versioned, and attributed", () => {
-  const { service, repository } = createHarness();
+test("independent meeting work is versioned and refuses a reused id", () => {
+  const { service, applyLocally, now } = createHarness();
   const imported = service.importJamie({
     authorization,
     spaceId,
@@ -492,46 +535,49 @@ test("independent meeting work is idempotent, versioned, and attributed", () => 
   });
   assert.notEqual(imported.outcome, "rejected");
   if (imported.outcome === "rejected") return;
-  const requestId = "00000000-0000-4000-8000-000000000777";
-  const created = service.addWorkItem({
-    authorization,
-    meetingId: imported.meeting.id,
-    requestId,
-    kind: "waiting",
-    title: "Wait for legal review",
-  });
-  const replay = service.addWorkItem({
-    authorization,
-    meetingId: imported.meeting.id,
-    requestId,
-    kind: "waiting",
-    title: "Wait for legal review",
-  });
+  const workItemId = "00000000-0000-4000-8000-000000000777";
+  const created = applyLocally(imported.meeting.id, (meeting) =>
+    addMeetingWorkItem(meeting, {
+      workItemId,
+      kind: "waiting",
+      title: "Wait for legal review",
+      occurredAt: now(),
+    }),
+  );
   assert.ok(created);
-  assert.equal(replay?.workItems.length, created?.workItems.length);
-  const waiting = created?.workItems.find((item) => item.kind === "waiting");
-  assert.ok(waiting);
-  const edited = service.editWorkItem({
-    authorization,
-    meetingId: imported.meeting.id,
-    workItemId: waiting!.id,
-    expectedVersion: waiting!.version,
-    title: waiting!.title,
-    state: "completed",
-  });
+  // ADR-047: replay protection moved to the kernel's idempotency record, so
+  // the transformation refuses a reused id rather than quietly returning the
+  // meeting unchanged — a caller reusing an id believes it is creating.
   assert.equal(
-    edited?.workItems.find((item) => item.id === waiting!.id)?.state,
+    applyLocally(imported.meeting.id, (meeting) =>
+      addMeetingWorkItem(meeting, {
+        workItemId,
+        kind: "waiting",
+        title: "Wait for legal review again",
+        occurredAt: now(),
+      }),
+    ),
+    undefined,
+  );
+  const waiting = created.workItems.find((item) => item.id === workItemId);
+  assert.ok(waiting);
+  assert.equal(waiting.sourceControlled, false);
+  assert.equal(waiting.locallyModified, true);
+  assert.equal(waiting.version, 1);
+  const edited = applyLocally(imported.meeting.id, (meeting) =>
+    editMeetingWorkItem(meeting, {
+      workItemId,
+      expectedWorkItemVersion: waiting.version,
+      title: waiting.title,
+      state: "completed",
+      occurredAt: now(),
+    }),
+  );
+  assert.equal(
+    edited?.workItems.find((item) => item.id === workItemId)?.state,
     "completed",
   );
-  assert.deepEqual(
-    repository
-      .load(workspaceId)
-      .audits.map((audit) => [audit.action, audit.principalId]),
-    [
-      ["created", principalId],
-      ["edited", principalId],
-    ],
-  );
+  assert.equal(edited?.version, created.version + 1);
 });
 
 const block: CalendarBlockDraft = {
@@ -780,7 +826,7 @@ test("Jamie due dates reach the work item and clear when the source drops them",
 });
 
 test("a local completion survives an unrelated Jamie correction", () => {
-  const { service } = createHarness();
+  const { service, applyLocally, now } = createHarness();
   const applied = service.importJamie({
     authorization,
     spaceId,
@@ -790,14 +836,15 @@ test("a local completion survives an unrelated Jamie correction", () => {
   const item = applied.meeting.workItems.find(
     (candidate) => candidate.sourceExternalId === "task-1",
   )!;
-  const edited = service.editWorkItem({
-    authorization,
-    meetingId: applied.meeting.id,
-    workItemId: item.id,
-    expectedVersion: item.version,
-    title: item.title,
-    state: "completed",
-  });
+  const edited = applyLocally(applied.meeting.id, (meeting) =>
+    editMeetingWorkItem(meeting, {
+      workItemId: item.id,
+      expectedWorkItemVersion: item.version,
+      title: item.title,
+      state: "completed",
+      occurredAt: now(),
+    }),
+  );
   assert.ok(edited);
   // Jamie changes something else about the meeting; this item is untouched.
   const corrected = service.importJamie({
