@@ -7883,7 +7883,32 @@ export const executeWave2Query = (
     // ADR-051. Every event in the Space, in order, resumable by id — as
     // distinct from `activity.meaningful`, which curates a human-readable
     // subset and cannot be resumed at all.
-    const events = view.listEvents(query.workspaceId, query.parameters.spaceId);
+    // Space scope is not the whole boundary. `activity.meaningful` curated a
+    // subset by hand; a feed over *every* event type exposes families whose
+    // subject an agent cannot read: `workspace.access` returns only the
+    // caller's own row and `agent.access` only its own grant, so membership
+    // and grant administration events would hand an observer the existence,
+    // ids, and cadence of changes those reads deliberately withhold. They are
+    // filtered by the administrative capability that governs the subject —
+    // which an agent grant can never hold (ADR-046) — so the feed cannot show
+    // what a later read would refuse (ADR-051 §3).
+    const administrative = (
+      capability: "workspace.manageAccess" | "agent.manageAccess",
+    ): boolean =>
+      dependencies.authorization.authorize({
+        context,
+        capability,
+        workspaceId: query.workspaceId,
+      });
+    const canSeeMembership = administrative("workspace.manageAccess");
+    const canSeeGrants = administrative("agent.manageAccess");
+    const events = view
+      .listEvents(query.workspaceId, query.parameters.spaceId)
+      .filter((event) => {
+        if (event.type.startsWith("workspace.member_")) return canSeeMembership;
+        if (event.type.startsWith("agent.")) return canSeeGrants;
+        return true;
+      });
     const cursor = query.parameters.afterEventId;
     const start =
       cursor === undefined
