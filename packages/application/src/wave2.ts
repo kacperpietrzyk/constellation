@@ -5,6 +5,9 @@ import {
   canViewSpace,
   effectiveSpaceAccess,
 } from "./collaboration-policy.js";
+import type { z } from "zod";
+
+import type { StrategicRecordProjectionSchema } from "@constellation/contracts";
 import {
   AuditReceiptIdSchema,
   CommandOutcomeSchema,
@@ -7179,6 +7182,41 @@ const queryRejected = (
     kernelTime,
     diagnosticCode,
   });
+
+// `querySuccess` takes an untyped projection and validates it strictly at
+// runtime, so `relationship.workspace` handing it a raw strategic record
+// typechecks no matter what the projection schema can actually carry. A domain
+// field the schema lacks surfaces only as a ZodError, on a query the desktop
+// snapshot loads — which is how a saved view with grouping came to break the
+// Relacje surface with nothing naming the cause.
+//
+// This makes that mistake a compile error for every record kind. The check is
+// deliberately a comparison of KEY SETS, not assignability: TypeScript allows a
+// value carrying extra properties to satisfy a narrower object type (excess
+// properties are rejected only for object literals), so an assignability
+// assertion passes happily while Zod's `.strict()` rejects the very same record
+// at runtime. Comparing keys is what actually catches a domain field the
+// projection cannot carry.
+type StrategicRecordProjection = z.infer<
+  typeof StrategicRecordProjectionSchema
+>;
+type UnprojectableKeys = {
+  [Kind in StrategicRecord["kind"]]: Exclude<
+    keyof Extract<StrategicRecord, { kind: Kind }>,
+    keyof Extract<StrategicRecordProjection, { kind: Kind }>
+  >;
+}[StrategicRecord["kind"]];
+// Fails to compile naming the offending key(s) if any domain field has no home
+// in the projection schema. The check is one level deep by design: it catches a
+// missing top-level field on any record kind (it catches `groupBy` on the
+// saved view, verified by reverting the schema). Drift *inside* a nested shape
+// is prevented the other way, by projections importing the one schema for that
+// shape rather than restating it — which is why `filters` is shared rather than
+// copied. A deeper recursive comparison was tried and rejected: union-typed
+// fields make it produce confusing false positives.
+type AssertNoUnprojectableKeys<Gap extends never> = Gap;
+export type StrategicRecordsAreFullyProjectable =
+  AssertNoUnprojectableKeys<UnprojectableKeys>;
 
 const querySuccess = (
   query: QueryEnvelope,
