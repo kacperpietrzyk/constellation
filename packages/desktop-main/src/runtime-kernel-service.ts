@@ -4,6 +4,7 @@ import {
   ApplicationKernel,
   Base64JsonCursorCodec,
   CommandScopedIdGenerator,
+  type ApplicationBatchResponse,
   type ApplicationCommandResponse,
   type ApplicationQueryResponse,
   type ApplicationStore,
@@ -13,6 +14,7 @@ import {
   type SemanticHasher,
 } from "@constellation/application";
 import {
+  BatchEnvelopeSchema,
   CommandEnvelopeSchema,
   type ExecutionContext,
   type CaptureOriginal,
@@ -21,6 +23,7 @@ import {
 
 export interface DesktopKernelService {
   execute(rawCommand: unknown): ApplicationCommandResponse;
+  executeBatch(rawBatch: unknown): ApplicationBatchResponse;
   query(rawQuery: unknown): ApplicationQueryResponse;
 }
 
@@ -121,6 +124,14 @@ export const createRuntimeKernelService = (input: {
       const command = CommandEnvelopeSchema.safeParse(rawCommand);
       if (command.success) ids.begin(command.data.commandId);
       return kernel.execute(currentContext(), rawCommand);
+    },
+    executeBatch: (rawBatch) => {
+      const batch = BatchEnvelopeSchema.safeParse(rawBatch);
+      // Deterministic ids are scoped per command, so every item announces
+      // itself the way a single command would.
+      if (batch.success)
+        for (const command of batch.data.commands) ids.begin(command.commandId);
+      return kernel.executeBatch(currentContext(), rawBatch);
     },
     query: (rawQuery) => kernel.query(currentContext(), rawQuery),
   };

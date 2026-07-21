@@ -56,6 +56,7 @@ const context = (principalId: string = ids.principal): ExecutionContext =>
       "capture.routeAsTask",
       "capture.history",
       "task.list",
+      "task.create",
       "command.previewUndo",
       "command.undo",
       "audit.receipt",
@@ -2101,4 +2102,134 @@ describe("reference kernel conformance", () => {
     assert.equal(JSON.stringify(response).includes(secret), false);
     assert.deepEqual(harness.store.snapshot(), before);
   });
+});
+
+it("previews a batch without a trace and applies it up to the first failure", () => {
+  // ADR-048 / R14.3. "Operacja grupowa": many changes with error control,
+  // retries, and partial success — and a forward preview that is the executor
+  // itself rather than a second implementation of its rules.
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  const bootstrap = harness.kernel.execute(context(), workspaceCommand());
+  assert.equal(bootstrap.kind, "command_outcome");
+
+  const taskIds = [requestId(), requestId(), requestId()];
+  const batchCommands = taskIds.map((taskId, index) => ({
+    ...commandMetadata(`batch-task-${index}`),
+    commandName: "task.create" as const,
+    payload: {
+      taskId,
+      spaceId: ids.rootSpace,
+      title: `Batched task ${index + 1}`,
+    },
+  }));
+  const batch = (
+    mode: "preview" | "apply",
+    commands: readonly unknown[] = batchCommands,
+  ) =>
+    harness.kernel.executeBatch(context(), {
+      contractVersion: 1,
+      batchId: requestId(),
+      workspaceId: ids.workspace,
+      correlationId: requestId(),
+      mode,
+      commands,
+    });
+
+  const previewed = batch("preview");
+  assert.equal(previewed.kind, "batch_result");
+  if (previewed.kind !== "batch_result") throw new Error("Expected a batch.");
+  assert.equal(previewed.outcomes.length, 3);
+  assert.equal(
+    previewed.outcomes.every((item) => item.outcome.outcome === "success"),
+    true,
+  );
+  assert.equal(previewed.applied, false);
+  // Nothing a preview did survives it — not the records, and not the
+  // idempotency keys its items would have bound.
+  assert.equal(harness.store.snapshot().tasks.length, 0);
+
+  const applied = batch("apply");
+  assert.equal(applied.kind, "batch_result");
+  if (applied.kind !== "batch_result") throw new Error("Expected a batch.");
+  assert.equal(applied.applied, true);
+  assert.deepEqual(applied.remaining, []);
+  assert.equal(harness.store.snapshot().tasks.length, 3);
+
+  // Partial success: the second item collides with an existing id, so the
+  // first applies, the second reports, and the third is never attempted.
+  const survivor = requestId();
+  const partial = harness.kernel.executeBatch(context(), {
+    contractVersion: 1,
+    batchId: requestId(),
+    workspaceId: ids.workspace,
+    correlationId: requestId(),
+    mode: "apply",
+    commands: [
+      {
+        ...commandMetadata("batch-partial-first"),
+        commandName: "task.create",
+        payload: { taskId: survivor, spaceId: ids.rootSpace, title: "Applied" },
+      },
+      {
+        ...commandMetadata("batch-partial-second"),
+        commandName: "task.create",
+        payload: {
+          taskId: taskIds[0]!,
+          spaceId: ids.rootSpace,
+          title: "Duplicate id",
+        },
+      },
+      {
+        ...commandMetadata("batch-partial-third"),
+        commandName: "task.create",
+        payload: {
+          taskId: requestId(),
+          spaceId: ids.rootSpace,
+          title: "Never run",
+        },
+      },
+    ],
+  });
+  assert.equal(partial.kind, "batch_result");
+  if (partial.kind !== "batch_result") throw new Error("Expected a batch.");
+  assert.equal(partial.applied, false);
+  assert.equal(partial.outcomes.length, 2);
+  assert.equal(partial.outcomes[0]?.outcome.outcome, "success");
+  assert.notEqual(partial.outcomes[1]?.outcome.outcome, "success");
+  assert.equal(partial.remaining.length, 1);
+  assert.equal(
+    harness.store.snapshot().tasks.some((task) => task.id === survivor),
+    true,
+  );
+
+  // An unauthorized item is refused inside a batch exactly as it would be
+  // alone: a batch grants nothing.
+  const denied = harness.kernel.executeBatch(
+    { ...context(), capabilityScope: ["task.list"] },
+    {
+      contractVersion: 1,
+      batchId: requestId(),
+      workspaceId: ids.workspace,
+      correlationId: requestId(),
+      mode: "apply",
+      commands: [
+        {
+          ...commandMetadata("batch-denied"),
+          commandName: "task.create",
+          payload: {
+            taskId: requestId(),
+            spaceId: ids.rootSpace,
+            title: "Denied",
+          },
+        },
+      ],
+    },
+  );
+  assert.equal(denied.kind, "batch_result");
+  if (denied.kind !== "batch_result") throw new Error("Expected a batch.");
+  assert.equal(
+    denied.outcomes[0]?.outcome.diagnosticCode,
+    "authorization.denied",
+  );
 });

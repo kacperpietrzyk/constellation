@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import {
+  BatchEnvelopeBaseSchema,
+  MAX_BATCH_COMMANDS,
   CommandEnvelopeSchema,
   QueryEnvelopeSchema,
 } from "@constellation/contracts";
@@ -11,7 +13,7 @@ export const MCP_OPERATIONS_RESOURCE_URI = "constellation://v1/operations";
 
 export interface CatalogOperation {
   readonly name: string;
-  readonly kind: "command" | "query" | "checkpoint_revert";
+  readonly kind: "command" | "query" | "checkpoint_revert" | "batch";
   readonly tool: string;
   readonly envelopeSchema: Record<string, unknown>;
 }
@@ -107,6 +109,30 @@ export const buildOperationCatalog = (
     guidance: INVOCATION_GUIDANCE,
     operations: [
       ...operations().filter((operation) => scope.has(operation.name)),
+      // The batch carries no capability of its own: it authorizes every item
+      // individually, so any grant that can run a command can batch it
+      // (ADR-048). It is therefore listed unconditionally rather than gated.
+      {
+        name: "command.batch",
+        kind: "batch" as const,
+        tool: "constellation.batch.v1",
+        // Generated from the envelope minus its items: inlining the whole
+        // command union here would repeat every operation the catalog
+        // already carries (measured: 33 KB → 371 KB for an observe grant).
+        // The item pointer is the only hand-written part.
+        envelopeSchema: {
+          ...jsonSchema(BatchEnvelopeBaseSchema.omit({ commands: true })),
+          commands: {
+            type: "array",
+            minItems: 1,
+            maxItems: MAX_BATCH_COMMANDS,
+            items: {
+              description:
+                "Any command envelope this catalog lists, in execution order.",
+            },
+          },
+        },
+      },
       ...(scope.has("agent.checkpoint.revert")
         ? [
             {

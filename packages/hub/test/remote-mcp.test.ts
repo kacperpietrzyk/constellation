@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 
 import {
+  BatchEnvelopeSchema,
   CommandEnvelopeSchema,
   CaptureOriginalSchema,
   CaptureIdSchema,
@@ -693,6 +694,86 @@ describe("remote MCP Hub gateway", () => {
     }
   });
 
+  it("applies a batch through the gateway and charges the limiter per command", async () => {
+    const { repository, remote, deviceCredential } = await setup();
+    const created = await createRemoteGrant(remote, deviceCredential);
+    const batchItem = (key: string, text: string) =>
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "capture.submitText",
+        commandId: uuid(),
+        workspaceId: ids.workspace,
+        idempotencyKey: key,
+        expectedVersions: {},
+        correlationId: uuid(),
+        payload: {
+          spaceId: ids.space,
+          originalText: text,
+          deviceId: "remote-host",
+          source: "global_quick_capture",
+        },
+      });
+    const applied = await remote.invoke(ids.workspace, created.bearerToken, {
+      contractVersion: 1,
+      requestId: uuid(),
+      kind: "batch",
+      run,
+      batch: BatchEnvelopeSchema.parse({
+        contractVersion: 1,
+        batchId: uuid(),
+        workspaceId: ids.workspace,
+        correlationId: uuid(),
+        mode: "apply",
+        commands: [
+          batchItem("remote-batch-1", "First batched capture"),
+          batchItem("remote-batch-2", "Second batched capture"),
+        ],
+      }),
+    });
+    assert.equal(applied.outcome, "success");
+    // The write reaches durable Hub state through the same snapshot path a
+    // single remote command takes.
+    await repository.withWorkspaceLock(ids.workspace, (state) => {
+      assert.equal(state.snapshot.captures.length, 2);
+    });
+
+    // ADR-048: one invocation carrying N commands spends N units, or the
+    // per-grant limit becomes a 100x ceiling for anyone who batches.
+    const limited = new HubRemoteMcpService(repository, {
+      now: () => "2026-07-14T20:00:00.000Z",
+      nowMs: () => 1_000,
+      maxCallsPerMinute: 3,
+    });
+    const overBudget = await limited.invoke(
+      ids.workspace,
+      created.bearerToken,
+      {
+        contractVersion: 1,
+        requestId: uuid(),
+        kind: "batch",
+        run,
+        batch: BatchEnvelopeSchema.parse({
+          contractVersion: 1,
+          batchId: uuid(),
+          workspaceId: ids.workspace,
+          correlationId: uuid(),
+          mode: "preview",
+          commands: [
+            batchItem("remote-batch-3", "Third"),
+            batchItem("remote-batch-4", "Fourth"),
+            batchItem("remote-batch-5", "Fifth"),
+            batchItem("remote-batch-6", "Sixth"),
+          ],
+        }),
+      },
+    );
+    assert.equal(overBudget.outcome, "retryable");
+    assert.deepEqual(overBudget.result, {
+      diagnosticCode: "mcp.rate_limited",
+      retryAfterMs: 1_000,
+    });
+  });
+
   it("fails closed for corrupt control state and reports repository outages as retryable", async () => {
     assert.throws(() =>
       parseHubRemoteAgentState({
@@ -758,6 +839,7 @@ describe("remote MCP Hub gateway", () => {
         [
           "constellation.query.v1",
           "constellation.command.v1",
+          "constellation.batch.v1",
           "constellation.checkpoint.revert.v1",
         ],
       );

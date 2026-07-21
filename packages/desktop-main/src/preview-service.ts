@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type {
+  ApplicationBatchResponse,
   ApplicationCommandResponse,
   ApplicationQueryResponse,
 } from "@constellation/application";
@@ -144,6 +145,7 @@ export const PREVIEW_IDENTITY = {
 
 export interface PreviewKernelService {
   execute(rawCommand: unknown): ApplicationCommandResponse;
+  executeBatch(rawBatch: unknown): ApplicationBatchResponse;
   query(rawQuery: unknown): ApplicationQueryResponse;
 }
 
@@ -188,6 +190,7 @@ export const createPreviewKernelService = (): PreviewKernelService => {
 
   return {
     execute: (rawCommand) => harness.kernel.execute(context, rawCommand),
+    executeBatch: (rawBatch) => harness.kernel.executeBatch(context, rawBatch),
     query: (rawQuery) => harness.kernel.query(context, rawQuery),
   };
 };

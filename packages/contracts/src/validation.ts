@@ -1,6 +1,11 @@
 import type { z } from "zod";
 
-import { CommandEnvelopeSchema, type CommandEnvelope } from "./command.js";
+import {
+  BatchEnvelopeSchema,
+  CommandEnvelopeSchema,
+  type BatchEnvelope,
+  type CommandEnvelope,
+} from "./command.js";
 import {
   ExecutionContextSchema,
   type ExecutionContext,
@@ -41,6 +46,10 @@ export const validateCommandEnvelope = (
   input: unknown,
 ): ContractValidation<CommandEnvelope> =>
   validate(CommandEnvelopeSchema, input);
+
+export const validateBatchEnvelope = (
+  input: unknown,
+): ContractValidation<BatchEnvelope> => validate(BatchEnvelopeSchema, input);
 
 export const validateQueryEnvelope = (
   input: unknown,

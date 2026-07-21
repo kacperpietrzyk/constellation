@@ -14,6 +14,7 @@ import { z } from "zod";
 import {
   CheckpointIdSchema,
   CaptureIdSchema,
+  BatchEnvelopeSchema,
   CommandEnvelopeSchema,
   CorrelationIdSchema,
   QueryEnvelopeSchema,
@@ -204,6 +205,21 @@ export const createConstellationMcpServer = (
         },
       },
       {
+        name: "constellation.batch.v1",
+        title: "Apply many Constellation commands as one bounded unit",
+        description:
+          "Submit up to 100 ordinary commands as one unit. Mode `preview` runs every item through the real executor inside one transaction and rolls it back, so preconditions, expected versions and authorization are exercised without writing; mode `apply` executes each item in its own transaction, in order, and stops at the first failure, returning per-item outcomes plus the ids it never attempted. Each item keeps its own idempotency key and expected versions, and a batch grants nothing an item would not have alone. Pass a checkpointId to make the whole batch revertible through constellation.checkpoint.revert.v1.",
+        inputSchema: objectInput({ run: unknownObject, batch: unknownObject }, [
+          "run",
+          "batch",
+        ]),
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
         name: "constellation.checkpoint.revert.v1",
         title: "Revert an agent checkpoint",
         description:
@@ -249,6 +265,16 @@ export const createConstellationMcpServer = (
             kind: "command",
             run,
             command: CommandEnvelopeSchema.parse(args.command),
+          }),
+        );
+      case "constellation.batch.v1":
+        return toolResult(
+          await port.invoke({
+            contractVersion: MCP_CONTRACT_VERSION,
+            requestId: randomUUID(),
+            kind: "batch",
+            run,
+            batch: BatchEnvelopeSchema.parse(args.batch),
           }),
         );
       case "constellation.checkpoint.revert.v1":

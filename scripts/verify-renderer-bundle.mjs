@@ -52,8 +52,10 @@ import path from "node:path";
 // presetu przy tworzeniu dostepu agenta, wiec tabela jedzie do bundla;
 // w zamian znika recznie utrzymywana lista, ktora odmawiala „pelnemu
 // dostepowi" nawet task.create.
+// 2026-07-21 (R14.3 slice c): entry po dodaniu koperty batcha do kontraktów
+// (ADR-048) — renderer importuje pakiet kontraktów w całości.
 const limits = {
-  entryBytes: 538_000,
+  entryBytes: 540_000,
   entryGzipBytes: 143_000,
   totalJavaScriptBytes: 833_000,
   stylesheetBytes: 177_000,

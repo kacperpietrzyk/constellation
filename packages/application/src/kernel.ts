@@ -41,6 +41,7 @@ import {
   type CaptureId,
   type CaptureReviewReason,
   isCustodiedCaptureOriginal,
+  validateBatchEnvelope,
   validateCommandEnvelope,
   validateExecutionContext,
   validateQueryEnvelope,
@@ -104,6 +105,24 @@ export type ApplicationCommandResponse =
   | { readonly kind: "command_outcome"; readonly outcome: CommandOutcome }
   | ContractBoundaryRejection;
 
+export interface BatchItemOutcome {
+  readonly commandId: string;
+  readonly outcome: CommandOutcome;
+}
+
+export type ApplicationBatchResponse =
+  | {
+      readonly kind: "batch_result";
+      readonly batchId: string;
+      readonly mode: "preview" | "apply";
+      readonly applied: boolean;
+      /** One per attempted item, in submission order. */
+      readonly outcomes: readonly BatchItemOutcome[];
+      /** Command ids never attempted, so a caller knows where it stopped. */
+      readonly remaining: readonly string[];
+    }
+  | ContractBoundaryRejection;
+
 export type ApplicationQueryResponse =
   | { readonly kind: "query_result"; readonly result: QueryResult }
   | ContractBoundaryRejection;
@@ -116,6 +135,9 @@ type OutcomeBody = CommandOutcome extends infer Outcome
       >
     : never
   : never;
+
+/** Thrown to roll a batch preview back; never escapes `executeBatch`. */
+class BatchPreviewRollback extends Error {}
 
 const contractRejection = (
   issueGroups: readonly (readonly ContractIssue[])[],
@@ -440,6 +462,91 @@ export class ApplicationKernel {
     };
   }
 
+  /**
+   * ADR-048. `preview` runs every item through the same executor inside one
+   * transaction and then throws, so the store rolls the whole thing back: the
+   * preview exercises real authorization, preconditions, expected versions,
+   * and idempotency rather than a second implementation of them. `apply`
+   * executes each item in its own transaction, in order, and stops at the
+   * first outcome that is not a success.
+   */
+  public executeBatch(
+    rawContext: unknown,
+    rawBatch: unknown,
+  ): ApplicationBatchResponse {
+    const context = validateExecutionContext(rawContext);
+    const batch = validateBatchEnvelope(rawBatch);
+    if (!context.ok || !batch.ok) {
+      return contractRejection([
+        ...(context.ok ? [] : [context.issues]),
+        ...(batch.ok ? [] : [batch.issues]),
+      ]);
+    }
+    const items = batch.value.commands.map((command) =>
+      batch.value.checkpointId === undefined
+        ? command
+        : { ...command, checkpointId: batch.value.checkpointId },
+    );
+    const occurredAt = this.dependencies.clock.now();
+    const outcomes: BatchItemOutcome[] = [];
+    if (batch.value.mode === "preview") {
+      try {
+        this.dependencies.store.transact((transaction) => {
+          for (const command of items) {
+            const outcome = this.executeWithinTransaction(
+              transaction,
+              context.value,
+              command,
+              occurredAt,
+            );
+            outcomes.push({ commandId: command.commandId, outcome });
+            if (outcome.outcome !== "success") break;
+          }
+          // The sentinel is the rollback: nothing a preview did survives it,
+          // including the idempotency records its items would have bound.
+          throw new BatchPreviewRollback();
+        });
+      } catch (error) {
+        if (!(error instanceof BatchPreviewRollback)) {
+          if (!(error instanceof RetryableUnitOfWorkError)) throw error;
+          return {
+            kind: "batch_result",
+            batchId: batch.value.batchId,
+            mode: "preview",
+            applied: false,
+            outcomes: [],
+            remaining: items.map((command) => command.commandId),
+          };
+        }
+      }
+      return {
+        kind: "batch_result",
+        batchId: batch.value.batchId,
+        mode: "preview",
+        applied: false,
+        outcomes,
+        remaining: items
+          .slice(outcomes.length)
+          .map((command) => command.commandId),
+      };
+    }
+    for (const command of items) {
+      const outcome = this.executeValidated(context.value, command);
+      outcomes.push({ commandId: command.commandId, outcome });
+      if (outcome.outcome !== "success") break;
+    }
+    return {
+      kind: "batch_result",
+      batchId: batch.value.batchId,
+      mode: "apply",
+      applied: outcomes.every((item) => item.outcome.outcome === "success"),
+      outcomes,
+      remaining: items
+        .slice(outcomes.length)
+        .map((command) => command.commandId),
+    };
+  }
+
   public query(
     rawContext: unknown,
     rawQuery: unknown,
@@ -464,75 +571,15 @@ export class ApplicationKernel {
     command: CommandEnvelope,
   ): CommandOutcome {
     const occurredAt = this.dependencies.clock.now();
-    const scope = idempotencyScope(context, command);
-    const fingerprint = this.dependencies.hasher.fingerprint(
-      semanticCommandInput(command),
-    );
-
     try {
-      return this.dependencies.store.transact((transaction) => {
-        if (
-          !isCurrentlyAuthorized(
-            this.dependencies.authorization,
-            transaction,
-            context,
-            command,
-          )
-        ) {
-          return this.outcome(command, occurredAt, {
-            outcome: "rejected",
-            diagnosticCode: "authorization.denied",
-          });
-        }
-        const existing = transaction.getIdempotency(scope);
-        if (existing !== undefined) {
-          return existing.fingerprint === fingerprint
-            ? existing.outcome
-            : this.outcome(command, occurredAt, {
-                outcome: "conflict",
-                diagnosticCode: "idempotency.key_reused",
-                currentVersions: {},
-              });
-        }
-
-        const checkpoint =
-          command.checkpointId === undefined
-            ? undefined
-            : transaction.getAgentCheckpoint(command.checkpointId);
-        if (
-          command.checkpointId !== undefined &&
-          (checkpoint === undefined ||
-            checkpoint.status !== "open" ||
-            checkpoint.workspaceId !== command.workspaceId ||
-            checkpoint.agentPrincipalId !== context.principalId ||
-            checkpoint.grantId !== context.grantId)
-        ) {
-          return this.outcome(command, occurredAt, {
-            outcome: "rejected",
-            diagnosticCode: "command.precondition_failed",
-          });
-        }
-        const outcome = this.handleCommand(
+      return this.dependencies.store.transact((transaction) =>
+        this.executeWithinTransaction(
           transaction,
           context,
           command,
-          scope,
-          fingerprint,
           occurredAt,
-        );
-        if (
-          outcome.outcome === "success" &&
-          checkpoint !== undefined &&
-          !checkpoint.commandIds.includes(command.commandId)
-        ) {
-          transaction.updateAgentCheckpoint({
-            ...checkpoint,
-            commandIds: [...checkpoint.commandIds, command.commandId],
-            updatedAt: occurredAt,
-          });
-        }
-        return outcome;
-      });
+        ),
+      );
     } catch (error) {
       if (!(error instanceof RetryableUnitOfWorkError)) {
         throw error;
@@ -542,6 +589,84 @@ export class ApplicationKernel {
         diagnosticCode: error.diagnosticCode,
       });
     }
+  }
+
+  /**
+   * One command, inside a transaction the caller owns. Extracted so a batch
+   * (ADR-048) can run many items in one transaction for its forward preview
+   * without a second executor that could drift from this one.
+   */
+  private executeWithinTransaction(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: CommandEnvelope,
+    occurredAt: string,
+  ): CommandOutcome {
+    const scope = idempotencyScope(context, command);
+    const fingerprint = this.dependencies.hasher.fingerprint(
+      semanticCommandInput(command),
+    );
+    if (
+      !isCurrentlyAuthorized(
+        this.dependencies.authorization,
+        transaction,
+        context,
+        command,
+      )
+    ) {
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "authorization.denied",
+      });
+    }
+    const existing = transaction.getIdempotency(scope);
+    if (existing !== undefined) {
+      return existing.fingerprint === fingerprint
+        ? existing.outcome
+        : this.outcome(command, occurredAt, {
+            outcome: "conflict",
+            diagnosticCode: "idempotency.key_reused",
+            currentVersions: {},
+          });
+    }
+
+    const checkpoint =
+      command.checkpointId === undefined
+        ? undefined
+        : transaction.getAgentCheckpoint(command.checkpointId);
+    if (
+      command.checkpointId !== undefined &&
+      (checkpoint === undefined ||
+        checkpoint.status !== "open" ||
+        checkpoint.workspaceId !== command.workspaceId ||
+        checkpoint.agentPrincipalId !== context.principalId ||
+        checkpoint.grantId !== context.grantId)
+    ) {
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    }
+    const outcome = this.handleCommand(
+      transaction,
+      context,
+      command,
+      scope,
+      fingerprint,
+      occurredAt,
+    );
+    if (
+      outcome.outcome === "success" &&
+      checkpoint !== undefined &&
+      !checkpoint.commandIds.includes(command.commandId)
+    ) {
+      transaction.updateAgentCheckpoint({
+        ...checkpoint,
+        commandIds: [...checkpoint.commandIds, command.commandId],
+        updatedAt: occurredAt,
+      });
+    }
+    return outcome;
   }
 
   private handleCommand(

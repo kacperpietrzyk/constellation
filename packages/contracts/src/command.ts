@@ -1803,3 +1803,42 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
 ]);
 export type CommandEnvelope = z.infer<typeof CommandEnvelopeSchema>;
 export type CommandName = CommandEnvelope["commandName"];
+
+/**
+ * ADR-048 — a bounded batch. Its own envelope rather than a command whose
+ * payload holds commands: nesting the union inside itself would make it
+ * recursive, and the ADR-039 operation catalog generates JSON Schema from that
+ * union.
+ */
+export const MAX_BATCH_COMMANDS = 100;
+
+export const BatchEnvelopeBaseSchema = z
+  .object({
+    contractVersion: ContractVersionSchema,
+    batchId: z.uuid(),
+    workspaceId: WorkspaceIdSchema,
+    correlationId: CorrelationIdSchema,
+    // `preview` runs every item through the executor inside one transaction
+    // and rolls it back; `apply` executes each item in its own transaction,
+    // in order, stopping at the first non-success.
+    mode: z.enum(["preview", "apply"]),
+    // Stamped onto every item, so scoped revert compensates the batch —
+    // including a partially applied one — through the existing machinery.
+    checkpointId: CheckpointIdSchema.optional(),
+    commands: z.array(CommandEnvelopeSchema).min(1).max(MAX_BATCH_COMMANDS),
+  })
+  .strict();
+
+export const BatchEnvelopeSchema = BatchEnvelopeBaseSchema.refine(
+  (value) =>
+    value.commands.every(
+      (command) => command.workspaceId === value.workspaceId,
+    ),
+  { error: "Every batched command must target the batch's workspace." },
+).refine(
+  (value) =>
+    new Set(value.commands.map((command) => command.commandId)).size ===
+    value.commands.length,
+  { error: "Batched commands must have distinct command ids." },
+);
+export type BatchEnvelope = z.infer<typeof BatchEnvelopeSchema>;
