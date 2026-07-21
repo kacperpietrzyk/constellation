@@ -246,6 +246,26 @@ export const MeaningfulActivityQuerySchema = QueryMetadataSchema.extend({
     .strict(),
 }).strict();
 
+/**
+ * ADR-051 — a replayable, Space-scoped change feed. Distinct from
+ * `activity.meaningful`, which is a curated human activity list with no
+ * cursor: this one carries every event in the Space, in order, so an
+ * external host can resume exactly where it stopped.
+ */
+export const ActivityChangeFeedQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("activity.changeFeed"),
+  parameters: z
+    .object({
+      spaceId: SpaceIdSchema,
+      // The last event already processed. Absent starts from the beginning of
+      // the Space's history; an unknown id is rejected rather than silently
+      // restarting, because a silent restart replays work as new.
+      afterEventId: z.uuid().optional(),
+      limit: z.int().min(1).max(200).optional(),
+    })
+    .strict(),
+}).strict();
+
 export const RecoveryPreviewQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("recovery.preview"),
   parameters: z.object({ targetCommandId: CommandIdSchema }).strict(),
@@ -274,6 +294,7 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   GlobalSearchQuerySchema,
   CockpitWeekQuerySchema,
   MeaningfulActivityQuerySchema,
+  ActivityChangeFeedQuerySchema,
   RecoveryPreviewQuerySchema,
   AuditReceiptQuerySchema,
 ]);
@@ -1416,6 +1437,30 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           })
           .strict(),
       ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("activity.changeFeed"),
+      // Ids, types, versions and timing only: a feed says *that* something
+      // changed and where to look, never the record content, so a subscriber
+      // cannot receive more than a later authorized read would give it.
+      events: z.array(
+        z
+          .object({
+            eventId: z.uuid(),
+            type: z.string(),
+            recordId: z.uuid(),
+            recordVersion: z.int().positive(),
+            commandId: CommandIdSchema,
+            occurredAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      // The id to pass as `afterEventId` next time. Absent when the feed is
+      // empty, so a caller never invents one.
+      nextCursor: z.uuid().optional(),
+      hasMore: z.boolean(),
     })
     .strict(),
   z

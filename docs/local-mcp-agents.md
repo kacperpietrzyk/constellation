@@ -140,6 +140,14 @@ Capture History.
   Missing-payload replacement succeeds only when the desktop runtime already
   holds and verifies the referenced staged bytes.
 
+`activity.changeFeed` answers "what changed since I last looked": the Space's
+events in order, resumable with `afterEventId`, returning `nextCursor` and
+`hasMore`. Entries carry ids, types, record versions and timing — never record
+content — so a host learns where to look and then reads through an ordinary
+authorized query. A cursor the feed cannot place is refused with
+`query.cursor_invalid` rather than silently restarting, because a silent
+restart replays processed work as new.
+
 Document text is reachable with the independent `document.readText` and
 `document.replaceText` capabilities and the document's Space. A write replaces
 the whole text, is attributed to the agent principal and its run, and merges

@@ -258,6 +258,7 @@ export type Wave2Query = Extract<
       | "search.global"
       | "cockpit.week"
       | "activity.meaningful"
+      | "activity.changeFeed"
       | "recovery.preview"
       | "comment.list"
       | "comment.mentionCandidates"
@@ -7336,7 +7337,10 @@ const applyUndo = (
 const queryRejected = (
   query: QueryEnvelope,
   kernelTime: string,
-  diagnosticCode: "authorization.denied" | "query.consistency_unavailable",
+  diagnosticCode:
+    | "authorization.denied"
+    | "query.consistency_unavailable"
+    | "query.cursor_invalid",
 ): QueryResult =>
   QueryResultSchema.parse({
     outcome: "rejected",
@@ -7874,6 +7878,39 @@ export const executeWave2Query = (
     !authorizeSpaces(dependencies, view, context, query, spaceIds)
   ) {
     return queryRejected(query, kernelTime, "authorization.denied");
+  }
+  if (query.queryName === "activity.changeFeed") {
+    // ADR-051. Every event in the Space, in order, resumable by id — as
+    // distinct from `activity.meaningful`, which curates a human-readable
+    // subset and cannot be resumed at all.
+    const events = view.listEvents(query.workspaceId, query.parameters.spaceId);
+    const cursor = query.parameters.afterEventId;
+    const start =
+      cursor === undefined
+        ? 0
+        : events.findIndex((event) => event.id === cursor) + 1;
+    if (cursor !== undefined && start === 0) {
+      // A cursor the feed cannot place is refused. Silently restarting from
+      // the beginning would replay processed work as new, which is the one
+      // failure a subscriber cannot detect.
+      return queryRejected(query, kernelTime, "query.cursor_invalid");
+    }
+    const limit = query.parameters.limit ?? 50;
+    const page = events.slice(start, start + limit);
+    const last = page.at(-1);
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "activity.changeFeed",
+      events: page.map((event) => ({
+        eventId: event.id,
+        type: event.type,
+        recordId: event.aggregateId,
+        recordVersion: event.aggregateVersion,
+        commandId: event.commandId,
+        occurredAt: event.occurredAt,
+      })),
+      ...(last === undefined ? {} : { nextCursor: last.id }),
+      hasMore: start + page.length < events.length,
+    });
   }
   if (query.queryName === "relationship.workspace") {
     return querySuccess(query, kernelTime, freshness, {
