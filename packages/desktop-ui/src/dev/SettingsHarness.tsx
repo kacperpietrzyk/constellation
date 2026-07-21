@@ -4,6 +4,7 @@ import { workHarnessSnapshot } from "./WorkHarness.js";
 
 const counts = {
   taskStatuses: 1,
+  documents: 1,
   areas: 1,
   initiatives: 1,
   projects: 1,

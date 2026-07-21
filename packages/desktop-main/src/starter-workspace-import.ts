@@ -47,6 +47,14 @@ interface StarterTask {
   readonly statusLabel?: string;
 }
 
+interface StarterDocument {
+  readonly key: string;
+  readonly title: string;
+  readonly role?: "note" | "document" | "deliverable";
+  /** Plain text; the collaborative document is created from it on import. */
+  readonly text?: string;
+}
+
 interface StarterTaskStatus {
   readonly key: string;
   readonly label: string;
@@ -55,7 +63,7 @@ interface StarterTaskStatus {
 }
 
 export interface StarterWorkspaceManifest {
-  readonly version: 1 | 2 | 3;
+  readonly version: 1 | 2 | 3 | 4;
   readonly importId: string;
   readonly areas: readonly StarterArea[];
   readonly initiatives: readonly StarterInitiative[];
@@ -68,10 +76,16 @@ export interface StarterWorkspaceManifest {
    * unknown label by design, and rightly.
    */
   readonly taskStatuses?: readonly StarterTaskStatus[];
+  /**
+   * v4 (ADR-053). Native documents with their text. A package that carries a
+   * project's work but not the note explaining it moves half the context.
+   */
+  readonly documents?: readonly StarterDocument[];
 }
 
 export interface StarterWorkspaceImportResult {
   readonly taskStatuses: number;
+  readonly documents: number;
   readonly areas: number;
   readonly initiatives: number;
   readonly projects: number;
@@ -85,6 +99,7 @@ export const previewStarterWorkspace = (
   // A status the target already has is not created again, so the preview
   // counts what the package carries rather than promising what it will add.
   taskStatuses: manifest.taskStatuses?.length ?? 0,
+  documents: manifest.documents?.length ?? 0,
   areas: manifest.areas.length,
   initiatives: manifest.initiatives.length,
   projects: manifest.projects.length,
@@ -145,10 +160,14 @@ export const parseStarterWorkspaceManifest = (
     !exactKeys(
       value,
       ["version", "importId", "areas", "initiatives", "projects", "tasks"],
-      ["taskStatuses"],
+      ["taskStatuses", "documents"],
     ) ||
-    (value.version !== 1 && value.version !== 2 && value.version !== 3) ||
-    (value.taskStatuses !== undefined && value.version !== 3) ||
+    (value.version !== 1 &&
+      value.version !== 2 &&
+      value.version !== 3 &&
+      value.version !== 4) ||
+    (value.taskStatuses !== undefined && value.version < 3) ||
+    (value.documents !== undefined && value.version < 4) ||
     typeof value.importId !== "string" ||
     !/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(value.importId)
   )
@@ -360,6 +379,39 @@ export const parseStarterWorkspaceManifest = (
     ).size !== taskStatuses.length
   )
     return undefined;
+  const documents =
+    value.documents === undefined
+      ? undefined
+      : parseArray(value.documents, (item): StarterDocument | undefined => {
+          if (
+            !isRecord(item) ||
+            !exactKeys(item, ["key", "title"], ["role", "text"])
+          )
+            return undefined;
+          const parsedKey = key(item.key);
+          const title = text(item.title, 500);
+          const role = item.role;
+          const body =
+            item.text === undefined ? undefined : text(item.text, 200_000);
+          if (
+            !parsedKey ||
+            !title ||
+            (role !== undefined &&
+              role !== "note" &&
+              role !== "document" &&
+              role !== "deliverable") ||
+            (item.text !== undefined && body === undefined)
+          )
+            return undefined;
+          return {
+            key: parsedKey,
+            title,
+            ...(role === undefined ? {} : { role }),
+            ...(body === undefined ? {} : { text: body }),
+          };
+        });
+  if (value.documents !== undefined && documents === undefined)
+    return undefined;
   return {
     version,
     importId: value.importId,
@@ -368,6 +420,7 @@ export const parseStarterWorkspaceManifest = (
     projects,
     tasks,
     ...(taskStatuses === undefined ? {} : { taskStatuses }),
+    ...(documents === undefined ? {} : { documents }),
   };
 };
 
@@ -651,6 +704,12 @@ export const importStarterWorkspace = (input: {
   readonly resolveStatusId?: (label: string) => string | undefined;
   /** Labels the target workspace already holds, so none is duplicated. */
   readonly existingStatusLabels?: readonly string[];
+  /** Writes imported document text; absent leaves documents empty. */
+  readonly writeDocumentText?: (input: {
+    readonly documentId: string;
+    readonly spaceId: SpaceId;
+    readonly text: string;
+  }) => void;
   readonly defaultTaskStatusId?: string;
 }): StarterWorkspaceImportResult => {
   const base = (
@@ -714,6 +773,42 @@ export const importStarterWorkspace = (input: {
     if (outcome?.diagnosticCode !== "command.precondition_failed")
       throw new Error("STARTER_WORKSPACE_COMMAND_FAILED");
     existingStatusLabels.add(status.label.toLocaleLowerCase("pl-PL"));
+  }
+  // v4 documents. Created after configuration and before work, so a note that
+  // explains a project exists by the time the project is read. Text is written
+  // through the injected port because document text is collaborative state,
+  // not kernel state (ADR-049/053); without the port the metadata still
+  // imports and the text is reported as skipped rather than silently dropped.
+  let createdDocuments = 0;
+  for (const document of input.manifest.documents ?? []) {
+    const documentId = deterministicUuid(
+      `${input.manifest.importId}:document:${document.key}`,
+    );
+    const outcome = input.service.execute(
+      CommandEnvelopeSchema.parse({
+        ...base(`document:${document.key}`),
+        commandName: "document.create",
+        payload: {
+          documentId,
+          spaceId: input.spaceId,
+          title: document.title,
+          ...(document.role === undefined ? {} : { role: document.role }),
+        },
+      }),
+    );
+    if (
+      outcome.kind !== "command_outcome" ||
+      outcome.outcome.outcome !== "success"
+    )
+      throw new Error("STARTER_WORKSPACE_COMMAND_FAILED");
+    createdDocuments += 1;
+    if (document.text !== undefined && document.text.length > 0) {
+      input.writeDocumentText?.({
+        documentId,
+        spaceId: input.spaceId,
+        text: document.text,
+      });
+    }
   }
   const areaIds = new Map<string, string>();
   const initiativeIds = new Map<string, string>();
@@ -908,6 +1003,7 @@ export const importStarterWorkspace = (input: {
   }
   return {
     taskStatuses: createdStatuses,
+    documents: createdDocuments,
     areas: input.manifest.areas.length,
     initiatives: input.manifest.initiatives.length,
     projects: input.manifest.projects.length,

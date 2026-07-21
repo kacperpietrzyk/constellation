@@ -7,6 +7,7 @@ import {
   ExecutionContextSchema,
   QueryEnvelopeSchema,
 } from "@constellation/contracts";
+import { isApplicationWave2ReadView } from "@constellation/application";
 import { InMemoryReferenceStore } from "@constellation/testkit";
 
 import { createRuntimeKernelService } from "../src/runtime-kernel-service.js";
@@ -40,6 +41,7 @@ const context = ExecutionContextSchema.parse({
     "task.setStatus",
     "taskStatus.create",
     "record.relate",
+    "document.create",
     "work.overview",
     "task.list",
   ],
@@ -95,6 +97,7 @@ test("starter manifest is strict, referentially valid, and idempotent through pr
   assert.ok(manifest);
   assert.deepEqual(previewStarterWorkspace(manifest), {
     taskStatuses: 0,
+    documents: 0,
     areas: 1,
     initiatives: 1,
     projects: 1,
@@ -137,6 +140,7 @@ test("starter manifest is strict, referentially valid, and idempotent through pr
     });
   assert.deepEqual(run(), {
     taskStatuses: 0,
+    documents: 0,
     areas: 1,
     initiatives: 1,
     projects: 1,
@@ -145,6 +149,7 @@ test("starter manifest is strict, referentially valid, and idempotent through pr
   });
   assert.deepEqual(run(), {
     taskStatuses: 0,
+    documents: 0,
     areas: 1,
     initiatives: 1,
     projects: 1,
@@ -197,6 +202,7 @@ test("starter preview is a pure count over the validated manifest", () => {
   assert.ok(manifest);
   assert.deepEqual(previewStarterWorkspace(manifest), {
     taskStatuses: 0,
+    documents: 0,
     areas: 1,
     initiatives: 1,
     projects: 2,
@@ -327,6 +333,7 @@ test("tasks CSV maps onto the v2 exchange manifest through the same engine", () 
     });
   assert.deepEqual(run(), {
     taskStatuses: 0,
+    documents: 0,
     areas: 0,
     initiatives: 0,
     projects: 1,
@@ -337,6 +344,7 @@ test("tasks CSV maps onto the v2 exchange manifest through the same engine", () 
     run(),
     {
       taskStatuses: 0,
+      documents: 0,
       areas: 0,
       initiatives: 0,
       projects: 1,
@@ -424,6 +432,7 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
     // The bootstrap status the imported task sits in travels with it, so a
     // target that has never heard of it can still accept the package.
     taskStatuses: 1,
+    documents: 0,
     areas: 1,
     initiatives: 1,
     projects: 1,
@@ -471,6 +480,7 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
     });
   assert.deepEqual(applyToTarget(), {
     taskStatuses: 0,
+    documents: 0,
     areas: 1,
     initiatives: 1,
     projects: 1,
@@ -505,6 +515,94 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
   assert.equal(
     overview.result.projection.tasks[0]?.operationalState,
     "waiting",
+  );
+
+  // v4: a document and its text travel with the work they explain. The text
+  // port is injected exactly as the desktop injects it, and the round trip
+  // reads back through the same port.
+  const documentText = new Map<string, string>();
+  const documentPackage = {
+    ...reparsed,
+    version: 4 as const,
+    importId: "20000000-0000-4000-8000-0000000000d1",
+    documents: [
+      {
+        key: "handover-note",
+        title: "Notatka z przekazania",
+        role: "note" as const,
+        text: "Ustalenia z klientem: termin i zakres.",
+      },
+    ],
+  };
+  const documentStore = new InMemoryReferenceStore();
+  const documentService = createRuntimeKernelService({
+    context,
+    store: documentStore,
+  });
+  assert.equal(
+    documentService.execute(bootstrap("export-documents")).kind,
+    "command_outcome",
+  );
+  const documentStatuses = documentStore.read((view) =>
+    view.listTaskStatuses(context.workspaceId),
+  );
+  const documentWorkspace = documentStore.read((view) =>
+    view.getWorkspace(context.workspaceId),
+  );
+  const documentApplied = importStarterWorkspace({
+    service: documentService,
+    workspaceId: context.workspaceId,
+    spaceId,
+    deviceId: DeviceIdSchema.parse("export-documents-device"),
+    manifest: documentPackage,
+    resolveStatusId: (label) =>
+      documentStatuses.find(
+        (status) =>
+          status.label.toLocaleLowerCase("pl-PL") ===
+          label.toLocaleLowerCase("pl-PL"),
+      )?.id,
+    existingStatusLabels: documentStatuses.map((status) => status.label),
+    ...(documentWorkspace === undefined
+      ? {}
+      : { defaultTaskStatusId: documentWorkspace.defaultTaskStatusId }),
+    writeDocumentText: ({ documentId, text }) => {
+      documentText.set(documentId, text);
+    },
+  });
+  assert.equal(documentApplied.documents, 1);
+  const importedDocument = documentStore
+    .read((view) =>
+      isApplicationWave2ReadView(view)
+        ? view.listDocuments(context.workspaceId, spaceId)
+        : [],
+    )
+    .find((document) => document.title === "Notatka z przekazania");
+  assert.ok(importedDocument);
+  assert.equal(importedDocument?.role, "note");
+  assert.equal(
+    documentText.get(importedDocument?.id),
+    "Ustalenia z klientem: termin i zakres.",
+  );
+  const documentExport = buildExchangeManifest({
+    store: documentStore,
+    workspaceId: context.workspaceId,
+    spaceId,
+    readDocumentText: ({ documentId }) => documentText.get(documentId),
+  });
+  assert.equal(documentExport?.counts.documents, 1);
+  assert.deepEqual(
+    documentExport?.manifest.documents?.map((document) => [
+      document.title,
+      document.role,
+      document.text,
+    ]),
+    [
+      [
+        "Notatka z przekazania",
+        "note",
+        "Ustalenia z klientem: termin i zakres.",
+      ],
+    ],
   );
 
   // A custom status travels with the tasks that name it: without the v3

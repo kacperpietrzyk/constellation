@@ -4,7 +4,11 @@ import {
   isApplicationWave2ReadView,
   type ApplicationStore,
 } from "@constellation/application";
-import type { SpaceId, WorkspaceId } from "@constellation/contracts";
+import type {
+  DocumentId,
+  SpaceId,
+  WorkspaceId,
+} from "@constellation/contracts";
 import type { StrategicRecord } from "@constellation/domain";
 
 import type { StarterWorkspaceManifest } from "./starter-workspace-import.js";
@@ -40,6 +44,7 @@ export interface ExchangeExportResult {
   readonly manifest: StarterWorkspaceManifest;
   readonly counts: {
     readonly taskStatuses: number;
+    readonly documents: number;
     readonly areas: number;
     readonly initiatives: number;
     readonly projects: number;
@@ -51,6 +56,15 @@ export const buildExchangeManifest = (input: {
   readonly store: ApplicationStore;
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
+  /**
+   * Reads a document's text. Document text is collaborative state rather than
+   * kernel state, so the export reaches it through the same port the agent
+   * boundary uses; without it documents export as metadata only (ADR-053).
+   */
+  readonly readDocumentText?: (input: {
+    readonly documentId: DocumentId;
+    readonly spaceId: SpaceId;
+  }) => string | undefined;
 }): ExchangeExportResult | undefined =>
   input.store.read((view) => {
     if (!isApplicationWave2ReadView(view)) return undefined;
@@ -172,13 +186,28 @@ export const buildExchangeManifest = (input: {
           ...(statusLabel === undefined ? {} : { statusLabel }),
         };
       });
+    const documents = view
+      .listDocuments(input.workspaceId, input.spaceId)
+      .map((document) => {
+        const body = input.readDocumentText?.({
+          documentId: document.id,
+          spaceId: document.spaceId,
+        });
+        return {
+          key: recordKey("document", document.id),
+          title: document.title,
+          ...(document.role === undefined ? {} : { role: document.role }),
+          ...(body === undefined || body.length === 0 ? {} : { text: body }),
+        };
+      });
     const body = {
-      version: 3 as const,
+      version: 4 as const,
       areas,
       initiatives,
       projects,
       tasks,
       taskStatuses,
+      documents,
     };
     // The importId is a digest of the content, so exporting the same workspace
     // twice produces the same package and re-importing one is idempotent
@@ -191,6 +220,7 @@ export const buildExchangeManifest = (input: {
       manifest,
       counts: {
         taskStatuses: taskStatuses.length,
+        documents: documents.length,
         areas: areas.length,
         initiatives: initiatives.length,
         projects: projects.length,

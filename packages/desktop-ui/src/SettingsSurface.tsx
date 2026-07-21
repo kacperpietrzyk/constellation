@@ -391,7 +391,7 @@ export const SettingsSurface = ({
       if (result.outcome === "success") {
         setExportMessage({
           tone: "status",
-          text: `Zapisano ${result.fileLabel}: ${result.counts.projects} projektów i ${result.counts.tasks} zadań. Ten sam plik można wczytać importem.`,
+          text: `Zapisano ${result.fileLabel}: ${result.counts.projects} projektów, ${result.counts.tasks} zadań i ${result.counts.documents} dokumentów. Ten sam plik można wczytać importem.`,
         });
       } else if (result.outcome === "cancelled") {
         setExportMessage({
@@ -1808,6 +1808,10 @@ export const SettingsSurface = ({
                       <div>
                         <dt>Statusy zadań</dt>
                         <dd>{importCandidate.counts.taskStatuses}</dd>
+                      </div>
+                      <div>
+                        <dt>Dokumenty</dt>
+                        <dd>{importCandidate.counts.documents}</dd>
                       </div>
                       <div>
                         <dt>Obszary</dt>

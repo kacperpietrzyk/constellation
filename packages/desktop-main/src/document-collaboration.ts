@@ -392,7 +392,10 @@ export const createAgentDocumentTextPort = (input: {
       readonly spaceId: SpaceId;
       readonly text: string;
       readonly principalId: string;
-      readonly runId: string;
+      // Absent for a non-agent write (an import restoring text): the change
+      // origin then records a human principal rather than pretending an agent
+      // run produced it.
+      readonly runId?: string;
       readonly deviceId: DeviceId;
     }):
       | { readonly characters: number; readonly revisionId: DocumentRevisionId }
@@ -414,7 +417,10 @@ export const createAgentDocumentTextPort = (input: {
         input.store.storeDocumentRevision({
           id: revisionId,
           ...documentScope,
-          name: `Before agent write (run ${request.runId.slice(0, 8)})`,
+          name:
+            request.runId === undefined
+              ? "Before import"
+              : `Before agent write (run ${request.runId.slice(0, 8)})`,
           ...priorCheckpoint,
           createdBy: request.principalId as never,
           createdByDeviceId: request.deviceId,
@@ -425,11 +431,16 @@ export const createAgentDocumentTextPort = (input: {
         const stop = adapter.onUpdate((value) => {
           update = value;
         });
-        adapter.replaceText(request.text, {
-          kind: "agent",
-          principalId: request.principalId,
-          runId: request.runId,
-        });
+        adapter.replaceText(
+          request.text,
+          request.runId === undefined
+            ? { kind: "human", principalId: request.principalId }
+            : {
+                kind: "agent",
+                principalId: request.principalId,
+                runId: request.runId,
+              },
+        );
         stop();
         const state = adapter.encodeState();
         const updatedAt = now();
