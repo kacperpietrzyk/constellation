@@ -784,6 +784,13 @@ export const WorkLinkRemoveCommandSchema = CommandMetadataSchema.extend({
 // rather than restated there, because a saved view and a task query must mean
 // exactly the same thing by a relation condition — ADR-045. It sits in the
 // command module only because `query.ts` imports from here and not the reverse.
+//
+// The id lists hold 100, matching the deprecated `projectIds`/`areaIds`/
+// `initiativeIds` keys they are translated from. They were 50, and the
+// translation builds a condition directly rather than through this schema, so a
+// legacy filter naming 51+ ids stored a view the strict projection could no
+// longer parse — the same read-path outage that motivated the shared schema.
+// The two bounds must not drift apart again.
 export const RelationConditionSchema = z.discriminatedUnion("path", [
   z
     .object({
@@ -792,7 +799,7 @@ export const RelationConditionSchema = z.discriminatedUnion("path", [
         z
           .object({
             field: z.literal("id"),
-            in: z.array(ProjectIdSchema).min(1).max(50),
+            in: z.array(ProjectIdSchema).min(1).max(100),
           })
           .strict(),
         z
@@ -812,7 +819,7 @@ export const RelationConditionSchema = z.discriminatedUnion("path", [
         z
           .object({
             field: z.literal("id"),
-            in: z.array(StrategicRecordIdSchema).min(1).max(50),
+            in: z.array(StrategicRecordIdSchema).min(1).max(100),
           })
           .strict(),
         z
@@ -832,7 +839,7 @@ export const RelationConditionSchema = z.discriminatedUnion("path", [
         z
           .object({
             field: z.literal("id"),
-            in: z.array(StrategicRecordIdSchema).min(1).max(50),
+            in: z.array(StrategicRecordIdSchema).min(1).max(100),
           })
           .strict(),
         z
@@ -854,7 +861,7 @@ export const RelationConditionSchema = z.discriminatedUnion("path", [
         z
           .object({
             field: z.literal("id"),
-            in: z.array(StrategicRecordIdSchema).min(1).max(50),
+            in: z.array(StrategicRecordIdSchema).min(1).max(100),
           })
           .strict(),
         z

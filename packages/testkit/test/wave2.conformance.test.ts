@@ -117,6 +117,7 @@ const context = (): ExecutionContext =>
       "project.close",
       "task.list",
       "savedView.create",
+      "savedView.update",
       "work.overview",
       "search.global",
       "cockpit.week",
@@ -3125,6 +3126,87 @@ describe("Wave 2 reference semantics", () => {
       legacyView?.filters.relationConditions,
       [{ path: "project", predicate: { field: "id", in: [vendorProject] } }],
       "the legacy key is normalized into the shared condition vocabulary on write",
+    );
+
+    // ADR-045 asserted undo restores prior conditions and did not exercise it.
+    // The descriptor is the generic restore_definition, but "it rides the
+    // existing mechanism" is the claim, not the evidence.
+    const changeConditions = {
+      ...metadata("view-relation-update", { [relationViewId]: 1 }),
+      commandName: "savedView.update" as const,
+      payload: {
+        savedViewId: relationViewId,
+        filters: {
+          relationConditions: [
+            {
+              path: "project.organization" as const,
+              predicate: {
+                field: "relationshipState" as const,
+                equals: "prospect" as const,
+              },
+            },
+          ],
+        },
+      },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), changeConditions)).outcome,
+      "success",
+    );
+    assert.deepEqual(
+      overviewViews().find((v) => v.id === relationViewId)?.relationTaskIds,
+      [],
+      "the narrowed condition is evaluated, not the old one",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("view-relation-undo", { [relationViewId]: 2 }),
+          commandName: "command.undo",
+          payload: { targetCommandId: changeConditions.commandId },
+        }),
+      ).diagnosticCode,
+      "command.undone",
+    );
+    assert.deepEqual(
+      overviewViews().find((v) => v.id === relationViewId)?.relationTaskIds,
+      [taskVendor],
+      "undo restores the prior relation conditions, and they are re-evaluated",
+    );
+
+    // The legacy keys accept up to 100 ids while the condition they translate
+    // into accepts 50, and the translation builds the condition directly rather
+    // than through the schema. A legacy filter naming 51+ projects therefore
+    // stored a view that the strict projection could no longer parse — the #95
+    // outage, reintroduced through the translation ADR-045 calls safe, and
+    // invisible while every fixture used one-element arrays.
+    const manyProjectIds = Array.from(
+      { length: 60 },
+      (_unused, index) =>
+        `20000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    );
+    const wideViewId = "20000000-0000-4000-8000-0000000000c4";
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("view-wide-legacy"),
+          commandName: "savedView.create",
+          payload: {
+            savedViewId: wideViewId,
+            spaceId: ids.rootSpace,
+            name: "Szeroki stary filtr",
+            filters: { projectIds: manyProjectIds },
+            sort: "updated_desc",
+          },
+        } as never),
+      ).outcome,
+      "success",
+      "the legacy vocabulary accepts up to 100 project ids",
+    );
+    assert.equal(
+      overviewViews().find((v) => v.id === wideViewId) !== undefined,
+      true,
+      "a view translated from a wide legacy filter still projects",
     );
 
     // A view that constrains by relation but matches nothing must be
