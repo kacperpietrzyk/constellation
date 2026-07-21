@@ -781,6 +781,12 @@ export const WorkLinkRemoveCommandSchema = CommandMetadataSchema.extend({
 // strategic-record projection, and because query results are parsed strictly,
 // an ordinary grouped view made `relationship.workspace` throw. Restating the
 // shape is what let the two drift, so there is now one shape to extend.
+//
+// Because this schema gates both writes and reads, it is ADDITIVE-ONLY: adding
+// a key or widening a bound is safe, but *lowering* a bound would retroactively
+// make already-stored views fail to project and reproduce that same outage. To
+// tighten a limit, narrow it at the command boundary while leaving the
+// projection on the older, wider bound.
 export const SavedViewFiltersSchema = z
   .object({
     operationalStates: z
