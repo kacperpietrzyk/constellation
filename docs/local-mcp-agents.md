@@ -78,7 +78,20 @@ The server publishes these versioned tools:
 
 - `constellation.query.v1`;
 - `constellation.command.v1`;
+- `constellation.batch.v1`;
 - `constellation.checkpoint.revert.v1`.
+
+`constellation.batch.v1` submits up to 100 ordinary commands as one unit.
+Mode `preview` runs every item through the real executor inside one
+transaction and then rolls it back, so authorization, preconditions, expected
+versions, and idempotency are all exercised without writing anything. Mode
+`apply` executes each item in its own transaction, in order, and stops at the
+first failure, returning one outcome per attempted item plus the ids it never
+attempted — so a caller knows exactly where it stopped and can continue from
+there. Each item keeps its own idempotency key and expected versions, and a
+batch authorizes nothing an item could not do alone. Pass a `checkpointId` to
+make the whole batch, including a partially applied one, revertible through
+`constellation.checkpoint.revert.v1`.
 
 The `constellation://v1/capabilities` resource reports the active contract and
 authorized scope without credential material.

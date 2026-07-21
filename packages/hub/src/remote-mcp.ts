@@ -1067,6 +1067,22 @@ export class HubRemoteMcpService {
       const result = service.kernel.execute(context, invocation.command);
       return response(invocation.requestId, nestedOutcome(result), result);
     }
+    if (invocation.kind === "batch") {
+      for (const command of invocation.batch.commands)
+        service.ids.begin(command.commandId);
+      const result = service.kernel.executeBatch(context, invocation.batch);
+      return response(
+        invocation.requestId,
+        result.kind !== "batch_result"
+          ? "rejected"
+          : result.applied || result.mode === "preview"
+            ? "success"
+            : result.outcomes.some((item) => item.outcome.outcome === "success")
+              ? "partial"
+              : "rejected",
+        result,
+      );
+    }
     return this.revertCheckpoint(
       store,
       context,

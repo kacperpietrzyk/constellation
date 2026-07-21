@@ -758,6 +758,7 @@ describe("remote MCP Hub gateway", () => {
         [
           "constellation.query.v1",
           "constellation.command.v1",
+          "constellation.batch.v1",
           "constellation.checkpoint.revert.v1",
         ],
       );

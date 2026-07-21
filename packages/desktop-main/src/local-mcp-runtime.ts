@@ -407,6 +407,22 @@ export class LocalMcpRuntime {
         result,
       );
     }
+    if (invocation.kind === "batch") {
+      const result = service.executeBatch(invocation.batch);
+      return contentSafeResponse(
+        invocation.requestId,
+        result.kind === "batch_result"
+          ? result.applied
+            ? "success"
+            : result.outcomes.length > 0 && result.mode === "apply"
+              ? "partial"
+              : result.mode === "preview"
+                ? "success"
+                : "rejected"
+          : "rejected",
+        result,
+      );
+    }
     return this.revertCheckpoint(
       service,
       grant.id,

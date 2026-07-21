@@ -655,6 +655,11 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
           throw new Error("Workspace recovery is required.");
         return recovery.kernel.service.execute(command);
       },
+      executeBatch: (batch) => {
+        if (recovery.kernel === undefined)
+          throw new Error("Workspace recovery is required.");
+        return recovery.kernel.service.executeBatch(batch);
+      },
       query: (query) => {
         if (recovery.kernel === undefined)
           throw new Error("Workspace recovery is required.");

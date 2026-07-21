@@ -55,6 +55,7 @@ test("publishes a versioned strict MCP tool and resource contract", async () => 
       [
         "constellation.query.v1",
         "constellation.command.v1",
+        "constellation.batch.v1",
         "constellation.checkpoint.revert.v1",
       ],
     );
@@ -87,13 +88,44 @@ test("publishes a versioned strict MCP tool and resource contract", async () => 
       "untrusted_data",
     );
 
+    // ADR-048: a batch reaches the port as one invocation carrying ordinary
+    // command envelopes, not as N tool calls the host has to sequence.
+    const batch = await client.callTool({
+      name: "constellation.batch.v1",
+      arguments: {
+        run,
+        batch: {
+          contractVersion: 1,
+          batchId: "50000000-0000-4000-8000-000000000010",
+          workspaceId: "50000000-0000-4000-8000-000000000003",
+          correlationId: "50000000-0000-4000-8000-000000000011",
+          mode: "preview",
+          commands: [
+            {
+              contractVersion: 1,
+              commandName: "task.complete",
+              commandId: "50000000-0000-4000-8000-000000000012",
+              workspaceId: "50000000-0000-4000-8000-000000000003",
+              idempotencyKey: "batch-item-1",
+              expectedVersions: {
+                "50000000-0000-4000-8000-000000000013": 1,
+              },
+              correlationId: "50000000-0000-4000-8000-000000000014",
+              payload: { taskId: "50000000-0000-4000-8000-000000000013" },
+            },
+          ],
+        },
+      },
+    });
+    assert.equal(batch.isError, false);
+
     const resource = await client.readResource({
       uri: "constellation://v1/capabilities",
     });
     assert.equal(resource.contents[0]?.uri, "constellation://v1/capabilities");
     assert.deepEqual(
       invocations.map((invocation) => invocation.kind),
-      ["query", "capabilities"],
+      ["query", "batch", "capabilities"],
     );
   } finally {
     await client.close();
@@ -295,6 +327,9 @@ test("serves a grant-filtered operation catalog generated from the contract", as
       [
         "agent.checkpoint.revert",
         "agent.checkpointCreate",
+        // Unconditional: a batch authorizes each item, so any grant that can
+        // run a command can batch it (ADR-048).
+        "command.batch",
         "project.create",
         "record.relate",
         "task.create",

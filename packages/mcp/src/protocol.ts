@@ -4,6 +4,7 @@ import {
   AgentRunIdSchema,
   CaptureIdSchema,
   CheckpointIdSchema,
+  BatchEnvelopeSchema,
   CommandEnvelopeSchema,
   CredentialIdSchema,
   GrantIdSchema,
@@ -49,6 +50,15 @@ export const McpOperatorInvocationSchema = z.discriminatedUnion("kind", [
       kind: z.literal("command"),
       run: HostRunMetadataSchema,
       command: CommandEnvelopeSchema,
+    })
+    .strict(),
+  z
+    .object({
+      contractVersion: z.literal(MCP_CONTRACT_VERSION),
+      requestId: z.uuid(),
+      kind: z.literal("batch"),
+      run: HostRunMetadataSchema,
+      batch: BatchEnvelopeSchema,
     })
     .strict(),
   z
