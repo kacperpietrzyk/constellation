@@ -2805,6 +2805,7 @@ export class ApplicationKernel {
         case "search.global":
         case "cockpit.week":
         case "activity.meaningful":
+        case "activity.changeFeed":
         case "recovery.preview":
         case "comment.list":
         case "comment.mentionCandidates":

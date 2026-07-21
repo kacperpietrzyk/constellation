@@ -122,6 +122,7 @@ const context = (): ExecutionContext =>
       "search.global",
       "cockpit.week",
       "activity.meaningful",
+      "activity.changeFeed",
       "capture.history",
       "command.previewUndo",
       "command.undo",
@@ -3245,5 +3246,91 @@ describe("Wave 2 reference semantics", () => {
         undefined,
       true,
     );
+  });
+
+  it("replays a change feed from a cursor and refuses one it cannot place", () => {
+    // ADR-051 / R14.4. An external host must be able to resume exactly where
+    // it stopped, and must never be silently restarted — a restart replays
+    // processed work as new, which is the one failure it cannot detect.
+    const harness = setup();
+    createTask(harness, "First");
+    createTask(harness, "Second");
+    createTask(harness, "Third");
+    const feed = (parameters: Record<string, unknown>) => {
+      const result = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "activity.changeFeed",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace, ...parameters },
+      });
+      return result;
+    };
+    const first = feed({ limit: 2 });
+    assert.equal(first.kind, "query_result");
+    if (
+      first.kind !== "query_result" ||
+      first.result.outcome !== "success" ||
+      first.result.projection.kind !== "activity.changeFeed"
+    )
+      throw new Error("Expected a change feed.");
+    assert.equal(first.result.projection.events.length, 2);
+    assert.equal(first.result.projection.hasMore, true);
+    const cursor = first.result.projection.nextCursor;
+    assert.ok(cursor);
+
+    const second = feed({ afterEventId: cursor });
+    if (
+      second.kind !== "query_result" ||
+      second.result.outcome !== "success" ||
+      second.result.projection.kind !== "activity.changeFeed"
+    )
+      throw new Error("Expected a change feed.");
+    // No gap and no repeat across the page boundary.
+    const firstIds = first.result.projection.events.map(
+      (event) => event.eventId,
+    );
+    const secondIds = second.result.projection.events.map(
+      (event) => event.eventId,
+    );
+    assert.equal(
+      firstIds.some((id) => secondIds.includes(id)),
+      false,
+    );
+    assert.equal(second.result.projection.hasMore, false);
+    const all = feed({ limit: 200 });
+    if (
+      all.kind !== "query_result" ||
+      all.result.outcome !== "success" ||
+      all.result.projection.kind !== "activity.changeFeed"
+    )
+      throw new Error("Expected a change feed.");
+    assert.deepEqual(
+      all.result.projection.events.map((event) => event.eventId),
+      [...firstIds, ...secondIds],
+    );
+    // A feed carries ids, types and versions — never record content, so a
+    // subscriber cannot learn more than an authorized read would give it.
+    assert.deepEqual(
+      Object.keys(all.result.projection.events[0] ?? {}).sort(),
+      [
+        "commandId",
+        "eventId",
+        "occurredAt",
+        "recordId",
+        "recordVersion",
+        "type",
+      ],
+    );
+
+    const unplaceable = feed({
+      afterEventId: "10000000-0000-4000-8000-0000000000ff",
+    });
+    assert.equal(unplaceable.kind, "query_result");
+    if (unplaceable.kind !== "query_result") throw new Error("Expected result");
+    assert.equal(unplaceable.result.outcome, "rejected");
+    if (unplaceable.result.outcome !== "rejected") return;
+    assert.equal(unplaceable.result.diagnosticCode, "query.cursor_invalid");
   });
 });

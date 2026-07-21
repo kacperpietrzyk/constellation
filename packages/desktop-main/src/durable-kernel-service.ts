@@ -142,6 +142,7 @@ export const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "search.global",
   "cockpit.week",
   "activity.meaningful",
+  "activity.changeFeed",
   "command.previewUndo",
   "command.undo",
   "recovery.preview",
