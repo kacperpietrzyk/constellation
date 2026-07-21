@@ -22,6 +22,10 @@ import {
   HocuspocusProvider,
   HocuspocusProviderWebsocket,
 } from "@hocuspocus/provider";
+import {
+  RICH_DOCUMENT_FRAGMENT_ROOT,
+  documentPlainText,
+} from "@constellation/realtime-documents";
 import WebSocket from "ws";
 import * as Y from "yjs";
 
@@ -52,6 +56,20 @@ fs.mkdirSync(stateRoot, { recursive: true });
 
 const delay = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+const replaceRichDocumentText = (document, text) => {
+  document.transact(() => {
+    const fragment = document.getXmlFragment(RICH_DOCUMENT_FRAGMENT_ROOT);
+    if (fragment.length > 0) fragment.delete(0, fragment.length);
+    const paragraph = new Y.XmlElement("paragraph");
+    if (text !== "") {
+      const content = new Y.XmlText();
+      content.insert(0, text);
+      paragraph.insert(0, [content]);
+    }
+    fragment.insert(0, [paragraph]);
+  }, "packaged-rich-editor");
+};
 
 const reservePort = async () => {
   const server = net.createServer();
@@ -121,6 +139,48 @@ const waitFor = async (client, expression, code) => {
     await delay(100);
   }
   throw new Error(code);
+};
+
+// Packaged windows intentionally stay backgrounded, so macOS will not grant
+// them keyboard focus. Reach the EditorContent prop owned by React and invoke
+// Tiptap's public setContent command; this still creates a real ProseMirror
+// transaction and Yjs update, unlike mutating contenteditable DOM directly.
+const replaceEditorText = async (client, text) => {
+  const changed = await client.evaluate(`(() => {
+    const shell = document.querySelector(".document-editor-shell");
+    if (!(shell instanceof HTMLElement)) return false;
+    const fiberKey = Object.keys(shell).find((key) =>
+      key.startsWith("__reactFiber$"),
+    );
+    let fiber = fiberKey ? shell[fiberKey] : undefined;
+    while (fiber) {
+      const editor = fiber.memoizedProps?.editor;
+      if (editor?.commands?.setContent) {
+        return editor.commands.setContent(
+          {
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: ${JSON.stringify(text)} === ""
+                  ? []
+                  : [{ type: "text", text: ${JSON.stringify(text)} }],
+              },
+            ],
+          },
+          { emitUpdate: true },
+        );
+      }
+      fiber = fiber.return;
+    }
+    return false;
+  })()`);
+  if (!changed) throw new Error("PACKAGED_DOCUMENT_EDITOR_TRANSACTION_FAILED");
+  await waitFor(
+    client,
+    `document.querySelector(".document-canvas")?.textContent === ${JSON.stringify(text)}`,
+    "PACKAGED_DOCUMENT_EDITOR_INPUT_NOT_APPLIED",
+  );
 };
 
 const reloadAndWait = async (client, selector, code) => {
@@ -857,6 +917,11 @@ try {
     `document.querySelector(".document-canvas") !== null`,
     "PACKAGED_DOCUMENT_EDITOR_MISSING",
   );
+  await waitFor(
+    member.client,
+    `document.querySelector(".document-canvas")?.getAttribute("contenteditable") === "true"`,
+    "PACKAGED_DOCUMENT_EDITOR_NOT_EDITABLE",
+  );
   const ownerSessionResponse = await fetch(
     `${hub.origin}/v1/documents/session`,
     {
@@ -869,6 +934,7 @@ try {
         workspaceId,
         deviceId: ownerConnection.deviceId,
         documentId: collaborativeDocumentId,
+        supportedDocumentFormats: ["plain-v1", "rich-v1"],
       }),
     },
   );
@@ -897,34 +963,20 @@ try {
     throw new Error("PACKAGED_OWNER_DOCUMENT_NOT_SYNCED");
   const packagedDocumentText =
     "Wspólny zakres pilotażu z aplikacji pakietowej.";
-  await member.client.evaluate(`(() => {
-    const input = document.querySelector(".document-canvas");
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(
-      input,
-      ${JSON.stringify(packagedDocumentText)},
-    );
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    return true;
-  })()`);
+  await replaceEditorText(member.client, packagedDocumentText);
   for (
     let attempt = 0;
-    attempt < 300 &&
-    ownerDocument.getText("content").toString() !== packagedDocumentText;
+    attempt < 300 && documentPlainText(ownerDocument) !== packagedDocumentText;
     attempt += 1
   )
     await delay(100);
-  if (ownerDocument.getText("content").toString() !== packagedDocumentText)
+  if (documentPlainText(ownerDocument) !== packagedDocumentText)
     throw new Error("PACKAGED_DOCUMENT_MEMBER_EDIT_NOT_CONVERGED");
-  ownerDocument
-    .getText("content")
-    .insert(
-      ownerDocument.getText("content").length,
-      " Potwierdzone przez właściciela.",
-    );
   const ownerCompletedText = `${packagedDocumentText} Potwierdzone przez właściciela.`;
+  replaceRichDocumentText(ownerDocument, ownerCompletedText);
   await waitFor(
     member.client,
-    `document.querySelector(".document-canvas")?.value === ${JSON.stringify(ownerCompletedText)}`,
+    `document.querySelector(".document-canvas")?.textContent === ${JSON.stringify(ownerCompletedText)}`,
     "PACKAGED_DOCUMENT_OWNER_EDIT_NOT_CONVERGED",
   );
   ownerDocumentProvider.destroy();
@@ -939,15 +991,7 @@ try {
     "PACKAGED_DOCUMENT_OFFLINE_STATE_MISSING",
   );
   const offlineCompletedText = `${ownerCompletedText} Dopisek offline.`;
-  await member.client.evaluate(`(() => {
-    const input = document.querySelector(".document-canvas");
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(
-      input,
-      ${JSON.stringify(offlineCompletedText)},
-    );
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    return true;
-  })()`);
+  await replaceEditorText(member.client, offlineCompletedText);
   await waitFor(
     member.client,
     `document.querySelector(".document-presence")?.textContent.includes("zmian oczekuje") === true`,
@@ -973,6 +1017,7 @@ try {
         workspaceId,
         deviceId: ownerConnection.deviceId,
         documentId: collaborativeDocumentId,
+        supportedDocumentFormats: ["plain-v1", "rich-v1"],
       }),
     },
   );
@@ -993,12 +1038,11 @@ try {
   ownerDocumentProvider.attach();
   for (
     let attempt = 0;
-    attempt < 300 &&
-    ownerDocument.getText("content").toString() !== offlineCompletedText;
+    attempt < 300 && documentPlainText(ownerDocument) !== offlineCompletedText;
     attempt += 1
   )
     await delay(100);
-  if (ownerDocument.getText("content").toString() !== offlineCompletedText)
+  if (documentPlainText(ownerDocument) !== offlineCompletedText)
     throw new Error("PACKAGED_DOCUMENT_OFFLINE_EDIT_NOT_CONVERGED");
   await waitFor(
     member.client,
@@ -1027,10 +1071,10 @@ try {
     `[...document.querySelectorAll(".named-version-list li strong")].some((node) => node.textContent === "Review packaged")`,
     "PACKAGED_DOCUMENT_REVISION_MISSING",
   );
-  ownerDocument.getText("content").insert(0, "TYMCZASOWE ");
+  replaceRichDocumentText(ownerDocument, `TYMCZASOWE ${offlineCompletedText}`);
   await waitFor(
     member.client,
-    `document.querySelector(".document-canvas")?.value.startsWith("TYMCZASOWE") === true`,
+    `document.querySelector(".document-canvas")?.textContent.startsWith("TYMCZASOWE") === true`,
     "PACKAGED_DOCUMENT_TEMP_EDIT_NOT_CONVERGED",
   );
   await member.client.evaluate(`(() => {
@@ -1040,12 +1084,11 @@ try {
   })()`);
   for (
     let attempt = 0;
-    attempt < 300 &&
-    ownerDocument.getText("content").toString() !== offlineCompletedText;
+    attempt < 300 && documentPlainText(ownerDocument) !== offlineCompletedText;
     attempt += 1
   )
     await delay(100);
-  if (ownerDocument.getText("content").toString() !== offlineCompletedText)
+  if (documentPlainText(ownerDocument) !== offlineCompletedText)
     throw new Error("PACKAGED_DOCUMENT_RESTORE_NOT_CONVERGED");
   await executeOwnerPolicy("workspace.memberSetAccess", {
     membershipId,
@@ -1055,7 +1098,7 @@ try {
   await realtimeDocuments.reauthorizeSessions();
   await waitFor(
     member.client,
-    `document.querySelector(".document-canvas")?.readOnly === true`,
+    `document.querySelector(".document-canvas")?.getAttribute("contenteditable") === "false"`,
     "PACKAGED_DOCUMENT_DOWNGRADE_NOT_READ_ONLY",
   );
   ownerDocumentProvider.destroy();

@@ -15,9 +15,12 @@ import {
   type CorrelationId,
 } from "@constellation/contracts";
 import {
+  type DocumentContentFormat,
   MAX_DOCUMENT_UPDATE_BYTES,
   MAX_DOCUMENT_TEXT_LENGTH,
   YjsRealtimeDocumentAdapter,
+  documentPlainText,
+  restoreDocumentFromCheckpoint,
 } from "@constellation/realtime-documents";
 import crossws from "crossws/adapters/node";
 import * as Y from "yjs";
@@ -40,6 +43,7 @@ interface DocumentSession {
   readonly principalId: PrincipalId;
   readonly spaceId: SpaceId;
   readonly access: "view" | "comment" | "edit";
+  readonly supportedDocumentFormats: readonly DocumentContentFormat[];
   readonly expiresAt: string;
 }
 
@@ -71,7 +75,20 @@ export interface RealtimeDocumentSessionResult {
   readonly room: string;
   readonly expiresAt: string;
   readonly access: "view" | "comment" | "edit";
+  readonly documentFormat: DocumentContentFormat;
 }
+
+const formatFromState = (
+  state: Uint8Array | undefined,
+): DocumentContentFormat => {
+  if (state === undefined) return "plain-v1";
+  const adapter = new YjsRealtimeDocumentAdapter(state);
+  try {
+    return adapter.getFormat();
+  } finally {
+    adapter.destroy();
+  }
+};
 
 export class RealtimeDocumentGateway {
   private readonly sessions = new Map<string, DocumentSession>();
@@ -106,6 +123,15 @@ export class RealtimeDocumentGateway {
           this.sessions.delete(session.token);
           throw new Error("DOCUMENT_SESSION_INVALID");
         }
+        const stored = await this.repository.loadDocumentState(session);
+        if (
+          !session.supportedDocumentFormats.includes(
+            formatFromState(stored?.state),
+          )
+        ) {
+          this.sessions.delete(session.token);
+          throw new Error("DOCUMENT_SCHEMA_UPGRADE_REQUIRED");
+        }
         data.connectionConfig.readOnly = current.access !== "edit";
         this.roomSpaces.set(data.documentName, current.spaceId);
         return {
@@ -134,6 +160,14 @@ export class RealtimeDocumentGateway {
           this.sessions.delete(session.token);
           throw new Error("DOCUMENT_SESSION_INVALID");
         }
+        if (
+          !session.supportedDocumentFormats.includes(
+            formatFromState(Y.encodeStateAsUpdate(data.document)),
+          )
+        ) {
+          this.sessions.delete(session.token);
+          throw new Error("DOCUMENT_SCHEMA_UPGRADE_REQUIRED");
+        }
         data.connection.readOnly = current.access !== "edit";
       },
       beforeHandleAwareness: async (data) => {
@@ -161,7 +195,7 @@ export class RealtimeDocumentGateway {
         const state = Y.encodeStateAsUpdate(data.document);
         if (
           state.byteLength > MAX_DOCUMENT_UPDATE_BYTES ||
-          data.document.getText("content").length > MAX_DOCUMENT_TEXT_LENGTH
+          documentPlainText(data.document).length > MAX_DOCUMENT_TEXT_LENGTH
         ) {
           this.hocuspocus.closeConnections(data.documentName);
           throw new Error("DOCUMENT_STATE_SIZE_INVALID");
@@ -201,9 +235,15 @@ export class RealtimeDocumentGateway {
     readonly workspaceId: WorkspaceId;
     readonly deviceId: DeviceId;
     readonly documentId: DocumentId;
-  }): Promise<RealtimeDocumentSessionResult | undefined> {
+    readonly supportedDocumentFormats: readonly DocumentContentFormat[];
+  }): Promise<RealtimeDocumentSessionResult | "upgrade_required" | undefined> {
     const authorization = await this.service.authorizeDocument(input);
     if (authorization.outcome === "rejected") return undefined;
+    const stored = await this.repository.loadDocumentState(input);
+    const documentFormat = formatFromState(stored?.state);
+    if (!input.supportedDocumentFormats.includes(documentFormat)) {
+      return "upgrade_required";
+    }
     const token = randomBytes(32).toString("base64url");
     const expiresAt = new Date(
       Date.parse(this.now()) + SESSION_TTL_MS,
@@ -214,6 +254,7 @@ export class RealtimeDocumentGateway {
       principalId: authorization.principalId,
       spaceId: authorization.spaceId,
       access: authorization.access,
+      supportedDocumentFormats: input.supportedDocumentFormats,
       expiresAt,
     };
     for (const [existingToken, existing] of this.sessions) {
@@ -248,6 +289,7 @@ export class RealtimeDocumentGateway {
       room: roomName(input.workspaceId, input.documentId),
       expiresAt,
       access: authorization.access,
+      documentFormat,
     };
   }
 
@@ -335,7 +377,6 @@ export class RealtimeDocumentGateway {
       (candidate) => candidate.id === input.revisionId,
     );
     if (revision === undefined) return false;
-    const restored = new YjsRealtimeDocumentAdapter(revision.state);
     const room = roomName(input.workspaceId, input.documentId);
     this.roomSpaces.set(room, authorization.spaceId);
     const connection = await this.hocuspocus.openDirectConnection(room, {
@@ -348,13 +389,17 @@ export class RealtimeDocumentGateway {
     });
     try {
       await connection.transact((document) => {
-        const content = document.getText("content");
-        const next = restored.getText();
-        content.delete(0, content.length);
-        content.insert(0, next);
+        restoreDocumentFromCheckpoint(
+          document,
+          {
+            engine: revision.engine,
+            state: revision.state,
+            stateVector: revision.stateVector,
+          },
+          revision.id,
+        );
       });
     } finally {
-      restored.destroy();
       await connection.disconnect({ unloadImmediately: true });
     }
     await this.createRevision({

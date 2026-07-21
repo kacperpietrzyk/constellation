@@ -267,6 +267,7 @@ export interface RendererDocumentOpenResult {
     readonly token: string;
     readonly expiresAt: string;
     readonly access: "view" | "comment" | "edit";
+    readonly documentFormat: "plain-v1" | "rich-v1";
   };
 }
 
@@ -474,6 +475,7 @@ export interface ConstellationRendererClient {
   openDocument(input: {
     readonly documentId: DocumentId;
     readonly spaceId: SpaceId;
+    readonly supportedDocumentFormats: readonly ("plain-v1" | "rich-v1")[];
   }): Promise<RendererDocumentOpenResult>;
   persistDocumentUpdate(input: {
     readonly documentId: DocumentId;

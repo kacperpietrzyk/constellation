@@ -229,17 +229,19 @@ export const KnowledgeHarness = () => {
   );
   return (
     <main className="meetings-harness-shell">
-      <DocumentsSurface
-        client={client}
-        snapshot={snapshot}
-        inspectorHost={inspectorHost}
-        onInspectorOpen={(kind) => {
-          setInspectorKind(kind);
-          setInspectorOpen(true);
-        }}
-        onReload={async () => undefined}
-        onFailure={() => undefined}
-      />
+      <div className="meetings-harness-work">
+        <DocumentsSurface
+          client={client}
+          snapshot={snapshot}
+          inspectorHost={inspectorHost}
+          onInspectorOpen={(kind) => {
+            setInspectorKind(kind);
+            setInspectorOpen(true);
+          }}
+          onReload={async () => undefined}
+          onFailure={() => undefined}
+        />
+      </div>
       <aside
         className={`inspector${inspectorOpen ? " open" : ""}`}
         aria-label="Podgląd kontekstu"

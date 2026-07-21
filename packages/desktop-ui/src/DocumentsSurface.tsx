@@ -2,13 +2,24 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { HocuspocusProvider } from "@hocuspocus/provider";
+import Collaboration from "@tiptap/extension-collaboration";
+import Placeholder from "@tiptap/extension-placeholder";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 import type { DocumentId, KnowledgeSourceId } from "@constellation/contracts";
 import type {
   ConstellationRendererClient,
   RendererDocumentRevision,
 } from "@constellation/desktop-preload/client";
 import * as Y from "yjs";
-import { MAX_DOCUMENT_TEXT_LENGTH } from "@constellation/realtime-documents";
+import {
+  LEGACY_DOCUMENT_TEXT_ROOT,
+  MAX_DOCUMENT_TEXT_LENGTH,
+  RICH_DOCUMENT_FRAGMENT_ROOT,
+  documentContentFormat,
+  documentPlainText,
+  migrateDocumentToRich,
+} from "@constellation/realtime-documents";
 
 import {
   createDocument,
@@ -23,7 +34,6 @@ import {
   type MutationFailure,
 } from "./client/workflow.js";
 import { InlinePopover } from "./components/InlinePopover.js";
-import { computeDocumentTextEdit } from "./document-text-diff.js";
 import { countLabel, formatDateTime } from "./i18n.js";
 
 type DocumentItem = Extract<
@@ -76,6 +86,159 @@ const EvidenceMotif = () => (
     <path d="M196 30h24v32h-24zM204 38h8M204 46h8M204 54h8" />
   </svg>
 );
+
+const sha256Hex = async (text: string): Promise<string> => {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(text),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+};
+
+const DocumentToolbar = ({
+  editor,
+  disabled,
+}: {
+  readonly editor: Editor | null;
+  readonly disabled: boolean;
+}) => {
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const command = (run: () => boolean) => {
+    if (!disabled) run();
+  };
+  return (
+    <div
+      className="document-toolbar"
+      role="toolbar"
+      aria-label="Formatowanie dokumentu"
+    >
+      <button
+        type="button"
+        aria-pressed={editor?.isActive("bold") ?? false}
+        aria-label="Pogrubienie"
+        disabled={disabled}
+        onClick={() =>
+          command(() => editor?.chain().focus().toggleBold().run() ?? false)
+        }
+      >
+        <strong aria-hidden="true">B</strong>
+      </button>
+      <button
+        type="button"
+        aria-pressed={editor?.isActive("italic") ?? false}
+        aria-label="Kursywa"
+        disabled={disabled}
+        onClick={() =>
+          command(() => editor?.chain().focus().toggleItalic().run() ?? false)
+        }
+      >
+        <em aria-hidden="true">I</em>
+      </button>
+      <button
+        type="button"
+        aria-pressed={editor?.isActive("heading", { level: 2 }) ?? false}
+        aria-label="Nagłówek drugiego poziomu"
+        disabled={disabled}
+        onClick={() =>
+          command(
+            () =>
+              editor?.chain().focus().toggleHeading({ level: 2 }).run() ??
+              false,
+          )
+        }
+      >
+        <span aria-hidden="true">H2</span>
+      </button>
+      <button
+        type="button"
+        aria-pressed={editor?.isActive("bulletList") ?? false}
+        aria-label="Lista punktowana"
+        disabled={disabled}
+        onClick={() =>
+          command(
+            () => editor?.chain().focus().toggleBulletList().run() ?? false,
+          )
+        }
+      >
+        <span aria-hidden="true">• Lista</span>
+      </button>
+      <button
+        type="button"
+        aria-pressed={editor?.isActive("orderedList") ?? false}
+        aria-label="Lista numerowana"
+        disabled={disabled}
+        onClick={() =>
+          command(
+            () => editor?.chain().focus().toggleOrderedList().run() ?? false,
+          )
+        }
+      >
+        <span aria-hidden="true">1. Lista</span>
+      </button>
+      <button
+        type="button"
+        aria-pressed={editor?.isActive("codeBlock") ?? false}
+        aria-label="Blok kodu"
+        disabled={disabled}
+        onClick={() =>
+          command(
+            () => editor?.chain().focus().toggleCodeBlock().run() ?? false,
+          )
+        }
+      >
+        <span aria-hidden="true">Kod</span>
+      </button>
+      <InlinePopover
+        label="Link"
+        panelLabel="Dodaj link do zaznaczonego tekstu"
+        triggerClassName="document-link-trigger"
+        disabled={disabled}
+        open={linkOpen}
+        onOpenChange={(open) => {
+          setLinkOpen(open);
+          if (open) setLinkUrl(editor?.getAttributes("link").href ?? "");
+        }}
+      >
+        <form
+          className="document-link-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const href = linkUrl.trim();
+            if (href === "") {
+              editor?.chain().focus().extendMarkRange("link").unsetLink().run();
+            } else {
+              editor
+                ?.chain()
+                .focus()
+                .extendMarkRange("link")
+                .setLink({ href })
+                .run();
+            }
+            setLinkOpen(false);
+          }}
+        >
+          <label htmlFor="document-link-url">Adres linku</label>
+          <input
+            id="document-link-url"
+            type="url"
+            inputMode="url"
+            value={linkUrl}
+            placeholder="https://…"
+            onChange={(event) => setLinkUrl(event.target.value)}
+          />
+          <div className="popover-actions">
+            <button type="submit" className="primary-button">
+              {linkUrl.trim() === "" ? "Usuń link" : "Zastosuj"}
+            </button>
+          </div>
+        </form>
+      </InlinePopover>
+    </div>
+  );
+};
 
 const SourceDetail = ({
   client,
@@ -199,9 +362,16 @@ const KnowledgeEditor = ({
   const evidenceHeadingId = useId();
   const [text, setText] = useState("");
   const [status, setStatus] = useState<
-    "opening" | "local" | "connecting" | "current" | "offline" | "denied"
+    | "opening"
+    | "local"
+    | "connecting"
+    | "current"
+    | "offline"
+    | "denied"
+    | "upgrade_required"
+    | "migration_failed"
   >("opening");
-  const [access, setAccess] = useState<"view" | "comment" | "edit">("edit");
+  const [access, setAccess] = useState<"view" | "comment" | "edit">("view");
   const [pending, setPending] = useState(0);
   const [revisions, setRevisions] = useState<
     readonly RendererDocumentRevision[]
@@ -217,7 +387,101 @@ const KnowledgeEditor = ({
     useState<keyof typeof milestoneCopy>("finalized");
   const [busy, setBusy] = useState(false);
   const [sessionGeneration, setSessionGeneration] = useState(0);
+  const [saveAcknowledged, setSaveAcknowledged] = useState(false);
+  const [limitReached, setLimitReached] = useState(false);
   const contextLoading = context === undefined && !contextError;
+  const migrationPrincipalId =
+    snapshot.access.kind === "ready"
+      ? snapshot.access.data.currentPrincipalId
+      : snapshot.bootstrap.workspace.id;
+  const reportLimit = () => {
+    setLimitReached(true);
+    window.setTimeout(() => setLimitReached(false), 2_500);
+  };
+  const editor = useEditor(
+    {
+      extensions: [
+        StarterKit.configure({
+          undoRedo: false,
+          link: { openOnClick: false },
+        }),
+        Placeholder.configure({
+          placeholder: "Zacznij pisać. Źródła pozostają osobno.",
+        }),
+        Collaboration.configure({
+          document: yDocument,
+          field: RICH_DOCUMENT_FRAGMENT_ROOT,
+        }),
+      ],
+      immediatelyRender: false,
+      editable: false,
+      editorProps: {
+        attributes: {
+          class: "document-canvas",
+          role: "textbox",
+          "aria-label": `Treść: ${document.title}`,
+          "aria-multiline": "true",
+          spellcheck: "true",
+        },
+        handleKeyDown: (_view, event) => {
+          if (
+            !(event.metaKey || event.ctrlKey) ||
+            event.key.toLowerCase() !== "s"
+          )
+            return false;
+          event.preventDefault();
+          setSaveAcknowledged(true);
+          window.setTimeout(() => setSaveAcknowledged(false), 1_500);
+          return true;
+        },
+        handleTextInput: (view, from, to, insertedText) => {
+          const currentLength = view.state.doc.textBetween(
+            0,
+            view.state.doc.content.size,
+            "\n",
+          ).length;
+          const replacedLength = view.state.doc.textBetween(
+            from,
+            to,
+            "\n",
+          ).length;
+          if (
+            currentLength - replacedLength + insertedText.length <=
+            MAX_DOCUMENT_TEXT_LENGTH
+          )
+            return false;
+          reportLimit();
+          return true;
+        },
+        handlePaste: (view, event) => {
+          const pastedText = event.clipboardData?.getData("text/plain") ?? "";
+          const { from, to } = view.state.selection;
+          const currentLength = view.state.doc.textBetween(
+            0,
+            view.state.doc.content.size,
+            "\n",
+          ).length;
+          const replacedLength = view.state.doc.textBetween(
+            from,
+            to,
+            "\n",
+          ).length;
+          if (
+            currentLength - replacedLength + pastedText.length <=
+            MAX_DOCUMENT_TEXT_LENGTH
+          )
+            return false;
+          reportLimit();
+          return true;
+        },
+      },
+    },
+    [document.id, yDocument],
+  );
+
+  useEffect(() => {
+    editor?.setEditable(access === "edit" && status !== "migration_failed");
+  }, [access, editor, status]);
 
   const reloadContext = () => {
     setContextError(false);
@@ -246,7 +510,6 @@ const KnowledgeEditor = ({
     let renewal: number | undefined;
     let persistTimer: number | undefined;
     const pendingUpdates: Uint8Array[] = [];
-    const content = yDocument.getText("content");
     const scheduleReconnect = (delay: number) => {
       if (disposed) return;
       if (renewal !== undefined) window.clearTimeout(renewal);
@@ -284,7 +547,11 @@ const KnowledgeEditor = ({
         });
     };
     const onUpdate = (update: Uint8Array, origin: unknown) => {
-      setText(content.toString());
+      try {
+        setText(documentPlainText(yDocument));
+      } catch {
+        setStatus("upgrade_required");
+      }
       if (origin === "constellation.bootstrap") return;
       pendingUpdates.push(update.slice());
       persistTimer ??= window.setTimeout(() => {
@@ -299,14 +566,42 @@ const KnowledgeEditor = ({
     window.addEventListener("beforeunload", flushPersist);
     window.addEventListener("pagehide", flushPersist);
     void client
-      .openDocument({ documentId: document.id, spaceId: document.spaceId })
-      .then((opened) => {
+      .openDocument({
+        documentId: document.id,
+        spaceId: document.spaceId,
+        supportedDocumentFormats: ["plain-v1", "rich-v1"],
+      })
+      .then(async (opened) => {
         if (disposed) return;
         if (opened.state !== undefined)
           Y.applyUpdate(yDocument, opened.state, "constellation.bootstrap");
-        setText(content.toString());
+        try {
+          const format = documentContentFormat(yDocument);
+          if (format === "plain-v1") {
+            const legacyText = yDocument
+              .getText(LEGACY_DOCUMENT_TEXT_ROOT)
+              .toString();
+            const digest = await sha256Hex(legacyText);
+            if (disposed) return;
+            migrateDocumentToRich(yDocument, digest, {
+              kind: "human",
+              principalId: migrationPrincipalId,
+            });
+          }
+          setText(documentPlainText(yDocument));
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          setStatus(
+            message.includes("DOCUMENT_FORMAT_UNSUPPORTED")
+              ? "upgrade_required"
+              : "migration_failed",
+          );
+          return;
+        }
         setPending(opened.pendingUpdateCount);
         if (opened.mode === "local") {
+          setAccess("edit");
           setStatus("local");
           return;
         }
@@ -353,6 +648,10 @@ const KnowledgeEditor = ({
       })
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
+        if (message.includes("DOCUMENT_SCHEMA_UPGRADE_REQUIRED")) {
+          setStatus("upgrade_required");
+          return;
+        }
         if (message.includes("DOCUMENT_NOT_AVAILABLE")) {
           setStatus("denied");
           return;
@@ -369,7 +668,14 @@ const KnowledgeEditor = ({
       provider?.destroy();
       yDocument.off("update", onUpdate);
     };
-  }, [client, document.id, document.spaceId, sessionGeneration, yDocument]);
+  }, [
+    client,
+    document.id,
+    document.spaceId,
+    migrationPrincipalId,
+    sessionGeneration,
+    yDocument,
+  ]);
 
   useEffect(
     () => () => {
@@ -393,6 +699,8 @@ const KnowledgeEditor = ({
     current: "Współpraca aktywna",
     offline: pending > 0 ? `Offline · ${pending} zmian oczekuje` : "Offline",
     denied: "Dostęp został odebrany",
+    upgrade_required: "Wymagana nowsza wersja aplikacji",
+    migration_failed: "Nie udało się przygotować edytora",
   }[status];
 
   const allSources =
@@ -683,9 +991,25 @@ const KnowledgeEditor = ({
           <p className="eyebrow">{roleCopy[document.role]}</p>
           <h2 id="document-title">{document.title}</h2>
         </div>
-        <div className={`document-presence ${status}`} role="status">
-          <span aria-hidden="true" />
-          {statusCopy}
+        <div className="document-editor-actions">
+          <div className={`document-presence ${status}`} role="status">
+            <span aria-hidden="true" />
+            {limitReached
+              ? "Osiągnięto limit 200 000 znaków"
+              : saveAcknowledged
+                ? "Zmiany zapisują się automatycznie"
+                : statusCopy}
+          </div>
+          <DocumentToolbar
+            editor={editor}
+            disabled={
+              access !== "edit" ||
+              status === "opening" ||
+              status === "denied" ||
+              status === "upgrade_required" ||
+              status === "migration_failed"
+            }
+          />
         </div>
       </header>
 
@@ -695,29 +1019,33 @@ const KnowledgeEditor = ({
             <strong>Ta treść nie jest już dostępna.</strong>
             <p>Lokalna sesja została zamknięta i jej cache usunięty.</p>
           </div>
+        ) : status === "upgrade_required" ? (
+          <div className="document-blocked" role="alert">
+            <strong>Ten dokument używa nowszego formatu.</strong>
+            <p>
+              Zaktualizuj Constellation, aby edytować treść bez ryzyka utraty
+              struktury.
+            </p>
+          </div>
+        ) : status === "migration_failed" ? (
+          <div className="document-blocked" role="alert">
+            <strong>Nie udało się bezpiecznie przygotować dokumentu.</strong>
+            <p>
+              Oryginalna treść pozostała zachowana. Możesz ponowić otwarcie.
+            </p>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                setStatus("opening");
+                setSessionGeneration((value) => value + 1);
+              }}
+            >
+              Spróbuj ponownie
+            </button>
+          </div>
         ) : (
-          <textarea
-            className="document-canvas"
-            aria-label={`Treść: ${document.title}`}
-            value={text}
-            readOnly={access !== "edit"}
-            maxLength={MAX_DOCUMENT_TEXT_LENGTH}
-            placeholder="Zapis zaczyna się od pierwszego znaku. Źródła pozostają osobno."
-            onChange={(event) => {
-              // Apply only the changed middle of the text: a shared prefix and
-              // suffix stay untouched so the CRDT records the actual edit
-              // instead of delete-all + insert on every keystroke.
-              const next = event.target.value;
-              yDocument.transact(() => {
-                const content = yDocument.getText("content");
-                const edit = computeDocumentTextEdit(content.toString(), next);
-                if (edit === undefined) return;
-                if (edit.removed > 0) content.delete(edit.index, edit.removed);
-                if (edit.inserted !== "")
-                  content.insert(edit.index, edit.inserted);
-              }, "constellation.local-editor");
-            }}
-          />
+          <EditorContent editor={editor} className="document-editor-shell" />
         )}
       </div>
 

@@ -49,6 +49,14 @@ const DocumentRequestSchema = z
   })
   .strict();
 
+const DocumentSessionRequestSchema = DocumentRequestSchema.extend({
+  supportedDocumentFormats: z
+    .array(z.enum(["plain-v1", "rich-v1"]))
+    .min(1)
+    .max(2)
+    .refine((items) => new Set(items).size === items.length),
+}).strict();
+
 const DocumentRevisionCreateRequestSchema = DocumentRequestSchema.extend({
   name: z.string().trim().min(1).max(120),
   correlationId: CorrelationIdSchema,
@@ -388,7 +396,7 @@ export const startHubServer = async (
         requestUrl.pathname === "/v1/documents/session" &&
         options.realtimeDocuments !== undefined
       ) {
-        const parsed = DocumentRequestSchema.safeParse(body);
+        const parsed = DocumentSessionRequestSchema.safeParse(body);
         if (!parsed.success) {
           json(response, 400, { code: "contract_invalid" });
           return;
@@ -397,6 +405,10 @@ export const startHubServer = async (
           credential,
           ...parsed.data,
         });
+        if (session === "upgrade_required") {
+          json(response, 409, { code: "document_format_upgrade_required" });
+          return;
+        }
         json(
           response,
           session === undefined ? 404 : 200,

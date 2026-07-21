@@ -10,7 +10,9 @@ without rewriting its provenance later.
 - A **Knowledge Source** stores stable identity, kind, title, optional canonical
   URL and excerpt, availability, observation time, version, and attribution.
 - A **Native Document** has one role: `note`, `document`, or `deliverable`. Its
-  collaborative body remains in the existing replaceable Yjs adapter.
+  collaborative body remains in the existing replaceable Yjs adapter. Current
+  bodies use the versioned `rich-v1` Yjs format; non-empty legacy `plain-v1`
+  bodies migrate once and retain a verification digest.
 - A document's current evidence set contains explicit source and Note IDs. It is
   editable and versioned like other record state.
 - A **Named Document Version** is an immutable milestone such as finalized,
@@ -34,7 +36,8 @@ Desktop and MCP use the same commands:
 They use `knowledge.list` for a Space-scoped library and
 `knowledge.documentContext` for one authorized evidence/version view. Global
 search includes sources and Note, Document, and Deliverable titles without
-adding generated answers.
+adding generated answers. Body indexing remains a subsequent
+connected-document slice.
 
 Every mutation requires its declared capability, current Workspace and Space
 access, exact expected versions, idempotency, attribution, audit, and one unit
@@ -52,7 +55,12 @@ exports, and device projections cannot reveal hidden knowledge.
 
 Realtime document bodies are still synchronized only by the dedicated
 Yjs/Hocuspocus adapter. Record synchronization does not become a second CRDT,
-and a generic cloud-synced database file is never treated as coordination.
+and a generic cloud-synced database file is never treated as coordination. The
+adapter owns schema inspection, plaintext projection, deterministic
+`plain-v1`-to-`rich-v1` migration, checkpoints, and rich revision restore.
+Session negotiation refuses a writer that does not support the stored format;
+the client can still see an explicit upgrade-required state without being able
+to flatten newer structure.
 
 ## Recovery behavior
 
@@ -67,7 +75,8 @@ and a generic cloud-synced database file is never treated as coordination.
 ## Current limits
 
 This slice does not yet implement approvals, external Artifact transfer,
-automatic citation extraction, source freshness schedules, or the finite
-Knowledge Radar. Those outcomes must extend the same typed records,
-authorization boundary, and deterministic query model rather than add a second
-document system or an embedded reasoning layer.
+automatic citation extraction, source freshness schedules, inline typed-record
+links and backlinks, document-body search, structured remote MCP editing, or
+generic document attachments. Those outcomes must extend the same typed
+records, authorization boundary, and deterministic query model rather than add
+a second document system or an embedded reasoning layer.

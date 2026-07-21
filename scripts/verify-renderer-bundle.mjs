@@ -56,11 +56,16 @@ import path from "node:path";
 // (ADR-048) — renderer importuje pakiet kontraktów w całości.
 // 2026-07-21 (R14.5): totalJavaScript po akcji eksportu pakietu wymiany w
 // Ustawieniach (przycisk, komunikaty stanu, wrapper IPC).
+// 2026-07-21 (R15.1): Tiptap/ProseMirror jest wyłącznie w leniwym chunku
+// Dokumentów. Budżet wejścia pozostaje bez zmian; total obejmuje teraz
+// pełny, otwarty edytor rich-text, a osobny limit największego leniwego chunka
+// pilnuje, żeby ten koszt nie rósł bez decyzji.
 const limits = {
   entryBytes: 540_000,
   entryGzipBytes: 143_000,
-  totalJavaScriptBytes: 836_000,
-  stylesheetBytes: 177_000,
+  totalJavaScriptBytes: 1_270_000,
+  largestLazyJavaScriptBytes: 550_000,
+  stylesheetBytes: 180_000,
 };
 
 const dist = path.join(process.cwd(), "packages", "desktop-ui", "dist");
@@ -84,11 +89,15 @@ const assets = await readdir(path.join(dist, "assets"), {
   withFileTypes: true,
 });
 let totalJavaScriptBytes = 0;
+let largestLazyJavaScriptBytes = 0;
 
 for (const asset of assets) {
   if (asset.isFile() && asset.name.endsWith(".js")) {
-    totalJavaScriptBytes += (await stat(path.join(dist, "assets", asset.name)))
-      .size;
+    const size = (await stat(path.join(dist, "assets", asset.name))).size;
+    totalJavaScriptBytes += size;
+    if (path.join(dist, "assets", asset.name) !== entryPath) {
+      largestLazyJavaScriptBytes = Math.max(largestLazyJavaScriptBytes, size);
+    }
   }
 }
 
@@ -96,6 +105,7 @@ const measurements = {
   entryBytes: entry.byteLength,
   entryGzipBytes: gzipSync(entry).byteLength,
   totalJavaScriptBytes,
+  largestLazyJavaScriptBytes,
   stylesheetBytes: stylesheet.size,
 };
 const failures = Object.entries(limits).filter(
@@ -103,7 +113,7 @@ const failures = Object.entries(limits).filter(
 );
 
 console.log(
-  `Renderer bundle: entry ${measurements.entryBytes} B (${measurements.entryGzipBytes} B gzip), JS total ${measurements.totalJavaScriptBytes} B, CSS ${measurements.stylesheetBytes} B.`,
+  `Renderer bundle: entry ${measurements.entryBytes} B (${measurements.entryGzipBytes} B gzip), JS total ${measurements.totalJavaScriptBytes} B, largest lazy JS ${measurements.largestLazyJavaScriptBytes} B, CSS ${measurements.stylesheetBytes} B.`,
 );
 
 if (failures.length > 0) {

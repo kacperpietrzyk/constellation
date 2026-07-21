@@ -90,7 +90,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-export const LOCAL_STORE_SCHEMA_VERSION = 19;
+export const LOCAL_STORE_SCHEMA_VERSION = 20;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -708,6 +708,12 @@ const schemaV19 = `
     ON automation_rules(workspace_id, position, id);
 `;
 
+// Rich collaborative documents keep their bytes in the existing Yjs state
+// table. The version-only migration is intentional: once this client can write
+// rich-v1, an older binary must fail closed instead of reopening the same local
+// database and writing the legacy Y.Text root.
+const schemaV20 = `SELECT 1;`;
+
 const localStoreMigrations = [
   schemaV1,
   schemaV2,
@@ -728,6 +734,7 @@ const localStoreMigrations = [
   schemaV17,
   schemaV18,
   schemaV19,
+  schemaV20,
 ] as const;
 
 export interface LocalCoordinationState {

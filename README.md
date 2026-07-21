@@ -170,6 +170,17 @@ and revision operation reauthorizes current Workspace membership and Space
 access. Local-only workspaces use the same editor and encrypted store without
 requiring a Hub.
 
+The writing surface now stores versioned structured content (`rich-v1`) in the
+same Yjs document and exposes paragraphs, headings, lists, emphasis, links, and
+code blocks through an accessible Tiptap editor. Existing `plain-v1` documents
+migrate once without discarding their text. Current clients negotiate the
+document format with the Hub; an older client is made read-only instead of
+being allowed to overwrite rich structure it cannot understand. Rich named
+revisions restore as new collaborative changes and the plain-text projection
+remains available to evidence snapshots and bounded text operations. Inline
+typed-record links, backlinks, document-body search, and structured remote MCP
+editing remain the next connected-document outcomes.
+
 The first knowledge-to-deliverable journey now separates preserved Sources,
 evolving Notes or Documents, and evidence-backed Deliverables. A named version
 freezes one collaborative revision, a content snapshot, milestone meaning, and

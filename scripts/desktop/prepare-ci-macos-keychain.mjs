@@ -96,7 +96,12 @@ passwordBytes.fill(0);
 security(["create-keychain", "-p", password, keychainPath]);
 security(["set-keychain-settings", "-lut", "21600", keychainPath]);
 security(["unlock-keychain", "-p", password, keychainPath]);
-security(["list-keychains", "-d", "user", "-s", keychainPath, ...searchList]);
+// The disposable store must also be the only search target. Keeping the
+// user's login Keychain in this temporary list lets an ad-hoc build discover
+// an older Safe Storage item whose ACL belongs to another signature, which can
+// block an unattended packaged test in SecItemCopyMatching. The original list
+// is already retained above and the always-run restore step reinstates it.
+security(["list-keychains", "-d", "user", "-s", keychainPath]);
 security(["default-keychain", "-d", "user", "-s", keychainPath]);
 
 process.stdout.write(

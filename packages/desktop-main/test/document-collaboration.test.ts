@@ -109,6 +109,24 @@ const edit = (text: string) => {
   return result;
 };
 
+const richEdit = (text: string) => {
+  const adapter = new YjsRealtimeDocumentAdapter();
+  adapter.replaceText(text, {
+    kind: "human",
+    principalId: ids.principal,
+  });
+  adapter.migrateToRich("a".repeat(64), {
+    kind: "human",
+    principalId: ids.principal,
+  });
+  const result = {
+    state: adapter.encodeState(),
+    update: adapter.encodeState(),
+  };
+  adapter.destroy();
+  return result;
+};
+
 describe("desktop document collaboration bridge", () => {
   it("keeps local documents encrypted-store backed and supports named restore", async () => {
     const { database, store } = setup();
@@ -139,6 +157,7 @@ describe("desktop document collaboration bridge", () => {
     const opened = await bridge.open({
       documentId: ids.document,
       spaceId: ids.space,
+      supportedDocumentFormats: ["plain-v1", "rich-v1"],
     });
     assert.equal(opened.mode, "local");
     assert.ok(opened.state);
@@ -175,6 +194,7 @@ describe("desktop document collaboration bridge", () => {
             room: `${ids.workspace}/${ids.document}`,
             expiresAt: "2026-07-14T15:05:00.000Z",
             access: "edit",
+            documentFormat: "plain-v1",
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
@@ -183,6 +203,7 @@ describe("desktop document collaboration bridge", () => {
     const opened = await bridge.open({
       documentId: ids.document,
       spaceId: ids.space,
+      supportedDocumentFormats: ["plain-v1", "rich-v1"],
     });
     assert.equal(opened.mode, "coordinated");
     assert.equal(opened.session?.token, "short-lived-session");
@@ -192,6 +213,40 @@ describe("desktop document collaboration bridge", () => {
       JSON.stringify(opened).includes("durable-main-only-secret"),
       false,
     );
+    database.close();
+  });
+
+  it("refuses a legacy-only client after a local document becomes rich", async () => {
+    const { database, store } = setup();
+    const bridge = new DocumentCollaborationBridge({
+      workspaceId: ids.workspace,
+      deviceId: ids.device,
+      store,
+      connection: () => undefined,
+    });
+    bridge.persist({
+      documentId: ids.document,
+      spaceId: ids.space,
+      ...richEdit("Dokument rich text"),
+    });
+
+    await assert.rejects(
+      bridge.open({
+        documentId: ids.document,
+        spaceId: ids.space,
+        supportedDocumentFormats: ["plain-v1"],
+      }),
+      /DOCUMENT_SCHEMA_UPGRADE_REQUIRED/u,
+    );
+    const current = await bridge.open({
+      documentId: ids.document,
+      spaceId: ids.space,
+      supportedDocumentFormats: ["plain-v1", "rich-v1"],
+    });
+    assert.ok(current.state);
+    const reopened = new YjsRealtimeDocumentAdapter(current.state);
+    assert.equal(reopened.getFormat(), "rich-v1");
+    reopened.destroy();
     database.close();
   });
 });
