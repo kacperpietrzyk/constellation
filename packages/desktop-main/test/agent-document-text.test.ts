@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  DeviceIdSchema,
   DocumentIdSchema,
   SpaceIdSchema,
   WorkspaceIdSchema,
@@ -27,8 +28,10 @@ interface StoredState {
 const fakeStore = () => {
   let stored: StoredState | undefined;
   const committed: { state: Uint8Array; update: Uint8Array }[] = [];
+  const revisions: { id: string; name: string }[] = [];
   return {
     committed,
+    revisions,
     current: () => stored,
     store: {
       loadDocumentCollaborationState: () =>
@@ -47,6 +50,9 @@ const fakeStore = () => {
         updatedAt: string;
       }) => {
         stored = { state: input.state, updatedAt: input.updatedAt };
+      },
+      storeDocumentRevision: (revision: { id: string; name: string }) => {
+        revisions.push(revision);
       },
       commitDocumentUpdate: (input: {
         state: Uint8Array;
@@ -102,8 +108,13 @@ describe("agent document text port", () => {
       text: "Delivery notes written by an agent.",
       principalId: "42000000-0000-4000-8000-000000000004",
       runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
     });
-    assert.deepEqual(written, { characters: 35 });
+    assert.equal(written?.characters, 35);
+    // Durable attribution and reversibility: the pre-write text is captured as
+    // a revision naming the run, so an agent's rewrite can be undone by a
+    // person restoring it (ADR-049 §5).
+    assert.ok(written?.revisionId);
     assert.equal(
       subject.read({ documentId: ids.document, spaceId: ids.space }),
       "Delivery notes written by an agent.",
@@ -121,6 +132,7 @@ describe("agent document text port", () => {
       text: "First",
       principalId: "42000000-0000-4000-8000-000000000004",
       runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
     });
     // Coordinated: the update is queued for the outbox, exactly as the
     // renderer bridge queues its own.
@@ -153,11 +165,37 @@ describe("agent document text port", () => {
       text: "Rewritten by an agent",
       principalId: "42000000-0000-4000-8000-000000000004",
       runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
     });
     assert.equal(
       subject.read({ documentId: ids.document, spaceId: ids.space }),
       "Rewritten by an agent",
     );
+  });
+
+  it("records the pre-write text as a restorable revision naming the run", () => {
+    const fake = fakeStore();
+    const subject = port(fake, false);
+    subject.replace({
+      documentId: ids.document,
+      spaceId: ids.space,
+      text: "First version",
+      principalId: "42000000-0000-4000-8000-000000000004",
+      runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
+    });
+    subject.replace({
+      documentId: ids.document,
+      spaceId: ids.space,
+      text: "Second version",
+      principalId: "42000000-0000-4000-8000-000000000004",
+      runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
+    });
+    // One revision per agent write, each holding the text that write replaced,
+    // so "reversible" is a restore rather than a recovery project.
+    assert.equal(fake.revisions.length, 2);
+    assert.equal(fake.revisions[1]?.name, "Before agent write (run 42000000)");
   });
 
   it("refuses text beyond the existing document bound", () => {
@@ -170,6 +208,7 @@ describe("agent document text port", () => {
         text: "x".repeat(MAX_DOCUMENT_TEXT_LENGTH + 1),
         principalId: "42000000-0000-4000-8000-000000000004",
         runId: "42000000-0000-4000-8000-000000000005",
+        deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
       }),
       undefined,
     );

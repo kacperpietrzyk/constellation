@@ -150,7 +150,9 @@ export class LocalMcpRuntime {
           readonly text: string;
           readonly principalId: string;
           readonly runId: string;
-        }): { readonly characters: number } | undefined;
+        }):
+          | { readonly characters: number; readonly revisionId: string }
+          | undefined;
       };
     },
   ) {
@@ -506,6 +508,9 @@ export class LocalMcpRuntime {
         : contentSafeResponse(invocation.requestId, "success", {
             documentId: document.id,
             characters: written.characters,
+            // The revision that restores the text this write replaced: an
+            // agent's document change is reversible by naming it.
+            replacedRevisionId: written.revisionId,
           });
     }
     return this.revertCheckpoint(

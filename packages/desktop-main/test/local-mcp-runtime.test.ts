@@ -222,7 +222,10 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
       read: () => documentTextState,
       replace: ({ text }) => {
         documentTextState = text;
-        return { characters: text.length };
+        return {
+          characters: text.length,
+          revisionId: "00000000-0000-4000-8000-000000000803",
+        };
       },
     },
     readCapturePayload: (original) =>

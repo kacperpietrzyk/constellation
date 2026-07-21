@@ -393,13 +393,34 @@ export const createAgentDocumentTextPort = (input: {
       readonly text: string;
       readonly principalId: string;
       readonly runId: string;
-    }): { readonly characters: number } | undefined => {
+      readonly deviceId: DeviceId;
+    }):
+      | { readonly characters: number; readonly revisionId: DocumentRevisionId }
+      | undefined => {
       if (request.text.length > MAX_DOCUMENT_TEXT_LENGTH) return undefined;
       const documentScope = scope(request.documentId, request.spaceId);
       const existing =
         input.store.loadDocumentCollaborationState(documentScope)?.state;
       const adapter = new YjsRealtimeDocumentAdapter(existing);
       try {
+        // A Yjs transaction origin reaches live observers and is never stored,
+        // so it cannot be the durable record of who wrote this. Agent
+        // mutations must be attributable, auditable, and reversible (AGENTS.md
+        // and ADR-049 §5): the pre-write state is snapshotted as a revision
+        // naming the run, which both records the act and makes restoring the
+        // prior text a normal action rather than a recovery project.
+        const priorCheckpoint = adapter.checkpoint();
+        const revisionId = DocumentRevisionIdSchema.parse(randomUUID());
+        input.store.storeDocumentRevision({
+          id: revisionId,
+          ...documentScope,
+          name: `Before agent write (run ${request.runId.slice(0, 8)})`,
+          ...priorCheckpoint,
+          createdBy: request.principalId as never,
+          createdByDeviceId: request.deviceId,
+          correlationId: CorrelationIdSchema.parse(randomUUID()),
+          createdAt: now(),
+        });
         let update: Uint8Array | undefined;
         const stop = adapter.onUpdate((value) => {
           update = value;
@@ -412,9 +433,10 @@ export const createAgentDocumentTextPort = (input: {
         stop();
         const state = adapter.encodeState();
         const updatedAt = now();
-        // Same branch the renderer bridge takes: a coordinated workspace also
-        // queues the update for the outbox, a local-only one only stores the
-        // new state.
+        // Same branch the renderer bridge takes. The coordinated half is
+        // currently unreachable from the agent path — the local MCP endpoint
+        // is disabled under a coordinated Data Home — and is kept because it
+        // is the correct behaviour if that gate ever moves (ADR-049).
         if (update === undefined || input.connection() === undefined) {
           input.store.storeDocumentCollaborationState({
             ...documentScope,
@@ -430,7 +452,7 @@ export const createAgentDocumentTextPort = (input: {
             createdAt: updatedAt,
           });
         }
-        return { characters: request.text.length };
+        return { characters: request.text.length, revisionId };
       } finally {
         adapter.destroy();
       }

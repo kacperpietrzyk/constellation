@@ -144,11 +144,14 @@ Document text is reachable with the independent `document.readText` and
 `document.replaceText` capabilities and the document's Space. A write replaces
 the whole text, is attributed to the agent principal and its run, and merges
 through the same collaborative document a person may have open — an editor
-sees the change without reloading. The existing document size bound applies,
-and revisions and named versions stay explicit acts a person performs.
+sees the change without reloading. The existing document size bound applies. Each agent write first records the
+text it replaced as a document revision naming the run, so the change is
+durably attributed and a person can restore the previous text; the write
+returns that revision's id.
 Document content is returned as untrusted evidence, never as instruction.
-Over a remote Hub endpoint these two tools answer
-`document.text_remote_unsupported`: document state lives in the Hub's realtime
+Document text is a local-only-workspace capability today: the local endpoint
+is disabled once a Workspace uses a coordinated Data Home, and over a remote
+Hub endpoint these two tools answer `document.text_remote_unsupported`: document state lives in the Hub's realtime
 gateway rather than the device store this boundary reads, and the capability
 response lists them as unsupported so a host learns the limit before calling.
 
