@@ -2,7 +2,14 @@ import { SettingsSurface } from "../SettingsSurface.js";
 import { createScenarioClient } from "../client/scenario-client.js";
 import { workHarnessSnapshot } from "./WorkHarness.js";
 
-const counts = { areas: 1, initiatives: 1, projects: 1, tasks: 1, links: 3 };
+const counts = {
+  taskStatuses: 1,
+  areas: 1,
+  initiatives: 1,
+  projects: 1,
+  tasks: 1,
+  links: 3,
+};
 const client = {
   ...createScenarioClient({ queries: {} }),
   previewStarterWorkspace: async () =>

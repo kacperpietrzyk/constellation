@@ -94,6 +94,7 @@ test("starter manifest is strict, referentially valid, and idempotent through pr
   const manifest = parseStarterWorkspaceManifest(manifestValue);
   assert.ok(manifest);
   assert.deepEqual(previewStarterWorkspace(manifest), {
+    taskStatuses: 0,
     areas: 1,
     initiatives: 1,
     projects: 1,
@@ -135,6 +136,7 @@ test("starter manifest is strict, referentially valid, and idempotent through pr
       manifest,
     });
   assert.deepEqual(run(), {
+    taskStatuses: 0,
     areas: 1,
     initiatives: 1,
     projects: 1,
@@ -142,6 +144,7 @@ test("starter manifest is strict, referentially valid, and idempotent through pr
     links: 3,
   });
   assert.deepEqual(run(), {
+    taskStatuses: 0,
     areas: 1,
     initiatives: 1,
     projects: 1,
@@ -193,6 +196,7 @@ test("starter preview is a pure count over the validated manifest", () => {
   });
   assert.ok(manifest);
   assert.deepEqual(previewStarterWorkspace(manifest), {
+    taskStatuses: 0,
     areas: 1,
     initiatives: 1,
     projects: 2,
@@ -295,6 +299,7 @@ test("tasks CSV maps onto the v2 exchange manifest through the same engine", () 
         label.toLocaleLowerCase("pl-PL") === "w toku" ? statusId : undefined,
     });
   assert.deepEqual(run(), {
+    taskStatuses: 0,
     areas: 0,
     initiatives: 0,
     projects: 1,
@@ -303,7 +308,14 @@ test("tasks CSV maps onto the v2 exchange manifest through the same engine", () 
   });
   assert.deepEqual(
     run(),
-    { areas: 0, initiatives: 0, projects: 1, tasks: 2, links: 2 },
+    {
+      taskStatuses: 0,
+      areas: 0,
+      initiatives: 0,
+      projects: 1,
+      tasks: 2,
+      links: 2,
+    },
     "re-running the same file is idempotent",
   );
 
@@ -382,6 +394,9 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
   assert.ok(exported);
   if (exported === undefined) return;
   assert.deepEqual(exported.counts, {
+    // The bootstrap status the imported task sits in travels with it, so a
+    // target that has never heard of it can still accept the package.
+    taskStatuses: 1,
     areas: 1,
     initiatives: 1,
     projects: 1,
@@ -428,6 +443,7 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
         : { defaultTaskStatusId: targetWorkspace.defaultTaskStatusId }),
     });
   assert.deepEqual(applyToTarget(), {
+    taskStatuses: 0,
     areas: 1,
     initiatives: 1,
     projects: 1,
@@ -462,6 +478,55 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
   assert.equal(
     overview.result.projection.tasks[0]?.operationalState,
     "waiting",
+  );
+
+  // A custom status travels with the tasks that name it: without the v3
+  // configuration section this import would fail on an unknown status label,
+  // which is the R14.5 gap ADR-052 closes.
+  const customStore = new InMemoryReferenceStore();
+  const custom = createRuntimeKernelService({ context, store: customStore });
+  assert.equal(
+    custom.execute(bootstrap("export-custom")).kind,
+    "command_outcome",
+  );
+  const customApplied = importStarterWorkspace({
+    service: custom,
+    workspaceId: context.workspaceId,
+    spaceId,
+    deviceId: DeviceIdSchema.parse("export-custom-device"),
+    manifest: {
+      ...reparsed,
+      importId: "20000000-0000-4000-8000-0000000000c1",
+      taskStatuses: [
+        {
+          key: "status-custom",
+          label: "Czeka na klienta",
+          operationalSemantics: "waiting",
+        },
+      ],
+      tasks: reparsed.tasks.map((task) => ({
+        ...task,
+        statusLabel: "Czeka na klienta",
+      })),
+    },
+    resolveStatusId: (label) =>
+      customStore
+        .read((view) => view.listTaskStatuses(context.workspaceId))
+        .find(
+          (status) =>
+            status.label.toLocaleLowerCase("pl-PL") ===
+            label.toLocaleLowerCase("pl-PL"),
+        )?.id,
+    existingStatusLabels: customStore
+      .read((view) => view.listTaskStatuses(context.workspaceId))
+      .map((status) => status.label),
+  });
+  assert.equal(customApplied.taskStatuses, 1);
+  assert.equal(
+    customStore
+      .read((view) => view.listTaskStatuses(context.workspaceId))
+      .some((status) => status.label === "Czeka na klienta"),
+    true,
   );
 
   // Stability is per workspace, not across them: keys are record ids, so two

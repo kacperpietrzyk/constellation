@@ -1806,6 +1806,10 @@ export const SettingsSurface = ({
                     <span>{importCandidate.fileName}</span>
                     <dl>
                       <div>
+                        <dt>Statusy zadań</dt>
+                        <dd>{importCandidate.counts.taskStatuses}</dd>
+                      </div>
+                      <div>
                         <dt>Obszary</dt>
                         <dd>{importCandidate.counts.areas}</dd>
                       </div>

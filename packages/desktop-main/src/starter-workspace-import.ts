@@ -47,16 +47,31 @@ interface StarterTask {
   readonly statusLabel?: string;
 }
 
+interface StarterTaskStatus {
+  readonly key: string;
+  readonly label: string;
+  readonly operationalSemantics:
+    "actionable" | "waiting" | "blocked" | "paused";
+}
+
 export interface StarterWorkspaceManifest {
-  readonly version: 1 | 2;
+  readonly version: 1 | 2 | 3;
   readonly importId: string;
   readonly areas: readonly StarterArea[];
   readonly initiatives: readonly StarterInitiative[];
   readonly projects: readonly StarterProject[];
   readonly tasks: readonly StarterTask[];
+  /**
+   * v3 (ADR-052). Workspace configuration the tasks depend on. Without it a
+   * package whose tasks carry a custom status label cannot be imported into a
+   * workspace that has never heard of that status — the import refuses an
+   * unknown label by design, and rightly.
+   */
+  readonly taskStatuses?: readonly StarterTaskStatus[];
 }
 
 export interface StarterWorkspaceImportResult {
+  readonly taskStatuses: number;
   readonly areas: number;
   readonly initiatives: number;
   readonly projects: number;
@@ -67,6 +82,9 @@ export interface StarterWorkspaceImportResult {
 export const previewStarterWorkspace = (
   manifest: StarterWorkspaceManifest,
 ): StarterWorkspaceImportResult => ({
+  // A status the target already has is not created again, so the preview
+  // counts what the package carries rather than promising what it will add.
+  taskStatuses: manifest.taskStatuses?.length ?? 0,
   areas: manifest.areas.length,
   initiatives: manifest.initiatives.length,
   projects: manifest.projects.length,
@@ -124,15 +142,13 @@ export const parseStarterWorkspaceManifest = (
 ): StarterWorkspaceManifest | undefined => {
   if (
     !isRecord(value) ||
-    !exactKeys(value, [
-      "version",
-      "importId",
-      "areas",
-      "initiatives",
-      "projects",
-      "tasks",
-    ]) ||
-    (value.version !== 1 && value.version !== 2) ||
+    !exactKeys(
+      value,
+      ["version", "importId", "areas", "initiatives", "projects", "tasks"],
+      ["taskStatuses"],
+    ) ||
+    (value.version !== 1 && value.version !== 2 && value.version !== 3) ||
+    (value.taskStatuses !== undefined && value.version !== 3) ||
     typeof value.importId !== "string" ||
     !/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(value.importId)
   )
@@ -214,7 +230,10 @@ export const parseStarterWorkspaceManifest = (
       !exactKeys(
         item,
         ["key", "title"],
-        version === 2
+        // v2 introduced the richer task fields and v3 keeps them: gating on
+        // equality would have silently narrowed a task back to v1 the moment
+        // the format grew again (it did — ADR-052).
+        version >= 2
           ? [
               "projectKey",
               "operationalState",
@@ -306,6 +325,41 @@ export const parseStarterWorkspaceManifest = (
     )
   )
     return undefined;
+  const taskStatuses =
+    value.taskStatuses === undefined
+      ? undefined
+      : parseArray(
+          value.taskStatuses,
+          (item): StarterTaskStatus | undefined => {
+            if (
+              !isRecord(item) ||
+              !exactKeys(item, ["key", "label", "operationalSemantics"])
+            )
+              return undefined;
+            const parsedKey = key(item.key);
+            const label = text(item.label, 60);
+            const semantics = item.operationalSemantics;
+            return parsedKey &&
+              label &&
+              (semantics === "actionable" ||
+                semantics === "waiting" ||
+                semantics === "blocked" ||
+                semantics === "paused")
+              ? { key: parsedKey, label, operationalSemantics: semantics }
+              : undefined;
+          },
+        );
+  if (value.taskStatuses !== undefined && taskStatuses === undefined)
+    return undefined;
+  // Two statuses with one label would be ambiguous on the reading side, where
+  // labels are how a task names its status.
+  if (
+    taskStatuses !== undefined &&
+    new Set(
+      taskStatuses.map((status) => status.label.toLocaleLowerCase("pl-PL")),
+    ).size !== taskStatuses.length
+  )
+    return undefined;
   return {
     version,
     importId: value.importId,
@@ -313,6 +367,7 @@ export const parseStarterWorkspaceManifest = (
     initiatives,
     projects,
     tasks,
+    ...(taskStatuses === undefined ? {} : { taskStatuses }),
   };
 };
 
@@ -585,6 +640,8 @@ export const importStarterWorkspace = (input: {
   readonly deviceId: DeviceId;
   readonly manifest: StarterWorkspaceManifest;
   readonly resolveStatusId?: (label: string) => string | undefined;
+  /** Labels the target workspace already holds, so none is duplicated. */
+  readonly existingStatusLabels?: readonly string[];
   readonly defaultTaskStatusId?: string;
 }): StarterWorkspaceImportResult => {
   const base = (
@@ -598,6 +655,49 @@ export const importStarterWorkspace = (input: {
     expectedVersions,
     correlationId: input.manifest.importId,
   });
+  // v3 configuration first: a task can only name a status the workspace
+  // already has, so the statuses the package carries must exist before any
+  // task lands (ADR-052). A status whose label the target already holds is
+  // skipped rather than duplicated — labels are how a task names its status,
+  // so two with one label would be ambiguous.
+  let createdStatuses = 0;
+  const existingStatusLabels = new Set(
+    (input.existingStatusLabels ?? []).map((label) =>
+      label.toLocaleLowerCase("pl-PL"),
+    ),
+  );
+  for (const status of input.manifest.taskStatuses ?? []) {
+    if (existingStatusLabels.has(status.label.toLocaleLowerCase("pl-PL")))
+      continue;
+    // A caller that did not enumerate existing labels still must not turn a
+    // duplicate into a failed import: the kernel refuses the second status
+    // with that label, and skipping is the same outcome the enumerated path
+    // reaches. Any other refusal (authorization, for instance) still aborts,
+    // because it means the package cannot be applied as written.
+    const created = input.service.execute(
+      CommandEnvelopeSchema.parse({
+        ...base(`task-status:${status.key}`),
+        commandName: "taskStatus.create",
+        payload: {
+          statusId: deterministicUuid(
+            `${input.manifest.importId}:task-status:${status.key}`,
+          ),
+          label: status.label,
+          operationalSemantics: status.operationalSemantics,
+        },
+      }),
+    );
+    const outcome =
+      created.kind === "command_outcome" ? created.outcome : undefined;
+    if (outcome?.outcome === "success") {
+      existingStatusLabels.add(status.label.toLocaleLowerCase("pl-PL"));
+      createdStatuses += 1;
+      continue;
+    }
+    if (outcome?.diagnosticCode !== "command.precondition_failed")
+      throw new Error("STARTER_WORKSPACE_COMMAND_FAILED");
+    existingStatusLabels.add(status.label.toLocaleLowerCase("pl-PL"));
+  }
   const areaIds = new Map<string, string>();
   const initiativeIds = new Map<string, string>();
   const projectIds = new Map<string, ProjectId>();
@@ -788,6 +888,7 @@ export const importStarterWorkspace = (input: {
     }
   }
   return {
+    taskStatuses: createdStatuses,
     areas: input.manifest.areas.length,
     initiatives: input.manifest.initiatives.length,
     projects: input.manifest.projects.length,
