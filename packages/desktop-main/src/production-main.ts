@@ -10,6 +10,7 @@ import {
   openSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
@@ -71,6 +72,7 @@ import {
 import { createDesktopMeetingLoopRuntime } from "./calendar-meeting-loop.js";
 import { JamieApiClient, JamieConnectionCustody } from "./jamie-integration.js";
 import { CoordinatedDataHomeProvider } from "./coordinated-data-home-provider.js";
+import { buildExchangeManifest } from "./starter-workspace-export.js";
 import {
   DocumentCollaborationBridge,
   createAgentDocumentTextPort,
@@ -2252,6 +2254,39 @@ const startProductionDesktop = async (): Promise<void> => {
       return {
         outcome: "success",
         fileLabel: path.basename(result.filePath),
+      } as const;
+    } catch {
+      return { outcome: "failure" } as const;
+    }
+  });
+  ipcMain.handle(DESKTOP_CHANNELS.exportExchangePackage, async (event) => {
+    assertTrustedSender(event);
+    const kernel = workspaceRecovery?.kernel;
+    if (kernel === undefined) return { outcome: "failure" } as const;
+    const built = buildExchangeManifest({
+      store: kernel.store,
+      workspaceId: kernel.identity.workspaceId,
+      spaceId: kernel.identity.rootSpaceId,
+    });
+    if (built === undefined) return { outcome: "failure" } as const;
+    const result = await dialog.showSaveDialog({
+      title: "Export a Constellation exchange package",
+      defaultPath: "constellation-exchange.json",
+      filters: [{ name: "JSON", extensions: ["json"] }],
+      properties: ["createDirectory", "showOverwriteConfirmation"],
+    });
+    if (result.canceled || result.filePath === undefined)
+      return { outcome: "cancelled" } as const;
+    try {
+      writeFileSync(
+        result.filePath,
+        `${JSON.stringify(built.manifest, undefined, 2)}\n`,
+        { encoding: "utf8", mode: 0o600 },
+      );
+      return {
+        outcome: "success",
+        fileLabel: path.basename(result.filePath),
+        counts: built.counts,
       } as const;
     } catch {
       return { outcome: "failure" } as const;

@@ -216,6 +216,10 @@ export const SettingsSurface = ({
   const [supportMessage, setSupportMessage] = useState<SectionMessage>();
   const [conceptHelpTopic, setConceptHelpTopic] =
     useState<ConceptHelpTopicId>();
+  const [busyExport, setBusyExport] = useState(false);
+  const [exportMessage, setExportMessage] = useState<
+    { readonly tone: "status" | "alert"; readonly text: string } | undefined
+  >(undefined);
   const [importCandidate, setImportCandidate] = useState<{
     readonly fileName: string;
     readonly manifest: unknown;
@@ -376,6 +380,33 @@ export const SettingsSurface = ({
           text: "Przełączenie nie rozpoczęło się. Bieżący workspace pozostaje aktywny.",
         });
       });
+  };
+
+  const exportExchange = async () => {
+    if (!client?.exportExchangePackage) return;
+    setBusyExport(true);
+    setExportMessage(undefined);
+    try {
+      const result = await client.exportExchangePackage();
+      if (result.outcome === "success") {
+        setExportMessage({
+          tone: "status",
+          text: `Zapisano ${result.fileLabel}: ${result.counts.projects} projektów i ${result.counts.tasks} zadań. Ten sam plik można wczytać importem.`,
+        });
+      } else if (result.outcome === "cancelled") {
+        setExportMessage({
+          tone: "status",
+          text: "Eksport anulowany. Nic nie zostało zapisane.",
+        });
+      } else {
+        setExportMessage({
+          tone: "alert",
+          text: "Nie udało się zapisać pakietu. Sprawdź uprawnienia do wybranego katalogu.",
+        });
+      }
+    } finally {
+      setBusyExport(false);
+    }
   };
 
   const importStarter = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -1827,6 +1858,31 @@ export const SettingsSurface = ({
                   Reguły cykliczne i zapisane widoki pozostają zwykłymi
                   rekordami Work; import nie wykonuje kodu ani nie omija audytu.
                 </small>
+              </div>
+            </section>
+
+            <section>
+              <div className="settings-copy">
+                <h2>Eksport pakietu wymiany</h2>
+                <p>
+                  Zapisuje Areas, Initiatives, Projects i Tasks tego workspace w
+                  tym samym formacie, który przyjmuje import — pakiet można
+                  wczytać na innym urządzeniu, a ponowne wczytanie tego samego
+                  pliku niczego nie duplikuje. Treść dokumentów i załączniki nie
+                  wchodzą do pakietu.
+                </p>
+              </div>
+              <div className="settings-control settings-actions">
+                <button
+                  type="button"
+                  disabled={busyExport || !client?.exportExchangePackage}
+                  onClick={() => void exportExchange()}
+                >
+                  Eksportuj pakiet wymiany
+                </button>
+                {exportMessage && (
+                  <p role={exportMessage.tone}>{exportMessage.text}</p>
+                )}
               </div>
             </section>
 

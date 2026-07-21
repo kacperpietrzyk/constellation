@@ -10,6 +10,7 @@ import {
 import { InMemoryReferenceStore } from "@constellation/testkit";
 
 import { createRuntimeKernelService } from "../src/runtime-kernel-service.js";
+import { buildExchangeManifest } from "../src/starter-workspace-export.js";
 import {
   importStarterWorkspace,
   manifestStatusErrors,
@@ -332,4 +333,163 @@ test("tasks CSV maps onto the v2 exchange manifest through the same engine", () 
     (task) => task.title === "Czekamy na cennik",
   );
   assert.equal(waiting?.operationalState, "waiting");
+});
+
+test("an exported package re-imports elsewhere without duplicating anything", () => {
+  // ADR-050 / R14.5. The exit property is a round trip: export produces
+  // exactly the package the import engine accepts, a second workspace ends up
+  // with the same work, and replaying the package changes nothing.
+  const source = new InMemoryReferenceStore();
+  const service = createRuntimeKernelService({ context, store: source });
+  const spaceId = context.spaceScope[0]!;
+  const bootstrap = (label: string) =>
+    CommandEnvelopeSchema.parse({
+      contractVersion: 1,
+      commandName: "workspace.createLocal",
+      commandId: crypto.randomUUID(),
+      workspaceId: context.workspaceId,
+      idempotencyKey: label,
+      expectedVersions: {},
+      correlationId: crypto.randomUUID(),
+      payload: {
+        workspaceId: context.workspaceId,
+        rootSpaceId: spaceId,
+        ownerPrincipalId: context.principalId,
+        name: "Export source",
+        timezone: "Europe/Warsaw",
+      },
+    });
+  assert.equal(
+    service.execute(bootstrap("export-source")).kind,
+    "command_outcome",
+  );
+  const seeded = parseStarterWorkspaceManifest(manifestValue);
+  assert.ok(seeded);
+  if (seeded === undefined) return;
+  importStarterWorkspace({
+    service,
+    workspaceId: context.workspaceId,
+    spaceId,
+    deviceId: DeviceIdSchema.parse("export-source-device"),
+    manifest: seeded,
+  });
+
+  const exported = buildExchangeManifest({
+    store: source,
+    workspaceId: context.workspaceId,
+    spaceId,
+  });
+  assert.ok(exported);
+  if (exported === undefined) return;
+  assert.deepEqual(exported.counts, {
+    areas: 1,
+    initiatives: 1,
+    projects: 1,
+    tasks: 1,
+  });
+  // The package the writer produces is the package the reader validates —
+  // one format, not a writer and a reader that can disagree.
+  const reparsed = parseStarterWorkspaceManifest(
+    JSON.parse(JSON.stringify(exported.manifest)) as unknown,
+  );
+  assert.ok(reparsed, "the exported package must satisfy the import parser");
+  if (reparsed === undefined) return;
+
+  const targetStore = new InMemoryReferenceStore();
+  const target = createRuntimeKernelService({ context, store: targetStore });
+  assert.equal(
+    target.execute(bootstrap("export-target")).kind,
+    "command_outcome",
+  );
+  const targetStatuses = targetStore.read((view) =>
+    view.listTaskStatuses(context.workspaceId),
+  );
+  const targetWorkspace = targetStore.read((view) =>
+    view.getWorkspace(context.workspaceId),
+  );
+  const applyToTarget = () =>
+    importStarterWorkspace({
+      service: target,
+      workspaceId: context.workspaceId,
+      spaceId,
+      deviceId: DeviceIdSchema.parse("export-target-device"),
+      manifest: reparsed,
+      // Exactly what the desktop handler passes: a status label the target
+      // does not have is refused, so the round trip only claims what the
+      // target can actually hold.
+      resolveStatusId: (label) =>
+        targetStatuses.find(
+          (status) =>
+            status.label.toLocaleLowerCase("pl-PL") ===
+            label.toLocaleLowerCase("pl-PL"),
+        )?.id,
+      ...(targetWorkspace === undefined
+        ? {}
+        : { defaultTaskStatusId: targetWorkspace.defaultTaskStatusId }),
+    });
+  assert.deepEqual(applyToTarget(), {
+    areas: 1,
+    initiatives: 1,
+    projects: 1,
+    tasks: 1,
+    links: 3,
+  });
+  // Replay: the content-digest importId makes the same package idempotent.
+  applyToTarget();
+
+  const overview = target.query(
+    QueryEnvelopeSchema.parse({
+      contractVersion: 1,
+      queryName: "work.overview",
+      queryId: crypto.randomUUID(),
+      workspaceId: context.workspaceId,
+      consistency: "local_authoritative",
+      parameters: { spaceId },
+    }),
+  );
+  assert.equal(overview.kind, "query_result");
+  if (
+    overview.kind !== "query_result" ||
+    overview.result.outcome !== "success" ||
+    overview.result.projection.kind !== "work.overview"
+  )
+    throw new Error("Expected Work overview.");
+  assert.equal(overview.result.projection.areas.length, 1);
+  assert.equal(overview.result.projection.projects.length, 1);
+  assert.equal(overview.result.projection.tasks.length, 1);
+  assert.equal(overview.result.projection.tasks[0]?.title, "Review the week");
+  // The waiting state and its reason survive the trip, not just the title.
+  assert.equal(
+    overview.result.projection.tasks[0]?.operationalState,
+    "waiting",
+  );
+
+  // Stability is per workspace, not across them: keys are record ids, so two
+  // workspaces holding equivalent work honestly export different keys. What
+  // must hold is that exporting one workspace twice yields the same package,
+  // which is what makes a re-import a no-op rather than a duplicate.
+  const again = buildExchangeManifest({
+    store: source,
+    workspaceId: context.workspaceId,
+    spaceId,
+  });
+  assert.equal(again?.manifest.importId, exported.manifest.importId);
+  const targetExport = buildExchangeManifest({
+    store: targetStore,
+    workspaceId: context.workspaceId,
+    spaceId,
+  });
+  assert.deepEqual(targetExport?.counts, exported.counts);
+  assert.deepEqual(
+    targetExport?.manifest.tasks.map((task) => [
+      task.title,
+      task.operationalState,
+      task.waitingOn,
+    ]),
+    exported.manifest.tasks.map((task) => [
+      task.title,
+      task.operationalState,
+      task.waitingOn,
+    ]),
+  );
 });

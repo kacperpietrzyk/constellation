@@ -54,10 +54,12 @@ import path from "node:path";
 // dostepowi" nawet task.create.
 // 2026-07-21 (R14.3 slice c): entry po dodaniu koperty batcha do kontraktów
 // (ADR-048) — renderer importuje pakiet kontraktów w całości.
+// 2026-07-21 (R14.5): totalJavaScript po akcji eksportu pakietu wymiany w
+// Ustawieniach (przycisk, komunikaty stanu, wrapper IPC).
 const limits = {
   entryBytes: 540_000,
   entryGzipBytes: 143_000,
-  totalJavaScriptBytes: 833_000,
+  totalJavaScriptBytes: 836_000,
   stylesheetBytes: 177_000,
 };
 

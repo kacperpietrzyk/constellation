@@ -266,6 +266,7 @@ const productionDesktopFiles = new Set([
   "remote-mcp-credential-custody.js",
   "runtime-kernel-service.js",
   "security.js",
+  "starter-workspace-export.js",
   "starter-workspace-import.js",
   "support-report.js",
   "workspace-key-custody.js",

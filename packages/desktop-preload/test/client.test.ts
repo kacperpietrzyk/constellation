@@ -29,6 +29,7 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "editMeetingWorkItem",
     "enrollHub",
     "executeCommand",
+    "exportExchangePackage",
     "exportHubAuthorization",
     "exportSupportReport",
     "exportWorkspaceBackup",
