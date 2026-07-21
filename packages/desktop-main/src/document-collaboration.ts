@@ -7,12 +7,16 @@ import {
   SpaceIdSchema,
   type DeviceId,
   type DocumentId,
+  type SpaceId,
   type DocumentRevisionId,
   type PrincipalId,
   type WorkspaceId,
 } from "@constellation/contracts";
 import type { SqliteApplicationStore } from "@constellation/local-store";
-import { YjsRealtimeDocumentAdapter } from "@constellation/realtime-documents";
+import {
+  MAX_DOCUMENT_TEXT_LENGTH,
+  YjsRealtimeDocumentAdapter,
+} from "@constellation/realtime-documents";
 
 import type { HubConnection } from "./hub-connection-custody.js";
 
@@ -348,3 +352,88 @@ export class DocumentCollaborationBridge {
     });
   }
 }
+
+/**
+ * ADR-049. The agent-facing text port: the same adapter, the same persistence
+ * calls the renderer bridge makes, and the same size bound. Authorization is
+ * the caller's (the local MCP runtime); this only knows how document text is
+ * stored.
+ */
+export const createAgentDocumentTextPort = (input: {
+  readonly workspaceId: WorkspaceId;
+  readonly store: DocumentBridgeInput["store"];
+  readonly connection: DocumentBridgeInput["connection"];
+  readonly now?: () => string;
+}) => {
+  const now = input.now ?? (() => new Date().toISOString());
+  const scope = (documentId: DocumentId, spaceId: SpaceId) => ({
+    documentId,
+    workspaceId: input.workspaceId,
+    spaceId,
+  });
+  return {
+    read: (request: {
+      readonly documentId: DocumentId;
+      readonly spaceId: SpaceId;
+    }): string | undefined => {
+      const state = input.store.loadDocumentCollaborationState(
+        scope(request.documentId, request.spaceId),
+      )?.state;
+      if (state === undefined) return undefined;
+      const adapter = new YjsRealtimeDocumentAdapter(state);
+      try {
+        return adapter.getText();
+      } finally {
+        adapter.destroy();
+      }
+    },
+    replace: (request: {
+      readonly documentId: DocumentId;
+      readonly spaceId: SpaceId;
+      readonly text: string;
+      readonly principalId: string;
+      readonly runId: string;
+    }): { readonly characters: number } | undefined => {
+      if (request.text.length > MAX_DOCUMENT_TEXT_LENGTH) return undefined;
+      const documentScope = scope(request.documentId, request.spaceId);
+      const existing =
+        input.store.loadDocumentCollaborationState(documentScope)?.state;
+      const adapter = new YjsRealtimeDocumentAdapter(existing);
+      try {
+        let update: Uint8Array | undefined;
+        const stop = adapter.onUpdate((value) => {
+          update = value;
+        });
+        adapter.replaceText(request.text, {
+          kind: "agent",
+          principalId: request.principalId,
+          runId: request.runId,
+        });
+        stop();
+        const state = adapter.encodeState();
+        const updatedAt = now();
+        // Same branch the renderer bridge takes: a coordinated workspace also
+        // queues the update for the outbox, a local-only one only stores the
+        // new state.
+        if (update === undefined || input.connection() === undefined) {
+          input.store.storeDocumentCollaborationState({
+            ...documentScope,
+            state,
+            updatedAt,
+          });
+        } else {
+          input.store.commitDocumentUpdate({
+            id: randomUUID(),
+            ...documentScope,
+            state,
+            update,
+            createdAt: updatedAt,
+          });
+        }
+        return { characters: request.text.length };
+      } finally {
+        adapter.destroy();
+      }
+    },
+  };
+};

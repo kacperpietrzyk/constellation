@@ -34,6 +34,8 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "project.updateOutcome",
   "project.list",
   "document.list",
+  "document.readText",
+  "document.replaceText",
   "knowledge.sourceCreate",
   "knowledge.sourceUpdate",
   "knowledge.documentSetEvidence",
