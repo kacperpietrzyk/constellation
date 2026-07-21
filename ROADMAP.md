@@ -304,6 +304,19 @@ with its full strict envelope schema, generated from the kernel's own
 contracts so it cannot drift — making the agent surface discoverable
 without out-of-band documentation.
 
+Agent access also stopped promising more than it granted. The capability
+scope behind each preset is now derived from one classification of the whole
+vocabulary, so a granted agent operates through the same commands as the
+desktop across the surface those commands cover — creating and editing Tasks,
+projecting meetings into the work graph, templates, typed fields, statuses,
+automations, recurrences, time reservations — while five administrative
+capabilities stay undelegable by design: managing workspace access, managing
+agent access, creating a workspace, renaming it, and exporting a workspace
+scope. A new capability cannot quietly land outside that decision, because
+an unclassified one fails the build. The same partition governs remote
+grants through a self-hosted Hub, and a refused capability is now named
+instead of being reported as an unreachable Hub.
+
 ## Later — desktop ecosystem after product readiness
 
 - a signed public Windows installer when a maintainer or sponsor provisions a
