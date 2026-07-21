@@ -146,7 +146,9 @@ events in order, resumable with `afterEventId`, returning `nextCursor` and
 content — so a host learns where to look and then reads through an ordinary
 authorized query. A cursor the feed cannot place is refused with
 `query.cursor_invalid` rather than silently restarting, because a silent
-restart replays processed work as new.
+restart replays processed work as new. Membership and agent-grant
+administration events are excluded unless the caller can manage them, so the
+feed never reveals changes the corresponding reads withhold.
 
 Document text is reachable with the independent `document.readText` and
 `document.replaceText` capabilities and the document's Space. A write replaces

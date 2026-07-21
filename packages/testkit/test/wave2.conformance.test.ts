@@ -7,6 +7,7 @@ import {
 } from "@constellation/application";
 import {
   ExecutionContextSchema,
+  WorkspaceIdSchema,
   KnowledgeSourceIdSchema,
   ProjectIdSchema,
   SpaceIdSchema,
@@ -123,6 +124,7 @@ const context = (): ExecutionContext =>
       "cockpit.week",
       "activity.meaningful",
       "activity.changeFeed",
+      "workspace.manageAccess",
       "capture.history",
       "command.previewUndo",
       "command.undo",
@@ -3332,5 +3334,96 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(unplaceable.result.outcome, "rejected");
     if (unplaceable.result.outcome !== "rejected") return;
     assert.equal(unplaceable.result.diagnosticCode, "query.cursor_invalid");
+
+    // Produce a membership event, so the filter below is exercised rather
+    // than passing because nothing administrative ever happened. Changing
+    // access raises the workspace policy version, so every later call is
+    // reauthorized against it — both contexts below read it back.
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("feed-member-add", {
+            [ids.workspace]: harness.store.read(
+              (view) =>
+                view.getWorkspace(WorkspaceIdSchema.parse(ids.workspace))
+                  ?.version ?? 1,
+            ),
+          }),
+          commandName: "workspace.memberAdd",
+          payload: {
+            membershipId: "10000000-0000-4000-8000-0000000000b1",
+            spaceGrantId: "10000000-0000-4000-8000-0000000000b2",
+            principalId: "10000000-0000-4000-8000-0000000000b3",
+            displayName: "Second member",
+            role: "member",
+            spaceId: ids.rootSpace,
+            access: "edit",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    const policyVersion = harness.store.read(
+      (view) =>
+        view.getWorkspace(WorkspaceIdSchema.parse(ids.workspace))
+          ?.policyVersion ?? 1,
+    );
+    const currentAdmin = ExecutionContextSchema.parse({
+      ...context(),
+      policyVersion,
+    });
+    harness.authorization.register(currentAdmin);
+    const readFeed = (
+      executionContext: typeof currentAdmin,
+    ): readonly { readonly type: string }[] => {
+      const result = harness.kernel.query(executionContext, {
+        contractVersion: 1,
+        queryName: "activity.changeFeed",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace, limit: 200 },
+      });
+      if (
+        result.kind !== "query_result" ||
+        result.result.outcome !== "success" ||
+        result.result.projection.kind !== "activity.changeFeed"
+      )
+        throw new Error("Expected a change feed.");
+      return result.result.projection.events;
+    };
+    assert.equal(
+      readFeed(currentAdmin).some((event) =>
+        event.type.startsWith("workspace.member_"),
+      ),
+      true,
+      "an administrator sees membership activity",
+    );
+
+    // ADR-051 §3, enforced rather than asserted: the feed never shows an
+    // event family whose subject the caller cannot read. `workspace.access`
+    // returns only the caller's own row and `agent.access` only its own
+    // grant, so membership and grant administration are filtered by the
+    // administrative capability that governs them — which an agent grant can
+    // never hold.
+    const observerContext = ExecutionContextSchema.parse({
+      ...context(),
+      principalKind: "agent",
+      policyVersion,
+      // A distinct grant: registering another context under the same grant id
+      // would replace the one the rest of this case relies on.
+      grantId: "10000000-0000-4000-8000-0000000000a1",
+      credentialId: "10000000-0000-4000-8000-0000000000a2",
+      capabilityScope: ["activity.changeFeed", "task.list", "agent.access"],
+    });
+    harness.authorization.register(observerContext);
+    assert.equal(
+      readFeed(observerContext).some(
+        (event) =>
+          event.type.startsWith("workspace.member_") ||
+          event.type.startsWith("agent."),
+      ),
+      false,
+    );
   });
 });
