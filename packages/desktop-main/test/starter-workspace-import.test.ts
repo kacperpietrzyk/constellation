@@ -489,6 +489,9 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
     custom.execute(bootstrap("export-custom")).kind,
     "command_outcome",
   );
+  const statusesBeforeImport = customStore.read((view) =>
+    view.listTaskStatuses(context.workspaceId),
+  );
   const customApplied = importStarterWorkspace({
     service: custom,
     workspaceId: context.workspaceId,
@@ -509,17 +512,17 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
         statusLabel: "Czeka na klienta",
       })),
     },
+    // Exactly how the desktop handler is written: the status list is read
+    // once, before the import, and the resolver closes over that snapshot. A
+    // resolver that re-read the store on every call would be more capable
+    // than the real caller and would hide the case this test exists for.
     resolveStatusId: (label) =>
-      customStore
-        .read((view) => view.listTaskStatuses(context.workspaceId))
-        .find(
-          (status) =>
-            status.label.toLocaleLowerCase("pl-PL") ===
-            label.toLocaleLowerCase("pl-PL"),
-        )?.id,
-    existingStatusLabels: customStore
-      .read((view) => view.listTaskStatuses(context.workspaceId))
-      .map((status) => status.label),
+      statusesBeforeImport.find(
+        (status) =>
+          status.label.toLocaleLowerCase("pl-PL") ===
+          label.toLocaleLowerCase("pl-PL"),
+      )?.id,
+    existingStatusLabels: statusesBeforeImport.map((status) => status.label),
   });
   assert.equal(customApplied.taskStatuses, 1);
   assert.equal(
