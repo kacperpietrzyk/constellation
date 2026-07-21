@@ -31,6 +31,8 @@ import {
   CaptureOriginalSchema,
   CaptureReviewReasonSchema,
   ContractVersionSchema,
+  SavedViewFiltersSchema,
+  SavedViewGroupBySchema,
 } from "./command.js";
 import { RequestOriginSchema } from "./execution-context.js";
 import { ImportedMeetingSchema } from "./meeting-loop.js";
@@ -517,26 +519,11 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
   StrategicRecordBaseSchema.extend({
     kind: z.literal("saved_view"),
     name: z.string(),
-    filters: z
-      .object({
-        operationalStates: z
-          .array(z.enum(["actionable", "waiting", "blocked"]))
-          .optional(),
-        projectIds: z.array(ProjectIdSchema).optional(),
-        areaIds: z.array(StrategicRecordIdSchema).optional(),
-        initiativeIds: z.array(StrategicRecordIdSchema).optional(),
-        unassigned: z.boolean().optional(),
-        statusIds: z.array(TaskStatusIdSchema).max(50).optional(),
-        assigneePrincipalIds: z.array(PrincipalIdSchema).max(50).optional(),
-        priorities: z
-          .array(z.enum(["urgent", "high", "normal", "low"]))
-          .max(4)
-          .optional(),
-        dueWindow: z.enum(["overdue", "today", "this_week"]).optional(),
-        scheduled: z.boolean().optional(),
-      })
-      .strict(),
+    // Shared with the command boundary: a saved view is projected with the
+    // whole filter vocabulary it was allowed to be written with.
+    filters: SavedViewFiltersSchema,
     sort: z.enum(["updated_desc", "due_asc", "title_asc"]),
+    groupBy: SavedViewGroupBySchema.optional(),
     state: z.enum(["active", "deleted"]),
   }).strict(),
   StrategicRecordBaseSchema.extend({
@@ -723,55 +710,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           .object({
             id: StrategicRecordIdSchema,
             name: z.string(),
-            filters: z
-              .object({
-                operationalStates: z
-                  .array(z.enum(["actionable", "waiting", "blocked"]))
-                  .optional(),
-                projectIds: z.array(ProjectIdSchema).optional(),
-                areaIds: z.array(StrategicRecordIdSchema).optional(),
-                initiativeIds: z.array(StrategicRecordIdSchema).optional(),
-                unassigned: z.boolean().optional(),
-                statusIds: z.array(TaskStatusIdSchema).max(50).optional(),
-                assigneePrincipalIds: z
-                  .array(PrincipalIdSchema)
-                  .max(50)
-                  .optional(),
-                priorities: z
-                  .array(z.enum(["urgent", "high", "normal", "low"]))
-                  .max(4)
-                  .optional(),
-                dueWindow: z.enum(["overdue", "today", "this_week"]).optional(),
-                scheduled: z.boolean().optional(),
-                fields: z
-                  .array(
-                    z
-                      .object({
-                        fieldId: FieldDefinitionIdSchema,
-                        predicate: z.discriminatedUnion("kind", [
-                          z
-                            .object({
-                              kind: z.literal("choice_is"),
-                              option: z.string(),
-                            })
-                            .strict(),
-                          z.object({ kind: z.literal("set") }).strict(),
-                          z.object({ kind: z.literal("empty") }).strict(),
-                        ]),
-                      })
-                      .strict(),
-                  )
-                  .optional(),
-              })
-              .strict(),
+            filters: SavedViewFiltersSchema,
             sort: z.enum(["updated_desc", "due_asc", "title_asc"]),
-            groupBy: z
-              .union([
-                z.literal("status"),
-                z.literal("priority"),
-                z.object({ fieldId: FieldDefinitionIdSchema }).strict(),
-              ])
-              .optional(),
+            groupBy: SavedViewGroupBySchema.optional(),
             state: z.enum(["active", "deleted"]),
             version: z.int().positive(),
           })
