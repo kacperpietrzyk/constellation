@@ -137,6 +137,7 @@ export const formatDate = (
 // the end of that local day and a start to its beginning, so "do piątku"
 // means the user's Friday, not the server's.
 const zoneOffsetMs = (timeZone: string, utcMs: number): number => {
+  const instant = new Date(utcMs);
   let parts: Intl.DateTimeFormatPart[];
   try {
     parts = new Intl.DateTimeFormat("en-US", {
@@ -148,7 +149,7 @@ const zoneOffsetMs = (timeZone: string, utcMs: number): number => {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
-    }).formatToParts(new Date(utcMs));
+    }).formatToParts(instant);
   } catch {
     return 0;
   }
@@ -161,6 +162,7 @@ const zoneOffsetMs = (timeZone: string, utcMs: number): number => {
     part("hour") % 24,
     part("minute"),
     part("second"),
+    instant.getUTCMilliseconds(),
   );
   return wallUtc - utcMs;
 };
