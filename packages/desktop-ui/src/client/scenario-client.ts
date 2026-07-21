@@ -203,7 +203,11 @@ export const createScenarioClient = (
       detailCode: "ready",
     }),
   listDocumentRevisions: async () => [],
-  openDocument: async () => ({ mode: "local", pendingUpdateCount: 0 }),
+  openDocument: async () => ({
+    mode: "local",
+    pendingUpdateCount: 0,
+    searchIndexState: "current",
+  }),
   persistDocumentUpdate: async () => undefined,
   prepareWorkspaceRestore: async () => ({ outcome: "cancelled" }),
   runQuery: async (query) => {

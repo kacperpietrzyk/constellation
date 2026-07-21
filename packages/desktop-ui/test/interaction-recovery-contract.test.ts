@@ -104,6 +104,17 @@ describe("interaction recovery contracts", () => {
     );
   });
 
+  it("opens a document-body result as the exact document context", () => {
+    assert.match(
+      searchOverlay,
+      /matchedFields\.includes\("body"\) \? "Treść · " : ""/,
+    );
+    assert.match(
+      realApp,
+      /nextSurface === "documents"[\s\S]*state\.snapshot\.knowledge[\s\S]*documents\.find[\s\S]*documentContext\(id, document\.title\)/,
+    );
+  });
+
   it("gives the inspector separator a 24px pointer target without thickening its seam", () => {
     assert.match(styles, /\.inspector-resize::before\s*\{[^}]*width:\s*24px/s);
     assert.match(styles, /\.inspector-resize::after\s*\{[^}]*width:\s*1px/s);

@@ -588,6 +588,21 @@ class ReadView implements ApplicationReadView {
       );
   }
 
+  public searchDocumentBodies(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    text: string,
+    limit: number,
+  ): readonly { readonly documentId: DocumentId; readonly snippet: string }[] {
+    // Collaborative document bytes live outside the reference store. The
+    // durable SQLite view supplies this rebuildable projection in production.
+    void workspaceId;
+    void spaceId;
+    void text;
+    void limit;
+    return [];
+  }
+
   public getKnowledgeSource(
     id: KnowledgeSourceId,
   ): KnowledgeSource | undefined {

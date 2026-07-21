@@ -370,6 +370,16 @@ document. Labels are resolved from current records at query time, so renames do
 not leave stale copies and removed or hidden targets fail closed without a
 count leak. UI and MCP use these same two queries.
 
+Electron main also derives a bounded plaintext body projection from the same
+validated Yjs state after authoritative encrypted persistence. Local schema v22
+records its state digest and maintains Space-scoped FTS rows for Notes,
+Documents, and Deliverables. `search.global` asks for body matches only after
+authorizing each requested Space, labels the matched field as `body`, and emits
+only the bounded authorized snippet. Index debounce, rebuild, and temporary
+unavailability never block editing; restart, collaboration, and revision
+restore deterministically repair stale projections, while revocation removes
+body rows with the rest of the scoped collaboration state.
+
 Knowledge Sources remain separate versioned records. A Native Document declares
 whether it is a Note, Document, or Deliverable and keeps an explicit current
 evidence set. A named version freezes one realtime revision, its content

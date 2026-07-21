@@ -632,6 +632,12 @@ describe("SQLite ApplicationStore", () => {
         ],
         updatedAt: "2026-07-14T13:59:00.000Z",
       });
+      first.store.replaceDocumentSearchProjection({
+        ...scope,
+        body: "Poufny zakres pilotażu dla fabryki",
+        stateDigest: "a".repeat(64),
+        indexedAt: "2026-07-14T13:59:30.000Z",
+      });
       first.store.commitDocumentUpdate({
         id: "update-1",
         ...scope,
@@ -708,6 +714,54 @@ describe("SQLite ApplicationStore", () => {
           },
         ],
       );
+      assert.deepEqual(
+        reopened.store.read((view) => {
+          assert.equal(isApplicationWave2ReadView(view), true);
+          if (!isApplicationWave2ReadView(view)) return [];
+          return view.searchDocumentBodies(
+            scope.workspaceId,
+            scope.spaceId,
+            "zakres pilotażu",
+            10,
+          );
+        }),
+        [
+          {
+            documentId,
+            snippet: "Poufny zakres pilotażu dla fabryki",
+          },
+        ],
+      );
+      const bodySearch = reopened.kernel.query(
+        context(),
+        QueryEnvelopeSchema.parse({
+          contractVersion: 1,
+          queryName: "search.global",
+          queryId: "00000000-0000-4000-8000-000000000128",
+          workspaceId: scope.workspaceId,
+          consistency: "local_authoritative",
+          parameters: {
+            spaceIds: [scope.spaceId],
+            text: "zakres pilotażu",
+          },
+        }),
+      );
+      assert.equal(bodySearch.kind, "query_result");
+      if (
+        bodySearch.kind !== "query_result" ||
+        bodySearch.result.outcome !== "success" ||
+        bodySearch.result.projection.kind !== "search.global"
+      ) {
+        throw new Error("Expected document body search result.");
+      }
+      assert.equal(bodySearch.result.projection.items.length, 1);
+      assert.deepEqual(bodySearch.result.projection.items[0]?.matchedFields, [
+        "body",
+      ]);
+      assert.equal(
+        bodySearch.result.projection.items[0]?.snippet,
+        "Poufny zakres pilotażu dla fabryki",
+      );
       const restoredRevision = reopened.store.listDocumentRevisions(scope)[0];
       assert.equal(restoredRevision?.id, revisionId);
       assert.equal(
@@ -733,6 +787,7 @@ describe("SQLite ApplicationStore", () => {
         "document_collaboration_state",
         "document_revisions",
         "document_entity_links",
+        "document_search_projections",
       ]) {
         assert.equal(
           (
@@ -743,6 +798,38 @@ describe("SQLite ApplicationStore", () => {
           0,
         );
       }
+      assert.equal(
+        (
+          reopenedDatabase
+            .prepare(
+              "SELECT count(*) AS count FROM work_search WHERE record_id = ?",
+            )
+            .get(documentId) as { count: number }
+        ).count,
+        0,
+      );
+      const purgedSearch = reopened.kernel.query(
+        context(),
+        QueryEnvelopeSchema.parse({
+          contractVersion: 1,
+          queryName: "search.global",
+          queryId: "00000000-0000-4000-8000-000000000127",
+          workspaceId: scope.workspaceId,
+          consistency: "local_authoritative",
+          parameters: {
+            spaceIds: [scope.spaceId],
+            text: "zakres pilotażu",
+          },
+        }),
+      );
+      assert.equal(
+        purgedSearch.kind === "query_result" &&
+          purgedSearch.result.outcome === "success" &&
+          purgedSearch.result.projection.kind === "search.global"
+          ? purgedSearch.result.projection.items.length
+          : -1,
+        0,
+      );
       reopenedDatabase.close();
     });
   });

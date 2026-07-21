@@ -36,8 +36,9 @@ Desktop and MCP use the same commands:
 They use `knowledge.list` for a Space-scoped library and
 `knowledge.documentContext` for one authorized evidence/version view. Global
 search includes sources and Note, Document, and Deliverable titles without
-adding generated answers. Body indexing remains a subsequent
-connected-document slice.
+adding generated answers. It also finds phrases in authorized document bodies
+through the same `search.global` query, labels the match as `body`, and returns
+only a bounded local snippet.
 
 `document.linkCandidates` and `document.backlinks` are the shared read boundary
 for typed inline references. Candidate lookup is bounded to the document's
@@ -69,6 +70,12 @@ Session negotiation refuses a writer that does not support the stored format;
 the client can still see an explicit upgrade-required state without being able
 to flatten newer structure.
 
+Electron main derives a permission-scoped body-search projection only after the
+encrypted Yjs state is durable. The local index stores a state digest, rebuilds
+after restart and revision restore, follows converged collaboration updates,
+and is purged atomically when its document or Space becomes unavailable. It is
+a deterministic retrieval index, not a generated-answer or RAG path.
+
 ## Recovery behavior
 
 - A failed named-version association leaves the already-created realtime
@@ -82,8 +89,7 @@ to flatten newer structure.
 ## Current limits
 
 This slice does not yet implement approvals, external Artifact transfer,
-automatic citation extraction, source freshness schedules, document-body
-search, structured remote MCP editing, or generic document attachments. Those
-outcomes must extend the same typed
-records, authorization boundary, and deterministic query model rather than add
-a second document system or an embedded reasoning layer.
+automatic citation extraction, source freshness schedules, structured remote
+MCP editing, or generic document attachments. Those outcomes must extend the
+same typed records, authorization boundary, and deterministic query model
+rather than add a second document system or an embedded reasoning layer.

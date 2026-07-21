@@ -179,8 +179,10 @@ document editor. Typed inline references now connect that writing to Tasks,
 Projects, People, Organizations, and Meetings. Permission-safe backlinks appear
 in record inspectors and use the shared MCP query surface; labels resolve from
 current authorized records and exact source navigation opens the linked
-document. Document-body search and structured local/remote agent editing remain
-current work.
+document. Global search now finds phrases inside locally available authorized
+document bodies, identifies the match as `Treść`, opens the exact document, and
+purges the rebuildable encrypted index on access loss. Structured local/remote
+agent editing remains current work.
 
 ## Delivered foundation — coherent desktop Alpha and release candidate
 

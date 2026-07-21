@@ -91,7 +91,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-export const LOCAL_STORE_SCHEMA_VERSION = 21;
+export const LOCAL_STORE_SCHEMA_VERSION = 22;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -111,6 +111,7 @@ const COORDINATED_PROJECTION_TABLES = [
   "events",
   "attention_signals",
   "comments",
+  "document_search_projections",
   "document_entity_links",
   "document_pending_updates",
   "document_revisions",
@@ -730,6 +731,49 @@ const schemaV21 = `
     ON document_entity_links(workspace_id, target_kind, target_id, document_id);
 `;
 
+const schemaV22 = `
+  CREATE TABLE document_search_projections (
+    document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    state_digest TEXT NOT NULL CHECK (length(state_digest) = 64),
+    indexed_at TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX document_search_projections_scope
+    ON document_search_projections(workspace_id, space_id, document_id);
+  CREATE TRIGGER document_search_projection_insert AFTER INSERT ON document_search_projections BEGIN
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    VALUES (
+      new.document_id,
+      new.workspace_id,
+      new.space_id,
+      COALESCE((SELECT json_extract(payload_json, '$.role') FROM documents WHERE id = new.document_id), 'document'),
+      '',
+      new.body
+    );
+  END;
+  CREATE TRIGGER document_search_projection_update AFTER UPDATE ON document_search_projections BEGIN
+    DELETE FROM work_search
+      WHERE record_id = old.document_id
+        AND record_kind IN ('note', 'document', 'deliverable');
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    VALUES (
+      new.document_id,
+      new.workspace_id,
+      new.space_id,
+      COALESCE((SELECT json_extract(payload_json, '$.role') FROM documents WHERE id = new.document_id), 'document'),
+      '',
+      new.body
+    );
+  END;
+  CREATE TRIGGER document_search_projection_delete AFTER DELETE ON document_search_projections BEGIN
+    DELETE FROM work_search
+      WHERE record_id = old.document_id
+        AND record_kind IN ('note', 'document', 'deliverable');
+  END;
+`;
+
 const localStoreMigrations = [
   schemaV1,
   schemaV2,
@@ -752,6 +796,7 @@ const localStoreMigrations = [
   schemaV19,
   schemaV20,
   schemaV21,
+  schemaV22,
 ] as const;
 
 export interface LocalCoordinationState {
@@ -784,6 +829,15 @@ export interface LocalDocumentCollaborationState {
   readonly engine: "yjs-13";
   readonly state: Uint8Array;
   readonly updatedAt: string;
+}
+
+export interface LocalDocumentSearchProjection {
+  readonly documentId: DocumentId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly body: string;
+  readonly stateDigest: string;
+  readonly indexedAt: string;
 }
 
 export interface LocalPendingDocumentUpdate {
@@ -1623,6 +1677,42 @@ class SqliteReadView implements ApplicationWave2ReadView {
         ) as DocumentEntityLink["targetKind"],
         targetId: stringValue(row, "target_id", "document entity link"),
         updatedAt: stringValue(row, "updated_at", "document entity link"),
+      }));
+  }
+
+  public searchDocumentBodies(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    text: string,
+    limit: number,
+  ): readonly { readonly documentId: DocumentId; readonly snippet: string }[] {
+    const phrase = text.trim();
+    if (phrase.length === 0) return [];
+    const boundedLimit = Math.max(1, Math.min(Math.trunc(limit), 50));
+    const match = `"${phrase.replaceAll('"', '""')}"`;
+    return this.database
+      .prepare(
+        `SELECT record_id, snippet(work_search, 5, '', '', ' … ', 18) AS body_snippet
+         FROM work_search
+         WHERE work_search MATCH ?
+           AND workspace_id = ?
+           AND space_id = ?
+           AND record_kind IN ('note', 'document', 'deliverable')
+         ORDER BY rank, record_id
+         LIMIT ?`,
+      )
+      .all(match, workspaceId, spaceId, boundedLimit)
+      .map((row) => ({
+        documentId: stringValue(
+          row,
+          "record_id",
+          "document body search result",
+        ) as DocumentId,
+        snippet: stringValue(
+          row,
+          "body_snippet",
+          "document body search result",
+        ),
       }));
   }
 
@@ -3390,6 +3480,69 @@ export class SqliteApplicationStore
     });
   }
 
+  public getDocumentSearchProjection(input: {
+    readonly documentId: DocumentId;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+  }): LocalDocumentSearchProjection | undefined {
+    this.requireDocumentScope(
+      input.documentId,
+      input.workspaceId,
+      input.spaceId,
+    );
+    const row = this.database
+      .prepare(
+        "SELECT body, state_digest, indexed_at FROM document_search_projections WHERE document_id = ? AND workspace_id = ? AND space_id = ?",
+      )
+      .get(input.documentId, input.workspaceId, input.spaceId);
+    return row === undefined
+      ? undefined
+      : {
+          ...input,
+          body: stringValue(row, "body", "document search projection"),
+          stateDigest: stringValue(
+            row,
+            "state_digest",
+            "document search projection",
+          ),
+          indexedAt: stringValue(
+            row,
+            "indexed_at",
+            "document search projection",
+          ),
+        };
+  }
+
+  public replaceDocumentSearchProjection(
+    input: LocalDocumentSearchProjection,
+  ): void {
+    if (!/^[0-9a-f]{64}$/u.test(input.stateDigest)) {
+      throw new Error("Document search projection digest is invalid.");
+    }
+    if (input.body.length > 500_000) {
+      throw new Error("Document search projection body is too large.");
+    }
+    this.transact(() => {
+      this.requireDocumentScope(
+        input.documentId,
+        input.workspaceId,
+        input.spaceId,
+      );
+      this.database
+        .prepare(
+          "INSERT INTO document_search_projections (document_id, workspace_id, space_id, body, state_digest, indexed_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(document_id) DO UPDATE SET workspace_id = excluded.workspace_id, space_id = excluded.space_id, body = excluded.body, state_digest = excluded.state_digest, indexed_at = excluded.indexed_at",
+        )
+        .run(
+          input.documentId,
+          input.workspaceId,
+          input.spaceId,
+          input.body,
+          input.stateDigest,
+          input.indexedAt,
+        );
+    });
+  }
+
   public listPendingDocumentUpdates(input: {
     readonly documentId: DocumentId;
     readonly workspaceId: WorkspaceId;
@@ -3540,6 +3693,11 @@ export class SqliteApplicationStore
 
   public purgeDocumentCollaboration(documentId: DocumentId): void {
     this.transact(() => {
+      this.database
+        .prepare(
+          "DELETE FROM document_search_projections WHERE document_id = ?",
+        )
+        .run(documentId);
       this.database
         .prepare("DELETE FROM document_entity_links WHERE document_id = ?")
         .run(documentId);

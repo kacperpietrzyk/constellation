@@ -1106,6 +1106,39 @@ try {
   const linkedDocumentPlainText = documentPlainText(ownerDocument);
   if (!linkedDocumentPlainText.startsWith(offlineCompletedText))
     throw new Error("PACKAGED_DOCUMENT_TEXT_CHANGED_BY_ENTITY");
+  let packagedBodySearch;
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    packagedBodySearch = await member.client
+      .evaluate(`window.constellation.runQuery({
+      contractVersion: 1,
+      queryName: "search.global",
+      queryId: crypto.randomUUID(),
+      workspaceId: ${JSON.stringify(workspaceId)},
+      consistency: "local_projection",
+      parameters: {
+        spaceIds: [${JSON.stringify(rootSpaceId)}],
+        text: "Dopisek offline",
+      },
+    })`);
+    if (
+      packagedBodySearch?.kind === "query_result" &&
+      packagedBodySearch.result?.outcome === "success" &&
+      packagedBodySearch.result.projection?.kind === "search.global" &&
+      packagedBodySearch.result.projection.items?.some(
+        (item) =>
+          item.recordId === collaborativeDocumentId &&
+          item.matchedFields?.includes("body"),
+      )
+    )
+      break;
+    await delay(100);
+  }
+  if (
+    !packagedBodySearch?.result?.projection?.items?.some(
+      (item) => item.recordId === collaborativeDocumentId,
+    )
+  )
+    throw new Error("PACKAGED_DOCUMENT_BODY_NOT_SEARCHABLE");
   let packagedBacklinks;
   for (let attempt = 0; attempt < 300; attempt += 1) {
     packagedBacklinks = await member.client
@@ -1178,6 +1211,68 @@ try {
     JSON.stringify([packagedEntityTarget])
   )
     throw new Error("PACKAGED_DOCUMENT_ENTITY_RESTORE_NOT_CONVERGED");
+  let restoredBodySearch;
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    restoredBodySearch = await member.client
+      .evaluate(`window.constellation.runQuery({
+      contractVersion: 1,
+      queryName: "search.global",
+      queryId: crypto.randomUUID(),
+      workspaceId: ${JSON.stringify(workspaceId)},
+      consistency: "local_projection",
+      parameters: {
+        spaceIds: [${JSON.stringify(rootSpaceId)}],
+        text: "Dopisek offline",
+      },
+    })`);
+    if (
+      restoredBodySearch?.result?.outcome === "success" &&
+      restoredBodySearch.result.projection?.items?.some(
+        (item) => item.recordId === collaborativeDocumentId,
+      )
+    )
+      break;
+    await delay(100);
+  }
+  if (
+    !restoredBodySearch?.result?.projection?.items?.some(
+      (item) => item.recordId === collaborativeDocumentId,
+    )
+  )
+    throw new Error("PACKAGED_DOCUMENT_RESTORE_NOT_REINDEXED");
+  await reloadAndWait(
+    member.client,
+    ".desktop-shell",
+    "PACKAGED_DOCUMENT_SEARCH_RELAUNCH_FAILED",
+  );
+  const relaunchedBodySearch = await member.client.evaluate(
+    `window.constellation.runQuery({
+      contractVersion: 1,
+      queryName: "search.global",
+      queryId: crypto.randomUUID(),
+      workspaceId: ${JSON.stringify(workspaceId)},
+      consistency: "local_projection",
+      parameters: {
+        spaceIds: [${JSON.stringify(rootSpaceId)}],
+        text: "Dopisek offline",
+      },
+    })`,
+  );
+  if (
+    !relaunchedBodySearch?.result?.projection?.items?.some(
+      (item) => item.recordId === collaborativeDocumentId,
+    )
+  )
+    throw new Error("PACKAGED_DOCUMENT_BODY_SEARCH_NOT_DURABLE");
+  await member.client.evaluate(`(() => {
+    document.querySelector('.nav-item[data-surface="documents"]').click();
+    return true;
+  })()`);
+  await waitFor(
+    member.client,
+    `document.querySelector(".document-canvas") !== null`,
+    "PACKAGED_DOCUMENT_EDITOR_MISSING_AFTER_RELAUNCH",
+  );
   await executeOwnerPolicy("workspace.memberSetAccess", {
     membershipId,
     spaceGrantId: memberSpaceGrantId,
@@ -1311,6 +1406,8 @@ try {
       memberOfflineEditAccepted: true,
       commenterMentionAttentionRouted: true,
       realtimeDocumentConverged: true,
+      documentBodySearchDurable: true,
+      documentBodySearchRestoreReindexed: true,
       namedRevisionRestored: true,
       documentDowngradeReadOnly: true,
       membershipRevocationPurged: true,

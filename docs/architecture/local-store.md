@@ -22,28 +22,35 @@ preload bridge.
   their row identity when loaded;
 - malformed JSON, mismatched identity, and unsupported schema versions fail
   closed;
-- the versioned migration chain through schema v21 runs exclusively and
+- the versioned migration chain through schema v22 runs exclusively and
   backfills the accumulated event/audit, full-text, collaboration, agent,
   knowledge, strategic, meeting, and managed-payload structures in the same
   transaction;
 - this build opens and upgrades every historical local schema from v1 through
-  the current v21 (v17 adds the workspace field-definition table, v18 the
+  the current v22 (v17 adds the workspace field-definition table, v18 the
   project-template table, v19 the automation-rule table, and v20 closes the
   local downgrade window before structured document content can be written;
   v21 adds the rebuildable document-to-entity link projection and target
-  index); it refuses v22 or newer before changing the database. An older v19 build
-  cannot open a v20 workspace: rollback across the rich-document boundary must
-  restore the pre-upgrade backup instead of exposing rich state to a client
+  index, and v22 adds the rebuildable document-body projection plus its scoped
+  FTS rows); it refuses v23 or newer before changing the database. An older v19
+  build cannot open a v20 workspace: rollback across the rich-document boundary
+  must restore the pre-upgrade backup instead of exposing rich state to a client
   that only understands plaintext documents;
 - schema v21 stores only stable document/target identity for inline entity
   references. It never copies target labels; opening or persisting current Yjs
   state rebuilds this projection, and collaboration purge removes it with the
   document body;
+- schema v22 keeps a bounded plaintext projection and SHA-256 state digest for
+  each locally available collaborative body. The projection lives inside the
+  same encrypted database, is debounced independently from authoritative Yjs
+  persistence, repairs itself from current state after restart or restore, and
+  is deleted in the same transaction as collaboration state on revocation;
 - the FTS5 index carries Workspace and Space scope on every Capture, Task, and
-  Project entry; since v16 the Task entry also indexes the optional working
-  `description` and `nextAction` fields; application search still authorizes
-  scopes before reading and keeps deterministic ranking in the shared query
-  layer;
+  Project entry and, since v22, every current Note, Document, and Deliverable
+  body; since v16 the Task entry also indexes the optional working `description`
+  and `nextAction` fields. Application search authorizes scopes before reading,
+  creates a bounded snippet only inside that authorized scope, and keeps
+  deterministic ranking in the shared query layer;
 - close/reopen tests prove Project/status/relation/assignment/comment/Attention/
   search/cockpit/activity/undo state and idempotent replay survive a database
   restart;
