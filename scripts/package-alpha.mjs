@@ -166,6 +166,7 @@ copy(
   path.join(stage, "node_modules", "@constellation", "desktop-ui", "dist"),
 );
 for (const name of [
+  "@tiptap/y-tiptap",
   "zod",
   "bindings",
   "file-uri-to-path",
@@ -185,6 +186,12 @@ for (const name of [
   "lodash.escaperegexp",
   "lodash.isequal",
   "tiny-typed-emitter",
+  "orderedmap",
+  "prosemirror-model",
+  "prosemirror-state",
+  "prosemirror-transform",
+  "prosemirror-view",
+  "y-protocols",
 ]) {
   copy(
     path.join(root, "node_modules", name),
@@ -192,6 +199,7 @@ for (const name of [
   );
 }
 for (const name of [
+  "@tiptap/y-tiptap",
   "zod",
   "bindings",
   "file-uri-to-path",
@@ -211,6 +219,12 @@ for (const name of [
   "lodash.escaperegexp",
   "lodash.isequal",
   "tiny-typed-emitter",
+  "orderedmap",
+  "prosemirror-model",
+  "prosemirror-state",
+  "prosemirror-transform",
+  "prosemirror-view",
+  "y-protocols",
 ]) {
   for (const directory of ["test", "tests"]) {
     fs.rmSync(path.join(stage, "node_modules", name, directory), {
@@ -300,6 +314,7 @@ for (const entry of productionDesktopFiles) {
 }
 
 const expectedRuntimePackages = new Set([
+  "@tiptap/y-tiptap",
   "@constellation/application",
   "@constellation/contracts",
   "@constellation/desktop-main",
@@ -328,18 +343,24 @@ const expectedRuntimePackages = new Set([
   "lodash.escaperegexp",
   "lodash.isequal",
   "tiny-typed-emitter",
+  "orderedmap",
+  "prosemirror-model",
+  "prosemirror-state",
+  "prosemirror-transform",
+  "prosemirror-view",
+  "y-protocols",
 ]);
 const stagedRuntimePackages = new Set();
 for (const entry of fs.readdirSync(path.join(stage, "node_modules"), {
   withFileTypes: true,
 })) {
-  if (entry.name === "@constellation") {
+  if (entry.name.startsWith("@")) {
     for (const scoped of fs.readdirSync(
       path.join(stage, "node_modules", entry.name),
       { withFileTypes: true },
     )) {
       if (scoped.isDirectory())
-        stagedRuntimePackages.add(`@constellation/${scoped.name}`);
+        stagedRuntimePackages.add(`${entry.name}/${scoped.name}`);
     }
   } else if (entry.isDirectory()) stagedRuntimePackages.add(entry.name);
 }
@@ -349,13 +370,25 @@ if (
   ) ||
   [...stagedRuntimePackages].some((name) => !expectedRuntimePackages.has(name))
 ) {
-  throw new Error("PRODUCTION_RUNTIME_PACKAGE_CLOSURE_INVALID");
+  const missing = [...expectedRuntimePackages].filter(
+    (name) => !stagedRuntimePackages.has(name),
+  );
+  const unexpected = [...stagedRuntimePackages].filter(
+    (name) => !expectedRuntimePackages.has(name),
+  );
+  throw new Error(
+    `PRODUCTION_RUNTIME_PACKAGE_CLOSURE_INVALID:missing=${missing.join(",")}:unexpected=${unexpected.join(",")}`,
+  );
 }
 const productionRequire = createRequire(path.join(stage, "package.json"));
 for (const name of expectedRuntimePackages) {
   if (name === "@constellation/desktop-ui") continue;
   productionRequire.resolve(
-    name === "@constellation/desktop-preload" ? `${name}/client` : name,
+    name === "@constellation/desktop-preload"
+      ? `${name}/client`
+      : name === "y-protocols"
+        ? `${name}/awareness`
+        : name,
   );
 }
 const productionDesktopManifest = JSON.parse(

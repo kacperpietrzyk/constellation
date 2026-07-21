@@ -20,7 +20,8 @@ own locked manifest entry rather than bypassing the gate.
 | PostgreSQL client 8.22.0   | Hub persistence, migrations, locking, and bounded binary document state                        | MIT          | `hub` only                 |
 | Yjs 13.6.31                | Replaceable convergent native-document state and named checkpoints                             | MIT          | document adapter           |
 | Hocuspocus 4.4.0           | Self-hosted authenticated Yjs WebSocket gateway and persistence hooks                          | MIT          | `hub` and document UI      |
-| Tiptap 3.28.0              | Headless ProseMirror rich-document editing bound to the existing Yjs document                  | MIT          | `desktop-ui` only          |
+| Tiptap 3.28.0              | Headless ProseMirror rich-document editing and bounded Yjs/JSON conversion                     | MIT          | document UI and adapter    |
+| ProseMirror model 1.25.11  | Strict node/mark schema used to translate the agent document contract into Yjs                 | MIT          | document adapter           |
 | `crossws` 0.4.4            | Mount the single bounded realtime WebSocket route on the existing Hub server                   | MIT          | `hub` only                 |
 | MCP TypeScript SDK 1.29.0  | Stable v1 stdio and Streamable HTTP framing, tool/resource negotiation, and host compatibility | MIT          | MCP adapter and Hub        |
 
@@ -35,7 +36,7 @@ errors are converted to content-safe code/path pairs and never echo input values
 | TypeScript 6.0.3                         | Strict compilation and project references                             | Apache-2.0   |
 | ESLint 10.7.0 + typescript-eslint 8.63.0 | TypeScript static checks                                              | MIT          |
 | Prettier 3.9.5                           | Deterministic formatting                                              | MIT          |
-| markdownlint-cli2 0.23.0                 | Public Markdown checks                                                | MIT          |
+| markdownlint-cli2 0.23.1                 | Public Markdown checks                                                | MIT          |
 | `@types/node` 24.13.3                    | Node.js 24 compile-time declarations                                  | MIT          |
 | Vite 8.1.4 + React plugin 6.0.3          | Renderer and sandboxed preload builds                                 | MIT          |
 | React type declarations 19.2             | React compile-time declarations                                       | MIT          |

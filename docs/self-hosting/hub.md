@@ -148,6 +148,14 @@ trip is required. If the only administrator device is unavailable, restore its
 encrypted portable workspace and enroll the recovered device before changing
 remote grants. Do not edit credential digests directly in PostgreSQL.
 
+Remote agents with `document.readContent` or `document.replaceContent` operate
+on the Hub's authoritative realtime document gateway. Structured writes and
+restores require the current state-vector digest, are bounded and idempotent,
+reauthorize the grant, Space, access level, schema, document, and every linked
+target, and create attributed recovery revisions. The legacy whole-text tools
+remain explicitly unsupported remotely because they would flatten rich
+content.
+
 If PostgreSQL is unavailable, desktops continue to queue permitted local work.
 An already open native document continues in encrypted local state and queues
 bounded updates. After PostgreSQL and the Hub return, the desktop mints a fresh

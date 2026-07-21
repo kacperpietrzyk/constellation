@@ -38,6 +38,8 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "document.backlinks",
   "document.readText",
   "document.replaceText",
+  "document.readContent",
+  "document.replaceContent",
   "knowledge.sourceCreate",
   "knowledge.sourceUpdate",
   "knowledge.documentSetEvidence",

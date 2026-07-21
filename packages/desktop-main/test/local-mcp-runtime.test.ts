@@ -9,6 +9,7 @@ import {
   CommandEnvelopeSchema,
   CaptureOriginalSchema,
   DocumentIdSchema,
+  DocumentRevisionIdSchema,
   CaptureIdSchema,
   CheckpointIdSchema,
   CorrelationIdSchema,
@@ -82,6 +83,8 @@ const agentCapabilities = [
   "command.undo",
   "document.readText",
   "document.replaceText",
+  "document.readContent",
+  "document.replaceContent",
 ] satisfies readonly Capability[];
 
 const run = HostRunMetadataSchema.parse({
@@ -137,6 +140,14 @@ test("local MCP keeps Unix socket endpoints below the portable platform limit", 
 test("local MCP enforces credential custody, attribution, evidence labels and immediate revocation", async () => {
   const stateRoot = mkdtempSync(path.join(tmpdir(), "constellation-mcp-"));
   let documentTextState: string | undefined;
+  let structuredStateVector = "a".repeat(64);
+  let structuredContent: unknown = {
+    schemaVersion: 1,
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "Initial" }] },
+    ],
+  };
   const store = new InMemoryReferenceStore();
   const owner = createRuntimeKernelService({ context: ownerContext, store });
   successful(
@@ -225,6 +236,41 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
         return {
           characters: text.length,
           revisionId: "00000000-0000-4000-8000-000000000803",
+        };
+      },
+      readStructured: () => ({
+        content: structuredContent,
+        text: "Initial",
+        entityReferences: [],
+        stateVectorSha256: structuredStateVector,
+      }),
+      replaceStructured: ({ content, expectedStateVectorSha256 }) => {
+        if (expectedStateVectorSha256 !== structuredStateVector)
+          return {
+            outcome: "conflict" as const,
+            diagnosticCode: "document.state_vector_stale",
+          };
+        structuredContent = content;
+        structuredStateVector = "b".repeat(64);
+        return {
+          outcome: "success" as const,
+          revisionId: "00000000-0000-4000-8000-000000000804",
+          stateVectorSha256: structuredStateVector,
+          idempotentReplay: false,
+        };
+      },
+      restoreStructured: ({ expectedStateVectorSha256 }) => {
+        if (expectedStateVectorSha256 !== structuredStateVector)
+          return {
+            outcome: "conflict" as const,
+            diagnosticCode: "document.state_vector_stale",
+          };
+        structuredStateVector = "c".repeat(64);
+        return {
+          outcome: "success" as const,
+          recoveryRevisionId: "00000000-0000-4000-8000-000000000805",
+          stateVectorSha256: structuredStateVector,
+          idempotentReplay: false,
         };
       },
     },
@@ -380,6 +426,76 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
     );
     // Document content is evidence, never instruction.
     assert.equal(documentRead.evidence?.instructionBoundary, "untrusted_data");
+    const structuredRead = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "document_structured_read",
+      run,
+      workspaceId: ownerContext.workspaceId,
+      documentId,
+      schemaVersion: 1,
+    });
+    assert.equal(structuredRead.outcome, "success");
+    assert.equal(
+      (structuredRead.result as { stateVectorSha256: string })
+        .stateVectorSha256,
+      "a".repeat(64),
+    );
+    assert.equal(
+      structuredRead.evidence?.instructionBoundary,
+      "untrusted_data",
+    );
+    const structuredWrite = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "document_structured_write",
+      run,
+      workspaceId: ownerContext.workspaceId,
+      documentId,
+      schemaVersion: 1,
+      expectedStateVectorSha256: "a".repeat(64),
+      idempotencyKey: "structured-local-1",
+      content: {
+        schemaVersion: 1,
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Changed" }] },
+        ],
+      },
+    });
+    assert.equal(structuredWrite.outcome, "success");
+    const structuredRestore = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "document_structured_restore",
+      run,
+      workspaceId: ownerContext.workspaceId,
+      documentId,
+      revisionId: DocumentRevisionIdSchema.parse(
+        "00000000-0000-4000-8000-000000000804",
+      ),
+      schemaVersion: 1,
+      expectedStateVectorSha256: "b".repeat(64),
+      idempotencyKey: "structured-local-restore-1",
+    });
+    assert.equal(structuredRestore.outcome, "success");
+    const staleStructuredWrite = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "document_structured_write",
+      run,
+      workspaceId: ownerContext.workspaceId,
+      documentId,
+      schemaVersion: 1,
+      expectedStateVectorSha256: "a".repeat(64),
+      idempotencyKey: "structured-local-2",
+      content: {
+        schemaVersion: 1,
+        type: "doc",
+        content: [{ type: "paragraph" }],
+      },
+    });
+    assert.equal(staleStructuredWrite.outcome, "conflict");
     const unknownDocument = await invokeDesktopMcp(descriptor, {
       contractVersion: 1,
       requestId: crypto.randomUUID(),

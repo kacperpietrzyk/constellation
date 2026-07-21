@@ -10,6 +10,7 @@ import type {
   WorkspaceId,
 } from "@constellation/contracts";
 import type { StrategicRecord } from "@constellation/domain";
+import type { StructuredDocument } from "@constellation/realtime-documents";
 
 import type { StarterWorkspaceManifest } from "./starter-workspace-import.js";
 
@@ -65,6 +66,19 @@ export const buildExchangeManifest = (input: {
     readonly documentId: DocumentId;
     readonly spaceId: SpaceId;
   }) => string | undefined;
+  readonly readDocumentContent?: (input: {
+    readonly documentId: DocumentId;
+    readonly spaceId: SpaceId;
+  }) =>
+    | {
+        readonly content: StructuredDocument;
+        readonly entityReferences: readonly {
+          readonly targetKind:
+            "task" | "project" | "person" | "organization" | "meeting";
+          readonly targetId: string;
+        }[];
+      }
+    | undefined;
 }): ExchangeExportResult | undefined =>
   input.store.read((view) => {
     if (!isApplicationWave2ReadView(view)) return undefined;
@@ -193,15 +207,33 @@ export const buildExchangeManifest = (input: {
           documentId: document.id,
           spaceId: document.spaceId,
         });
+        const structured = input.readDocumentContent?.({
+          documentId: document.id,
+          spaceId: document.spaceId,
+        });
         return {
           key: recordKey("document", document.id),
           title: document.title,
           ...(document.role === undefined ? {} : { role: document.role }),
           ...(body === undefined || body.length === 0 ? {} : { text: body }),
+          ...(structured === undefined
+            ? {}
+            : {
+                structuredContent: structured.content,
+                entityReferences: structured.entityReferences.map(
+                  (reference) => ({
+                    ...reference,
+                    targetKey: recordKey(
+                      reference.targetKind,
+                      reference.targetId,
+                    ),
+                  }),
+                ),
+              }),
         };
       });
     const body = {
-      version: 4 as const,
+      version: 5 as const,
       areas,
       initiatives,
       projects,

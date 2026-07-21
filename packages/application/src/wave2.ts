@@ -1174,14 +1174,14 @@ const activeTargetRecord = (
     : record;
 };
 
-interface ResolvedDocumentEntityTarget {
+export interface ResolvedDocumentEntityTarget {
   readonly targetKind: DocumentEntityTargetKind;
   readonly targetId: string;
   readonly label: string;
   readonly spaceId: SpaceId;
 }
 
-const resolveDocumentEntityTarget = (
+export const resolveDocumentEntityTarget = (
   view: ApplicationWave2ReadView,
   workspaceId: WorkspaceId,
   targetKind: DocumentEntityTargetKind,

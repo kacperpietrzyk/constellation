@@ -9,6 +9,7 @@ import {
 } from "@constellation/contracts";
 import { isApplicationWave2ReadView } from "@constellation/application";
 import { InMemoryReferenceStore } from "@constellation/testkit";
+import { structuredDocumentEntityReferences } from "@constellation/realtime-documents";
 
 import { createRuntimeKernelService } from "../src/runtime-kernel-service.js";
 import { buildExchangeManifest } from "../src/starter-workspace-export.js";
@@ -604,6 +605,93 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
       ],
     ],
   );
+
+  const sourceTask = documentStore.read((view) =>
+    isApplicationWave2ReadView(view)
+      ? view.listTasksInSpace(context.workspaceId, spaceId)
+      : [],
+  )[0];
+  assert.ok(sourceTask !== undefined && importedDocument !== undefined);
+  const richContent = {
+    schemaVersion: 1 as const,
+    type: "doc" as const,
+    content: [
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Powiązane zadanie " },
+          {
+            type: "entityReference",
+            attrs: { targetKind: "task", targetId: sourceTask.id },
+          },
+        ],
+      },
+    ],
+  };
+  const richExport = buildExchangeManifest({
+    store: documentStore,
+    workspaceId: context.workspaceId,
+    spaceId,
+    readDocumentText: ({ documentId }) => documentText.get(documentId),
+    readDocumentContent: ({ documentId }) =>
+      documentId === importedDocument.id
+        ? {
+            content: richContent,
+            entityReferences: structuredDocumentEntityReferences(richContent),
+          }
+        : undefined,
+  });
+  assert.equal(richExport?.manifest.version, 5);
+  const richManifest = parseStarterWorkspaceManifest(
+    JSON.parse(JSON.stringify(richExport?.manifest)) as unknown,
+  );
+  assert.ok(richManifest !== undefined);
+  const richTargetStore = new InMemoryReferenceStore();
+  const richTargetService = createRuntimeKernelService({
+    context,
+    store: richTargetStore,
+  });
+  assert.equal(
+    richTargetService.execute(bootstrap("rich-exchange-target")).kind,
+    "command_outcome",
+  );
+  const richTargetStatuses = richTargetStore.read((view) =>
+    view.listTaskStatuses(context.workspaceId),
+  );
+  const richTargetWorkspace = richTargetStore.read((view) =>
+    view.getWorkspace(context.workspaceId),
+  );
+  let importedRichContent: unknown;
+  importStarterWorkspace({
+    service: richTargetService,
+    workspaceId: context.workspaceId,
+    spaceId,
+    deviceId: DeviceIdSchema.parse("rich-exchange-device"),
+    manifest: richManifest!,
+    resolveStatusId: (label) =>
+      richTargetStatuses.find(
+        (status) =>
+          status.label.toLocaleLowerCase("pl-PL") ===
+          label.toLocaleLowerCase("pl-PL"),
+      )?.id,
+    existingStatusLabels: richTargetStatuses.map((status) => status.label),
+    ...(richTargetWorkspace === undefined
+      ? {}
+      : { defaultTaskStatusId: richTargetWorkspace.defaultTaskStatusId }),
+    writeDocumentContent: ({ content }) => {
+      importedRichContent = content;
+    },
+  });
+  const targetTask = richTargetStore.read((view) =>
+    isApplicationWave2ReadView(view)
+      ? view.listTasksInSpace(context.workspaceId, spaceId)
+      : [],
+  )[0];
+  assert.ok(targetTask !== undefined);
+  assert.notEqual(targetTask.id, sourceTask.id);
+  assert.deepEqual(structuredDocumentEntityReferences(importedRichContent), [
+    { targetKind: "task", targetId: targetTask.id },
+  ]);
 
   // A custom status travels with the tasks that name it: without the v3
   // configuration section this import would fail on an unknown status label,

@@ -1058,13 +1058,14 @@ const startProductionDesktop = async (): Promise<void> => {
             ? {}
             : (() => {
                 const deviceId = installationDeviceId;
+                const documentPort = createAgentDocumentTextPort({
+                  workspaceId: kernel.identity.workspaceId,
+                  store: kernel.store,
+                  connection: () => activeHubConnection,
+                });
                 return {
                   writeDocumentText: ({ documentId, spaceId, text }) => {
-                    createAgentDocumentTextPort({
-                      workspaceId: kernel.identity.workspaceId,
-                      store: kernel.store,
-                      connection: () => activeHubConnection,
-                    }).replace({
+                    documentPort.replace({
                       documentId: DocumentIdSchema.parse(documentId),
                       spaceId,
                       text,
@@ -1072,6 +1073,23 @@ const startProductionDesktop = async (): Promise<void> => {
                       principalId: kernel.context.principalId,
                       deviceId,
                     });
+                  },
+                  writeDocumentContent: ({
+                    documentId,
+                    spaceId,
+                    text,
+                    content,
+                  }) => {
+                    const imported = documentPort.importStructured({
+                      documentId: DocumentIdSchema.parse(documentId),
+                      spaceId,
+                      text,
+                      content,
+                      principalId: kernel.context.principalId,
+                      deviceId,
+                    });
+                    if (imported === undefined)
+                      throw new Error("DOCUMENT_STRUCTURED_IMPORT_FAILED");
                   },
                 };
               })()),
@@ -1369,10 +1387,25 @@ const startProductionDesktop = async (): Promise<void> => {
         });
         return {
           read: port.read,
+          readStructured: port.readStructured,
           replace: (request) =>
             installationDeviceId === undefined
               ? undefined
               : port.replace({
+                  ...request,
+                  deviceId: installationDeviceId,
+                }),
+          replaceStructured: (request) =>
+            installationDeviceId === undefined
+              ? undefined
+              : port.replaceStructured({
+                  ...request,
+                  deviceId: installationDeviceId,
+                }),
+          restoreStructured: (request) =>
+            installationDeviceId === undefined
+              ? undefined
+              : port.restoreStructured({
                   ...request,
                   deviceId: installationDeviceId,
                 }),
@@ -2296,6 +2329,7 @@ const startProductionDesktop = async (): Promise<void> => {
       workspaceId: kernel.identity.workspaceId,
       spaceId: kernel.identity.rootSpaceId,
       readDocumentText: documentTextPort.read,
+      readDocumentContent: documentTextPort.readStructured,
     });
     if (built === undefined) return { outcome: "failure" } as const;
     const result = await dialog.showSaveDialog({

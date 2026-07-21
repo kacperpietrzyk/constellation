@@ -134,6 +134,7 @@ const main = async (): Promise<void> => {
       attachments,
       realtimeDocuments,
       remoteMcp: new HubRemoteMcpService(repository, {
+        realtimeDocuments,
         readCapturePayloadChunk: (input) =>
           attachments.readCapturePayloadChunk(input),
         isCapturePayloadAvailable: ({ workspaceId, original }) =>

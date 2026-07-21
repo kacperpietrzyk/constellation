@@ -62,6 +62,8 @@ export const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "document.backlinks",
   "document.readText",
   "document.replaceText",
+  "document.readContent",
+  "document.replaceContent",
   "knowledge.sourceCreate",
   "knowledge.sourceUpdate",
   "knowledge.documentSetEvidence",

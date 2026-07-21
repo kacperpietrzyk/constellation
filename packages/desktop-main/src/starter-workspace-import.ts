@@ -11,6 +11,11 @@ import {
   type TaskId,
   type WorkspaceId,
 } from "@constellation/contracts";
+import {
+  parseStructuredDocument,
+  structuredDocumentEntityReferences,
+  type StructuredDocument,
+} from "@constellation/realtime-documents";
 
 import type { DesktopKernelService } from "./runtime-kernel-service.js";
 
@@ -53,6 +58,13 @@ interface StarterDocument {
   readonly role?: "note" | "document" | "deliverable";
   /** Plain text; the collaborative document is created from it on import. */
   readonly text?: string;
+  readonly structuredContent?: StructuredDocument;
+  readonly entityReferences?: readonly {
+    readonly targetKind:
+      "task" | "project" | "person" | "organization" | "meeting";
+    readonly targetId: string;
+    readonly targetKey: string;
+  }[];
 }
 
 interface StarterTaskStatus {
@@ -63,7 +75,7 @@ interface StarterTaskStatus {
 }
 
 export interface StarterWorkspaceManifest {
-  readonly version: 1 | 2 | 3 | 4;
+  readonly version: 1 | 2 | 3 | 4 | 5;
   readonly importId: string;
   readonly areas: readonly StarterArea[];
   readonly initiatives: readonly StarterInitiative[];
@@ -165,7 +177,8 @@ export const parseStarterWorkspaceManifest = (
     (value.version !== 1 &&
       value.version !== 2 &&
       value.version !== 3 &&
-      value.version !== 4) ||
+      value.version !== 4 &&
+      value.version !== 5) ||
     (value.taskStatuses !== undefined && value.version < 3) ||
     (value.documents !== undefined && value.version < 4) ||
     typeof value.importId !== "string" ||
@@ -385,7 +398,11 @@ export const parseStarterWorkspaceManifest = (
       : parseArray(value.documents, (item): StarterDocument | undefined => {
           if (
             !isRecord(item) ||
-            !exactKeys(item, ["key", "title"], ["role", "text"])
+            !exactKeys(
+              item,
+              ["key", "title"],
+              ["role", "text", "structuredContent", "entityReferences"],
+            )
           )
             return undefined;
           const parsedKey = key(item.key);
@@ -393,6 +410,55 @@ export const parseStarterWorkspaceManifest = (
           const role = item.role;
           const body =
             item.text === undefined ? undefined : text(item.text, 200_000);
+          let structuredContent: StructuredDocument | undefined;
+          try {
+            structuredContent =
+              item.structuredContent === undefined
+                ? undefined
+                : parseStructuredDocument(item.structuredContent);
+          } catch {
+            return undefined;
+          }
+          const entityReferences =
+            item.entityReferences === undefined
+              ? undefined
+              : parseArray(item.entityReferences, (reference) => {
+                  if (
+                    !isRecord(reference) ||
+                    !exactKeys(reference, [
+                      "targetKind",
+                      "targetId",
+                      "targetKey",
+                    ]) ||
+                    ![
+                      "task",
+                      "project",
+                      "person",
+                      "organization",
+                      "meeting",
+                    ].includes(String(reference.targetKind)) ||
+                    typeof reference.targetId !== "string" ||
+                    !/^[0-9a-f]{8}-[0-9a-f-]{27}$/iu.test(reference.targetId)
+                  )
+                    return undefined;
+                  const targetKey = key(reference.targetKey);
+                  return targetKey === undefined
+                    ? undefined
+                    : {
+                        targetKind: reference.targetKind as
+                          | "task"
+                          | "project"
+                          | "person"
+                          | "organization"
+                          | "meeting",
+                        targetId: reference.targetId,
+                        targetKey,
+                      };
+                });
+          const contentReferences =
+            structuredContent === undefined
+              ? []
+              : structuredDocumentEntityReferences(structuredContent);
           if (
             !parsedKey ||
             !title ||
@@ -400,7 +466,22 @@ export const parseStarterWorkspaceManifest = (
               role !== "note" &&
               role !== "document" &&
               role !== "deliverable") ||
-            (item.text !== undefined && body === undefined)
+            (item.text !== undefined && body === undefined) ||
+            ((item.structuredContent !== undefined ||
+              item.entityReferences !== undefined) &&
+              version < 5) ||
+            (structuredContent !== undefined &&
+              entityReferences === undefined) ||
+            (structuredContent === undefined &&
+              entityReferences !== undefined) ||
+            (entityReferences !== undefined &&
+              (entityReferences.length !== contentReferences.length ||
+                entityReferences.some(
+                  (reference, index) =>
+                    reference.targetKind !==
+                      contentReferences[index]?.targetKind ||
+                    reference.targetId !== contentReferences[index]?.targetId,
+                )))
           )
             return undefined;
           return {
@@ -408,6 +489,8 @@ export const parseStarterWorkspaceManifest = (
             title,
             ...(role === undefined ? {} : { role }),
             ...(body === undefined ? {} : { text: body }),
+            ...(structuredContent === undefined ? {} : { structuredContent }),
+            ...(entityReferences === undefined ? {} : { entityReferences }),
           };
         });
   if (value.documents !== undefined && documents === undefined)
@@ -710,6 +793,12 @@ export const importStarterWorkspace = (input: {
     readonly spaceId: SpaceId;
     readonly text: string;
   }) => void;
+  readonly writeDocumentContent?: (input: {
+    readonly documentId: string;
+    readonly spaceId: SpaceId;
+    readonly text: string;
+    readonly content: StructuredDocument;
+  }) => void;
   readonly defaultTaskStatusId?: string;
 }): StarterWorkspaceImportResult => {
   const base = (
@@ -780,6 +869,10 @@ export const importStarterWorkspace = (input: {
   // not kernel state (ADR-049/053); without the port the metadata still
   // imports and the text is reported as skipped rather than silently dropped.
   let createdDocuments = 0;
+  const pendingDocuments: {
+    readonly documentId: string;
+    readonly document: StarterDocument;
+  }[] = [];
   for (const document of input.manifest.documents ?? []) {
     const documentId = deterministicUuid(
       `${input.manifest.importId}:document:${document.key}`,
@@ -802,17 +895,12 @@ export const importStarterWorkspace = (input: {
     )
       throw new Error("STARTER_WORKSPACE_COMMAND_FAILED");
     createdDocuments += 1;
-    if (document.text !== undefined && document.text.length > 0) {
-      input.writeDocumentText?.({
-        documentId,
-        spaceId: input.spaceId,
-        text: document.text,
-      });
-    }
+    pendingDocuments.push({ documentId, document });
   }
   const areaIds = new Map<string, string>();
   const initiativeIds = new Map<string, string>();
   const projectIds = new Map<string, ProjectId>();
+  const taskIds = new Map<string, TaskId>();
   let links = 0;
   for (const area of input.manifest.areas) {
     const areaId = StrategicRecordIdSchema.parse(
@@ -929,6 +1017,7 @@ export const importStarterWorkspace = (input: {
     if (routed.projection.kind !== "capture.routed_as_task")
       throw new Error("STARTER_WORKSPACE_TASK_INVALID");
     const taskId: TaskId = routed.projection.taskId;
+    taskIds.set(task.key, taskId);
     let taskVersion = routed.projection.taskVersion;
     if (task.description || task.priority || task.startAt || task.dueAt) {
       const details = execute(input.service, {
@@ -999,6 +1088,61 @@ export const importStarterWorkspace = (input: {
         },
       });
       links += 1;
+    }
+  }
+  for (const pending of pendingDocuments) {
+    const { documentId, document } = pending;
+    if (
+      document.structuredContent !== undefined &&
+      document.entityReferences !== undefined &&
+      input.writeDocumentContent !== undefined
+    ) {
+      const targetIds = new Map<string, string>();
+      for (const reference of document.entityReferences) {
+        const targetId =
+          reference.targetKind === "task"
+            ? taskIds.get(reference.targetKey)
+            : reference.targetKind === "project"
+              ? projectIds.get(reference.targetKey)
+              : undefined;
+        if (targetId === undefined)
+          throw new Error("STARTER_WORKSPACE_DOCUMENT_REFERENCE_UNRESOLVED");
+        targetIds.set(
+          `${reference.targetKind}:${reference.targetId}`,
+          targetId,
+        );
+      }
+      const content = JSON.parse(
+        JSON.stringify(document.structuredContent),
+      ) as StructuredDocument;
+      const remap = (node: {
+        attrs?: Readonly<Record<string, unknown>>;
+        content?: readonly unknown[];
+        type?: string;
+      }): void => {
+        if (node.type === "entityReference" && node.attrs !== undefined) {
+          const targetKind = String(node.attrs.targetKind);
+          const targetId = String(node.attrs.targetId);
+          const mapped = targetIds.get(`${targetKind}:${targetId}`);
+          if (mapped === undefined)
+            throw new Error("STARTER_WORKSPACE_DOCUMENT_REFERENCE_UNRESOLVED");
+          (node.attrs as Record<string, unknown>).targetId = mapped;
+        }
+        for (const child of node.content ?? []) remap(child as never);
+      };
+      remap(content as never);
+      input.writeDocumentContent({
+        documentId,
+        spaceId: input.spaceId,
+        text: document.text ?? "",
+        content: parseStructuredDocument(content),
+      });
+    } else if (document.text !== undefined && document.text.length > 0) {
+      input.writeDocumentText?.({
+        documentId,
+        spaceId: input.spaceId,
+        text: document.text,
+      });
     }
   }
   return {

@@ -11,6 +11,7 @@ import {
   MAX_DOCUMENT_TEXT_LENGTH,
   YjsRealtimeDocumentAdapter,
 } from "@constellation/realtime-documents";
+import type { SqliteApplicationStore } from "@constellation/local-store";
 
 import { createAgentDocumentTextPort } from "../src/document-collaboration.js";
 
@@ -27,8 +28,11 @@ interface StoredState {
 
 const fakeStore = () => {
   let stored: StoredState | undefined;
+  let failNextStructuredReceipt = false;
   const committed: { state: Uint8Array; update: Uint8Array }[] = [];
-  const revisions: { id: string; name: string }[] = [];
+  const revisions: Array<
+    Parameters<SqliteApplicationStore["storeDocumentRevision"]>[0]
+  > = [];
   return {
     committed,
     revisions,
@@ -51,9 +55,24 @@ const fakeStore = () => {
       }) => {
         stored = { state: input.state, updatedAt: input.updatedAt };
       },
-      storeDocumentRevision: (revision: { id: string; name: string }) => {
+      storeDocumentRevision: (
+        revision: Parameters<
+          SqliteApplicationStore["storeDocumentRevision"]
+        >[0],
+      ) => {
+        if (
+          failNextStructuredReceipt &&
+          (revision.name.startsWith("Agent receipt ") ||
+            revision.name.startsWith("Agent restore receipt "))
+        ) {
+          failNextStructuredReceipt = false;
+          throw new Error("INJECTED_RECEIPT_FAILURE");
+        }
         revisions.push(revision);
       },
+      listDocumentRevisions: () => revisions,
+      replaceDocumentEntityLinks: () => undefined,
+      replaceDocumentSearchProjection: () => undefined,
       commitDocumentUpdate: (input: {
         state: Uint8Array;
         update: Uint8Array;
@@ -62,6 +81,9 @@ const fakeStore = () => {
         stored = { state: input.state, updatedAt: input.createdAt };
         committed.push({ state: input.state, update: input.update });
       },
+    },
+    failNextStructuredReceipt: () => {
+      failNextStructuredReceipt = true;
     },
   };
 };
@@ -213,5 +235,220 @@ describe("agent document text port", () => {
       undefined,
     );
     assert.equal(fake.current(), undefined);
+  });
+
+  it("replaces rich structure only at the expected state vector and replays once", () => {
+    const fake = fakeStore();
+    const seed = new YjsRealtimeDocumentAdapter();
+    seed.replaceText("Before", {
+      kind: "human",
+      principalId: "42000000-0000-4000-8000-000000000006",
+    });
+    seed.migrateToRich("a".repeat(64), {
+      kind: "human",
+      principalId: "42000000-0000-4000-8000-000000000006",
+    });
+    fake.store.storeDocumentCollaborationState({
+      state: seed.encodeState(),
+      updatedAt: "2026-07-21T11:00:00.000Z",
+    });
+    seed.destroy();
+    const subject = port(fake, false);
+    const current = subject.readStructured({
+      documentId: ids.document,
+      spaceId: ids.space,
+    });
+    assert.ok(current !== undefined);
+    const request = {
+      documentId: ids.document,
+      spaceId: ids.space,
+      content: {
+        schemaVersion: 1,
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Linked " },
+              {
+                type: "entityReference",
+                attrs: {
+                  targetKind: "task",
+                  targetId: "42000000-0000-4000-8000-000000000008",
+                },
+              },
+            ],
+          },
+        ],
+      },
+      expectedStateVectorSha256: current.stateVectorSha256,
+      idempotencyKey: "rich-write-1",
+      principalId: "42000000-0000-4000-8000-000000000004",
+      runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
+    };
+    const written = subject.replaceStructured(request);
+    assert.equal(written.outcome, "success");
+    if (written.outcome !== "success") throw new Error("Expected success.");
+    assert.equal(written.idempotentReplay, false);
+    const replay = subject.replaceStructured(request);
+    assert.equal(replay.outcome, "success");
+    if (replay.outcome !== "success") throw new Error("Expected replay.");
+    assert.equal(replay.idempotentReplay, true);
+    assert.equal(replay.revisionId, written.revisionId);
+    const stale = subject.replaceStructured({
+      ...request,
+      idempotencyKey: "rich-write-2",
+    });
+    assert.deepEqual(stale, {
+      outcome: "conflict",
+      diagnosticCode: "document.state_vector_stale",
+    });
+    const after = subject.readStructured({
+      documentId: ids.document,
+      spaceId: ids.space,
+    });
+    assert.deepEqual(after?.entityReferences, [
+      {
+        targetKind: "task",
+        targetId: "42000000-0000-4000-8000-000000000008",
+      },
+    ]);
+    assert.match(
+      fake.revisions[0]?.name ?? "",
+      /^Before agent structured write \(run 42000000\) /u,
+    );
+    const restoreRequest = {
+      documentId: ids.document,
+      spaceId: ids.space,
+      revisionId: written.revisionId,
+      expectedStateVectorSha256: after!.stateVectorSha256,
+      idempotencyKey: "rich-restore-1",
+      principalId: "42000000-0000-4000-8000-000000000004",
+      runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
+    };
+    fake.failNextStructuredReceipt();
+    assert.throws(
+      () => subject.restoreStructured(restoreRequest),
+      /INJECTED_RECEIPT_FAILURE/u,
+    );
+    const restored = subject.restoreStructured(restoreRequest);
+    assert.equal(restored.outcome, "success");
+    if (restored.outcome === "success")
+      assert.equal(restored.idempotentReplay, true);
+    assert.equal(
+      subject.readStructured({
+        documentId: ids.document,
+        spaceId: ids.space,
+      })?.text,
+      "Before",
+    );
+    const restoreReplay = subject.restoreStructured(restoreRequest);
+    assert.equal(restoreReplay.outcome, "success");
+    if (restoreReplay.outcome === "success")
+      assert.equal(restoreReplay.idempotentReplay, true);
+  });
+
+  it("never turns a failed structured receipt write into a false retry", () => {
+    const fake = fakeStore();
+    const seed = new YjsRealtimeDocumentAdapter();
+    seed.replaceText("Before receipt failure", {
+      kind: "human",
+      principalId: "42000000-0000-4000-8000-000000000006",
+    });
+    seed.migrateToRich("a".repeat(64), {
+      kind: "human",
+      principalId: "42000000-0000-4000-8000-000000000006",
+    });
+    fake.store.storeDocumentCollaborationState({
+      state: seed.encodeState(),
+      updatedAt: "2026-07-21T11:00:00.000Z",
+    });
+    seed.destroy();
+    const subject = port(fake, false);
+    const before = subject.readStructured({
+      documentId: ids.document,
+      spaceId: ids.space,
+    });
+    assert.ok(before !== undefined);
+    const request = {
+      documentId: ids.document,
+      spaceId: ids.space,
+      content: {
+        schemaVersion: 1,
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Persisted before receipt" }],
+          },
+        ],
+      },
+      expectedStateVectorSha256: before.stateVectorSha256,
+      idempotencyKey: "receipt-failure-write",
+      principalId: "42000000-0000-4000-8000-000000000004",
+      runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
+    };
+    fake.failNextStructuredReceipt();
+    assert.throws(
+      () => subject.replaceStructured(request),
+      /INJECTED_RECEIPT_FAILURE/u,
+    );
+    assert.equal(
+      subject.readStructured({
+        documentId: ids.document,
+        spaceId: ids.space,
+      })?.text,
+      "Persisted before receipt",
+    );
+    assert.equal(fake.revisions.length, 1);
+    const replay = subject.replaceStructured(request);
+    assert.equal(replay.outcome, "success");
+    if (replay.outcome !== "success") throw new Error("Expected replay.");
+    assert.equal(replay.idempotentReplay, true);
+    assert.equal(fake.revisions.length, 2);
+    assert.deepEqual(
+      subject.replaceStructured({
+        ...request,
+        expectedStateVectorSha256: replay.stateVectorSha256,
+      }),
+      {
+        outcome: "conflict",
+        diagnosticCode: "document.idempotency_mismatch",
+      },
+    );
+  });
+
+  it("imports structured content as one rich state with a recovery revision", () => {
+    const fake = fakeStore();
+    const subject = port(fake, false);
+    const imported = subject.importStructured({
+      documentId: ids.document,
+      spaceId: ids.space,
+      text: "Portable fallback",
+      content: {
+        schemaVersion: 1,
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 2 },
+            content: [{ type: "text", text: "Portable rich heading" }],
+          },
+        ],
+      },
+      principalId: "42000000-0000-4000-8000-000000000004",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
+    });
+    assert.ok(imported !== undefined);
+    const read = subject.readStructured({
+      documentId: ids.document,
+      spaceId: ids.space,
+    });
+    assert.equal(read?.text, "Portable rich heading");
+    assert.equal(read?.content.content[0]?.type, "heading");
+    assert.equal(fake.revisions[0]?.name, "Before structured import");
   });
 });
