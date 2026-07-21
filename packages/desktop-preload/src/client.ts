@@ -91,6 +91,8 @@ export const DESKTOP_CHANNELS = {
   selectCapturePayload: "constellation:capture:select-payload",
   stageCapturePayload: "constellation:capture:stage-payload",
   discardCapturePayload: "constellation:capture:discard-payload",
+  inspectManagedPayload: "constellation:attachment:inspect",
+  restoreManagedPayload: "constellation:attachment:restore",
 } as const;
 
 export type DesktopShellCommand =
@@ -326,6 +328,14 @@ export interface ConstellationRendererClient {
     readonly retentionPolicy?: "delete_after_transcript" | "retain";
   }): Promise<CapturePayloadResponse>;
   discardCapturePayload?(original: CaptureOriginal): Promise<void>;
+  inspectManagedPayload?(input: {
+    readonly captureId: string;
+    readonly original: CaptureOriginal;
+  }): Promise<{ readonly state: "available" | "unavailable" }>;
+  restoreManagedPayload?(input: {
+    readonly captureId: string;
+    readonly original: CaptureOriginal;
+  }): Promise<{ readonly state: "available" | "unavailable" }>;
   openDetachedSurface?(surface: DesktopSurface): Promise<void>;
   onShellCommand?(listener: (command: DesktopShellCommand) => void): () => void;
   listWorkspaces?(): Promise<readonly DesktopWorkspaceEntry[]>;
@@ -533,6 +543,14 @@ export const createRendererClient = (
     ) as Promise<CapturePayloadResponse>,
   discardCapturePayload: (original) =>
     invoke(DESKTOP_CHANNELS.discardCapturePayload, original) as Promise<void>,
+  inspectManagedPayload: (input) =>
+    invoke(DESKTOP_CHANNELS.inspectManagedPayload, input) as Promise<{
+      readonly state: "available" | "unavailable";
+    }>,
+  restoreManagedPayload: (input) =>
+    invoke(DESKTOP_CHANNELS.restoreManagedPayload, input) as Promise<{
+      readonly state: "available" | "unavailable";
+    }>,
   openDetachedSurface: (surface) =>
     invoke(DESKTOP_CHANNELS.openDetachedSurface, { surface }) as Promise<void>,
   listWorkspaces: () =>

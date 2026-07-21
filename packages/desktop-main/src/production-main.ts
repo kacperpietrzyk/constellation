@@ -55,6 +55,7 @@ import {
   type DeviceId,
   type CaptureId,
   CalendarBlockDraftSchema,
+  CaptureIdSchema,
   CaptureOriginalSchema,
   isCustodiedCaptureOriginal,
   MeetingWorkItemResponsibilityOverrideSchema,
@@ -1753,6 +1754,74 @@ const startProductionDesktop = async (): Promise<void> => {
       assertTrustedSender(event);
       const original = CaptureOriginalSchema.safeParse(raw);
       if (original.success) capturePayloadCustody?.discard(original.data);
+    },
+  );
+  const authorizedManagedPayload = (raw: unknown) => {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw))
+      return undefined;
+    const input = raw as Record<string, unknown>;
+    if (Object.keys(input).sort().join(",") !== "captureId,original")
+      return undefined;
+    const captureId = CaptureIdSchema.safeParse(input.captureId);
+    const original = CaptureOriginalSchema.safeParse(input.original);
+    if (
+      !captureId.success ||
+      !original.success ||
+      !isCustodiedCaptureOriginal(original.data) ||
+      workspaceRecovery?.kernel === undefined
+    )
+      return undefined;
+    const capture = workspaceRecovery.kernel.store.read((view) =>
+      view.getCapture(captureId.data),
+    );
+    if (
+      capture === undefined ||
+      JSON.stringify(capture.original) !== JSON.stringify(original.data)
+    )
+      return undefined;
+    return original.data;
+  };
+  ipcMain.handle(
+    DESKTOP_CHANNELS.inspectManagedPayload,
+    (event, raw: unknown) => {
+      assertTrustedSender(event);
+      const original = authorizedManagedPayload(raw);
+      return {
+        state:
+          original !== undefined && capturePayloadCustody?.verify(original)
+            ? "available"
+            : "unavailable",
+      } as const;
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.restoreManagedPayload,
+    async (event, raw: unknown) => {
+      assertTrustedSender(event);
+      const original = authorizedManagedPayload(raw);
+      if (original === undefined || capturePayloadCustody === undefined)
+        return { state: "unavailable" } as const;
+      if (capturePayloadCustody.verify(original))
+        return { state: "available" } as const;
+      if (activeHubConnection === undefined)
+        return { state: "unavailable" } as const;
+      try {
+        const bytes = await new HttpHubTransport(
+          activeHubConnection.origin,
+        ).downloadAttachment({
+          credential: activeHubConnection.deviceCredential,
+          workspaceId: activeHubConnection.workspaceId,
+          deviceId: activeHubConnection.deviceId,
+          digest: original.payload.contentSha256,
+        });
+        return {
+          state: capturePayloadCustody.restore(original, bytes)
+            ? "available"
+            : "unavailable",
+        } as const;
+      } catch {
+        return { state: "unavailable" } as const;
+      }
     },
   );
   ipcMain.handle(

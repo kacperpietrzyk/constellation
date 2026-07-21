@@ -95,12 +95,20 @@ a deterministic retrieval index, not a generated-answer or RAG path.
 - A source becoming unavailable preserves the frozen evidence reference.
 - Source changes create deduplicated in-app attention for the owner of an
   affected document. Creating a new named version dismisses that stale signal.
+- A managed file attached to a document remains a Capture-backed Knowledge
+  Source in the document's versioned evidence relation. The document never
+  stores bytes in Yjs. The desktop verifies local custody independently from
+  metadata and can retry an authorized, digest-verified Hub download when a
+  coordinated device lacks the object.
+- Unlinking removes only the evidence relation and remains undoable. The
+  preserved Capture continues to protect the original, so another reference or
+  recovery path cannot lose bytes through an ordinary document action.
 
 ## Current limits
 
 This slice does not yet implement approvals, external Artifact transfer,
 automatic citation extraction, source freshness schedules, relationship-record
-exchange for Person, Organization, and Meeting links, or generic document
-attachments. Those outcomes must extend the
+exchange for Person, Organization, and Meeting links, or managed attachment
+surfaces on Tasks and comments. Those outcomes must extend the
 same typed records, authorization boundary, and deterministic query model
 rather than add a second document system or an embedded reasoning layer.

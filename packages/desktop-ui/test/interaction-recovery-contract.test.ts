@@ -495,6 +495,22 @@ describe("interaction recovery contracts", () => {
     );
   });
 
+  it("makes managed document attachments explicit, recoverable, and responsive", () => {
+    assert.match(documentsSurface, /aria-label="Załączniki"/);
+    assert.match(documentsSurface, /inspectManagedPayload/);
+    assert.match(documentsSurface, /restoreManagedPayload/);
+    assert.match(documentsSurface, /Pobierz ponownie/);
+    assert.match(documentsSurface, />\s*Odłącz\s*</s);
+    assert.match(
+      styles,
+      /\.document-inspector-detail\s*\{[^}]*container-type:\s*inline-size/s,
+    );
+    assert.match(
+      styles,
+      /@container \(max-width: 32rem\)[\s\S]*?\.document-attachment-actions\s*\{[^}]*flex-direction:\s*column[\s\S]*?\.document-attachment-list li\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,
+    );
+  });
+
   it("keeps Access ledgers primary and opens grant construction deliberately", () => {
     assert.match(accessSurface, /const AccessCreateDialog =/);
     assert.match(accessSurface, /dialog\.showModal\(\)/);

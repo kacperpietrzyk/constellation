@@ -3,6 +3,8 @@ import { useState } from "react";
 import {
   DocumentIdSchema,
   DocumentRevisionIdSchema,
+  CaptureIdSchema,
+  CapturePayloadIdSchema,
   KnowledgeSourceIdSchema,
   NamedDocumentVersionIdSchema,
   QueryIdSchema,
@@ -24,6 +26,10 @@ const workspaceId = WorkspaceIdSchema.parse(
 const spaceId = SpaceIdSchema.parse("00000000-0000-4000-8000-000000000002");
 const sourceId = KnowledgeSourceIdSchema.parse(
   "00000000-0000-4000-8000-000000000003",
+);
+const captureId = CaptureIdSchema.parse("00000000-0000-4000-8000-000000000010");
+const payloadId = CapturePayloadIdSchema.parse(
+  "00000000-0000-4000-8000-000000000011",
 );
 const noteId = DocumentIdSchema.parse("00000000-0000-4000-8000-000000000004");
 const deliverableId = DocumentIdSchema.parse(
@@ -75,6 +81,21 @@ const contextProjection = {
       recordId: sourceId,
       title: "Wytyczne audytowe",
       currentVersion: 2,
+      attachment: {
+        captureId,
+        original: {
+          kind: "managed_file",
+          payload: {
+            payloadId,
+            displayName: "wytyczne-audytowe.pdf",
+            mediaType: "application/pdf",
+            byteLength: 862_208,
+            contentSha256: "ab".repeat(32),
+            custodyState: "available",
+          },
+        },
+        availability: "available",
+      },
     },
     {
       kind: "note",
@@ -198,9 +219,8 @@ const snapshot: DesktopSnapshot = {
       sources: [
         {
           id: sourceId,
-          sourceKind: "url",
+          sourceKind: "file",
           title: "Wytyczne audytowe",
-          canonicalUrl: "https://example.test/audit",
           availability: "available",
           observedAt: timestamp,
           version: 2,

@@ -146,6 +146,41 @@ export class CapturePayloadCustody {
     })?.bytes;
   }
 
+  public restore(original: CaptureOriginal, bytes: Uint8Array): boolean {
+    if (!isCustodiedCaptureOriginal(original)) return false;
+    if (
+      bytes.byteLength !== original.payload.byteLength ||
+      createHash("sha256").update(bytes).digest("hex") !==
+        original.payload.contentSha256
+    )
+      return false;
+    if (this.verify(original)) return true;
+    try {
+      this.store.deleteCapturePayload({
+        payloadId: original.payload.payloadId,
+        workspaceId: this.workspaceId,
+      });
+      this.store.storeCapturePayload({
+        payloadId: original.payload.payloadId,
+        workspaceId: this.workspaceId,
+        displayName: original.payload.displayName,
+        mediaType: original.payload.mediaType,
+        inputKind:
+          original.kind === "screenshot"
+            ? "screenshot"
+            : original.kind === "voice_note"
+              ? "voice_note"
+              : "file",
+        contentSha256: original.payload.contentSha256,
+        bytes,
+        createdAt: this.now().toISOString(),
+      });
+      return this.verify(original);
+    } catch {
+      return false;
+    }
+  }
+
   public discard(original: CaptureOriginal): void {
     if (!isCustodiedCaptureOriginal(original)) return;
     this.store.deleteCapturePayload({

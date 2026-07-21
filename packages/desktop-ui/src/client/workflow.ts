@@ -3093,6 +3093,89 @@ export const submitQuickCapture = async (
   }
 };
 
+export const attachManagedFileToDocument = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  documentId: DocumentId,
+): Promise<MutationResult<DesktopSnapshot>> => {
+  if (client.selectCapturePayload === undefined)
+    return {
+      kind: "unavailable",
+      message: "Wybór zarządzanego pliku nie jest dostępny w tym środowisku.",
+    };
+  const selected = await client.selectCapturePayload();
+  if (selected.outcome === "failure") {
+    if (selected.code === "cancelled")
+      return { kind: "unavailable", message: "Nie wybrano pliku." };
+    return {
+      kind: selected.code === "payload_unavailable" ? "retry" : "error",
+      message:
+        selected.code === "payload_too_large"
+          ? "Plik przekracza limit 25 MB."
+          : selected.code === "payload_empty"
+            ? "Pustego pliku nie można dołączyć."
+            : "Nie udało się bezpiecznie przygotować pliku.",
+    };
+  }
+  const initialContext = await loadKnowledgeDocumentContext(
+    client,
+    snapshot,
+    documentId,
+  ).catch(() => undefined);
+  if (initialContext === undefined) {
+    await client.discardCapturePayload?.(selected.original);
+    return { kind: "unavailable", message: "Dokument nie jest już dostępny." };
+  }
+  const routed = await submitQuickCapture(
+    client,
+    snapshot,
+    selected.original,
+    "knowledge_source",
+  );
+  if (routed.kind !== "success") return routed;
+  if (routed.result.kind !== "knowledge_source")
+    return {
+      kind: "error",
+      message: "Plik zachowano, ale nie powstało źródło dokumentu.",
+    };
+  const currentContext = await loadKnowledgeDocumentContext(
+    client,
+    routed.snapshot,
+    documentId,
+  ).catch(() => undefined);
+  if (currentContext === undefined)
+    return {
+      kind: "unavailable",
+      message:
+        "Plik pozostaje bezpiecznie zapisany w bibliotece, ale dokument nie jest już dostępny.",
+    };
+  const linked = await setKnowledgeEvidence(
+    client,
+    routed.snapshot,
+    documentId,
+    [
+      ...new Set([
+        ...currentContext.evidence
+          .filter((item) => item.kind === "source")
+          .map((item) => item.recordId as KnowledgeSourceId),
+        routed.result.sourceId,
+      ]),
+    ],
+    currentContext.evidence
+      .filter((item) => item.kind === "note")
+      .map((item) => item.recordId as DocumentId),
+  );
+  if (linked.kind !== "success")
+    return {
+      ...linked,
+      message: `${linked.message} Plik pozostaje bezpiecznie zapisany w bibliotece źródeł.`,
+    };
+  return {
+    kind: "success",
+    data: await loadDesktopSnapshot(client, snapshot.build),
+  };
+};
+
 export const requestVoiceAudioDeletion = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,

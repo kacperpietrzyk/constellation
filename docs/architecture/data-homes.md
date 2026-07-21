@@ -104,6 +104,11 @@ reconciliation purge bytes that no Capture references.
 Normal projection replacement retains bytes only for still-authorized Capture
 records and current dialog staging. Membership or device revocation purges the
 whole coordinated projection, including managed payload bytes.
+Document attachments reuse this exact custody and transport. Their visible
+Knowledge Source/evidence relation carries metadata and provenance, while each
+device verifies whether it holds the bytes. An authorized retry downloads the
+workspace-scoped digest from the Hub and writes it only after length and SHA-256
+match; attachment metadata alone is never treated as local availability.
 Authorized external agents read a managed payload through the same versioned
 MCP resource contract in either Data Home. Reading a voice original also needs
 the separate `capture.audioRead` grant; Space and Capture History authorization

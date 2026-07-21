@@ -19,7 +19,7 @@ Most productivity tools optimize either for presenting knowledge or for
 operating structured work. Constellation aims to make those two sides part of
 one system:
 
-- rich documents remain connected to typed entities;
+- rich documents remain connected to typed entities and managed file sources;
 - relationships are queryable data, not decorative links;
 - agent actions are auditable, reversible, and subject to the same rules as UI
   actions;

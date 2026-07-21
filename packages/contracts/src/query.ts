@@ -1114,6 +1114,14 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             recordId: z.uuid(),
             title: z.string(),
             currentVersion: z.int().positive(),
+            attachment: z
+              .object({
+                captureId: CaptureIdSchema,
+                original: CaptureOriginalSchema,
+                availability: z.enum(["available", "unavailable"]),
+              })
+              .strict()
+              .optional(),
           })
           .strict(),
       ),
