@@ -21,6 +21,8 @@ import {
   type RelationId,
   type AutomationRuleId,
   type TaskId,
+  type ProjectId,
+  type RelationCondition,
   TaskAssignmentIdSchema,
   AttentionSignalIdSchema,
   KnowledgeSourceIdSchema,
@@ -133,6 +135,7 @@ import type {
   IdempotencyRecord,
   StoreFreshness,
 } from "./ports.js";
+import { evaluateRelationConditions } from "./relation-conditions.js";
 import {
   isApplicationWave2ReadView,
   isApplicationWave2Transaction,
@@ -929,33 +932,70 @@ type SavedViewFilters = Extract<
   { kind: "saved_view" }
 >["filters"];
 
+// ADR-045. The R12.4 relation keys were accepted and stored while nothing read
+// them — a filter that silently did nothing. They now become the equivalent
+// relation conditions, which is the ADR-044 §4 intent finally honoured. An
+// empty legacy array contributes no condition: that preserves its historical
+// meaning exactly (it never constrained anything) rather than inventing a
+// filter that matches nothing.
+export const translatedRelationConditions = (filters: {
+  readonly relationConditions?: readonly RelationCondition[] | undefined;
+  readonly projectIds?: readonly ProjectId[] | undefined;
+  readonly areaIds?: readonly StrategicRecordId[] | undefined;
+  readonly initiativeIds?: readonly StrategicRecordId[] | undefined;
+}): readonly RelationCondition[] => [
+  ...(filters.relationConditions ?? []),
+  ...(filters.projectIds !== undefined && filters.projectIds.length > 0
+    ? [
+        {
+          path: "project",
+          predicate: { field: "id", in: [...filters.projectIds] },
+        } satisfies RelationCondition,
+      ]
+    : []),
+  ...(filters.areaIds !== undefined && filters.areaIds.length > 0
+    ? [
+        {
+          path: "project.area",
+          predicate: { field: "id", in: [...filters.areaIds] },
+        } satisfies RelationCondition,
+      ]
+    : []),
+  ...(filters.initiativeIds !== undefined && filters.initiativeIds.length > 0
+    ? [
+        {
+          path: "project.initiative",
+          predicate: { field: "id", in: [...filters.initiativeIds] },
+        } satisfies RelationCondition,
+      ]
+    : []),
+];
+
+// The command schema caps relation conditions, and the same schema validates
+// the stored record on the way out, so a translation that pushed the list past
+// the cap would store a view that can never be projected again.
+export const MAX_SAVED_VIEW_RELATION_CONDITIONS = 10;
+
+// Copying key-by-key is what let R12.4's filters be dropped by savedView.create
+// (fixed in PR #75) and what let the projection drift (PR #95). This copies
+// every defined key generically instead, so a key added to the vocabulary
+// cannot be forgotten here. The input is already parsed by the strict
+// SavedViewFiltersSchema, so no unexpected key can arrive through it.
 const savedViewFilters = (filters: {
   readonly [K in keyof SavedViewFilters]?: SavedViewFilters[K] | undefined;
-}): SavedViewFilters => ({
-  ...(filters.operationalStates === undefined
-    ? {}
-    : { operationalStates: filters.operationalStates }),
-  ...(filters.projectIds === undefined
-    ? {}
-    : { projectIds: filters.projectIds }),
-  ...(filters.areaIds === undefined ? {} : { areaIds: filters.areaIds }),
-  ...(filters.initiativeIds === undefined
-    ? {}
-    : { initiativeIds: filters.initiativeIds }),
-  ...(filters.unassigned === undefined
-    ? {}
-    : { unassigned: filters.unassigned }),
-  ...(filters.statusIds === undefined ? {} : { statusIds: filters.statusIds }),
-  ...(filters.assigneePrincipalIds === undefined
-    ? {}
-    : { assigneePrincipalIds: filters.assigneePrincipalIds }),
-  ...(filters.priorities === undefined
-    ? {}
-    : { priorities: filters.priorities }),
-  ...(filters.dueWindow === undefined ? {} : { dueWindow: filters.dueWindow }),
-  ...(filters.scheduled === undefined ? {} : { scheduled: filters.scheduled }),
-  ...(filters.fields === undefined ? {} : { fields: filters.fields }),
-});
+}): SavedViewFilters => {
+  const conditions = translatedRelationConditions(filters);
+  const { projectIds, areaIds, initiativeIds, ...rest } = filters;
+  void projectIds;
+  void areaIds;
+  void initiativeIds;
+  return Object.fromEntries(
+    Object.entries({
+      ...rest,
+      ...(conditions.length === 0 ? {} : { relationConditions: conditions }),
+    }).filter(([, value]) => value !== undefined),
+  ) as SavedViewFilters;
+};
 
 // ADR-041 §4. Cadence arithmetic is UTC and clamps a day-of-month that does
 // not exist in the target month to that month's last day, so a month-end
@@ -2338,6 +2378,12 @@ export const executeWave2Command = (
         update = { name: command.payload.name };
         changedFields = ["name"];
       } else if (command.commandName === "savedView.update") {
+        if (
+          command.payload.filters !== undefined &&
+          translatedRelationConditions(command.payload.filters).length >
+            MAX_SAVED_VIEW_RELATION_CONDITIONS
+        )
+          return precondition(command, occurredAt);
         update = {
           ...(command.payload.filters === undefined
             ? {}
@@ -2417,6 +2463,14 @@ export const executeWave2Command = (
       if (
         transaction.getStrategicRecord(command.payload.savedViewId) !==
         undefined
+      )
+        return precondition(command, occurredAt);
+      // Translating the legacy keys can push the condition list past the cap
+      // the schema enforces on the way back out. Refuse the write rather than
+      // store a view that could never be projected again (ADR-045).
+      if (
+        translatedRelationConditions(command.payload.filters).length >
+        MAX_SAVED_VIEW_RELATION_CONDITIONS
       )
         return precondition(command, occurredAt);
       const record = createSavedView({
@@ -7474,17 +7528,45 @@ export const executeWave2Query = (
           ): record is Extract<StrategicRecord, { kind: "saved_view" }> =>
             record.kind === "saved_view" && record.state === "active",
         )
-        .map((savedView) => ({
-          id: savedView.id,
-          name: savedView.name,
-          filters: savedView.filters,
-          sort: savedView.sort,
-          ...(savedView.groupBy === undefined
-            ? {}
-            : { groupBy: savedView.groupBy }),
-          state: savedView.state,
-          version: savedView.version,
-        })),
+        .map((savedView) => {
+          // ADR-045. Relation conditions are evaluated here, kernel-side, by
+          // the same evaluator `task.list` uses, and the view carries the
+          // resulting Task ids. The surface then intersects its own intrinsic
+          // filtering with this set — a membership test against an answer the
+          // kernel computed, never a client-side walk of the relation graph.
+          //
+          // Returning the set per view (rather than taking conditions as a
+          // query parameter) keeps switching views instant: the snapshot is
+          // loaded once, so a chip click stays a local operation instead of
+          // becoming a round-trip with its own loading state.
+          //
+          // Legacy R12.4 keys are translated on the way out too, so a view
+          // stored before ADR-045 starts filtering rather than staying inert.
+          const conditions = translatedRelationConditions(savedView.filters);
+          return {
+            id: savedView.id,
+            name: savedView.name,
+            filters: savedView.filters,
+            sort: savedView.sort,
+            ...(savedView.groupBy === undefined
+              ? {}
+              : { groupBy: savedView.groupBy }),
+            ...(conditions.length === 0
+              ? {}
+              : {
+                  relationTaskIds: [
+                    ...evaluateRelationConditions(
+                      view,
+                      query.workspaceId,
+                      space.id,
+                      conditions,
+                    ),
+                  ],
+                }),
+            state: savedView.state,
+            version: savedView.version,
+          };
+        }),
       freshness,
     });
   }

@@ -139,10 +139,25 @@ export const WorkSurface = ({
   };
   const weekStartKey = dayKeyAt(-Math.max(0, weekdayIndex));
   const weekEndKey = dayKeyAt(6 - Math.max(0, weekdayIndex));
+  // ADR-045. Relation filtering is NOT evaluated here. The kernel resolves the
+  // view's relation conditions and sends the Task ids that satisfy them; this
+  // is a membership test against that answer, never a walk of the relation
+  // graph. Re-deriving relations client-side would reopen the ADR-036 deferral
+  // the kernel evaluator closed, and would let the desktop and an MCP operator
+  // disagree about what the same saved view means.
+  //
+  // Absent means the view carries no relation condition; an empty array means
+  // it carries one that nothing matched — those must not collapse together.
+  const relationAllowList =
+    activeView?.relationTaskIds === undefined
+      ? undefined
+      : new Set(activeView.relationTaskIds);
   const matchesActiveView = (
     task: NonNullable<typeof projection>["tasks"][number],
   ): boolean => {
     if (!activeView) return true;
+    if (relationAllowList !== undefined && !relationAllowList.has(task.id))
+      return false;
     const filters = activeView.filters;
     if (
       filters.operationalStates !== undefined &&
@@ -410,6 +425,7 @@ export const WorkSurface = ({
     const dueWindow = String(data.get("dueWindow") ?? "");
     const assignee = String(data.get("assignee") ?? "");
     const fieldPredicate = String(data.get("fieldPredicate") ?? "");
+    const relationProjectId = String(data.get("relationProjectId") ?? "");
     const group = String(data.get("groupBy") ?? "");
     const sort = String(data.get("sort") ?? "updated_desc") as
       "updated_desc" | "due_asc" | "title_asc";
@@ -447,6 +463,21 @@ export const WorkSurface = ({
             : assignee === "unassigned"
               ? { unassigned: true }
               : { assigneePrincipalIds: [assignee as PrincipalId] }),
+          // ADR-045. The condition goes to the kernel, which evaluates it; the
+          // surface only names the project it wants.
+          ...(relationProjectId === ""
+            ? {}
+            : {
+                relationConditions: [
+                  {
+                    path: "project" as const,
+                    predicate: {
+                      field: "id" as const,
+                      in: [relationProjectId as ProjectId],
+                    },
+                  },
+                ],
+              }),
           ...(viewFieldId === "" || fieldPredicate === ""
             ? {}
             : {
@@ -726,6 +757,23 @@ export const WorkSurface = ({
                 </option>
               ))}
             </select>
+            {/* ADR-045. Filtering by a related Project — the kernel resolves
+                the relation, so the view means the same thing here and to an
+                MCP operator. Offered only when there is a Project to name. */}
+            {(projection?.projects ?? []).length > 0 && (
+              <select
+                name="relationProjectId"
+                aria-label="Projekt"
+                defaultValue=""
+              >
+                <option value="">Każdy projekt</option>
+                {(projection?.projects ?? []).map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.title}
+                  </option>
+                ))}
+              </select>
+            )}
             {(snapshot.bootstrap.fieldDefinitions ?? []).some(
               (definition) =>
                 definition.targetKind === "task" &&

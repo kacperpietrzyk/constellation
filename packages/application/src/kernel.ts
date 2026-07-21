@@ -36,9 +36,7 @@ import {
   type QueryEnvelope,
   type QueryResult,
   type SpaceId,
-  type WorkspaceId,
   type TaskId,
-  type ProjectId,
   type CaptureOriginal,
   type CaptureId,
   type CaptureReviewReason,
@@ -65,7 +63,6 @@ import {
   type AuditReceipt,
   type AttentionSignal,
   type DomainEvent,
-  type StrategicRecord,
   type OutboxEntry,
   type WorkspaceMembership,
   type ReviewCapture,
@@ -80,7 +77,6 @@ import {
   RetryableUnitOfWorkError,
   type ApplicationKernelDependencies,
   type ApplicationReadView,
-  type ApplicationWave2ReadView,
   type ApplicationTransaction,
   type ApplicationWave2Transaction,
   type CurrentAuthorizationPolicy,
@@ -89,6 +85,7 @@ import {
   type TaskDuePaginationCursor,
   type TaskPaginationCursor,
 } from "./ports.js";
+import { evaluateRelationConditions } from "./relation-conditions.js";
 import {
   executeWave2Command,
   executeWave2Query,
@@ -2936,150 +2933,6 @@ export class ApplicationKernel {
     });
   }
 
-  // R13.5 / ADR-044 — evaluate relation-path conditions into an allow-set of
-  // Task ids. Conditions AND together; within a condition the match is
-  // existential (a task matches when any project it is related to satisfies
-  // the predicate). Slice 1 carries the one-hop `project` path; the two-hop
-  // paths extend the predicate resolution here without changing this join.
-  private evaluateRelationConditions(
-    view: ApplicationWave2ReadView,
-    workspaceId: WorkspaceId,
-    spaceId: SpaceId,
-    conditions: NonNullable<
-      Extract<
-        QueryEnvelope,
-        { queryName: "task.list" }
-      >["parameters"]["relationConditions"]
-    >,
-  ): ReadonlySet<TaskId> {
-    const relations = view.listRelations(workspaceId, spaceId);
-    let allowed: Set<TaskId> | undefined;
-    for (const condition of conditions) {
-      const matchingProjectIds = this.projectsMatchingCondition(
-        view,
-        workspaceId,
-        spaceId,
-        condition,
-      );
-      const tasksForCondition = new Set<TaskId>();
-      for (const relation of relations) {
-        if (matchingProjectIds.has(relation.projectId))
-          tasksForCondition.add(relation.taskId);
-      }
-      allowed =
-        allowed === undefined
-          ? tasksForCondition
-          : new Set(
-              [...allowed].filter((taskId) => tasksForCondition.has(taskId)),
-            );
-    }
-    return allowed ?? new Set<TaskId>();
-  }
-
-  private projectsMatchingCondition(
-    view: ApplicationWave2ReadView,
-    workspaceId: WorkspaceId,
-    spaceId: SpaceId,
-    condition: NonNullable<
-      Extract<
-        QueryEnvelope,
-        { queryName: "task.list" }
-      >["parameters"]["relationConditions"]
-    >[number],
-  ): ReadonlySet<ProjectId> {
-    // One-hop: the terminus is the Project itself.
-    if (condition.path === "project") {
-      if (condition.predicate.field === "id")
-        return new Set(condition.predicate.in);
-      const lifecycle = condition.predicate.equals;
-      return new Set(
-        view
-          .listProjects(workspaceId, spaceId)
-          .filter((project) => project.lifecycle === lifecycle)
-          .map((project) => project.id),
-      );
-    }
-
-    // Two-hop: resolve the set of terminus strategic-record ids the predicate
-    // matches, then map back to the projects that reach them. All strategic
-    // records are loaded once and indexed in memory — bounded, no traversal.
-    const strategic = view.listStrategicRecords(workspaceId, spaceId);
-    const terminusIds = new Set<string>();
-    if (condition.path === "project.area") {
-      const p = condition.predicate;
-      for (const record of strategic) {
-        if (record.kind !== "area") continue;
-        if (
-          p.field === "id"
-            ? p.in.includes(record.id)
-            : record.state === p.equals
-        )
-          terminusIds.add(record.id);
-      }
-      return this.projectsReachingWorkLink(
-        strategic,
-        "project_serves_area",
-        terminusIds,
-      );
-    }
-    if (condition.path === "project.initiative") {
-      const p = condition.predicate;
-      for (const record of strategic) {
-        if (record.kind !== "initiative") continue;
-        if (
-          p.field === "id"
-            ? p.in.includes(record.id)
-            : record.state === p.equals
-        )
-          terminusIds.add(record.id);
-      }
-      return this.projectsReachingWorkLink(
-        strategic,
-        "project_advances_initiative",
-        terminusIds,
-      );
-    }
-    // condition.path === "project.organization" — via the opportunity bridge.
-    const p = condition.predicate;
-    for (const record of strategic) {
-      if (record.kind !== "organization") continue;
-      if (
-        p.field === "id"
-          ? p.in.includes(record.id)
-          : record.relationshipState === p.equals
-      )
-        terminusIds.add(record.id);
-    }
-    const projectIds = new Set<ProjectId>();
-    for (const record of strategic) {
-      if (record.kind !== "opportunity") continue;
-      if (!terminusIds.has(record.organizationId)) continue;
-      for (const projectId of record.projectIds) projectIds.add(projectId);
-    }
-    return projectIds;
-  }
-
-  // Projects on the source side of an active work link whose target is one of
-  // the matched terminus records. Source is always the project for the
-  // project_serves_area / project_advances_initiative link types.
-  private projectsReachingWorkLink(
-    strategic: readonly StrategicRecord[],
-    linkType: "project_serves_area" | "project_advances_initiative",
-    terminusIds: ReadonlySet<string>,
-  ): ReadonlySet<ProjectId> {
-    const projectIds = new Set<ProjectId>();
-    for (const record of strategic) {
-      if (
-        record.kind === "work_link" &&
-        record.state === "active" &&
-        record.linkType === linkType &&
-        terminusIds.has(record.targetRecordId)
-      )
-        projectIds.add(record.sourceRecordId as ProjectId);
-    }
-    return projectIds;
-  }
-
   private taskList(
     view: ApplicationReadView,
     context: ExecutionContext,
@@ -3125,7 +2978,7 @@ export class ApplicationKernel {
       // relations, the filter is refused rather than silently ignored.
       if (!isApplicationWave2ReadView(view))
         return this.queryRejected(query, kernelTime, "query.not_available");
-      taskIdAllowList = this.evaluateRelationConditions(
+      taskIdAllowList = evaluateRelationConditions(
         view,
         query.workspaceId,
         query.parameters.spaceId,
