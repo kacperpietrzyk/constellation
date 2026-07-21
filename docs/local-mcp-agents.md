@@ -95,6 +95,14 @@ batch authorizes nothing an item could not do alone. Pass a `checkpointId` to
 make the whole batch, including a partially applied one, revertible through
 `constellation.checkpoint.revert.v1`.
 
+`constellation://v1/operations` lists every operation your grant authorizes —
+name, kind, tool, and the URI of its full schema — and
+`constellation://v1/operations/<name>` returns that operation's complete strict
+envelope JSON Schema. Read them individually: a measured operate-class grant
+authorizes 116 operations whose combined schemas are 342 KB, which hosts
+truncate. An operation outside your grant reads the same as one that does not
+exist.
+
 The `constellation://v1/capabilities` resource reports the active contract and
 authorized scope without credential material.
 
