@@ -217,7 +217,7 @@
 .ledger-row {
   min-height: 3.25rem;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: var(--space-3);
   align-items: center;
   border-top: 1px solid var(--border-subtle);
@@ -2010,6 +2010,7 @@ kbd {
 /* Documents surface portals its evidence and named-version context into the
    same inspector plane the meetings surface uses. */
 .document-inspector-detail {
+  container-type: inline-size;
   display: grid;
   align-content: start;
   gap: var(--space-4);
@@ -7080,6 +7081,49 @@ button.mention-chip:disabled {
   gap: var(--space-5);
   margin-top: var(--space-4);
 }
+.document-attachment-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+.document-attachment-actions p {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+}
+.document-attachment-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.document-attachment-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+.document-attachment-list strong,
+.document-attachment-list small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.document-attachment-list small,
+.attachment-state {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+.attachment-state.unavailable {
+  color: var(--text-secondary);
+  font-weight: 650;
+}
 .evidence-option {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -7087,6 +7131,22 @@ button.mention-chip:disabled {
   gap: var(--space-2);
   padding: var(--space-2);
   border-radius: var(--radius-sm);
+}
+@container (max-width: 32rem) {
+  .document-attachment-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .document-attachment-list li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .attachment-state {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .document-attachment-list .text-button {
+    justify-self: start;
+  }
 }
 .evidence-option:hover {
   background: var(--surface-hover);

@@ -188,8 +188,15 @@ typed targets; stale work conflicts, retries are idempotent, and the returned
 rich revision can be restored through MCP as a new reversible change. The v5
 exchange package carries current structured content, body text, and remappable
 Task or Project links while excluding revision history and live awareness.
-Generic managed attachments and the remaining connected-document layers are
-the next work on this foundation.
+Documents can now attach a selected file through the existing managed Capture
+custody: the original is encrypted locally, published to a coordinated Hub
+before its command, represented as a versioned Knowledge Source/evidence link,
+and shown outside rich Yjs content with exact filename, type, size, and
+device-local custody state. A missing local object can be fetched and
+digest-verified from the authorized Hub; unlinking is an undoable evidence
+change and never deletes a preserved Capture original. Task/comment consumers
+and the remaining connected-document layers are the next work on this
+foundation.
 
 ## Delivered foundation — coherent desktop Alpha and release candidate
 

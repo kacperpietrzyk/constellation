@@ -8253,6 +8253,25 @@ export const executeWave2Query = (
     const evidence = [
       ...(document.evidence?.sourceIds ?? []).flatMap((id) => {
         const source = view.getKnowledgeSource(id);
+        const capture =
+          source?.sourceCaptureId === undefined
+            ? undefined
+            : view.getCapture(source.sourceCaptureId);
+        const attachment =
+          capture !== undefined &&
+          capture.workspaceId === document.workspaceId &&
+          capture.spaceId === document.spaceId &&
+          (capture.original.kind === "managed_file" ||
+            capture.original.kind === "screenshot")
+            ? {
+                captureId: capture.id,
+                original: capture.original,
+                availability:
+                  source?.availability === "available"
+                    ? ("available" as const)
+                    : ("unavailable" as const),
+              }
+            : undefined;
         return source === undefined
           ? []
           : [
@@ -8261,6 +8280,7 @@ export const executeWave2Query = (
                 recordId: source.id,
                 title: source.title,
                 currentVersion: source.version,
+                ...(attachment === undefined ? {} : { attachment }),
               },
             ];
       }),

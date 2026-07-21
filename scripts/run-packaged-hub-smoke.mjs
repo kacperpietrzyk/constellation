@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -125,8 +127,15 @@ class CdpClient {
       awaitPromise: true,
       returnByValue: true,
     });
-    if (result.exceptionDetails !== undefined)
-      throw new Error("RENDERER_EVALUATION_FAILED");
+    if (result.exceptionDetails !== undefined) {
+      const detail =
+        result.exceptionDetails.exception?.description ??
+        result.exceptionDetails.text ??
+        "unknown";
+      throw new Error(
+        `RENDERER_EVALUATION_FAILED_${String(detail).slice(0, 500)}`,
+      );
+    }
     return result.result.value;
   }
   close() {
@@ -384,8 +393,216 @@ const submitCapture = async (client, title) => {
   );
 };
 
+const attachPackagedPayloadToDocument = async (
+  client,
+  workspaceId,
+  spaceId,
+  documentId,
+) =>
+  client.evaluate(`(async () => {
+    const staged = await window.constellation.stageCapturePayload({
+      displayName: "packaged-document-evidence.txt",
+      mediaType: "text/plain",
+      inputKind: "file",
+      bytes: new TextEncoder().encode("Packaged document attachment evidence."),
+    });
+    if (staged?.outcome !== "success")
+      return { outcome: "failure", code: "STAGE_FAILED" };
+    const commandBase = (commandId, expectedVersions) => ({
+      contractVersion: 1,
+      commandId,
+      workspaceId: ${JSON.stringify(workspaceId)},
+      idempotencyKey: crypto.randomUUID(),
+      expectedVersions,
+      correlationId: crypto.randomUUID(),
+    });
+    const submitCommandId = crypto.randomUUID();
+    const submitted = await window.constellation.executeCommand({
+      ...commandBase(submitCommandId, {}),
+      commandName: "capture.submit",
+      payload: {
+        spaceId: ${JSON.stringify(spaceId)},
+        original: staged.original,
+        deviceId: crypto.randomUUID(),
+        source: "in_app_quick_capture",
+      },
+    });
+    if (
+      submitted?.kind !== "command_outcome" ||
+      submitted.outcome?.outcome !== "success" ||
+      submitted.outcome.projection?.kind !== "capture.stored"
+    ) return { outcome: "failure", code: "SUBMIT_FAILED" };
+    const capture = submitted.outcome.projection;
+    const routeCommandId = crypto.randomUUID();
+    const routed = await window.constellation.executeCommand({
+      ...commandBase(routeCommandId, { [capture.captureId]: capture.version }),
+      commandName: "capture.process",
+      payload: {
+        captureId: capture.captureId,
+        destination: "knowledge_source",
+      },
+    });
+    if (
+      routed?.kind !== "command_outcome" ||
+      routed.outcome?.outcome !== "success" ||
+      routed.outcome.projection?.kind !== "capture.routed_as_knowledge_source"
+    ) return { outcome: "failure", code: "ROUTE_FAILED" };
+    const source = routed.outcome.projection;
+    const listed = await window.constellation.runQuery({
+      contractVersion: 1,
+      queryName: "knowledge.list",
+      queryId: crypto.randomUUID(),
+      workspaceId: ${JSON.stringify(workspaceId)},
+      consistency: "local_projection",
+      parameters: { spaceId: ${JSON.stringify(spaceId)} },
+    });
+    const document = listed?.result?.projection?.documents?.find(
+      (item) => item.id === ${JSON.stringify(documentId)},
+    );
+    if (document === undefined)
+      return { outcome: "failure", code: "DOCUMENT_MISSING" };
+    const linkCommandId = crypto.randomUUID();
+    const linked = await window.constellation.executeCommand({
+      ...commandBase(linkCommandId, {
+        [document.id]: document.version,
+        [source.sourceId]: source.sourceVersion,
+      }),
+      commandName: "knowledge.documentSetEvidence",
+      payload: {
+        documentId: document.id,
+        sourceIds: [source.sourceId],
+        noteDocumentIds: [],
+      },
+    });
+    if (
+      linked?.kind !== "command_outcome" ||
+      linked.outcome?.outcome !== "success"
+    ) return { outcome: "failure", code: "LINK_FAILED" };
+    return {
+      outcome: "success",
+      captureId: capture.captureId,
+      sourceId: source.sourceId,
+      original: staged.original,
+      commandIds: [submitCommandId, routeCommandId, linkCommandId],
+    };
+  })()`);
+
 const repository = new InMemoryHubRepository();
-const service = new HubService(repository);
+const attachmentUploads = new Map();
+const attachmentObjects = new Map();
+const publicAttachmentUpload = (upload) => ({
+  uploadId: upload.uploadId,
+  contentSha256: upload.contentSha256,
+  byteLength: upload.byteLength,
+  receivedBytes: upload.receivedBytes,
+  state: upload.state,
+});
+const authorizeAttachment = async (credential, input) => {
+  const result = await repository.authenticate({
+    workspaceId: input.workspaceId,
+    deviceId: input.deviceId,
+    credentialDigest: createHash("sha256").update(credential).digest("hex"),
+  });
+  if (result.outcome !== "success") throw new Error(result.code);
+};
+const attachments = {
+  async isAvailable(workspaceId, original) {
+    const payload = original?.payload;
+    if (
+      payload === undefined ||
+      typeof payload.contentSha256 !== "string" ||
+      typeof payload.byteLength !== "number"
+    )
+      return false;
+    const bytes = attachmentObjects.get(
+      `${workspaceId}:${payload.contentSha256}`,
+    );
+    return (
+      bytes?.byteLength === payload.byteLength &&
+      createHash("sha256").update(bytes).digest("hex") === payload.contentSha256
+    );
+  },
+  async deleteCapturePayload(input) {
+    return attachmentObjects.delete(
+      `${input.workspaceId}:${input.original.payload.contentSha256}`,
+    );
+  },
+  async begin(credential, input) {
+    await authorizeAttachment(credential, input);
+    const existing = attachmentObjects.get(
+      `${input.workspaceId}:${input.contentSha256}`,
+    );
+    if (existing !== undefined) {
+      return {
+        uploadId: crypto.randomUUID(),
+        contentSha256: input.contentSha256,
+        byteLength: input.byteLength,
+        receivedBytes: input.byteLength,
+        state: "published",
+      };
+    }
+    const uploadId = crypto.randomUUID();
+    const upload = {
+      uploadId,
+      workspaceId: input.workspaceId,
+      deviceId: input.deviceId,
+      contentSha256: input.contentSha256,
+      byteLength: input.byteLength,
+      receivedBytes: 0,
+      state: "staging",
+      bytes: Buffer.alloc(0),
+    };
+    attachmentUploads.set(uploadId, upload);
+    return publicAttachmentUpload(upload);
+  },
+  async append(input) {
+    await authorizeAttachment(input.credential, input);
+    const upload = attachmentUploads.get(input.uploadId);
+    if (
+      upload === undefined ||
+      upload.workspaceId !== input.workspaceId ||
+      upload.deviceId !== input.deviceId ||
+      upload.receivedBytes !== input.offset ||
+      upload.receivedBytes + input.chunk.byteLength > upload.byteLength
+    )
+      throw new Error("attachment_upload_invalid");
+    upload.bytes = Buffer.concat([upload.bytes, Buffer.from(input.chunk)]);
+    upload.receivedBytes = upload.bytes.byteLength;
+    return publicAttachmentUpload(upload);
+  },
+  async publish(input) {
+    await authorizeAttachment(input.credential, input);
+    const upload = attachmentUploads.get(input.uploadId);
+    if (
+      upload === undefined ||
+      upload.workspaceId !== input.workspaceId ||
+      upload.deviceId !== input.deviceId ||
+      upload.receivedBytes !== upload.byteLength ||
+      createHash("sha256").update(upload.bytes).digest("hex") !==
+        upload.contentSha256
+    )
+      throw new Error("attachment_publish_invalid");
+    upload.state = "published";
+    attachmentObjects.set(
+      `${upload.workspaceId}:${upload.contentSha256}`,
+      Buffer.from(upload.bytes),
+    );
+    return publicAttachmentUpload(upload);
+  },
+  async openAuthorized(input) {
+    await authorizeAttachment(input.credential, input);
+    const bytes = attachmentObjects.get(`${input.workspaceId}:${input.digest}`);
+    if (bytes === undefined) throw new Error("attachment_not_found");
+    const selected =
+      input.range === undefined
+        ? bytes
+        : bytes.subarray(input.range.start, input.range.end + 1);
+    return { byteLength: bytes.byteLength, stream: Readable.from(selected) };
+  },
+};
+const service = new HubService(repository, {
+  capturePayloadVerifier: attachments,
+});
 const initialized = new Set();
 const connections = new Map();
 let hubPort = await reservePort();
@@ -393,6 +610,7 @@ let dropNextSyncResponse = false;
 let realtimeDocuments = new RealtimeDocumentGateway(service, repository);
 let hub = await startHubServer({
   service,
+  attachments,
   realtimeDocuments,
   host: "127.0.0.1",
   port: hubPort,
@@ -582,6 +800,85 @@ try {
     spaceId: rootSpaceId,
     title: "Packaged collaboration notes",
   });
+  const ownerMetadataSynced = await first.client.evaluate(
+    `window.constellation.syncDataHome()`,
+  );
+  if (ownerMetadataSynced.syncState !== "current")
+    throw new Error("OWNER_DOCUMENT_METADATA_NOT_CURRENT");
+  process.stderr.write(
+    "packaged-hub: attach managed document evidence on device A\n",
+  );
+  const packagedDocumentAttachment = await attachPackagedPayloadToDocument(
+    first.client,
+    workspaceId,
+    rootSpaceId,
+    collaborativeDocumentId,
+  );
+  if (packagedDocumentAttachment.outcome !== "success")
+    throw new Error(
+      `PACKAGED_DOCUMENT_ATTACHMENT_${packagedDocumentAttachment.code ?? "FAILED"}`,
+    );
+  let attachmentSynced = await first.client.evaluate(
+    `window.constellation.syncDataHome()`,
+  );
+  if (attachmentSynced.syncState !== "current")
+    throw new Error("PACKAGED_DOCUMENT_ATTACHMENT_NOT_CURRENT");
+  let authoritativeAttachment;
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    authoritativeAttachment = await repository.withWorkspaceLock(
+      workspaceId,
+      (state) => {
+        const source = state.snapshot.knowledgeSources.find(
+          (item) => item.id === packagedDocumentAttachment.sourceId,
+        );
+        const document = state.snapshot.documents.find(
+          (item) => item.id === collaborativeDocumentId,
+        );
+        return {
+          capture: state.snapshot.captures.some(
+            (item) => item.id === packagedDocumentAttachment.captureId,
+          ),
+          sourceCaptureId: source?.sourceCaptureId,
+          sourceIds: document?.evidence?.sourceIds,
+        };
+      },
+    );
+    if (
+      authoritativeAttachment.capture === true &&
+      authoritativeAttachment.sourceCaptureId ===
+        packagedDocumentAttachment.captureId &&
+      authoritativeAttachment.sourceIds?.includes(
+        packagedDocumentAttachment.sourceId,
+      )
+    )
+      break;
+    await delay(100);
+    attachmentSynced = await first.client.evaluate(
+      `window.constellation.syncDataHome()`,
+    );
+  }
+  if (
+    authoritativeAttachment?.capture !== true ||
+    authoritativeAttachment.sourceCaptureId !==
+      packagedDocumentAttachment.captureId ||
+    !authoritativeAttachment.sourceIds?.includes(
+      packagedDocumentAttachment.sourceId,
+    )
+  ) {
+    const reconciliations = await Promise.all(
+      packagedDocumentAttachment.commandIds.map((commandId) =>
+        service.reconcileCommand({
+          credential: ownerConnection.credential,
+          workspaceId,
+          deviceId: ownerConnection.deviceId,
+          commandId,
+        }),
+      ),
+    );
+    throw new Error(
+      `PACKAGED_DOCUMENT_ATTACHMENT_NOT_AUTHORITATIVE_${JSON.stringify({ attachmentSynced, authoritativeAttachment, reconciliations })}`,
+    );
+  }
 
   const privateSpaceId = crypto.randomUUID();
   await repository.withWorkspaceLock(workspaceId, (state) => {
@@ -707,6 +1004,61 @@ try {
   );
   if (memberStatus.descriptor.providerKind !== "coordinated")
     throw new Error("MEMBER_NOT_COORDINATED");
+  process.stderr.write(
+    "packaged-hub: recover managed document evidence on member device\n",
+  );
+  const memberAttachmentRecovery = await member.client.evaluate(`(async () => {
+    const context = await window.constellation.runQuery({
+      contractVersion: 1,
+      queryName: "knowledge.documentContext",
+      queryId: crypto.randomUUID(),
+      workspaceId: ${JSON.stringify(workspaceId)},
+      consistency: "local_projection",
+      parameters: { documentId: ${JSON.stringify(collaborativeDocumentId)} },
+    });
+    const attachment = context?.result?.projection?.evidence?.find(
+      (item) => item.recordId === ${JSON.stringify(packagedDocumentAttachment.sourceId)},
+    )?.attachment;
+    if (attachment === undefined)
+      return {
+        outcome: "failure",
+        code: "METADATA_MISSING",
+        queryKind: context?.kind,
+        queryOutcome: context?.result?.outcome,
+        projectionKind: context?.result?.projection?.kind,
+        evidence: context?.result?.projection?.evidence,
+      };
+    const before = await window.constellation.inspectManagedPayload({
+      captureId: attachment.captureId,
+      original: attachment.original,
+    });
+    const restored = await window.constellation.restoreManagedPayload({
+      captureId: attachment.captureId,
+      original: attachment.original,
+    });
+    const after = await window.constellation.inspectManagedPayload({
+      captureId: attachment.captureId,
+      original: attachment.original,
+    });
+    return {
+      outcome: "success",
+      captureId: attachment.captureId,
+      before: before?.state,
+      restored: restored?.state,
+      after: after?.state,
+    };
+  })()`);
+  if (
+    memberAttachmentRecovery.outcome !== "success" ||
+    memberAttachmentRecovery.captureId !==
+      packagedDocumentAttachment.captureId ||
+    memberAttachmentRecovery.before !== "unavailable" ||
+    memberAttachmentRecovery.restored !== "available" ||
+    memberAttachmentRecovery.after !== "available"
+  )
+    throw new Error(
+      `PACKAGED_DOCUMENT_ATTACHMENT_RECOVERY_FAILED_${JSON.stringify(memberAttachmentRecovery)}`,
+    );
   const leakedPrivateText = await member.client.evaluate(
     `document.body.innerText.includes(${JSON.stringify(privateSentinelTitle)})`,
   );
@@ -733,6 +1085,7 @@ try {
   realtimeDocuments = new RealtimeDocumentGateway(service, repository);
   hub = await startHubServer({
     service,
+    attachments,
     realtimeDocuments,
     host: "127.0.0.1",
     port: hubPort,
@@ -930,6 +1283,7 @@ try {
   realtimeDocuments = new RealtimeDocumentGateway(service, repository);
   hub = await startHubServer({
     service,
+    attachments,
     realtimeDocuments,
     host: "127.0.0.1",
     port: hubPort,
@@ -1036,6 +1390,7 @@ try {
   realtimeDocuments = new RealtimeDocumentGateway(service, repository);
   hub = await startHubServer({
     service,
+    attachments,
     realtimeDocuments,
     host: "127.0.0.1",
     port: hubPort,
@@ -1337,6 +1692,7 @@ try {
 
   hub = await startHubServer({
     service,
+    attachments,
     realtimeDocuments: (realtimeDocuments = new RealtimeDocumentGateway(
       service,
       repository,

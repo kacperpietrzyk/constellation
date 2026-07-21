@@ -51,6 +51,8 @@ const context = (): ExecutionContext =>
     spaceScope: [ids.rootSpace],
     capabilityScope: [
       "workspace.createLocal",
+      "capture.submit",
+      "capture.process",
       "capture.submitText",
       "capture.routeAsTask",
       "project.create",
@@ -236,6 +238,103 @@ const createProjectRecord = (
 };
 
 describe("Wave 2 reference semantics", () => {
+  it("projects only the managed Capture behind a document file source", () => {
+    const harness = setup();
+    const submitted = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("attachment-capture"),
+        commandName: "capture.submit",
+        payload: {
+          spaceId: ids.rootSpace,
+          original: {
+            kind: "managed_file",
+            payload: {
+              payloadId: requestId(),
+              displayName: "scope.pdf",
+              mediaType: "application/pdf",
+              byteLength: 4096,
+              contentSha256: "ab".repeat(32),
+              custodyState: "available",
+            },
+          },
+          deviceId: "attachment-device",
+          source: "in_app_quick_capture",
+        },
+      }),
+    );
+    assert.equal(submitted.outcome, "success");
+    if (
+      submitted.outcome !== "success" ||
+      submitted.projection.kind !== "capture.stored"
+    )
+      assert.fail("Expected managed Capture.");
+    const routed = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("attachment-route", {
+          [submitted.projection.captureId]: submitted.projection.version,
+        }),
+        commandName: "capture.process",
+        payload: {
+          captureId: submitted.projection.captureId,
+          destination: "knowledge_source",
+        },
+      }),
+    );
+    assert.equal(routed.outcome, "success");
+    if (
+      routed.outcome !== "success" ||
+      routed.projection.kind !== "capture.routed_as_knowledge_source"
+    )
+      assert.fail("Expected file Knowledge Source.");
+    const documentId = requestId();
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("attachment-document"),
+        commandName: "document.create",
+        payload: {
+          documentId,
+          spaceId: ids.rootSpace,
+          title: "Scope",
+          role: "document",
+        },
+      }),
+    );
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("attachment-link", {
+          [documentId]: 1,
+          [routed.projection.sourceId]: 1,
+        }),
+        commandName: "knowledge.documentSetEvidence",
+        payload: {
+          documentId,
+          sourceIds: [routed.projection.sourceId],
+          noteDocumentIds: [],
+        },
+      }),
+    );
+    const response = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "knowledge.documentContext",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { documentId },
+    });
+    assert.equal(response.kind, "query_result");
+    if (
+      response.kind !== "query_result" ||
+      response.result.outcome !== "success" ||
+      response.result.projection.kind !== "knowledge.documentContext"
+    )
+      assert.fail("Expected document context.");
+    const attachment = response.result.projection.evidence[0]?.attachment;
+    assert.equal(attachment?.captureId, submitted.projection.captureId);
+    assert.equal(attachment?.original.kind, "managed_file");
+    if (attachment?.original.kind === "managed_file")
+      assert.equal(attachment.original.payload.displayName, "scope.pdf");
+  });
+
   it("preserves source provenance through notes, deliverables, named versions, search, and undo", () => {
     const harness = setup();
     const sourceId = requestId();

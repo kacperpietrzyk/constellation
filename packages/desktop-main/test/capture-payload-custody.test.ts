@@ -163,6 +163,36 @@ describe("Capture payload custody", () => {
     assert.equal(custody.verify(result.original), false);
   });
 
+  it("restores a missing managed object only from exact Hub bytes", () => {
+    const { custody, database } = fixture();
+    const bytes = new TextEncoder().encode("downloaded from the owned Hub");
+    const staged = custody.stage({
+      displayName: "hub-proof.pdf",
+      mediaType: "application/pdf",
+      inputKind: "file",
+      bytes,
+    });
+    assert.equal(staged.outcome, "success");
+    if (staged.outcome !== "success") return;
+    custody.discard(staged.original);
+    assert.equal(custody.verify(staged.original), false);
+    assert.equal(
+      custody.restore(staged.original, new TextEncoder().encode("tampered")),
+      false,
+    );
+    assert.equal(custody.verify(staged.original), false);
+    assert.equal(custody.restore(staged.original, bytes), true);
+    assert.equal(custody.restore(staged.original, bytes), true);
+    assert.deepEqual(custody.read(staged.original), bytes);
+    if (staged.original.kind !== "managed_file") return;
+    database
+      .prepare("UPDATE capture_payloads SET bytes = ? WHERE id = ?")
+      .run(new Uint8Array(bytes.byteLength), staged.original.payload.payloadId);
+    assert.equal(custody.verify(staged.original), false);
+    assert.equal(custody.restore(staged.original, bytes), true);
+    assert.deepEqual(custody.read(staged.original), bytes);
+  });
+
   it("verifies the same managed payload after the workspace database reopens", () => {
     const root = mkdtempSync(path.join(tmpdir(), "capture-custody-restart-"));
     const filename = path.join(root, "workspace.db");

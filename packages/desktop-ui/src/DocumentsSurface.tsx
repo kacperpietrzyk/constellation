@@ -26,6 +26,7 @@ import {
   createDocument,
   createKnowledgeSource,
   createNamedKnowledgeVersion,
+  attachManagedFileToDocument,
   loadKnowledgeDocumentContext,
   loadDocumentLinkCandidates,
   setKnowledgeEvidence,
@@ -506,6 +507,10 @@ const KnowledgeEditor = ({
   const [milestone, setMilestone] =
     useState<keyof typeof milestoneCopy>("finalized");
   const [busy, setBusy] = useState(false);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [attachmentStates, setAttachmentStates] = useState<
+    Record<string, "checking" | "available" | "unavailable">
+  >({});
   const [sessionGeneration, setSessionGeneration] = useState(0);
   const [saveAcknowledged, setSaveAcknowledged] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
@@ -698,6 +703,29 @@ const KnowledgeEditor = ({
           value.evidence
             .filter((item) => item.kind === "note")
             .map((item) => item.recordId as DocumentId),
+        );
+        const managed = value.evidence.filter(
+          (item) => item.attachment !== undefined,
+        );
+        setAttachmentStates(
+          Object.fromEntries(
+            managed.map((item) => [item.recordId, "checking"]),
+          ),
+        );
+        void Promise.all(
+          managed.map(async (item) => {
+            const attachment = item.attachment!;
+            const inspected = await client
+              .inspectManagedPayload?.({
+                captureId: attachment.captureId,
+                original: attachment.original,
+              })
+              .catch(() => ({ state: "unavailable" as const }));
+            setAttachmentStates((current) => ({
+              ...current,
+              [item.recordId]: inspected?.state ?? attachment.availability,
+            }));
+          }),
         );
       })
       .catch(() => setContextError(true));
@@ -1102,6 +1130,122 @@ const KnowledgeEditor = ({
             {context ? selectedSources.length + selectedNotes.length : "–"}
           </span>
         </div>
+        <div className="document-attachment-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={attachmentBusy || access !== "edit"}
+            onClick={() => {
+              setAttachmentBusy(true);
+              void attachManagedFileToDocument(client, snapshot, document.id)
+                .then(async (result) => {
+                  if (result.kind !== "success") {
+                    if (result.message !== "Nie wybrano pliku.")
+                      onFailure(result);
+                    return;
+                  }
+                  await onReload();
+                  reloadContext();
+                })
+                .finally(() => setAttachmentBusy(false));
+            }}
+          >
+            {attachmentBusy ? "Zabezpieczam plik…" : "Dołącz plik"}
+          </button>
+          <p aria-live="polite">
+            Plik trafia do zarządzanego magazynu; treść dokumentu przechowuje
+            tylko relację.
+          </p>
+        </div>
+        {context?.evidence.some((item) => item.attachment !== undefined) && (
+          <ul className="document-attachment-list" aria-label="Załączniki">
+            {context.evidence.flatMap((item) =>
+              item.attachment === undefined ||
+              (item.attachment.original.kind !== "managed_file" &&
+                item.attachment.original.kind !== "screenshot")
+                ? []
+                : (() => {
+                    const custodyState =
+                      attachmentStates[item.recordId] ?? "checking";
+                    return [
+                      <li key={item.recordId}>
+                        <div>
+                          <strong>
+                            {item.attachment.original.payload.displayName}
+                          </strong>
+                          <small>
+                            {item.attachment.original.payload.mediaType} ·{" "}
+                            {Math.ceil(
+                              item.attachment.original.payload.byteLength /
+                                1024,
+                            )}{" "}
+                            KB
+                          </small>
+                        </div>
+                        <span className={`attachment-state ${custodyState}`}>
+                          {custodyState === "available"
+                            ? "W zarządzanym magazynie"
+                            : custodyState === "checking"
+                              ? "Sprawdzam przechowanie…"
+                              : "Plik niedostępny na tym urządzeniu"}
+                        </span>
+                        {custodyState === "unavailable" && (
+                          <button
+                            type="button"
+                            className="text-button"
+                            disabled={attachmentBusy}
+                            onClick={() => {
+                              setAttachmentBusy(true);
+                              void client
+                                .restoreManagedPayload?.({
+                                  captureId: item.attachment!.captureId,
+                                  original: item.attachment!.original,
+                                })
+                                .then((result) => {
+                                  setAttachmentStates((current) => ({
+                                    ...current,
+                                    [item.recordId]:
+                                      result?.state ?? "unavailable",
+                                  }));
+                                })
+                                .finally(() => setAttachmentBusy(false));
+                            }}
+                          >
+                            Pobierz ponownie
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="text-button"
+                          disabled={attachmentBusy || access !== "edit"}
+                          onClick={() => {
+                            setAttachmentBusy(true);
+                            void setKnowledgeEvidence(
+                              client,
+                              snapshot,
+                              document.id,
+                              selectedSources.filter(
+                                (id) => id !== item.recordId,
+                              ),
+                              selectedNotes,
+                            )
+                              .then(async (result) => {
+                                if (result.kind !== "success")
+                                  return onFailure(result);
+                                await onReload();
+                                reloadContext();
+                              })
+                              .finally(() => setAttachmentBusy(false));
+                          }}
+                        >
+                          Odłącz
+                        </button>
+                      </li>,
+                    ];
+                  })(),
+            )}
+          </ul>
+        )}
         {contextError ? (
           <div className="inline-error" role="alert">
             <strong>Nie udało się odczytać dowodów.</strong>
