@@ -60,12 +60,16 @@ import path from "node:path";
 // Dokumentów. Budżet wejścia pozostaje bez zmian; total obejmuje teraz
 // pełny, otwarty edytor rich-text, a osobny limit największego leniwego chunka
 // pilnuje, żeby ten koszt nie rósł bez decyzji.
+// 2026-07-21 (R15.1 Slice 2): wersjonowany kontrakt kandydatów/backlinków
+// powiększa wspólny entry, a izolowany node-view i dostępny picker encji
+// pozostają w leniwym chunku Dokumentów. Limity rosną o zmierzony koszt tej
+// pionowej funkcji, nadal zostawiając mniej niż 2% zapasu.
 const limits = {
-  entryBytes: 540_000,
-  entryGzipBytes: 143_000,
-  totalJavaScriptBytes: 1_270_000,
-  largestLazyJavaScriptBytes: 550_000,
-  stylesheetBytes: 180_000,
+  entryBytes: 545_000,
+  entryGzipBytes: 145_000,
+  totalJavaScriptBytes: 1_290_000,
+  largestLazyJavaScriptBytes: 565_000,
+  stylesheetBytes: 183_000,
 };
 
 const dist = path.join(process.cwd(), "packages", "desktop-ui", "dist");

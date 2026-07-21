@@ -24,6 +24,7 @@ import {
 } from "@hocuspocus/provider";
 import {
   RICH_DOCUMENT_FRAGMENT_ROOT,
+  documentEntityReferences,
   documentPlainText,
 } from "@constellation/realtime-documents";
 import WebSocket from "ws";
@@ -180,6 +181,41 @@ const replaceEditorText = async (client, text) => {
     client,
     `document.querySelector(".document-canvas")?.textContent === ${JSON.stringify(text)}`,
     "PACKAGED_DOCUMENT_EDITOR_INPUT_NOT_APPLIED",
+  );
+};
+
+const insertEditorEntityReference = async (client, target) => {
+  const changed = await client.evaluate(`(() => {
+    const shell = document.querySelector(".document-editor-shell");
+    if (!(shell instanceof HTMLElement)) return false;
+    const fiberKey = Object.keys(shell).find((key) =>
+      key.startsWith("__reactFiber$"),
+    );
+    let fiber = fiberKey ? shell[fiberKey] : undefined;
+    while (fiber) {
+      const editor = fiber.memoizedProps?.editor;
+      if (editor?.chain) {
+        return editor
+          .chain()
+          .focus("end")
+          .insertContent([
+            {
+              type: "entityReference",
+              attrs: ${JSON.stringify(target)},
+            },
+            { type: "text", text: " " },
+          ])
+          .run();
+      }
+      fiber = fiber.return;
+    }
+    return false;
+  })()`);
+  if (!changed) throw new Error("PACKAGED_DOCUMENT_ENTITY_INSERT_FAILED");
+  await waitFor(
+    client,
+    `document.querySelector(${JSON.stringify(`[data-target-kind="${target.targetKind}"][data-target-id="${target.targetId}"]`)}) !== null`,
+    "PACKAGED_DOCUMENT_ENTITY_NOT_RENDERED",
   );
 };
 
@@ -1049,6 +1085,52 @@ try {
     `document.querySelector(".document-presence.current") !== null`,
     "PACKAGED_DOCUMENT_DID_NOT_RECONNECT",
   );
+  const packagedEntityTarget = {
+    targetKind: "task",
+    targetId: sharedTask.id,
+  };
+  // Duplicate inline mentions deliberately remain one backlink projection.
+  await insertEditorEntityReference(member.client, packagedEntityTarget);
+  await insertEditorEntityReference(member.client, packagedEntityTarget);
+  for (
+    let attempt = 0;
+    attempt < 300 && documentEntityReferences(ownerDocument).length !== 1;
+    attempt += 1
+  )
+    await delay(100);
+  if (
+    JSON.stringify(documentEntityReferences(ownerDocument)) !==
+    JSON.stringify([packagedEntityTarget])
+  )
+    throw new Error("PACKAGED_DOCUMENT_ENTITY_NOT_CONVERGED");
+  const linkedDocumentPlainText = documentPlainText(ownerDocument);
+  if (!linkedDocumentPlainText.startsWith(offlineCompletedText))
+    throw new Error("PACKAGED_DOCUMENT_TEXT_CHANGED_BY_ENTITY");
+  let packagedBacklinks;
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    packagedBacklinks = await member.client
+      .evaluate(`window.constellation.runQuery({
+      contractVersion: 1,
+      queryName: "document.backlinks",
+      queryId: crypto.randomUUID(),
+      workspaceId: ${JSON.stringify(workspaceId)},
+      consistency: "local_projection",
+      parameters: ${JSON.stringify(packagedEntityTarget)},
+    })`);
+    if (
+      packagedBacklinks?.kind === "query_result" &&
+      packagedBacklinks.result?.outcome === "success" &&
+      packagedBacklinks.result.projection?.kind === "document.backlinks" &&
+      packagedBacklinks.result.projection.items?.length === 1
+    )
+      break;
+    await delay(100);
+  }
+  if (
+    packagedBacklinks?.result?.projection?.items?.[0]?.documentId !==
+    collaborativeDocumentId
+  )
+    throw new Error("PACKAGED_DOCUMENT_BACKLINK_NOT_PROJECTED");
   await member.client.evaluate(`(() => {
     const input = document.querySelector('.named-version-form input[name="versionName"]');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(
@@ -1084,12 +1166,18 @@ try {
   })()`);
   for (
     let attempt = 0;
-    attempt < 300 && documentPlainText(ownerDocument) !== offlineCompletedText;
+    attempt < 300 &&
+    documentPlainText(ownerDocument) !== linkedDocumentPlainText;
     attempt += 1
   )
     await delay(100);
-  if (documentPlainText(ownerDocument) !== offlineCompletedText)
+  if (documentPlainText(ownerDocument) !== linkedDocumentPlainText)
     throw new Error("PACKAGED_DOCUMENT_RESTORE_NOT_CONVERGED");
+  if (
+    JSON.stringify(documentEntityReferences(ownerDocument)) !==
+    JSON.stringify([packagedEntityTarget])
+  )
+    throw new Error("PACKAGED_DOCUMENT_ENTITY_RESTORE_NOT_CONVERGED");
   await executeOwnerPolicy("workspace.memberSetAccess", {
     membershipId,
     spaceGrantId: memberSpaceGrantId,

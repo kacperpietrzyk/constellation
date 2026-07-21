@@ -7,6 +7,7 @@ import {
   NamedDocumentVersionIdSchema,
   QueryIdSchema,
   SpaceIdSchema,
+  TaskIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
   type QueryProjection,
@@ -37,6 +38,7 @@ const documentRevisionId = DocumentRevisionIdSchema.parse(
 const taskStatusId = TaskStatusIdSchema.parse(
   "00000000-0000-4000-8000-000000000008",
 );
+const linkedTaskId = TaskIdSchema.parse("00000000-0000-4000-8000-000000000009");
 const queryId = QueryIdSchema.parse("00000000-0000-4000-8000-000000000099");
 const timestamp = "2026-07-15T10:00:00.000Z";
 
@@ -116,6 +118,16 @@ const contextProjection = {
 const client = createScenarioClient({
   queries: {
     "knowledge.documentContext": response(contextProjection),
+    "document.linkCandidates": response({
+      kind: "document.linkCandidates",
+      items: [
+        {
+          targetKind: "task",
+          targetId: linkedTaskId,
+          label: "Zweryfikuj zakres wdrożenia",
+        },
+      ],
+    }),
   },
 });
 
@@ -238,6 +250,7 @@ export const KnowledgeHarness = () => {
             setInspectorKind(kind);
             setInspectorOpen(true);
           }}
+          onEntityActivate={() => undefined}
           onReload={async () => undefined}
           onFailure={() => undefined}
         />

@@ -157,6 +157,46 @@ export const DocumentListQuerySchema = QueryMetadataSchema.extend({
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
 }).strict();
 
+export const DocumentEntityTargetKindSchema = z.enum([
+  "task",
+  "project",
+  "person",
+  "organization",
+  "meeting",
+]);
+
+export const DocumentLinkCandidatesQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("document.linkCandidates"),
+  parameters: z
+    .object({
+      spaceId: SpaceIdSchema,
+      text: z.string().trim().max(120).default(""),
+      targets: z
+        .array(
+          z
+            .object({
+              targetKind: DocumentEntityTargetKindSchema,
+              targetId: z.uuid(),
+            })
+            .strict(),
+        )
+        .max(100)
+        .optional(),
+      limit: z.int().min(1).max(100).default(20),
+    })
+    .strict(),
+}).strict();
+
+export const DocumentBacklinksQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("document.backlinks"),
+  parameters: z
+    .object({
+      targetKind: DocumentEntityTargetKindSchema,
+      targetId: z.uuid(),
+    })
+    .strict(),
+}).strict();
+
 export const KnowledgeListQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("knowledge.list"),
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
@@ -286,6 +326,8 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   ProjectListQuerySchema,
   WorkOverviewQuerySchema,
   DocumentListQuerySchema,
+  DocumentLinkCandidatesQuerySchema,
+  DocumentBacklinksQuerySchema,
   KnowledgeListQuerySchema,
   KnowledgeDocumentContextQuerySchema,
   RelationshipWorkspaceQuerySchema,
@@ -1258,6 +1300,43 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             title: z.string(),
             role: z.enum(["note", "document", "deliverable"]),
             version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("document.linkCandidates"),
+      items: z.array(
+        z
+          .object({
+            targetKind: DocumentEntityTargetKindSchema,
+            targetId: z.uuid(),
+            label: z.string(),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("document.backlinks"),
+      target: z
+        .object({
+          targetKind: DocumentEntityTargetKindSchema,
+          targetId: z.uuid(),
+          label: z.string(),
+        })
+        .strict(),
+      items: z.array(
+        z
+          .object({
+            documentId: DocumentIdSchema,
+            spaceId: SpaceIdSchema,
+            title: z.string(),
+            role: z.enum(["note", "document", "deliverable"]),
             updatedAt: z.iso.datetime({ offset: true }),
           })
           .strict(),

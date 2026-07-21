@@ -175,9 +175,12 @@ lists, emphasis, links, and code blocks; existing plaintext documents migrate
 once, named revisions restore rich structure, and schema negotiation prevents
 an older client from silently flattening newer work. This keeps rich writing on
 the same encrypted local and self-hosted collaboration path as the original
-document editor. Typed inline entity links, permission-safe backlinks,
-document-body search, and structured local/remote agent parity remain current
-work rather than delivered claims.
+document editor. Typed inline references now connect that writing to Tasks,
+Projects, People, Organizations, and Meetings. Permission-safe backlinks appear
+in record inspectors and use the shared MCP query surface; labels resolve from
+current authorized records and exact source navigation opens the linked
+document. Document-body search and structured local/remote agent editing remain
+current work.
 
 ## Delivered foundation — coherent desktop Alpha and release candidate
 

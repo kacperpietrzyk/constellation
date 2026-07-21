@@ -68,6 +68,7 @@ import type {
   KnowledgeSource,
   NamedDocumentVersion,
   StrategicRecord,
+  DocumentEntityLink,
 } from "@constellation/domain";
 
 export type FailureBoundary =
@@ -149,6 +150,7 @@ interface MutableState {
   readonly tasks: Map<TaskId, Task>;
   readonly projects: Map<ProjectId, Project>;
   readonly documents: Map<DocumentId, NativeDocument>;
+  readonly documentEntityLinks: Map<string, DocumentEntityLink>;
   readonly knowledgeSources: Map<KnowledgeSourceId, KnowledgeSource>;
   readonly namedDocumentVersions: Map<
     NamedDocumentVersionId,
@@ -184,6 +186,7 @@ const emptyState = (): MutableState => ({
   tasks: new Map(),
   projects: new Map(),
   documents: new Map(),
+  documentEntityLinks: new Map(),
   knowledgeSources: new Map(),
   namedDocumentVersions: new Map(),
   strategicRecords: new Map(),
@@ -216,6 +219,7 @@ const cloneState = (state: MutableState): MutableState => ({
   tasks: new Map(state.tasks),
   projects: new Map(state.projects),
   documents: new Map(state.documents),
+  documentEntityLinks: new Map(state.documentEntityLinks),
   knowledgeSources: new Map(state.knowledgeSources),
   namedDocumentVersions: new Map(state.namedDocumentVersions),
   strategicRecords: new Map(state.strategicRecords),
@@ -242,6 +246,10 @@ const grantScopeKey = (
   spaceId: SpaceId,
   principalId: PrincipalId,
 ): string => `${workspaceId}:${spaceId}:${principalId}`;
+
+const documentEntityLinkKey = (
+  link: Pick<DocumentEntityLink, "documentId" | "targetKind" | "targetId">,
+): string => `${link.documentId}:${link.targetKind}:${link.targetId}`;
 
 const compareCaptureDescending = (left: Capture, right: Capture): number => {
   const time = right.capturedAt.localeCompare(left.capturedAt);
@@ -558,6 +566,25 @@ class ReadView implements ApplicationReadView {
         (left, right) =>
           right.updatedAt.localeCompare(left.updatedAt) ||
           right.id.localeCompare(left.id),
+      );
+  }
+
+  public listDocumentEntityLinks(
+    workspaceId: WorkspaceId,
+    targetKind?: DocumentEntityLink["targetKind"],
+    targetId?: string,
+  ): readonly DocumentEntityLink[] {
+    return [...this.state.documentEntityLinks.values()]
+      .filter(
+        (link) =>
+          link.workspaceId === workspaceId &&
+          (targetKind === undefined || link.targetKind === targetKind) &&
+          (targetId === undefined || link.targetId === targetId),
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          left.documentId.localeCompare(right.documentId),
       );
   }
 
@@ -1272,6 +1299,7 @@ const stateFromSnapshot = (snapshot: ReferenceStateSnapshot): MutableState => ({
   documents: new Map(
     (snapshot.documents ?? []).map((value) => [value.id, value]),
   ),
+  documentEntityLinks: new Map(),
   knowledgeSources: new Map(
     (snapshot.knowledgeSources ?? []).map((value) => [value.id, value]),
   ),
@@ -1339,6 +1367,21 @@ export class InMemoryReferenceStore implements ApplicationStore {
     );
     this.state = candidate;
     return result;
+  }
+
+  public replaceDocumentEntityLinks(
+    documentId: DocumentId,
+    links: readonly DocumentEntityLink[],
+  ): void {
+    for (const [key, link] of this.state.documentEntityLinks) {
+      if (link.documentId === documentId)
+        this.state.documentEntityLinks.delete(key);
+    }
+    for (const link of links) {
+      if (link.documentId !== documentId)
+        throw new Error("Document entity link scope is invalid.");
+      this.state.documentEntityLinks.set(documentEntityLinkKey(link), link);
+    }
   }
 
   public snapshot(): ReferenceStateSnapshot {

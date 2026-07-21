@@ -177,9 +177,13 @@ migrate once without discarding their text. Current clients negotiate the
 document format with the Hub; an older client is made read-only instead of
 being allowed to overwrite rich structure it cannot understand. Rich named
 revisions restore as new collaborative changes and the plain-text projection
-remains available to evidence snapshots and bounded text operations. Inline
-typed-record links, backlinks, document-body search, and structured remote MCP
-editing remain the next connected-document outcomes.
+remains available to evidence snapshots and bounded text operations. The editor
+also inserts typed inline references to Tasks, Projects, People, Organizations,
+and Meetings from the same Space. Each reference stores stable identity rather
+than a copied label; the current label is resolved when read. Permission-safe
+backlink queries show the exact visible source documents in record inspectors
+and through MCP, without leaking hidden records or counts. Document-body search
+and structured remote MCP editing remain the next connected-document outcomes.
 
 The first knowledge-to-deliverable journey now separates preserved Sources,
 evolving Notes or Documents, and evidence-backed Deliverables. A named version

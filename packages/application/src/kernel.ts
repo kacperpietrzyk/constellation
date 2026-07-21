@@ -2797,6 +2797,8 @@ export class ApplicationKernel {
         case "project.list":
         case "work.overview":
         case "document.list":
+        case "document.linkCandidates":
+        case "document.backlinks":
         case "knowledge.list":
         case "knowledge.documentContext":
         case "relationship.workspace":

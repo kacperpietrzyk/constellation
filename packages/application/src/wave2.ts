@@ -124,6 +124,7 @@ import {
   type KnowledgeSource,
   type NativeDocument,
   type StrategicRecord,
+  type DocumentEntityTargetKind,
 } from "@constellation/domain";
 
 import type {
@@ -250,6 +251,8 @@ export type Wave2Query = Extract<
     queryName:
       | "project.list"
       | "document.list"
+      | "document.linkCandidates"
+      | "document.backlinks"
       | "knowledge.list"
       | "knowledge.documentContext"
       | "relationship.workspace"
@@ -1169,6 +1172,97 @@ const activeTargetRecord = (
     record.recordState === "removed"
     ? undefined
     : record;
+};
+
+interface ResolvedDocumentEntityTarget {
+  readonly targetKind: DocumentEntityTargetKind;
+  readonly targetId: string;
+  readonly label: string;
+  readonly spaceId: SpaceId;
+}
+
+const resolveDocumentEntityTarget = (
+  view: ApplicationWave2ReadView,
+  workspaceId: WorkspaceId,
+  targetKind: DocumentEntityTargetKind,
+  targetId: string,
+): ResolvedDocumentEntityTarget | undefined => {
+  if (targetKind === "task") {
+    const task = view.getTask(TaskIdSchema.parse(targetId));
+    return task?.workspaceId === workspaceId && task.recordState === "active"
+      ? { targetKind, targetId, label: task.title, spaceId: task.spaceId }
+      : undefined;
+  }
+  if (targetKind === "project") {
+    const project = view.getProject(ProjectIdSchema.parse(targetId));
+    return project?.workspaceId === workspaceId
+      ? { targetKind, targetId, label: project.title, spaceId: project.spaceId }
+      : undefined;
+  }
+  const record = view.getStrategicRecord(
+    StrategicRecordIdSchema.parse(targetId),
+  );
+  if (
+    record?.workspaceId !== workspaceId ||
+    record.kind !== targetKind ||
+    !["person", "organization", "meeting"].includes(record.kind)
+  )
+    return undefined;
+  const label =
+    record.kind === "meeting"
+      ? (record.meeting.title ?? "Spotkanie bez tytułu")
+      : record.name;
+  return { targetKind, targetId, label, spaceId: record.spaceId };
+};
+
+const documentEntityCandidates = (
+  view: ApplicationWave2ReadView,
+  workspaceId: WorkspaceId,
+  spaceId: SpaceId,
+): readonly ResolvedDocumentEntityTarget[] => {
+  const work = [
+    ...view.listTasksInSpace(workspaceId, spaceId).map((task) => ({
+      targetKind: "task" as const,
+      targetId: task.id,
+      label: task.title,
+      spaceId,
+    })),
+    ...view.listProjects(workspaceId, spaceId).map((project) => ({
+      targetKind: "project" as const,
+      targetId: project.id,
+      label: project.title,
+      spaceId,
+    })),
+    ...view
+      .listStrategicRecords(workspaceId, spaceId)
+      .flatMap((record): readonly ResolvedDocumentEntityTarget[] => {
+        if (record.kind === "person" || record.kind === "organization")
+          return [
+            {
+              targetKind: record.kind,
+              targetId: record.id,
+              label: record.name,
+              spaceId,
+            },
+          ];
+        if (record.kind === "meeting")
+          return [
+            {
+              targetKind: "meeting",
+              targetId: record.id,
+              label: record.meeting.title ?? "Spotkanie bez tytułu",
+              spaceId,
+            },
+          ];
+        return [];
+      }),
+  ];
+  return work.sort(
+    (left, right) =>
+      left.label.localeCompare(right.label, "pl", { sensitivity: "base" }) ||
+      left.targetKind.localeCompare(right.targetKind) ||
+      left.targetId.localeCompare(right.targetId),
+  );
 };
 
 const attentionDetail = (reason: AttentionSignal["reason"]): string => {
@@ -7872,7 +7966,17 @@ export const executeWave2Query = (
                   ? [receipt.spaceId]
                   : [];
               })()
-            : [query.parameters.spaceId];
+            : query.queryName === "document.backlinks"
+              ? (() => {
+                  const target = resolveDocumentEntityTarget(
+                    view,
+                    query.workspaceId,
+                    query.parameters.targetKind,
+                    query.parameters.targetId,
+                  );
+                  return target === undefined ? [] : [target.spaceId];
+                })()
+              : [query.parameters.spaceId];
   if (
     spaceIds.length === 0 ||
     !authorizeSpaces(dependencies, view, context, query, spaceIds)
@@ -8008,6 +8112,84 @@ export const executeWave2Query = (
           version: document.version,
           updatedAt: document.updatedAt,
         })),
+    });
+  }
+  if (query.queryName === "document.linkCandidates") {
+    const normalized = query.parameters.text.toLocaleLowerCase();
+    const exactTargets =
+      query.parameters.targets === undefined
+        ? undefined
+        : new Set(
+            query.parameters.targets.map(
+              (target) => `${target.targetKind}:${target.targetId}`,
+            ),
+          );
+    const items = documentEntityCandidates(
+      view,
+      query.workspaceId,
+      query.parameters.spaceId,
+    )
+      .filter(
+        (candidate) =>
+          (exactTargets === undefined ||
+            exactTargets.has(
+              `${candidate.targetKind}:${candidate.targetId}`,
+            )) &&
+          (normalized === "" ||
+            candidate.label.toLocaleLowerCase().includes(normalized)),
+      )
+      .slice(0, query.parameters.limit)
+      .map(({ targetKind, targetId, label }) => ({
+        targetKind,
+        targetId,
+        label,
+      }));
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "document.linkCandidates",
+      items,
+    });
+  }
+  if (query.queryName === "document.backlinks") {
+    const target = resolveDocumentEntityTarget(
+      view,
+      query.workspaceId,
+      query.parameters.targetKind,
+      query.parameters.targetId,
+    );
+    if (target === undefined)
+      return queryRejected(query, kernelTime, "authorization.denied");
+    const items = view
+      .listDocumentEntityLinks(
+        query.workspaceId,
+        query.parameters.targetKind,
+        query.parameters.targetId,
+      )
+      .flatMap((link) => {
+        const source = view.getDocument(link.documentId);
+        if (
+          source === undefined ||
+          source.workspaceId !== query.workspaceId ||
+          !canViewSpace(view, context, query.workspaceId, source.spaceId)
+        )
+          return [];
+        return [
+          {
+            documentId: source.id,
+            spaceId: source.spaceId,
+            title: source.title,
+            role: source.role ?? "document",
+            updatedAt: source.updatedAt,
+          },
+        ];
+      });
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "document.backlinks",
+      target: {
+        targetKind: query.parameters.targetKind,
+        targetId: query.parameters.targetId,
+        label: target.label,
+      },
+      items,
     });
   }
   if (query.queryName === "knowledge.list") {

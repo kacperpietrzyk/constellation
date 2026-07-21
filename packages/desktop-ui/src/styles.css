@@ -6464,6 +6464,99 @@ button.mention-chip:disabled {
   min-width: min(20rem, calc(100vw - 2rem));
   gap: var(--space-3);
 }
+.document-entity-picker {
+  display: grid;
+  width: min(21rem, calc(100vw - 4rem));
+  max-width: 100%;
+  gap: var(--space-2);
+}
+.document-entity-picker > label {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.document-entity-picker > input {
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  outline: 0;
+  background: var(--surface-content);
+  font: inherit;
+}
+.document-entity-picker > input:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.document-entity-options {
+  display: grid;
+  max-height: 18rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+.document-entity-options > div {
+  display: grid;
+  min-width: 0;
+  min-height: 3.25rem;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  border-top: 1px solid var(--border-subtle);
+}
+.document-entity-options > div:first-child {
+  border-top: 0;
+}
+.document-entity-options > div.active,
+.document-entity-options > div:hover {
+  background: var(--surface-hover);
+}
+.document-entity-options span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.document-entity-options small,
+.document-entity-options > p {
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+.document-entity-options > p {
+  margin: 0;
+  padding: var(--space-4);
+}
+.document-entity-reference {
+  display: inline-flex;
+  align-items: baseline;
+  max-width: 100%;
+  margin-inline: 0.12em;
+  padding: 0.08em 0.38em;
+  gap: 0.2em;
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  cursor: pointer;
+  font-size: 0.9em;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.document-entity-reference:hover {
+  background: var(--surface-hover);
+}
+.document-entity-reference:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-ring);
+}
+.document-entity-reference.unavailable {
+  color: var(--text-tertiary);
+  border-style: dashed;
+  cursor: default;
+}
 .document-canvas {
   width: min(100%, 50rem);
   min-height: 100%;
@@ -9133,4 +9226,55 @@ button.work-task-copy {
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
   white-space: nowrap;
+}
+
+/* R15.1 — backlinks stay in the existing context plane. The source document
+   is the action; metadata remains secondary and no decorative count competes
+   with the record being inspected. */
+.entity-backlinks {
+  margin-inline: var(--space-5);
+}
+.entity-backlinks-status {
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+}
+.entity-backlinks-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.entity-backlinks-list button {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 2.5rem;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+}
+.entity-backlinks-list button:hover {
+  background: var(--surface-hover);
+}
+.entity-backlinks-list button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.entity-backlinks-list span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.entity-backlinks-list small {
+  flex: none;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
 }

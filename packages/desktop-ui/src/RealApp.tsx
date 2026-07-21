@@ -20,9 +20,11 @@ import type {
   CaptureId,
   CaptureOriginal,
   CommandId,
+  DocumentId,
   PrincipalId,
   ProjectId,
   RelationId,
+  StrategicRecordId,
   TaskId,
 } from "@constellation/contracts";
 import type {
@@ -80,6 +82,7 @@ import {
   loadDesktopSnapshot,
   loadProjectOverview,
   loadComments,
+  loadDocumentBacklinks,
   previewUndo,
   revokeWorkspaceMember,
   relateTask,
@@ -106,6 +109,7 @@ import {
   type AttentionInboxProjection,
   type AuditReceiptProjection,
   type DesktopSnapshot,
+  type DocumentBacklinksProjection,
   type MutationFailure,
   type ProjectOverviewProjection,
   type CommentListProjection,
@@ -121,6 +125,7 @@ import {
   createShellNavigation,
   destinationShortcutIndex,
   destinationContext,
+  documentContext,
   moveShellHistory,
   navigateShellContext,
   openShellContextReportingEviction,
@@ -154,6 +159,80 @@ const taskPriorityLabels: Record<string, string> = {
   high: "Wysoki",
   normal: "Normalny",
   low: "Niski",
+};
+
+type DocumentBacklinkTarget = {
+  readonly targetKind:
+    "task" | "project" | "person" | "organization" | "meeting";
+  readonly targetId: string;
+};
+
+const backlinkRoleLabels = {
+  note: "Notatka",
+  document: "Dokument",
+  deliverable: "Rezultat",
+} as const;
+
+const DocumentBacklinks = ({
+  client,
+  snapshot,
+  target,
+  onOpenDocument,
+}: {
+  readonly client: ConstellationRendererClient | undefined;
+  readonly snapshot: DesktopSnapshot;
+  readonly target: DocumentBacklinkTarget | undefined;
+  readonly onOpenDocument: (documentId: DocumentId, title: string) => void;
+}) => {
+  const [projection, setProjection] = useState<DocumentBacklinksProjection>();
+  const [unavailable, setUnavailable] = useState(false);
+
+  useEffect(() => {
+    if (!client || !target) {
+      setProjection(undefined);
+      setUnavailable(false);
+      return;
+    }
+    let active = true;
+    setProjection(undefined);
+    setUnavailable(false);
+    void loadDocumentBacklinks(client, snapshot, target)
+      .then((next) => active && setProjection(next))
+      .catch(() => active && setUnavailable(true));
+    return () => {
+      active = false;
+    };
+  }, [client, snapshot, target?.targetId, target?.targetKind]);
+
+  if (!target) return null;
+  return (
+    <section className="inspector-section entity-backlinks" aria-live="polite">
+      <p className="section-label">Wspomniane w dokumentach</p>
+      {unavailable ? (
+        <p className="entity-backlinks-status">
+          Odwołania są teraz niedostępne.
+        </p>
+      ) : projection === undefined ? (
+        <p className="entity-backlinks-status">Sprawdzam odwołania…</p>
+      ) : projection.items.length === 0 ? (
+        <p className="entity-backlinks-status">Brak odwołań.</p>
+      ) : (
+        <ul className="entity-backlinks-list">
+          {projection.items.map((item) => (
+            <li key={item.documentId}>
+              <button
+                type="button"
+                onClick={() => onOpenDocument(item.documentId, item.title)}
+              >
+                <span>{item.title}</span>
+                <small>{backlinkRoleLabels[item.role]}</small>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 };
 
 const loadDocumentsSurface = () => import("./DocumentsSurface.js");
@@ -1362,6 +1441,7 @@ export const RealApp = ({
   const [meetingInspectorHost, setMeetingInspectorHost] =
     useState<HTMLElement | null>(null);
   const [meetingInspectorOpen, setMeetingInspectorOpen] = useState(false);
+  const [selectedMeetingId, setSelectedMeetingId] = useState<string>();
   const [documentInspectorHost, setDocumentInspectorHost] =
     useState<HTMLElement | null>(null);
   const [documentInspectorOpen, setDocumentInspectorOpen] = useState(false);
@@ -1812,10 +1892,15 @@ export const RealApp = ({
         ? snapshot.projects.data.items.map((project) => project.id)
         : [],
     );
+    const documentIds = new Set(
+      snapshot.documents.kind === "ready"
+        ? snapshot.documents.data.items.map((document) => document.id)
+        : [],
+    );
     setNavigation((current) =>
       pruneInaccessibleShellContexts(
         current,
-        { taskIds, projectIds },
+        { taskIds, projectIds, documentIds },
         destinationContext("cockpit", "Tydzień"),
       ),
     );
@@ -3006,8 +3091,10 @@ export const RealApp = ({
               <Suspense fallback={<SurfaceLoadingState label="Spotkania" />}>
                 <MeetingsSurface
                   client={client}
+                  activeMeetingId={selectedMeetingId}
                   inspectorHost={meetingInspectorHost}
                   onInspectorOpen={() => setMeetingInspectorOpen(true)}
+                  onMeetingSelected={setSelectedMeetingId}
                 />
               </Suspense>
             </LazySurfaceBoundary>
@@ -3159,10 +3246,54 @@ export const RealApp = ({
                 <DocumentsSurface
                   client={client}
                   snapshot={state.snapshot}
+                  activeDocumentId={activeContext.documentId}
                   inspectorHost={documentInspectorHost}
                   onInspectorOpen={(kind) => {
                     setDocumentInspectorKind(kind);
                     setDocumentInspectorOpen(true);
+                  }}
+                  onEntityActivate={(target) => {
+                    if (target.targetKind === "task") {
+                      const task = state.snapshot.tasks.find(
+                        (item) => item.id === target.targetId,
+                      );
+                      openContext(
+                        taskContext(
+                          target.targetId as TaskId,
+                          task?.title ?? "Zadanie",
+                        ),
+                      );
+                      return;
+                    }
+                    if (target.targetKind === "project") {
+                      const project =
+                        state.snapshot.projects.kind === "ready"
+                          ? state.snapshot.projects.data.items.find(
+                              (item) => item.id === target.targetId,
+                            )
+                          : undefined;
+                      openContext(
+                        projectContext(
+                          target.targetId as ProjectId,
+                          project?.title ?? "Projekt",
+                        ),
+                      );
+                      return;
+                    }
+                    if (
+                      target.targetKind === "person" ||
+                      target.targetKind === "organization"
+                    ) {
+                      setSelectedStrategicId(
+                        target.targetId as StrategicRecordId,
+                      );
+                      openContext(
+                        destinationContext("relationships", "Relacje"),
+                      );
+                      return;
+                    }
+                    setSelectedMeetingId(target.targetId);
+                    openContext(destinationContext("meetings", "Spotkania"));
                   }}
                   onReload={reload}
                   onFailure={showFailure}
@@ -4592,6 +4723,30 @@ export const RealApp = ({
               </div>
             </dl>
           </div>
+        )}
+        {surface !== "documents" && (
+          <DocumentBacklinks
+            client={client}
+            snapshot={state.snapshot}
+            target={
+              surface === "meetings" && selectedMeetingId
+                ? { targetKind: "meeting", targetId: selectedMeetingId }
+                : selectedTask
+                  ? { targetKind: "task", targetId: selectedTask.id }
+                  : selectedProject
+                    ? { targetKind: "project", targetId: selectedProject.id }
+                    : selectedStrategicRecord?.kind === "person" ||
+                        selectedStrategicRecord?.kind === "organization"
+                      ? {
+                          targetKind: selectedStrategicRecord.kind,
+                          targetId: selectedStrategicRecord.id,
+                        }
+                      : undefined
+            }
+            onOpenDocument={(documentId, title) =>
+              openContext(documentContext(documentId, title))
+            }
+          />
         )}
       </aside>
 

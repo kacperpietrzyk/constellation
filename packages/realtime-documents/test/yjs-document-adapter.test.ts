@@ -184,6 +184,50 @@ describe("replaceable Yjs realtime-document adapter", () => {
     future.destroy();
   });
 
+  it("extracts stable rich entity references once and rejects malformed targets", () => {
+    const base = new YjsRealtimeDocumentAdapter();
+    base.replaceText("Zakres ", { kind: "human", principalId: "alice" });
+    base.migrateToRich(legacyDigest, {
+      kind: "human",
+      principalId: "alice",
+    });
+    const raw = new Y.Doc();
+    Y.applyUpdate(raw, base.encodeState());
+    const paragraph = raw
+      .getXmlFragment(RICH_DOCUMENT_FRAGMENT_ROOT)
+      .get(0) as Y.XmlElement;
+    for (let index = 0; index < 2; index += 1) {
+      const reference = new Y.XmlElement("entityReference");
+      reference.setAttribute("targetKind", "task");
+      reference.setAttribute(
+        "targetId",
+        "00000000-0000-4000-8000-000000000151",
+      );
+      paragraph.insert(paragraph.length, [reference]);
+    }
+    const linked = new YjsRealtimeDocumentAdapter(Y.encodeStateAsUpdate(raw));
+    assert.deepEqual(linked.getEntityReferences(), [
+      {
+        targetKind: "task",
+        targetId: "00000000-0000-4000-8000-000000000151",
+      },
+    ]);
+
+    const malformed = new Y.XmlElement("entityReference");
+    malformed.setAttribute("targetKind", "task");
+    malformed.setAttribute("targetId", "not-an-id");
+    paragraph.insert(paragraph.length, [malformed]);
+    const invalid = new YjsRealtimeDocumentAdapter(Y.encodeStateAsUpdate(raw));
+    assert.throws(
+      () => invalid.getEntityReferences(),
+      /DOCUMENT_ENTITY_REFERENCE_INVALID/u,
+    );
+    invalid.destroy();
+    linked.destroy();
+    raw.destroy();
+    base.destroy();
+  });
+
   it("fails closed for oversized updates and incompatible checkpoints", () => {
     const document = new YjsRealtimeDocumentAdapter();
     assert.throws(

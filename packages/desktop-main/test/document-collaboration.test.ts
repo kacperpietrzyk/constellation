@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "node:test";
+import * as Y from "yjs";
 
+import { isApplicationWave2ReadView } from "@constellation/application";
 import {
   DeviceIdSchema,
   DocumentIdSchema,
@@ -13,7 +15,10 @@ import {
   SqliteApplicationStore,
   type SqliteDatabase,
 } from "@constellation/local-store";
-import { YjsRealtimeDocumentAdapter } from "@constellation/realtime-documents";
+import {
+  RICH_DOCUMENT_FRAGMENT_ROOT,
+  YjsRealtimeDocumentAdapter,
+} from "@constellation/realtime-documents";
 
 import { DocumentCollaborationBridge } from "../src/document-collaboration.js";
 import { createRuntimeKernelService } from "../src/runtime-kernel-service.js";
@@ -124,6 +129,26 @@ const richEdit = (text: string) => {
     update: adapter.encodeState(),
   };
   adapter.destroy();
+  return result;
+};
+
+const richEntityEdit = () => {
+  const base = richEdit("Sprawdź ");
+  const document = new Y.Doc();
+  Y.applyUpdate(document, base.state);
+  let update = new Uint8Array();
+  document.on("update", (value) => {
+    update = Uint8Array.from(value);
+  });
+  const paragraph = document
+    .getXmlFragment(RICH_DOCUMENT_FRAGMENT_ROOT)
+    .get(0) as Y.XmlElement;
+  const reference = new Y.XmlElement("entityReference");
+  reference.setAttribute("targetKind", "task");
+  reference.setAttribute("targetId", "00000000-0000-4000-8000-000000001399");
+  paragraph.insert(paragraph.length, [reference]);
+  const result = { state: Y.encodeStateAsUpdate(document), update };
+  document.destroy();
   return result;
 };
 
@@ -247,6 +272,53 @@ describe("desktop document collaboration bridge", () => {
     const reopened = new YjsRealtimeDocumentAdapter(current.state);
     assert.equal(reopened.getFormat(), "rich-v1");
     reopened.destroy();
+    database.close();
+  });
+
+  it("projects rich entity references idempotently and purges them with document state", () => {
+    const { database, store } = setup();
+    const bridge = new DocumentCollaborationBridge({
+      workspaceId: ids.workspace,
+      deviceId: ids.device,
+      store,
+      connection: () => undefined,
+      now: () => "2026-07-21T20:00:00.000Z",
+    });
+    const linked = richEntityEdit();
+    for (let replay = 0; replay < 2; replay += 1)
+      bridge.persist({
+        documentId: ids.document,
+        spaceId: ids.space,
+        ...linked,
+      });
+    const links = store.read((view) => {
+      assert.equal(isApplicationWave2ReadView(view), true);
+      if (!isApplicationWave2ReadView(view)) return [];
+      return view.listDocumentEntityLinks(ids.workspace, "task");
+    });
+    assert.deepEqual(
+      links.map(({ documentId, targetKind, targetId }) => ({
+        documentId,
+        targetKind,
+        targetId,
+      })),
+      [
+        {
+          documentId: ids.document,
+          targetKind: "task",
+          targetId: "00000000-0000-4000-8000-000000001399",
+        },
+      ],
+    );
+    store.purgeDocumentCollaboration(ids.document);
+    assert.equal(
+      store.read((view) =>
+        isApplicationWave2ReadView(view)
+          ? view.listDocumentEntityLinks(ids.workspace).length
+          : -1,
+      ),
+      0,
+    );
     database.close();
   });
 });

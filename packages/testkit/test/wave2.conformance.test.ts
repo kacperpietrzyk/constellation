@@ -59,6 +59,8 @@ const context = (): ExecutionContext =>
       "project.operationalOverview",
       "document.create",
       "document.list",
+      "document.linkCandidates",
+      "document.backlinks",
       "knowledge.sourceCreate",
       "knowledge.sourceUpdate",
       "knowledge.documentSetEvidence",
@@ -2550,6 +2552,7 @@ describe("Wave 2 reference semantics", () => {
     const hiddenSourceId = KnowledgeSourceIdSchema.parse(
       "10000000-0000-4000-8000-00000000dcbc",
     );
+    const hiddenDocumentId = "10000000-0000-4000-8000-00000000dcbd" as never;
     harness.store.transact((transaction) => {
       assert.equal(isApplicationWave2Transaction(transaction), true);
       if (!isApplicationWave2Transaction(transaction)) {
@@ -2588,7 +2591,28 @@ describe("Wave 2 reference semantics", () => {
         createdAt: "2026-07-12T12:00:00.000Z",
         updatedAt: "2026-07-12T12:00:00.000Z",
       });
+      transaction.insertDocument({
+        id: hiddenDocumentId,
+        workspaceId: context().workspaceId,
+        spaceId: hiddenSpaceId,
+        title: "SECRET_DOCUMENT_TITLE",
+        role: "note",
+        createdBy: context().principalId,
+        version: 1,
+        createdAt: "2026-07-12T12:00:00.000Z",
+        updatedAt: "2026-07-12T12:00:00.000Z",
+      });
     });
+    harness.store.replaceDocumentEntityLinks(hiddenDocumentId, [
+      {
+        workspaceId: ids.workspace as never,
+        spaceId: hiddenSpaceId,
+        documentId: hiddenDocumentId,
+        targetKind: "task",
+        targetId: taskId,
+        updatedAt: "2026-07-12T12:00:00.000Z",
+      },
+    ]);
     const search = harness.kernel.query(context(), {
       contractVersion: 1,
       queryName: "search.global",
@@ -2605,6 +2629,38 @@ describe("Wave 2 reference semantics", () => {
       }
       assert.equal(JSON.stringify(search).includes("SECRET"), false);
     }
+    const hiddenCandidates = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "document.linkCandidates",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: hiddenSpaceId, text: "secret", limit: 20 },
+    });
+    assert.equal(hiddenCandidates.kind, "query_result");
+    if (hiddenCandidates.kind === "query_result") {
+      assert.equal(hiddenCandidates.result.outcome, "rejected");
+      assert.equal(JSON.stringify(hiddenCandidates).includes("SECRET"), false);
+    }
+    const visibleTargetBacklinks = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "document.backlinks",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { targetKind: "task", targetId: taskId },
+    });
+    if (
+      visibleTargetBacklinks.kind !== "query_result" ||
+      visibleTargetBacklinks.result.outcome !== "success" ||
+      visibleTargetBacklinks.result.projection.kind !== "document.backlinks"
+    )
+      assert.fail("Expected visible target backlinks.");
+    assert.deepEqual(visibleTargetBacklinks.result.projection.items, []);
+    assert.equal(
+      JSON.stringify(visibleTargetBacklinks).includes("SECRET"),
+      false,
+    );
     const deniedRelation = unwrap(
       harness.kernel.execute(context(), {
         ...metadata("cross-space-relate", {
@@ -3425,5 +3481,142 @@ describe("Wave 2 reference semantics", () => {
       ),
       false,
     );
+  });
+
+  it("projects entity-link candidates and backlinks without stale labels or duplicates", () => {
+    const harness = setup();
+    const taskId = createTask(harness, "Review linked scope");
+    const project = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("entity-link-project"),
+        commandName: "project.create",
+        payload: {
+          spaceId: ids.rootSpace,
+          title: "Connected project",
+          intendedOutcome: "References stay navigable",
+        },
+      }),
+    );
+    assert.equal(project.outcome, "success");
+    if (
+      project.outcome !== "success" ||
+      project.projection.kind !== "project.created"
+    )
+      assert.fail("Expected linked Project.");
+    const projectId = project.projection.projectId;
+    const documentId = requestId();
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("entity-link-document"),
+          commandName: "document.create",
+          payload: {
+            documentId,
+            spaceId: ids.rootSpace,
+            title: "Working note",
+            role: "note",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+
+    const candidates = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "document.linkCandidates",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace, text: "connected", limit: 20 },
+    });
+    assert.equal(candidates.kind, "query_result");
+    if (
+      candidates.kind !== "query_result" ||
+      candidates.result.outcome !== "success" ||
+      candidates.result.projection.kind !== "document.linkCandidates"
+    )
+      assert.fail("Expected entity-link candidates.");
+    assert.deepEqual(candidates.result.projection.items, [
+      {
+        targetKind: "project",
+        targetId: projectId,
+        label: "Connected project",
+      },
+    ]);
+
+    harness.store.replaceDocumentEntityLinks(documentId as never, [
+      {
+        workspaceId: ids.workspace as never,
+        spaceId: ids.rootSpace as never,
+        documentId: documentId as never,
+        targetKind: "task",
+        targetId: taskId,
+        updatedAt: "2026-07-21T20:00:00.000Z",
+      },
+      {
+        workspaceId: ids.workspace as never,
+        spaceId: ids.rootSpace as never,
+        documentId: documentId as never,
+        targetKind: "task",
+        targetId: taskId,
+        updatedAt: "2026-07-21T20:00:00.000Z",
+      },
+    ]);
+    const backlinks = () =>
+      harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "document.backlinks",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { targetKind: "task", targetId: taskId },
+      });
+    const first = backlinks();
+    assert.equal(first.kind, "query_result");
+    if (
+      first.kind !== "query_result" ||
+      first.result.outcome !== "success" ||
+      first.result.projection.kind !== "document.backlinks"
+    )
+      assert.fail("Expected backlinks.");
+    assert.equal(first.result.projection.items.length, 1);
+    assert.equal(first.result.projection.target.label, "Review linked scope");
+
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("entity-link-task-rename", { [taskId]: 1 }),
+          commandName: "task.updateDetails",
+          payload: { taskId, title: "Review renamed scope" },
+        }),
+      ).outcome,
+      "success",
+    );
+    const renamed = backlinks();
+    if (
+      renamed.kind !== "query_result" ||
+      renamed.result.outcome !== "success" ||
+      renamed.result.projection.kind !== "document.backlinks"
+    )
+      assert.fail("Expected renamed backlink target.");
+    assert.equal(
+      renamed.result.projection.target.label,
+      "Review renamed scope",
+    );
+
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("entity-link-task-remove", { [taskId]: 2 }),
+          commandName: "task.remove",
+          payload: { taskId },
+        }),
+      ).outcome,
+      "success",
+    );
+    const removed = backlinks();
+    assert.equal(removed.kind, "query_result");
+    if (removed.kind !== "query_result") return;
+    assert.equal(removed.result.outcome, "rejected");
   });
 });

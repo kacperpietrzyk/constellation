@@ -17,6 +17,7 @@ import {
   MAX_DOCUMENT_TEXT_LENGTH,
   RICH_DOCUMENT_FRAGMENT_ROOT,
   documentContentFormat,
+  documentEntityReferences,
   documentPlainText,
   migrateDocumentToRich,
 } from "@constellation/realtime-documents";
@@ -26,14 +27,23 @@ import {
   createKnowledgeSource,
   createNamedKnowledgeVersion,
   loadKnowledgeDocumentContext,
+  loadDocumentLinkCandidates,
   setKnowledgeEvidence,
   updateKnowledgeSourceTitle,
   type DesktopSnapshot,
   type KnowledgeDocumentContextProjection,
   type KnowledgeSourceRecord,
   type MutationFailure,
+  type DocumentLinkCandidatesProjection,
 } from "./client/workflow.js";
 import { InlinePopover } from "./components/InlinePopover.js";
+import {
+  DOCUMENT_ENTITY_ACTIVATE_EVENT,
+  EntityReference,
+  publishDocumentEntityLabels,
+  type DocumentEntityCandidate,
+  type DocumentEntityTargetKind,
+} from "./document-entity-reference.js";
 import { countLabel, formatDateTime } from "./i18n.js";
 
 type DocumentItem = Extract<
@@ -52,6 +62,14 @@ const roleAccusativeCopy = {
   document: "dokument",
   deliverable: "rezultat",
 } as const;
+
+const entityKindCopy: Record<DocumentEntityTargetKind, string> = {
+  task: "Zadanie",
+  project: "Projekt",
+  person: "Osoba",
+  organization: "Organizacja",
+  meeting: "Spotkanie",
+};
 
 const milestoneCopy = {
   finalized: "Sfinalizowana",
@@ -100,12 +118,27 @@ const sha256Hex = async (text: string): Promise<string> => {
 const DocumentToolbar = ({
   editor,
   disabled,
+  entityOpen,
+  entityQuery,
+  entityCandidates,
+  onEntityOpenChange,
+  onEntityQueryChange,
+  onEntitySelect,
 }: {
   readonly editor: Editor | null;
   readonly disabled: boolean;
+  readonly entityOpen: boolean;
+  readonly entityQuery: string;
+  readonly entityCandidates: readonly DocumentEntityCandidate[];
+  readonly onEntityOpenChange: (open: boolean) => void;
+  readonly onEntityQueryChange: (value: string) => void;
+  readonly onEntitySelect: (candidate: DocumentEntityCandidate) => void;
 }) => {
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
+  const [activeEntityIndex, setActiveEntityIndex] = useState(0);
+  const entityListId = useId();
+  useEffect(() => setActiveEntityIndex(0), [entityCandidates, entityQuery]);
   const command = (run: () => boolean) => {
     if (!disabled) run();
   };
@@ -236,6 +269,85 @@ const DocumentToolbar = ({
           </div>
         </form>
       </InlinePopover>
+      <InlinePopover
+        label="Powiąż rekord"
+        panelLabel="Powiąż dokument z rekordem"
+        triggerClassName="document-entity-trigger"
+        disabled={disabled}
+        open={entityOpen}
+        onOpenChange={onEntityOpenChange}
+      >
+        <div className="document-entity-picker">
+          <label htmlFor="document-entity-query">Znajdź rekord</label>
+          <input
+            id="document-entity-query"
+            type="search"
+            role="combobox"
+            autoFocus
+            autoComplete="off"
+            aria-expanded={entityOpen}
+            aria-controls={entityListId}
+            aria-activedescendant={
+              entityCandidates[activeEntityIndex] === undefined
+                ? undefined
+                : `${entityListId}-${activeEntityIndex}`
+            }
+            value={entityQuery}
+            placeholder="Zadanie, projekt, osoba…"
+            onChange={(event) => onEntityQueryChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                onEntityOpenChange(false);
+                editor?.commands.focus();
+                return;
+              }
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                const direction = event.key === "ArrowDown" ? 1 : -1;
+                setActiveEntityIndex((current) =>
+                  entityCandidates.length === 0
+                    ? 0
+                    : (current + direction + entityCandidates.length) %
+                      entityCandidates.length,
+                );
+                return;
+              }
+              if (event.key !== "Enter" && event.key !== "Tab") return;
+              const candidate = entityCandidates[activeEntityIndex];
+              if (candidate === undefined) return;
+              event.preventDefault();
+              onEntitySelect(candidate);
+            }}
+          />
+          <div
+            id={entityListId}
+            className="document-entity-options"
+            role="listbox"
+            aria-label="Dostępne rekordy"
+          >
+            {entityCandidates.length === 0 ? (
+              <p role="status">Brak pasujących dostępnych rekordów.</p>
+            ) : (
+              entityCandidates.map((candidate, index) => (
+                <div
+                  id={`${entityListId}-${index}`}
+                  key={`${candidate.targetKind}:${candidate.targetId}`}
+                  role="option"
+                  aria-selected={index === activeEntityIndex}
+                  className={index === activeEntityIndex ? "active" : ""}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setActiveEntityIndex(index)}
+                  onClick={() => onEntitySelect(candidate)}
+                >
+                  <span>{candidate.label}</span>
+                  <small>{entityKindCopy[candidate.targetKind]}</small>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </InlinePopover>
     </div>
   );
 };
@@ -347,6 +459,7 @@ const KnowledgeEditor = ({
   document,
   snapshot,
   inspectorHost,
+  onEntityActivate,
   onReload,
   onFailure,
 }: {
@@ -354,6 +467,10 @@ const KnowledgeEditor = ({
   readonly document: DocumentItem;
   readonly snapshot: DesktopSnapshot;
   readonly inspectorHost: HTMLElement | null;
+  readonly onEntityActivate: (target: {
+    readonly targetKind: DocumentEntityTargetKind;
+    readonly targetId: string;
+  }) => void;
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
 }) => {
@@ -389,6 +506,17 @@ const KnowledgeEditor = ({
   const [sessionGeneration, setSessionGeneration] = useState(0);
   const [saveAcknowledged, setSaveAcknowledged] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
+  const [entityOpen, setEntityOpen] = useState(false);
+  const [entityQuery, setEntityQuery] = useState("");
+  const [entityCandidates, setEntityCandidates] = useState<
+    DocumentLinkCandidatesProjection["items"]
+  >([]);
+  const [linkedTargets, setLinkedTargets] = useState<
+    readonly { targetKind: DocumentEntityTargetKind; targetId: string }[]
+  >([]);
+  const [resolvedLinkedTargets, setResolvedLinkedTargets] = useState<
+    DocumentLinkCandidatesProjection["items"]
+  >([]);
   const contextLoading = context === undefined && !contextError;
   const migrationPrincipalId =
     snapshot.access.kind === "ready"
@@ -412,6 +540,7 @@ const KnowledgeEditor = ({
           document: yDocument,
           field: RICH_DOCUMENT_FRAGMENT_ROOT,
         }),
+        EntityReference,
       ],
       immediatelyRender: false,
       editable: false,
@@ -435,6 +564,17 @@ const KnowledgeEditor = ({
           return true;
         },
         handleTextInput: (view, from, to, insertedText) => {
+          if (
+            insertedText === "[" &&
+            from === to &&
+            from > 0 &&
+            view.state.doc.textBetween(from - 1, from, "\n") === "["
+          ) {
+            view.dispatch(view.state.tr.delete(from - 1, from));
+            setEntityQuery("");
+            setEntityOpen(true);
+            return true;
+          }
           const currentLength = view.state.doc.textBetween(
             0,
             view.state.doc.content.size,
@@ -482,6 +622,64 @@ const KnowledgeEditor = ({
   useEffect(() => {
     editor?.setEditable(access === "edit" && status !== "migration_failed");
   }, [access, editor, status]);
+
+  useEffect(() => {
+    const onActivate = (event: Event) => {
+      const detail = (event as CustomEvent).detail as
+        { targetKind?: unknown; targetId?: unknown } | undefined;
+      if (
+        detail &&
+        typeof detail.targetId === "string" &&
+        typeof detail.targetKind === "string" &&
+        detail.targetKind in entityKindCopy
+      )
+        onEntityActivate({
+          targetKind: detail.targetKind as DocumentEntityTargetKind,
+          targetId: detail.targetId,
+        });
+    };
+    window.addEventListener(DOCUMENT_ENTITY_ACTIVATE_EVENT, onActivate);
+    return () =>
+      window.removeEventListener(DOCUMENT_ENTITY_ACTIVATE_EVENT, onActivate);
+  }, [onEntityActivate]);
+
+  useEffect(() => {
+    if (!entityOpen) return;
+    const timer = window.setTimeout(() => {
+      void loadDocumentLinkCandidates(
+        client,
+        snapshot,
+        document.spaceId,
+        entityQuery,
+      )
+        .then((projection) => setEntityCandidates(projection.items))
+        .catch(() => setEntityCandidates([]));
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [client, document.spaceId, entityOpen, entityQuery, snapshot]);
+
+  useEffect(() => {
+    if (linkedTargets.length === 0) {
+      setResolvedLinkedTargets([]);
+      return;
+    }
+    void loadDocumentLinkCandidates(
+      client,
+      snapshot,
+      document.spaceId,
+      "",
+      linkedTargets,
+    )
+      .then((projection) => setResolvedLinkedTargets(projection.items))
+      .catch(() => setResolvedLinkedTargets([]));
+  }, [client, document.spaceId, linkedTargets, snapshot]);
+
+  useEffect(() => {
+    publishDocumentEntityLabels([
+      ...resolvedLinkedTargets,
+      ...entityCandidates,
+    ]);
+  }, [entityCandidates, resolvedLinkedTargets]);
 
   const reloadContext = () => {
     setContextError(false);
@@ -549,6 +747,17 @@ const KnowledgeEditor = ({
     const onUpdate = (update: Uint8Array, origin: unknown) => {
       try {
         setText(documentPlainText(yDocument));
+        const nextLinks = documentEntityReferences(yDocument);
+        setLinkedTargets((current) =>
+          current.length === nextLinks.length &&
+          current.every(
+            (item, index) =>
+              item.targetKind === nextLinks[index]?.targetKind &&
+              item.targetId === nextLinks[index]?.targetId,
+          )
+            ? current
+            : nextLinks,
+        );
       } catch {
         setStatus("upgrade_required");
       }
@@ -589,6 +798,17 @@ const KnowledgeEditor = ({
             });
           }
           setText(documentPlainText(yDocument));
+          const nextLinks = documentEntityReferences(yDocument);
+          setLinkedTargets((current) =>
+            current.length === nextLinks.length &&
+            current.every(
+              (item, index) =>
+                item.targetKind === nextLinks[index]?.targetKind &&
+                item.targetId === nextLinks[index]?.targetId,
+            )
+              ? current
+              : nextLinks,
+          );
         } catch (error: unknown) {
           const message =
             error instanceof Error ? error.message : String(error);
@@ -1009,6 +1229,34 @@ const KnowledgeEditor = ({
               status === "upgrade_required" ||
               status === "migration_failed"
             }
+            entityOpen={entityOpen}
+            entityQuery={entityQuery}
+            entityCandidates={entityCandidates}
+            onEntityOpenChange={(open) => {
+              setEntityOpen(open);
+              if (!open) {
+                setEntityQuery("");
+                setEntityCandidates([]);
+              }
+            }}
+            onEntityQueryChange={setEntityQuery}
+            onEntitySelect={(candidate) => {
+              editor
+                ?.chain()
+                .focus()
+                .insertContent({
+                  type: "entityReference",
+                  attrs: {
+                    targetKind: candidate.targetKind,
+                    targetId: candidate.targetId,
+                  },
+                })
+                .insertContent(" ")
+                .run();
+              setEntityOpen(false);
+              setEntityQuery("");
+              setEntityCandidates([]);
+            }}
           />
         </div>
       </header>
@@ -1057,15 +1305,22 @@ const KnowledgeEditor = ({
 export const DocumentsSurface = ({
   client,
   snapshot,
+  activeDocumentId,
   inspectorHost,
   onInspectorOpen,
+  onEntityActivate,
   onReload,
   onFailure,
 }: {
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
+  readonly activeDocumentId?: DocumentId | undefined;
   readonly inspectorHost: HTMLElement | null;
   readonly onInspectorOpen: (kind: "document" | "source") => void;
+  readonly onEntityActivate: (target: {
+    readonly targetKind: DocumentEntityTargetKind;
+    readonly targetId: string;
+  }) => void;
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
 }) => {
@@ -1089,6 +1344,15 @@ export const DocumentsSurface = ({
   const selectedSource = knowledge?.sources.find(
     (source) => source.id === selectedSourceId,
   );
+  useEffect(() => {
+    if (
+      activeDocumentId !== undefined &&
+      items.some((item) => item.id === activeDocumentId)
+    ) {
+      setSelectedId(activeDocumentId);
+      setSelectedSourceId(undefined);
+    }
+  }, [activeDocumentId, items]);
   const inspectorControls = inspectorHost
     ? { "aria-controls": "document-inspector-detail" }
     : {};
@@ -1329,6 +1593,7 @@ export const DocumentsSurface = ({
           document={selected}
           snapshot={snapshot}
           inspectorHost={selectedSource ? null : inspectorHost}
+          onEntityActivate={onEntityActivate}
           onReload={onReload}
           onFailure={onFailure}
         />

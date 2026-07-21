@@ -622,6 +622,16 @@ describe("SQLite ApplicationStore", () => {
         ).outcome,
         "success",
       );
+      first.store.replaceDocumentEntityLinks({
+        ...scope,
+        links: [
+          {
+            targetKind: "task",
+            targetId: "00000000-0000-4000-8000-000000000129",
+          },
+        ],
+        updatedAt: "2026-07-14T13:59:00.000Z",
+      });
       first.store.commitDocumentUpdate({
         id: "update-1",
         ...scope,
@@ -680,6 +690,24 @@ describe("SQLite ApplicationStore", () => {
           .map((update) => [update.id, [...update.update]]),
         [["update-1", [2, 3]]],
       );
+      assert.deepEqual(
+        reopened.store.read((view) => {
+          assert.equal(isApplicationWave2ReadView(view), true);
+          if (!isApplicationWave2ReadView(view))
+            throw new Error("Expected the Wave 2 reference view.");
+          return view.listDocumentEntityLinks(scope.workspaceId);
+        }),
+        [
+          {
+            workspaceId: scope.workspaceId,
+            spaceId: scope.spaceId,
+            documentId,
+            targetKind: "task",
+            targetId: "00000000-0000-4000-8000-000000000129",
+            updatedAt: "2026-07-14T13:59:00.000Z",
+          },
+        ],
+      );
       const restoredRevision = reopened.store.listDocumentRevisions(scope)[0];
       assert.equal(restoredRevision?.id, revisionId);
       assert.equal(
@@ -704,6 +732,7 @@ describe("SQLite ApplicationStore", () => {
         "document_pending_updates",
         "document_collaboration_state",
         "document_revisions",
+        "document_entity_links",
       ]) {
         assert.equal(
           (

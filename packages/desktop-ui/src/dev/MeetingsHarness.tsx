@@ -180,6 +180,7 @@ export const MeetingsHarness = () => {
           client={client}
           inspectorHost={inspectorHost}
           onInspectorOpen={() => setInspectorOpen(true)}
+          onMeetingSelected={() => undefined}
         />
       </div>
       <aside

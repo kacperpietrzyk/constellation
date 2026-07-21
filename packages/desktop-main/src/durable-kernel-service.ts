@@ -58,6 +58,8 @@ export const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "project.updateOutcome",
   "project.list",
   "document.list",
+  "document.linkCandidates",
+  "document.backlinks",
   "document.readText",
   "document.replaceText",
   "knowledge.sourceCreate",
