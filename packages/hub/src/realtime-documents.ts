@@ -1,10 +1,12 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Server as HttpServer } from "node:http";
 
 import { Hocuspocus, type WebSocketLike } from "@hocuspocus/server";
 import {
+  CorrelationIdSchema,
   DocumentIdSchema,
   DocumentRevisionIdSchema,
+  DeviceIdSchema,
   WorkspaceIdSchema,
   type DeviceId,
   type DocumentId,
@@ -16,10 +18,16 @@ import {
 } from "@constellation/contracts";
 import {
   type DocumentContentFormat,
+  type StructuredDocument,
   MAX_DOCUMENT_UPDATE_BYTES,
   MAX_DOCUMENT_TEXT_LENGTH,
   YjsRealtimeDocumentAdapter,
   documentPlainText,
+  documentEntityReferences,
+  documentContentFormat,
+  parseStructuredDocument,
+  replaceStructuredDocumentInYjs,
+  structuredDocumentFromYjs,
   restoreDocumentFromCheckpoint,
 } from "@constellation/realtime-documents";
 import crossws from "crossws/adapters/node";
@@ -426,6 +434,547 @@ export class RealtimeDocumentGateway {
       0,
       MAX_NAMED_REVISIONS,
     );
+  }
+
+  /**
+   * Trusted remote-MCP port. The caller reauthorizes the current grant and
+   * Space immediately before calling; this gateway independently verifies the
+   * persisted document scope and owns all Yjs/revision mechanics.
+   */
+  public async readStructuredAuthorized(input: {
+    readonly workspaceId: WorkspaceId;
+    readonly documentId: DocumentId;
+    readonly spaceId: SpaceId;
+  }): Promise<
+    | {
+        readonly content: StructuredDocument;
+        readonly text: string;
+        readonly entityReferences: ReturnType<typeof documentEntityReferences>;
+        readonly stateVectorSha256: string;
+      }
+    | undefined
+  > {
+    const stored = await this.repository.loadDocumentState(input);
+    if (
+      stored === undefined ||
+      stored.spaceId !== input.spaceId ||
+      formatFromState(stored.state) !== "rich-v1"
+    )
+      return undefined;
+    const document = new Y.Doc({ gc: true });
+    try {
+      Y.applyUpdate(document, stored.state);
+      return {
+        content: structuredDocumentFromYjs(document),
+        text: documentPlainText(document),
+        entityReferences: documentEntityReferences(document),
+        stateVectorSha256: createHash("sha256")
+          .update(Y.encodeStateVector(document))
+          .digest("hex"),
+      };
+    } finally {
+      document.destroy();
+    }
+  }
+
+  public async replaceStructuredAuthorized(input: {
+    readonly workspaceId: WorkspaceId;
+    readonly documentId: DocumentId;
+    readonly spaceId: SpaceId;
+    readonly principalId: PrincipalId;
+    readonly credentialId: string;
+    readonly runId: string;
+    readonly expectedStateVectorSha256: string;
+    readonly idempotencyKey: string;
+    readonly content: unknown;
+  }): Promise<
+    | {
+        readonly outcome: "success";
+        readonly revisionId: DocumentRevisionId;
+        readonly stateVectorSha256: string;
+        readonly idempotentReplay: boolean;
+      }
+    | {
+        readonly outcome: "conflict" | "rejected";
+        readonly diagnosticCode: string;
+      }
+  > {
+    const digest = (value: string): string =>
+      createHash("sha256").update(value).digest("base64url").slice(0, 22);
+    const keyDigest = digest(input.idempotencyKey);
+    let content: StructuredDocument;
+    try {
+      content = parseStructuredDocument(input.content);
+    } catch {
+      return {
+        outcome: "rejected",
+        diagnosticCode: "document.structured_content_invalid",
+      };
+    }
+    const requestDigest = digest(
+      JSON.stringify({
+        content,
+        expectedStateVectorSha256: input.expectedStateVectorSha256,
+      }),
+    );
+    const receiptSuffix = `[${keyDigest}.${requestDigest}]`;
+    const revisions = await this.repository.listDocumentRevisions(input);
+    const existingReceipt = revisions.find(
+      (revision) =>
+        revision.name.startsWith("Agent receipt ") &&
+        revision.name.endsWith(receiptSuffix),
+    );
+    if (existingReceipt !== undefined) {
+      const current = await this.readStructuredAuthorized(input);
+      return current === undefined ||
+        existingReceipt.restoredFromRevisionId === undefined
+        ? {
+            outcome: "rejected",
+            diagnosticCode: "document.content_unavailable",
+          }
+        : {
+            outcome: "success",
+            revisionId: existingReceipt.restoredFromRevisionId,
+            stateVectorSha256: createHash("sha256")
+              .update(existingReceipt.stateVector)
+              .digest("hex"),
+            idempotentReplay: true,
+          };
+    }
+    const pending = revisions.find(
+      (revision) =>
+        revision.name.startsWith("Before agent structured write ") &&
+        revision.name.endsWith(receiptSuffix),
+    );
+    const keyCollision = revisions.some(
+      (revision) =>
+        (revision.name.startsWith("Agent receipt ") ||
+          revision.name.startsWith("Before agent structured write ")) &&
+        revision.name.includes(`[${keyDigest}.`) &&
+        !revision.name.endsWith(receiptSuffix),
+    );
+    if (keyCollision)
+      return {
+        outcome: "conflict",
+        diagnosticCode: "document.idempotency_mismatch",
+      };
+    if (
+      revisions.length >=
+      MAX_NAMED_REVISIONS - (pending === undefined ? 1 : 0)
+    )
+      return {
+        outcome: "rejected",
+        diagnosticCode: "document.revision_limit_reached",
+      };
+
+    const stored = await this.repository.loadDocumentState(input);
+    if (stored === undefined || stored.spaceId !== input.spaceId)
+      return {
+        outcome: "rejected",
+        diagnosticCode: "document.content_unavailable",
+      };
+    if (formatFromState(stored.state) !== "rich-v1")
+      return {
+        outcome: "rejected",
+        diagnosticCode: "document.schema_upgrade_required",
+      };
+    // Validate before creating a recovery revision.
+    const validation = new YjsRealtimeDocumentAdapter(stored.state);
+    try {
+      validation.replaceStructuredContent(content, {
+        kind: "agent",
+        principalId: input.principalId,
+        runId: input.runId,
+      });
+    } catch {
+      return {
+        outcome: "rejected",
+        diagnosticCode: "document.structured_content_invalid",
+      };
+    } finally {
+      validation.destroy();
+    }
+
+    const room = roomName(input.workspaceId, input.documentId);
+    this.roomSpaces.set(room, input.spaceId);
+    const connection = await this.hocuspocus.openDirectConnection(room, {
+      sessionToken: "direct-agent",
+      workspaceId: input.workspaceId,
+      deviceId: DeviceIdSchema.parse(input.credentialId),
+      documentId: input.documentId,
+      principalId: input.principalId,
+      spaceId: input.spaceId,
+    });
+    let priorState: Uint8Array<ArrayBufferLike> = new Uint8Array();
+    let priorStateVector: Uint8Array<ArrayBufferLike> = new Uint8Array();
+    try {
+      await connection.transact((document) => {
+        if (documentContentFormat(document) !== "rich-v1") return;
+        priorState = Y.encodeStateAsUpdate(document);
+        priorStateVector = Y.encodeStateVector(document);
+      });
+      const priorDigest = createHash("sha256")
+        .update(priorStateVector)
+        .digest("hex");
+      if (pending !== undefined) {
+        const current = new YjsRealtimeDocumentAdapter(priorState);
+        let currentContentDigest: string;
+        try {
+          currentContentDigest = digest(
+            JSON.stringify(current.getStructuredContent()),
+          );
+        } finally {
+          current.destroy();
+        }
+        if (currentContentDigest === digest(JSON.stringify(content))) {
+          await this.repository.createDocumentRevision({
+            id: DocumentRevisionIdSchema.parse(randomUUID()),
+            workspaceId: input.workspaceId,
+            documentId: input.documentId,
+            spaceId: input.spaceId,
+            name: `Agent receipt ${receiptSuffix}`,
+            engine: "yjs-13",
+            state: priorState,
+            stateVector: priorStateVector,
+            createdBy: input.principalId,
+            createdByDeviceId: DeviceIdSchema.parse(input.credentialId),
+            correlationId: CorrelationIdSchema.parse(randomUUID()),
+            createdAt: this.now(),
+            restoredFromRevisionId: pending.id,
+          });
+          return {
+            outcome: "success",
+            revisionId: pending.id,
+            stateVectorSha256: priorDigest,
+            idempotentReplay: true,
+          };
+        }
+        const pendingDigest = createHash("sha256")
+          .update(pending.stateVector)
+          .digest("hex");
+        if (
+          priorDigest !== pendingDigest ||
+          pendingDigest !== input.expectedStateVectorSha256
+        )
+          return {
+            outcome: "conflict",
+            diagnosticCode: "document.state_vector_stale",
+          };
+      } else if (priorDigest !== input.expectedStateVectorSha256)
+        return {
+          outcome: "conflict",
+          diagnosticCode: "document.state_vector_stale",
+        };
+      const revisionId =
+        pending?.id ?? DocumentRevisionIdSchema.parse(randomUUID());
+      if (pending === undefined)
+        await this.repository.createDocumentRevision({
+          id: revisionId,
+          workspaceId: input.workspaceId,
+          documentId: input.documentId,
+          spaceId: input.spaceId,
+          name: `Before agent structured write (run ${input.runId.slice(0, 8)}) ${receiptSuffix}`,
+          engine: "yjs-13",
+          state: priorState,
+          stateVector: priorStateVector,
+          createdBy: input.principalId,
+          createdByDeviceId: DeviceIdSchema.parse(input.credentialId),
+          correlationId: CorrelationIdSchema.parse(randomUUID()),
+          createdAt: this.now(),
+        });
+      let stateVectorSha256 = "";
+      let resultingState: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
+      let resultingStateVector: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
+      let stale = false;
+      await connection.transact((document) => {
+        const currentDigest = createHash("sha256")
+          .update(Y.encodeStateVector(document))
+          .digest("hex");
+        if (currentDigest !== input.expectedStateVectorSha256) {
+          stale = true;
+          return;
+        }
+        replaceStructuredDocumentInYjs(document, content, {
+          kind: "agent",
+          principalId: input.principalId,
+          runId: input.runId,
+        });
+        resultingState = Y.encodeStateAsUpdate(document);
+        resultingStateVector = Y.encodeStateVector(document);
+        stateVectorSha256 = createHash("sha256")
+          .update(resultingStateVector)
+          .digest("hex");
+      });
+      if (stale)
+        return {
+          outcome: "conflict",
+          diagnosticCode: "document.state_vector_stale",
+        };
+      await this.repository.createDocumentRevision({
+        id: DocumentRevisionIdSchema.parse(randomUUID()),
+        workspaceId: input.workspaceId,
+        documentId: input.documentId,
+        spaceId: input.spaceId,
+        name: `Agent receipt ${receiptSuffix}`,
+        engine: "yjs-13",
+        state: resultingState,
+        stateVector: resultingStateVector,
+        createdBy: input.principalId,
+        createdByDeviceId: DeviceIdSchema.parse(input.credentialId),
+        correlationId: CorrelationIdSchema.parse(randomUUID()),
+        createdAt: this.now(),
+        restoredFromRevisionId: revisionId,
+      });
+      return {
+        outcome: "success",
+        revisionId,
+        stateVectorSha256,
+        idempotentReplay: false,
+      };
+    } finally {
+      await connection.disconnect({ unloadImmediately: true });
+    }
+  }
+
+  public async restoreStructuredAuthorized(input: {
+    readonly workspaceId: WorkspaceId;
+    readonly documentId: DocumentId;
+    readonly spaceId: SpaceId;
+    readonly principalId: PrincipalId;
+    readonly credentialId: string;
+    readonly runId: string;
+    readonly revisionId: DocumentRevisionId;
+    readonly expectedStateVectorSha256: string;
+    readonly idempotencyKey: string;
+  }): Promise<
+    | {
+        readonly outcome: "success";
+        readonly recoveryRevisionId: DocumentRevisionId;
+        readonly stateVectorSha256: string;
+        readonly idempotentReplay: boolean;
+      }
+    | {
+        readonly outcome: "conflict" | "rejected";
+        readonly diagnosticCode: string;
+      }
+  > {
+    const digest = (value: string): string =>
+      createHash("sha256").update(value).digest("base64url").slice(0, 22);
+    const keyDigest = digest(input.idempotencyKey);
+    const requestDigest = digest(
+      JSON.stringify({
+        revisionId: input.revisionId,
+        expectedStateVectorSha256: input.expectedStateVectorSha256,
+      }),
+    );
+    const receiptSuffix = `[${keyDigest}.${requestDigest}]`;
+    const revisions = await this.repository.listDocumentRevisions(input);
+    const receipt = revisions.find(
+      (revision) =>
+        revision.name.startsWith("Agent restore receipt ") &&
+        revision.name.endsWith(receiptSuffix),
+    );
+    if (receipt !== undefined) {
+      const current = await this.readStructuredAuthorized(input);
+      return current === undefined ||
+        receipt.restoredFromRevisionId === undefined
+        ? {
+            outcome: "rejected",
+            diagnosticCode: "document.content_unavailable",
+          }
+        : {
+            outcome: "success",
+            recoveryRevisionId: receipt.restoredFromRevisionId,
+            stateVectorSha256: createHash("sha256")
+              .update(receipt.stateVector)
+              .digest("hex"),
+            idempotentReplay: true,
+          };
+    }
+    const pending = revisions.find(
+      (revision) =>
+        revision.name.startsWith("Before agent structured restore ") &&
+        revision.name.endsWith(receiptSuffix),
+    );
+    if (
+      revisions.some(
+        (revision) =>
+          (revision.name.startsWith("Agent restore receipt ") ||
+            revision.name.startsWith("Before agent structured restore ")) &&
+          revision.name.includes(`[${keyDigest}.`) &&
+          !revision.name.endsWith(receiptSuffix),
+      )
+    )
+      return {
+        outcome: "conflict",
+        diagnosticCode: "document.idempotency_mismatch",
+      };
+    const target = revisions.find(
+      (revision) =>
+        revision.id === input.revisionId && revision.spaceId === input.spaceId,
+    );
+    if (target === undefined)
+      return {
+        outcome: "rejected",
+        diagnosticCode: "document.revision_unavailable",
+      };
+    if (
+      revisions.length >=
+      MAX_NAMED_REVISIONS - (pending === undefined ? 1 : 0)
+    )
+      return {
+        outcome: "rejected",
+        diagnosticCode: "document.revision_limit_reached",
+      };
+    const room = roomName(input.workspaceId, input.documentId);
+    this.roomSpaces.set(room, input.spaceId);
+    const deviceId = DeviceIdSchema.parse(input.credentialId);
+    const connection = await this.hocuspocus.openDirectConnection(room, {
+      sessionToken: "direct-agent-restore",
+      workspaceId: input.workspaceId,
+      deviceId,
+      documentId: input.documentId,
+      principalId: input.principalId,
+      spaceId: input.spaceId,
+    });
+    let priorState: Uint8Array<ArrayBufferLike> = new Uint8Array();
+    let priorStateVector: Uint8Array<ArrayBufferLike> = new Uint8Array();
+    try {
+      await connection.transact((document) => {
+        priorState = Y.encodeStateAsUpdate(document);
+        priorStateVector = Y.encodeStateVector(document);
+      });
+      const priorDigest = createHash("sha256")
+        .update(priorStateVector)
+        .digest("hex");
+      if (pending !== undefined) {
+        const current = new YjsRealtimeDocumentAdapter(priorState);
+        const expected = new YjsRealtimeDocumentAdapter(priorState);
+        let currentContentDigest: string;
+        let expectedContentDigest: string;
+        try {
+          currentContentDigest = digest(
+            JSON.stringify(current.getStructuredContent()),
+          );
+          expected.restore(target, target.id);
+          expectedContentDigest = digest(
+            JSON.stringify(expected.getStructuredContent()),
+          );
+        } finally {
+          current.destroy();
+          expected.destroy();
+        }
+        if (currentContentDigest === expectedContentDigest) {
+          await this.repository.createDocumentRevision({
+            id: DocumentRevisionIdSchema.parse(randomUUID()),
+            workspaceId: input.workspaceId,
+            documentId: input.documentId,
+            spaceId: input.spaceId,
+            name: `Agent restore receipt ${receiptSuffix}`,
+            engine: "yjs-13",
+            state: priorState,
+            stateVector: priorStateVector,
+            createdBy: input.principalId,
+            createdByDeviceId: deviceId,
+            correlationId: CorrelationIdSchema.parse(randomUUID()),
+            createdAt: this.now(),
+            restoredFromRevisionId: pending.id,
+          });
+          return {
+            outcome: "success",
+            recoveryRevisionId: pending.id,
+            stateVectorSha256: priorDigest,
+            idempotentReplay: true,
+          };
+        }
+        const pendingDigest = createHash("sha256")
+          .update(pending.stateVector)
+          .digest("hex");
+        if (
+          priorDigest !== pendingDigest ||
+          pendingDigest !== input.expectedStateVectorSha256
+        )
+          return {
+            outcome: "conflict",
+            diagnosticCode: "document.state_vector_stale",
+          };
+      } else if (priorDigest !== input.expectedStateVectorSha256)
+        return {
+          outcome: "conflict",
+          diagnosticCode: "document.state_vector_stale",
+        };
+      const recoveryRevisionId =
+        pending?.id ?? DocumentRevisionIdSchema.parse(randomUUID());
+      if (pending === undefined)
+        await this.repository.createDocumentRevision({
+          id: recoveryRevisionId,
+          workspaceId: input.workspaceId,
+          documentId: input.documentId,
+          spaceId: input.spaceId,
+          name: `Before agent structured restore (run ${input.runId.slice(0, 8)}) ${receiptSuffix}`,
+          engine: "yjs-13",
+          state: priorState,
+          stateVector: priorStateVector,
+          createdBy: input.principalId,
+          createdByDeviceId: deviceId,
+          correlationId: CorrelationIdSchema.parse(randomUUID()),
+          createdAt: this.now(),
+          restoredFromRevisionId: target.id,
+        });
+      let stale = false;
+      let resultingState: Uint8Array<ArrayBufferLike> = new Uint8Array();
+      let resultingStateVector: Uint8Array<ArrayBufferLike> = new Uint8Array();
+      await connection.transact((document) => {
+        const currentDigest = createHash("sha256")
+          .update(Y.encodeStateVector(document))
+          .digest("hex");
+        if (currentDigest !== input.expectedStateVectorSha256) {
+          stale = true;
+          return;
+        }
+        restoreDocumentFromCheckpoint(
+          document,
+          {
+            engine: target.engine,
+            state: target.state,
+            stateVector: target.stateVector,
+          },
+          target.id,
+        );
+        resultingState = Y.encodeStateAsUpdate(document);
+        resultingStateVector = Y.encodeStateVector(document);
+      });
+      if (stale)
+        return {
+          outcome: "conflict",
+          diagnosticCode: "document.state_vector_stale",
+        };
+      await this.repository.createDocumentRevision({
+        id: DocumentRevisionIdSchema.parse(randomUUID()),
+        workspaceId: input.workspaceId,
+        documentId: input.documentId,
+        spaceId: input.spaceId,
+        name: `Agent restore receipt ${receiptSuffix}`,
+        engine: "yjs-13",
+        state: resultingState,
+        stateVector: resultingStateVector,
+        createdBy: input.principalId,
+        createdByDeviceId: deviceId,
+        correlationId: CorrelationIdSchema.parse(randomUUID()),
+        createdAt: this.now(),
+        restoredFromRevisionId: recoveryRevisionId,
+      });
+      return {
+        outcome: "success",
+        recoveryRevisionId,
+        stateVectorSha256: createHash("sha256")
+          .update(resultingStateVector)
+          .digest("hex"),
+        idempotentReplay: false,
+      };
+    } finally {
+      await connection.disconnect({ unloadImmediately: true });
+    }
   }
 
   public mount(server: HttpServer): void {

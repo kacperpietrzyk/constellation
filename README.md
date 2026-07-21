@@ -187,8 +187,12 @@ and through MCP, without leaking hidden records or counts. Global search now
 also finds phrases inside authorized Note, Document, and Deliverable bodies,
 labels the matched field as `Treść`, and returns a bounded local snippet. The
 rebuildable encrypted projection follows collaboration and revision restore,
-survives relaunch, and is purged with access loss. Structured remote MCP editing
-remains the next connected-document outcome.
+survives relaunch, and is purged with access loss. Granted local and remote MCP
+agents now read the same bounded rich blocks and entity links, replace them only
+against a current state-vector digest, and restore the returned recovery
+revision as a new attributed collaborative change. The v5 exchange format
+carries current structured content, its body projection, and remappable Task or
+Project links without exporting revision history or live awareness.
 
 The first knowledge-to-deliverable journey now separates preserved Sources,
 evolving Notes or Documents, and evidence-backed Deliverables. A named version

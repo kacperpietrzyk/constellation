@@ -13,6 +13,8 @@
   },
   "types": "./dist/src/index.d.ts",
   "dependencies": {
+    "@tiptap/y-tiptap": "3.0.7",
+    "prosemirror-model": "1.25.11",
     "yjs": "13.6.31"
   }
 }

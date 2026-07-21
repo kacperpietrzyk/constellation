@@ -5,7 +5,9 @@ import * as Y from "yjs";
 import {
   DOCUMENT_FORMAT_METADATA_ROOT,
   LEGACY_DOCUMENT_TEXT_ROOT,
+  MAX_STRUCTURED_DOCUMENT_BYTES,
   MAX_DOCUMENT_UPDATE_BYTES,
+  parseStructuredDocument,
   RICH_DOCUMENT_FRAGMENT_ROOT,
   YjsRealtimeDocumentAdapter,
 } from "../src/index.js";
@@ -247,5 +249,118 @@ describe("replaceable Yjs realtime-document adapter", () => {
       /DOCUMENT_CHECKPOINT_ENGINE_INVALID/u,
     );
     document.destroy();
+  });
+
+  it("round-trips bounded rich blocks, marks, and typed entity references", () => {
+    const document = new YjsRealtimeDocumentAdapter();
+    document.replaceText("Legacy", { kind: "human", principalId: "alice" });
+    document.migrateToRich(legacyDigest, {
+      kind: "human",
+      principalId: "alice",
+    });
+    const content = {
+      schemaVersion: 1 as const,
+      type: "doc" as const,
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Plan", marks: [{ type: "bold" }] }],
+        },
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "See " },
+            {
+              type: "entityReference",
+              attrs: {
+                targetKind: "project",
+                targetId: "00000000-0000-4000-8000-000000000151",
+              },
+            },
+            {
+              type: "text",
+              text: " and source",
+              marks: [
+                {
+                  type: "link",
+                  attrs: { href: "https://example.com/evidence" },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const canonical = document.replaceStructuredContent(content, {
+      kind: "agent",
+      principalId: "agent",
+      runId: "run-1",
+    });
+    assert.deepEqual(document.getStructuredContent(), canonical);
+    assert.equal(document.getText(), "Plan\nSee  and source");
+    assert.deepEqual(document.getEntityReferences(), [
+      {
+        targetKind: "project",
+        targetId: "00000000-0000-4000-8000-000000000151",
+      },
+    ]);
+    const reopened = new YjsRealtimeDocumentAdapter(document.encodeState());
+    assert.deepEqual(reopened.getStructuredContent(), canonical);
+    reopened.destroy();
+    document.destroy();
+  });
+
+  it("rejects unknown structure, unsafe links, and oversized JSON", () => {
+    assert.throws(
+      () =>
+        parseStructuredDocument({
+          schemaVersion: 1,
+          type: "doc",
+          content: [{ type: "table" }],
+        }),
+      /DOCUMENT_STRUCTURED_SCHEMA_INVALID/u,
+    );
+    assert.throws(
+      () =>
+        parseStructuredDocument({
+          schemaVersion: 1,
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: "unsafe",
+                  marks: [
+                    { type: "link", attrs: { href: "javascript:alert(1)" } },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      /DOCUMENT_STRUCTURED_LINK_INVALID/u,
+    );
+    assert.throws(
+      () =>
+        parseStructuredDocument({
+          schemaVersion: 1,
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: "x".repeat(MAX_STRUCTURED_DOCUMENT_BYTES),
+                },
+              ],
+            },
+          ],
+        }),
+      /DOCUMENT_STRUCTURED_SIZE_INVALID/u,
+    );
   });
 });

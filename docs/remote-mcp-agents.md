@@ -49,6 +49,10 @@ The endpoint publishes:
 
 - `constellation.query.v1`;
 - `constellation.command.v1`;
+- `constellation.batch.v1`;
+- `constellation.document.structured.read.v1`;
+- `constellation.document.structured.write.v1`;
+- `constellation.document.structured.restore.v1`;
 - `constellation.checkpoint.revert.v1`;
 - `constellation://v1/capabilities`;
 - `constellation-capture-payload-v1`, a resource template for a managed file,
@@ -66,6 +70,14 @@ capabilities refused, so a policy refusal is never reported as an unreachable
 Hub. Commands
 retain expected-version conflicts and durable idempotent replay. Queries label
 record content as Hub-authoritative, Space-scoped, untrusted evidence.
+
+Rich document operations go directly through the Hub's realtime gateway, not a
+device snapshot. Reads return the bounded v1 block tree, body projection,
+entity references, and state-vector digest. Writes and restores require that
+digest plus an idempotency key, refuse stale concurrent work, validate each
+linked target in the same authorized Space, and return a recovery revision.
+The legacy whole-text document tools remain listed as unsupported remotely
+because they would flatten rich content.
 
 The gateway is stateless at the HTTP session layer, limits request bodies,
 bounds calls and concurrent work per grant, and returns content-safe retryable

@@ -19,6 +19,7 @@ import {
   CorrelationIdSchema,
   QueryEnvelopeSchema,
   DocumentIdSchema,
+  DocumentRevisionIdSchema,
   WorkspaceIdSchema,
 } from "@constellation/contracts";
 
@@ -254,6 +255,90 @@ export const createConstellationMcpServer = (
         },
       },
       {
+        name: "constellation.document.structured.read.v1",
+        title: "Read a structured native document",
+        description:
+          "Read the current versioned blocks, marks, typed entity links, body text, and state-vector digest of one authorized rich document. Requires document.readContent and the document's Space.",
+        inputSchema: objectInput(
+          {
+            run: unknownObject,
+            workspaceId: uuid,
+            documentId: uuid,
+            schemaVersion: { type: "integer", const: 1 },
+          },
+          ["run", "workspaceId", "documentId", "schemaVersion"],
+        ),
+        annotations: { readOnlyHint: true, openWorldHint: false },
+      },
+      {
+        name: "constellation.document.structured.write.v1",
+        title: "Replace a structured native document",
+        description:
+          "Replace one authorized rich document with bounded versioned blocks and typed entity links. The exact state-vector digest from a prior read is required; stale writes conflict. The prior rich state is saved as an attributed revision. Requires document.replaceContent and the document's Space.",
+        inputSchema: objectInput(
+          {
+            run: unknownObject,
+            workspaceId: uuid,
+            documentId: uuid,
+            schemaVersion: { type: "integer", const: 1 },
+            expectedStateVectorSha256: {
+              type: "string",
+              pattern: "^[0-9a-f]{64}$",
+            },
+            idempotencyKey: { type: "string", minLength: 1, maxLength: 200 },
+            content: unknownObject,
+          },
+          [
+            "run",
+            "workspaceId",
+            "documentId",
+            "schemaVersion",
+            "expectedStateVectorSha256",
+            "idempotencyKey",
+            "content",
+          ],
+        ),
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: "constellation.document.structured.restore.v1",
+        title: "Restore a structured document revision",
+        description:
+          "Restore the recovery revision returned by a prior structured write as a new collaborative change. Requires the current state-vector digest, an idempotency key, document.replaceContent, and the document's Space; later work conflicts instead of being erased.",
+        inputSchema: objectInput(
+          {
+            run: unknownObject,
+            workspaceId: uuid,
+            documentId: uuid,
+            revisionId: uuid,
+            schemaVersion: { type: "integer", const: 1 },
+            expectedStateVectorSha256: {
+              type: "string",
+              pattern: "^[0-9a-f]{64}$",
+            },
+            idempotencyKey: { type: "string", minLength: 1, maxLength: 200 },
+          },
+          [
+            "run",
+            "workspaceId",
+            "documentId",
+            "revisionId",
+            "schemaVersion",
+            "expectedStateVectorSha256",
+            "idempotencyKey",
+          ],
+        ),
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
         name: "constellation.checkpoint.revert.v1",
         title: "Revert an agent checkpoint",
         description:
@@ -332,6 +417,64 @@ export const createConstellationMcpServer = (
             workspaceId: WorkspaceIdSchema.parse(args.workspaceId),
             documentId: DocumentIdSchema.parse(args.documentId),
             text: z.string().parse(args.text),
+          }),
+        );
+      case "constellation.document.structured.read.v1":
+        return toolResult(
+          await port.invoke({
+            contractVersion: MCP_CONTRACT_VERSION,
+            requestId: randomUUID(),
+            kind: "document_structured_read",
+            run,
+            workspaceId: WorkspaceIdSchema.parse(args.workspaceId),
+            documentId: DocumentIdSchema.parse(args.documentId),
+            schemaVersion: z.literal(1).parse(args.schemaVersion),
+          }),
+        );
+      case "constellation.document.structured.write.v1":
+        return toolResult(
+          await port.invoke({
+            contractVersion: MCP_CONTRACT_VERSION,
+            requestId: randomUUID(),
+            kind: "document_structured_write",
+            run,
+            workspaceId: WorkspaceIdSchema.parse(args.workspaceId),
+            documentId: DocumentIdSchema.parse(args.documentId),
+            schemaVersion: z.literal(1).parse(args.schemaVersion),
+            expectedStateVectorSha256: z
+              .string()
+              .regex(/^[0-9a-f]{64}$/u)
+              .parse(args.expectedStateVectorSha256),
+            idempotencyKey: z
+              .string()
+              .trim()
+              .min(1)
+              .max(200)
+              .parse(args.idempotencyKey),
+            content: args.content,
+          }),
+        );
+      case "constellation.document.structured.restore.v1":
+        return toolResult(
+          await port.invoke({
+            contractVersion: MCP_CONTRACT_VERSION,
+            requestId: randomUUID(),
+            kind: "document_structured_restore",
+            run,
+            workspaceId: WorkspaceIdSchema.parse(args.workspaceId),
+            documentId: DocumentIdSchema.parse(args.documentId),
+            revisionId: DocumentRevisionIdSchema.parse(args.revisionId),
+            schemaVersion: z.literal(1).parse(args.schemaVersion),
+            expectedStateVectorSha256: z
+              .string()
+              .regex(/^[0-9a-f]{64}$/u)
+              .parse(args.expectedStateVectorSha256),
+            idempotencyKey: z
+              .string()
+              .trim()
+              .min(1)
+              .max(200)
+              .parse(args.idempotencyKey),
           }),
         );
       case "constellation.checkpoint.revert.v1":

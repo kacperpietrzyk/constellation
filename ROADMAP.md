@@ -182,7 +182,14 @@ current authorized records and exact source navigation opens the linked
 document. Global search now finds phrases inside locally available authorized
 document bodies, identifies the match as `Treść`, opens the exact document, and
 purges the rebuildable encrypted index on access loss. Structured local/remote
-agent editing remains current work.
+agent editing now uses one bounded v1 block contract over that same Yjs state.
+Every write reauthorizes the document, Space, grant, schema, state vector, and
+typed targets; stale work conflicts, retries are idempotent, and the returned
+rich revision can be restored through MCP as a new reversible change. The v5
+exchange package carries current structured content, body text, and remappable
+Task or Project links while excluding revision history and live awareness.
+Generic managed attachments and the remaining connected-document layers are
+the next work on this foundation.
 
 ## Delivered foundation — coherent desktop Alpha and release candidate
 

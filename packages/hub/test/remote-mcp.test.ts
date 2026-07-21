@@ -10,7 +10,9 @@ import {
   AgentRunIdSchema,
   DeviceIdSchema,
   DocumentIdSchema,
+  DocumentRevisionIdSchema,
   ExecutionContextSchema,
+  TaskIdSchema,
   QueryIdSchema,
   capabilitiesForAgentGrantPreset,
   SpaceIdSchema,
@@ -19,11 +21,13 @@ import {
 } from "@constellation/contracts";
 import type { Capture } from "@constellation/domain";
 import { createReferenceHarness } from "@constellation/testkit";
+import { YjsRealtimeDocumentAdapter } from "@constellation/realtime-documents";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 import {
   HubRemoteMcpService,
+  RealtimeDocumentGateway,
   HubService,
   InMemoryHubRepository,
   parseHubRemoteAgentState,
@@ -42,6 +46,8 @@ const ids = {
   managedPayload: "60000000-0000-4000-8000-000000000008",
   voiceCapture: CaptureIdSchema.parse("60000000-0000-4000-8000-000000000009"),
   voicePayload: "60000000-0000-4000-8000-000000000010",
+  document: DocumentIdSchema.parse("60000000-0000-4000-8000-000000000901"),
+  task: TaskIdSchema.parse("60000000-0000-4000-8000-000000000902"),
 } as const;
 
 const managerContext = (): ExecutionContext =>
@@ -59,6 +65,8 @@ const managerContext = (): ExecutionContext =>
       "agent.manageAccess",
       "task.list",
       "capture.submitText",
+      "document.create",
+      "task.create",
       "audit.receipt",
     ],
     origin: "desktop",
@@ -88,6 +96,36 @@ const snapshot = (managedBytes?: Uint8Array) => {
     },
   });
   assert.equal(created.kind, "command_outcome");
+  const project = harness.kernel.execute(managerContext(), {
+    contractVersion: 1,
+    commandName: "task.create",
+    commandId: uuid(),
+    workspaceId: ids.workspace,
+    idempotencyKey: "remote-mcp-project",
+    expectedVersions: {},
+    correlationId: uuid(),
+    payload: {
+      taskId: ids.task,
+      spaceId: ids.space,
+      title: "Remote MCP task",
+    },
+  });
+  assert.equal(project.kind, "command_outcome");
+  const document = harness.kernel.execute(managerContext(), {
+    contractVersion: 1,
+    commandName: "document.create",
+    commandId: uuid(),
+    workspaceId: ids.workspace,
+    idempotencyKey: "remote-mcp-document",
+    expectedVersions: {},
+    correlationId: uuid(),
+    payload: {
+      documentId: ids.document,
+      spaceId: ids.space,
+      title: "Remote structured note",
+    },
+  });
+  assert.equal(document.kind, "command_outcome");
   if (managedBytes !== undefined) {
     const digest = createHash("sha256").update(managedBytes).digest("hex");
     const original = CaptureOriginalSchema.parse({
@@ -158,6 +196,24 @@ const setup = async (managedBytes?: Uint8Array) => {
     workspaceId: ids.workspace,
     snapshot: snapshot(managedBytes),
   });
+  const seededDocument = new YjsRealtimeDocumentAdapter();
+  seededDocument.replaceText("Initial remote content", {
+    kind: "human",
+    principalId: ids.principal,
+  });
+  seededDocument.migrateToRich("a".repeat(64), {
+    kind: "human",
+    principalId: ids.principal,
+  });
+  await repository.storeDocumentState({
+    workspaceId: ids.workspace,
+    documentId: ids.document,
+    spaceId: ids.space,
+    engine: "yjs-13",
+    state: seededDocument.encodeState(),
+    updatedAt: "2026-07-14T20:00:00.000Z",
+  });
+  seededDocument.destroy();
   const enrollment = await hub.createEnrollment({
     workspaceId: ids.workspace,
     authorization: managerContext(),
@@ -172,9 +228,15 @@ const setup = async (managedBytes?: Uint8Array) => {
   });
   assert.equal(device.outcome, "success");
   if (device.outcome !== "success") throw new Error("Enrollment failed.");
+  const realtimeDocuments = new RealtimeDocumentGateway(
+    hub,
+    repository,
+    () => "2026-07-14T20:00:00.000Z",
+  );
   const remote = new HubRemoteMcpService(repository, {
     now: () => "2026-07-14T20:00:00.000Z",
     randomSecret: () => "r".repeat(43),
+    realtimeDocuments,
     ...(managedBytes === undefined
       ? {}
       : {
@@ -195,7 +257,12 @@ const setup = async (managedBytes?: Uint8Array) => {
             ),
         }),
   });
-  return { repository, remote, deviceCredential: device.deviceCredential };
+  return {
+    repository,
+    remote,
+    realtimeDocuments,
+    deviceCredential: device.deviceCredential,
+  };
 };
 
 const createRemoteGrant = async (
@@ -217,6 +284,8 @@ const createRemoteGrant = async (
       "capture.history",
       ...(audioRead ? (["capture.audioRead"] as const) : []),
       "audit.receipt",
+      "document.readContent",
+      "document.replaceContent",
     ],
     spaces: [{ spaceId: ids.space, access: "edit" }],
     federationScope: {
@@ -796,6 +865,149 @@ describe("remote MCP Hub gateway", () => {
     });
   });
 
+  it("reads and replaces rich content through the realtime gateway with stale-state and replay guards", async () => {
+    const { remote, deviceCredential, repository } = await setup();
+    const created = await createRemoteGrant(remote, deviceCredential);
+    const read = await remote.invoke(ids.workspace, created.bearerToken, {
+      contractVersion: 1,
+      requestId: uuid(),
+      kind: "document_structured_read",
+      run,
+      workspaceId: ids.workspace,
+      documentId: ids.document,
+      schemaVersion: 1,
+    });
+    assert.equal(read.outcome, "success");
+    assert.equal(read.evidence?.provenance, "constellation_hub_authoritative");
+    const expectedStateVectorSha256 = (
+      read.result as { stateVectorSha256: string }
+    ).stateVectorSha256;
+    const content = {
+      schemaVersion: 1 as const,
+      type: "doc" as const,
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "Remote agent linked " },
+            {
+              type: "entityReference",
+              attrs: { targetKind: "task", targetId: ids.task },
+            },
+          ],
+        },
+      ],
+    };
+    const writeInvocation = {
+      contractVersion: 1 as const,
+      requestId: uuid(),
+      kind: "document_structured_write" as const,
+      run,
+      workspaceId: ids.workspace,
+      documentId: ids.document,
+      schemaVersion: 1 as const,
+      expectedStateVectorSha256,
+      idempotencyKey: "remote-rich-write-1",
+      content,
+    };
+    const written = await remote.invoke(
+      ids.workspace,
+      created.bearerToken,
+      writeInvocation,
+    );
+    assert.equal(written.outcome, "success", JSON.stringify(written));
+    assert.equal(
+      (written.result as { idempotentReplay: boolean }).idempotentReplay,
+      false,
+    );
+    const restartedHub = new HubService(repository);
+    const restartedGateway = new RealtimeDocumentGateway(
+      restartedHub,
+      repository,
+      () => "2026-07-14T20:01:00.000Z",
+    );
+    const restartedRemote = new HubRemoteMcpService(repository, {
+      now: () => "2026-07-14T20:01:00.000Z",
+      realtimeDocuments: restartedGateway,
+    });
+    const replay = await restartedRemote.invoke(
+      ids.workspace,
+      created.bearerToken,
+      {
+        ...writeInvocation,
+        requestId: uuid(),
+      },
+    );
+    assert.equal(replay.outcome, "success");
+    assert.equal(
+      (replay.result as { idempotentReplay: boolean }).idempotentReplay,
+      true,
+    );
+    assert.equal(
+      (replay.result as { revisionId: string }).revisionId,
+      (written.result as { revisionId: string }).revisionId,
+    );
+    const restoreInvocation = {
+      contractVersion: 1 as const,
+      requestId: uuid(),
+      kind: "document_structured_restore" as const,
+      run,
+      workspaceId: ids.workspace,
+      documentId: ids.document,
+      revisionId: DocumentRevisionIdSchema.parse(
+        (written.result as { revisionId: string }).revisionId,
+      ),
+      schemaVersion: 1 as const,
+      expectedStateVectorSha256: (
+        written.result as { stateVectorSha256: string }
+      ).stateVectorSha256,
+      idempotencyKey: "remote-rich-restore-1",
+    };
+    const restored = await restartedRemote.invoke(
+      ids.workspace,
+      created.bearerToken,
+      restoreInvocation,
+    );
+    assert.equal(restored.outcome, "success", JSON.stringify(restored));
+    const restoreReplay = await restartedRemote.invoke(
+      ids.workspace,
+      created.bearerToken,
+      { ...restoreInvocation, requestId: uuid() },
+    );
+    assert.equal(restoreReplay.outcome, "success");
+    assert.equal(
+      (restoreReplay.result as { idempotentReplay: boolean }).idempotentReplay,
+      true,
+    );
+    const stale = await restartedRemote.invoke(
+      ids.workspace,
+      created.bearerToken,
+      {
+        ...writeInvocation,
+        requestId: uuid(),
+        idempotencyKey: "remote-rich-write-2",
+        content: {
+          schemaVersion: 1,
+          type: "doc",
+          content: [{ type: "paragraph" }],
+        },
+      },
+    );
+    assert.equal(stale.outcome, "conflict");
+    assert.deepEqual(stale.result, {
+      diagnosticCode: "document.state_vector_stale",
+    });
+    const stored = await repository.loadDocumentState({
+      workspaceId: ids.workspace,
+      documentId: ids.document,
+    });
+    assert.ok(stored !== undefined);
+    const reopened = new YjsRealtimeDocumentAdapter(stored.state);
+    assert.equal(reopened.getText(), "Initial remote content");
+    assert.deepEqual(reopened.getEntityReferences(), []);
+    reopened.destroy();
+  });
+
   it("fails closed for corrupt control state and reports repository outages as retryable", async () => {
     assert.throws(() =>
       parseHubRemoteAgentState({
@@ -864,6 +1076,9 @@ describe("remote MCP Hub gateway", () => {
           "constellation.batch.v1",
           "constellation.document.read.v1",
           "constellation.document.write.v1",
+          "constellation.document.structured.read.v1",
+          "constellation.document.structured.write.v1",
+          "constellation.document.structured.restore.v1",
           "constellation.checkpoint.revert.v1",
         ],
       );

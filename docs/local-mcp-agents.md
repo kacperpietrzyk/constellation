@@ -81,6 +81,9 @@ The server publishes these versioned tools:
 - `constellation.batch.v1`;
 - `constellation.document.read.v1`;
 - `constellation.document.write.v1`;
+- `constellation.document.structured.read.v1`;
+- `constellation.document.structured.write.v1`;
+- `constellation.document.structured.restore.v1`;
 - `constellation.checkpoint.revert.v1`.
 
 `constellation.batch.v1` submits up to 100 ordinary commands as one unit.
@@ -172,6 +175,19 @@ is disabled once a Workspace uses a coordinated Data Home, and over a remote
 Hub endpoint these two tools answer `document.text_remote_unsupported`: document state lives in the Hub's realtime
 gateway rather than the device store this boundary reads, and the capability
 response lists them as unsupported so a host learns the limit before calling.
+
+Rich documents use the separate `document.readContent` and
+`document.replaceContent` grants. A structured read returns the bounded v1
+block tree, plain body projection, typed entity references, and a state-vector
+digest. A write must present that digest and an idempotency key; an intervening
+desktop or agent edit returns `document.state_vector_stale` instead of losing
+work. Unknown nodes, marks, unsafe link protocols, hidden or missing entity
+targets, and oversized content fail closed. Each successful write returns the
+pre-write revision ID. `constellation.document.structured.restore.v1` restores
+that revision as a new attributed collaborative change and saves the state it
+replaced, so recovery is itself reversible. These three structured tools use
+the same contract locally and through a remote Hub grant; only the legacy
+whole-text tools remain local-only.
 
 Meeting corrections run through the same commands as the desktop: an
 authorized grant can fix a work item's title or state, correct who is

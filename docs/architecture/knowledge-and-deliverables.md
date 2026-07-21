@@ -47,6 +47,16 @@ source document independently. A rich reference persists only its closed kind
 and stable ID; its current label is resolved from the typed record rather than
 copied into document content.
 
+External agents can read, replace, and restore the same versioned rich block
+tree through local or remote MCP. Writes require the state-vector digest from a
+fresh read, reject unknown structure and unauthorized entity targets, and save
+the pre-write rich state as the returned recovery revision. Restore is a new
+collaborative change and saves its own recovery revision. The v5 exchange
+manifest carries the structured current content, its plain body projection,
+and explicit entity-reference descriptors; Task and Project targets are
+remapped to their imported IDs. Revision history and ephemeral awareness are
+deliberately excluded.
+
 Every mutation requires its declared capability, current Workspace and Space
 access, exact expected versions, idempotency, attribution, audit, and one unit
 of work. Source updates, evidence changes, and named-version creation produce
@@ -89,7 +99,8 @@ a deterministic retrieval index, not a generated-answer or RAG path.
 ## Current limits
 
 This slice does not yet implement approvals, external Artifact transfer,
-automatic citation extraction, source freshness schedules, structured remote
-MCP editing, or generic document attachments. Those outcomes must extend the
+automatic citation extraction, source freshness schedules, relationship-record
+exchange for Person, Organization, and Meeting links, or generic document
+attachments. Those outcomes must extend the
 same typed records, authorization boundary, and deterministic query model
 rather than add a second document system or an embedded reasoning layer.

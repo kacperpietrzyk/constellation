@@ -9,3 +9,5 @@ export * from "./memory-store.js";
 export * from "./meeting-loop.js";
 export * from "./meeting-work-items.js";
 export * from "./ports.js";
+export { resolveDocumentEntityTarget } from "./wave2.js";
+export type { ResolvedDocumentEntityTarget } from "./wave2.js";

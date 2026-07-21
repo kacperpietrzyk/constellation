@@ -15,8 +15,10 @@ import {
 import type { SqliteApplicationStore } from "@constellation/local-store";
 import {
   type DocumentContentFormat,
+  type StructuredDocument,
   MAX_DOCUMENT_TEXT_LENGTH,
   YjsRealtimeDocumentAdapter,
+  parseStructuredDocument,
 } from "@constellation/realtime-documents";
 
 import type { HubConnection } from "./hub-connection-custody.js";
@@ -560,6 +562,118 @@ export const createAgentDocumentTextPort = (input: {
         adapter.destroy();
       }
     },
+    readStructured: (request: {
+      readonly documentId: DocumentId;
+      readonly spaceId: SpaceId;
+    }):
+      | {
+          readonly content: StructuredDocument;
+          readonly text: string;
+          readonly entityReferences: ReturnType<
+            YjsRealtimeDocumentAdapter["getEntityReferences"]
+          >;
+          readonly stateVectorSha256: string;
+        }
+      | undefined => {
+      const state = input.store.loadDocumentCollaborationState(
+        scope(request.documentId, request.spaceId),
+      )?.state;
+      if (state === undefined) return undefined;
+      const adapter = new YjsRealtimeDocumentAdapter(state);
+      try {
+        const checkpoint = adapter.checkpoint();
+        return {
+          content: adapter.getStructuredContent(),
+          text: adapter.getText(),
+          entityReferences: adapter.getEntityReferences(),
+          stateVectorSha256: createHash("sha256")
+            .update(checkpoint.stateVector)
+            .digest("hex"),
+        };
+      } finally {
+        adapter.destroy();
+      }
+    },
+    importStructured: (request: {
+      readonly documentId: DocumentId;
+      readonly spaceId: SpaceId;
+      readonly text: string;
+      readonly content: unknown;
+      readonly principalId: string;
+      readonly deviceId: DeviceId;
+    }): { readonly revisionId: DocumentRevisionId } | undefined => {
+      if (request.text.length > MAX_DOCUMENT_TEXT_LENGTH) return undefined;
+      const documentScope = scope(request.documentId, request.spaceId);
+      const existing =
+        input.store.loadDocumentCollaborationState(documentScope)?.state;
+      const adapter = new YjsRealtimeDocumentAdapter(existing);
+      try {
+        const priorCheckpoint = adapter.checkpoint();
+        adapter.replaceText(request.text, {
+          kind: "human",
+          principalId: request.principalId,
+        });
+        adapter.migrateToRich(
+          createHash("sha256").update(request.text).digest("hex"),
+          { kind: "human", principalId: request.principalId },
+        );
+        try {
+          adapter.replaceStructuredContent(request.content, {
+            kind: "human",
+            principalId: request.principalId,
+          });
+        } catch {
+          return undefined;
+        }
+        const revisionId = DocumentRevisionIdSchema.parse(randomUUID());
+        input.store.storeDocumentRevision({
+          id: revisionId,
+          ...documentScope,
+          name: "Before structured import",
+          ...priorCheckpoint,
+          createdBy: request.principalId as never,
+          createdByDeviceId: request.deviceId,
+          correlationId: CorrelationIdSchema.parse(randomUUID()),
+          createdAt: now(),
+        });
+        const state = adapter.encodeState();
+        const update = adapter.encodeUpdateSince(priorCheckpoint.stateVector);
+        const updatedAt = now();
+        if (input.connection() === undefined) {
+          input.store.storeDocumentCollaborationState({
+            ...documentScope,
+            state,
+            updatedAt,
+          });
+        } else {
+          input.store.commitDocumentUpdate({
+            id: randomUUID(),
+            ...documentScope,
+            state,
+            update,
+            createdAt: updatedAt,
+          });
+        }
+        try {
+          input.store.replaceDocumentEntityLinks({
+            ...documentScope,
+            links: adapter.getEntityReferences(),
+            updatedAt,
+          });
+          input.store.replaceDocumentSearchProjection({
+            ...documentScope,
+            body: adapter.getText(),
+            stateDigest: createHash("sha256").update(state).digest("hex"),
+            indexedAt: updatedAt,
+          });
+        } catch {
+          // Rebuildable projections never invalidate a durable import.
+        }
+        return { revisionId };
+      } finally {
+        adapter.destroy();
+      }
+    },
     replace: (request: {
       readonly documentId: DocumentId;
       readonly spaceId: SpaceId;
@@ -649,6 +763,460 @@ export const createAgentDocumentTextPort = (input: {
           // retryable failure; the next authorized open repairs it.
         }
         return { characters: request.text.length, revisionId };
+      } finally {
+        adapter.destroy();
+      }
+    },
+    replaceStructured: (request: {
+      readonly documentId: DocumentId;
+      readonly spaceId: SpaceId;
+      readonly content: unknown;
+      readonly expectedStateVectorSha256: string;
+      readonly idempotencyKey: string;
+      readonly principalId: string;
+      readonly runId: string;
+      readonly deviceId: DeviceId;
+    }):
+      | {
+          readonly outcome: "success";
+          readonly revisionId: DocumentRevisionId;
+          readonly stateVectorSha256: string;
+          readonly idempotentReplay: boolean;
+        }
+      | { readonly outcome: "conflict"; readonly diagnosticCode: string }
+      | { readonly outcome: "rejected"; readonly diagnosticCode: string } => {
+      const documentScope = scope(request.documentId, request.spaceId);
+      const keyDigest = createHash("sha256")
+        .update(request.idempotencyKey)
+        .digest("base64url")
+        .slice(0, 22);
+      let content: StructuredDocument;
+      try {
+        content = parseStructuredDocument(request.content);
+      } catch {
+        return {
+          outcome: "rejected",
+          diagnosticCode: "document.structured_content_invalid",
+        };
+      }
+      const requestDigest = createHash("sha256")
+        .update(
+          JSON.stringify({
+            content,
+            expectedStateVectorSha256: request.expectedStateVectorSha256,
+          }),
+        )
+        .digest("base64url")
+        .slice(0, 22);
+      const receiptSuffix = `[${keyDigest}.${requestDigest}]`;
+      const revisions = input.store.listDocumentRevisions(documentScope);
+      const receipt = revisions.find(
+        (revision) =>
+          revision.name.startsWith("Agent receipt ") &&
+          revision.name.endsWith(receiptSuffix),
+      );
+      if (receipt !== undefined) {
+        if (receipt.restoredFromRevisionId === undefined)
+          return {
+            outcome: "rejected",
+            diagnosticCode: "document.content_unavailable",
+          };
+        return {
+          outcome: "success",
+          revisionId: receipt.restoredFromRevisionId,
+          stateVectorSha256: createHash("sha256")
+            .update(receipt.stateVector)
+            .digest("hex"),
+          idempotentReplay: true,
+        };
+      }
+      const pending = revisions.find(
+        (revision) =>
+          revision.name.startsWith("Before agent structured write ") &&
+          revision.name.endsWith(receiptSuffix),
+      );
+      if (
+        revisions.some(
+          (revision) =>
+            (revision.name.startsWith("Agent receipt ") ||
+              revision.name.startsWith("Before agent structured write ")) &&
+            revision.name.includes(`[${keyDigest}.`) &&
+            !revision.name.endsWith(receiptSuffix),
+        )
+      )
+        return {
+          outcome: "conflict",
+          diagnosticCode: "document.idempotency_mismatch",
+        };
+      const existing =
+        input.store.loadDocumentCollaborationState(documentScope)?.state;
+      if (existing === undefined)
+        return {
+          outcome: "rejected",
+          diagnosticCode: "document.content_unavailable",
+        };
+      const adapter = new YjsRealtimeDocumentAdapter(existing);
+      try {
+        if (adapter.getFormat() !== "rich-v1")
+          return {
+            outcome: "rejected",
+            diagnosticCode: "document.schema_upgrade_required",
+          };
+        const priorCheckpoint = adapter.checkpoint();
+        const priorDigest = createHash("sha256")
+          .update(priorCheckpoint.stateVector)
+          .digest("hex");
+        if (pending !== undefined) {
+          const currentContentDigest = createHash("sha256")
+            .update(JSON.stringify(adapter.getStructuredContent()))
+            .digest("base64url")
+            .slice(0, 22);
+          const requestedContentDigest = createHash("sha256")
+            .update(JSON.stringify(content))
+            .digest("base64url")
+            .slice(0, 22);
+          if (currentContentDigest === requestedContentDigest) {
+            const checkpoint = adapter.checkpoint();
+            input.store.storeDocumentRevision({
+              id: DocumentRevisionIdSchema.parse(randomUUID()),
+              ...documentScope,
+              name: `Agent receipt ${receiptSuffix}`,
+              ...checkpoint,
+              createdBy: request.principalId as never,
+              createdByDeviceId: request.deviceId,
+              correlationId: CorrelationIdSchema.parse(randomUUID()),
+              createdAt: now(),
+              restoredFromRevisionId: pending.id,
+            });
+            return {
+              outcome: "success",
+              revisionId: pending.id,
+              stateVectorSha256: createHash("sha256")
+                .update(checkpoint.stateVector)
+                .digest("hex"),
+              idempotentReplay: true,
+            };
+          }
+          const pendingDigest = createHash("sha256")
+            .update(pending.stateVector)
+            .digest("hex");
+          if (
+            priorDigest !== pendingDigest ||
+            pendingDigest !== request.expectedStateVectorSha256
+          )
+            return {
+              outcome: "conflict",
+              diagnosticCode: "document.state_vector_stale",
+            };
+        } else if (priorDigest !== request.expectedStateVectorSha256)
+          return {
+            outcome: "conflict",
+            diagnosticCode: "document.state_vector_stale",
+          };
+        let update: Uint8Array | undefined;
+        const stop = adapter.onUpdate((value) => {
+          update = value;
+        });
+        try {
+          adapter.replaceStructuredContent(content, {
+            kind: "agent",
+            principalId: request.principalId,
+            runId: request.runId,
+          });
+        } catch {
+          return {
+            outcome: "rejected",
+            diagnosticCode: "document.structured_content_invalid",
+          };
+        } finally {
+          stop();
+        }
+        const revisionId =
+          pending?.id ?? DocumentRevisionIdSchema.parse(randomUUID());
+        if (pending === undefined)
+          input.store.storeDocumentRevision({
+            id: revisionId,
+            ...documentScope,
+            name: `Before agent structured write (run ${request.runId.slice(0, 8)}) ${receiptSuffix}`,
+            ...priorCheckpoint,
+            createdBy: request.principalId as never,
+            createdByDeviceId: request.deviceId,
+            correlationId: CorrelationIdSchema.parse(randomUUID()),
+            createdAt: now(),
+          });
+        const state = adapter.encodeState();
+        const updatedAt = now();
+        if (update === undefined || input.connection() === undefined) {
+          input.store.storeDocumentCollaborationState({
+            ...documentScope,
+            state,
+            updatedAt,
+          });
+        } else {
+          input.store.commitDocumentUpdate({
+            id: randomUUID(),
+            ...documentScope,
+            state,
+            update,
+            createdAt: updatedAt,
+          });
+        }
+        try {
+          input.store.replaceDocumentEntityLinks({
+            ...documentScope,
+            links: adapter.getEntityReferences(),
+            updatedAt,
+          });
+          input.store.replaceDocumentSearchProjection({
+            ...documentScope,
+            body: adapter.getText(),
+            stateDigest: createHash("sha256").update(state).digest("hex"),
+            indexedAt: updatedAt,
+          });
+        } catch {
+          // Both are rebuildable projections; the collaborative mutation and
+          // its recovery revision are already durable.
+        }
+        const resultCheckpoint = adapter.checkpoint();
+        input.store.storeDocumentRevision({
+          id: DocumentRevisionIdSchema.parse(randomUUID()),
+          ...documentScope,
+          name: `Agent receipt ${receiptSuffix}`,
+          ...resultCheckpoint,
+          createdBy: request.principalId as never,
+          createdByDeviceId: request.deviceId,
+          correlationId: CorrelationIdSchema.parse(randomUUID()),
+          createdAt: now(),
+          restoredFromRevisionId: revisionId,
+        });
+        return {
+          outcome: "success",
+          revisionId,
+          stateVectorSha256: createHash("sha256")
+            .update(resultCheckpoint.stateVector)
+            .digest("hex"),
+          idempotentReplay: false,
+        };
+      } finally {
+        adapter.destroy();
+      }
+    },
+    restoreStructured: (request: {
+      readonly documentId: DocumentId;
+      readonly spaceId: SpaceId;
+      readonly revisionId: string;
+      readonly expectedStateVectorSha256: string;
+      readonly idempotencyKey: string;
+      readonly principalId: string;
+      readonly runId: string;
+      readonly deviceId: DeviceId;
+    }):
+      | {
+          readonly outcome: "success";
+          readonly recoveryRevisionId: DocumentRevisionId;
+          readonly stateVectorSha256: string;
+          readonly idempotentReplay: boolean;
+        }
+      | {
+          readonly outcome: "conflict" | "rejected";
+          readonly diagnosticCode: string;
+        } => {
+      const documentScope = scope(request.documentId, request.spaceId);
+      const keyDigest = createHash("sha256")
+        .update(request.idempotencyKey)
+        .digest("base64url")
+        .slice(0, 22);
+      const requestDigest = createHash("sha256")
+        .update(
+          JSON.stringify({
+            revisionId: request.revisionId,
+            expectedStateVectorSha256: request.expectedStateVectorSha256,
+          }),
+        )
+        .digest("base64url")
+        .slice(0, 22);
+      const receiptSuffix = `[${keyDigest}.${requestDigest}]`;
+      const revisions = input.store.listDocumentRevisions(documentScope);
+      const receipt = revisions.find(
+        (revision) =>
+          revision.name.startsWith("Agent restore receipt ") &&
+          revision.name.endsWith(receiptSuffix),
+      );
+      if (receipt !== undefined) {
+        if (receipt.restoredFromRevisionId === undefined)
+          return {
+            outcome: "rejected",
+            diagnosticCode: "document.content_unavailable",
+          };
+        return {
+          outcome: "success",
+          recoveryRevisionId: receipt.restoredFromRevisionId,
+          stateVectorSha256: createHash("sha256")
+            .update(receipt.stateVector)
+            .digest("hex"),
+          idempotentReplay: true,
+        };
+      }
+      const pending = revisions.find(
+        (revision) =>
+          revision.name.startsWith("Before agent structured restore ") &&
+          revision.name.endsWith(receiptSuffix),
+      );
+      if (
+        revisions.some(
+          (revision) =>
+            (revision.name.startsWith("Agent restore receipt ") ||
+              revision.name.startsWith("Before agent structured restore ")) &&
+            revision.name.includes(`[${keyDigest}.`) &&
+            !revision.name.endsWith(receiptSuffix),
+        )
+      )
+        return {
+          outcome: "conflict",
+          diagnosticCode: "document.idempotency_mismatch",
+        };
+      const target = revisions.find(
+        (revision) => revision.id === request.revisionId,
+      );
+      const existing =
+        input.store.loadDocumentCollaborationState(documentScope)?.state;
+      if (target === undefined || existing === undefined)
+        return {
+          outcome: "rejected",
+          diagnosticCode: "document.revision_unavailable",
+        };
+      const adapter = new YjsRealtimeDocumentAdapter(existing);
+      try {
+        const priorCheckpoint = adapter.checkpoint();
+        const priorDigest = createHash("sha256")
+          .update(priorCheckpoint.stateVector)
+          .digest("hex");
+        if (pending !== undefined) {
+          const expected = new YjsRealtimeDocumentAdapter(existing);
+          let expectedContentDigest: string;
+          try {
+            expected.restore(target, target.id);
+            expectedContentDigest = createHash("sha256")
+              .update(JSON.stringify(expected.getStructuredContent()))
+              .digest("base64url")
+              .slice(0, 22);
+          } finally {
+            expected.destroy();
+          }
+          const currentContentDigest = createHash("sha256")
+            .update(JSON.stringify(adapter.getStructuredContent()))
+            .digest("base64url")
+            .slice(0, 22);
+          if (currentContentDigest === expectedContentDigest) {
+            const checkpoint = adapter.checkpoint();
+            input.store.storeDocumentRevision({
+              id: DocumentRevisionIdSchema.parse(randomUUID()),
+              ...documentScope,
+              name: `Agent restore receipt ${receiptSuffix}`,
+              ...checkpoint,
+              createdBy: request.principalId as never,
+              createdByDeviceId: request.deviceId,
+              correlationId: CorrelationIdSchema.parse(randomUUID()),
+              createdAt: now(),
+              restoredFromRevisionId: pending.id,
+            });
+            return {
+              outcome: "success",
+              recoveryRevisionId: pending.id,
+              stateVectorSha256: createHash("sha256")
+                .update(checkpoint.stateVector)
+                .digest("hex"),
+              idempotentReplay: true,
+            };
+          }
+          const pendingDigest = createHash("sha256")
+            .update(pending.stateVector)
+            .digest("hex");
+          if (
+            priorDigest !== pendingDigest ||
+            pendingDigest !== request.expectedStateVectorSha256
+          )
+            return {
+              outcome: "conflict",
+              diagnosticCode: "document.state_vector_stale",
+            };
+        } else if (priorDigest !== request.expectedStateVectorSha256)
+          return {
+            outcome: "conflict",
+            diagnosticCode: "document.state_vector_stale",
+          };
+        let update: Uint8Array | undefined;
+        const stop = adapter.onUpdate((value) => {
+          update = value;
+        });
+        adapter.restore(target, target.id);
+        stop();
+        const recoveryRevisionId =
+          pending?.id ?? DocumentRevisionIdSchema.parse(randomUUID());
+        if (pending === undefined)
+          input.store.storeDocumentRevision({
+            id: recoveryRevisionId,
+            ...documentScope,
+            name: `Before agent structured restore (run ${request.runId.slice(0, 8)}) ${receiptSuffix}`,
+            ...priorCheckpoint,
+            createdBy: request.principalId as never,
+            createdByDeviceId: request.deviceId,
+            correlationId: CorrelationIdSchema.parse(randomUUID()),
+            createdAt: now(),
+            restoredFromRevisionId: target.id,
+          });
+        const state = adapter.encodeState();
+        const updatedAt = now();
+        if (update === undefined || input.connection() === undefined) {
+          input.store.storeDocumentCollaborationState({
+            ...documentScope,
+            state,
+            updatedAt,
+          });
+        } else {
+          input.store.commitDocumentUpdate({
+            id: randomUUID(),
+            ...documentScope,
+            state,
+            update,
+            createdAt: updatedAt,
+          });
+        }
+        try {
+          input.store.replaceDocumentEntityLinks({
+            ...documentScope,
+            links: adapter.getEntityReferences(),
+            updatedAt,
+          });
+          input.store.replaceDocumentSearchProjection({
+            ...documentScope,
+            body: adapter.getText(),
+            stateDigest: createHash("sha256").update(state).digest("hex"),
+            indexedAt: updatedAt,
+          });
+        } catch {
+          // Rebuildable projections never invalidate a durable restore.
+        }
+        const resultCheckpoint = adapter.checkpoint();
+        input.store.storeDocumentRevision({
+          id: DocumentRevisionIdSchema.parse(randomUUID()),
+          ...documentScope,
+          name: `Agent restore receipt ${receiptSuffix}`,
+          ...resultCheckpoint,
+          createdBy: request.principalId as never,
+          createdByDeviceId: request.deviceId,
+          correlationId: CorrelationIdSchema.parse(randomUUID()),
+          createdAt: now(),
+          restoredFromRevisionId: recoveryRevisionId,
+        });
+        return {
+          outcome: "success",
+          recoveryRevisionId,
+          stateVectorSha256: createHash("sha256")
+            .update(resultCheckpoint.stateVector)
+            .digest("hex"),
+          idempotentReplay: false,
+        };
       } finally {
         adapter.destroy();
       }

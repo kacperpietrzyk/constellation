@@ -1,5 +1,11 @@
 import * as Y from "yjs";
 
+import {
+  replaceStructuredDocumentInYjs as replaceImportedStructuredDocument,
+  structuredDocumentFromYjs as importStructuredDocument,
+  type StructuredDocument,
+} from "./structured-document.js";
+
 export const MAX_DOCUMENT_UPDATE_BYTES = 1_048_576;
 export const MAX_DOCUMENT_TEXT_LENGTH = 200_000;
 export const LEGACY_DOCUMENT_TEXT_ROOT = "content";
@@ -35,8 +41,13 @@ export interface RealtimeDocumentAdapter {
   getFormat(): DocumentContentFormat;
   getText(): string;
   getEntityReferences(): readonly DocumentEntityReference[];
+  getStructuredContent(): StructuredDocument;
   migrateToRich(legacyDigest: string, origin: DocumentChangeOrigin): boolean;
   replaceText(text: string, origin: DocumentChangeOrigin): void;
+  replaceStructuredContent(
+    content: unknown,
+    origin: DocumentChangeOrigin,
+  ): StructuredDocument;
   applyUpdate(update: Uint8Array): void;
   encodeState(): Uint8Array;
   encodeUpdateSince(stateVector: Uint8Array): Uint8Array;
@@ -100,7 +111,15 @@ const replaceLegacyWithPlainText = (document: Y.Doc, text: string): void => {
 };
 
 const richNodeText = (node: Y.XmlElement | Y.XmlText): string => {
-  if (node instanceof Y.XmlText) return node.toString();
+  // XmlText#toString serializes formatting as XML-like tags. Search/export
+  // need the visible characters only, independent of marks.
+  if (node instanceof Y.XmlText)
+    return node
+      .toDelta()
+      .map((part: { readonly insert: unknown }) =>
+        typeof part.insert === "string" ? part.insert : "",
+      )
+      .join("");
   if (node.nodeName === "hardBreak") return "\n";
   const childText = node
     .toArray()
@@ -294,6 +313,12 @@ export class YjsRealtimeDocumentAdapter implements RealtimeDocumentAdapter {
     return documentEntityReferences(this.document);
   }
 
+  public getStructuredContent(): StructuredDocument {
+    if (this.getFormat() !== "rich-v1")
+      throw new Error("DOCUMENT_FORMAT_UPGRADE_REQUIRED");
+    return importStructuredDocument(this.document);
+  }
+
   public migrateToRich(
     legacyDigest: string,
     origin: DocumentChangeOrigin,
@@ -333,6 +358,15 @@ export class YjsRealtimeDocumentAdapter implements RealtimeDocumentAdapter {
       const insertion = text.slice(prefix, text.length - suffix);
       if (insertion.length > 0) this.text.insert(prefix, insertion);
     }, origin);
+  }
+
+  public replaceStructuredContent(
+    content: unknown,
+    origin: DocumentChangeOrigin,
+  ): StructuredDocument {
+    if (this.getFormat() !== "rich-v1")
+      throw new Error("DOCUMENT_FORMAT_UPGRADE_REQUIRED");
+    return replaceImportedStructuredDocument(this.document, content, origin);
   }
 
   public applyUpdate(update: Uint8Array): void {
