@@ -185,10 +185,29 @@ describe("desktop document collaboration bridge", () => {
       supportedDocumentFormats: ["plain-v1", "rich-v1"],
     });
     assert.equal(opened.mode, "local");
+    assert.equal(opened.searchIndexState, "current");
     assert.ok(opened.state);
     const restored = new YjsRealtimeDocumentAdapter(opened.state);
     assert.equal(restored.getText(), "Zakres pilotażu");
     restored.destroy();
+    assert.deepEqual(
+      store.read((view) =>
+        isApplicationWave2ReadView(view)
+          ? view.searchDocumentBodies(
+              ids.workspace,
+              context().spaceScope[0]!,
+              "zakres pilotażu",
+              10,
+            )
+          : [],
+      ),
+      [
+        {
+          documentId: ids.document,
+          snippet: "Zakres pilotażu",
+        },
+      ],
+    );
     assert.equal(
       (await bridge.listRevisions({ documentId: ids.document })).length,
       2,

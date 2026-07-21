@@ -4844,6 +4844,22 @@ export const RealApp = ({
                     )
                   : undefined;
               openContext(projectContext(id, project?.title ?? "Projekt"));
+            } else if (nextSurface === "documents") {
+              const id = recordId as DocumentId;
+              const document =
+                state.snapshot.knowledge.kind === "ready"
+                  ? state.snapshot.knowledge.data.documents.find(
+                      (item) => item.id === id,
+                    )
+                  : undefined;
+              if (document !== undefined) {
+                openContext(documentContext(id, document.title));
+              } else {
+                const item = navItems.find((entry) => entry.id === nextSurface);
+                openContext(
+                  destinationContext(nextSurface, item?.label ?? "Dokumenty"),
+                );
+              }
             } else {
               const item = navItems.find((entry) => entry.id === nextSurface);
               openContext(

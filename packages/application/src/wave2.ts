@@ -8470,6 +8470,7 @@ export const executeWave2Query = (
         | "excerpt"
         | "canonicalUrl"
         | "detail"
+        | "body"
       >;
       score: number;
       updatedAt: string;
@@ -8601,19 +8602,43 @@ export const executeWave2Query = (
           });
         }
       }
+      const documentBodyMatches = new Map(
+        view
+          .searchDocumentBodies(
+            query.workspaceId,
+            spaceId,
+            query.parameters.text,
+            query.parameters.limit ?? 50,
+          )
+          .map((match) => [match.documentId, match.snippet] as const),
+      );
       for (const document of view.listDocuments(query.workspaceId, spaceId)) {
         const role = document.role ?? "document";
         if (!kinds.has(role)) continue;
         const title = normalizeSearch(document.title);
-        if (!title.includes(needle)) continue;
+        const bodySnippet = documentBodyMatches.get(document.id);
+        const matchedFields: Array<"title" | "body"> = [];
+        if (title.includes(needle)) matchedFields.push("title");
+        if (bodySnippet !== undefined) matchedFields.push("body");
+        if (matchedFields.length === 0) continue;
         items.push({
           recordKind: role,
           recordId: document.id,
           spaceId,
           title: document.title,
-          snippet: snippet(document.title, needle),
-          matchedFields: ["title"],
-          score: title === needle ? 300 : title.startsWith(needle) ? 220 : 160,
+          snippet:
+            bodySnippet === undefined
+              ? snippet(document.title, needle)
+              : bodySnippet,
+          matchedFields,
+          score:
+            title === needle
+              ? 300
+              : title.startsWith(needle)
+                ? 220
+                : title.includes(needle)
+                  ? 160
+                  : 90,
           updatedAt: document.updatedAt,
         });
       }

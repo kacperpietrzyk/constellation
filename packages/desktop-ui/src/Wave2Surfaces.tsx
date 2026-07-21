@@ -2319,6 +2319,7 @@ export const SearchOverlay = ({
                   <strong>{item.title}</strong>
                   <small>
                     {recordKindLabels[item.recordKind] ?? item.recordKind} ·{" "}
+                    {item.matchedFields.includes("body") ? "Treść · " : ""}
                     {item.snippet}
                   </small>
                 </span>

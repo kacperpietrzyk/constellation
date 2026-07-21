@@ -332,7 +332,11 @@ const createTypedClient = () => {
         detailCode: "ready",
       }),
     listDocumentRevisions: async () => [],
-    openDocument: async () => ({ mode: "local", pendingUpdateCount: 0 }),
+    openDocument: async () => ({
+      mode: "local",
+      pendingUpdateCount: 0,
+      searchIndexState: "current",
+    }),
     persistDocumentUpdate: async () => undefined,
     syncDataHome: async () => client.getDataHomeStatus(),
     prepareWorkspaceRestore: async () => ({ outcome: "cancelled" }),

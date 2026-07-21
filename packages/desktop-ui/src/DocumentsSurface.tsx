@@ -490,6 +490,9 @@ const KnowledgeEditor = ({
   >("opening");
   const [access, setAccess] = useState<"view" | "comment" | "edit">("view");
   const [pending, setPending] = useState(0);
+  const [searchIndexState, setSearchIndexState] = useState<
+    "current" | "rebuilding" | "unavailable"
+  >("rebuilding");
   const [revisions, setRevisions] = useState<
     readonly RendererDocumentRevision[]
   >([]);
@@ -820,6 +823,7 @@ const KnowledgeEditor = ({
           return;
         }
         setPending(opened.pendingUpdateCount);
+        setSearchIndexState(opened.searchIndexState);
         if (opened.mode === "local") {
           setAccess("edit");
           setStatus("local");
@@ -1212,6 +1216,13 @@ const KnowledgeEditor = ({
           <h2 id="document-title">{document.title}</h2>
         </div>
         <div className="document-editor-actions">
+          <p className="sr-only" role="status">
+            {searchIndexState === "current"
+              ? "Treść dokumentu jest dostępna w wyszukiwaniu."
+              : searchIndexState === "rebuilding"
+                ? "Indeks treści dokumentu jest odbudowywany. Edycja pozostaje dostępna."
+                : "Indeks treści dokumentu jest chwilowo niedostępny. Edycja pozostaje dostępna."}
+          </p>
           <div className={`document-presence ${status}`} role="status">
             <span aria-hidden="true" />
             {limitReached

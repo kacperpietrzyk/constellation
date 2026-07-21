@@ -127,7 +127,8 @@ revocation-driven local projection removal across relaunch. The same native
 package opens a document for the owner and scoped member, converges edits in
 both directions, queues an edit while the Hub is stopped, rejoins after restart,
 restores a named revision, and turns the editor read-only after a live access
-downgrade.
+downgrade. It also proves that a converged document phrase remains searchable
+after named restore and packaged relaunch.
 
 The delivered collaboration foundation adds versioned human membership and
 Space grants without coupling Workspace role to data scope. Every command and
@@ -182,8 +183,12 @@ also inserts typed inline references to Tasks, Projects, People, Organizations,
 and Meetings from the same Space. Each reference stores stable identity rather
 than a copied label; the current label is resolved when read. Permission-safe
 backlink queries show the exact visible source documents in record inspectors
-and through MCP, without leaking hidden records or counts. Document-body search
-and structured remote MCP editing remain the next connected-document outcomes.
+and through MCP, without leaking hidden records or counts. Global search now
+also finds phrases inside authorized Note, Document, and Deliverable bodies,
+labels the matched field as `Treść`, and returns a bounded local snippet. The
+rebuildable encrypted projection follows collaboration and revision restore,
+survives relaunch, and is purged with access loss. Structured remote MCP editing
+remains the next connected-document outcome.
 
 The first knowledge-to-deliverable journey now separates preserved Sources,
 evolving Notes or Documents, and evidence-backed Deliverables. A named version

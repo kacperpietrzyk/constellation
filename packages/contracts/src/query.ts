@@ -1426,6 +1426,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
                 "excerpt",
                 "canonicalUrl",
                 "detail",
+                "body",
               ]),
             ),
             score: z.int().nonnegative(),

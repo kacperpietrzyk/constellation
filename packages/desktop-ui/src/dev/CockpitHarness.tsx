@@ -23,6 +23,7 @@ const guestId = "00000000-0000-4000-8000-000000000608";
 const projectA = "00000000-0000-4000-8000-000000000610";
 const projectB = "00000000-0000-4000-8000-000000000611";
 const projectC = "00000000-0000-4000-8000-000000000612";
+const searchDocumentId = "00000000-0000-4000-8000-000000000650";
 
 const task1 = "00000000-0000-4000-8000-000000000620";
 const task2 = "00000000-0000-4000-8000-000000000621";
@@ -407,6 +408,52 @@ const baseClient = createScenarioClient({
           status: "active",
           version: 1,
           spaces: [],
+        },
+      ],
+    }),
+    "document.list": result({
+      kind: "document.list",
+      items: [
+        {
+          id: searchDocumentId,
+          spaceId,
+          title: "Notatka z wywiadu Northstar",
+          role: "note",
+          version: 1,
+          updatedAt: "2026-07-15T08:45:00.000Z",
+        },
+      ],
+    }),
+    "knowledge.list": result({
+      kind: "knowledge.list",
+      spaceId,
+      sources: [],
+      documents: [
+        {
+          id: searchDocumentId,
+          title: "Notatka z wywiadu Northstar",
+          role: "note",
+          evidenceCount: 0,
+          namedVersionCount: 0,
+          staleEvidence: false,
+          version: 1,
+          updatedAt: "2026-07-15T08:45:00.000Z",
+        },
+      ],
+    }),
+    "search.global": result({
+      kind: "search.global",
+      normalizedQuery: "zakres pilotażu",
+      items: [
+        {
+          recordKind: "note",
+          recordId: searchDocumentId,
+          spaceId,
+          title: "Notatka z wywiadu Northstar",
+          snippet: "…potwierdzony zakres pilotażu i odpowiedzialność zespołu…",
+          matchedFields: ["body"],
+          score: 90,
+          updatedAt: "2026-07-15T08:45:00.000Z",
         },
       ],
     }),

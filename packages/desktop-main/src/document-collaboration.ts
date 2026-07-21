@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   CorrelationIdSchema,
@@ -35,6 +35,7 @@ export interface RendererDocumentOpenResult {
   readonly mode: "local" | "coordinated";
   readonly state?: Uint8Array;
   readonly pendingUpdateCount: number;
+  readonly searchIndexState: "current" | "rebuilding" | "unavailable";
   readonly session?: {
     readonly url: string;
     readonly room: string;
@@ -81,6 +82,8 @@ const supportedFormats = (value: unknown): readonly DocumentContentFormat[] => {
 export class DocumentCollaborationBridge {
   private readonly fetcher: typeof fetch;
   private readonly now: () => string;
+  private readonly searchIndexTimers = new Map<DocumentId, NodeJS.Timeout>();
+  private readonly unavailableSearchIndexes = new Set<DocumentId>();
 
   public constructor(private readonly input: DocumentBridgeInput) {
     this.fetcher = input.fetcher ?? fetch;
@@ -104,6 +107,68 @@ export class DocumentCollaborationBridge {
       workspaceId: this.input.workspaceId,
       spaceId: SpaceIdSchema.parse(raw.spaceId),
     };
+  }
+
+  private stateDigest(state: Uint8Array): string {
+    return createHash("sha256").update(state).digest("hex");
+  }
+
+  private indexDocument(
+    scope: {
+      readonly documentId: DocumentId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+    },
+    state: Uint8Array,
+  ): "current" | "unavailable" {
+    const adapter = new YjsRealtimeDocumentAdapter(state);
+    try {
+      this.input.store.replaceDocumentSearchProjection({
+        ...scope,
+        body: adapter.getText(),
+        stateDigest: this.stateDigest(state),
+        indexedAt: this.now(),
+      });
+      this.unavailableSearchIndexes.delete(scope.documentId);
+      return "current";
+    } catch {
+      this.unavailableSearchIndexes.add(scope.documentId);
+      return "unavailable";
+    } finally {
+      adapter.destroy();
+    }
+  }
+
+  private scheduleDocumentIndex(
+    scope: {
+      readonly documentId: DocumentId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+    },
+    state: Uint8Array,
+  ): void {
+    const currentTimer = this.searchIndexTimers.get(scope.documentId);
+    if (currentTimer !== undefined) clearTimeout(currentTimer);
+    const stateCopy = state.slice();
+    const timer = setTimeout(() => {
+      this.searchIndexTimers.delete(scope.documentId);
+      try {
+        const stored = this.input.store.loadDocumentCollaborationState(scope);
+        if (
+          stored !== undefined &&
+          this.stateDigest(stored.state) === this.stateDigest(stateCopy)
+        ) {
+          this.indexDocument(scope, stateCopy);
+        }
+      } catch {
+        // Revocation can race the debounce. Editing persistence and access
+        // purge remain authoritative; a later authorized open rebuilds the
+        // projection from the current encrypted Yjs state.
+        this.unavailableSearchIndexes.add(scope.documentId);
+      }
+    }, 250);
+    timer.unref();
+    this.searchIndexTimers.set(scope.documentId, timer);
   }
 
   private async post(path: string, body: object): Promise<unknown> {
@@ -161,6 +226,18 @@ export class DocumentCollaborationBridge {
         adapter.destroy();
       }
     }
+    let searchIndexState: RendererDocumentOpenResult["searchIndexState"] =
+      "current";
+    if (state !== undefined) {
+      const currentProjection =
+        this.input.store.getDocumentSearchProjection(scope);
+      searchIndexState =
+        currentProjection?.stateDigest === this.stateDigest(state)
+          ? "current"
+          : this.indexDocument(scope, state);
+    } else if (this.unavailableSearchIndexes.has(scope.documentId)) {
+      searchIndexState = "unavailable";
+    }
     const pendingUpdateCount =
       this.input.store.listPendingDocumentUpdates(scope).length;
     const connection = this.input.connection();
@@ -169,6 +246,7 @@ export class DocumentCollaborationBridge {
         mode: "local",
         ...(state === undefined ? {} : { state }),
         pendingUpdateCount,
+        searchIndexState,
       };
     }
     let value: Record<string, unknown>;
@@ -188,6 +266,7 @@ export class DocumentCollaborationBridge {
         mode: "coordinated",
         ...(state === undefined ? {} : { state }),
         pendingUpdateCount,
+        searchIndexState,
       };
     }
     if (
@@ -208,6 +287,7 @@ export class DocumentCollaborationBridge {
       mode: "coordinated",
       ...(state === undefined ? {} : { state }),
       pendingUpdateCount,
+      searchIndexState,
       session: {
         url: url.toString(),
         room: value.room,
@@ -266,6 +346,7 @@ export class DocumentCollaborationBridge {
         links: entityReferences,
         updatedAt,
       });
+      this.scheduleDocumentIndex(scope, state);
       return;
     }
     this.input.store.commitDocumentUpdate({
@@ -280,6 +361,7 @@ export class DocumentCollaborationBridge {
       links: entityReferences,
       updatedAt,
     });
+    this.scheduleDocumentIndex(scope, state);
   }
 
   public acknowledge(raw: {
@@ -419,6 +501,7 @@ export class DocumentCollaborationBridge {
           links: current.getEntityReferences(),
           updatedAt: this.now(),
         });
+        this.indexDocument(scope, checkpoint.state);
         this.input.store.storeDocumentRevision({
           id: DocumentRevisionIdSchema.parse(randomUUID()),
           ...scope,
@@ -552,6 +635,18 @@ export const createAgentDocumentTextPort = (input: {
             update,
             createdAt: updatedAt,
           });
+        }
+        try {
+          input.store.replaceDocumentSearchProjection({
+            ...documentScope,
+            body: adapter.getText(),
+            stateDigest: createHash("sha256").update(state).digest("hex"),
+            indexedAt: updatedAt,
+          });
+        } catch {
+          // Search is a rebuildable local projection. A failed index write
+          // must never turn an already-durable document mutation into a false
+          // retryable failure; the next authorized open repairs it.
         }
         return { characters: request.text.length, revisionId };
       } finally {

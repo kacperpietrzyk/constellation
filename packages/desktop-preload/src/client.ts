@@ -261,6 +261,7 @@ export interface RendererDocumentOpenResult {
   readonly mode: "local" | "coordinated";
   readonly state?: Uint8Array;
   readonly pendingUpdateCount: number;
+  readonly searchIndexState: "current" | "rebuilding" | "unavailable";
   readonly session?: {
     readonly url: string;
     readonly room: string;
