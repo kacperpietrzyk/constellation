@@ -775,7 +775,13 @@ export const WorkLinkRemoveCommandSchema = CommandMetadataSchema.extend({
   payload: z.object({ linkId: StrategicRecordIdSchema }).strict(),
 }).strict();
 
-const SavedViewFiltersSchema = z
+// The one saved-view filter vocabulary. Every projection that can carry a
+// saved view reuses this schema rather than restating it: R13.3 added `fields`
+// and `groupBy` to the command and to the Work overview but not to the
+// strategic-record projection, and because query results are parsed strictly,
+// an ordinary grouped view made `relationship.workspace` throw. Restating the
+// shape is what let the two drift, so there is now one shape to extend.
+export const SavedViewFiltersSchema = z
   .object({
     operationalStates: z
       .array(z.enum(["actionable", "waiting", "blocked"]))
@@ -816,7 +822,7 @@ const SavedViewFiltersSchema = z
   })
   .strict();
 
-const SavedViewGroupBySchema = z.union([
+export const SavedViewGroupBySchema = z.union([
   z.literal("status"),
   z.literal("priority"),
   z.object({ fieldId: FieldDefinitionIdSchema }).strict(),

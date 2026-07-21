@@ -994,6 +994,41 @@ it("manages saved view lifecycle with field filters and grouping", () => {
     ["urgent", "high"],
     "the closed R12.4 vocabulary persists through the kernel",
   );
+
+  // R13.3 left one projection behind: `relationship.workspace` returns every
+  // strategic record in the space unfiltered, saved views included, and its
+  // result is parsed against the strict projection schema. A saved view
+  // carrying typed field conditions — authorable from the save popover — made
+  // that parse throw, so storing an ordinary view broke an unrelated surface.
+  // Every projection that can carry a saved view must accept the whole filter
+  // vocabulary, not the subset one query happened to need.
+  const relationshipRecords = (() => {
+    const result = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "relationship.workspace",
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space },
+    });
+    if (
+      result.kind !== "query_result" ||
+      result.result.outcome !== "success" ||
+      result.result.projection.kind !== "relationship.workspace"
+    )
+      assert.fail("Expected the relationship workspace projection");
+    return result.result.projection.records;
+  })();
+  const projectedView = relationshipRecords.find(
+    (record) => record.kind === "saved_view",
+  );
+  assert.deepEqual(
+    projectedView?.kind === "saved_view"
+      ? projectedView.filters.fields
+      : undefined,
+    [{ fieldId, predicate: { kind: "choice_is", option: "MSSP" } }],
+    "a saved view survives the relationship projection with its field conditions intact",
+  );
   assert.deepEqual(created?.filters.fields, [
     { fieldId, predicate: { kind: "choice_is", option: "MSSP" } },
   ]);
