@@ -706,13 +706,22 @@ export class HubRemoteMcpService {
               invocation.query.workspaceId !== workspaceId) ||
             (invocation.kind === "command" &&
               invocation.command.workspaceId !== workspaceId) ||
+            (invocation.kind === "batch" &&
+              invocation.batch.workspaceId !== workspaceId) ||
             (invocation.kind === "payload_read" &&
               invocation.workspaceId !== workspaceId)
           )
             return response(invocation.requestId, "rejected", {
               diagnosticCode: "authorization.denied",
             });
-          const rate = this.acquire(grant.id);
+          // A batch spends one unit per command it carries. Charging it as a
+          // single call would turn the per-grant limit into a 100x ceiling —
+          // the guard exists to bound a runaway agent, and one invocation
+          // carrying a hundred mutations is exactly what it must bound.
+          const rate = this.acquire(
+            grant.id,
+            invocation.kind === "batch" ? invocation.batch.commands.length : 1,
+          );
           if (!rate)
             return response(invocation.requestId, "retryable", {
               diagnosticCode: "mcp.rate_limited",
@@ -1423,7 +1432,7 @@ export class HubRemoteMcpService {
     });
   }
 
-  private acquire(grantId: string): boolean {
+  private acquire(grantId: string, cost = 1): boolean {
     const now = this.options.nowMs?.() ?? Date.now();
     const current = this.rate.get(grantId) ?? {
       windowStartedAt: now,
@@ -1435,13 +1444,13 @@ export class HubRemoteMcpService {
       current.calls = 0;
     }
     if (
-      current.calls >=
+      current.calls + cost >
         (this.options.maxCallsPerMinute ?? MAX_CALLS_PER_MINUTE) ||
       current.active >=
         (this.options.maxConcurrentCalls ?? MAX_CONCURRENT_CALLS)
     )
       return false;
-    current.calls += 1;
+    current.calls += cost;
     current.active += 1;
     this.rate.set(grantId, current);
     return true;
