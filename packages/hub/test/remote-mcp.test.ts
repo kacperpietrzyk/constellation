@@ -883,9 +883,9 @@ describe("remote MCP Hub gateway", () => {
       });
       assert.equal(result.isError, false);
       const templates = await client.listResourceTemplates();
-      assert.equal(
-        templates.resourceTemplates[0]?.name,
-        "constellation-capture-payload-v1",
+      assert.deepEqual(
+        templates.resourceTemplates.map((template) => template.name),
+        ["constellation-operation-v1", "constellation-capture-payload-v1"],
       );
       const resource = await client.readResource({
         uri:

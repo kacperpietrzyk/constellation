@@ -10,6 +10,23 @@ import {
 import { MCP_CONTRACT_VERSION } from "./protocol.js";
 
 export const MCP_OPERATIONS_RESOURCE_URI = "constellation://v1/operations";
+export const MCP_OPERATION_RESOURCE_TEMPLATE =
+  "constellation://v1/operations/{name}";
+
+/**
+ * R14.2 evidence (2026-07-21): a repository-blind host completed the journey
+ * but reported the catalog **truncated**, and recovered missing fields from
+ * validator messages. Measured, the operate-class catalog is 342 KB across
+ * 116 operations — one resource that does not survive the trip into a host's
+ * context. So the index carries names, kinds, tools and the URI of each
+ * operation's full schema, and a host reads the two or three it needs.
+ *
+ * The schemas stay generated from the same Zod unions the kernel validates
+ * with: the defect is delivery size, not generation, and a hand-written
+ * summary would reintroduce exactly the drift ADR-039 removed.
+ */
+export const operationResourceUri = (name: string): string =>
+  `constellation://v1/operations/${encodeURIComponent(name)}`;
 
 export interface CatalogOperation {
   readonly name: string;
@@ -90,6 +107,33 @@ const CAPABILITY_OPERATION_ALIASES: Readonly<Record<string, string>> = {
   "agent.checkpoint.create": "agent.checkpointCreate",
   "agent.handoff.submit": "agent.handoffSubmit",
   "capture.transcriptWrite": "capture.writeTranscript",
+};
+
+export const buildOperationIndex = (
+  capabilityScope: readonly string[],
+): {
+  readonly contractVersion: typeof MCP_CONTRACT_VERSION;
+  readonly guidance: typeof INVOCATION_GUIDANCE;
+  readonly note: string;
+  readonly operations: readonly {
+    readonly name: string;
+    readonly kind: CatalogOperation["kind"];
+    readonly tool: string;
+    readonly schema: string;
+  }[];
+} => {
+  const catalog = buildOperationCatalog(capabilityScope);
+  return {
+    contractVersion: catalog.contractVersion,
+    guidance: catalog.guidance,
+    note: "Read constellation://v1/operations/<name> for one operation's full strict envelope JSON Schema. The schemas are generated from the kernel contract; this index lists what your grant authorizes.",
+    operations: catalog.operations.map((operation) => ({
+      name: operation.name,
+      kind: operation.kind,
+      tool: operation.tool,
+      schema: operationResourceUri(operation.name),
+    })),
+  };
 };
 
 export const buildOperationCatalog = (

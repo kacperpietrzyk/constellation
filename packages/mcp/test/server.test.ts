@@ -210,7 +210,7 @@ test("assembles and verifies an authorized Capture payload resource", async () =
     const templates = await client.listResourceTemplates();
     assert.deepEqual(
       templates.resourceTemplates.map((template) => template.name),
-      ["constellation-capture-payload-v1"],
+      ["constellation-operation-v1", "constellation-capture-payload-v1"],
     );
     const uri =
       `constellation://v1/workspaces/${workspaceId}/captures/${captureId}/payload` +
@@ -313,14 +313,12 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     assert.ok(typeof text === "string");
     const catalog = JSON.parse(text) as {
       readonly guidance: Record<string, string>;
+      readonly note: string;
       readonly operations: readonly {
         readonly name: string;
         readonly kind: string;
         readonly tool: string;
-        readonly envelopeSchema: {
-          readonly properties?: Record<string, unknown>;
-          readonly required?: readonly string[];
-        };
+        readonly schema: string;
       }[];
     };
     const names = catalog.operations.map((operation) => operation.name);
@@ -346,12 +344,41 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     );
     assert.equal(taskCreate?.kind, "command");
     assert.equal(taskCreate?.tool, "constellation.command.v1");
+    // R14.2 evidence: the whole catalog is 342 KB for an operate grant and a
+    // real host truncated it, so the index points at each operation's schema
+    // and a host reads only what it needs.
+    assert.equal(
+      taskCreate?.schema,
+      "constellation://v1/operations/task.create",
+    );
+    const single = await client.readResource({
+      uri: "constellation://v1/operations/task.create",
+    });
+    const singleContent = single.contents[0];
+    const singleText =
+      singleContent !== undefined && "text" in singleContent
+        ? singleContent.text
+        : undefined;
+    assert.ok(typeof singleText === "string");
+    const operation = JSON.parse(singleText) as {
+      readonly name: string;
+      readonly envelopeSchema: {
+        readonly properties?: Record<string, unknown>;
+      };
+    };
+    assert.equal(operation.name, "task.create");
     assert.ok(
-      taskCreate !== undefined &&
-        taskCreate.envelopeSchema.properties !== undefined &&
-        "payload" in taskCreate.envelopeSchema.properties &&
-        "expectedVersions" in taskCreate.envelopeSchema.properties,
+      operation.envelopeSchema.properties !== undefined &&
+        "payload" in operation.envelopeSchema.properties &&
+        "expectedVersions" in operation.envelopeSchema.properties,
       "the envelope schema is the full strict contract shape",
+    );
+    // An operation outside the grant reads the same as one that does not
+    // exist: the catalog must not confirm what it will not authorize.
+    await assert.rejects(
+      client.readResource({
+        uri: "constellation://v1/operations/workspace.manageAccess",
+      }),
     );
     const taskList = catalog.operations.find(
       (operation) => operation.name === "task.list",

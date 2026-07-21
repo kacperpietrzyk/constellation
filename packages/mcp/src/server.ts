@@ -24,7 +24,9 @@ import {
 
 import {
   MCP_OPERATIONS_RESOURCE_URI,
+  MCP_OPERATION_RESOURCE_TEMPLATE,
   buildOperationCatalog,
+  buildOperationIndex,
 } from "./catalog.js";
 import {
   HostRunMetadataSchema,
@@ -378,6 +380,13 @@ export const createConstellationMcpServer = (
   server.setRequestHandler(ListResourceTemplatesRequestSchema, () => ({
     resourceTemplates: [
       {
+        uriTemplate: MCP_OPERATION_RESOURCE_TEMPLATE,
+        name: "constellation-operation-v1",
+        title: "One authorized operation with its full envelope schema",
+        description:
+          "Read one operation's complete strict envelope JSON Schema by name, as listed in constellation://v1/operations. Read these individually: the whole catalog is large enough that hosts truncate it.",
+      },
+      {
         uriTemplate: MCP_PAYLOAD_RESOURCE_TEMPLATE,
         name: "constellation-capture-payload-v1",
         title: "Authorized Constellation Capture payload",
@@ -408,8 +417,44 @@ export const createConstellationMcpServer = (
             uri: request.params.uri,
             mimeType: "application/json",
             text: JSON.stringify(
-              buildOperationCatalog(scope.data.result.grant.capabilityScope),
+              buildOperationIndex(scope.data.result.grant.capabilityScope),
             ),
+          },
+        ],
+      };
+    }
+    if (request.params.uri.startsWith(`${MCP_OPERATIONS_RESOURCE_URI}/`)) {
+      const name = decodeURIComponent(
+        request.params.uri.slice(MCP_OPERATIONS_RESOURCE_URI.length + 1),
+      );
+      const response = await port.invoke({
+        contractVersion: MCP_CONTRACT_VERSION,
+        requestId: randomUUID(),
+        kind: "capabilities",
+      });
+      const scope = z
+        .object({
+          result: z.object({
+            grant: z.object({ capabilityScope: z.array(z.string()) }),
+          }),
+        })
+        .safeParse(response);
+      if (response.outcome !== "success" || !scope.success)
+        throw new Error("Constellation operations catalog is unavailable.");
+      const operation = buildOperationCatalog(
+        scope.data.result.grant.capabilityScope,
+      ).operations.find((candidate) => candidate.name === name);
+      // An operation outside the grant reads the same as one that does not
+      // exist: a catalog must not confirm the existence of what it will not
+      // authorize.
+      if (operation === undefined)
+        throw new Error("Constellation operation is unavailable.");
+      return {
+        contents: [
+          {
+            uri: request.params.uri,
+            mimeType: "application/json",
+            text: JSON.stringify(operation),
           },
         ],
       };
