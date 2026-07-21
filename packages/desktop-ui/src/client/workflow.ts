@@ -61,6 +61,9 @@ export type MentionCandidatesProjection =
   Projection<"comment.mentionCandidates">;
 export type AttentionInboxProjection = Projection<"attention.inbox">;
 export type DocumentListProjection = Projection<"document.list">;
+export type DocumentLinkCandidatesProjection =
+  Projection<"document.linkCandidates">;
+export type DocumentBacklinksProjection = Projection<"document.backlinks">;
 export type KnowledgeListProjection = Projection<"knowledge.list">;
 export type KnowledgeSourceRecord = KnowledgeListProjection["sources"][number];
 export type KnowledgeDocumentContextProjection =
@@ -692,6 +695,47 @@ export const loadKnowledgeDocumentContext = async (
       },
     ),
     "knowledge.documentContext",
+  );
+
+export const loadDocumentLinkCandidates = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  spaceId: SpaceId,
+  text = "",
+  targets?: readonly {
+    readonly targetKind:
+      "task" | "project" | "person" | "organization" | "meeting";
+    readonly targetId: string;
+  }[],
+): Promise<DocumentLinkCandidatesProjection> =>
+  queryProjection(
+    client,
+    queryEnvelope("document.linkCandidates", snapshot.bootstrap.workspace.id, {
+      spaceId,
+      text,
+      ...(targets === undefined ? {} : { targets }),
+      limit: targets === undefined ? 20 : 100,
+    }),
+    "document.linkCandidates",
+  );
+
+export const loadDocumentBacklinks = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  target: {
+    readonly targetKind:
+      "task" | "project" | "person" | "organization" | "meeting";
+    readonly targetId: string;
+  },
+): Promise<DocumentBacklinksProjection> =>
+  queryProjection(
+    client,
+    queryEnvelope(
+      "document.backlinks",
+      snapshot.bootstrap.workspace.id,
+      target,
+    ),
+    "document.backlinks",
   );
 
 /**

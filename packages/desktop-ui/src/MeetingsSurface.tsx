@@ -107,12 +107,16 @@ const capabilityCopy = (surface: MeetingLoopSurface) => {
 
 export const MeetingsSurface = ({
   client,
+  activeMeetingId,
   inspectorHost,
   onInspectorOpen,
+  onMeetingSelected,
 }: {
   readonly client: ConstellationRendererClient;
+  readonly activeMeetingId?: string | undefined;
   readonly inspectorHost: HTMLElement | null;
   readonly onInspectorOpen: () => void;
+  readonly onMeetingSelected: (meetingId: string) => void;
 }) => {
   const [state, setState] = useState<MeetingState>({ kind: "loading" });
   const [preview, setPreview] = useState<CalendarWritePreview>();
@@ -231,6 +235,7 @@ export const MeetingsSurface = ({
     if (meeting === undefined) return;
     loadRoutingOptions(meeting);
     setSelectedMeetingId(meeting.id);
+    onMeetingSelected(meeting.id);
     setVisibleTranscriptMeetingId(undefined);
     setNewItemMeetingId(undefined);
     onInspectorOpen();
@@ -291,6 +296,22 @@ export const MeetingsSurface = ({
       ]),
     );
   }, [state]);
+  useEffect(() => {
+    if (
+      activeMeetingId === undefined ||
+      selectedMeetingId === activeMeetingId ||
+      state.kind !== "ready"
+    )
+      return;
+    const meeting = state.data.completed.find(
+      (candidate) => candidate.id === activeMeetingId,
+    );
+    if (meeting === undefined) return;
+    loadRoutingOptions(meeting);
+    setSelectedMeetingId(meeting.id);
+    onMeetingSelected(meeting.id);
+    onInspectorOpen();
+  }, [activeMeetingId, selectedMeetingId, state]);
 
   if (state.kind === "loading") {
     return (

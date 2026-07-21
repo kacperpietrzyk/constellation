@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ProjectIdSchema, TaskIdSchema } from "@constellation/contracts";
+import {
+  DocumentIdSchema,
+  ProjectIdSchema,
+  TaskIdSchema,
+} from "@constellation/contracts";
 
 import {
   activateShellContext,
@@ -10,6 +14,7 @@ import {
   createShellNavigation,
   destinationShortcutIndex,
   destinationContext,
+  documentContext,
   moveShellHistory,
   navigateShellContext,
   openShellContext,
@@ -23,6 +28,9 @@ import {
 
 const taskId = TaskIdSchema.parse("00000000-0000-4000-8000-000000000001");
 const projectId = ProjectIdSchema.parse("00000000-0000-4000-8000-000000000002");
+const documentId = DocumentIdSchema.parse(
+  "00000000-0000-4000-8000-000000000003",
+);
 
 describe("stable shell navigation", () => {
   it("maps every visible destination shortcut, including Meetings and Documents", () => {
@@ -36,7 +44,13 @@ describe("stable shell navigation", () => {
     let state = createShellNavigation(destinationContext("cockpit", "Tydzień"));
     state = openShellContext(state, taskContext(taskId, "Zadanie Alpha"));
     state = openShellContext(state, projectContext(projectId, "Projekt Alpha"));
+    state = openShellContext(
+      state,
+      documentContext(documentId, "Dokument Alpha"),
+    );
 
+    state = moveShellHistory(state, -1);
+    assert.equal(activeShellContext(state).projectId, projectId);
     state = moveShellHistory(state, -1);
     assert.equal(activeShellContext(state).taskId, taskId);
     state = moveShellHistory(state, -1);
@@ -191,6 +205,7 @@ describe("stable shell navigation", () => {
       {
         taskIds: new Set(),
         projectIds: new Set(),
+        documentIds: new Set(),
       },
       cockpit,
     );

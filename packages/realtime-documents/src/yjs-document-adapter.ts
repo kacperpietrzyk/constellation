@@ -7,6 +7,12 @@ export const RICH_DOCUMENT_FRAGMENT_ROOT = "rich-content";
 export const DOCUMENT_FORMAT_METADATA_ROOT = "constellation-document";
 
 export type DocumentContentFormat = "plain-v1" | "rich-v1";
+export type DocumentEntityReferenceKind =
+  "task" | "project" | "person" | "organization" | "meeting";
+export interface DocumentEntityReference {
+  readonly targetKind: DocumentEntityReferenceKind;
+  readonly targetId: string;
+}
 
 export type DocumentChangeOrigin =
   | { readonly kind: "human"; readonly principalId: string }
@@ -28,6 +34,7 @@ export interface RealtimeDocumentAdapter {
   readonly engine: "yjs-13";
   getFormat(): DocumentContentFormat;
   getText(): string;
+  getEntityReferences(): readonly DocumentEntityReference[];
   migrateToRich(legacyDigest: string, origin: DocumentChangeOrigin): boolean;
   replaceText(text: string, origin: DocumentChangeOrigin): void;
   applyUpdate(update: Uint8Array): void;
@@ -125,6 +132,61 @@ export const documentPlainText = (document: Y.Doc): string => {
     )
     .map(richNodeText)
     .join("\n");
+};
+
+const entityReferenceKinds = new Set<DocumentEntityReferenceKind>([
+  "task",
+  "project",
+  "person",
+  "organization",
+  "meeting",
+]);
+
+export const documentEntityReferences = (
+  document: Y.Doc,
+): readonly DocumentEntityReference[] => {
+  if (formatOf(document) !== "rich-v1") return [];
+  const references = new Map<string, DocumentEntityReference>();
+  const inspect = (node: Y.XmlElement | Y.XmlText): void => {
+    if (node instanceof Y.XmlText) return;
+    if (node.nodeName === "entityReference") {
+      const targetKind = node.getAttribute("targetKind");
+      const targetId = node.getAttribute("targetId");
+      if (
+        typeof targetKind !== "string" ||
+        !entityReferenceKinds.has(targetKind as DocumentEntityReferenceKind) ||
+        typeof targetId !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+          targetId,
+        )
+      ) {
+        throw new Error("DOCUMENT_ENTITY_REFERENCE_INVALID");
+      }
+      const reference = {
+        targetKind: targetKind as DocumentEntityReferenceKind,
+        targetId,
+      };
+      references.set(
+        `${reference.targetKind}:${reference.targetId}`,
+        reference,
+      );
+    }
+    for (const child of node.toArray()) {
+      if (child instanceof Y.XmlElement || child instanceof Y.XmlText)
+        inspect(child);
+    }
+  };
+  for (const node of document
+    .getXmlFragment(RICH_DOCUMENT_FRAGMENT_ROOT)
+    .toArray()) {
+    if (node instanceof Y.XmlElement || node instanceof Y.XmlText)
+      inspect(node);
+  }
+  return [...references.values()].sort(
+    (left, right) =>
+      left.targetKind.localeCompare(right.targetKind) ||
+      left.targetId.localeCompare(right.targetId),
+  );
 };
 
 export const migrateDocumentToRich = (
@@ -226,6 +288,10 @@ export class YjsRealtimeDocumentAdapter implements RealtimeDocumentAdapter {
 
   public getText(): string {
     return documentPlainText(this.document);
+  }
+
+  public getEntityReferences(): readonly DocumentEntityReference[] {
+    return documentEntityReferences(this.document);
   }
 
   public migrateToRich(

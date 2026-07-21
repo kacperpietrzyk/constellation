@@ -360,6 +360,16 @@ client from flattening rich structure. Local schema v20 closes the equivalent
 downgrade window for local-only workspaces; recovery across that boundary uses
 the pre-upgrade backup.
 
+Rich entity references remain part of that Yjs body and store only a closed
+target kind plus stable target ID. Electron main validates and projects the
+current reference set into local schema v21 whenever it opens, persists, or
+restores a document. `document.linkCandidates` returns only same-Space visible
+Tasks, Projects, People, Organizations, and Meetings, while
+`document.backlinks` independently authorizes the target and every source
+document. Labels are resolved from current records at query time, so renames do
+not leave stale copies and removed or hidden targets fail closed without a
+count leak. UI and MCP use these same two queries.
+
 Knowledge Sources remain separate versioned records. A Native Document declares
 whether it is a Note, Document, or Deliverable and keeps an explicit current
 evidence set. A named version freezes one realtime revision, its content

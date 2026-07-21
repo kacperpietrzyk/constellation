@@ -54,6 +54,7 @@ import type {
   UndoDescriptor,
   RecordComment,
   AttentionSignal,
+  DocumentEntityLink,
   NativeDocument,
   AgentAccessGrant,
   AgentRun,
@@ -234,6 +235,11 @@ export interface ApplicationWave2ReadView extends ApplicationReadView {
     workspaceId: WorkspaceId,
     spaceId: SpaceId,
   ): readonly NativeDocument[];
+  listDocumentEntityLinks(
+    workspaceId: WorkspaceId,
+    targetKind?: DocumentEntityLink["targetKind"],
+    targetId?: string,
+  ): readonly DocumentEntityLink[];
   getKnowledgeSource(id: KnowledgeSourceId): KnowledgeSource | undefined;
   listKnowledgeSources(
     workspaceId: WorkspaceId,
@@ -365,6 +371,7 @@ export const isApplicationWave2ReadView = (
   "listProjects" in view &&
   "getDocument" in view &&
   "listDocuments" in view &&
+  "listDocumentEntityLinks" in view &&
   "getKnowledgeSource" in view &&
   "listKnowledgeSources" in view &&
   "getNamedDocumentVersion" in view &&

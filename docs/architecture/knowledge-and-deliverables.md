@@ -39,6 +39,13 @@ search includes sources and Note, Document, and Deliverable titles without
 adding generated answers. Body indexing remains a subsequent
 connected-document slice.
 
+`document.linkCandidates` and `document.backlinks` are the shared read boundary
+for typed inline references. Candidate lookup is bounded to the document's
+authorized Space. Backlink lookup authorizes both the current target and each
+source document independently. A rich reference persists only its closed kind
+and stable ID; its current label is resolved from the typed record rather than
+copied into document content.
+
 Every mutation requires its declared capability, current Workspace and Space
 access, exact expected versions, idempotency, attribution, audit, and one unit
 of work. Source updates, evidence changes, and named-version creation produce
@@ -75,8 +82,8 @@ to flatten newer structure.
 ## Current limits
 
 This slice does not yet implement approvals, external Artifact transfer,
-automatic citation extraction, source freshness schedules, inline typed-record
-links and backlinks, document-body search, structured remote MCP editing, or
-generic document attachments. Those outcomes must extend the same typed
+automatic citation extraction, source freshness schedules, document-body
+search, structured remote MCP editing, or generic document attachments. Those
+outcomes must extend the same typed
 records, authorization boundary, and deterministic query model rather than add
 a second document system or an embedded reasoning layer.

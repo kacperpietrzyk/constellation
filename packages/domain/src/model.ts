@@ -475,6 +475,24 @@ export interface NativeDocument {
   readonly updatedAt: string;
 }
 
+export type DocumentEntityTargetKind =
+  "task" | "project" | "person" | "organization" | "meeting";
+
+/**
+ * A local, rebuildable projection of one stable entity reference stored in a
+ * rich Yjs document. Labels are deliberately absent: every read resolves the
+ * current authorized target instead of persisting a title that can become
+ * stale or leak after revocation.
+ */
+export interface DocumentEntityLink {
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly documentId: DocumentId;
+  readonly targetKind: DocumentEntityTargetKind;
+  readonly targetId: string;
+  readonly updatedAt: string;
+}
+
 export interface KnowledgeSource {
   readonly id: KnowledgeSourceId;
   readonly workspaceId: WorkspaceId;

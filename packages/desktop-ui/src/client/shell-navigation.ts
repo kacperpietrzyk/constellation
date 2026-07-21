@@ -1,4 +1,4 @@
-import type { ProjectId, TaskId } from "@constellation/contracts";
+import type { DocumentId, ProjectId, TaskId } from "@constellation/contracts";
 
 import type { SurfaceId } from "./wave2-fixtures.js";
 
@@ -11,6 +11,7 @@ export interface ShellContext {
   readonly surface: SurfaceId;
   readonly taskId?: TaskId;
   readonly projectId?: ProjectId;
+  readonly documentId?: DocumentId;
 }
 
 // Wpisy historii pochodzące z nawigacji w obrębie jednej karty niosą marker
@@ -59,11 +60,18 @@ const isRestorableShellContext = (value: unknown): value is ShellContext => {
     return false;
   if (context.projectId !== undefined && typeof context.projectId !== "string")
     return false;
+  if (
+    context.documentId !== undefined &&
+    typeof context.documentId !== "string"
+  )
+    return false;
   // Prefiks klucza musi być spójny z obecnością identyfikatora — inaczej
   // wpis nigdy nie zostałby przycięty przez pruneInaccessibleShellContexts.
   if (context.key.startsWith("task:") && context.taskId === undefined)
     return false;
   if (context.key.startsWith("project:") && context.projectId === undefined)
+    return false;
+  if (context.key.startsWith("document:") && context.documentId === undefined)
     return false;
   return true;
 };
@@ -124,13 +132,16 @@ export const pruneInaccessibleShellContexts = (
   access: {
     readonly taskIds: ReadonlySet<TaskId>;
     readonly projectIds: ReadonlySet<ProjectId>;
+    readonly documentIds: ReadonlySet<DocumentId>;
   },
   fallback: ShellContext,
 ): ShellNavigationState => {
   const accessible = (context: ShellContext): boolean =>
     (context.taskId === undefined || access.taskIds.has(context.taskId)) &&
     (context.projectId === undefined ||
-      access.projectIds.has(context.projectId));
+      access.projectIds.has(context.projectId)) &&
+    (context.documentId === undefined ||
+      access.documentIds.has(context.documentId));
   const tabs = state.tabs.filter(accessible);
   if (tabs.length === 0) return createShellNavigation(fallback);
   const activeKey = tabs.some((tab) => tab.key === state.activeKey)
@@ -177,6 +188,16 @@ export const projectContext = (
   label,
   surface: "projects",
   projectId,
+});
+
+export const documentContext = (
+  documentId: DocumentId,
+  label: string,
+): ShellContext => ({
+  key: `document:${documentId}`,
+  label,
+  surface: "documents",
+  documentId,
 });
 
 export const createShellNavigation = (

@@ -82,6 +82,7 @@ import type {
   KnowledgeSource,
   NamedDocumentVersion,
   StrategicRecord,
+  DocumentEntityLink,
 } from "@constellation/domain";
 
 import type {
@@ -90,7 +91,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-export const LOCAL_STORE_SCHEMA_VERSION = 20;
+export const LOCAL_STORE_SCHEMA_VERSION = 21;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -110,6 +111,7 @@ const COORDINATED_PROJECTION_TABLES = [
   "events",
   "attention_signals",
   "comments",
+  "document_entity_links",
   "document_pending_updates",
   "document_revisions",
   "document_collaboration_state",
@@ -714,6 +716,20 @@ const schemaV19 = `
 // database and writing the legacy Y.Text root.
 const schemaV20 = `SELECT 1;`;
 
+const schemaV21 = `
+  CREATE TABLE document_entity_links (
+    workspace_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    target_kind TEXT NOT NULL CHECK (target_kind IN ('task', 'project', 'person', 'organization', 'meeting')),
+    target_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (document_id, target_kind, target_id)
+  ) STRICT;
+  CREATE INDEX document_entity_links_target
+    ON document_entity_links(workspace_id, target_kind, target_id, document_id);
+`;
+
 const localStoreMigrations = [
   schemaV1,
   schemaV2,
@@ -735,6 +751,7 @@ const localStoreMigrations = [
   schemaV18,
   schemaV19,
   schemaV20,
+  schemaV21,
 ] as const;
 
 export interface LocalCoordinationState {
@@ -1562,6 +1579,51 @@ class SqliteReadView implements ApplicationWave2ReadView {
           spaceId,
         });
       });
+  }
+
+  public listDocumentEntityLinks(
+    workspaceId: WorkspaceId,
+    targetKind?: DocumentEntityLink["targetKind"],
+    targetId?: string,
+  ): readonly DocumentEntityLink[] {
+    const clauses = ["workspace_id = ?"];
+    const parameters: SqliteValue[] = [workspaceId];
+    if (targetKind !== undefined) {
+      clauses.push("target_kind = ?");
+      parameters.push(targetKind);
+    }
+    if (targetId !== undefined) {
+      clauses.push("target_id = ?");
+      parameters.push(targetId);
+    }
+    return this.database
+      .prepare(
+        `SELECT space_id, document_id, target_kind, target_id, updated_at
+         FROM document_entity_links
+         WHERE ${clauses.join(" AND ")}
+         ORDER BY updated_at DESC, document_id`,
+      )
+      .all(...parameters)
+      .map((row) => ({
+        workspaceId,
+        spaceId: stringValue(
+          row,
+          "space_id",
+          "document entity link",
+        ) as SpaceId,
+        documentId: stringValue(
+          row,
+          "document_id",
+          "document entity link",
+        ) as DocumentId,
+        targetKind: stringValue(
+          row,
+          "target_kind",
+          "document entity link",
+        ) as DocumentEntityLink["targetKind"],
+        targetId: stringValue(row, "target_id", "document entity link"),
+        updatedAt: stringValue(row, "updated_at", "document entity link"),
+      }));
   }
 
   public getKnowledgeSource(
@@ -3293,6 +3355,41 @@ export class SqliteApplicationStore
     });
   }
 
+  public replaceDocumentEntityLinks(input: {
+    readonly documentId: DocumentId;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+    readonly links: readonly Pick<
+      DocumentEntityLink,
+      "targetKind" | "targetId"
+    >[];
+    readonly updatedAt: string;
+  }): void {
+    this.transact(() => {
+      this.requireDocumentScope(
+        input.documentId,
+        input.workspaceId,
+        input.spaceId,
+      );
+      this.database
+        .prepare("DELETE FROM document_entity_links WHERE document_id = ?")
+        .run(input.documentId);
+      const insert = this.database.prepare(
+        "INSERT INTO document_entity_links (workspace_id, space_id, document_id, target_kind, target_id, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+      );
+      for (const link of input.links) {
+        insert.run(
+          input.workspaceId,
+          input.spaceId,
+          input.documentId,
+          link.targetKind,
+          link.targetId,
+          input.updatedAt,
+        );
+      }
+    });
+  }
+
   public listPendingDocumentUpdates(input: {
     readonly documentId: DocumentId;
     readonly workspaceId: WorkspaceId;
@@ -3443,6 +3540,9 @@ export class SqliteApplicationStore
 
   public purgeDocumentCollaboration(documentId: DocumentId): void {
     this.transact(() => {
+      this.database
+        .prepare("DELETE FROM document_entity_links WHERE document_id = ?")
+        .run(documentId);
       this.database
         .prepare("DELETE FROM document_pending_updates WHERE document_id = ?")
         .run(documentId);

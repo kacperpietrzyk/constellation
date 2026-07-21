@@ -152,6 +152,11 @@ export class DocumentCollaborationBridge {
         if (!formats.includes(adapter.getFormat())) {
           throw new Error("DOCUMENT_SCHEMA_UPGRADE_REQUIRED");
         }
+        this.input.store.replaceDocumentEntityLinks({
+          ...scope,
+          links: adapter.getEntityReferences(),
+          updatedAt: this.now(),
+        });
       } finally {
         adapter.destroy();
       }
@@ -224,10 +229,14 @@ export class DocumentCollaborationBridge {
     const state = boundedBytes(raw.state);
     const update = boundedBytes(raw.update);
     const incoming = new YjsRealtimeDocumentAdapter(state);
+    let entityReferences: ReturnType<
+      YjsRealtimeDocumentAdapter["getEntityReferences"]
+    > = [];
     try {
       if (incoming.getText().length > MAX_DOCUMENT_TEXT_LENGTH) {
         throw new Error("DOCUMENT_TEXT_SIZE_INVALID");
       }
+      entityReferences = incoming.getEntityReferences();
       const stored = this.input.store.loadDocumentCollaborationState(scope);
       if (stored !== undefined) {
         const current = new YjsRealtimeDocumentAdapter(stored.state);
@@ -252,6 +261,11 @@ export class DocumentCollaborationBridge {
         state,
         updatedAt,
       });
+      this.input.store.replaceDocumentEntityLinks({
+        ...scope,
+        links: entityReferences,
+        updatedAt,
+      });
       return;
     }
     this.input.store.commitDocumentUpdate({
@@ -260,6 +274,11 @@ export class DocumentCollaborationBridge {
       state,
       update,
       createdAt: updatedAt,
+    });
+    this.input.store.replaceDocumentEntityLinks({
+      ...scope,
+      links: entityReferences,
+      updatedAt,
     });
   }
 
@@ -393,6 +412,11 @@ export class DocumentCollaborationBridge {
         this.input.store.storeDocumentCollaborationState({
           ...scope,
           state: checkpoint.state,
+          updatedAt: this.now(),
+        });
+        this.input.store.replaceDocumentEntityLinks({
+          ...scope,
+          links: current.getEntityReferences(),
           updatedAt: this.now(),
         });
         this.input.store.storeDocumentRevision({
