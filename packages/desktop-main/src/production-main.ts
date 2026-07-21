@@ -1369,12 +1369,23 @@ const startProductionDesktop = async (): Promise<void> => {
       typeof value !== "object" ||
       Array.isArray(value) ||
       (value as { outcome?: unknown }).outcome !== "success"
-    )
+    ) {
+      // A refused capability scope is a policy answer the operator can act on,
+      // so it is reported as itself instead of as "unavailable" (ADR-046 §5).
+      const refused =
+        result.status === 403 &&
+        (value as { diagnosticCode?: unknown })?.diagnosticCode ===
+          "grant.capability_not_delegable"
+          ? (value as { capabilities?: unknown }).capabilities
+          : undefined;
       throw new Error(
-        result.status === 409
-          ? "Remote MCP policy changed. Refresh and retry."
-          : "Remote MCP management is unavailable.",
+        Array.isArray(refused) && refused.length > 0
+          ? `Remote MCP refused these non-delegable capabilities: ${refused.join(", ")}.`
+          : result.status === 409
+            ? "Remote MCP policy changed. Refresh and retry."
+            : "Remote MCP management is unavailable.",
       );
+    }
     return value as Record<string, unknown>;
   };
   const remoteMcpCredentialCustody = new RemoteMcpCredentialCustody(stateRoot);

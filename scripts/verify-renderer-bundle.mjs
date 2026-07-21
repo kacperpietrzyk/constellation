@@ -47,10 +47,15 @@ import path from "node:path";
 // potwierdzenie plus wyjasnienie blokady, gdy zadanie ma podzadania.
 // 2026-07-21 (R13.5 slice 2): dwuhopowe warunki relacyjne w kontrakcie
 // task.list (project.area/initiative/organization) rosną wspólny schemat.
+// 2026-07-21 (R14.3 slice 1): entry i totalJavaScript po jednej tabeli
+// delegacji uprawnien w kontraktach (ADR-046) — renderer wysyla zakres
+// presetu przy tworzeniu dostepu agenta, wiec tabela jedzie do bundla;
+// w zamian znika recznie utrzymywana lista, ktora odmawiala „pelnemu
+// dostepowi" nawet task.create.
 const limits = {
-  entryBytes: 536_000,
+  entryBytes: 538_000,
   entryGzipBytes: 143_000,
-  totalJavaScriptBytes: 829_000,
+  totalJavaScriptBytes: 833_000,
   stylesheetBytes: 177_000,
 };
 

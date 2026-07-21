@@ -10,6 +10,7 @@ import {
   DeviceIdSchema,
   ExecutionContextSchema,
   QueryIdSchema,
+  capabilitiesForAgentGrantPreset,
   SpaceIdSchema,
   WorkspaceIdSchema,
   type ExecutionContext,
@@ -609,6 +610,20 @@ describe("remote MCP Hub gateway", () => {
       },
     });
     assert.equal(administrative.outcome, "rejected");
+    // Refused for policy, and it says so: an unexplained rejection is
+    // indistinguishable from a bad device credential (ADR-046 §5).
+    assert.deepEqual(
+      administrative.outcome === "rejected"
+        ? {
+            diagnosticCode: administrative.diagnosticCode,
+            capabilities: administrative.capabilities,
+          }
+        : undefined,
+      {
+        diagnosticCode: "grant.capability_not_delegable",
+        capabilities: ["workspace.manageAccess"],
+      },
+    );
 
     const created = await createRemoteGrant(remote, deviceCredential);
     const limited = new HubRemoteMcpService(repository, {
@@ -632,6 +647,50 @@ describe("remote MCP Hub gateway", () => {
       diagnosticCode: "mcp.rate_limited",
       retryAfterMs: 1_000,
     });
+  });
+
+  it("accepts every capability preset the product itself offers", async () => {
+    const { remote, deviceCredential } = await setup();
+    // Before ADR-046 this failed for all four presets — including `observe` —
+    // because every preset carries reads (`workspace.bootstrapContext`,
+    // `workspace.access`, `knowledge.list`, `knowledge.documentContext`) that
+    // the hand-maintained allow-list had never gained. The desktop reported
+    // "Remote MCP management is unavailable", so R6's own surface could not
+    // create a remote grant at all.
+    for (const preset of [
+      "observe",
+      "propose",
+      "operate",
+      "full_access",
+    ] as const) {
+      const capabilityScope = [...capabilitiesForAgentGrantPreset(preset)];
+      const result = await remote.createGrant(deviceCredential, {
+        protocolVersion: 1,
+        workspaceId: ids.workspace,
+        deviceId: ids.device,
+        displayName: `Preset ${preset}`,
+        preset,
+        capabilityScope,
+        spaces: [
+          {
+            spaceId: ids.space,
+            access: preset === "observe" ? "view" : "edit",
+          },
+        ],
+        federationScope: {
+          crossWorkspaceRead: false,
+          derivedResultWrite: false,
+          sourceMaterialization: false,
+        },
+      });
+      assert.equal(result.outcome, "success", `${preset} grant was refused`);
+      if (result.outcome !== "success") return;
+      assert.deepEqual(
+        [...result.grant.capabilityScope].sort(),
+        [...capabilityScope].sort(),
+        `${preset} grant lost capabilities on the way through the Hub`,
+      );
+    }
   });
 
   it("fails closed for corrupt control state and reports repository outages as retryable", async () => {
