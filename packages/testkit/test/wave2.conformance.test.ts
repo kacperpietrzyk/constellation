@@ -116,6 +116,8 @@ const context = (): ExecutionContext =>
       "record.unrelate",
       "project.close",
       "task.list",
+      "savedView.create",
+      "work.overview",
       "search.global",
       "cockpit.week",
       "activity.meaningful",
@@ -3039,5 +3041,127 @@ describe("Wave 2 reference semantics", () => {
     // two-hop. No host-side N+1: one query crossed Task→Project→Organization.
     assert.equal(ids2.includes(taskVendor), true);
     assert.equal(ids2.includes(taskOther), false);
+
+    // ADR-045. The same conditions on a *saved view* must reach the same
+    // answer, evaluated by the same evaluator, or a relation filter means one
+    // thing to task.list and another to the view that carries it.
+    const overviewViews = () => {
+      const result = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "work.overview",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace },
+      });
+      if (
+        result.kind !== "query_result" ||
+        result.result.outcome !== "success" ||
+        result.result.projection.kind !== "work.overview"
+      )
+        assert.fail("Expected a work overview");
+      return result.result.projection.savedViews;
+    };
+
+    const relationViewId = "20000000-0000-4000-8000-0000000000c1";
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("view-relation"),
+          commandName: "savedView.create",
+          payload: {
+            savedViewId: relationViewId,
+            spaceId: ids.rootSpace,
+            name: "Praca u aktywnych klientów",
+            filters: {
+              relationConditions: [
+                {
+                  path: "project.organization",
+                  predicate: { field: "relationshipState", equals: "active" },
+                },
+              ],
+            },
+            sort: "updated_desc",
+          },
+        } as never),
+      ).outcome,
+      "success",
+    );
+    const relationView = overviewViews().find((v) => v.id === relationViewId);
+    assert.deepEqual(
+      relationView?.relationTaskIds,
+      [taskVendor],
+      "a saved view's relation condition is evaluated kernel-side to the same task set task.list returns",
+    );
+
+    // The R12.4 keys were accepted, stored, echoed back, and read by nobody —
+    // a relation filter that silently did nothing, reachable from MCP. They are
+    // now translated into the equivalent condition, so the same request that
+    // used to constrain nothing constrains correctly.
+    const legacyViewId = "20000000-0000-4000-8000-0000000000c2";
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("view-legacy"),
+          commandName: "savedView.create",
+          payload: {
+            savedViewId: legacyViewId,
+            spaceId: ids.rootSpace,
+            name: "Stary filtr po projekcie",
+            filters: { projectIds: [vendorProject] },
+            sort: "updated_desc",
+          },
+        } as never),
+      ).outcome,
+      "success",
+    );
+    const legacyView = overviewViews().find((v) => v.id === legacyViewId);
+    assert.deepEqual(
+      legacyView?.relationTaskIds,
+      [taskVendor],
+      "a legacy projectIds filter now constrains instead of being silently ignored",
+    );
+    assert.deepEqual(
+      legacyView?.filters.relationConditions,
+      [{ path: "project", predicate: { field: "id", in: [vendorProject] } }],
+      "the legacy key is normalized into the shared condition vocabulary on write",
+    );
+
+    // A view that constrains by relation but matches nothing must be
+    // distinguishable from a view that does not constrain by relation at all.
+    const emptyViewId = "20000000-0000-4000-8000-0000000000c3";
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("view-empty"),
+          commandName: "savedView.create",
+          payload: {
+            savedViewId: emptyViewId,
+            spaceId: ids.rootSpace,
+            name: "Klienci nieaktywni",
+            filters: {
+              relationConditions: [
+                {
+                  path: "project.organization",
+                  predicate: { field: "relationshipState", equals: "prospect" },
+                },
+              ],
+            },
+            sort: "updated_desc",
+          },
+        } as never),
+      ).outcome,
+      "success",
+    );
+    assert.deepEqual(
+      overviewViews().find((v) => v.id === emptyViewId)?.relationTaskIds,
+      [],
+      "constrains by relation and matches nothing — an empty list, not an absent one",
+    );
+    assert.equal(
+      overviewViews().find((v) => v.id === relationViewId)?.relationTaskIds !==
+        undefined,
+      true,
+    );
   });
 });

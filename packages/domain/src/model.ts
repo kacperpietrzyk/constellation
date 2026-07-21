@@ -35,6 +35,7 @@ import type {
   NamedDocumentVersionId,
   StrategicRecordId,
   ImportedMeeting,
+  RelationCondition,
 } from "@constellation/contracts";
 
 export interface Workspace {
@@ -640,6 +641,10 @@ export type StrategicRecord =
         readonly operationalStates?: readonly (
           "actionable" | "waiting" | "blocked"
         )[];
+        readonly relationConditions?: readonly RelationCondition[];
+        // Deprecated (ADR-045): accepted and translated, never written. Kept on
+        // the type because records written before the translation still carry
+        // them and are never revalidated on load.
         readonly projectIds?: readonly ProjectId[];
         readonly areaIds?: readonly StrategicRecordId[];
         readonly initiativeIds?: readonly StrategicRecordId[];

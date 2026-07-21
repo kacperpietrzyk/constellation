@@ -775,6 +775,106 @@ export const WorkLinkRemoveCommandSchema = CommandMetadataSchema.extend({
   payload: z.object({ linkId: StrategicRecordIdSchema }).strict(),
 }).strict();
 
+// R13.5 / ADR-044 — typed relation-path conditions: a closed vocabulary rather
+// than a query language. Each names a bounded path from the Task and a
+// predicate on the record at its end; the kernel evaluates them, and an unknown
+// path or field is a parse-time rejection, never a silently-dropped filter.
+//
+// This lives beside the saved-view vocabulary, and is imported by `task.list`
+// rather than restated there, because a saved view and a task query must mean
+// exactly the same thing by a relation condition — ADR-045. It sits in the
+// command module only because `query.ts` imports from here and not the reverse.
+export const RelationConditionSchema = z.discriminatedUnion("path", [
+  z
+    .object({
+      path: z.literal("project"),
+      predicate: z.discriminatedUnion("field", [
+        z
+          .object({
+            field: z.literal("id"),
+            in: z.array(ProjectIdSchema).min(1).max(50),
+          })
+          .strict(),
+        z
+          .object({
+            field: z.literal("lifecycle"),
+            equals: z.enum(["active", "closed"]),
+          })
+          .strict(),
+      ]),
+    })
+    .strict(),
+  // Two-hop: Task→Project→Area via the project_serves_area work link.
+  z
+    .object({
+      path: z.literal("project.area"),
+      predicate: z.discriminatedUnion("field", [
+        z
+          .object({
+            field: z.literal("id"),
+            in: z.array(StrategicRecordIdSchema).min(1).max(50),
+          })
+          .strict(),
+        z
+          .object({
+            field: z.literal("state"),
+            equals: z.enum(["active", "archived"]),
+          })
+          .strict(),
+      ]),
+    })
+    .strict(),
+  // Two-hop: Task→Project→Initiative via project_advances_initiative.
+  z
+    .object({
+      path: z.literal("project.initiative"),
+      predicate: z.discriminatedUnion("field", [
+        z
+          .object({
+            field: z.literal("id"),
+            in: z.array(StrategicRecordIdSchema).min(1).max(50),
+          })
+          .strict(),
+        z
+          .object({
+            field: z.literal("state"),
+            equals: z.enum(["active", "closed"]),
+          })
+          .strict(),
+      ]),
+    })
+    .strict(),
+  // Two-hop: Task→Project→Organization via the opportunity bridge
+  // (opportunity.projectIds + opportunity.organizationId). The bridge is
+  // many-to-many, so a match is existential (ADR-044 §3).
+  z
+    .object({
+      path: z.literal("project.organization"),
+      predicate: z.discriminatedUnion("field", [
+        z
+          .object({
+            field: z.literal("id"),
+            in: z.array(StrategicRecordIdSchema).min(1).max(50),
+          })
+          .strict(),
+        z
+          .object({
+            field: z.literal("relationshipState"),
+            equals: z.enum(["prospect", "active", "inactive"]),
+          })
+          .strict(),
+      ]),
+    })
+    .strict(),
+]);
+
+export const RelationConditionsSchema = z
+  .array(RelationConditionSchema)
+  .min(1)
+  .max(10);
+
+export type RelationCondition = z.infer<typeof RelationConditionSchema>;
+
 // The one saved-view filter vocabulary. Every projection that can carry a
 // saved view reuses this schema rather than restating it: R13.3 added `fields`
 // and `groupBy` to the command and to the Work overview but not to the
@@ -793,6 +893,19 @@ export const SavedViewFiltersSchema = z
       .array(z.enum(["actionable", "waiting", "blocked"]))
       .max(3)
       .optional(),
+    // R13.5 / ADR-045 — relation filters on a saved view. Evaluated kernel-side
+    // by the same evaluator `task.list` uses, so a view means the same thing to
+    // the desktop and to an MCP operator.
+    relationConditions: RelationConditionsSchema.optional(),
+    // DEPRECATED, still accepted, never written. These three were accepted and
+    // persisted since R12.4 while no consumer read them — a relation filter
+    // that silently did nothing, which is exactly what the "Filtr po relacji"
+    // acceptance test forbids. They are now normalized into the equivalent
+    // `relationConditions` on write, and translated on read for records written
+    // before that. They are NOT removed from this schema: stored payloads are
+    // never validated on load (`parsePayload` is JSON.parse plus a cast), so
+    // dropping the keys would make an already-stored view fail to project —
+    // reintroducing the outage PR #95 fixed.
     projectIds: z.array(ProjectIdSchema).max(100).optional(),
     areaIds: z.array(StrategicRecordIdSchema).max(100).optional(),
     initiativeIds: z.array(StrategicRecordIdSchema).max(100).optional(),
