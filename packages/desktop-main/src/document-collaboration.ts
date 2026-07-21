@@ -7,12 +7,16 @@ import {
   SpaceIdSchema,
   type DeviceId,
   type DocumentId,
+  type SpaceId,
   type DocumentRevisionId,
   type PrincipalId,
   type WorkspaceId,
 } from "@constellation/contracts";
 import type { SqliteApplicationStore } from "@constellation/local-store";
-import { YjsRealtimeDocumentAdapter } from "@constellation/realtime-documents";
+import {
+  MAX_DOCUMENT_TEXT_LENGTH,
+  YjsRealtimeDocumentAdapter,
+} from "@constellation/realtime-documents";
 
 import type { HubConnection } from "./hub-connection-custody.js";
 
@@ -348,3 +352,110 @@ export class DocumentCollaborationBridge {
     });
   }
 }
+
+/**
+ * ADR-049. The agent-facing text port: the same adapter, the same persistence
+ * calls the renderer bridge makes, and the same size bound. Authorization is
+ * the caller's (the local MCP runtime); this only knows how document text is
+ * stored.
+ */
+export const createAgentDocumentTextPort = (input: {
+  readonly workspaceId: WorkspaceId;
+  readonly store: DocumentBridgeInput["store"];
+  readonly connection: DocumentBridgeInput["connection"];
+  readonly now?: () => string;
+}) => {
+  const now = input.now ?? (() => new Date().toISOString());
+  const scope = (documentId: DocumentId, spaceId: SpaceId) => ({
+    documentId,
+    workspaceId: input.workspaceId,
+    spaceId,
+  });
+  return {
+    read: (request: {
+      readonly documentId: DocumentId;
+      readonly spaceId: SpaceId;
+    }): string | undefined => {
+      const state = input.store.loadDocumentCollaborationState(
+        scope(request.documentId, request.spaceId),
+      )?.state;
+      if (state === undefined) return undefined;
+      const adapter = new YjsRealtimeDocumentAdapter(state);
+      try {
+        return adapter.getText();
+      } finally {
+        adapter.destroy();
+      }
+    },
+    replace: (request: {
+      readonly documentId: DocumentId;
+      readonly spaceId: SpaceId;
+      readonly text: string;
+      readonly principalId: string;
+      readonly runId: string;
+      readonly deviceId: DeviceId;
+    }):
+      | { readonly characters: number; readonly revisionId: DocumentRevisionId }
+      | undefined => {
+      if (request.text.length > MAX_DOCUMENT_TEXT_LENGTH) return undefined;
+      const documentScope = scope(request.documentId, request.spaceId);
+      const existing =
+        input.store.loadDocumentCollaborationState(documentScope)?.state;
+      const adapter = new YjsRealtimeDocumentAdapter(existing);
+      try {
+        // A Yjs transaction origin reaches live observers and is never stored,
+        // so it cannot be the durable record of who wrote this. Agent
+        // mutations must be attributable, auditable, and reversible (AGENTS.md
+        // and ADR-049 §5): the pre-write state is snapshotted as a revision
+        // naming the run, which both records the act and makes restoring the
+        // prior text a normal action rather than a recovery project.
+        const priorCheckpoint = adapter.checkpoint();
+        const revisionId = DocumentRevisionIdSchema.parse(randomUUID());
+        input.store.storeDocumentRevision({
+          id: revisionId,
+          ...documentScope,
+          name: `Before agent write (run ${request.runId.slice(0, 8)})`,
+          ...priorCheckpoint,
+          createdBy: request.principalId as never,
+          createdByDeviceId: request.deviceId,
+          correlationId: CorrelationIdSchema.parse(randomUUID()),
+          createdAt: now(),
+        });
+        let update: Uint8Array | undefined;
+        const stop = adapter.onUpdate((value) => {
+          update = value;
+        });
+        adapter.replaceText(request.text, {
+          kind: "agent",
+          principalId: request.principalId,
+          runId: request.runId,
+        });
+        stop();
+        const state = adapter.encodeState();
+        const updatedAt = now();
+        // Same branch the renderer bridge takes. The coordinated half is
+        // currently unreachable from the agent path — the local MCP endpoint
+        // is disabled under a coordinated Data Home — and is kept because it
+        // is the correct behaviour if that gate ever moves (ADR-049).
+        if (update === undefined || input.connection() === undefined) {
+          input.store.storeDocumentCollaborationState({
+            ...documentScope,
+            state,
+            updatedAt,
+          });
+        } else {
+          input.store.commitDocumentUpdate({
+            id: randomUUID(),
+            ...documentScope,
+            state,
+            update,
+            createdAt: updatedAt,
+          });
+        }
+        return { characters: request.text.length, revisionId };
+      } finally {
+        adapter.destroy();
+      }
+    },
+  };
+};

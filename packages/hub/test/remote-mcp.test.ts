@@ -9,6 +9,7 @@ import {
   CaptureIdSchema,
   AgentRunIdSchema,
   DeviceIdSchema,
+  DocumentIdSchema,
   ExecutionContextSchema,
   QueryIdSchema,
   capabilitiesForAgentGrantPreset,
@@ -774,6 +775,27 @@ describe("remote MCP Hub gateway", () => {
     });
   });
 
+  it("states that document text is not reachable over the remote transport", async () => {
+    const { remote, deviceCredential } = await setup();
+    const created = await createRemoteGrant(remote, deviceCredential);
+    const refused = await remote.invoke(ids.workspace, created.bearerToken, {
+      contractVersion: 1,
+      requestId: uuid(),
+      kind: "document_read",
+      run,
+      workspaceId: ids.workspace,
+      documentId: DocumentIdSchema.parse(
+        "60000000-0000-4000-8000-000000000901",
+      ),
+    });
+    // ADR-049 §4: the boundary is named, not left as a missing tool an
+    // operator has to infer from silence.
+    assert.equal(refused.outcome, "rejected");
+    assert.deepEqual(refused.result, {
+      diagnosticCode: "document.text_remote_unsupported",
+    });
+  });
+
   it("fails closed for corrupt control state and reports repository outages as retryable", async () => {
     assert.throws(() =>
       parseHubRemoteAgentState({
@@ -840,6 +862,8 @@ describe("remote MCP Hub gateway", () => {
           "constellation.query.v1",
           "constellation.command.v1",
           "constellation.batch.v1",
+          "constellation.document.read.v1",
+          "constellation.document.write.v1",
           "constellation.checkpoint.revert.v1",
         ],
       );

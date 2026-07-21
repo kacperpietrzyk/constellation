@@ -56,6 +56,8 @@ test("publishes a versioned strict MCP tool and resource contract", async () => 
         "constellation.query.v1",
         "constellation.command.v1",
         "constellation.batch.v1",
+        "constellation.document.read.v1",
+        "constellation.document.write.v1",
         "constellation.checkpoint.revert.v1",
       ],
     );

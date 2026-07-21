@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   AgentRunIdSchema,
   CaptureIdSchema,
+  DocumentIdSchema,
   CheckpointIdSchema,
   BatchEnvelopeSchema,
   CommandEnvelopeSchema,
@@ -11,11 +12,26 @@ import {
   QueryEnvelopeSchema,
   WorkspaceIdSchema,
 } from "@constellation/contracts";
+import { MAX_DOCUMENT_TEXT_LENGTH } from "@constellation/realtime-documents";
 
 export const MCP_CONTRACT_VERSION = 1 as const;
 export const MAX_IPC_MESSAGE_BYTES = 1_048_576;
 export const MAX_MCP_PAYLOAD_CHUNK_BYTES = 512 * 1024;
 export const MAX_MCP_PAYLOAD_BYTES = 25 * 1024 * 1024;
+/**
+ * The versioned tool contract, in one place: the server's ListTools handler
+ * and every `capabilities` response derive from it, so a new tool cannot
+ * appear in one and be missing from the other.
+ */
+export const MCP_TOOL_NAMES = [
+  "constellation.query.v1",
+  "constellation.command.v1",
+  "constellation.batch.v1",
+  "constellation.document.read.v1",
+  "constellation.document.write.v1",
+  "constellation.checkpoint.revert.v1",
+] as const;
+
 export const MCP_PAYLOAD_RESOURCE_TEMPLATE =
   "constellation://v1/workspaces/{workspaceId}/captures/{captureId}/payload{?agentRunId,hostRunId,hostName}";
 
@@ -86,6 +102,29 @@ export const McpOperatorInvocationSchema = z.discriminatedUnion("kind", [
         .nonnegative()
         .max(MAX_MCP_PAYLOAD_BYTES - 1),
       length: z.number().int().positive().max(MAX_MCP_PAYLOAD_CHUNK_BYTES),
+    })
+    .strict(),
+  z
+    .object({
+      contractVersion: z.literal(MCP_CONTRACT_VERSION),
+      requestId: z.uuid(),
+      kind: z.literal("document_read"),
+      run: HostRunMetadataSchema,
+      workspaceId: WorkspaceIdSchema,
+      documentId: DocumentIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      contractVersion: z.literal(MCP_CONTRACT_VERSION),
+      requestId: z.uuid(),
+      kind: z.literal("document_write"),
+      run: HostRunMetadataSchema,
+      workspaceId: WorkspaceIdSchema,
+      documentId: DocumentIdSchema,
+      // Whole-text replace: the CRDT merges it, the bound already exists, and
+      // no host needs a diff dialect to use it (ADR-049).
+      text: z.string().max(MAX_DOCUMENT_TEXT_LENGTH),
     })
     .strict(),
   z

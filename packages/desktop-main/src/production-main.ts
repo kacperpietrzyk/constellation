@@ -71,7 +71,10 @@ import {
 import { createDesktopMeetingLoopRuntime } from "./calendar-meeting-loop.js";
 import { JamieApiClient, JamieConnectionCustody } from "./jamie-integration.js";
 import { CoordinatedDataHomeProvider } from "./coordinated-data-home-provider.js";
-import { DocumentCollaborationBridge } from "./document-collaboration.js";
+import {
+  DocumentCollaborationBridge,
+  createAgentDocumentTextPort,
+} from "./document-collaboration.js";
 import {
   CoordinatedSyncEngine,
   HttpHubTransport,
@@ -1333,6 +1336,23 @@ const startProductionDesktop = async (): Promise<void> => {
       isEnabled: () => coordinatedDataHomeProvider === undefined,
       readCapturePayload: (original) => capturePayloadCustody?.read(original),
       finalizeVoiceAudio,
+      documentText: (() => {
+        const port = createAgentDocumentTextPort({
+          workspaceId: workspaceRecovery.kernel.identity.workspaceId,
+          store: workspaceRecovery.kernel.store,
+          connection: () => activeHubConnection,
+        });
+        return {
+          read: port.read,
+          replace: (request) =>
+            installationDeviceId === undefined
+              ? undefined
+              : port.replace({
+                  ...request,
+                  deviceId: installationDeviceId,
+                }),
+        };
+      })(),
     });
     await localMcpRuntime.start();
   }

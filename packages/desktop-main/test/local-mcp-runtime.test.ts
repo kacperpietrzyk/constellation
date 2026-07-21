@@ -8,6 +8,7 @@ import test from "node:test";
 import {
   CommandEnvelopeSchema,
   CaptureOriginalSchema,
+  DocumentIdSchema,
   CaptureIdSchema,
   CheckpointIdSchema,
   CorrelationIdSchema,
@@ -59,6 +60,7 @@ const ownerContext = ExecutionContextSchema.parse({
     "workspace.access",
     "agent.manageAccess",
     "agent.access",
+    "document.create",
   ],
   origin: "desktop",
 });
@@ -78,6 +80,8 @@ const agentCapabilities = [
   "agent.handoff.submit",
   "command.previewUndo",
   "command.undo",
+  "document.readText",
+  "document.replaceText",
 ] satisfies readonly Capability[];
 
 const run = HostRunMetadataSchema.parse({
@@ -132,6 +136,7 @@ test("local MCP keeps Unix socket endpoints below the portable platform limit", 
 
 test("local MCP enforces credential custody, attribution, evidence labels and immediate revocation", async () => {
   const stateRoot = mkdtempSync(path.join(tmpdir(), "constellation-mcp-"));
+  let documentTextState: string | undefined;
   const store = new InMemoryReferenceStore();
   const owner = createRuntimeKernelService({ context: ownerContext, store });
   successful(
@@ -213,6 +218,16 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
     stateRoot,
     workspaceId: ownerContext.workspaceId,
     store,
+    documentText: {
+      read: () => documentTextState,
+      replace: ({ text }) => {
+        documentTextState = text;
+        return {
+          characters: text.length,
+          revisionId: "00000000-0000-4000-8000-000000000803",
+        };
+      },
+    },
     readCapturePayload: (original) =>
       original === managedOriginal
         ? managedBytes
@@ -323,6 +338,62 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
     });
     assert.equal(capabilities.outcome, "success");
     assert.equal(JSON.stringify(capabilities.result).includes("secret"), false);
+
+    // ADR-049: document text is grant-scoped at the MCP boundary, like a
+    // capture payload — the runtime authorizes, the port stores.
+    const documentId = DocumentIdSchema.parse(
+      "00000000-0000-4000-8000-000000000801",
+    );
+    successful(
+      owner.execute({
+        ...commandMetadata("agent-document"),
+        commandName: "document.create",
+        payload: {
+          documentId,
+          spaceId: ids.space,
+          title: "Delivery note",
+        },
+      }),
+    );
+    const documentWrite = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "document_write",
+      run,
+      workspaceId: ownerContext.workspaceId,
+      documentId,
+      text: "Written through the agent boundary.",
+    });
+    assert.equal(documentWrite.outcome, "success");
+    const documentRead = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "document_read",
+      run,
+      workspaceId: ownerContext.workspaceId,
+      documentId,
+    });
+    assert.equal(documentRead.outcome, "success");
+    assert.equal(
+      (documentRead.result as { text: string }).text,
+      "Written through the agent boundary.",
+    );
+    // Document content is evidence, never instruction.
+    assert.equal(documentRead.evidence?.instructionBoundary, "untrusted_data");
+    const unknownDocument = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "document_read",
+      run,
+      workspaceId: ownerContext.workspaceId,
+      documentId: DocumentIdSchema.parse(
+        "00000000-0000-4000-8000-000000000802",
+      ),
+    });
+    assert.equal(unknownDocument.outcome, "rejected");
+    assert.deepEqual(unknownDocument.result, {
+      diagnosticCode: "authorization.denied",
+    });
 
     const payload = await invokeDesktopMcp(descriptor, {
       contractVersion: 1,

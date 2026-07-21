@@ -45,6 +45,7 @@ import {
 import type { AgentAccessGrant, AgentRun } from "@constellation/domain";
 import {
   MCP_CONTRACT_VERSION,
+  MCP_TOOL_NAMES,
   MAX_MCP_PAYLOAD_CHUNK_BYTES,
   MCP_PAYLOAD_RESOURCE_TEMPLATE,
   McpOperatorResponseSchema,
@@ -750,10 +751,13 @@ export class HubRemoteMcpService {
                 server: "constellation-hub",
                 contractVersion: MCP_CONTRACT_VERSION,
                 transport: "streamable_http",
-                tools: [
-                  "constellation.query.v1",
-                  "constellation.command.v1",
-                  "constellation.checkpoint.revert.v1",
+                tools: [...MCP_TOOL_NAMES],
+                // Stated up front rather than discovered by a failed call:
+                // document text lives in the Hub's realtime gateway, not in
+                // the device store the text port reads (ADR-049 §4).
+                unsupportedTools: [
+                  "constellation.document.read.v1",
+                  "constellation.document.write.v1",
                 ],
                 resources: [
                   "constellation://v1/capabilities",
@@ -1091,6 +1095,17 @@ export class HubRemoteMcpService {
               : "rejected",
         result,
       );
+    }
+    if (
+      invocation.kind === "document_read" ||
+      invocation.kind === "document_write"
+    ) {
+      // ADR-049 §4: the Hub keeps document state in its realtime gateway, not
+      // in the device store this port reads. The boundary is stated rather
+      // than left as a missing tool an operator has to infer.
+      return response(invocation.requestId, "rejected", {
+        diagnosticCode: "document.text_remote_unsupported",
+      });
     }
     return this.revertCheckpoint(
       store,
