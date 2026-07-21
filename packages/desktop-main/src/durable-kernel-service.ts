@@ -33,7 +33,13 @@ import {
 } from "./workspace-key-custody.js";
 import { CapturePayloadCustody } from "./capture-payload-custody.js";
 
-const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
+/**
+ * The capability scope of the desktop's own session. Exported so the operator
+ * parity test (ADR-046 §6) can assert that the only differences between what a
+ * person can do here and what a `full_access` agent grant carries are the
+ * recorded administrative exclusions.
+ */
+export const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "workspace.createLocal",
   "workspace.rename",
   "workspace.bootstrapContext",

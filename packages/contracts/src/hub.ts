@@ -9,7 +9,10 @@ import {
   SpaceIdSchema,
   WorkspaceIdSchema,
 } from "./ids.js";
-import { CapabilitySchema } from "./execution-context.js";
+import {
+  AgentAccessPresetSchema,
+  CapabilitySchema,
+} from "./execution-context.js";
 import { CommandOutcomeSchema } from "./outcome.js";
 
 export const HUB_PROTOCOL_VERSION = 1 as const;
@@ -222,8 +225,13 @@ const RemoteMcpManagementBaseSchema = z
 export const RemoteMcpGrantCreateRequestSchema =
   RemoteMcpManagementBaseSchema.extend({
     displayName: z.string().trim().min(1).max(120),
-    preset: z.enum(["observe", "propose", "operate", "full_access", "custom"]),
-    capabilityScope: z.array(CapabilitySchema).min(1).max(100),
+    preset: AgentAccessPresetSchema,
+    // See ADR-046 §4: bounded by the vocabulary, not by a fixed number the
+    // enum has already outgrown.
+    capabilityScope: z
+      .array(CapabilitySchema)
+      .min(1)
+      .max(CapabilitySchema.options.length),
     spaces: z
       .array(
         z

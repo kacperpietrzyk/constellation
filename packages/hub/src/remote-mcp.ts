@@ -22,6 +22,7 @@ import {
   CommandIdSchema,
   CorrelationIdSchema,
   CredentialIdSchema,
+  DELEGABLE_CAPABILITIES,
   ExecutionContextSchema,
   GrantIdSchema,
   MembershipIdSchema,
@@ -70,57 +71,15 @@ import {
 const MAX_CALLS_PER_MINUTE = 120;
 const MAX_CONCURRENT_CALLS = 4;
 
-const REMOTE_AGENT_ALLOWED_CAPABILITIES = new Set<Capability>([
-  "capture.submit",
-  "capture.process",
-  "capture.audioRead",
-  "capture.transcriptWrite",
-  "capture.submitText",
-  "capture.routeAsTask",
-  "capture.history",
-  "project.create",
-  "project.updateOutcome",
-  "project.list",
-  "project.operationalOverview",
-  "initiative.create",
-  "work.linkCreate",
-  "work.linkRemove",
-  "savedView.create",
-  "work.overview",
-  "document.create",
-  "document.list",
-  "task.setStatus",
-  "task.setOperationalState",
-  "task.complete",
-  "task.reopen",
-  "task.assign",
-  "task.unassign",
-  "record.relate",
-  "record.unrelate",
-  "search.global",
-  "cockpit.week",
-  "activity.meaningful",
-  "command.previewUndo",
-  "command.undo",
-  "recovery.preview",
-  "task.list",
-  "task.assignmentCandidates",
-  "comment.add",
-  "comment.edit",
-  "comment.resolve",
-  "comment.reopen",
-  "comment.list",
-  "comment.mentionCandidates",
-  "attention.inbox",
-  "attention.markRead",
-  "attention.dismiss",
-  "audit.receipt",
-  "agent.access",
-  "agent.checkpoint.create",
-  "agent.checkpoint.previewRevert",
-  "agent.checkpoint.revert",
-  "agent.handoff.submit",
-]);
+/**
+ * The Hub enforces the ADR-046 delegation partition independently of the
+ * device that mints a grant: a capability classified `runtime` or
+ * `administrative` never travels over the network, whatever a caller asks for.
+ * The set is derived, never restated, so the two gates cannot drift.
+ */
+const REMOTE_AGENT_ALLOWED_CAPABILITIES = new Set<Capability>(
+  DELEGABLE_CAPABILITIES,
+);
 
 type RemoteGrantChangeResult =
   | {
@@ -373,15 +332,25 @@ export class HubRemoteMcpService {
         readonly grant: RemoteMcpGrantProjection;
         readonly bearerToken: string;
       }
-    | { readonly outcome: "rejected" }
+    | {
+        readonly outcome: "rejected";
+        readonly diagnosticCode?: "grant.capability_not_delegable";
+        readonly capabilities?: readonly Capability[];
+      }
   > {
     const input = RemoteMcpGrantCreateRequestSchema.parse(raw);
-    if (
-      input.capabilityScope.some(
-        (capability) => !REMOTE_AGENT_ALLOWED_CAPABILITIES.has(capability),
-      )
-    )
-      return { outcome: "rejected" };
+    const refused = input.capabilityScope.filter(
+      (capability) => !REMOTE_AGENT_ALLOWED_CAPABILITIES.has(capability),
+    );
+    // A request refused for policy says which capabilities it refused: an
+    // unexplained rejection reads as "the Hub is unavailable" and sends the
+    // operator to debug the wrong system (ADR-046 §5).
+    if (refused.length > 0)
+      return {
+        outcome: "rejected",
+        diagnosticCode: "grant.capability_not_delegable",
+        capabilities: refused,
+      };
     const manager = await this.authenticateManager(
       deviceCredential,
       input.workspaceId,

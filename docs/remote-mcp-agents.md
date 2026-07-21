@@ -56,8 +56,14 @@ The endpoint publishes:
   ID.
 
 Every call resolves the current credential, grant, Workspace membership, Space
-scope, capability scope, expiry, and policy version. Administrative Workspace
-and agent-grant capabilities cannot be delegated to a remote agent. Commands
+scope, capability scope, expiry, and policy version. A remote grant carries the
+same capabilities as a local one; the Hub enforces the same partition
+independently, so managing workspace access, managing agent access, creating a
+local workspace, renaming the Workspace, and exporting a Workspace scope are
+refused over the network as they are locally. A grant request that names one of
+them is answered `403` with `grant.capability_not_delegable` and the exact
+capabilities refused, so a policy refusal is never reported as an unreachable
+Hub. Commands
 retain expected-version conflicts and durable idempotent replay. Queries label
 record content as Hub-authoritative, Space-scoped, untrusted evidence.
 

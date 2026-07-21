@@ -1,6 +1,8 @@
 import {
   CommandEnvelopeSchema,
   QueryEnvelopeSchema,
+  capabilitiesForAgentGrantPreset,
+  type AgentGrantPreset,
   type AuditReceiptId,
   type CommandId,
   type DataHomeStatus,
@@ -692,84 +694,21 @@ export const loadKnowledgeDocumentContext = async (
     "knowledge.documentContext",
   );
 
-const AGENT_QUERY_CAPABILITIES: readonly Capability[] = [
-  "workspace.bootstrapContext",
-  "workspace.access",
-  "agent.access",
-  "capture.history",
-  "project.list",
-  "project.operationalOverview",
-  "work.overview",
-  "document.list",
-  "knowledge.list",
-  "knowledge.documentContext",
-  "task.list",
-  "task.assignmentCandidates",
-  "comment.list",
-  "comment.mentionCandidates",
-  "attention.inbox",
-  "search.global",
-  "cockpit.week",
-  "activity.meaningful",
-  "audit.receipt",
-  "recovery.preview",
-  "agent.checkpoint.previewRevert",
-];
-
-const agentCapabilities = (
-  preset: "observe" | "propose" | "operate" | "full_access",
-): readonly Capability[] => {
-  if (preset === "observe") return AGENT_QUERY_CAPABILITIES;
-  if (preset === "propose")
-    return [...AGENT_QUERY_CAPABILITIES, "comment.add", "comment.edit"];
-  const operate: readonly Capability[] = [
-    ...AGENT_QUERY_CAPABILITIES,
-    "capture.submit",
-    "capture.process",
-    "capture.transcriptWrite",
-    "capture.submitText",
-    "capture.routeAsTask",
-    "project.create",
-    "project.updateOutcome",
-    "initiative.create",
-    "work.linkCreate",
-    "work.linkRemove",
-    "savedView.create",
-    "document.create",
-    "knowledge.sourceCreate",
-    "knowledge.sourceUpdate",
-    "knowledge.documentSetEvidence",
-    "knowledge.namedVersionCreate",
-    "knowledge.namedVersionVoid",
-    "task.setStatus",
-    "task.setOperationalState",
-    "task.complete",
-    "task.reopen",
-    "task.assign",
-    "task.unassign",
-    "comment.add",
-    "comment.edit",
-    "comment.resolve",
-    "comment.reopen",
-    "attention.markRead",
-    "attention.dismiss",
-    "record.relate",
-    "record.unrelate",
-    "command.previewUndo",
-    "command.undo",
-    "agent.checkpoint.create",
-    "agent.checkpoint.revert",
-    "agent.handoff.submit",
-  ];
-  return preset === "full_access" ? [...operate, "capture.audioRead"] : operate;
-};
+/**
+ * Preset scopes come from the one delegation partition in the contracts
+ * package (ADR-046). The list this replaced had stopped being maintained
+ * around R5, so "Full Access" carried neither `task.create` nor anything R12
+ * and R13 delivered.
+ */
+const agentCapabilities = (preset: AgentGrantPreset): readonly Capability[] =>
+  capabilitiesForAgentGrantPreset(preset);
 
 export const createAgentGrant = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
   input: {
     readonly displayName: string;
-    readonly preset: "observe" | "propose" | "operate" | "full_access";
+    readonly preset: AgentGrantPreset;
     readonly spaceIds: readonly SpaceId[];
     readonly expiresAt?: string;
   },
@@ -933,7 +872,7 @@ export const createRemoteAgentGrant = async (
   client: ConstellationRendererClient,
   input: {
     readonly displayName: string;
-    readonly preset: "observe" | "propose" | "operate" | "full_access";
+    readonly preset: AgentGrantPreset;
     readonly spaceIds: readonly SpaceId[];
     readonly expiresAt?: string;
     readonly federationScope: {

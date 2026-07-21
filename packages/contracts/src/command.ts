@@ -33,7 +33,10 @@ import {
   DocumentRevisionIdSchema,
   StrategicRecordIdSchema,
 } from "./ids.js";
-import { CapabilitySchema } from "./execution-context.js";
+import {
+  AgentAccessPresetSchema,
+  CapabilitySchema,
+} from "./execution-context.js";
 import { ImportedMeetingSchema } from "./meeting-loop.js";
 
 export const ContractVersionSchema = z.literal(1);
@@ -148,14 +151,6 @@ export const WorkspaceMemberRevokeCommandSchema = CommandMetadataSchema.extend({
   payload: z.object({ membershipId: MembershipIdSchema }).strict(),
 }).strict();
 
-const AgentAccessPresetSchema = z.enum([
-  "observe",
-  "propose",
-  "operate",
-  "full_access",
-  "custom",
-]);
-
 export const AgentGrantCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("agent.grantCreate"),
   payload: z
@@ -165,7 +160,13 @@ export const AgentGrantCreateCommandSchema = CommandMetadataSchema.extend({
       agentPrincipalId: PrincipalIdSchema,
       displayName: z.string().trim().min(1).max(120),
       preset: AgentAccessPresetSchema,
-      capabilityScope: z.array(CapabilitySchema).min(1).max(100),
+      // Bounded by the vocabulary itself: a `full_access` preset carries every
+      // delegable capability, so a fixed cap would refuse the product's own
+      // preset the moment the enum outgrew it (ADR-046 §4).
+      capabilityScope: z
+        .array(CapabilitySchema)
+        .min(1)
+        .max(CapabilitySchema.options.length),
       spaces: z
         .array(
           z

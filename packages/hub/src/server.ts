@@ -251,7 +251,12 @@ export const startHubServer = async (
             ? 200
             : result.outcome === "conflict"
               ? 409
-              : 401,
+              : // A scope the workspace refuses to delegate is a policy answer,
+                // not a failed credential: 403 keeps the two distinguishable.
+                "diagnosticCode" in result &&
+                  result.diagnosticCode === "grant.capability_not_delegable"
+                ? 403
+                : 401,
           result,
         );
         return;

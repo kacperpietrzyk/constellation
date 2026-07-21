@@ -18,6 +18,21 @@ Capability and data scope are independent. **Full access** never expands the
 selected Spaces or bypasses current membership, operating-system permission,
 provider policy, audit, expected versions, recovery, or calendar consent.
 
+The presets are nested, and each is derived from one classification of the
+capability vocabulary rather than a hand-kept list:
+
+| Preset      | Carries                                                                                                                                                         |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Observe     | every query the workspace exposes                                                                                                                               |
+| Propose     | the above, plus adding and editing comments                                                                                                                     |
+| Operate     | the above, plus every ordinary domain mutation — Tasks, projects, meetings, knowledge, saved views, templates, typed fields, statuses, automations, recurrences |
+| Full access | the above, plus reading recorded voice audio                                                                                                                    |
+
+Five capabilities are never delegated to any agent, whatever preset is chosen:
+managing workspace access, managing agent access, creating a local workspace,
+renaming the workspace, and exporting a workspace scope. Reading who has access
+remains available to an observing agent; changing it does not.
+
 After creation, the desktop shows three host values:
 
 1. the adapter command;
