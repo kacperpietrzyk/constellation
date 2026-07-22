@@ -2056,6 +2056,27 @@ describe("SQLite ApplicationStore", () => {
         ).outcome,
         "success",
       );
+      const timelineViewId = "00000000-0000-4000-8000-00000000008c";
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "savedView.create",
+              {
+                savedViewId: timelineViewId,
+                spaceId: ids.rootSpace,
+                name: "Restart-safe timeline",
+                filters: {},
+                sort: "updated_desc",
+                layout: "timeline",
+              },
+              "durable-saved-view-timeline-v1",
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
 
       assert.equal(
         unwrap(
@@ -2107,6 +2128,13 @@ describe("SQLite ApplicationStore", () => {
       assert.equal(persistedSavedView?.kind, "saved_view");
       if (persistedSavedView?.kind === "saved_view") {
         assert.equal(persistedSavedView.layout, "board");
+      }
+      const persistedTimeline = reopened.store
+        .snapshot()
+        .strategicRecords?.find((record) => record.id === timelineViewId);
+      assert.equal(persistedTimeline?.kind, "saved_view");
+      if (persistedTimeline?.kind === "saved_view") {
+        assert.equal(persistedTimeline.layout, "timeline");
       }
       assert.equal(
         reopened.store.snapshot().attentionSignals?.[0]?.reason,

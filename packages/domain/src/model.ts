@@ -689,7 +689,7 @@ export type StrategicRecord =
         "status" | "priority" | { readonly fieldId: FieldDefinitionId };
       // ADR-058. Layout is presentation carried by the Saved View, not a
       // second Task model. Absence is the backwards-compatible list default.
-      readonly layout?: "list" | "board";
+      readonly layout?: "list" | "board" | "timeline";
       readonly state: "active" | "deleted";
     })
   | (StrategicRecordBase & {
@@ -777,7 +777,7 @@ export type UndoDescriptor =
       readonly priorSort: "updated_desc" | "due_asc" | "title_asc";
       readonly priorGroupBy?:
         "status" | "priority" | { readonly fieldId: FieldDefinitionId };
-      readonly priorLayout?: "list" | "board";
+      readonly priorLayout?: "list" | "board" | "timeline";
       readonly priorState: "active" | "deleted";
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;

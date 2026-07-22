@@ -62,6 +62,10 @@ const workBoardStyles = readFileSync(
   path.join(root, "src", "work-board.css"),
   "utf8",
 );
+const workTimelineStyles = readFileSync(
+  path.join(root, "src", "work-timeline.css"),
+  "utf8",
+);
 const collaborationSurfaces = readFileSync(
   path.join(root, "src", "CollaborationSurfaces.tsx"),
   "utf8",
@@ -540,7 +544,7 @@ describe("interaction recovery contracts", () => {
     assert.match(workSurface, /setSavedWorkViewLayout/);
     assert.match(
       workSurface,
-      /activeView\?\.layout === "board" && groupBy !== undefined/,
+      /requestedLayout === "board" && groupBy === undefined/,
     );
     assert.match(workSurface, /aria-label="Następne działania — tablica"/);
     assert.match(workSurface, /className="work-board-column"/);
@@ -555,6 +559,24 @@ describe("interaction recovery contracts", () => {
     assert.match(
       workBoardStyles,
       /@container \(max-width: 38\.75rem\)[\s\S]*?\.work-task-board\s*\{[^}]*grid-auto-columns:\s*minmax\(13\.25rem, 82%\)/s,
+    );
+  });
+
+  it("projects Task timing on a non-draggable timeline without replacing Saved View order", () => {
+    assert.match(workSurface, />\s*Oś czasu\s*</);
+    assert.match(workSurface, /aria-label="Następne działania — oś czasu"/);
+    assert.match(workSurface, /visibleTasks\.map\(\(task, index\) =>/);
+    assert.match(workSurface, /task\.startAt \?\? task\.dueAt/);
+    assert.match(workSurface, /task\.dueAt \?\? task\.startAt/);
+    assert.match(workSurface, />\s*Bez terminu\s*</);
+    assert.doesNotMatch(workSurface, /draggable=|onDrag|onDrop|onResize/);
+    assert.match(
+      workTimelineStyles,
+      /\.work-task-timeline\s*\{[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto/s,
+    );
+    assert.match(
+      workTimelineStyles,
+      /\.work-timeline-content\s*\{[^}]*min-width:\s*36rem/s,
     );
   });
 

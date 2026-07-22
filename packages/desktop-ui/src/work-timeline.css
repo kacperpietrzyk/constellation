@@ -1,0 +1,155 @@
+/* PAT-46 — timeline preserves the active Saved View row order and projects
+   existing Task timing onto one supplemental scale. Tracks never accept input
+   or imply rescheduling; the canonical Task option remains the only row
+   interaction. Loaded only with the Work surface. */
+
+.work-task-timeline {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding: var(--space-1) var(--space-1) var(--space-3);
+  scrollbar-gutter: stable;
+}
+
+.work-timeline-content {
+  min-width: 36rem;
+}
+
+.work-timeline-axis,
+.work-timeline-row {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(14rem, 0.72fr) minmax(22rem, 1.28fr);
+}
+
+.work-timeline-axis {
+  align-items: end;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+.work-timeline-axis > strong {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: center;
+}
+
+.work-timeline-axis > div {
+  display: flex;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.work-timeline-axis time:nth-child(2) {
+  text-align: center;
+}
+
+.work-timeline-axis time:last-child {
+  text-align: right;
+}
+
+.work-timeline-row {
+  align-items: stretch;
+  border-top: 1px solid var(--border-subtle);
+  min-height: 5.5rem;
+  padding: var(--space-2);
+}
+
+.work-task-row.work-task-row--timeline {
+  align-self: center;
+  background: var(--panel-reading-bg);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  grid-template-columns: 0.65rem minmax(0, 1fr);
+  min-width: 0;
+  padding: var(--space-3);
+}
+
+.work-task-row--timeline .task-state-trigger {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.work-task-row--timeline.selected {
+  border-color: var(--border-strong);
+}
+
+.work-timeline-track {
+  align-self: stretch;
+  background-image: linear-gradient(
+    to right,
+    var(--border-subtle) 1px,
+    transparent 1px
+  );
+  background-position: left center;
+  background-size: 50% 100%;
+  min-width: 0;
+  position: relative;
+}
+
+.work-timeline-track::after {
+  background: var(--border-default);
+  content: "";
+  height: 1px;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 50%;
+}
+
+.work-timeline-span,
+.work-timeline-milestone {
+  background: var(--text-secondary);
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+}
+
+.work-timeline-span {
+  border-radius: var(--radius-full);
+  height: 0.55rem;
+  min-width: 0.75rem;
+  transform: translateY(-50%);
+}
+
+.work-timeline-milestone {
+  border: 2px solid var(--panel-reading-bg);
+  border-radius: 50%;
+  height: 0.9rem;
+  transform: translate(-50%, -50%);
+  width: 0.9rem;
+}
+
+.work-timeline-unscheduled {
+  background: var(--surface-sunken);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-full);
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  left: 50%;
+  padding: 0.25rem 0.55rem;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  z-index: 1;
+}
+
+@media (forced-colors: active) {
+  .work-timeline-span,
+  .work-timeline-milestone {
+    background: Highlight;
+  }
+}
+
+@container (max-width: 38.75rem) {
+  .work-timeline-content {
+    min-width: 44rem;
+  }
+
+  .work-timeline-axis,
+  .work-timeline-row {
+    grid-template-columns: minmax(11rem, 0.52fr) minmax(32rem, 1.48fr);
+  }
+}

@@ -24,6 +24,7 @@ const ids = {
   segmentField: "00000000-0000-4000-8000-000000000415",
   view2: "00000000-0000-4000-8000-000000000416",
   status3: "00000000-0000-4000-8000-000000000417",
+  view3: "00000000-0000-4000-8000-000000000418",
 } as const;
 
 const now = "2026-07-15T10:00:00.000Z";
@@ -98,6 +99,8 @@ export const workHarnessSnapshot = {
             kind: "person",
             label: "Kacper · decyzja o nazewnictwie",
           },
+          startAt: "2026-07-16T06:00:00.000Z",
+          dueAt: "2026-07-22T21:59:59.999Z",
           completionState: "open",
           fields: {
             [ids.segmentField]: { kind: "choice", value: "MSSP" },
@@ -120,6 +123,7 @@ export const workHarnessSnapshot = {
           statusId: ids.status,
           operationalState: "actionable",
           completionState: "open",
+          dueAt: "2026-07-25T21:59:59.999Z",
           fields: {
             [ids.segmentField]: { kind: "choice", value: "MSSP" },
           },
@@ -200,6 +204,15 @@ export const workHarnessSnapshot = {
           state: "active",
           version: 1,
         },
+        {
+          id: ids.view3,
+          name: "Plan wdrożenia",
+          filters: {},
+          sort: "updated_desc",
+          layout: "timeline",
+          state: "active",
+          version: 1,
+        },
       ],
       freshness: {
         mode: "local_authoritative",
@@ -252,7 +265,7 @@ if (workHarnessSnapshot.work.kind !== "ready") {
 const baseWork = workHarnessSnapshot.work.data;
 
 export const WorkHarness = () => {
-  const [layout, setLayout] = useState<"list" | "board">("board");
+  const [layout, setLayout] = useState<"list" | "board" | "timeline">("board");
   const snapshot = useMemo(
     () =>
       ({
@@ -263,7 +276,11 @@ export const WorkHarness = () => {
             ...baseWork,
             savedViews: baseWork.savedViews.map((view) =>
               view.id === ids.view2
-                ? { ...view, layout, version: layout === "board" ? 1 : 2 }
+                ? {
+                    ...view,
+                    layout,
+                    version: layout === "board" ? 1 : layout === "list" ? 2 : 3,
+                  }
                 : view,
             ),
           },
@@ -285,7 +302,11 @@ export const WorkHarness = () => {
             return commandResult(
               command.commandId,
               command.payload.savedViewId,
-              command.payload.layout === "board" ? 1 : 2,
+              command.payload.layout === "board"
+                ? 1
+                : command.payload.layout === "list"
+                  ? 2
+                  : 3,
             );
           }
           return {
