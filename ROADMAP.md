@@ -232,6 +232,14 @@ All Tasks and each Saved View. Title and operational state remain visible;
 narrow layouts relabel selected values instead of widening the document, and
 these local preferences never change permissions, audit, Hub, or MCP results.
 
+Desktop shell extension cost is also being reduced without introducing runtime
+plugins: one typed registry now owns every surface ID, label, navigation group,
+icon, shortcut, and eager/lazy classification. The renderer sidebar, native
+menu, restored and detached-window routes, and lazy-loader completeness derive
+from that contract, so a future surface cannot silently omit one of those
+integration points. Record-kind registration remains a separate readiness
+step; this is an internal compile-time contract, not a public extension API.
+
 ## Delivered foundation — coherent desktop Alpha and release candidate
 
 The desktop application is now one coherent, recoverable product surface rather

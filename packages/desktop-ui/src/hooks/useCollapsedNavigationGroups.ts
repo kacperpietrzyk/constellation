@@ -1,7 +1,13 @@
 import { useState } from "react";
+import {
+  desktopSurfaceRegistry,
+  type DesktopNavigationGroup,
+} from "@constellation/desktop-preload/surface-registry";
 
-export const navigationGroups = ["Praca", "Wiedza", "Administracja"] as const;
-export type NavigationGroup = (typeof navigationGroups)[number];
+export type NavigationGroup = DesktopNavigationGroup;
+export const navigationGroups: readonly NavigationGroup[] = [
+  ...new Set(desktopSurfaceRegistry.map((surface) => surface.group)),
+];
 
 interface NavigationGroupStorage {
   readonly getItem: (key: string) => string | null;

@@ -31,8 +31,12 @@ import type {
   ConstellationRendererClient,
   DesktopBuildInfo,
 } from "@constellation/desktop-preload/client";
+import {
+  desktopSurfaceRegistry,
+  type LazyDesktopSurface,
+} from "@constellation/desktop-preload/surface-registry";
 
-import { Icon, type IconName } from "./components/Icon.js";
+import { Icon } from "./components/Icon.js";
 import {
   ShortcutsOverlay,
   modifierLabel,
@@ -44,7 +48,6 @@ import { TaskReservationSection } from "./components/TaskReservationSection.js";
 import {
   navigationGroups,
   useCollapsedNavigationGroups,
-  type NavigationGroup,
 } from "./hooks/useCollapsedNavigationGroups.js";
 import { useDismissiblePanel } from "./hooks/useDismissiblePanel.js";
 import {
@@ -302,16 +305,19 @@ const WorkspaceRecovery = lazy(() =>
   })),
 );
 
+const lazySurfaceLoaders = {
+  documents: loadDocumentsSurface,
+  meetings: loadMeetingsSurface,
+  activity: loadActivitySurface,
+  settings: loadSettingsSurface,
+  work: loadWorkSurface,
+  access: loadAccessSurface,
+  relationships: loadStrategicDepthSurface,
+} satisfies Record<LazyDesktopSurface, () => Promise<unknown>>;
+
 const preloadSurface = (surface: SurfaceId) => {
-  if (surface === "documents")
-    void loadDocumentsSurface().catch(() => undefined);
-  if (surface === "meetings") void loadMeetingsSurface().catch(() => undefined);
-  if (surface === "activity") void loadActivitySurface().catch(() => undefined);
-  if (surface === "settings") void loadSettingsSurface().catch(() => undefined);
-  if (surface === "work") void loadWorkSurface().catch(() => undefined);
-  if (surface === "access") void loadAccessSurface().catch(() => undefined);
-  if (surface === "relationships")
-    void loadStrategicDepthSurface().catch(() => undefined);
+  const loader = lazySurfaceLoaders[surface as LazyDesktopSurface];
+  if (loader !== undefined) void loader().catch(() => undefined);
 };
 
 class LazySurfaceBoundary extends Component<
@@ -1310,90 +1316,10 @@ export const CaptureDialog = ({
   );
 };
 
-const navItems: readonly {
-  id: SurfaceId;
-  label: string;
-  icon: IconName;
-  shortcut?: string;
-  group: NavigationGroup;
-}[] = [
-  {
-    id: "cockpit",
-    label: "Tydzień",
-    icon: "cockpit",
-    shortcut: "1",
-    group: "Praca",
-  },
-  {
-    id: "meetings",
-    label: "Spotkania",
-    icon: "meetings",
-    shortcut: "2",
-    group: "Praca",
-  },
-  {
-    id: "relationships",
-    label: "Relacje",
-    icon: "relationships",
-    group: "Wiedza",
-  },
-  {
-    id: "work",
-    label: "Praca",
-    icon: "work",
-    shortcut: "3",
-    group: "Praca",
-  },
-  {
-    id: "tasks",
-    label: "Zadania",
-    icon: "tasks",
-    shortcut: "4",
-    group: "Praca",
-  },
-  {
-    id: "projects",
-    label: "Projekty",
-    icon: "project",
-    shortcut: "5",
-    group: "Praca",
-  },
-  {
-    id: "history",
-    label: "Historia Capture",
-    icon: "history",
-    shortcut: "6",
-    group: "Wiedza",
-  },
-  {
-    id: "activity",
-    label: "Aktywność",
-    icon: "activity",
-    shortcut: "7",
-    group: "Administracja",
-  },
-  {
-    id: "attention",
-    label: "Do uwagi",
-    icon: "attention",
-    shortcut: "8",
-    group: "Administracja",
-  },
-  {
-    id: "access",
-    label: "Dostęp",
-    icon: "access",
-    shortcut: "9",
-    group: "Administracja",
-  },
-  { id: "documents", label: "Dokumenty", icon: "documents", group: "Wiedza" },
-  {
-    id: "settings",
-    label: "Ustawienia",
-    icon: "settings",
-    group: "Administracja",
-  },
-];
+const navItems = desktopSurfaceRegistry.map(({ shortcut, ...surface }) => ({
+  ...surface,
+  ...(shortcut === null ? undefined : { shortcut: String(shortcut) }),
+}));
 
 export const RealApp = ({
   client,

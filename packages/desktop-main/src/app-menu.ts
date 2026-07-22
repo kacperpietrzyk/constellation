@@ -3,21 +3,13 @@ import {
   DESKTOP_CHANNELS,
   type DesktopShellCommand,
 } from "@constellation/desktop-preload/client";
+import { desktopSurfaceRegistry } from "@constellation/desktop-preload/surface-registry";
 
-// Mirrors the renderer's `navItems` shortcut assignments (RealApp.tsx).
-// The renderer resolves a digit to its own surface list, so only the
-// labels shown in the native menu live here.
-const SURFACE_SHORTCUTS: readonly { digit: number; label: string }[] = [
-  { digit: 1, label: "Tydzień" },
-  { digit: 2, label: "Spotkania" },
-  { digit: 3, label: "Praca" },
-  { digit: 4, label: "Zadania" },
-  { digit: 5, label: "Projekty" },
-  { digit: 6, label: "Historia Capture" },
-  { digit: 7, label: "Aktywność" },
-  { digit: 8, label: "Do uwagi" },
-  { digit: 9, label: "Dostęp" },
-];
+const SURFACE_SHORTCUTS = desktopSurfaceRegistry.flatMap((surface) =>
+  surface.shortcut !== null
+    ? [{ digit: surface.shortcut, label: surface.label }]
+    : [],
+);
 
 const sendShellCommand = (command: DesktopShellCommand): void => {
   const window = BrowserWindow.getFocusedWindow();

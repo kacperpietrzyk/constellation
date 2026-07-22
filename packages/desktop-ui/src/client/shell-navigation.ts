@@ -5,7 +5,10 @@ import type {
   TaskId,
 } from "@constellation/contracts";
 
-import type { SurfaceId } from "./wave2-fixtures.js";
+import {
+  desktopSurfaceIds,
+  type DesktopSurface as SurfaceId,
+} from "@constellation/desktop-preload/surface-registry";
 
 const MAX_TABS = 7;
 const MAX_HISTORY = 32;
@@ -41,20 +44,7 @@ export interface ShellOpenOutcome {
   readonly evictedContext?: ShellContext;
 }
 
-const RESTORABLE_SURFACES = new Set<SurfaceId>([
-  "cockpit",
-  "work",
-  "tasks",
-  "projects",
-  "history",
-  "activity",
-  "attention",
-  "access",
-  "documents",
-  "meetings",
-  "relationships",
-  "settings",
-]);
+const RESTORABLE_SURFACES = new Set<SurfaceId>(desktopSurfaceIds);
 
 const isRestorableShellContext = (value: unknown): value is ShellContext => {
   if (typeof value !== "object" || value === null) return false;
