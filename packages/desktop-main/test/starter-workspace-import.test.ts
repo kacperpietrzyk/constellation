@@ -611,7 +611,16 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
       ? view.listTasksInSpace(context.workspaceId, spaceId)
       : [],
   )[0];
-  assert.ok(sourceTask !== undefined && importedDocument !== undefined);
+  const sourceProject = documentStore.read((view) =>
+    isApplicationWave2ReadView(view)
+      ? view.listProjects(context.workspaceId, spaceId)
+      : [],
+  )[0];
+  assert.ok(
+    sourceTask !== undefined &&
+      sourceProject !== undefined &&
+      importedDocument !== undefined,
+  );
   const richContent = {
     schemaVersion: 1 as const,
     type: "doc" as const,
@@ -640,8 +649,15 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
             entityReferences: structuredDocumentEntityReferences(richContent),
           }
         : undefined,
+    readProjectContent: ({ projectId }) =>
+      projectId === sourceProject.id
+        ? {
+            content: richContent,
+            entityReferences: structuredDocumentEntityReferences(richContent),
+          }
+        : undefined,
   });
-  assert.equal(richExport?.manifest.version, 5);
+  assert.equal(richExport?.manifest.version, 6);
   const richManifest = parseStarterWorkspaceManifest(
     JSON.parse(JSON.stringify(richExport?.manifest)) as unknown,
   );
@@ -662,6 +678,7 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
     view.getWorkspace(context.workspaceId),
   );
   let importedRichContent: unknown;
+  let importedProjectContent: unknown;
   importStarterWorkspace({
     service: richTargetService,
     workspaceId: context.workspaceId,
@@ -681,6 +698,9 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
     writeDocumentContent: ({ content }) => {
       importedRichContent = content;
     },
+    writeProjectContent: ({ content }) => {
+      importedProjectContent = content;
+    },
   });
   const targetTask = richTargetStore.read((view) =>
     isApplicationWave2ReadView(view)
@@ -690,6 +710,9 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
   assert.ok(targetTask !== undefined);
   assert.notEqual(targetTask.id, sourceTask.id);
   assert.deepEqual(structuredDocumentEntityReferences(importedRichContent), [
+    { targetKind: "task", targetId: targetTask.id },
+  ]);
+  assert.deepEqual(structuredDocumentEntityReferences(importedProjectContent), [
     { targetKind: "task", targetId: targetTask.id },
   ]);
 

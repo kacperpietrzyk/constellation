@@ -8738,13 +8738,25 @@ export const executeWave2Query = (
         }
       }
       if (kinds.has("project")) {
+        const projectBodyMatches = new Map(
+          view
+            .searchProjectBodies(
+              query.workspaceId,
+              spaceId,
+              query.parameters.text,
+              query.parameters.limit ?? 50,
+            )
+            .map((match) => [match.projectId, match.snippet] as const),
+        );
         for (const project of view.listProjects(query.workspaceId, spaceId)) {
           const title = normalizeSearch(project.title);
           const projectOutcome = normalizeSearch(project.intendedOutcome);
-          const matchedFields: Array<"title" | "intendedOutcome"> = [];
+          const bodySnippet = projectBodyMatches.get(project.id);
+          const matchedFields: Array<"title" | "intendedOutcome" | "body"> = [];
           if (title.includes(needle)) matchedFields.push("title");
           if (projectOutcome.includes(needle))
             matchedFields.push("intendedOutcome");
+          if (bodySnippet !== undefined) matchedFields.push("body");
           if (matchedFields.length === 0) continue;
           const score =
             title === needle
@@ -8762,7 +8774,9 @@ export const executeWave2Query = (
             snippet: snippet(
               matchedFields.includes("title")
                 ? project.title
-                : project.intendedOutcome,
+                : matchedFields.includes("intendedOutcome")
+                  ? project.intendedOutcome
+                  : (bodySnippet ?? project.title),
               needle,
             ),
             matchedFields,

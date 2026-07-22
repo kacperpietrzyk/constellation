@@ -10,6 +10,7 @@ import type {
   PrincipalId,
   SpaceId,
   CorrelationId,
+  CollaborativeContentOwner,
 } from "@constellation/contracts";
 import type {
   AgentAccessGrant,
@@ -132,6 +133,39 @@ export interface HubDocumentRevision {
   readonly restoredFromRevisionId?: DocumentRevisionId;
 }
 
+export interface HubCollaborativeContentState {
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly owner: CollaborativeContentOwner;
+  readonly engine: "yjs-13";
+  readonly state: Uint8Array;
+  readonly updatedAt: string;
+}
+
+export interface HubCollaborativeContentRevision {
+  readonly id: DocumentRevisionId;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+  readonly owner: CollaborativeContentOwner;
+  readonly name: string;
+  readonly engine: "yjs-13";
+  readonly state: Uint8Array;
+  readonly stateVector: Uint8Array;
+  readonly createdBy: PrincipalId;
+  readonly createdByDeviceId: DeviceId;
+  readonly correlationId: CorrelationId;
+  readonly createdAt: string;
+  readonly restoredFromRevisionId?: DocumentRevisionId;
+}
+
+const contentOwnerId = (owner: CollaborativeContentOwner): string =>
+  owner.kind === "document" ? owner.documentId : owner.projectId;
+
+const contentKey = (
+  workspaceId: WorkspaceId,
+  owner: CollaborativeContentOwner,
+): string => `${workspaceId}:${owner.kind}:${contentOwnerId(owner)}`;
+
 export interface HubEnrollmentGrant {
   readonly id: string;
   readonly workspaceId: WorkspaceId;
@@ -212,6 +246,23 @@ export interface HubRepository {
     readonly workspaceId: WorkspaceId;
     readonly documentId: DocumentId;
   }): Promise<readonly HubDocumentRevision[]>;
+  loadCollaborativeContentState(input: {
+    readonly workspaceId: WorkspaceId;
+    readonly owner: CollaborativeContentOwner;
+  }): Promise<HubCollaborativeContentState | undefined>;
+  storeCollaborativeContentState(
+    state: HubCollaborativeContentState,
+  ): Promise<void>;
+  seedCollaborativeContentState(
+    state: HubCollaborativeContentState,
+  ): Promise<boolean>;
+  createCollaborativeContentRevision(
+    revision: HubCollaborativeContentRevision,
+  ): Promise<void>;
+  listCollaborativeContentRevisions(input: {
+    readonly workspaceId: WorkspaceId;
+    readonly owner: CollaborativeContentOwner;
+  }): Promise<readonly HubCollaborativeContentRevision[]>;
 }
 
 export class InMemoryHubRepository implements HubRepository {
@@ -219,8 +270,14 @@ export class InMemoryHubRepository implements HubRepository {
   private readonly enrollments = new Map<string, HubEnrollmentGrant>();
   private readonly devices = new Map<string, HubDeviceGrant>();
   private readonly locks = new Map<WorkspaceId, Promise<void>>();
-  private readonly documentStates = new Map<string, HubDocumentState>();
-  private readonly documentRevisions = new Map<string, HubDocumentRevision>();
+  private readonly contentStates = new Map<
+    string,
+    HubCollaborativeContentState
+  >();
+  private readonly contentRevisions = new Map<
+    string,
+    HubCollaborativeContentRevision
+  >();
 
   private deviceKey(workspaceId: WorkspaceId, deviceId: DeviceId): string {
     return `${workspaceId}:${deviceId}`;
@@ -357,26 +414,39 @@ export class InMemoryHubRepository implements HubRepository {
     readonly workspaceId: WorkspaceId;
     readonly documentId: DocumentId;
   }): Promise<HubDocumentState | undefined> {
-    return this.documentStates.get(`${input.workspaceId}:${input.documentId}`);
+    const state = await this.loadCollaborativeContentState({
+      workspaceId: input.workspaceId,
+      owner: { kind: "document", documentId: input.documentId },
+    });
+    return state === undefined
+      ? undefined
+      : {
+          workspaceId: state.workspaceId,
+          spaceId: state.spaceId,
+          documentId: input.documentId,
+          engine: state.engine,
+          state: state.state,
+          updatedAt: state.updatedAt,
+        };
   }
 
   public async storeDocumentState(state: HubDocumentState): Promise<void> {
-    this.documentStates.set(`${state.workspaceId}:${state.documentId}`, {
-      ...state,
-      state: state.state.slice(),
+    await this.storeCollaborativeContentState({
+      workspaceId: state.workspaceId,
+      spaceId: state.spaceId,
+      owner: { kind: "document", documentId: state.documentId },
+      engine: state.engine,
+      state: state.state,
+      updatedAt: state.updatedAt,
     });
   }
 
   public async createDocumentRevision(
     revision: HubDocumentRevision,
   ): Promise<void> {
-    if (this.documentRevisions.has(revision.id)) {
-      throw new Error("Document revision already exists.");
-    }
-    this.documentRevisions.set(revision.id, {
+    await this.createCollaborativeContentRevision({
       ...revision,
-      state: revision.state.slice(),
-      stateVector: revision.stateVector.slice(),
+      owner: { kind: "document", documentId: revision.documentId },
     });
   }
 
@@ -384,11 +454,68 @@ export class InMemoryHubRepository implements HubRepository {
     readonly workspaceId: WorkspaceId;
     readonly documentId: DocumentId;
   }): Promise<readonly HubDocumentRevision[]> {
-    return [...this.documentRevisions.values()]
+    return (
+      await this.listCollaborativeContentRevisions({
+        workspaceId: input.workspaceId,
+        owner: { kind: "document", documentId: input.documentId },
+      })
+    ).map((revision) => ({
+      ...revision,
+      documentId: input.documentId,
+    }));
+  }
+
+  public async loadCollaborativeContentState(input: {
+    readonly workspaceId: WorkspaceId;
+    readonly owner: CollaborativeContentOwner;
+  }): Promise<HubCollaborativeContentState | undefined> {
+    return this.contentStates.get(contentKey(input.workspaceId, input.owner));
+  }
+
+  public async storeCollaborativeContentState(
+    state: HubCollaborativeContentState,
+  ): Promise<void> {
+    this.contentStates.set(contentKey(state.workspaceId, state.owner), {
+      ...state,
+      state: state.state.slice(),
+    });
+  }
+
+  public async seedCollaborativeContentState(
+    state: HubCollaborativeContentState,
+  ): Promise<boolean> {
+    const key = contentKey(state.workspaceId, state.owner);
+    if (this.contentStates.has(key)) return false;
+    this.contentStates.set(key, {
+      ...state,
+      state: state.state.slice(),
+    });
+    return true;
+  }
+
+  public async createCollaborativeContentRevision(
+    revision: HubCollaborativeContentRevision,
+  ): Promise<void> {
+    if (this.contentRevisions.has(revision.id)) {
+      throw new Error("Collaborative content revision already exists.");
+    }
+    this.contentRevisions.set(revision.id, {
+      ...revision,
+      state: revision.state.slice(),
+      stateVector: revision.stateVector.slice(),
+    });
+  }
+
+  public async listCollaborativeContentRevisions(input: {
+    readonly workspaceId: WorkspaceId;
+    readonly owner: CollaborativeContentOwner;
+  }): Promise<readonly HubCollaborativeContentRevision[]> {
+    return [...this.contentRevisions.values()]
       .filter(
         (revision) =>
           revision.workspaceId === input.workspaceId &&
-          revision.documentId === input.documentId,
+          revision.owner.kind === input.owner.kind &&
+          contentOwnerId(revision.owner) === contentOwnerId(input.owner),
       )
       .sort(
         (left, right) =>

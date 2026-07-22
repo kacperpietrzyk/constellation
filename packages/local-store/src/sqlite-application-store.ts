@@ -16,11 +16,13 @@ import {
 import {
   CommandEnvelopeSchema,
   CommandOutcomeSchema,
+  collaborativeContentOwnerId,
   DocumentRevisionIdSchema,
   CorrelationIdSchema,
   DeviceIdSchema,
   type DocumentId,
   type DocumentRevisionId,
+  type CollaborativeContentOwner,
   type CorrelationId,
   type DeviceId,
   PrincipalIdSchema,
@@ -91,7 +93,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-export const LOCAL_STORE_SCHEMA_VERSION = 22;
+export const LOCAL_STORE_SCHEMA_VERSION = 23;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -111,11 +113,11 @@ const COORDINATED_PROJECTION_TABLES = [
   "events",
   "attention_signals",
   "comments",
-  "document_search_projections",
-  "document_entity_links",
-  "document_pending_updates",
-  "document_revisions",
-  "document_collaboration_state",
+  "content_search_projections",
+  "content_entity_links",
+  "content_pending_updates",
+  "content_revisions",
+  "content_collaboration_state",
   "named_document_versions",
   "strategic_records",
   "documents",
@@ -774,6 +776,166 @@ const schemaV22 = `
   END;
 `;
 
+const schemaV23 = `
+  DROP TRIGGER document_search_projection_insert;
+  DROP TRIGGER document_search_projection_update;
+  DROP TRIGGER document_search_projection_delete;
+  DROP TRIGGER work_search_project_insert;
+  DROP TRIGGER work_search_project_update;
+
+  CREATE TABLE content_collaboration_state (
+    owner_kind TEXT NOT NULL CHECK (owner_kind IN ('document', 'project')),
+    owner_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    engine TEXT NOT NULL CHECK (engine = 'yjs-13'),
+    state_blob BLOB NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (owner_kind, owner_id)
+  ) STRICT;
+  INSERT INTO content_collaboration_state
+    (owner_kind, owner_id, workspace_id, space_id, engine, state_blob, updated_at)
+  SELECT 'document', document_id, workspace_id, space_id, engine, state_blob, updated_at
+  FROM document_collaboration_state;
+
+  CREATE TABLE content_pending_updates (
+    id TEXT PRIMARY KEY,
+    owner_kind TEXT NOT NULL CHECK (owner_kind IN ('document', 'project')),
+    owner_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    update_blob BLOB NOT NULL,
+    created_at TEXT NOT NULL
+  ) STRICT;
+  CREATE INDEX content_pending_updates_queue
+    ON content_pending_updates(owner_kind, owner_id, created_at, id);
+  INSERT INTO content_pending_updates
+    (id, owner_kind, owner_id, workspace_id, space_id, update_blob, created_at)
+  SELECT id, 'document', document_id, workspace_id, space_id, update_blob, created_at
+  FROM document_pending_updates;
+
+  CREATE TABLE content_revisions (
+    revision_id TEXT PRIMARY KEY,
+    owner_kind TEXT NOT NULL CHECK (owner_kind IN ('document', 'project')),
+    owner_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    engine TEXT NOT NULL CHECK (engine = 'yjs-13'),
+    state_blob BLOB NOT NULL,
+    state_vector_blob BLOB NOT NULL,
+    created_by TEXT NOT NULL,
+    created_by_device_id TEXT NOT NULL,
+    correlation_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    restored_from_revision_id TEXT
+  ) STRICT;
+  CREATE INDEX content_revisions_history
+    ON content_revisions(owner_kind, owner_id, created_at DESC, revision_id DESC);
+  INSERT INTO content_revisions
+    (revision_id, owner_kind, owner_id, workspace_id, space_id, name, engine,
+     state_blob, state_vector_blob, created_by, created_by_device_id,
+     correlation_id, created_at, restored_from_revision_id)
+  SELECT id, 'document', document_id, workspace_id, space_id, name, engine,
+    state_blob, state_vector_blob, created_by, created_by_device_id,
+    correlation_id, created_at, restored_from_revision_id
+  FROM document_revisions;
+
+  CREATE TABLE content_entity_links (
+    workspace_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    owner_kind TEXT NOT NULL CHECK (owner_kind IN ('document', 'project')),
+    owner_id TEXT NOT NULL,
+    target_kind TEXT NOT NULL CHECK (target_kind IN ('task', 'project', 'person', 'organization', 'meeting')),
+    target_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (owner_kind, owner_id, target_kind, target_id)
+  ) STRICT;
+  CREATE INDEX content_entity_links_target
+    ON content_entity_links(workspace_id, target_kind, target_id, owner_kind, owner_id);
+  INSERT INTO content_entity_links
+    (workspace_id, space_id, owner_kind, owner_id, target_kind, target_id, updated_at)
+  SELECT workspace_id, space_id, 'document', document_id, target_kind, target_id, updated_at
+  FROM document_entity_links;
+
+  CREATE TABLE content_search_projections (
+    owner_kind TEXT NOT NULL CHECK (owner_kind IN ('document', 'project')),
+    owner_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    space_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    state_digest TEXT NOT NULL CHECK (length(state_digest) = 64),
+    indexed_at TEXT NOT NULL,
+    PRIMARY KEY (owner_kind, owner_id)
+  ) STRICT;
+  CREATE INDEX content_search_projections_scope
+    ON content_search_projections(workspace_id, space_id, owner_kind, owner_id);
+  INSERT INTO content_search_projections
+    (owner_kind, owner_id, workspace_id, space_id, body, state_digest, indexed_at)
+  SELECT 'document', document_id, workspace_id, space_id, body, state_digest, indexed_at
+  FROM document_search_projections;
+
+  DROP TABLE document_search_projections;
+  DROP TABLE document_entity_links;
+  DROP TABLE document_pending_updates;
+  DROP TABLE document_revisions;
+  DROP TABLE document_collaboration_state;
+
+  CREATE TRIGGER content_search_projection_insert AFTER INSERT ON content_search_projections BEGIN
+    DELETE FROM work_search
+      WHERE record_id = new.owner_id
+        AND ((new.owner_kind = 'project' AND record_kind = 'project')
+          OR (new.owner_kind = 'document' AND record_kind IN ('note', 'document', 'deliverable')));
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    SELECT new.owner_id, new.workspace_id, new.space_id,
+      COALESCE(json_extract(payload_json, '$.role'), 'document'),
+      json_extract(payload_json, '$.title'), new.body
+    FROM documents WHERE new.owner_kind = 'document' AND id = new.owner_id;
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    SELECT new.owner_id, new.workspace_id, new.space_id, 'project',
+      json_extract(payload_json, '$.title'),
+      trim(coalesce(json_extract(payload_json, '$.intendedOutcome'), '') || ' ' || new.body)
+    FROM projects WHERE new.owner_kind = 'project' AND id = new.owner_id;
+  END;
+  CREATE TRIGGER content_search_projection_update AFTER UPDATE ON content_search_projections BEGIN
+    DELETE FROM work_search
+      WHERE record_id = old.owner_id
+        AND ((old.owner_kind = 'project' AND record_kind = 'project')
+          OR (old.owner_kind = 'document' AND record_kind IN ('note', 'document', 'deliverable')));
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    SELECT new.owner_id, new.workspace_id, new.space_id,
+      COALESCE(json_extract(payload_json, '$.role'), 'document'),
+      json_extract(payload_json, '$.title'), new.body
+    FROM documents WHERE new.owner_kind = 'document' AND id = new.owner_id;
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    SELECT new.owner_id, new.workspace_id, new.space_id, 'project',
+      json_extract(payload_json, '$.title'),
+      trim(coalesce(json_extract(payload_json, '$.intendedOutcome'), '') || ' ' || new.body)
+    FROM projects WHERE new.owner_kind = 'project' AND id = new.owner_id;
+  END;
+  CREATE TRIGGER content_search_projection_delete AFTER DELETE ON content_search_projections BEGIN
+    DELETE FROM work_search
+      WHERE record_id = old.owner_id
+        AND ((old.owner_kind = 'project' AND record_kind = 'project')
+          OR (old.owner_kind = 'document' AND record_kind IN ('note', 'document', 'deliverable')));
+  END;
+
+  CREATE TRIGGER work_search_project_insert AFTER INSERT ON projects BEGIN
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    VALUES (new.id, new.workspace_id, new.space_id, 'project',
+      json_extract(new.payload_json, '$.title'), json_extract(new.payload_json, '$.intendedOutcome'));
+  END;
+  CREATE TRIGGER work_search_project_update AFTER UPDATE OF payload_json ON projects BEGIN
+    DELETE FROM work_search WHERE record_kind = 'project' AND record_id = old.id;
+    INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
+    VALUES (new.id, new.workspace_id, new.space_id, 'project',
+      json_extract(new.payload_json, '$.title'),
+      trim(coalesce(json_extract(new.payload_json, '$.intendedOutcome'), '') || ' ' ||
+        coalesce((SELECT body FROM content_search_projections
+          WHERE owner_kind = 'project' AND owner_id = new.id), '')));
+  END;
+`;
+
 const localStoreMigrations = [
   schemaV1,
   schemaV2,
@@ -797,6 +959,7 @@ const localStoreMigrations = [
   schemaV20,
   schemaV21,
   schemaV22,
+  schemaV23,
 ] as const;
 
 export interface LocalCoordinationState {
@@ -852,6 +1015,44 @@ export interface LocalDocumentRevision {
   readonly documentId: DocumentId;
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
+  readonly name: string;
+  readonly engine: "yjs-13";
+  readonly state: Uint8Array;
+  readonly stateVector: Uint8Array;
+  readonly createdBy: PrincipalId;
+  readonly createdByDeviceId: DeviceId;
+  readonly correlationId: CorrelationId;
+  readonly createdAt: string;
+  readonly restoredFromRevisionId?: DocumentRevisionId;
+}
+
+export interface LocalCollaborativeContentScope {
+  readonly owner: CollaborativeContentOwner;
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+}
+
+export interface LocalCollaborativeContentState extends LocalCollaborativeContentScope {
+  readonly engine: "yjs-13";
+  readonly state: Uint8Array;
+  readonly updatedAt: string;
+}
+
+export interface LocalCollaborativeContentSearchProjection extends LocalCollaborativeContentScope {
+  readonly body: string;
+  readonly stateDigest: string;
+  readonly indexedAt: string;
+}
+
+export interface LocalPendingCollaborativeContentUpdate {
+  readonly id: string;
+  readonly owner: CollaborativeContentOwner;
+  readonly update: Uint8Array;
+  readonly createdAt: string;
+}
+
+export interface LocalCollaborativeContentRevision extends LocalCollaborativeContentScope {
+  readonly id: DocumentRevisionId;
   readonly name: string;
   readonly engine: "yjs-13";
   readonly state: Uint8Array;
@@ -1652,10 +1853,10 @@ class SqliteReadView implements ApplicationWave2ReadView {
     }
     return this.database
       .prepare(
-        `SELECT space_id, document_id, target_kind, target_id, updated_at
-         FROM document_entity_links
-         WHERE ${clauses.join(" AND ")}
-         ORDER BY updated_at DESC, document_id`,
+        `SELECT space_id, owner_id, target_kind, target_id, updated_at
+         FROM content_entity_links
+         WHERE owner_kind = 'document' AND ${clauses.join(" AND ")}
+         ORDER BY updated_at DESC, owner_id`,
       )
       .all(...parameters)
       .map((row) => ({
@@ -1667,7 +1868,7 @@ class SqliteReadView implements ApplicationWave2ReadView {
         ) as SpaceId,
         documentId: stringValue(
           row,
-          "document_id",
+          "owner_id",
           "document entity link",
         ) as DocumentId,
         targetKind: stringValue(
@@ -1713,6 +1914,38 @@ class SqliteReadView implements ApplicationWave2ReadView {
           "body_snippet",
           "document body search result",
         ),
+      }));
+  }
+
+  public searchProjectBodies(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    text: string,
+    limit: number,
+  ): readonly { readonly projectId: ProjectId; readonly snippet: string }[] {
+    const phrase = text.trim();
+    if (phrase.length === 0) return [];
+    const boundedLimit = Math.max(1, Math.min(Math.trunc(limit), 50));
+    const match = `"${phrase.replaceAll('"', '""')}"`;
+    return this.database
+      .prepare(
+        `SELECT record_id, snippet(work_search, 5, '', '', ' … ', 18) AS body_snippet
+         FROM work_search
+         WHERE work_search MATCH ?
+           AND workspace_id = ?
+           AND space_id = ?
+           AND record_kind = 'project'
+         ORDER BY rank, record_id
+         LIMIT ?`,
+      )
+      .all(match, workspaceId, spaceId, boundedLimit)
+      .map((row) => ({
+        projectId: stringValue(
+          row,
+          "record_id",
+          "project body search result",
+        ) as ProjectId,
+        snippet: stringValue(row, "body_snippet", "project body search result"),
       }));
   }
 
@@ -3116,6 +3349,26 @@ export class SqliteApplicationStore
     return document;
   }
 
+  private requireCollaborativeContentScope(
+    input: LocalCollaborativeContentScope,
+  ): NativeDocument | Project {
+    const view = new SqliteReadView(this.database);
+    const record =
+      input.owner.kind === "document"
+        ? view.getDocument(input.owner.documentId)
+        : view.getProject(input.owner.projectId);
+    if (
+      record === undefined ||
+      record.workspaceId !== input.workspaceId ||
+      record.spaceId !== input.spaceId
+    ) {
+      throw new LocalStoreCorruptionError(
+        "Collaborative content scope does not match its owner metadata.",
+      );
+    }
+    return record;
+  }
+
   public read<Result>(read: (view: ApplicationReadView) => Result): Result {
     return read(new SqliteReadView(this.database));
   }
@@ -3332,43 +3585,59 @@ export class SqliteApplicationStore
     );
   }
 
-  public loadDocumentCollaborationState(input: {
-    readonly documentId: DocumentId;
-    readonly workspaceId: WorkspaceId;
-    readonly spaceId: SpaceId;
-  }): LocalDocumentCollaborationState | undefined {
-    this.requireDocumentScope(
-      input.documentId,
-      input.workspaceId,
-      input.spaceId,
-    );
+  public loadCollaborativeContentState(
+    input: LocalCollaborativeContentScope,
+  ): LocalCollaborativeContentState | undefined {
+    this.requireCollaborativeContentScope(input);
+    const ownerId = collaborativeContentOwnerId(input.owner);
     const row = this.database
       .prepare(
-        "SELECT workspace_id, space_id, engine, state_blob, updated_at FROM document_collaboration_state WHERE document_id = ?",
+        "SELECT workspace_id, space_id, engine, state_blob, updated_at FROM content_collaboration_state WHERE owner_kind = ? AND owner_id = ?",
       )
-      .get(input.documentId);
+      .get(input.owner.kind, ownerId);
     if (row === undefined) return undefined;
     if (
-      stringValue(row, "workspace_id", "document state") !==
-        input.workspaceId ||
-      stringValue(row, "space_id", "document state") !== input.spaceId ||
-      stringValue(row, "engine", "document state") !== "yjs-13"
+      stringValue(row, "workspace_id", "content state") !== input.workspaceId ||
+      stringValue(row, "space_id", "content state") !== input.spaceId ||
+      stringValue(row, "engine", "content state") !== "yjs-13"
     ) {
       throw new LocalStoreCorruptionError(
-        "Document collaboration state violates its scope.",
+        "Collaborative content state violates its scope.",
       );
     }
     return {
       ...input,
       engine: "yjs-13",
-      state: bytesValue(row, "state_blob", "document state"),
-      updatedAt: stringValue(row, "updated_at", "document state"),
+      state: bytesValue(row, "state_blob", "content state"),
+      updatedAt: stringValue(row, "updated_at", "content state"),
     };
   }
 
-  public commitDocumentUpdate(input: {
-    readonly id: string;
+  public loadDocumentCollaborationState(input: {
     readonly documentId: DocumentId;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+  }): LocalDocumentCollaborationState | undefined {
+    const state = this.loadCollaborativeContentState({
+      owner: { kind: "document", documentId: input.documentId },
+      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
+    });
+    return state === undefined
+      ? undefined
+      : {
+          documentId: input.documentId,
+          workspaceId: state.workspaceId,
+          spaceId: state.spaceId,
+          engine: state.engine,
+          state: state.state,
+          updatedAt: state.updatedAt,
+        };
+  }
+
+  public commitCollaborativeContentUpdate(input: {
+    readonly id: string;
+    readonly owner: CollaborativeContentOwner;
     readonly workspaceId: WorkspaceId;
     readonly spaceId: SpaceId;
     readonly state: Uint8Array;
@@ -3381,20 +3650,18 @@ export class SqliteApplicationStore
       input.update.byteLength < 1 ||
       input.update.byteLength > 1_048_576
     ) {
-      throw new Error("Document collaboration binary size is invalid.");
+      throw new Error("Collaborative content binary size is invalid.");
     }
     this.transact(() => {
-      this.requireDocumentScope(
-        input.documentId,
-        input.workspaceId,
-        input.spaceId,
-      );
+      this.requireCollaborativeContentScope(input);
+      const ownerId = collaborativeContentOwnerId(input.owner);
       this.database
         .prepare(
-          "INSERT INTO document_collaboration_state (document_id, workspace_id, space_id, engine, state_blob, updated_at) VALUES (?, ?, ?, 'yjs-13', ?, ?) ON CONFLICT(document_id) DO UPDATE SET workspace_id = excluded.workspace_id, space_id = excluded.space_id, engine = excluded.engine, state_blob = excluded.state_blob, updated_at = excluded.updated_at",
+          "INSERT INTO content_collaboration_state (owner_kind, owner_id, workspace_id, space_id, engine, state_blob, updated_at) VALUES (?, ?, ?, ?, 'yjs-13', ?, ?) ON CONFLICT(owner_kind, owner_id) DO UPDATE SET workspace_id = excluded.workspace_id, space_id = excluded.space_id, engine = excluded.engine, state_blob = excluded.state_blob, updated_at = excluded.updated_at",
         )
         .run(
-          input.documentId,
+          input.owner.kind,
+          ownerId,
           input.workspaceId,
           input.spaceId,
           input.state,
@@ -3402,16 +3669,89 @@ export class SqliteApplicationStore
         );
       this.database
         .prepare(
-          "INSERT INTO document_pending_updates (id, document_id, workspace_id, space_id, update_blob, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+          "INSERT INTO content_pending_updates (id, owner_kind, owner_id, workspace_id, space_id, update_blob, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .run(
           input.id,
-          input.documentId,
+          input.owner.kind,
+          ownerId,
           input.workspaceId,
           input.spaceId,
           input.update,
           input.createdAt,
         );
+    });
+  }
+
+  public commitDocumentUpdate(input: {
+    readonly id: string;
+    readonly documentId: DocumentId;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+    readonly state: Uint8Array;
+    readonly update: Uint8Array;
+    readonly createdAt: string;
+  }): void {
+    this.commitCollaborativeContentUpdate({
+      ...input,
+      owner: { kind: "document", documentId: input.documentId },
+    });
+  }
+
+  public storeCollaborativeContentState(input: {
+    readonly owner: CollaborativeContentOwner;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+    readonly state: Uint8Array;
+    readonly updatedAt: string;
+  }): void {
+    if (input.state.byteLength < 1 || input.state.byteLength > 1_048_576) {
+      throw new Error("Collaborative content binary size is invalid.");
+    }
+    this.transact(() => {
+      this.requireCollaborativeContentScope(input);
+      const ownerId = collaborativeContentOwnerId(input.owner);
+      this.database
+        .prepare(
+          "INSERT INTO content_collaboration_state (owner_kind, owner_id, workspace_id, space_id, engine, state_blob, updated_at) VALUES (?, ?, ?, ?, 'yjs-13', ?, ?) ON CONFLICT(owner_kind, owner_id) DO UPDATE SET workspace_id = excluded.workspace_id, space_id = excluded.space_id, engine = excluded.engine, state_blob = excluded.state_blob, updated_at = excluded.updated_at",
+        )
+        .run(
+          input.owner.kind,
+          ownerId,
+          input.workspaceId,
+          input.spaceId,
+          input.state,
+          input.updatedAt,
+        );
+    });
+  }
+
+  public seedCollaborativeContentState(input: {
+    readonly owner: CollaborativeContentOwner;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+    readonly state: Uint8Array;
+    readonly updatedAt: string;
+  }): boolean {
+    if (input.state.byteLength < 1 || input.state.byteLength > 1_048_576) {
+      throw new Error("Collaborative content binary size is invalid.");
+    }
+    return this.transact(() => {
+      this.requireCollaborativeContentScope(input);
+      return changed(
+        this.database
+          .prepare(
+            "INSERT OR IGNORE INTO content_collaboration_state (owner_kind, owner_id, workspace_id, space_id, engine, state_blob, updated_at) VALUES (?, ?, ?, ?, 'yjs-13', ?, ?)",
+          )
+          .run(
+            input.owner.kind,
+            collaborativeContentOwnerId(input.owner),
+            input.workspaceId,
+            input.spaceId,
+            input.state,
+            input.updatedAt,
+          ),
+      );
     });
   }
 
@@ -3422,26 +3762,44 @@ export class SqliteApplicationStore
     readonly state: Uint8Array;
     readonly updatedAt: string;
   }): void {
-    if (input.state.byteLength < 1 || input.state.byteLength > 1_048_576) {
-      throw new Error("Document collaboration binary size is invalid.");
-    }
+    this.storeCollaborativeContentState({
+      ...input,
+      owner: { kind: "document", documentId: input.documentId },
+    });
+  }
+
+  public replaceCollaborativeContentEntityLinks(input: {
+    readonly owner: CollaborativeContentOwner;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+    readonly links: readonly Pick<
+      DocumentEntityLink,
+      "targetKind" | "targetId"
+    >[];
+    readonly updatedAt: string;
+  }): void {
     this.transact(() => {
-      this.requireDocumentScope(
-        input.documentId,
-        input.workspaceId,
-        input.spaceId,
-      );
+      this.requireCollaborativeContentScope(input);
+      const ownerId = collaborativeContentOwnerId(input.owner);
       this.database
         .prepare(
-          "INSERT INTO document_collaboration_state (document_id, workspace_id, space_id, engine, state_blob, updated_at) VALUES (?, ?, ?, 'yjs-13', ?, ?) ON CONFLICT(document_id) DO UPDATE SET workspace_id = excluded.workspace_id, space_id = excluded.space_id, engine = excluded.engine, state_blob = excluded.state_blob, updated_at = excluded.updated_at",
+          "DELETE FROM content_entity_links WHERE owner_kind = ? AND owner_id = ?",
         )
-        .run(
-          input.documentId,
+        .run(input.owner.kind, ownerId);
+      const insert = this.database.prepare(
+        "INSERT INTO content_entity_links (workspace_id, space_id, owner_kind, owner_id, target_kind, target_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      );
+      for (const link of input.links) {
+        insert.run(
           input.workspaceId,
           input.spaceId,
-          input.state,
+          input.owner.kind,
+          ownerId,
+          link.targetKind,
+          link.targetId,
           input.updatedAt,
         );
+      }
     });
   }
 
@@ -3455,29 +3813,42 @@ export class SqliteApplicationStore
     >[];
     readonly updatedAt: string;
   }): void {
-    this.transact(() => {
-      this.requireDocumentScope(
-        input.documentId,
+    this.replaceCollaborativeContentEntityLinks({
+      ...input,
+      owner: { kind: "document", documentId: input.documentId },
+    });
+  }
+
+  public getCollaborativeContentSearchProjection(
+    input: LocalCollaborativeContentScope,
+  ): LocalCollaborativeContentSearchProjection | undefined {
+    this.requireCollaborativeContentScope(input);
+    const row = this.database
+      .prepare(
+        "SELECT body, state_digest, indexed_at FROM content_search_projections WHERE owner_kind = ? AND owner_id = ? AND workspace_id = ? AND space_id = ?",
+      )
+      .get(
+        input.owner.kind,
+        collaborativeContentOwnerId(input.owner),
         input.workspaceId,
         input.spaceId,
       );
-      this.database
-        .prepare("DELETE FROM document_entity_links WHERE document_id = ?")
-        .run(input.documentId);
-      const insert = this.database.prepare(
-        "INSERT INTO document_entity_links (workspace_id, space_id, document_id, target_kind, target_id, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-      );
-      for (const link of input.links) {
-        insert.run(
-          input.workspaceId,
-          input.spaceId,
-          input.documentId,
-          link.targetKind,
-          link.targetId,
-          input.updatedAt,
-        );
-      }
-    });
+    return row === undefined
+      ? undefined
+      : {
+          ...input,
+          body: stringValue(row, "body", "content search projection"),
+          stateDigest: stringValue(
+            row,
+            "state_digest",
+            "content search projection",
+          ),
+          indexedAt: stringValue(
+            row,
+            "indexed_at",
+            "content search projection",
+          ),
+        };
   }
 
   public getDocumentSearchProjection(input: {
@@ -3485,55 +3856,39 @@ export class SqliteApplicationStore
     readonly workspaceId: WorkspaceId;
     readonly spaceId: SpaceId;
   }): LocalDocumentSearchProjection | undefined {
-    this.requireDocumentScope(
-      input.documentId,
-      input.workspaceId,
-      input.spaceId,
-    );
-    const row = this.database
-      .prepare(
-        "SELECT body, state_digest, indexed_at FROM document_search_projections WHERE document_id = ? AND workspace_id = ? AND space_id = ?",
-      )
-      .get(input.documentId, input.workspaceId, input.spaceId);
-    return row === undefined
+    const projection = this.getCollaborativeContentSearchProjection({
+      owner: { kind: "document", documentId: input.documentId },
+      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
+    });
+    return projection === undefined
       ? undefined
       : {
           ...input,
-          body: stringValue(row, "body", "document search projection"),
-          stateDigest: stringValue(
-            row,
-            "state_digest",
-            "document search projection",
-          ),
-          indexedAt: stringValue(
-            row,
-            "indexed_at",
-            "document search projection",
-          ),
+          body: projection.body,
+          stateDigest: projection.stateDigest,
+          indexedAt: projection.indexedAt,
         };
   }
 
-  public replaceDocumentSearchProjection(
-    input: LocalDocumentSearchProjection,
+  public replaceCollaborativeContentSearchProjection(
+    input: LocalCollaborativeContentSearchProjection,
   ): void {
     if (!/^[0-9a-f]{64}$/u.test(input.stateDigest)) {
-      throw new Error("Document search projection digest is invalid.");
+      throw new Error("Collaborative content search digest is invalid.");
     }
     if (input.body.length > 500_000) {
-      throw new Error("Document search projection body is too large.");
+      throw new Error("Collaborative content search body is too large.");
     }
     this.transact(() => {
-      this.requireDocumentScope(
-        input.documentId,
-        input.workspaceId,
-        input.spaceId,
-      );
+      this.requireCollaborativeContentScope(input);
       this.database
         .prepare(
-          "INSERT INTO document_search_projections (document_id, workspace_id, space_id, body, state_digest, indexed_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(document_id) DO UPDATE SET workspace_id = excluded.workspace_id, space_id = excluded.space_id, body = excluded.body, state_digest = excluded.state_digest, indexed_at = excluded.indexed_at",
+          "INSERT INTO content_search_projections (owner_kind, owner_id, workspace_id, space_id, body, state_digest, indexed_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(owner_kind, owner_id) DO UPDATE SET workspace_id = excluded.workspace_id, space_id = excluded.space_id, body = excluded.body, state_digest = excluded.state_digest, indexed_at = excluded.indexed_at",
         )
         .run(
-          input.documentId,
+          input.owner.kind,
+          collaborativeContentOwnerId(input.owner),
           input.workspaceId,
           input.spaceId,
           input.body,
@@ -3543,21 +3898,29 @@ export class SqliteApplicationStore
     });
   }
 
-  public listPendingDocumentUpdates(input: {
-    readonly documentId: DocumentId;
-    readonly workspaceId: WorkspaceId;
-    readonly spaceId: SpaceId;
-  }): readonly LocalPendingDocumentUpdate[] {
-    this.requireDocumentScope(
-      input.documentId,
-      input.workspaceId,
-      input.spaceId,
-    );
+  public replaceDocumentSearchProjection(
+    input: LocalDocumentSearchProjection,
+  ): void {
+    this.replaceCollaborativeContentSearchProjection({
+      owner: { kind: "document", documentId: input.documentId },
+      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
+      body: input.body,
+      stateDigest: input.stateDigest,
+      indexedAt: input.indexedAt,
+    });
+  }
+
+  public listPendingCollaborativeContentUpdates(
+    input: LocalCollaborativeContentScope,
+  ): readonly LocalPendingCollaborativeContentUpdate[] {
+    this.requireCollaborativeContentScope(input);
+    const ownerId = collaborativeContentOwnerId(input.owner);
     return this.database
       .prepare(
-        "SELECT id, workspace_id, space_id, update_blob, created_at FROM document_pending_updates WHERE document_id = ? ORDER BY created_at, id",
+        "SELECT id, workspace_id, space_id, update_blob, created_at FROM content_pending_updates WHERE owner_kind = ? AND owner_id = ? ORDER BY created_at, id",
       )
-      .all(input.documentId)
+      .all(input.owner.kind, ownerId)
       .map((row) => {
         if (
           stringValue(row, "workspace_id", "document update") !==
@@ -3565,52 +3928,80 @@ export class SqliteApplicationStore
           stringValue(row, "space_id", "document update") !== input.spaceId
         ) {
           throw new LocalStoreCorruptionError(
-            "Pending document update violates its scope.",
+            "Pending collaborative content update violates its scope.",
           );
         }
         return {
-          id: stringValue(row, "id", "document update"),
-          documentId: input.documentId,
-          update: bytesValue(row, "update_blob", "document update"),
-          createdAt: stringValue(row, "created_at", "document update"),
+          id: stringValue(row, "id", "content update"),
+          owner: input.owner,
+          update: bytesValue(row, "update_blob", "content update"),
+          createdAt: stringValue(row, "created_at", "content update"),
         };
       });
+  }
+
+  public listPendingDocumentUpdates(input: {
+    readonly documentId: DocumentId;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+  }): readonly LocalPendingDocumentUpdate[] {
+    return this.listPendingCollaborativeContentUpdates({
+      owner: { kind: "document", documentId: input.documentId },
+      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
+    }).map((update) => ({
+      id: update.id,
+      documentId: input.documentId,
+      update: update.update,
+      createdAt: update.createdAt,
+    }));
+  }
+
+  public acknowledgeCollaborativeContentUpdates(input: {
+    readonly owner: CollaborativeContentOwner;
+    readonly updateIds: readonly string[];
+  }): void {
+    this.transact(() => {
+      const remove = this.database.prepare(
+        "DELETE FROM content_pending_updates WHERE owner_kind = ? AND owner_id = ? AND id = ?",
+      );
+      const ownerId = collaborativeContentOwnerId(input.owner);
+      for (const id of input.updateIds)
+        remove.run(input.owner.kind, ownerId, id);
+    });
   }
 
   public acknowledgeDocumentUpdates(input: {
     readonly documentId: DocumentId;
     readonly updateIds: readonly string[];
   }): void {
-    this.transact(() => {
-      const remove = this.database.prepare(
-        "DELETE FROM document_pending_updates WHERE document_id = ? AND id = ?",
-      );
-      for (const id of input.updateIds) remove.run(input.documentId, id);
+    this.acknowledgeCollaborativeContentUpdates({
+      owner: { kind: "document", documentId: input.documentId },
+      updateIds: input.updateIds,
     });
   }
 
-  public storeDocumentRevision(revision: LocalDocumentRevision): void {
+  public storeCollaborativeContentRevision(
+    revision: LocalCollaborativeContentRevision,
+  ): void {
     if (
       revision.state.byteLength < 1 ||
       revision.state.byteLength > 1_048_576 ||
       revision.stateVector.byteLength < 1 ||
       revision.stateVector.byteLength > 1_048_576
     ) {
-      throw new Error("Document revision binary size is invalid.");
+      throw new Error("Collaborative content revision binary size is invalid.");
     }
     this.transact(() => {
-      this.requireDocumentScope(
-        revision.documentId,
-        revision.workspaceId,
-        revision.spaceId,
-      );
+      this.requireCollaborativeContentScope(revision);
       this.database
         .prepare(
-          "INSERT INTO document_revisions (id, document_id, workspace_id, space_id, name, engine, state_blob, state_vector_blob, created_by, created_by_device_id, correlation_id, created_at, restored_from_revision_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO content_revisions (revision_id, owner_kind, owner_id, workspace_id, space_id, name, engine, state_blob, state_vector_blob, created_by, created_by_device_id, correlation_id, created_at, restored_from_revision_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run(
           revision.id,
-          revision.documentId,
+          revision.owner.kind,
+          collaborativeContentOwnerId(revision.owner),
           revision.workspaceId,
           revision.spaceId,
           revision.name,
@@ -3626,60 +4017,70 @@ export class SqliteApplicationStore
     });
   }
 
-  public listDocumentRevisions(input: {
-    readonly documentId: DocumentId;
-    readonly workspaceId: WorkspaceId;
-    readonly spaceId: SpaceId;
-  }): readonly LocalDocumentRevision[] {
-    this.requireDocumentScope(
-      input.documentId,
-      input.workspaceId,
-      input.spaceId,
-    );
+  public storeDocumentRevision(revision: LocalDocumentRevision): void {
+    this.storeCollaborativeContentRevision({
+      id: revision.id,
+      owner: { kind: "document", documentId: revision.documentId },
+      workspaceId: revision.workspaceId,
+      spaceId: revision.spaceId,
+      name: revision.name,
+      engine: revision.engine,
+      state: revision.state,
+      stateVector: revision.stateVector,
+      createdBy: revision.createdBy,
+      createdByDeviceId: revision.createdByDeviceId,
+      correlationId: revision.correlationId,
+      createdAt: revision.createdAt,
+      ...(revision.restoredFromRevisionId === undefined
+        ? {}
+        : { restoredFromRevisionId: revision.restoredFromRevisionId }),
+    });
+  }
+
+  public listCollaborativeContentRevisions(
+    input: LocalCollaborativeContentScope,
+  ): readonly LocalCollaborativeContentRevision[] {
+    this.requireCollaborativeContentScope(input);
     return this.database
       .prepare(
-        "SELECT id, workspace_id, space_id, name, engine, state_blob, state_vector_blob, created_by, created_by_device_id, correlation_id, created_at, restored_from_revision_id FROM document_revisions WHERE document_id = ? ORDER BY created_at DESC, id DESC",
+        "SELECT revision_id, workspace_id, space_id, name, engine, state_blob, state_vector_blob, created_by, created_by_device_id, correlation_id, created_at, restored_from_revision_id FROM content_revisions WHERE owner_kind = ? AND owner_id = ? ORDER BY created_at DESC, revision_id DESC",
       )
-      .all(input.documentId)
+      .all(input.owner.kind, collaborativeContentOwnerId(input.owner))
       .map((row) => {
         if (
-          stringValue(row, "workspace_id", "document revision") !==
+          stringValue(row, "workspace_id", "content revision") !==
             input.workspaceId ||
-          stringValue(row, "space_id", "document revision") !== input.spaceId ||
-          stringValue(row, "engine", "document revision") !== "yjs-13"
+          stringValue(row, "space_id", "content revision") !== input.spaceId ||
+          stringValue(row, "engine", "content revision") !== "yjs-13"
         ) {
           throw new LocalStoreCorruptionError(
-            "Document revision violates its scope.",
+            "Collaborative content revision violates its scope.",
           );
         }
         const restoredFromRevisionId = nullableStringValue(
           row,
           "restored_from_revision_id",
-          "document revision",
+          "content revision",
         );
         return {
           id: DocumentRevisionIdSchema.parse(
-            stringValue(row, "id", "document revision"),
+            stringValue(row, "revision_id", "content revision"),
           ),
           ...input,
-          name: stringValue(row, "name", "document revision"),
+          name: stringValue(row, "name", "content revision"),
           engine: "yjs-13" as const,
-          state: bytesValue(row, "state_blob", "document revision"),
-          stateVector: bytesValue(
-            row,
-            "state_vector_blob",
-            "document revision",
-          ),
+          state: bytesValue(row, "state_blob", "content revision"),
+          stateVector: bytesValue(row, "state_vector_blob", "content revision"),
           createdBy: PrincipalIdSchema.parse(
-            stringValue(row, "created_by", "document revision"),
+            stringValue(row, "created_by", "content revision"),
           ),
           createdByDeviceId: DeviceIdSchema.parse(
-            stringValue(row, "created_by_device_id", "document revision"),
+            stringValue(row, "created_by_device_id", "content revision"),
           ),
           correlationId: CorrelationIdSchema.parse(
-            stringValue(row, "correlation_id", "document revision"),
+            stringValue(row, "correlation_id", "content revision"),
           ),
-          createdAt: stringValue(row, "created_at", "document revision"),
+          createdAt: stringValue(row, "created_at", "content revision"),
           ...(restoredFromRevisionId === undefined
             ? {}
             : {
@@ -3691,28 +4092,67 @@ export class SqliteApplicationStore
       });
   }
 
-  public purgeDocumentCollaboration(documentId: DocumentId): void {
+  public listDocumentRevisions(input: {
+    readonly documentId: DocumentId;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+  }): readonly LocalDocumentRevision[] {
+    return this.listCollaborativeContentRevisions({
+      owner: { kind: "document", documentId: input.documentId },
+      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
+    }).map((revision) => ({
+      id: revision.id,
+      documentId: input.documentId,
+      workspaceId: revision.workspaceId,
+      spaceId: revision.spaceId,
+      name: revision.name,
+      engine: revision.engine,
+      state: revision.state,
+      stateVector: revision.stateVector,
+      createdBy: revision.createdBy,
+      createdByDeviceId: revision.createdByDeviceId,
+      correlationId: revision.correlationId,
+      createdAt: revision.createdAt,
+      ...(revision.restoredFromRevisionId === undefined
+        ? {}
+        : { restoredFromRevisionId: revision.restoredFromRevisionId }),
+    }));
+  }
+
+  public purgeCollaborativeContent(owner: CollaborativeContentOwner): void {
     this.transact(() => {
+      const ownerId = collaborativeContentOwnerId(owner);
       this.database
         .prepare(
-          "DELETE FROM document_search_projections WHERE document_id = ?",
+          "DELETE FROM content_search_projections WHERE owner_kind = ? AND owner_id = ?",
         )
-        .run(documentId);
-      this.database
-        .prepare("DELETE FROM document_entity_links WHERE document_id = ?")
-        .run(documentId);
-      this.database
-        .prepare("DELETE FROM document_pending_updates WHERE document_id = ?")
-        .run(documentId);
-      this.database
-        .prepare("DELETE FROM document_revisions WHERE document_id = ?")
-        .run(documentId);
+        .run(owner.kind, ownerId);
       this.database
         .prepare(
-          "DELETE FROM document_collaboration_state WHERE document_id = ?",
+          "DELETE FROM content_entity_links WHERE owner_kind = ? AND owner_id = ?",
         )
-        .run(documentId);
+        .run(owner.kind, ownerId);
+      this.database
+        .prepare(
+          "DELETE FROM content_pending_updates WHERE owner_kind = ? AND owner_id = ?",
+        )
+        .run(owner.kind, ownerId);
+      this.database
+        .prepare(
+          "DELETE FROM content_revisions WHERE owner_kind = ? AND owner_id = ?",
+        )
+        .run(owner.kind, ownerId);
+      this.database
+        .prepare(
+          "DELETE FROM content_collaboration_state WHERE owner_kind = ? AND owner_id = ?",
+        )
+        .run(owner.kind, ownerId);
     });
+  }
+
+  public purgeDocumentCollaboration(documentId: DocumentId): void {
+    this.purgeCollaborativeContent({ kind: "document", documentId });
   }
 
   public recoverySummary(

@@ -6,6 +6,7 @@ import {
 } from "@constellation/application";
 import type {
   DocumentId,
+  ProjectId,
   SpaceId,
   WorkspaceId,
 } from "@constellation/contracts";
@@ -68,6 +69,19 @@ export const buildExchangeManifest = (input: {
   }) => string | undefined;
   readonly readDocumentContent?: (input: {
     readonly documentId: DocumentId;
+    readonly spaceId: SpaceId;
+  }) =>
+    | {
+        readonly content: StructuredDocument;
+        readonly entityReferences: readonly {
+          readonly targetKind:
+            "task" | "project" | "person" | "organization" | "meeting";
+          readonly targetId: string;
+        }[];
+      }
+    | undefined;
+  readonly readProjectContent?: (input: {
+    readonly projectId: ProjectId;
     readonly spaceId: SpaceId;
   }) =>
     | {
@@ -148,6 +162,10 @@ export const buildExchangeManifest = (input: {
           project.id,
           "project_advances_initiative",
         );
+        const structured = input.readProjectContent?.({
+          projectId: project.id,
+          spaceId: project.spaceId,
+        });
         return {
           key: recordKey("project", project.id),
           title: project.title,
@@ -158,6 +176,20 @@ export const buildExchangeManifest = (input: {
           ...(initiativeId === undefined
             ? {}
             : { initiativeKey: recordKey("initiative", initiativeId) }),
+          ...(structured === undefined
+            ? {}
+            : {
+                structuredContent: structured.content,
+                entityReferences: structured.entityReferences.map(
+                  (reference) => ({
+                    ...reference,
+                    targetKey: recordKey(
+                      reference.targetKind,
+                      reference.targetId,
+                    ),
+                  }),
+                ),
+              }),
         };
       });
     const exportedProjectKeys = new Set(projects.map((project) => project.key));
@@ -233,7 +265,7 @@ export const buildExchangeManifest = (input: {
         };
       });
     const body = {
-      version: 5 as const,
+      version: 6 as const,
       areas,
       initiatives,
       projects,

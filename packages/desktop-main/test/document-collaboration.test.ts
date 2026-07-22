@@ -8,6 +8,7 @@ import {
   DeviceIdSchema,
   DocumentIdSchema,
   ExecutionContextSchema,
+  type ProjectId,
   WorkspaceIdSchema,
   type ExecutionContext,
 } from "@constellation/contracts";
@@ -47,6 +48,8 @@ const context = (): ExecutionContext =>
       "workspace.bootstrapContext",
       "document.create",
       "document.list",
+      "project.create",
+      "project.updateOutcome",
     ],
     origin: "desktop",
   });
@@ -57,6 +60,7 @@ const setup = () => {
     database as unknown as SqliteDatabase,
   );
   const runtime = createRuntimeKernelService({ context: context(), store });
+  let projectId: ProjectId | undefined;
   for (const command of [
     {
       contractVersion: 1,
@@ -84,8 +88,22 @@ const setup = () => {
       correlationId: "00000000-0000-4000-8000-000000001313",
       payload: {
         documentId: ids.document,
-        spaceId: ids.space,
+        spaceId: context().spaceScope[0]!,
         title: "Local first document",
+      },
+    },
+    {
+      contractVersion: 1,
+      commandName: "project.create",
+      commandId: "00000000-0000-4000-8000-000000001314",
+      workspaceId: ids.workspace,
+      idempotencyKey: "document-bridge-project",
+      expectedVersions: {},
+      correlationId: "00000000-0000-4000-8000-000000001315",
+      payload: {
+        spaceId: context().spaceScope[0]!,
+        title: "Collaborative Project",
+        intendedOutcome: "One Project-owned rich body",
       },
     },
   ]) {
@@ -93,9 +111,16 @@ const setup = () => {
     assert.equal(result.kind, "command_outcome");
     if (result.kind === "command_outcome") {
       assert.equal(result.outcome.outcome, "success");
+      if (
+        result.outcome.outcome === "success" &&
+        result.outcome.projection.kind === "project.created"
+      ) {
+        projectId = result.outcome.projection.projectId;
+      }
     }
   }
-  return { database, store };
+  if (projectId === undefined) throw new Error("Expected Project creation.");
+  return { database, store, runtime, projectId };
 };
 
 const edit = (text: string) => {
@@ -211,6 +236,121 @@ describe("desktop document collaboration bridge", () => {
     assert.equal(
       (await bridge.listRevisions({ documentId: ids.document })).length,
       2,
+    );
+    database.close();
+  });
+
+  it("opens, indexes, revisions, and restores Project-owned rich content", async () => {
+    const { database, store, runtime, projectId } = setup();
+    const bridge = new DocumentCollaborationBridge({
+      workspaceId: ids.workspace,
+      deviceId: ids.device,
+      store,
+      connection: () => undefined,
+      now: () => "2026-07-22T02:00:00.000Z",
+    });
+    const owner = { kind: "project", projectId } as const;
+    const seeded = await bridge.openContent({
+      owner,
+      spaceId: ids.space,
+      supportedDocumentFormats: ["rich-v1"],
+    });
+    assert.ok(seeded.state);
+    const initial = new YjsRealtimeDocumentAdapter(seeded.state);
+    assert.equal(initial.getText(), "One Project-owned rich body");
+    initial.destroy();
+    bridge.persistContent({
+      owner,
+      spaceId: ids.space,
+      ...richEdit("Pierwszy plan projektu"),
+    });
+    const scalarUpdate = runtime.execute({
+      contractVersion: 1,
+      commandName: "project.updateOutcome",
+      commandId: "00000000-0000-4000-8000-000000001316",
+      workspaceId: ids.workspace,
+      idempotencyKey: "project-scalar-after-rich-seed",
+      expectedVersions: { [projectId]: 1 },
+      correlationId: "00000000-0000-4000-8000-000000001317",
+      payload: {
+        projectId,
+        intendedOutcome: "Changed scalar outcome",
+      },
+    });
+    assert.equal(
+      scalarUpdate.kind === "command_outcome"
+        ? scalarUpdate.outcome.outcome
+        : "invalid",
+      "success",
+    );
+    const revisionId = await bridge.createContentRevision({
+      owner,
+      name: "Project review",
+    });
+    bridge.persistContent({
+      owner,
+      spaceId: ids.space,
+      ...richEdit("Zmieniony plan projektu"),
+    });
+    await bridge.restoreContentRevision({ owner, revisionId });
+    const opened = await bridge.openContent({
+      owner,
+      spaceId: ids.space,
+      supportedDocumentFormats: ["rich-v1"],
+    });
+    assert.equal(opened.mode, "local");
+    assert.equal(opened.searchIndexState, "current");
+    const restored = new YjsRealtimeDocumentAdapter(opened.state);
+    assert.equal(restored.getText(), "Pierwszy plan projektu");
+    restored.destroy();
+    assert.deepEqual(
+      (await bridge.listContentRevisions({ owner }))
+        .map((revision) => revision.name)
+        .sort(),
+      ["Project review", "Restored Project review"],
+    );
+    assert.equal(
+      store.getCollaborativeContentSearchProjection({
+        owner,
+        workspaceId: ids.workspace,
+        spaceId: context().spaceScope[0]!,
+      })?.body,
+      "Pierwszy plan projektu",
+    );
+    const coordinatedBridge = new DocumentCollaborationBridge({
+      workspaceId: ids.workspace,
+      deviceId: ids.device,
+      store,
+      connection: () => ({
+        workspaceId: ids.workspace,
+        deviceId: ids.device,
+        origin: "https://hub.example.test",
+        deviceCredential: "offline-project-device",
+        providerInstanceId: "constellation.hub:project-offline",
+      }),
+      now: () => "2026-07-22T02:05:00.000Z",
+    });
+    coordinatedBridge.persistContent({
+      owner,
+      spaceId: ids.space,
+      ...richEdit("Edycja projektu oczekująca na Hub"),
+    });
+    assert.equal(
+      store.listPendingCollaborativeContentUpdates({
+        owner,
+        workspaceId: ids.workspace,
+        spaceId: context().spaceScope[0]!,
+      }).length,
+      1,
+    );
+    coordinatedBridge.acknowledgeContent({ owner, spaceId: ids.space });
+    assert.equal(
+      store.listPendingCollaborativeContentUpdates({
+        owner,
+        workspaceId: ids.workspace,
+        spaceId: context().spaceScope[0]!,
+      }).length,
+      0,
     );
     database.close();
   });

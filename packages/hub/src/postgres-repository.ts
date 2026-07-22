@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 
 import {
   CommandOutcomeSchema,
+  CollaborativeContentOwnerSchema,
   CorrelationIdSchema,
-  DocumentIdSchema,
   DocumentRevisionIdSchema,
   DeviceIdSchema,
   ExecutionContextSchema,
@@ -27,6 +27,8 @@ import type {
   HubWorkspaceState,
   HubDocumentState,
   HubDocumentRevision,
+  HubCollaborativeContentState,
+  HubCollaborativeContentRevision,
 } from "./repository.js";
 import {
   emptyHubRemoteAgentState,
@@ -57,6 +59,10 @@ const optionalText = (
     throw new Error(`PostgreSQL ${key} is invalid.`);
   return value;
 };
+
+const contentOwnerId = (
+  owner: HubCollaborativeContentState["owner"],
+): string => (owner.kind === "document" ? owner.documentId : owner.projectId);
 
 const bigint = (row: Record<string, unknown>, key: string): bigint => {
   const value = row[key];
@@ -453,15 +459,40 @@ export class PostgresHubRepository implements HubRepository {
     readonly workspaceId: HubDocumentState["workspaceId"];
     readonly documentId: HubDocumentState["documentId"];
   }): Promise<HubDocumentState | undefined> {
+    const state = await this.loadCollaborativeContentState({
+      workspaceId: input.workspaceId,
+      owner: { kind: "document", documentId: input.documentId },
+    });
+    return state === undefined
+      ? undefined
+      : {
+          workspaceId: state.workspaceId,
+          documentId: input.documentId,
+          spaceId: state.spaceId,
+          engine: state.engine,
+          state: state.state,
+          updatedAt: state.updatedAt,
+        };
+  }
+
+  public async loadCollaborativeContentState(input: {
+    readonly workspaceId: HubCollaborativeContentState["workspaceId"];
+    readonly owner: HubCollaborativeContentState["owner"];
+  }): Promise<HubCollaborativeContentState | undefined> {
     const result = await this.pool.query(
-      "SELECT workspace_id::text, document_id::text, space_id::text, engine, state, updated_at::text FROM constellation_hub_documents WHERE workspace_id = $1 AND document_id = $2",
-      [input.workspaceId, input.documentId],
+      "SELECT workspace_id::text, owner_kind, owner_id::text, space_id::text, engine, state, updated_at::text FROM constellation_hub_content WHERE workspace_id = $1 AND owner_kind = $2 AND owner_id = $3",
+      [input.workspaceId, input.owner.kind, contentOwnerId(input.owner)],
     );
     if (result.rowCount !== 1) return undefined;
     const row = object(result.rows[0], "document state row");
+    const owner = CollaborativeContentOwnerSchema.parse(
+      row.owner_kind === "document"
+        ? { kind: "document", documentId: row.owner_id }
+        : { kind: "project", projectId: row.owner_id },
+    );
     return {
       workspaceId: WorkspaceIdSchema.parse(row.workspace_id),
-      documentId: DocumentIdSchema.parse(row.document_id),
+      owner,
       spaceId: SpaceIdSchema.parse(row.space_id),
       engine: "yjs-13",
       state: bytes(row, "state"),
@@ -470,11 +501,25 @@ export class PostgresHubRepository implements HubRepository {
   }
 
   public async storeDocumentState(state: HubDocumentState): Promise<void> {
+    await this.storeCollaborativeContentState({
+      workspaceId: state.workspaceId,
+      owner: { kind: "document", documentId: state.documentId },
+      spaceId: state.spaceId,
+      engine: state.engine,
+      state: state.state,
+      updatedAt: state.updatedAt,
+    });
+  }
+
+  public async storeCollaborativeContentState(
+    state: HubCollaborativeContentState,
+  ): Promise<void> {
     await this.pool.query(
-      "INSERT INTO constellation_hub_documents (workspace_id, document_id, space_id, engine, state, updated_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (workspace_id, document_id) DO UPDATE SET space_id = EXCLUDED.space_id, engine = EXCLUDED.engine, state = EXCLUDED.state, updated_at = EXCLUDED.updated_at",
+      "INSERT INTO constellation_hub_content (workspace_id, owner_kind, owner_id, space_id, engine, state, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (workspace_id, owner_kind, owner_id) DO UPDATE SET space_id = EXCLUDED.space_id, engine = EXCLUDED.engine, state = EXCLUDED.state, updated_at = EXCLUDED.updated_at",
       [
         state.workspaceId,
-        state.documentId,
+        state.owner.kind,
+        contentOwnerId(state.owner),
         state.spaceId,
         state.engine,
         Buffer.from(state.state),
@@ -483,15 +528,43 @@ export class PostgresHubRepository implements HubRepository {
     );
   }
 
+  public async seedCollaborativeContentState(
+    state: HubCollaborativeContentState,
+  ): Promise<boolean> {
+    const result = await this.pool.query(
+      "INSERT INTO constellation_hub_content (workspace_id, owner_kind, owner_id, space_id, engine, state, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (workspace_id, owner_kind, owner_id) DO NOTHING RETURNING owner_id",
+      [
+        state.workspaceId,
+        state.owner.kind,
+        contentOwnerId(state.owner),
+        state.spaceId,
+        state.engine,
+        Buffer.from(state.state),
+        state.updatedAt,
+      ],
+    );
+    return result.rowCount === 1;
+  }
+
   public async createDocumentRevision(
     revision: HubDocumentRevision,
   ): Promise<void> {
+    await this.createCollaborativeContentRevision({
+      ...revision,
+      owner: { kind: "document", documentId: revision.documentId },
+    });
+  }
+
+  public async createCollaborativeContentRevision(
+    revision: HubCollaborativeContentRevision,
+  ): Promise<void> {
     await this.pool.query(
-      "INSERT INTO constellation_hub_document_revisions (revision_id, workspace_id, document_id, space_id, name, engine, state, state_vector, created_by, created_by_device_id, correlation_id, created_at, restored_from_revision_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+      "INSERT INTO constellation_hub_content_revisions (revision_id, workspace_id, owner_kind, owner_id, space_id, name, engine, state, state_vector, created_by, created_by_device_id, correlation_id, created_at, restored_from_revision_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
       [
         revision.id,
         revision.workspaceId,
-        revision.documentId,
+        revision.owner.kind,
+        contentOwnerId(revision.owner),
         revision.spaceId,
         revision.name,
         revision.engine,
@@ -510,17 +583,34 @@ export class PostgresHubRepository implements HubRepository {
     readonly workspaceId: HubDocumentRevision["workspaceId"];
     readonly documentId: HubDocumentRevision["documentId"];
   }): Promise<readonly HubDocumentRevision[]> {
+    return (
+      await this.listCollaborativeContentRevisions({
+        workspaceId: input.workspaceId,
+        owner: { kind: "document", documentId: input.documentId },
+      })
+    ).map((revision) => ({ ...revision, documentId: input.documentId }));
+  }
+
+  public async listCollaborativeContentRevisions(input: {
+    readonly workspaceId: HubCollaborativeContentRevision["workspaceId"];
+    readonly owner: HubCollaborativeContentRevision["owner"];
+  }): Promise<readonly HubCollaborativeContentRevision[]> {
     const result = await this.pool.query(
-      "SELECT revision_id::text, workspace_id::text, document_id::text, space_id::text, name, engine, state, state_vector, created_by::text, created_by_device_id, correlation_id::text, created_at::text, restored_from_revision_id::text FROM constellation_hub_document_revisions WHERE workspace_id = $1 AND document_id = $2 ORDER BY created_at DESC, revision_id DESC",
-      [input.workspaceId, input.documentId],
+      "SELECT revision_id::text, workspace_id::text, owner_kind, owner_id::text, space_id::text, name, engine, state, state_vector, created_by::text, created_by_device_id, correlation_id::text, created_at::text, restored_from_revision_id::text FROM constellation_hub_content_revisions WHERE workspace_id = $1 AND owner_kind = $2 AND owner_id = $3 ORDER BY created_at DESC, revision_id DESC",
+      [input.workspaceId, input.owner.kind, contentOwnerId(input.owner)],
     );
     return result.rows.map((raw) => {
       const row = object(raw, "document revision row");
       const restoredFrom = optionalText(row, "restored_from_revision_id");
+      const owner = CollaborativeContentOwnerSchema.parse(
+        row.owner_kind === "document"
+          ? { kind: "document", documentId: row.owner_id }
+          : { kind: "project", projectId: row.owner_id },
+      );
       return {
         id: DocumentRevisionIdSchema.parse(row.revision_id),
         workspaceId: WorkspaceIdSchema.parse(row.workspace_id),
-        documentId: DocumentIdSchema.parse(row.document_id),
+        owner,
         spaceId: SpaceIdSchema.parse(row.space_id),
         name: text(row, "name"),
         engine: "yjs-13" as const,

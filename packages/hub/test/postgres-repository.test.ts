@@ -14,6 +14,7 @@ import {
   DocumentRevisionIdSchema,
   ExecutionContextSchema,
   PrincipalIdSchema,
+  ProjectIdSchema,
   SpaceIdSchema,
   WorkspaceIdSchema,
   type ExecutionContext,
@@ -55,6 +56,12 @@ it(
     const revisionId = DocumentRevisionIdSchema.parse(
       "00000000-0000-4000-8000-000000000912",
     );
+    const projectId = ProjectIdSchema.parse(
+      "00000000-0000-4000-8000-000000000913",
+    );
+    const projectRevisionId = DocumentRevisionIdSchema.parse(
+      "00000000-0000-4000-8000-000000000914",
+    );
     const context: ExecutionContext = ExecutionContextSchema.parse({
       principalId,
       principalKind: "human",
@@ -80,6 +87,8 @@ it(
     });
     const pool = new Pool({ connectionString: databaseUrl });
     await pool.query(`
+      DROP TABLE IF EXISTS constellation_hub_content_revisions CASCADE;
+      DROP TABLE IF EXISTS constellation_hub_content CASCADE;
       DROP TABLE IF EXISTS constellation_hub_document_revisions CASCADE;
       DROP TABLE IF EXISTS constellation_hub_documents CASCADE;
       DROP TABLE IF EXISTS constellation_hub_attachments CASCADE;
@@ -187,6 +196,8 @@ it(
     });
 
     await pool.query(`
+      DROP TABLE IF EXISTS constellation_hub_content_revisions CASCADE;
+      DROP TABLE IF EXISTS constellation_hub_content CASCADE;
       DROP TABLE IF EXISTS constellation_hub_document_revisions CASCADE;
       DROP TABLE IF EXISTS constellation_hub_documents CASCADE;
       DROP TABLE IF EXISTS constellation_hub_attachments CASCADE;
@@ -329,6 +340,31 @@ it(
         "00000000-0000-4000-8000-000000000915",
       ),
       createdAt: "2026-07-14T12:01:00.000Z",
+    });
+    const projectOwner = { kind: "project" as const, projectId };
+    await repository.storeCollaborativeContentState({
+      workspaceId,
+      spaceId,
+      owner: projectOwner,
+      engine: "yjs-13",
+      state: checkpoint.state,
+      updatedAt: "2026-07-14T12:01:30.000Z",
+    });
+    await repository.createCollaborativeContentRevision({
+      id: projectRevisionId,
+      workspaceId,
+      spaceId,
+      owner: projectOwner,
+      name: "Project before restart",
+      engine: "yjs-13",
+      state: checkpoint.state,
+      stateVector: checkpoint.stateVector,
+      createdBy: principalId,
+      createdByDeviceId: deviceId,
+      correlationId: CorrelationIdSchema.parse(
+        "00000000-0000-4000-8000-000000000916",
+      ),
+      createdAt: "2026-07-14T12:01:30.000Z",
     });
 
     const attachmentRoot = await mkdtemp(
@@ -673,6 +709,24 @@ it(
       restartedRevision?.correlationId,
       "00000000-0000-4000-8000-000000000915",
     );
+    const restartedProject =
+      await restartedRepository.loadCollaborativeContentState({
+        workspaceId,
+        owner: projectOwner,
+      });
+    assert.ok(restartedProject);
+    const decodedProject = new YjsRealtimeDocumentAdapter(
+      restartedProject.state,
+    );
+    assert.equal(decodedProject.getText(), "Binary document survives restart");
+    decodedProject.destroy();
+    const restartedProjectRevision = (
+      await restartedRepository.listCollaborativeContentRevisions({
+        workspaceId,
+        owner: projectOwner,
+      })
+    ).at(0);
+    assert.equal(restartedProjectRevision?.id, projectRevisionId);
     const restartedRemote = new HubRemoteMcpService(restartedRepository);
     assert.equal(
       await restartedRemote.isAuthorized(workspaceId, remoteGrant.bearerToken),

@@ -49,7 +49,24 @@ const fakeStore = () => {
               state: stored.state,
               updatedAt: stored.updatedAt,
             },
+      loadCollaborativeContentState: () =>
+        stored === undefined
+          ? undefined
+          : {
+              owner: { kind: "document", documentId: ids.document } as const,
+              workspaceId: ids.workspace,
+              spaceId: ids.space,
+              engine: "yjs-13" as const,
+              state: stored.state,
+              updatedAt: stored.updatedAt,
+            },
       storeDocumentCollaborationState: (input: {
+        state: Uint8Array;
+        updatedAt: string;
+      }) => {
+        stored = { state: input.state, updatedAt: input.updatedAt };
+      },
+      storeCollaborativeContentState: (input: {
         state: Uint8Array;
         updatedAt: string;
       }) => {
@@ -71,9 +88,39 @@ const fakeStore = () => {
         revisions.push(revision);
       },
       listDocumentRevisions: () => revisions,
+      storeCollaborativeContentRevision: (
+        revision: Parameters<
+          SqliteApplicationStore["storeCollaborativeContentRevision"]
+        >[0],
+      ) => {
+        if (
+          failNextStructuredReceipt &&
+          (revision.name.startsWith("Agent receipt ") ||
+            revision.name.startsWith("Agent restore receipt "))
+        ) {
+          failNextStructuredReceipt = false;
+          throw new Error("INJECTED_RECEIPT_FAILURE");
+        }
+        revisions.push({ ...revision, documentId: ids.document });
+      },
+      listCollaborativeContentRevisions: () =>
+        revisions.map((revision) => ({
+          ...revision,
+          owner: { kind: "document", documentId: ids.document } as const,
+        })),
       replaceDocumentEntityLinks: () => undefined,
       replaceDocumentSearchProjection: () => undefined,
+      replaceCollaborativeContentEntityLinks: () => undefined,
+      replaceCollaborativeContentSearchProjection: () => undefined,
       commitDocumentUpdate: (input: {
+        state: Uint8Array;
+        update: Uint8Array;
+        createdAt: string;
+      }) => {
+        stored = { state: input.state, updatedAt: input.createdAt };
+        committed.push({ state: input.state, update: input.update });
+      },
+      commitCollaborativeContentUpdate: (input: {
         state: Uint8Array;
         update: Uint8Array;
         createdAt: string;

@@ -92,6 +92,54 @@ CREATE TABLE IF NOT EXISTS constellation_hub_document_revisions (
 CREATE INDEX IF NOT EXISTS constellation_hub_document_revisions_history
   ON constellation_hub_document_revisions (workspace_id, document_id, created_at DESC, revision_id DESC);
 
+CREATE TABLE IF NOT EXISTS constellation_hub_content (
+  workspace_id uuid NOT NULL REFERENCES constellation_hub_workspaces(workspace_id) ON DELETE CASCADE,
+  owner_kind text NOT NULL CHECK (owner_kind IN ('document', 'project')),
+  owner_id uuid NOT NULL,
+  space_id uuid NOT NULL,
+  engine text NOT NULL CHECK (engine = 'yjs-13'),
+  state bytea NOT NULL CHECK (octet_length(state) BETWEEN 1 AND 1048576),
+  updated_at timestamptz NOT NULL,
+  PRIMARY KEY (workspace_id, owner_kind, owner_id)
+);
+
+INSERT INTO constellation_hub_content
+  (workspace_id, owner_kind, owner_id, space_id, engine, state, updated_at)
+SELECT workspace_id, 'document', document_id, space_id, engine, state, updated_at
+FROM constellation_hub_documents
+ON CONFLICT (workspace_id, owner_kind, owner_id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS constellation_hub_content_revisions (
+  revision_id uuid PRIMARY KEY,
+  workspace_id uuid NOT NULL REFERENCES constellation_hub_workspaces(workspace_id) ON DELETE CASCADE,
+  owner_kind text NOT NULL CHECK (owner_kind IN ('document', 'project')),
+  owner_id uuid NOT NULL,
+  space_id uuid NOT NULL,
+  name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
+  engine text NOT NULL CHECK (engine = 'yjs-13'),
+  state bytea NOT NULL CHECK (octet_length(state) BETWEEN 1 AND 1048576),
+  state_vector bytea NOT NULL CHECK (octet_length(state_vector) BETWEEN 1 AND 1048576),
+  created_by uuid NOT NULL,
+  created_by_device_id text NOT NULL,
+  correlation_id uuid NOT NULL,
+  created_at timestamptz NOT NULL,
+  restored_from_revision_id uuid
+);
+
+CREATE INDEX IF NOT EXISTS constellation_hub_content_revisions_history
+  ON constellation_hub_content_revisions
+  (workspace_id, owner_kind, owner_id, created_at DESC, revision_id DESC);
+
+INSERT INTO constellation_hub_content_revisions
+  (revision_id, workspace_id, owner_kind, owner_id, space_id, name, engine,
+   state, state_vector, created_by, created_by_device_id, correlation_id,
+   created_at, restored_from_revision_id)
+SELECT revision_id, workspace_id, 'document', document_id, space_id, name,
+  engine, state, state_vector, created_by, created_by_device_id,
+  correlation_id, created_at, restored_from_revision_id
+FROM constellation_hub_document_revisions
+ON CONFLICT (revision_id) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS constellation_hub_attachment_uploads (
   upload_id uuid PRIMARY KEY,
   workspace_id uuid NOT NULL REFERENCES constellation_hub_workspaces(workspace_id) ON DELETE CASCADE,

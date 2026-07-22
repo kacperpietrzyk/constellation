@@ -15,6 +15,7 @@ import {
   CorrelationIdSchema,
   ExecutionContextSchema,
   QueryEnvelopeSchema,
+  ProjectIdSchema,
   type Capability,
   type GrantId,
 } from "@constellation/contracts";
@@ -74,6 +75,8 @@ const agentCapabilities = [
   "project.create",
   "project.updateOutcome",
   "project.list",
+  "project.readContent",
+  "project.replaceContent",
   "recovery.preview",
   "agent.checkpoint.create",
   "agent.checkpoint.previewRevert",
@@ -148,6 +151,7 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
       { type: "paragraph", content: [{ type: "text", text: "Initial" }] },
     ],
   };
+  const structuredOwners: string[] = [];
   const store = new InMemoryReferenceStore();
   const owner = createRuntimeKernelService({ context: ownerContext, store });
   successful(
@@ -238,13 +242,17 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
           revisionId: "00000000-0000-4000-8000-000000000803",
         };
       },
-      readStructured: () => ({
-        content: structuredContent,
-        text: "Initial",
-        entityReferences: [],
-        stateVectorSha256: structuredStateVector,
-      }),
-      replaceStructured: ({ content, expectedStateVectorSha256 }) => {
+      readStructured: ({ owner }) => {
+        structuredOwners.push(owner.kind);
+        return {
+          content: structuredContent,
+          text: "Initial",
+          entityReferences: [],
+          stateVectorSha256: structuredStateVector,
+        };
+      },
+      replaceStructured: ({ owner, content, expectedStateVectorSha256 }) => {
+        structuredOwners.push(owner.kind);
         if (expectedStateVectorSha256 !== structuredStateVector)
           return {
             outcome: "conflict" as const,
@@ -259,7 +267,8 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
           idempotentReplay: false,
         };
       },
-      restoreStructured: ({ expectedStateVectorSha256 }) => {
+      restoreStructured: ({ owner, expectedStateVectorSha256 }) => {
+        structuredOwners.push(owner.kind);
         if (expectedStateVectorSha256 !== structuredStateVector)
           return {
             outcome: "conflict" as const,
@@ -673,6 +682,44 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
     const projectOutcome = (
       project.result as { outcome: { projection: unknown } }
     ).outcome.projection as { projectId: string; version: number };
+    const projectId = ProjectIdSchema.parse(projectOutcome.projectId);
+    const projectStructuredRead = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "project_structured_read",
+      run,
+      workspaceId: ownerContext.workspaceId,
+      projectId,
+      schemaVersion: 1,
+    });
+    assert.equal(projectStructuredRead.outcome, "success");
+    assert.equal(
+      (projectStructuredRead.result as { projectId: string }).projectId,
+      projectId,
+    );
+    const projectStructuredWrite = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "project_structured_write",
+      run,
+      workspaceId: ownerContext.workspaceId,
+      projectId,
+      schemaVersion: 1,
+      expectedStateVectorSha256: "c".repeat(64),
+      idempotencyKey: "project-structured-local-1",
+      content: {
+        schemaVersion: 1,
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Project plan" }],
+          },
+        ],
+      },
+    });
+    assert.equal(projectStructuredWrite.outcome, "success");
+    assert.deepEqual(structuredOwners.slice(-2), ["project", "project"]);
 
     const checkpoint = await invokeDesktopMcp(descriptor, {
       contractVersion: 1,

@@ -10,11 +10,16 @@ import {
   DeviceIdSchema,
   DocumentIdSchema,
   ExecutionContextSchema,
+  ProjectIdSchema,
   SpaceIdSchema,
   WorkspaceIdSchema,
 } from "@constellation/contracts";
 import { createReferenceHarness } from "@constellation/testkit";
-import { YjsRealtimeDocumentAdapter } from "@constellation/realtime-documents";
+import {
+  RICH_DOCUMENT_FRAGMENT_ROOT,
+  YjsRealtimeDocumentAdapter,
+  documentPlainText,
+} from "@constellation/realtime-documents";
 import WebSocket from "ws";
 import * as Y from "yjs";
 
@@ -24,6 +29,7 @@ import {
   RealtimeDocumentGateway,
   startHubServer,
   toHubSnapshot,
+  type RealtimeDocumentSessionResult,
   type RunningHubServer,
 } from "../src/index.js";
 
@@ -38,6 +44,8 @@ const collaboratorSpaceGrantId = "00000000-0000-4000-8000-000000000909";
 const documentId = DocumentIdSchema.parse(
   "00000000-0000-4000-8000-000000000904",
 );
+// Intentionally aliases the Document UUID: room identity must include kind.
+const projectId = ProjectIdSchema.parse(documentId);
 const deviceA = DeviceIdSchema.parse("realtime-device-a");
 const deviceB = DeviceIdSchema.parse("realtime-device-b");
 
@@ -56,6 +64,18 @@ const waitFor = async (
   }
 };
 
+const appendRichText = (document: Y.Doc, text: string): void => {
+  const fragment = document.getXmlFragment(RICH_DOCUMENT_FRAGMENT_ROOT);
+  let paragraph = fragment.get(0);
+  if (!(paragraph instanceof Y.XmlElement)) {
+    paragraph = new Y.XmlElement("paragraph");
+    fragment.insert(0, [paragraph]);
+  }
+  const node = new Y.XmlText();
+  node.insert(0, text);
+  paragraph.insert(paragraph.length, [node]);
+};
+
 const authorization = () =>
   ExecutionContextSchema.parse({
     principalId,
@@ -70,6 +90,7 @@ const authorization = () =>
       "workspace.bootstrapContext",
       "document.create",
       "document.list",
+      "project.create",
     ],
     origin: "desktop",
   });
@@ -83,7 +104,7 @@ const collaboratorAuthorization = () =>
     policyVersion: 1,
     workspaceId,
     spaceScope: [spaceId],
-    capabilityScope: ["document.create", "document.list"],
+    capabilityScope: ["document.create", "document.list", "project.create"],
     origin: "desktop",
   });
 
@@ -121,9 +142,37 @@ const snapshotWithDocument = () => {
   assert.equal(document.kind, "command_outcome");
   if (document.kind !== "command_outcome") throw new Error("Document failed.");
   assert.equal(document.outcome.outcome, "success");
+  const project = harness.kernel.execute(context, {
+    contractVersion: 1,
+    commandName: "project.create",
+    commandId: uuid(),
+    workspaceId,
+    idempotencyKey: "project",
+    expectedVersions: {},
+    correlationId: uuid(),
+    payload: {
+      spaceId,
+      title: "Project-owned content",
+      intendedOutcome: "Prove simultaneous rich editing",
+    },
+  });
+  assert.equal(project.kind, "command_outcome");
+  if (
+    project.kind !== "command_outcome" ||
+    project.outcome.outcome !== "success" ||
+    project.outcome.projection.kind !== "project.created"
+  ) {
+    throw new Error("Project failed.");
+  }
+  const generatedProjectId = project.outcome.projection.projectId;
   const snapshot = toHubSnapshot(harness.store.snapshot());
   return {
     ...snapshot,
+    projects: snapshot.projects.map((candidate) =>
+      candidate.id === generatedProjectId
+        ? { ...candidate, id: projectId }
+        : candidate,
+    ),
     memberships: [
       ...snapshot.memberships,
       {
@@ -420,5 +469,202 @@ describe("self-hosted realtime document gateway", () => {
     const persisted = new YjsRealtimeDocumentAdapter(afterDowngrade.state);
     assert.equal(persisted.getText().includes("NIEDOZWOLONA ZMIANA"), false);
     persisted.destroy();
+  });
+
+  it("converges simultaneous edits and recovery in a Project-owned Hub room", async () => {
+    const repository = new InMemoryHubRepository();
+    const secrets = [
+      "f".repeat(43),
+      "g".repeat(43),
+      "h".repeat(43),
+      "i".repeat(43),
+    ];
+    const service = new HubService(repository, {
+      randomSecret: () => secrets.shift() ?? "j".repeat(43),
+    });
+    await service.createWorkspace({
+      workspaceId,
+      snapshot: snapshotWithDocument(),
+    });
+    const enroll = async (
+      deviceId: typeof deviceA,
+      context = authorization(),
+    ) => {
+      const grant = await service.createEnrollment({
+        workspaceId,
+        authorization: context,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      });
+      const result = await service.enroll({
+        protocolVersion: 1,
+        workspaceId,
+        deviceId,
+        deviceLabel: deviceId,
+        enrollmentSecret: grant.enrollmentSecret,
+      });
+      if (result.outcome !== "success") throw new Error("Enrollment failed.");
+      return result.deviceCredential;
+    };
+    const credentialA = await enroll(deviceA);
+    const credentialB = await enroll(deviceB, collaboratorAuthorization());
+    const gateway = new RealtimeDocumentGateway(service, repository);
+    server = await startHubServer({
+      service,
+      realtimeDocuments: gateway,
+      host: "127.0.0.1",
+      port: 0,
+      allowInsecureLoopback: true,
+    });
+    const sameIdDocument = new YjsRealtimeDocumentAdapter();
+    sameIdDocument.replaceText("Independent same-id document", {
+      kind: "human",
+      principalId,
+    });
+    await repository.storeDocumentState({
+      workspaceId,
+      spaceId,
+      documentId,
+      engine: "yjs-13",
+      state: sameIdDocument.encodeState(),
+      updatedAt: "2026-07-22T02:10:00.000Z",
+    });
+    sameIdDocument.destroy();
+    const owner = { kind: "project", projectId } as const;
+    const sessionResponse = await fetch(`${server.origin}/v1/content/session`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${credentialA}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId,
+        deviceId: deviceA,
+        owner,
+        supportedDocumentFormats: ["plain-v1", "rich-v1"],
+      }),
+    });
+    assert.equal(sessionResponse.status, 200);
+    const sessionA =
+      (await sessionResponse.json()) as RealtimeDocumentSessionResult;
+    const sessionB = await gateway.createContentSession({
+      credential: credentialB,
+      workspaceId,
+      deviceId: deviceB,
+      owner,
+      supportedDocumentFormats: ["plain-v1", "rich-v1"],
+    });
+    if (sessionB === undefined || sessionB === "upgrade_required") {
+      throw new Error("Project sessions unavailable.");
+    }
+    assert.match(sessionA.room, /\/project\//u);
+    const websocketUrl = server.origin.replace(/^http/u, "ws") + "/v1/realtime";
+    const socketA = new HocuspocusProviderWebsocket({
+      url: websocketUrl,
+      WebSocketPolyfill: WebSocket,
+    });
+    const socketB = new HocuspocusProviderWebsocket({
+      url: websocketUrl,
+      WebSocketPolyfill: WebSocket,
+    });
+    sockets.push(socketA, socketB);
+    const alice = new Y.Doc();
+    const bob = new Y.Doc();
+    const providerA = new HocuspocusProvider({
+      websocketProvider: socketA,
+      name: sessionA.room,
+      token: sessionA.token,
+      document: alice,
+    });
+    const providerB = new HocuspocusProvider({
+      websocketProvider: socketB,
+      name: sessionB.room,
+      token: sessionB.token,
+      document: bob,
+    });
+    providers.push(providerA, providerB);
+    providerA.attach();
+    providerB.attach();
+    await waitFor(
+      () => providerA.synced && providerB.synced,
+      "PROJECT_PROVIDERS_NOT_SYNCED",
+    );
+    appendRichText(alice, " Plan A");
+    appendRichText(bob, " Plan B");
+    await waitFor(
+      () =>
+        documentPlainText(alice) === documentPlainText(bob) &&
+        documentPlainText(alice).includes("Plan A") &&
+        documentPlainText(alice).includes("Plan B"),
+      "PROJECT_EDITS_NOT_CONVERGED",
+    );
+    const converged = documentPlainText(alice);
+    assert.equal(
+      converged.split("Prove simultaneous rich editing").length - 1,
+      1,
+    );
+    const revisionId = await gateway.createContentRevision({
+      credential: credentialA,
+      workspaceId,
+      deviceId: deviceA,
+      owner,
+      name: "Project checkpoint",
+      correlationId: CorrelationIdSchema.parse(uuid()),
+    });
+    assert.ok(revisionId);
+    appendRichText(alice, " later");
+    await waitFor(
+      () => documentPlainText(bob).endsWith("later"),
+      "PROJECT_LATER_EDIT_NOT_CONVERGED",
+    );
+    assert.equal(
+      await gateway.restoreContentRevision({
+        credential: credentialA,
+        workspaceId,
+        deviceId: deviceA,
+        owner,
+        revisionId,
+        correlationId: CorrelationIdSchema.parse(uuid()),
+      }),
+      true,
+    );
+    await waitFor(
+      () =>
+        documentPlainText(alice) === converged &&
+        documentPlainText(bob) === converged,
+      "PROJECT_RESTORE_NOT_CONVERGED",
+    );
+    const stored = await repository.loadCollaborativeContentState({
+      workspaceId,
+      owner,
+    });
+    assert.ok(stored);
+    assert.equal(
+      new YjsRealtimeDocumentAdapter(stored.state).getText(),
+      converged,
+    );
+    assert.equal(
+      (
+        await gateway.listContentRevisions({
+          credential: credentialA,
+          workspaceId,
+          deviceId: deviceA,
+          owner,
+        })
+      )?.length,
+      2,
+    );
+    const independentDocument = await repository.loadDocumentState({
+      workspaceId,
+      documentId,
+    });
+    assert.ok(independentDocument);
+    const decodedIndependentDocument = new YjsRealtimeDocumentAdapter(
+      independentDocument.state,
+    );
+    assert.equal(
+      decodedIndependentDocument.getText(),
+      "Independent same-id document",
+    );
+    decodedIndependentDocument.destroy();
   });
 });

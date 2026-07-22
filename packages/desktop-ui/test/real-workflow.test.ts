@@ -246,6 +246,7 @@ const createTypedClient = () => {
       throw new Error("Remote MCP is unavailable in this local fixture.");
     },
     acknowledgeDocumentUpdates: async () => undefined,
+    acknowledgeCollaborativeContentUpdates: async () => undefined,
     prepareAgentCredential: async () => ({
       credentialId: "00000000-0000-4000-8000-000000000093" as never,
       credentialDigest: "0".repeat(64),
@@ -265,6 +266,8 @@ const createTypedClient = () => {
       workspaceId,
     }),
     createDocumentRevision: async () =>
+      "00000000-0000-4000-8000-000000000091" as never,
+    createCollaborativeContentRevision: async () =>
       "00000000-0000-4000-8000-000000000091" as never,
     enrollHub: async () => ({ outcome: "rejected", code: "hub_unreachable" }),
     exportHubAuthorization: async () => ({ outcome: "cancelled" }),
@@ -332,12 +335,19 @@ const createTypedClient = () => {
         detailCode: "ready",
       }),
     listDocumentRevisions: async () => [],
+    listCollaborativeContentRevisions: async () => [],
     openDocument: async () => ({
       mode: "local",
       pendingUpdateCount: 0,
       searchIndexState: "current",
     }),
+    openCollaborativeContent: async () => ({
+      mode: "local",
+      pendingUpdateCount: 0,
+      searchIndexState: "current",
+    }),
     persistDocumentUpdate: async () => undefined,
+    persistCollaborativeContentUpdate: async () => undefined,
     syncDataHome: async () => client.getDataHomeStatus(),
     prepareWorkspaceRestore: async () => ({ outcome: "cancelled" }),
     runQuery: async (query) => {
@@ -519,6 +529,7 @@ const createTypedClient = () => {
       }
     },
     restoreDocumentRevision: async () => undefined,
+    restoreCollaborativeContentRevision: async () => undefined,
     executeCommand: async (command) => {
       commands.push(command);
       if (command.commandName === "command.previewUndo")

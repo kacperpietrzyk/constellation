@@ -14,11 +14,13 @@ import {
   ExecutionContextSchema,
   TaskIdSchema,
   QueryIdSchema,
+  ProjectIdSchema,
   capabilitiesForAgentGrantPreset,
   SpaceIdSchema,
   WorkspaceIdSchema,
   type ExecutionContext,
 } from "@constellation/contracts";
+import { isApplicationWave2Transaction } from "@constellation/application";
 import type { Capture } from "@constellation/domain";
 import { createReferenceHarness } from "@constellation/testkit";
 import { YjsRealtimeDocumentAdapter } from "@constellation/realtime-documents";
@@ -48,6 +50,7 @@ const ids = {
   voicePayload: "60000000-0000-4000-8000-000000000010",
   document: DocumentIdSchema.parse("60000000-0000-4000-8000-000000000901"),
   task: TaskIdSchema.parse("60000000-0000-4000-8000-000000000902"),
+  project: ProjectIdSchema.parse("60000000-0000-4000-8000-000000000903"),
 } as const;
 
 const managerContext = (): ExecutionContext =>
@@ -111,6 +114,23 @@ const snapshot = (managedBytes?: Uint8Array) => {
     },
   });
   assert.equal(project.kind, "command_outcome");
+  harness.store.transact((transaction) => {
+    assert.equal(isApplicationWave2Transaction(transaction), true);
+    if (!isApplicationWave2Transaction(transaction))
+      throw new Error("Expected Wave 2 transaction.");
+    transaction.insertProject({
+      id: ids.project,
+      workspaceId: ids.workspace,
+      spaceId: ids.space,
+      title: "Remote Project body",
+      intendedOutcome: "One remotely editable Project plan",
+      lifecycle: "active",
+      createdBy: managerContext().principalId,
+      version: 1,
+      createdAt: "2026-07-14T19:59:00.000Z",
+      updatedAt: "2026-07-14T19:59:00.000Z",
+    });
+  });
   const document = harness.kernel.execute(managerContext(), {
     contractVersion: 1,
     commandName: "document.create",
@@ -213,6 +233,14 @@ const setup = async (managedBytes?: Uint8Array) => {
     state: seededDocument.encodeState(),
     updatedAt: "2026-07-14T20:00:00.000Z",
   });
+  await repository.storeCollaborativeContentState({
+    workspaceId: ids.workspace,
+    owner: { kind: "project", projectId: ids.project },
+    spaceId: ids.space,
+    engine: "yjs-13",
+    state: seededDocument.encodeState(),
+    updatedAt: "2026-07-14T20:00:00.000Z",
+  });
   seededDocument.destroy();
   const enrollment = await hub.createEnrollment({
     workspaceId: ids.workspace,
@@ -286,6 +314,8 @@ const createRemoteGrant = async (
       "audit.receipt",
       "document.readContent",
       "document.replaceContent",
+      "project.readContent",
+      "project.replaceContent",
     ],
     spaces: [{ spaceId: ids.space, access: "edit" }],
     federationScope: {
@@ -898,6 +928,43 @@ describe("remote MCP Hub gateway", () => {
         },
       ],
     };
+    const projectRead = await remote.invoke(
+      ids.workspace,
+      created.bearerToken,
+      {
+        contractVersion: 1,
+        requestId: uuid(),
+        kind: "project_structured_read",
+        run,
+        workspaceId: ids.workspace,
+        projectId: ids.project,
+        schemaVersion: 1,
+      },
+    );
+    assert.equal(projectRead.outcome, "success", JSON.stringify(projectRead));
+    assert.equal(
+      (projectRead.result as { projectId: string }).projectId,
+      ids.project,
+    );
+    const projectWrite = await remote.invoke(
+      ids.workspace,
+      created.bearerToken,
+      {
+        contractVersion: 1,
+        requestId: uuid(),
+        kind: "project_structured_write",
+        run,
+        workspaceId: ids.workspace,
+        projectId: ids.project,
+        schemaVersion: 1,
+        expectedStateVectorSha256: (
+          projectRead.result as { stateVectorSha256: string }
+        ).stateVectorSha256,
+        idempotencyKey: "remote-project-rich-write-1",
+        content,
+      },
+    );
+    assert.equal(projectWrite.outcome, "success", JSON.stringify(projectWrite));
     const writeInvocation = {
       contractVersion: 1 as const,
       requestId: uuid(),
@@ -1079,6 +1146,9 @@ describe("remote MCP Hub gateway", () => {
           "constellation.document.structured.read.v1",
           "constellation.document.structured.write.v1",
           "constellation.document.structured.restore.v1",
+          "constellation.project.structured.read.v1",
+          "constellation.project.structured.write.v1",
+          "constellation.project.structured.restore.v1",
           "constellation.checkpoint.revert.v1",
         ],
       );

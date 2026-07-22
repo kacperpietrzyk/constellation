@@ -37,6 +37,10 @@ const documentsSurface = readFileSync(
   path.join(root, "src", "DocumentsSurface.tsx"),
   "utf8",
 );
+const projectRichBody = readFileSync(
+  path.join(root, "src", "ProjectRichBody.tsx"),
+  "utf8",
+);
 const accessSurface = readFileSync(
   path.join(root, "src", "AccessSurface.tsx"),
   "utf8",
@@ -498,6 +502,28 @@ describe("interaction recovery contracts", () => {
     assert.match(
       styles,
       /\.project-detail-flow\s*\{[^}]*display:\s*grid;[^}]*gap:[^;]+;[^}]*margin:\s*0 auto/s,
+    );
+  });
+
+  it("makes an opened Project a recoverable collaborative document", () => {
+    assert.match(
+      surfaces,
+      /lazy\(\(\) => import\("\.\/ProjectRichBody\.js"\)\)/,
+    );
+    assert.match(projectRichBody, /kind: "project", projectId: project\.id/);
+    assert.match(projectRichBody, /Collaboration\.configure\(/);
+    assert.match(projectRichBody, /openCollaborativeContent/);
+    assert.match(projectRichBody, /persistCollaborativeContentUpdate/);
+    assert.match(projectRichBody, /DOCUMENT_ENTITY_ACTIVATE_EVENT/);
+    assert.match(projectRichBody, /createCollaborativeContentRevision/);
+    assert.match(projectRichBody, /restoreCollaborativeContentRevision/);
+    assert.match(
+      projectRichBody,
+      /setContentGeneration\(\(value\) => value \+ 1\)/,
+    );
+    assert.match(
+      styles,
+      /@container \(max-width: 34rem\)[\s\S]*?\.project-revision-row\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,
     );
   });
 

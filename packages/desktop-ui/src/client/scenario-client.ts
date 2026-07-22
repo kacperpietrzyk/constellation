@@ -101,6 +101,7 @@ export const createScenarioClient = (
     throw new Error("Remote MCP is unavailable in scenario fixtures.");
   },
   acknowledgeDocumentUpdates: async () => undefined,
+  acknowledgeCollaborativeContentUpdates: async () => undefined,
   prepareAgentCredential: async () => ({
     credentialId: "00000000-0000-4000-8000-000000000093" as never,
     credentialDigest: "0".repeat(64),
@@ -134,6 +135,8 @@ export const createScenarioClient = (
       ],
     },
   createDocumentRevision: async () =>
+    DocumentRevisionIdSchema.parse("00000000-0000-4000-8000-000000000091"),
+  createCollaborativeContentRevision: async () =>
     DocumentRevisionIdSchema.parse("00000000-0000-4000-8000-000000000091"),
   enrollHub: async () => ({ outcome: "rejected", code: "hub_unreachable" }),
   exportHubAuthorization: async () => ({ outcome: "cancelled" }),
@@ -203,12 +206,19 @@ export const createScenarioClient = (
       detailCode: "ready",
     }),
   listDocumentRevisions: async () => [],
+  listCollaborativeContentRevisions: async () => [],
   openDocument: async () => ({
     mode: "local",
     pendingUpdateCount: 0,
     searchIndexState: "current",
   }),
+  openCollaborativeContent: async () => ({
+    mode: "local",
+    pendingUpdateCount: 0,
+    searchIndexState: "current",
+  }),
   persistDocumentUpdate: async () => undefined,
+  persistCollaborativeContentUpdate: async () => undefined,
   prepareWorkspaceRestore: async () => ({ outcome: "cancelled" }),
   runQuery: async (query) => {
     const response = fixtures.queries[query.queryName];
@@ -225,5 +235,6 @@ export const createScenarioClient = (
     };
   },
   restoreDocumentRevision: async () => undefined,
+  restoreCollaborativeContentRevision: async () => undefined,
   syncDataHome: async () => createScenarioClient(fixtures).getDataHomeStatus(),
 });

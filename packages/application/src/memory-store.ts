@@ -603,6 +603,21 @@ class ReadView implements ApplicationReadView {
     return [];
   }
 
+  public searchProjectBodies(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    text: string,
+    limit: number,
+  ): readonly { readonly projectId: ProjectId; readonly snippet: string }[] {
+    // Collaborative Project bytes live outside the reference store. The
+    // durable SQLite view supplies this rebuildable projection in production.
+    void workspaceId;
+    void spaceId;
+    void text;
+    void limit;
+    return [];
+  }
+
   public getKnowledgeSource(
     id: KnowledgeSourceId,
   ): KnowledgeSource | undefined {

@@ -216,6 +216,16 @@ const client = createScenarioClient({
       relatedDecisions: [],
       clientOrganizations: [],
     }),
+    "document.linkCandidates": result({
+      kind: "document.linkCandidates",
+      items: [
+        {
+          targetKind: "task",
+          targetId: taskId,
+          label: "Potwierdź wariant recovery",
+        },
+      ],
+    }),
     "capture.history": result({
       kind: "capture.history",
       items: [],
@@ -283,6 +293,7 @@ const client = createScenarioClient({
           id: rootCommentId,
           rootCommentId,
           body: "@Kacper potwierdź wariant recovery przed zamknięciem zadania.",
+          attachments: [],
           author: { principalId: memberId, displayName: "Ada Nowak" },
           mentionPrincipalIds: [ownerId],
           threadState: "open",
@@ -296,6 +307,7 @@ const client = createScenarioClient({
           parentCommentId: rootCommentId,
           rootCommentId,
           body: "Pakietowy dowód macOS i Windows jest dołączony.",
+          attachments: [],
           author: { principalId: ownerId, displayName: "Kacper" },
           mentionPrincipalIds: [],
           threadState: "open",

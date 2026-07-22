@@ -5459,10 +5459,137 @@ button.mention-chip:disabled {
   margin: 0 auto;
 }
 .project-detail-flow > .project-overview,
+.project-detail-flow > .project-rich-body,
 .project-detail-flow > .project-work {
   width: 100%;
   max-width: none;
   margin: 0;
+}
+.project-rich-body {
+  display: grid;
+  min-width: 0;
+}
+.project-body-heading {
+  align-items: flex-start;
+}
+.document-sync-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: right;
+}
+.document-sync-state::before {
+  width: 0.45rem;
+  height: 0.45rem;
+  flex: none;
+  border-radius: var(--radius-full);
+  background: var(--status-warning);
+  content: "";
+}
+.document-sync-state.status-current::before,
+.document-sync-state.status-local::before {
+  background: var(--status-success);
+}
+.document-sync-state.status-denied::before,
+.document-sync-state.status-upgrade_required::before {
+  background: var(--status-error);
+}
+.project-rich-body > .document-toolbar {
+  justify-content: flex-start;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+.project-entity-picker {
+  width: auto;
+  margin: var(--space-4) var(--space-4) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+.project-entity-picker .document-entity-options > button {
+  display: grid;
+  min-width: 0;
+  min-height: 3.25rem;
+  padding: var(--space-2) var(--space-3);
+  color: inherit;
+  text-align: left;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  background: transparent;
+}
+.project-entity-picker .document-entity-options > button:first-child {
+  border-top: 0;
+}
+.project-entity-picker .document-entity-options > button.active,
+.project-entity-picker .document-entity-options > button:hover {
+  background: var(--surface-hover);
+}
+.project-editor-shell {
+  display: grid;
+  min-width: 0;
+  padding: clamp(var(--space-3), 2vw, var(--space-5));
+  background: var(--surface-sunken);
+}
+.project-editor-shell > .project-document-canvas {
+  width: 100%;
+  min-height: 18rem;
+  padding: clamp(var(--space-5), 4vw, var(--space-8));
+  border-radius: var(--radius-lg);
+  font-size: var(--text-base);
+}
+.project-rich-body > .capacity-note {
+  margin: var(--space-3) var(--space-4) 0;
+}
+.project-revision-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, auto) minmax(10rem, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.project-revision-row label {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.project-revision-row input {
+  min-height: 2.5rem;
+  min-width: 0;
+  padding: 0 var(--space-3);
+  color: var(--input-text);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  outline: 0;
+  background: var(--input-bg);
+  font: inherit;
+}
+.project-revision-row input:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.project-revision-list {
+  display: grid;
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-4);
+  list-style: none;
+}
+.project-revision-list li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.project-revision-list span {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .project-context-grid {
   display: grid;
@@ -5493,6 +5620,24 @@ button.mention-chip:disabled {
 
   .project-client-context {
     grid-column: auto;
+  }
+
+  .project-body-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .document-sync-state {
+    text-align: left;
+  }
+
+  .project-revision-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-revision-row .secondary-button {
+    justify-self: start;
   }
 }
 .overview-intent {

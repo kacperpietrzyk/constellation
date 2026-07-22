@@ -661,7 +661,7 @@ describe("SQLite ApplicationStore", () => {
       });
 
       firstDatabase.exec(`
-        CREATE TRIGGER fail_document_update BEFORE INSERT ON document_pending_updates BEGIN
+        CREATE TRIGGER fail_document_update BEFORE INSERT ON content_pending_updates BEGIN
           SELECT RAISE(ABORT, 'synthetic document outbox failure');
         END;
       `);
@@ -783,11 +783,11 @@ describe("SQLite ApplicationStore", () => {
         undefined,
       );
       for (const table of [
-        "document_pending_updates",
-        "document_collaboration_state",
-        "document_revisions",
-        "document_entity_links",
-        "document_search_projections",
+        "content_pending_updates",
+        "content_collaboration_state",
+        "content_revisions",
+        "content_entity_links",
+        "content_search_projections",
       ]) {
         assert.equal(
           (
@@ -832,6 +832,165 @@ describe("SQLite ApplicationStore", () => {
       );
       reopenedDatabase.close();
     });
+  });
+
+  it("isolates Project and Document content owners even when their UUIDs match", () => {
+    const database = new DatabaseSync(":memory:");
+    const { kernel, store } = createKernel(database);
+    assert.equal(
+      unwrap(kernel.execute(context(), workspaceCommand)).outcome,
+      "success",
+    );
+    const sharedId = "00000000-0000-4000-8000-00000000012a";
+    const documentId = sharedId as DocumentId;
+    const projectId = sharedId as ProjectId;
+    assert.equal(
+      unwrap(
+        kernel.execute(
+          context(),
+          wave2Command(
+            "document.create",
+            {
+              documentId,
+              spaceId: ids.rootSpace,
+              title: "Same-id document",
+            },
+            "same-id-document",
+          ),
+        ),
+      ).outcome,
+      "success",
+    );
+    store.transact((transaction) => {
+      assert.equal(isApplicationWave2Transaction(transaction), true);
+      if (!isApplicationWave2Transaction(transaction))
+        throw new Error("Expected Wave 2 transaction.");
+      transaction.insertProject({
+        id: projectId,
+        workspaceId: context().workspaceId,
+        spaceId: context().spaceScope[0]!,
+        title: "Same-id project",
+        intendedOutcome: "Prove owner isolation",
+        lifecycle: "active",
+        createdBy: context().principalId,
+        version: 1,
+        createdAt: "2026-07-22T01:30:00.000Z",
+        updatedAt: "2026-07-22T01:30:00.000Z",
+      });
+    });
+    const documentOwner = { kind: "document", documentId } as const;
+    const projectOwner = { kind: "project", projectId } as const;
+    const scope = {
+      workspaceId: context().workspaceId,
+      spaceId: context().spaceScope[0]!,
+    };
+    store.storeCollaborativeContentState({
+      owner: documentOwner,
+      ...scope,
+      state: Uint8Array.of(1, 2, 3),
+      updatedAt: "2026-07-22T01:31:00.000Z",
+    });
+    store.storeCollaborativeContentState({
+      owner: projectOwner,
+      ...scope,
+      state: Uint8Array.of(7, 8, 9),
+      updatedAt: "2026-07-22T01:32:00.000Z",
+    });
+    store.replaceCollaborativeContentSearchProjection({
+      owner: documentOwner,
+      ...scope,
+      body: "Document-only evidence",
+      stateDigest: "a".repeat(64),
+      indexedAt: "2026-07-22T01:33:00.000Z",
+    });
+    store.replaceCollaborativeContentSearchProjection({
+      owner: projectOwner,
+      ...scope,
+      body: "NebulaProjectEvidence",
+      stateDigest: "b".repeat(64),
+      indexedAt: "2026-07-22T01:34:00.000Z",
+    });
+
+    assert.deepEqual(
+      [
+        ...(store.loadCollaborativeContentState({
+          owner: documentOwner,
+          ...scope,
+        })?.state ?? []),
+      ],
+      [1, 2, 3],
+    );
+    assert.deepEqual(
+      [
+        ...(store.loadCollaborativeContentState({
+          owner: projectOwner,
+          ...scope,
+        })?.state ?? []),
+      ],
+      [7, 8, 9],
+    );
+    assert.equal(
+      (
+        database
+          .prepare(
+            "SELECT count(*) AS count FROM content_collaboration_state WHERE owner_id = ?",
+          )
+          .get(sharedId) as { count: number }
+      ).count,
+      2,
+    );
+    const projectSearch = kernel.query(
+      context(),
+      QueryEnvelopeSchema.parse({
+        contractVersion: 1,
+        queryName: "search.global",
+        queryId: "00000000-0000-4000-8000-00000000012b",
+        workspaceId: scope.workspaceId,
+        consistency: "local_authoritative",
+        parameters: {
+          spaceIds: [scope.spaceId],
+          text: "NebulaProjectEvidence",
+        },
+      }),
+    );
+    assert.equal(projectSearch.kind, "query_result");
+    if (
+      projectSearch.kind !== "query_result" ||
+      projectSearch.result.outcome !== "success" ||
+      projectSearch.result.projection.kind !== "search.global"
+    )
+      throw new Error("Expected Project body search result.");
+    assert.equal(projectSearch.result.projection.items.length, 1);
+    assert.equal(
+      projectSearch.result.projection.items[0]?.recordKind,
+      "project",
+    );
+    assert.deepEqual(projectSearch.result.projection.items[0]?.matchedFields, [
+      "body",
+    ]);
+
+    store.purgeCollaborativeContent(documentOwner);
+    assert.equal(
+      store.loadCollaborativeContentState({ owner: documentOwner, ...scope }),
+      undefined,
+    );
+    assert.deepEqual(
+      [
+        ...(store.loadCollaborativeContentState({
+          owner: projectOwner,
+          ...scope,
+        })?.state ?? []),
+      ],
+      [7, 8, 9],
+    );
+    assert.equal(
+      store.getCollaborativeContentSearchProjection({
+        owner: projectOwner,
+        ...scope,
+      })?.body,
+      "NebulaProjectEvidence",
+    );
+    database.close();
   });
 
   it("maps only known safe SQLite write failures to exact retry outcomes", () => {
@@ -1335,6 +1494,131 @@ describe("SQLite ApplicationStore", () => {
         reopened.close();
       });
     }
+  });
+
+  it("migrates v22 rich Document collaboration bytes and history without rewriting them", () => {
+    withDatabase((filename) => {
+      const documentId = "00000000-0000-4000-8000-0000000000a4" as DocumentId;
+      const revisionId =
+        "00000000-0000-4000-8000-0000000000a5" as DocumentRevisionId;
+      const historical = new DatabaseSync(filename);
+      initializeLocalStoreSchemaForVersion(sqlitePort(historical), 22);
+      historical
+        .prepare(
+          "INSERT INTO workspaces(id, version, payload_json) VALUES (?, 1, ?)",
+        )
+        .run(ids.workspace, JSON.stringify({ id: ids.workspace, version: 1 }));
+      historical
+        .prepare(
+          "INSERT INTO spaces(id, workspace_id, version, payload_json) VALUES (?, ?, 1, ?)",
+        )
+        .run(
+          ids.rootSpace,
+          ids.workspace,
+          JSON.stringify({
+            id: ids.rootSpace,
+            workspaceId: ids.workspace,
+            version: 1,
+          }),
+        );
+      const document = {
+        id: documentId,
+        workspaceId: ids.workspace,
+        spaceId: ids.rootSpace,
+        title: "Migrated rich document",
+        role: "document",
+        createdBy: ids.principal,
+        version: 1,
+        createdAt: "2026-07-21T12:00:00.000Z",
+        updatedAt: "2026-07-21T12:00:00.000Z",
+      };
+      historical
+        .prepare(
+          "INSERT INTO documents(id, workspace_id, space_id, updated_at, version, payload_json) VALUES (?, ?, ?, ?, 1, ?)",
+        )
+        .run(
+          documentId,
+          ids.workspace,
+          ids.rootSpace,
+          document.updatedAt,
+          JSON.stringify(document),
+        );
+      historical
+        .prepare(
+          "INSERT INTO document_collaboration_state(document_id, workspace_id, space_id, engine, state_blob, updated_at) VALUES (?, ?, ?, 'yjs-13', ?, ?)",
+        )
+        .run(
+          documentId,
+          ids.workspace,
+          ids.rootSpace,
+          Uint8Array.of(4, 5, 6),
+          document.updatedAt,
+        );
+      historical
+        .prepare(
+          "INSERT INTO document_pending_updates(id, document_id, workspace_id, space_id, update_blob, created_at) VALUES ('migrated-update', ?, ?, ?, ?, ?)",
+        )
+        .run(
+          documentId,
+          ids.workspace,
+          ids.rootSpace,
+          Uint8Array.of(7, 8),
+          document.updatedAt,
+        );
+      historical
+        .prepare(
+          "INSERT INTO document_revisions(id, document_id, workspace_id, space_id, name, engine, state_blob, state_vector_blob, created_by, created_by_device_id, correlation_id, created_at) VALUES (?, ?, ?, ?, 'Before migration', 'yjs-13', ?, ?, ?, 'migration-device', ?, ?)",
+        )
+        .run(
+          revisionId,
+          documentId,
+          ids.workspace,
+          ids.rootSpace,
+          Uint8Array.of(1, 2, 3),
+          Uint8Array.of(9),
+          ids.principal,
+          "00000000-0000-4000-8000-0000000000a7",
+          document.updatedAt,
+        );
+      historical.close();
+
+      const reopened = new DatabaseSync(filename);
+      const store = new SqliteApplicationStore(sqlitePort(reopened));
+      const scope = {
+        documentId,
+        workspaceId: ids.workspace as WorkspaceId,
+        spaceId: ids.rootSpace as SpaceId,
+      };
+      assert.deepEqual(
+        [...(store.loadDocumentCollaborationState(scope)?.state ?? [])],
+        [4, 5, 6],
+      );
+      assert.deepEqual(
+        store
+          .listPendingDocumentUpdates(scope)
+          .map((update) => [update.id, [...update.update]]),
+        [["migrated-update", [7, 8]]],
+      );
+      assert.deepEqual(
+        store.listDocumentRevisions(scope).map((revision) => ({
+          id: revision.id,
+          state: [...revision.state],
+          stateVector: [...revision.stateVector],
+        })),
+        [{ id: revisionId, state: [1, 2, 3], stateVector: [9] }],
+      );
+      assert.equal(
+        (
+          reopened
+            .prepare(
+              "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name LIKE 'document_%' AND name IN ('document_collaboration_state', 'document_pending_updates', 'document_revisions')",
+            )
+            .get() as { count: number }
+        ).count,
+        0,
+      );
+      reopened.close();
+    });
   });
 
   it("indexes Task working context through the v16 migration and its triggers", () => {

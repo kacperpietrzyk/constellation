@@ -3358,6 +3358,7 @@ export const RealApp = ({
           )}
           {surface === "projects" && (
             <ProjectsSurface
+              client={client}
               snapshot={state.snapshot}
               selectedProjectId={selectedProjectId}
               activeProjectId={activeContext.projectId}
@@ -3387,6 +3388,38 @@ export const RealApp = ({
               onOpenRelationship={(id) => {
                 setSelectedStrategicId(id);
                 openContext(destinationContext("relationships", "Relacje"));
+              }}
+              onEntityActivate={(target) => {
+                if (target.targetKind === "task") {
+                  setSelectedTaskId(target.targetId as TaskId);
+                  openContext(destinationContext("tasks", "Zadania"));
+                  return;
+                }
+                if (target.targetKind === "project") {
+                  const project =
+                    state.snapshot.projects.kind === "ready"
+                      ? state.snapshot.projects.data.items.find(
+                          (item) => item.id === target.targetId,
+                        )
+                      : undefined;
+                  openContext(
+                    projectContext(
+                      target.targetId as ProjectId,
+                      project?.title ?? "Projekt",
+                    ),
+                  );
+                  return;
+                }
+                if (
+                  target.targetKind === "person" ||
+                  target.targetKind === "organization"
+                ) {
+                  setSelectedStrategicId(target.targetId as StrategicRecordId);
+                  openContext(destinationContext("relationships", "Relacje"));
+                  return;
+                }
+                setSelectedMeetingId(target.targetId);
+                openContext(destinationContext("meetings", "Spotkania"));
               }}
               onCreate={async (title, outcome, templateId) => {
                 if (!client) return false;

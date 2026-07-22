@@ -4,7 +4,7 @@ import type { Server as HttpServer } from "node:http";
 import { Hocuspocus, type WebSocketLike } from "@hocuspocus/server";
 import {
   CorrelationIdSchema,
-  DocumentIdSchema,
+  CollaborativeContentOwnerSchema,
   DocumentRevisionIdSchema,
   DeviceIdSchema,
   WorkspaceIdSchema,
@@ -15,6 +15,7 @@ import {
   type SpaceId,
   type WorkspaceId,
   type CorrelationId,
+  type CollaborativeContentOwner,
 } from "@constellation/contracts";
 import {
   type DocumentContentFormat,
@@ -22,6 +23,7 @@ import {
   MAX_DOCUMENT_UPDATE_BYTES,
   MAX_DOCUMENT_TEXT_LENGTH,
   YjsRealtimeDocumentAdapter,
+  createRichDocumentSeed,
   documentPlainText,
   documentEntityReferences,
   documentContentFormat,
@@ -47,7 +49,7 @@ interface DocumentSession {
   readonly credential: string;
   readonly workspaceId: WorkspaceId;
   readonly deviceId: DeviceId;
-  readonly documentId: DocumentId;
+  readonly owner: CollaborativeContentOwner;
   readonly principalId: PrincipalId;
   readonly spaceId: SpaceId;
   readonly access: "view" | "comment" | "edit";
@@ -59,22 +61,46 @@ interface ConnectionContext {
   readonly sessionToken: string;
   readonly workspaceId: WorkspaceId;
   readonly deviceId: DeviceId;
-  readonly documentId: DocumentId;
+  readonly owner: CollaborativeContentOwner;
   readonly principalId: PrincipalId;
   readonly spaceId: SpaceId;
 }
 
-const roomName = (workspaceId: WorkspaceId, documentId: DocumentId): string =>
-  `${workspaceId}/${documentId}`;
+const contentOwnerId = (owner: CollaborativeContentOwner): string =>
+  owner.kind === "document" ? owner.documentId : owner.projectId;
+
+type AuthorizedContentAddress = {
+  readonly workspaceId: WorkspaceId;
+  readonly spaceId: SpaceId;
+} & (
+  | { readonly owner: CollaborativeContentOwner }
+  | { readonly documentId: DocumentId }
+);
+
+const authorizedContentOwner = (
+  input: AuthorizedContentAddress,
+): CollaborativeContentOwner =>
+  "owner" in input
+    ? input.owner
+    : { kind: "document", documentId: input.documentId };
+
+const roomName = (
+  workspaceId: WorkspaceId,
+  owner: CollaborativeContentOwner,
+): string => `${workspaceId}/${owner.kind}/${contentOwnerId(owner)}`;
 
 const parseRoomName = (
   name: string,
-): { workspaceId: WorkspaceId; documentId: DocumentId } => {
-  const [rawWorkspaceId, rawDocumentId, extra] = name.split("/");
+): { workspaceId: WorkspaceId; owner: CollaborativeContentOwner } => {
+  const [rawWorkspaceId, rawOwnerKind, rawOwnerId, extra] = name.split("/");
   if (extra !== undefined) throw new Error("DOCUMENT_ROOM_INVALID");
   return {
     workspaceId: WorkspaceIdSchema.parse(rawWorkspaceId),
-    documentId: DocumentIdSchema.parse(rawDocumentId),
+    owner: CollaborativeContentOwnerSchema.parse(
+      rawOwnerKind === "document"
+        ? { kind: "document", documentId: rawOwnerId }
+        : { kind: rawOwnerKind, projectId: rawOwnerId },
+    ),
   };
 };
 
@@ -121,17 +147,18 @@ export class RealtimeDocumentGateway {
         if (
           session === undefined ||
           Date.parse(session.expiresAt) <= Date.parse(this.now()) ||
-          data.documentName !==
-            roomName(session.workspaceId, session.documentId)
+          data.documentName !== roomName(session.workspaceId, session.owner)
         ) {
           throw new Error("DOCUMENT_SESSION_INVALID");
         }
-        const current = await this.service.authorizeDocument(session);
+        const current =
+          await this.service.authorizeCollaborativeContent(session);
         if (current.outcome === "rejected") {
           this.sessions.delete(session.token);
           throw new Error("DOCUMENT_SESSION_INVALID");
         }
-        const stored = await this.repository.loadDocumentState(session);
+        const stored =
+          await this.repository.loadCollaborativeContentState(session);
         if (
           !session.supportedDocumentFormats.includes(
             formatFromState(stored?.state),
@@ -146,7 +173,7 @@ export class RealtimeDocumentGateway {
           sessionToken: session.token,
           workspaceId: session.workspaceId,
           deviceId: session.deviceId,
-          documentId: session.documentId,
+          owner: session.owner,
           principalId: current.principalId,
           spaceId: current.spaceId,
         };
@@ -163,7 +190,8 @@ export class RealtimeDocumentGateway {
           if (session !== undefined) this.sessions.delete(session.token);
           throw new Error("DOCUMENT_SESSION_INVALID");
         }
-        const current = await this.service.authorizeDocument(session);
+        const current =
+          await this.service.authorizeCollaborativeContent(session);
         if (current.outcome === "rejected") {
           this.sessions.delete(session.token);
           throw new Error("DOCUMENT_SESSION_INVALID");
@@ -184,8 +212,8 @@ export class RealtimeDocumentGateway {
           if (
             session === undefined ||
             Date.parse(session.expiresAt) <= Date.parse(this.now()) ||
-            (await this.service.authorizeDocument(session)).outcome ===
-              "rejected"
+            (await this.service.authorizeCollaborativeContent(session))
+              .outcome === "rejected"
           ) {
             if (session !== undefined) this.sessions.delete(session.token);
             throw new Error("DOCUMENT_SESSION_INVALID");
@@ -211,7 +239,8 @@ export class RealtimeDocumentGateway {
       },
       onLoadDocument: async (data) => {
         const room = parseRoomName(data.documentName);
-        const stored = await this.repository.loadDocumentState(room);
+        const stored =
+          await this.repository.loadCollaborativeContentState(room);
         const document = new Y.Doc({ gc: true });
         if (stored !== undefined) Y.applyUpdate(document, stored.state);
         return document;
@@ -224,7 +253,7 @@ export class RealtimeDocumentGateway {
         if (state.byteLength > MAX_DOCUMENT_UPDATE_BYTES) {
           throw new Error("DOCUMENT_UPDATE_SIZE_INVALID");
         }
-        await this.repository.storeDocumentState({
+        await this.repository.storeCollaborativeContentState({
           ...room,
           spaceId,
           engine: "yjs-13",
@@ -238,16 +267,41 @@ export class RealtimeDocumentGateway {
     });
   }
 
-  public async createSession(input: {
+  private async createOwnerSession(input: {
     readonly credential: string;
     readonly workspaceId: WorkspaceId;
     readonly deviceId: DeviceId;
-    readonly documentId: DocumentId;
+    readonly owner: CollaborativeContentOwner;
     readonly supportedDocumentFormats: readonly DocumentContentFormat[];
   }): Promise<RealtimeDocumentSessionResult | "upgrade_required" | undefined> {
-    const authorization = await this.service.authorizeDocument(input);
+    const authorization =
+      await this.service.authorizeCollaborativeContent(input);
     if (authorization.outcome === "rejected") return undefined;
-    const stored = await this.repository.loadDocumentState(input);
+    let stored = await this.repository.loadCollaborativeContentState(input);
+    if (
+      stored === undefined &&
+      input.owner.kind === "project" &&
+      authorization.initialText !== undefined &&
+      authorization.contentCreatedBy !== undefined
+    ) {
+      const state = createRichDocumentSeed(
+        authorization.initialText,
+        createHash("sha256").update(authorization.initialText).digest("hex"),
+        {
+          kind: "human",
+          principalId: authorization.contentCreatedBy,
+        },
+      );
+      await this.repository.seedCollaborativeContentState({
+        workspaceId: input.workspaceId,
+        owner: input.owner,
+        spaceId: authorization.spaceId,
+        engine: "yjs-13",
+        state,
+        updatedAt: this.now(),
+      });
+      stored = await this.repository.loadCollaborativeContentState(input);
+    }
     const documentFormat = formatFromState(stored?.state);
     if (!input.supportedDocumentFormats.includes(documentFormat)) {
       return "upgrade_required";
@@ -269,7 +323,8 @@ export class RealtimeDocumentGateway {
       if (
         existing.workspaceId === input.workspaceId &&
         existing.deviceId === input.deviceId &&
-        existing.documentId === input.documentId
+        existing.owner.kind === input.owner.kind &&
+        contentOwnerId(existing.owner) === contentOwnerId(input.owner)
       ) {
         this.sessions.delete(existingToken);
       } else if (Date.parse(existing.expiresAt) <= Date.parse(this.now())) {
@@ -294,25 +349,49 @@ export class RealtimeDocumentGateway {
     this.sessions.set(token, session);
     return {
       token,
-      room: roomName(input.workspaceId, input.documentId),
+      room: roomName(input.workspaceId, input.owner),
       expiresAt,
       access: authorization.access,
       documentFormat,
     };
   }
 
-  public async createRevision(input: {
+  public createSession(input: {
     readonly credential: string;
     readonly workspaceId: WorkspaceId;
     readonly deviceId: DeviceId;
     readonly documentId: DocumentId;
+    readonly supportedDocumentFormats: readonly DocumentContentFormat[];
+  }): Promise<RealtimeDocumentSessionResult | "upgrade_required" | undefined> {
+    return this.createOwnerSession({
+      ...input,
+      owner: { kind: "document", documentId: input.documentId },
+    });
+  }
+
+  public createContentSession(input: {
+    readonly credential: string;
+    readonly workspaceId: WorkspaceId;
+    readonly deviceId: DeviceId;
+    readonly owner: CollaborativeContentOwner;
+    readonly supportedDocumentFormats: readonly DocumentContentFormat[];
+  }): Promise<RealtimeDocumentSessionResult | "upgrade_required" | undefined> {
+    return this.createOwnerSession(input);
+  }
+
+  private async createOwnerRevision(input: {
+    readonly credential: string;
+    readonly workspaceId: WorkspaceId;
+    readonly deviceId: DeviceId;
+    readonly owner: CollaborativeContentOwner;
     readonly name: string;
     readonly correlationId: CorrelationId;
     readonly restoredFromRevisionId?: DocumentRevisionId;
   }): Promise<DocumentRevisionId | undefined> {
     const name = input.name.trim();
     if (name.length < 1 || name.length > 120) return undefined;
-    const authorization = await this.service.authorizeDocument(input);
+    const authorization =
+      await this.service.authorizeCollaborativeContent(input);
     if (
       authorization.outcome === "rejected" ||
       authorization.access !== "edit"
@@ -320,18 +399,18 @@ export class RealtimeDocumentGateway {
       return undefined;
     }
     if (
-      (await this.repository.listDocumentRevisions(input)).length >=
+      (await this.repository.listCollaborativeContentRevisions(input)).length >=
       MAX_NAMED_REVISIONS
     ) {
       return undefined;
     }
-    const room = roomName(input.workspaceId, input.documentId);
+    const room = roomName(input.workspaceId, input.owner);
     this.roomSpaces.set(room, authorization.spaceId);
     const connection = await this.hocuspocus.openDirectConnection(room, {
       sessionToken: "direct",
       workspaceId: input.workspaceId,
       deviceId: input.deviceId,
-      documentId: input.documentId,
+      owner: input.owner,
       principalId: authorization.principalId,
       spaceId: authorization.spaceId,
     });
@@ -346,10 +425,10 @@ export class RealtimeDocumentGateway {
       await connection.disconnect({ unloadImmediately: true });
     }
     const id = DocumentRevisionIdSchema.parse(randomUUID());
-    await this.repository.createDocumentRevision({
+    await this.repository.createCollaborativeContentRevision({
       id,
       workspaceId: input.workspaceId,
-      documentId: input.documentId,
+      owner: input.owner,
       spaceId: authorization.spaceId,
       name,
       engine: "yjs-13",
@@ -366,32 +445,60 @@ export class RealtimeDocumentGateway {
     return id;
   }
 
-  public async restoreRevision(input: {
+  public createRevision(input: {
     readonly credential: string;
     readonly workspaceId: WorkspaceId;
     readonly deviceId: DeviceId;
     readonly documentId: DocumentId;
+    readonly name: string;
+    readonly correlationId: CorrelationId;
+    readonly restoredFromRevisionId?: DocumentRevisionId;
+  }): Promise<DocumentRevisionId | undefined> {
+    return this.createOwnerRevision({
+      ...input,
+      owner: { kind: "document", documentId: input.documentId },
+    });
+  }
+
+  public createContentRevision(input: {
+    readonly credential: string;
+    readonly workspaceId: WorkspaceId;
+    readonly deviceId: DeviceId;
+    readonly owner: CollaborativeContentOwner;
+    readonly name: string;
+    readonly correlationId: CorrelationId;
+    readonly restoredFromRevisionId?: DocumentRevisionId;
+  }): Promise<DocumentRevisionId | undefined> {
+    return this.createOwnerRevision(input);
+  }
+
+  private async restoreOwnerRevision(input: {
+    readonly credential: string;
+    readonly workspaceId: WorkspaceId;
+    readonly deviceId: DeviceId;
+    readonly owner: CollaborativeContentOwner;
     readonly revisionId: DocumentRevisionId;
     readonly correlationId: CorrelationId;
   }): Promise<boolean> {
-    const authorization = await this.service.authorizeDocument(input);
+    const authorization =
+      await this.service.authorizeCollaborativeContent(input);
     if (
       authorization.outcome === "rejected" ||
       authorization.access !== "edit"
     ) {
       return false;
     }
-    const revision = (await this.repository.listDocumentRevisions(input)).find(
-      (candidate) => candidate.id === input.revisionId,
-    );
+    const revision = (
+      await this.repository.listCollaborativeContentRevisions(input)
+    ).find((candidate) => candidate.id === input.revisionId);
     if (revision === undefined) return false;
-    const room = roomName(input.workspaceId, input.documentId);
+    const room = roomName(input.workspaceId, input.owner);
     this.roomSpaces.set(room, authorization.spaceId);
     const connection = await this.hocuspocus.openDirectConnection(room, {
       sessionToken: "direct",
       workspaceId: input.workspaceId,
       deviceId: input.deviceId,
-      documentId: input.documentId,
+      owner: input.owner,
       principalId: authorization.principalId,
       spaceId: authorization.spaceId,
     });
@@ -410,11 +517,11 @@ export class RealtimeDocumentGateway {
     } finally {
       await connection.disconnect({ unloadImmediately: true });
     }
-    await this.createRevision({
+    await this.createOwnerRevision({
       credential: input.credential,
       workspaceId: input.workspaceId,
       deviceId: input.deviceId,
-      documentId: input.documentId,
+      owner: input.owner,
       name: `Restored ${revision.name}`,
       correlationId: input.correlationId,
       restoredFromRevisionId: revision.id,
@@ -422,18 +529,64 @@ export class RealtimeDocumentGateway {
     return true;
   }
 
-  public async listRevisions(input: {
+  public restoreRevision(input: {
+    readonly credential: string;
+    readonly workspaceId: WorkspaceId;
+    readonly deviceId: DeviceId;
+    readonly documentId: DocumentId;
+    readonly revisionId: DocumentRevisionId;
+    readonly correlationId: CorrelationId;
+  }): Promise<boolean> {
+    return this.restoreOwnerRevision({
+      ...input,
+      owner: { kind: "document", documentId: input.documentId },
+    });
+  }
+
+  public restoreContentRevision(input: {
+    readonly credential: string;
+    readonly workspaceId: WorkspaceId;
+    readonly deviceId: DeviceId;
+    readonly owner: CollaborativeContentOwner;
+    readonly revisionId: DocumentRevisionId;
+    readonly correlationId: CorrelationId;
+  }): Promise<boolean> {
+    return this.restoreOwnerRevision(input);
+  }
+
+  private async listOwnerRevisions(input: {
+    readonly credential: string;
+    readonly workspaceId: WorkspaceId;
+    readonly deviceId: DeviceId;
+    readonly owner: CollaborativeContentOwner;
+  }) {
+    const authorization =
+      await this.service.authorizeCollaborativeContent(input);
+    if (authorization.outcome === "rejected") return undefined;
+    return (
+      await this.repository.listCollaborativeContentRevisions(input)
+    ).slice(0, MAX_NAMED_REVISIONS);
+  }
+
+  public listRevisions(input: {
     readonly credential: string;
     readonly workspaceId: WorkspaceId;
     readonly deviceId: DeviceId;
     readonly documentId: DocumentId;
   }) {
-    const authorization = await this.service.authorizeDocument(input);
-    if (authorization.outcome === "rejected") return undefined;
-    return (await this.repository.listDocumentRevisions(input)).slice(
-      0,
-      MAX_NAMED_REVISIONS,
-    );
+    return this.listOwnerRevisions({
+      ...input,
+      owner: { kind: "document", documentId: input.documentId },
+    });
+  }
+
+  public listContentRevisions(input: {
+    readonly credential: string;
+    readonly workspaceId: WorkspaceId;
+    readonly deviceId: DeviceId;
+    readonly owner: CollaborativeContentOwner;
+  }) {
+    return this.listOwnerRevisions(input);
   }
 
   /**
@@ -441,11 +594,9 @@ export class RealtimeDocumentGateway {
    * Space immediately before calling; this gateway independently verifies the
    * persisted document scope and owns all Yjs/revision mechanics.
    */
-  public async readStructuredAuthorized(input: {
-    readonly workspaceId: WorkspaceId;
-    readonly documentId: DocumentId;
-    readonly spaceId: SpaceId;
-  }): Promise<
+  public async readStructuredAuthorized(
+    input: AuthorizedContentAddress,
+  ): Promise<
     | {
         readonly content: StructuredDocument;
         readonly text: string;
@@ -454,7 +605,11 @@ export class RealtimeDocumentGateway {
       }
     | undefined
   > {
-    const stored = await this.repository.loadDocumentState(input);
+    const owner = authorizedContentOwner(input);
+    const stored = await this.repository.loadCollaborativeContentState({
+      workspaceId: input.workspaceId,
+      owner,
+    });
     if (
       stored === undefined ||
       stored.spaceId !== input.spaceId ||
@@ -477,17 +632,16 @@ export class RealtimeDocumentGateway {
     }
   }
 
-  public async replaceStructuredAuthorized(input: {
-    readonly workspaceId: WorkspaceId;
-    readonly documentId: DocumentId;
-    readonly spaceId: SpaceId;
-    readonly principalId: PrincipalId;
-    readonly credentialId: string;
-    readonly runId: string;
-    readonly expectedStateVectorSha256: string;
-    readonly idempotencyKey: string;
-    readonly content: unknown;
-  }): Promise<
+  public async replaceStructuredAuthorized(
+    input: AuthorizedContentAddress & {
+      readonly principalId: PrincipalId;
+      readonly credentialId: string;
+      readonly runId: string;
+      readonly expectedStateVectorSha256: string;
+      readonly idempotencyKey: string;
+      readonly content: unknown;
+    },
+  ): Promise<
     | {
         readonly outcome: "success";
         readonly revisionId: DocumentRevisionId;
@@ -499,6 +653,7 @@ export class RealtimeDocumentGateway {
         readonly diagnosticCode: string;
       }
   > {
+    const owner = authorizedContentOwner(input);
     const digest = (value: string): string =>
       createHash("sha256").update(value).digest("base64url").slice(0, 22);
     const keyDigest = digest(input.idempotencyKey);
@@ -518,7 +673,9 @@ export class RealtimeDocumentGateway {
       }),
     );
     const receiptSuffix = `[${keyDigest}.${requestDigest}]`;
-    const revisions = await this.repository.listDocumentRevisions(input);
+    const revisionScope = { workspaceId: input.workspaceId, owner };
+    const revisions =
+      await this.repository.listCollaborativeContentRevisions(revisionScope);
     const existingReceipt = revisions.find(
       (revision) =>
         revision.name.startsWith("Agent receipt ") &&
@@ -567,7 +724,8 @@ export class RealtimeDocumentGateway {
         diagnosticCode: "document.revision_limit_reached",
       };
 
-    const stored = await this.repository.loadDocumentState(input);
+    const stored =
+      await this.repository.loadCollaborativeContentState(revisionScope);
     if (stored === undefined || stored.spaceId !== input.spaceId)
       return {
         outcome: "rejected",
@@ -595,13 +753,13 @@ export class RealtimeDocumentGateway {
       validation.destroy();
     }
 
-    const room = roomName(input.workspaceId, input.documentId);
+    const room = roomName(input.workspaceId, owner);
     this.roomSpaces.set(room, input.spaceId);
     const connection = await this.hocuspocus.openDirectConnection(room, {
       sessionToken: "direct-agent",
       workspaceId: input.workspaceId,
       deviceId: DeviceIdSchema.parse(input.credentialId),
-      documentId: input.documentId,
+      owner,
       principalId: input.principalId,
       spaceId: input.spaceId,
     });
@@ -627,10 +785,10 @@ export class RealtimeDocumentGateway {
           current.destroy();
         }
         if (currentContentDigest === digest(JSON.stringify(content))) {
-          await this.repository.createDocumentRevision({
+          await this.repository.createCollaborativeContentRevision({
             id: DocumentRevisionIdSchema.parse(randomUUID()),
             workspaceId: input.workspaceId,
-            documentId: input.documentId,
+            owner,
             spaceId: input.spaceId,
             name: `Agent receipt ${receiptSuffix}`,
             engine: "yjs-13",
@@ -668,10 +826,10 @@ export class RealtimeDocumentGateway {
       const revisionId =
         pending?.id ?? DocumentRevisionIdSchema.parse(randomUUID());
       if (pending === undefined)
-        await this.repository.createDocumentRevision({
+        await this.repository.createCollaborativeContentRevision({
           id: revisionId,
           workspaceId: input.workspaceId,
-          documentId: input.documentId,
+          owner,
           spaceId: input.spaceId,
           name: `Before agent structured write (run ${input.runId.slice(0, 8)}) ${receiptSuffix}`,
           engine: "yjs-13",
@@ -710,10 +868,10 @@ export class RealtimeDocumentGateway {
           outcome: "conflict",
           diagnosticCode: "document.state_vector_stale",
         };
-      await this.repository.createDocumentRevision({
+      await this.repository.createCollaborativeContentRevision({
         id: DocumentRevisionIdSchema.parse(randomUUID()),
         workspaceId: input.workspaceId,
-        documentId: input.documentId,
+        owner,
         spaceId: input.spaceId,
         name: `Agent receipt ${receiptSuffix}`,
         engine: "yjs-13",
@@ -736,17 +894,16 @@ export class RealtimeDocumentGateway {
     }
   }
 
-  public async restoreStructuredAuthorized(input: {
-    readonly workspaceId: WorkspaceId;
-    readonly documentId: DocumentId;
-    readonly spaceId: SpaceId;
-    readonly principalId: PrincipalId;
-    readonly credentialId: string;
-    readonly runId: string;
-    readonly revisionId: DocumentRevisionId;
-    readonly expectedStateVectorSha256: string;
-    readonly idempotencyKey: string;
-  }): Promise<
+  public async restoreStructuredAuthorized(
+    input: AuthorizedContentAddress & {
+      readonly principalId: PrincipalId;
+      readonly credentialId: string;
+      readonly runId: string;
+      readonly revisionId: DocumentRevisionId;
+      readonly expectedStateVectorSha256: string;
+      readonly idempotencyKey: string;
+    },
+  ): Promise<
     | {
         readonly outcome: "success";
         readonly recoveryRevisionId: DocumentRevisionId;
@@ -758,6 +915,7 @@ export class RealtimeDocumentGateway {
         readonly diagnosticCode: string;
       }
   > {
+    const owner = authorizedContentOwner(input);
     const digest = (value: string): string =>
       createHash("sha256").update(value).digest("base64url").slice(0, 22);
     const keyDigest = digest(input.idempotencyKey);
@@ -768,7 +926,9 @@ export class RealtimeDocumentGateway {
       }),
     );
     const receiptSuffix = `[${keyDigest}.${requestDigest}]`;
-    const revisions = await this.repository.listDocumentRevisions(input);
+    const revisionScope = { workspaceId: input.workspaceId, owner };
+    const revisions =
+      await this.repository.listCollaborativeContentRevisions(revisionScope);
     const receipt = revisions.find(
       (revision) =>
         revision.name.startsWith("Agent restore receipt ") &&
@@ -826,14 +986,14 @@ export class RealtimeDocumentGateway {
         outcome: "rejected",
         diagnosticCode: "document.revision_limit_reached",
       };
-    const room = roomName(input.workspaceId, input.documentId);
+    const room = roomName(input.workspaceId, owner);
     this.roomSpaces.set(room, input.spaceId);
     const deviceId = DeviceIdSchema.parse(input.credentialId);
     const connection = await this.hocuspocus.openDirectConnection(room, {
       sessionToken: "direct-agent-restore",
       workspaceId: input.workspaceId,
       deviceId,
-      documentId: input.documentId,
+      owner,
       principalId: input.principalId,
       spaceId: input.spaceId,
     });
@@ -865,10 +1025,10 @@ export class RealtimeDocumentGateway {
           expected.destroy();
         }
         if (currentContentDigest === expectedContentDigest) {
-          await this.repository.createDocumentRevision({
+          await this.repository.createCollaborativeContentRevision({
             id: DocumentRevisionIdSchema.parse(randomUUID()),
             workspaceId: input.workspaceId,
-            documentId: input.documentId,
+            owner,
             spaceId: input.spaceId,
             name: `Agent restore receipt ${receiptSuffix}`,
             engine: "yjs-13",
@@ -906,10 +1066,10 @@ export class RealtimeDocumentGateway {
       const recoveryRevisionId =
         pending?.id ?? DocumentRevisionIdSchema.parse(randomUUID());
       if (pending === undefined)
-        await this.repository.createDocumentRevision({
+        await this.repository.createCollaborativeContentRevision({
           id: recoveryRevisionId,
           workspaceId: input.workspaceId,
-          documentId: input.documentId,
+          owner,
           spaceId: input.spaceId,
           name: `Before agent structured restore (run ${input.runId.slice(0, 8)}) ${receiptSuffix}`,
           engine: "yjs-13",
@@ -949,10 +1109,10 @@ export class RealtimeDocumentGateway {
           outcome: "conflict",
           diagnosticCode: "document.state_vector_stale",
         };
-      await this.repository.createDocumentRevision({
+      await this.repository.createCollaborativeContentRevision({
         id: DocumentRevisionIdSchema.parse(randomUUID()),
         workspaceId: input.workspaceId,
-        documentId: input.documentId,
+        owner,
         spaceId: input.spaceId,
         name: `Agent restore receipt ${receiptSuffix}`,
         engine: "yjs-13",
@@ -1022,15 +1182,23 @@ export class RealtimeDocumentGateway {
     documentId: DocumentId,
     workspaceId: WorkspaceId,
   ): void {
+    this.revokeContent({ kind: "document", documentId }, workspaceId);
+  }
+
+  public revokeContent(
+    owner: CollaborativeContentOwner,
+    workspaceId: WorkspaceId,
+  ): void {
     for (const [token, session] of this.sessions) {
       if (
-        session.documentId === documentId &&
+        session.owner.kind === owner.kind &&
+        contentOwnerId(session.owner) === contentOwnerId(owner) &&
         session.workspaceId === workspaceId
       ) {
         this.sessions.delete(token);
       }
     }
-    this.hocuspocus.closeConnections(roomName(workspaceId, documentId));
+    this.hocuspocus.closeConnections(roomName(workspaceId, owner));
   }
 
   public async reauthorizeSessions(): Promise<void> {
@@ -1039,10 +1207,10 @@ export class RealtimeDocumentGateway {
       const expired = Date.parse(session.expiresAt) <= Date.parse(this.now());
       const current = expired
         ? undefined
-        : await this.service.authorizeDocument(session);
+        : await this.service.authorizeCollaborativeContent(session);
       if (current === undefined || current.outcome === "rejected") {
         this.sessions.delete(token);
-        roomsToClose.add(roomName(session.workspaceId, session.documentId));
+        roomsToClose.add(roomName(session.workspaceId, session.owner));
         continue;
       }
       if (
@@ -1051,7 +1219,7 @@ export class RealtimeDocumentGateway {
         current.principalId !== session.principalId
       ) {
         this.sessions.delete(token);
-        roomsToClose.add(roomName(session.workspaceId, session.documentId));
+        roomsToClose.add(roomName(session.workspaceId, session.owner));
       }
     }
     for (const room of roomsToClose) this.hocuspocus.closeConnections(room);

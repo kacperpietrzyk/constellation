@@ -40,6 +40,7 @@ import {
   type DeviceId,
   type PrincipalId,
   type SpaceId,
+  type CollaborativeContentOwner,
 } from "@constellation/contracts";
 
 import type { HubRepository, HubStoredReceipt } from "./repository.js";
@@ -235,9 +236,36 @@ export class HubService {
         readonly principalId: PrincipalId;
         readonly spaceId: SpaceId;
         readonly access: "view" | "comment" | "edit";
+        readonly initialText?: string;
+        readonly contentCreatedBy?: PrincipalId;
       }
     | { readonly outcome: "rejected" }
   > {
+    return this.authorizeCollaborativeContent({
+      credential: input.credential,
+      workspaceId: input.workspaceId,
+      deviceId: input.deviceId,
+      owner: { kind: "document", documentId: input.documentId },
+    });
+  }
+
+  public async authorizeCollaborativeContent(input: {
+    readonly credential: string;
+    readonly workspaceId: WorkspaceId;
+    readonly deviceId: DeviceId;
+    readonly owner: CollaborativeContentOwner;
+  }): Promise<
+    | {
+        readonly outcome: "success";
+        readonly principalId: PrincipalId;
+        readonly spaceId: SpaceId;
+        readonly access: "view" | "comment" | "edit";
+        readonly initialText?: string;
+        readonly contentCreatedBy?: PrincipalId;
+      }
+    | { readonly outcome: "rejected" }
+  > {
+    const owner = input.owner;
     const authentication = await this.repository.authenticate({
       workspaceId: input.workspaceId,
       deviceId: input.deviceId,
@@ -252,12 +280,17 @@ export class HubService {
       );
       if (authorization === undefined) return { outcome: "rejected" } as const;
       const snapshot = fromHubSnapshot(state.snapshot, input.workspaceId);
-      const document = (snapshot.documents ?? []).find(
-        (candidate) => candidate.id === input.documentId,
-      );
+      const record =
+        owner.kind === "document"
+          ? (snapshot.documents ?? []).find(
+              (candidate) => candidate.id === owner.documentId,
+            )
+          : (snapshot.projects ?? []).find(
+              (candidate) => candidate.id === owner.projectId,
+            );
       if (
-        document === undefined ||
-        !authorization.spaceScope.includes(document.spaceId)
+        record === undefined ||
+        !authorization.spaceScope.includes(record.spaceId)
       ) {
         return { outcome: "rejected" } as const;
       }
@@ -271,12 +304,11 @@ export class HubService {
       const grant = (snapshot.spaceGrants ?? []).find(
         (candidate) =>
           candidate.principalId === authorization.principalId &&
-          candidate.spaceId === document.spaceId &&
+          candidate.spaceId === record.spaceId &&
           candidate.status === "active",
       );
       const access =
-        membership.role === "owner" &&
-        workspace?.rootSpaceId === document.spaceId
+        membership.role === "owner" && workspace?.rootSpaceId === record.spaceId
           ? "edit"
           : grant?.access;
       return access === undefined
@@ -284,8 +316,14 @@ export class HubService {
         : {
             outcome: "success" as const,
             principalId: authorization.principalId,
-            spaceId: document.spaceId,
+            spaceId: record.spaceId,
             access,
+            ...(owner.kind === "project" && "intendedOutcome" in record
+              ? {
+                  initialText: record.intendedOutcome,
+                  contentCreatedBy: record.createdBy,
+                }
+              : {}),
           };
     });
   }

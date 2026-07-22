@@ -234,6 +234,48 @@ describe("coordinated desktop projection", () => {
       snapshotDigest: snapshotDigest(initial),
       configuredAt: "2026-07-14T12:00:00.000Z",
     });
+    const createdProject = device.runtime.execute({
+      contractVersion: 1,
+      commandName: "project.create",
+      commandId: "00000000-0000-4000-8000-000000001040",
+      workspaceId: ids.workspace,
+      idempotencyKey: "revocation-project-content",
+      expectedVersions: {},
+      correlationId: "00000000-0000-4000-8000-000000001041",
+      payload: {
+        spaceId: ids.space,
+        title: "Revoked Project",
+        intendedOutcome: "Must leave no local rich-content trace",
+      },
+    });
+    assert.equal(createdProject.kind, "command_outcome");
+    if (
+      createdProject.kind !== "command_outcome" ||
+      createdProject.outcome.outcome !== "success" ||
+      createdProject.outcome.projection.kind !== "project.created"
+    )
+      throw new Error("Project creation failed.");
+    const owner = {
+      kind: "project" as const,
+      projectId: createdProject.outcome.projection.projectId,
+    };
+    device.store.commitCollaborativeContentUpdate({
+      id: "revoked-project-update",
+      owner,
+      workspaceId: ids.workspace,
+      spaceId: context().spaceScope[0]!,
+      state: Uint8Array.of(1, 2, 3),
+      update: Uint8Array.of(2, 3),
+      createdAt: "2026-07-14T12:00:30.000Z",
+    });
+    device.store.replaceCollaborativeContentSearchProjection({
+      owner,
+      workspaceId: ids.workspace,
+      spaceId: context().spaceScope[0]!,
+      body: "revoked private project body",
+      stateDigest: "a".repeat(64),
+      indexedAt: "2026-07-14T12:00:30.000Z",
+    });
     const transport: HubTransport = {
       reconcileCommand: () =>
         Promise.resolve({ outcome: "not_found" as const }),
@@ -260,6 +302,22 @@ describe("coordinated desktop projection", () => {
     });
     assert.equal(device.store.snapshot().workspaces.length, 0);
     assert.equal(device.store.snapshot().captures.length, 0);
+    for (const table of [
+      "content_collaboration_state",
+      "content_pending_updates",
+      "content_revisions",
+      "content_entity_links",
+      "content_search_projections",
+    ]) {
+      assert.equal(
+        (
+          device.database
+            .prepare(`SELECT count(*) AS count FROM ${table}`)
+            .get() as { count: number }
+        ).count,
+        0,
+      );
+    }
     assert.equal(device.store.getCoordinationState()?.syncState, "revoked");
     assert.equal(
       device.store.getCoordinationState()?.lastErrorCode,

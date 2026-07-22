@@ -1,5 +1,7 @@
 import {
   useEffect,
+  lazy,
+  Suspense,
   useRef,
   useState,
   type FormEvent,
@@ -33,6 +35,7 @@ import {
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
 import ProjectContextSections from "./ProjectContextSections.js";
+import type { DocumentEntityTargetKind } from "./document-entity-reference.js";
 import { modifierLabel } from "./components/ShortcutsOverlay.js";
 import { calendarReadRefusal } from "./client/calendar-reservation.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
@@ -47,6 +50,8 @@ import {
 const Mark = ({ kind }: { readonly kind: string }) => (
   <span className={`record-mark mark-${kind}`} aria-hidden="true" />
 );
+
+const ProjectRichBody = lazy(() => import("./ProjectRichBody.js"));
 
 const SurfaceHeader = ({
   kicker,
@@ -1463,6 +1468,7 @@ export const TasksSurface = ({
 };
 
 export const ProjectsSurface = ({
+  client,
   snapshot,
   selectedProjectId,
   activeProjectId,
@@ -1481,7 +1487,9 @@ export const ProjectsSurface = ({
   onOpenDocument,
   onOpenMeeting,
   onOpenRelationship,
+  onEntityActivate,
 }: {
+  readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
   readonly selectedProjectId: ProjectId | undefined;
   readonly activeProjectId: ProjectId | undefined;
@@ -1510,6 +1518,10 @@ export const ProjectsSurface = ({
   readonly onOpenDocument: (id: DocumentId, title: string) => void;
   readonly onOpenMeeting: (id: StrategicRecordId) => void;
   readonly onOpenRelationship: (id: StrategicRecordId) => void;
+  readonly onEntityActivate: (target: {
+    readonly targetKind: DocumentEntityTargetKind;
+    readonly targetId: string;
+  }) => void;
 }) => {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -1800,6 +1812,25 @@ export const ProjectsSurface = ({
               )}
             </div>
           </section>
+          {client !== undefined && (
+            <Suspense
+              fallback={
+                <section
+                  className="project-rich-body reading-panel"
+                  aria-busy="true"
+                >
+                  <p className="capacity-note">Otwieram dokument projektu…</p>
+                </section>
+              }
+            >
+              <ProjectRichBody
+                client={client}
+                snapshot={snapshot}
+                project={overview.project}
+                onEntityActivate={onEntityActivate}
+              />
+            </Suspense>
+          )}
           <ProjectContextSections
             overview={overview}
             onOpenDocument={onOpenDocument}
