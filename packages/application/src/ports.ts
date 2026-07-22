@@ -249,6 +249,15 @@ export interface ApplicationWave2ReadView extends ApplicationReadView {
     readonly documentId: DocumentId;
     readonly snippet: string;
   }[];
+  searchProjectBodies(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    text: string,
+    limit: number,
+  ): readonly {
+    readonly projectId: ProjectId;
+    readonly snippet: string;
+  }[];
   getKnowledgeSource(id: KnowledgeSourceId): KnowledgeSource | undefined;
   listKnowledgeSources(
     workspaceId: WorkspaceId,
@@ -382,6 +391,7 @@ export const isApplicationWave2ReadView = (
   "listDocuments" in view &&
   "listDocumentEntityLinks" in view &&
   "searchDocumentBodies" in view &&
+  "searchProjectBodies" in view &&
   "getKnowledgeSource" in view &&
   "listKnowledgeSources" in view &&
   "getNamedDocumentVersion" in view &&

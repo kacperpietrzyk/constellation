@@ -11,6 +11,7 @@ import {
   CredentialIdSchema,
   GrantIdSchema,
   QueryEnvelopeSchema,
+  ProjectIdSchema,
   WorkspaceIdSchema,
 } from "@constellation/contracts";
 import { MAX_DOCUMENT_TEXT_LENGTH } from "@constellation/realtime-documents";
@@ -33,6 +34,9 @@ export const MCP_TOOL_NAMES = [
   "constellation.document.structured.read.v1",
   "constellation.document.structured.write.v1",
   "constellation.document.structured.restore.v1",
+  "constellation.project.structured.read.v1",
+  "constellation.project.structured.write.v1",
+  "constellation.project.structured.restore.v1",
   "constellation.checkpoint.revert.v1",
 ] as const;
 
@@ -164,6 +168,45 @@ export const McpOperatorInvocationSchema = z.discriminatedUnion("kind", [
       run: HostRunMetadataSchema,
       workspaceId: WorkspaceIdSchema,
       documentId: DocumentIdSchema,
+      revisionId: DocumentRevisionIdSchema,
+      schemaVersion: z.literal(1),
+      expectedStateVectorSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+      idempotencyKey: z.string().trim().min(1).max(200),
+    })
+    .strict(),
+  z
+    .object({
+      contractVersion: z.literal(MCP_CONTRACT_VERSION),
+      requestId: z.uuid(),
+      kind: z.literal("project_structured_read"),
+      run: HostRunMetadataSchema,
+      workspaceId: WorkspaceIdSchema,
+      projectId: ProjectIdSchema,
+      schemaVersion: z.literal(1),
+    })
+    .strict(),
+  z
+    .object({
+      contractVersion: z.literal(MCP_CONTRACT_VERSION),
+      requestId: z.uuid(),
+      kind: z.literal("project_structured_write"),
+      run: HostRunMetadataSchema,
+      workspaceId: WorkspaceIdSchema,
+      projectId: ProjectIdSchema,
+      schemaVersion: z.literal(1),
+      expectedStateVectorSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+      idempotencyKey: z.string().trim().min(1).max(200),
+      content: z.unknown(),
+    })
+    .strict(),
+  z
+    .object({
+      contractVersion: z.literal(MCP_CONTRACT_VERSION),
+      requestId: z.uuid(),
+      kind: z.literal("project_structured_restore"),
+      run: HostRunMetadataSchema,
+      workspaceId: WorkspaceIdSchema,
+      projectId: ProjectIdSchema,
       revisionId: DocumentRevisionIdSchema,
       schemaVersion: z.literal(1),
       expectedStateVectorSha256: z.string().regex(/^[0-9a-f]{64}$/u),

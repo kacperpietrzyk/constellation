@@ -425,3 +425,18 @@ export class YjsRealtimeDocumentAdapter implements RealtimeDocumentAdapter {
     this.document.destroy();
   }
 }
+
+export const createRichDocumentSeed = (
+  text: string,
+  legacyDigest: string,
+  origin: DocumentChangeOrigin,
+): Uint8Array => {
+  const adapter = new YjsRealtimeDocumentAdapter();
+  try {
+    adapter.replaceText(text, origin);
+    adapter.migrateToRich(legacyDigest, origin);
+    return adapter.encodeState();
+  } finally {
+    adapter.destroy();
+  }
+};

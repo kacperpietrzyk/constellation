@@ -68,12 +68,16 @@ import path from "node:path";
 // załączników dla komentarzy oraz relacji w inspektorze zadania. Sam blok
 // zadania pozostaje osobnym leniwym chunkiem; total JavaScript nie wymaga
 // podniesienia, więc limity rosną tylko o zmierzony koszt wspólnego kontraktu.
+// 2026-07-22 (R15.2 Slice B): Project używa tego samego izolowanego stosu
+// Tiptap/Yjs co Dokument, ale wnosi własny mały lazy chunk powierzchni oraz
+// semantyczne IPC właściciela treści. Entry rośnie o routing, total o funkcję,
+// a stylesheet o responsywną powierzchnię edycji i odzyskiwania.
 const limits = {
-  entryBytes: 552_500,
-  entryGzipBytes: 146_000,
-  totalJavaScriptBytes: 1_290_000,
+  entryBytes: 554_000,
+  entryGzipBytes: 147_000,
+  totalJavaScriptBytes: 1_310_000,
   largestLazyJavaScriptBytes: 565_000,
-  stylesheetBytes: 184_000,
+  stylesheetBytes: 188_000,
 };
 
 const dist = path.join(process.cwd(), "packages", "desktop-ui", "dist");

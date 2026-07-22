@@ -1917,6 +1917,38 @@ class SqliteReadView implements ApplicationWave2ReadView {
       }));
   }
 
+  public searchProjectBodies(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    text: string,
+    limit: number,
+  ): readonly { readonly projectId: ProjectId; readonly snippet: string }[] {
+    const phrase = text.trim();
+    if (phrase.length === 0) return [];
+    const boundedLimit = Math.max(1, Math.min(Math.trunc(limit), 50));
+    const match = `"${phrase.replaceAll('"', '""')}"`;
+    return this.database
+      .prepare(
+        `SELECT record_id, snippet(work_search, 5, '', '', ' … ', 18) AS body_snippet
+         FROM work_search
+         WHERE work_search MATCH ?
+           AND workspace_id = ?
+           AND space_id = ?
+           AND record_kind = 'project'
+         ORDER BY rank, record_id
+         LIMIT ?`,
+      )
+      .all(match, workspaceId, spaceId, boundedLimit)
+      .map((row) => ({
+        projectId: stringValue(
+          row,
+          "record_id",
+          "project body search result",
+        ) as ProjectId,
+        snippet: stringValue(row, "body_snippet", "project body search result"),
+      }));
+  }
+
   public getKnowledgeSource(
     id: KnowledgeSourceId,
   ): KnowledgeSource | undefined {
@@ -3691,6 +3723,35 @@ export class SqliteApplicationStore
           input.state,
           input.updatedAt,
         );
+    });
+  }
+
+  public seedCollaborativeContentState(input: {
+    readonly owner: CollaborativeContentOwner;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+    readonly state: Uint8Array;
+    readonly updatedAt: string;
+  }): boolean {
+    if (input.state.byteLength < 1 || input.state.byteLength > 1_048_576) {
+      throw new Error("Collaborative content binary size is invalid.");
+    }
+    return this.transact(() => {
+      this.requireCollaborativeContentScope(input);
+      return changed(
+        this.database
+          .prepare(
+            "INSERT OR IGNORE INTO content_collaboration_state (owner_kind, owner_id, workspace_id, space_id, engine, state_blob, updated_at) VALUES (?, ?, ?, ?, 'yjs-13', ?, ?)",
+          )
+          .run(
+            input.owner.kind,
+            collaborativeContentOwnerId(input.owner),
+            input.workspaceId,
+            input.spaceId,
+            input.state,
+            input.updatedAt,
+          ),
+      );
     });
   }
 

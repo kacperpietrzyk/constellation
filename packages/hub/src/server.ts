@@ -13,6 +13,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 
 import {
   CorrelationIdSchema,
+  CollaborativeContentOwnerSchema,
   DeviceIdSchema,
   DocumentIdSchema,
   DocumentRevisionIdSchema,
@@ -63,6 +64,32 @@ const DocumentRevisionCreateRequestSchema = DocumentRequestSchema.extend({
 }).strict();
 
 const DocumentRevisionRestoreRequestSchema = DocumentRequestSchema.extend({
+  revisionId: DocumentRevisionIdSchema,
+  correlationId: CorrelationIdSchema,
+}).strict();
+
+const ContentRequestSchema = z
+  .object({
+    workspaceId: WorkspaceIdSchema,
+    deviceId: DeviceIdSchema,
+    owner: CollaborativeContentOwnerSchema,
+  })
+  .strict();
+
+const ContentSessionRequestSchema = ContentRequestSchema.extend({
+  supportedDocumentFormats: z
+    .array(z.enum(["plain-v1", "rich-v1"]))
+    .min(1)
+    .max(2)
+    .refine((items) => new Set(items).size === items.length),
+}).strict();
+
+const ContentRevisionCreateRequestSchema = ContentRequestSchema.extend({
+  name: z.string().trim().min(1).max(120),
+  correlationId: CorrelationIdSchema,
+}).strict();
+
+const ContentRevisionRestoreRequestSchema = ContentRequestSchema.extend({
   revisionId: DocumentRevisionIdSchema,
   correlationId: CorrelationIdSchema,
 }).strict();
@@ -479,6 +506,103 @@ export const startHubServer = async (
           credential,
           ...parsed.data,
         });
+        json(
+          response,
+          restored ? 200 : 404,
+          restored ? { outcome: "success" } : { code: "not_found" },
+        );
+        return;
+      }
+      if (
+        requestUrl.pathname === "/v1/content/session" &&
+        options.realtimeDocuments !== undefined
+      ) {
+        const parsed = ContentSessionRequestSchema.safeParse(body);
+        if (!parsed.success) {
+          json(response, 400, { code: "contract_invalid" });
+          return;
+        }
+        const session = await options.realtimeDocuments.createContentSession({
+          credential,
+          ...parsed.data,
+        });
+        if (session === "upgrade_required") {
+          json(response, 409, { code: "document_format_upgrade_required" });
+          return;
+        }
+        json(
+          response,
+          session === undefined ? 404 : 200,
+          session ?? { code: "not_found" },
+        );
+        return;
+      }
+      if (
+        requestUrl.pathname === "/v1/content/revisions" &&
+        options.realtimeDocuments !== undefined
+      ) {
+        const parsed = ContentRevisionCreateRequestSchema.safeParse(body);
+        if (!parsed.success) {
+          json(response, 400, { code: "contract_invalid" });
+          return;
+        }
+        const revisionId =
+          await options.realtimeDocuments.createContentRevision({
+            credential,
+            ...parsed.data,
+          });
+        json(
+          response,
+          revisionId === undefined ? 404 : 200,
+          revisionId === undefined ? { code: "not_found" } : { revisionId },
+        );
+        return;
+      }
+      if (
+        requestUrl.pathname === "/v1/content/revisions/list" &&
+        options.realtimeDocuments !== undefined
+      ) {
+        const parsed = ContentRequestSchema.safeParse(body);
+        if (!parsed.success) {
+          json(response, 400, { code: "contract_invalid" });
+          return;
+        }
+        const revisions = await options.realtimeDocuments.listContentRevisions({
+          credential,
+          ...parsed.data,
+        });
+        json(
+          response,
+          revisions === undefined ? 404 : 200,
+          revisions === undefined
+            ? { code: "not_found" }
+            : {
+                revisions: revisions.map((revision) => ({
+                  id: revision.id,
+                  name: revision.name,
+                  createdBy: revision.createdBy,
+                  createdAt: revision.createdAt,
+                  restoredFromRevisionId: revision.restoredFromRevisionId,
+                })),
+              },
+        );
+        return;
+      }
+      if (
+        requestUrl.pathname === "/v1/content/revisions/restore" &&
+        options.realtimeDocuments !== undefined
+      ) {
+        const parsed = ContentRevisionRestoreRequestSchema.safeParse(body);
+        if (!parsed.success) {
+          json(response, 400, { code: "contract_invalid" });
+          return;
+        }
+        const restored = await options.realtimeDocuments.restoreContentRevision(
+          {
+            credential,
+            ...parsed.data,
+          },
+        );
         json(
           response,
           restored ? 200 : 404,

@@ -17,7 +17,9 @@ import {
   isCustodiedCaptureOriginal,
   type CaptureOriginal,
   type CaptureId,
+  type CollaborativeContentOwner,
   type DocumentId,
+  type ProjectId,
   type SpaceId,
   type ExecutionContext,
   type GrantId,
@@ -49,6 +51,11 @@ import {
 
 const MAX_CONNECTIONS = 32;
 const MAX_PORTABLE_UNIX_SOCKET_BYTES = 96;
+
+type AgentContentAddress = {
+  readonly owner: CollaborativeContentOwner;
+  readonly spaceId: SpaceId;
+};
 
 export const localMcpEndpoint = (
   stateRoot: string,
@@ -155,10 +162,7 @@ export class LocalMcpRuntime {
         }):
           | { readonly characters: number; readonly revisionId: string }
           | undefined;
-        readStructured?(input: {
-          readonly documentId: DocumentId;
-          readonly spaceId: SpaceId;
-        }):
+        readStructured?(input: AgentContentAddress):
           | {
               readonly content: unknown;
               readonly text: string;
@@ -166,15 +170,15 @@ export class LocalMcpRuntime {
               readonly stateVectorSha256: string;
             }
           | undefined;
-        replaceStructured?(input: {
-          readonly documentId: DocumentId;
-          readonly spaceId: SpaceId;
-          readonly content: unknown;
-          readonly expectedStateVectorSha256: string;
-          readonly idempotencyKey: string;
-          readonly principalId: string;
-          readonly runId: string;
-        }):
+        replaceStructured?(
+          input: AgentContentAddress & {
+            readonly content: unknown;
+            readonly expectedStateVectorSha256: string;
+            readonly idempotencyKey: string;
+            readonly principalId: string;
+            readonly runId: string;
+          },
+        ):
           | {
               readonly outcome: "success";
               readonly revisionId: string;
@@ -186,15 +190,15 @@ export class LocalMcpRuntime {
               readonly diagnosticCode: string;
             }
           | undefined;
-        restoreStructured?(input: {
-          readonly documentId: DocumentId;
-          readonly spaceId: SpaceId;
-          readonly revisionId: string;
-          readonly expectedStateVectorSha256: string;
-          readonly idempotencyKey: string;
-          readonly principalId: string;
-          readonly runId: string;
-        }):
+        restoreStructured?(
+          input: AgentContentAddress & {
+            readonly revisionId: string;
+            readonly expectedStateVectorSha256: string;
+            readonly idempotencyKey: string;
+            readonly principalId: string;
+            readonly runId: string;
+          },
+        ):
           | {
               readonly outcome: "success";
               readonly recoveryRevisionId: string;
@@ -569,44 +573,74 @@ export class LocalMcpRuntime {
     if (
       invocation.kind === "document_structured_read" ||
       invocation.kind === "document_structured_write" ||
-      invocation.kind === "document_structured_restore"
+      invocation.kind === "document_structured_restore" ||
+      invocation.kind === "project_structured_read" ||
+      invocation.kind === "project_structured_write" ||
+      invocation.kind === "project_structured_restore"
     ) {
-      const document = this.input.store.read((view) =>
-        isApplicationWave2ReadView(view)
-          ? view.getDocument(invocation.documentId)
-          : undefined,
-      );
+      const projectId =
+        "projectId" in invocation ? invocation.projectId : undefined;
+      const documentId =
+        "documentId" in invocation ? invocation.documentId : undefined;
+      const projectInvocation = projectId !== undefined;
+      const record = this.input.store.read((view) => {
+        if (!isApplicationWave2ReadView(view)) return undefined;
+        return projectInvocation
+          ? view.getProject(projectId as ProjectId)
+          : view.getDocument(documentId as DocumentId);
+      });
       const capability =
         invocation.kind === "document_structured_read"
           ? "document.readContent"
-          : "document.replaceContent";
+          : invocation.kind === "project_structured_read"
+            ? "project.readContent"
+            : projectInvocation
+              ? "project.replaceContent"
+              : "document.replaceContent";
       if (
-        document === undefined ||
-        document.workspaceId !== grant.workspaceId ||
+        record === undefined ||
+        record.workspaceId !== grant.workspaceId ||
         invocation.workspaceId !== grant.workspaceId ||
-        !context.spaceScope.includes(document.spaceId) ||
+        !context.spaceScope.includes(record.spaceId) ||
         !context.capabilityScope.includes(capability) ||
         this.input.documentText === undefined
       )
         return contentSafeResponse(invocation.requestId, "rejected", {
           diagnosticCode: "authorization.denied",
         });
-      if (invocation.kind === "document_structured_read") {
+      const owner: CollaborativeContentOwner = projectInvocation
+        ? {
+            kind: "project",
+            projectId: projectId as ProjectId,
+          }
+        : {
+            kind: "document",
+            documentId: documentId as DocumentId,
+          };
+      const identity =
+        owner.kind === "project"
+          ? { projectId: owner.projectId, projectVersion: record.version }
+          : { documentId: owner.documentId, documentVersion: record.version };
+      const diagnostic = (code: string): string =>
+        projectInvocation ? code.replace(/^document\./u, "project.") : code;
+      if (
+        invocation.kind === "document_structured_read" ||
+        invocation.kind === "project_structured_read"
+      ) {
         const result = this.input.documentText.readStructured?.({
-          documentId: document.id,
-          spaceId: document.spaceId,
+          owner,
+          spaceId: record.spaceId,
         });
         return result === undefined
           ? contentSafeResponse(invocation.requestId, "rejected", {
-              diagnosticCode: "document.content_unavailable",
+              diagnosticCode: diagnostic("document.content_unavailable"),
             })
           : contentSafeResponse(
               invocation.requestId,
               "success",
               {
-                documentId: document.id,
-                title: document.title,
-                documentVersion: document.version,
+                ...identity,
+                title: record.title,
                 schemaVersion: invocation.schemaVersion,
                 ...result,
               },
@@ -619,10 +653,13 @@ export class LocalMcpRuntime {
               },
             );
       }
-      if (invocation.kind === "document_structured_restore") {
+      if (
+        invocation.kind === "document_structured_restore" ||
+        invocation.kind === "project_structured_restore"
+      ) {
         const restored = this.input.documentText.restoreStructured?.({
-          documentId: document.id,
-          spaceId: document.spaceId,
+          owner,
+          spaceId: record.spaceId,
           revisionId: invocation.revisionId,
           expectedStateVectorSha256: invocation.expectedStateVectorSha256,
           idempotencyKey: invocation.idempotencyKey,
@@ -631,14 +668,16 @@ export class LocalMcpRuntime {
         });
         if (restored === undefined)
           return contentSafeResponse(invocation.requestId, "rejected", {
-            diagnosticCode: "document.structured_content_unavailable",
+            diagnosticCode: diagnostic(
+              "document.structured_content_unavailable",
+            ),
           });
         return contentSafeResponse(
           invocation.requestId,
           restored.outcome,
           restored.outcome === "success"
-            ? { documentId: document.id, ...restored }
-            : { diagnosticCode: restored.diagnosticCode },
+            ? { ...identity, ...restored }
+            : { diagnosticCode: diagnostic(restored.diagnosticCode) },
         );
       }
       let references: ReturnType<typeof structuredDocumentEntityReferences>;
@@ -646,7 +685,7 @@ export class LocalMcpRuntime {
         references = structuredDocumentEntityReferences(invocation.content);
       } catch {
         return contentSafeResponse(invocation.requestId, "rejected", {
-          diagnosticCode: "document.structured_content_invalid",
+          diagnosticCode: diagnostic("document.structured_content_invalid"),
         });
       }
       const targetsAuthorized = this.input.store.read(
@@ -661,7 +700,7 @@ export class LocalMcpRuntime {
             );
             return (
               target !== undefined &&
-              target.spaceId === document.spaceId &&
+              target.spaceId === record.spaceId &&
               context.spaceScope.includes(target.spaceId)
             );
           }),
@@ -671,8 +710,8 @@ export class LocalMcpRuntime {
           diagnosticCode: "authorization.denied",
         });
       const result = this.input.documentText.replaceStructured?.({
-        documentId: document.id,
-        spaceId: document.spaceId,
+        owner,
+        spaceId: record.spaceId,
         content: invocation.content,
         expectedStateVectorSha256: invocation.expectedStateVectorSha256,
         idempotencyKey: invocation.idempotencyKey,
@@ -681,14 +720,14 @@ export class LocalMcpRuntime {
       });
       if (result === undefined)
         return contentSafeResponse(invocation.requestId, "rejected", {
-          diagnosticCode: "document.structured_content_unavailable",
+          diagnosticCode: diagnostic("document.structured_content_unavailable"),
         });
       return contentSafeResponse(
         invocation.requestId,
         result.outcome,
         result.outcome === "success"
-          ? { documentId: document.id, ...result }
-          : { diagnosticCode: result.diagnosticCode },
+          ? { ...identity, ...result }
+          : { diagnosticCode: diagnostic(result.diagnosticCode) },
       );
     }
     return this.revertCheckpoint(

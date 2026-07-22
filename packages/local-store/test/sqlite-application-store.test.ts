@@ -906,7 +906,7 @@ describe("SQLite ApplicationStore", () => {
     store.replaceCollaborativeContentSearchProjection({
       owner: projectOwner,
       ...scope,
-      body: "Project-only evidence",
+      body: "NebulaProjectEvidence",
       stateDigest: "b".repeat(64),
       indexedAt: "2026-07-22T01:34:00.000Z",
     });
@@ -939,6 +939,35 @@ describe("SQLite ApplicationStore", () => {
       ).count,
       2,
     );
+    const projectSearch = kernel.query(
+      context(),
+      QueryEnvelopeSchema.parse({
+        contractVersion: 1,
+        queryName: "search.global",
+        queryId: "00000000-0000-4000-8000-00000000012b",
+        workspaceId: scope.workspaceId,
+        consistency: "local_authoritative",
+        parameters: {
+          spaceIds: [scope.spaceId],
+          text: "NebulaProjectEvidence",
+        },
+      }),
+    );
+    assert.equal(projectSearch.kind, "query_result");
+    if (
+      projectSearch.kind !== "query_result" ||
+      projectSearch.result.outcome !== "success" ||
+      projectSearch.result.projection.kind !== "search.global"
+    )
+      throw new Error("Expected Project body search result.");
+    assert.equal(projectSearch.result.projection.items.length, 1);
+    assert.equal(
+      projectSearch.result.projection.items[0]?.recordKind,
+      "project",
+    );
+    assert.deepEqual(projectSearch.result.projection.items[0]?.matchedFields, [
+      "body",
+    ]);
 
     store.purgeCollaborativeContent(documentOwner);
     assert.equal(
@@ -959,7 +988,7 @@ describe("SQLite ApplicationStore", () => {
         owner: projectOwner,
         ...scope,
       })?.body,
-      "Project-only evidence",
+      "NebulaProjectEvidence",
     );
     database.close();
   });

@@ -25,6 +25,7 @@ import type {
   MeetingLoopSurface,
   MeetingWorkItem,
   CaptureOriginal,
+  CollaborativeContentOwner,
 } from "@constellation/contracts";
 
 export type {
@@ -57,6 +58,13 @@ export const DESKTOP_CHANNELS = {
   createDocumentRevision: "constellation:document:create-revision",
   listDocumentRevisions: "constellation:document:list-revisions",
   restoreDocumentRevision: "constellation:document:restore-revision",
+  openCollaborativeContent: "constellation:content:open",
+  persistCollaborativeContentUpdate: "constellation:content:persist-update",
+  acknowledgeCollaborativeContentUpdates:
+    "constellation:content:acknowledge-updates",
+  createCollaborativeContentRevision: "constellation:content:create-revision",
+  listCollaborativeContentRevisions: "constellation:content:list-revisions",
+  restoreCollaborativeContentRevision: "constellation:content:restore-revision",
   prepareAgentCredential: "constellation:agent:prepare-credential",
   listRemoteAgentGrants: "constellation:agent:remote:list",
   createRemoteAgentGrant: "constellation:agent:remote:create",
@@ -452,6 +460,10 @@ export interface ConstellationRendererClient {
     readonly documentId: DocumentId;
     readonly spaceId: SpaceId;
   }): Promise<void>;
+  acknowledgeCollaborativeContentUpdates(input: {
+    readonly owner: CollaborativeContentOwner;
+    readonly spaceId: SpaceId;
+  }): Promise<void>;
   onAttentionActivated(
     listener: (
       destination:
@@ -472,6 +484,10 @@ export interface ConstellationRendererClient {
     readonly documentId: DocumentId;
     readonly name: string;
   }): Promise<DocumentRevisionId>;
+  createCollaborativeContentRevision(input: {
+    readonly owner: CollaborativeContentOwner;
+    readonly name: string;
+  }): Promise<DocumentRevisionId>;
   exportWorkspaceBackup(): Promise<WorkspaceBackupExportResult>;
   exportHubAuthorization(): Promise<
     | { readonly outcome: "success"; readonly fileLabel: string }
@@ -483,13 +499,27 @@ export interface ConstellationRendererClient {
   listDocumentRevisions(input: {
     readonly documentId: DocumentId;
   }): Promise<readonly RendererDocumentRevision[]>;
+  listCollaborativeContentRevisions(input: {
+    readonly owner: CollaborativeContentOwner;
+  }): Promise<readonly RendererDocumentRevision[]>;
   openDocument(input: {
     readonly documentId: DocumentId;
     readonly spaceId: SpaceId;
     readonly supportedDocumentFormats: readonly ("plain-v1" | "rich-v1")[];
   }): Promise<RendererDocumentOpenResult>;
+  openCollaborativeContent(input: {
+    readonly owner: CollaborativeContentOwner;
+    readonly spaceId: SpaceId;
+    readonly supportedDocumentFormats: readonly ("plain-v1" | "rich-v1")[];
+  }): Promise<RendererDocumentOpenResult>;
   persistDocumentUpdate(input: {
     readonly documentId: DocumentId;
+    readonly spaceId: SpaceId;
+    readonly state: Uint8Array;
+    readonly update: Uint8Array;
+  }): Promise<void>;
+  persistCollaborativeContentUpdate(input: {
+    readonly owner: CollaborativeContentOwner;
     readonly spaceId: SpaceId;
     readonly state: Uint8Array;
     readonly update: Uint8Array;
@@ -520,6 +550,10 @@ export interface ConstellationRendererClient {
   runQuery(query: QueryEnvelope): Promise<RendererQueryResponse>;
   restoreDocumentRevision(input: {
     readonly documentId: DocumentId;
+    readonly revisionId: DocumentRevisionId;
+  }): Promise<void>;
+  restoreCollaborativeContentRevision(input: {
+    readonly owner: CollaborativeContentOwner;
     readonly revisionId: DocumentRevisionId;
   }): Promise<void>;
 }
@@ -667,6 +701,11 @@ export const createRendererClient = (
     >,
   acknowledgeDocumentUpdates: (input) =>
     invoke(DESKTOP_CHANNELS.acknowledgeDocumentUpdates, input) as Promise<void>,
+  acknowledgeCollaborativeContentUpdates: (input) =>
+    invoke(
+      DESKTOP_CHANNELS.acknowledgeCollaborativeContentUpdates,
+      input,
+    ) as Promise<void>,
   onAttentionActivated: () => () => undefined,
   cancelWorkspaceRestore: (input) =>
     invoke(DESKTOP_CHANNELS.cancelWorkspaceRestore, input) as Promise<void>,
@@ -689,6 +728,11 @@ export const createRendererClient = (
       DESKTOP_CHANNELS.createDocumentRevision,
       input,
     ) as Promise<DocumentRevisionId>,
+  createCollaborativeContentRevision: (input) =>
+    invoke(
+      DESKTOP_CHANNELS.createCollaborativeContentRevision,
+      input,
+    ) as Promise<DocumentRevisionId>,
   getBuildInfo: () =>
     invoke(DESKTOP_CHANNELS.getBuildInfo) as Promise<DesktopBuildInfo>,
   getDataHomeStatus: () =>
@@ -697,13 +741,28 @@ export const createRendererClient = (
     invoke(DESKTOP_CHANNELS.listDocumentRevisions, input) as Promise<
       readonly RendererDocumentRevision[]
     >,
+  listCollaborativeContentRevisions: (input) =>
+    invoke(
+      DESKTOP_CHANNELS.listCollaborativeContentRevisions,
+      input,
+    ) as Promise<readonly RendererDocumentRevision[]>,
   openDocument: (input) =>
     invoke(
       DESKTOP_CHANNELS.openDocument,
       input,
     ) as Promise<RendererDocumentOpenResult>,
+  openCollaborativeContent: (input) =>
+    invoke(
+      DESKTOP_CHANNELS.openCollaborativeContent,
+      input,
+    ) as Promise<RendererDocumentOpenResult>,
   persistDocumentUpdate: (input) =>
     invoke(DESKTOP_CHANNELS.persistDocumentUpdate, input) as Promise<void>,
+  persistCollaborativeContentUpdate: (input) =>
+    invoke(
+      DESKTOP_CHANNELS.persistCollaborativeContentUpdate,
+      input,
+    ) as Promise<void>,
   exportHubAuthorization: () =>
     invoke(DESKTOP_CHANNELS.exportHubAuthorization) as ReturnType<
       ConstellationRendererClient["exportHubAuthorization"]
@@ -727,4 +786,9 @@ export const createRendererClient = (
     invoke(DESKTOP_CHANNELS.runQuery, query) as Promise<RendererQueryResponse>,
   restoreDocumentRevision: (input) =>
     invoke(DESKTOP_CHANNELS.restoreDocumentRevision, input) as Promise<void>,
+  restoreCollaborativeContentRevision: (input) =>
+    invoke(
+      DESKTOP_CHANNELS.restoreCollaborativeContentRevision,
+      input,
+    ) as Promise<void>,
 });

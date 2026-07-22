@@ -44,6 +44,7 @@ import {
   HubEnrollmentResultSchema,
   HubWorkspaceSnapshotSchema,
   PrincipalIdSchema,
+  ProjectIdSchema,
   SpaceIdSchema,
   WorkspaceIdSchema,
   CommandEnvelopeSchema,
@@ -1091,6 +1092,21 @@ const startProductionDesktop = async (): Promise<void> => {
                     });
                     if (imported === undefined)
                       throw new Error("DOCUMENT_STRUCTURED_IMPORT_FAILED");
+                  },
+                  writeProjectContent: ({ projectId, spaceId, content }) => {
+                    const imported = documentPort.importStructured({
+                      owner: {
+                        kind: "project",
+                        projectId: ProjectIdSchema.parse(projectId),
+                      },
+                      spaceId,
+                      text: "",
+                      content,
+                      principalId: kernel.context.principalId,
+                      deviceId,
+                    });
+                    if (imported === undefined)
+                      throw new Error("PROJECT_STRUCTURED_IMPORT_FAILED");
                   },
                 };
               })()),
@@ -2315,6 +2331,60 @@ const startProductionDesktop = async (): Promise<void> => {
       return documentCollaboration.restoreRevision(input as never);
     },
   );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.openCollaborativeContent,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      if (documentCollaboration === undefined)
+        throw new Error("Workspace content is unavailable.");
+      return documentCollaboration.openContent(input as never);
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.persistCollaborativeContentUpdate,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      if (documentCollaboration === undefined)
+        throw new Error("Workspace content is unavailable.");
+      documentCollaboration.persistContent(input as never);
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.acknowledgeCollaborativeContentUpdates,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      if (documentCollaboration === undefined)
+        throw new Error("Workspace content is unavailable.");
+      documentCollaboration.acknowledgeContent(input as never);
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.createCollaborativeContentRevision,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      if (documentCollaboration === undefined)
+        throw new Error("Workspace content is unavailable.");
+      return documentCollaboration.createContentRevision(input as never);
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.listCollaborativeContentRevisions,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      if (documentCollaboration === undefined)
+        throw new Error("Workspace content is unavailable.");
+      return documentCollaboration.listContentRevisions(input as never);
+    },
+  );
+  ipcMain.handle(
+    DESKTOP_CHANNELS.restoreCollaborativeContentRevision,
+    (event, input: unknown) => {
+      assertTrustedSender(event);
+      if (documentCollaboration === undefined)
+        throw new Error("Workspace content is unavailable.");
+      return documentCollaboration.restoreContentRevision(input as never);
+    },
+  );
   ipcMain.handle(DESKTOP_CHANNELS.getBuildInfo, (event) => {
     assertTrustedSender(event);
     return {
@@ -2399,6 +2469,11 @@ const startProductionDesktop = async (): Promise<void> => {
       spaceId: kernel.identity.rootSpaceId,
       readDocumentText: documentTextPort.read,
       readDocumentContent: documentTextPort.readStructured,
+      readProjectContent: ({ projectId, spaceId }) =>
+        documentTextPort.readStructured({
+          owner: { kind: "project", projectId },
+          spaceId,
+        }),
     });
     if (built === undefined) return { outcome: "failure" } as const;
     const result = await dialog.showSaveDialog({

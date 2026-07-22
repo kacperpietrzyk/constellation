@@ -791,9 +791,12 @@ export class HubRemoteMcpService {
             if (
               invocation.kind === "document_structured_read" ||
               invocation.kind === "document_structured_write" ||
-              invocation.kind === "document_structured_restore"
+              invocation.kind === "document_structured_restore" ||
+              invocation.kind === "project_structured_read" ||
+              invocation.kind === "project_structured_write" ||
+              invocation.kind === "project_structured_restore"
             ) {
-              const output = await this.invokeStructuredDocument(
+              const output = await this.invokeStructuredContent(
                 store,
                 context,
                 grant,
@@ -1093,7 +1096,7 @@ export class HubRemoteMcpService {
     };
   }
 
-  private async invokeStructuredDocument(
+  private async invokeStructuredContent(
     store: InMemoryReferenceStore,
     context: ExecutionContext,
     grant: AgentAccessGrant,
@@ -1103,57 +1106,82 @@ export class HubRemoteMcpService {
         readonly kind:
           | "document_structured_read"
           | "document_structured_write"
-          | "document_structured_restore";
+          | "document_structured_restore"
+          | "project_structured_read"
+          | "project_structured_write"
+          | "project_structured_restore";
       }
     >,
   ): Promise<McpOperatorResponse> {
+    const projectId =
+      "projectId" in invocation ? invocation.projectId : undefined;
+    const documentId =
+      "documentId" in invocation ? invocation.documentId : undefined;
+    const projectInvocation = projectId !== undefined;
     const scoped = store.read((view) => {
       if (!isApplicationWave2ReadView(view)) return undefined;
-      const document = view.getDocument(invocation.documentId);
-      if (document === undefined) return undefined;
+      const record = projectInvocation
+        ? view.getProject(projectId)
+        : view.getDocument(documentId as never);
+      if (record === undefined) return undefined;
       const spaceGrant = view.getSpaceGrantForPrincipal(
         grant.workspaceId,
-        document.spaceId,
+        record.spaceId,
         grant.agentPrincipalId,
       );
-      return { document, spaceGrant };
+      return { record, spaceGrant };
     });
     const capability =
       invocation.kind === "document_structured_read"
         ? "document.readContent"
-        : "document.replaceContent";
+        : invocation.kind === "project_structured_read"
+          ? "project.readContent"
+          : projectInvocation
+            ? "project.replaceContent"
+            : "document.replaceContent";
     if (
       scoped === undefined ||
-      scoped.document.workspaceId !== grant.workspaceId ||
+      scoped.record.workspaceId !== grant.workspaceId ||
       invocation.workspaceId !== grant.workspaceId ||
-      !context.spaceScope.includes(scoped.document.spaceId) ||
+      !context.spaceScope.includes(scoped.record.spaceId) ||
       !context.capabilityScope.includes(capability) ||
       scoped.spaceGrant?.status !== "active" ||
       (invocation.kind !== "document_structured_read" &&
+        invocation.kind !== "project_structured_read" &&
         scoped.spaceGrant.access !== "edit") ||
       this.options.realtimeDocuments === undefined
     )
       return response(invocation.requestId, "rejected", {
         diagnosticCode: "authorization.denied",
       });
-    if (invocation.kind === "document_structured_read") {
+    const owner = projectInvocation
+      ? ({ kind: "project", projectId } as const)
+      : ({ kind: "document", documentId: documentId as never } as const);
+    const identity = projectInvocation
+      ? { projectId, projectVersion: scoped.record.version }
+      : { documentId, documentVersion: scoped.record.version };
+    const diagnostic = (code: string): string =>
+      projectInvocation ? code.replace(/^document\./u, "project.") : code;
+    if (
+      invocation.kind === "document_structured_read" ||
+      invocation.kind === "project_structured_read"
+    ) {
       const result =
         await this.options.realtimeDocuments.readStructuredAuthorized({
           workspaceId: grant.workspaceId,
-          documentId: scoped.document.id,
-          spaceId: scoped.document.spaceId,
+          owner,
+          spaceId: scoped.record.spaceId,
         });
       return result === undefined
         ? response(invocation.requestId, "rejected", {
-            diagnosticCode: "document.content_unavailable",
+            diagnosticCode: diagnostic("document.content_unavailable"),
           })
         : response(
             invocation.requestId,
             "success",
             {
-              documentId: scoped.document.id,
-              title: scoped.document.title,
-              documentVersion: scoped.document.version,
+              ...identity,
+              title: scoped.record.title,
               schemaVersion: invocation.schemaVersion,
               ...result,
             },
@@ -1166,12 +1194,15 @@ export class HubRemoteMcpService {
             },
           );
     }
-    if (invocation.kind === "document_structured_restore") {
+    if (
+      invocation.kind === "document_structured_restore" ||
+      invocation.kind === "project_structured_restore"
+    ) {
       const restored =
         await this.options.realtimeDocuments.restoreStructuredAuthorized({
           workspaceId: grant.workspaceId,
-          documentId: scoped.document.id,
-          spaceId: scoped.document.spaceId,
+          owner,
+          spaceId: scoped.record.spaceId,
           principalId: grant.agentPrincipalId,
           credentialId: grant.credentialId,
           runId: invocation.run.agentRunId,
@@ -1183,8 +1214,8 @@ export class HubRemoteMcpService {
         invocation.requestId,
         restored.outcome,
         restored.outcome === "success"
-          ? { documentId: scoped.document.id, ...restored }
-          : { diagnosticCode: restored.diagnosticCode },
+          ? { ...identity, ...restored }
+          : { diagnosticCode: diagnostic(restored.diagnosticCode) },
       );
     }
     let references: ReturnType<typeof structuredDocumentEntityReferences>;
@@ -1192,7 +1223,7 @@ export class HubRemoteMcpService {
       references = structuredDocumentEntityReferences(invocation.content);
     } catch {
       return response(invocation.requestId, "rejected", {
-        diagnosticCode: "document.structured_content_invalid",
+        diagnosticCode: diagnostic("document.structured_content_invalid"),
       });
     }
     const targetsAuthorized = store.read(
@@ -1207,7 +1238,7 @@ export class HubRemoteMcpService {
           );
           return (
             target !== undefined &&
-            target.spaceId === scoped.document.spaceId &&
+            target.spaceId === scoped.record.spaceId &&
             context.spaceScope.includes(target.spaceId)
           );
         }),
@@ -1219,8 +1250,8 @@ export class HubRemoteMcpService {
     const result =
       await this.options.realtimeDocuments.replaceStructuredAuthorized({
         workspaceId: grant.workspaceId,
-        documentId: scoped.document.id,
-        spaceId: scoped.document.spaceId,
+        owner,
+        spaceId: scoped.record.spaceId,
         principalId: grant.agentPrincipalId,
         credentialId: grant.credentialId,
         runId: invocation.run.agentRunId,
@@ -1232,8 +1263,8 @@ export class HubRemoteMcpService {
       invocation.requestId,
       result.outcome,
       result.outcome === "success"
-        ? { documentId: scoped.document.id, ...result }
-        : { diagnosticCode: result.diagnosticCode },
+        ? { ...identity, ...result }
+        : { diagnosticCode: diagnostic(result.diagnosticCode) },
     );
   }
 
@@ -1293,7 +1324,10 @@ export class HubRemoteMcpService {
     if (
       invocation.kind === "document_structured_read" ||
       invocation.kind === "document_structured_write" ||
-      invocation.kind === "document_structured_restore"
+      invocation.kind === "document_structured_restore" ||
+      invocation.kind === "project_structured_read" ||
+      invocation.kind === "project_structured_write" ||
+      invocation.kind === "project_structured_restore"
     ) {
       return response(invocation.requestId, "rejected", {
         diagnosticCode: "document.content_remote_unsupported",

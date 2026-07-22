@@ -1,12 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
+  CollaborativeContentOwnerSchema,
   CorrelationIdSchema,
   DocumentIdSchema,
   DocumentRevisionIdSchema,
   SpaceIdSchema,
   type DeviceId,
+  type CollaborativeContentOwner,
   type DocumentId,
+  type ProjectId,
   type SpaceId,
   type DocumentRevisionId,
   type PrincipalId,
@@ -18,12 +21,19 @@ import {
   type StructuredDocument,
   MAX_DOCUMENT_TEXT_LENGTH,
   YjsRealtimeDocumentAdapter,
+  createRichDocumentSeed,
   parseStructuredDocument,
 } from "@constellation/realtime-documents";
 
 import type { HubConnection } from "./hub-connection-custody.js";
 
 const MAX_BINARY_BYTES = 1_048_576;
+
+const ownerId = (owner: CollaborativeContentOwner): DocumentId | ProjectId =>
+  owner.kind === "document" ? owner.documentId : owner.projectId;
+
+const ownerKey = (owner: CollaborativeContentOwner): string =>
+  `${owner.kind}:${ownerId(owner)}`;
 
 export interface RendererDocumentRevision {
   readonly id: DocumentRevisionId;
@@ -84,40 +94,59 @@ const supportedFormats = (value: unknown): readonly DocumentContentFormat[] => {
 export class DocumentCollaborationBridge {
   private readonly fetcher: typeof fetch;
   private readonly now: () => string;
-  private readonly searchIndexTimers = new Map<DocumentId, NodeJS.Timeout>();
-  private readonly unavailableSearchIndexes = new Set<DocumentId>();
+  private readonly searchIndexTimers = new Map<string, NodeJS.Timeout>();
+  private readonly unavailableSearchIndexes = new Set<string>();
 
   public constructor(private readonly input: DocumentBridgeInput) {
     this.fetcher = input.fetcher ?? fetch;
     this.now = input.now ?? (() => new Date().toISOString());
   }
 
-  private document(documentId: DocumentId) {
-    const document = this.input.store
-      .snapshot()
-      .documents?.find((candidate) => candidate.id === documentId);
-    if (document === undefined) throw new Error("DOCUMENT_NOT_AVAILABLE");
-    return document;
+  private ownerRecord(owner: CollaborativeContentOwner) {
+    const snapshot = this.input.store.snapshot();
+    const record =
+      owner.kind === "document"
+        ? snapshot.documents?.find(
+            (candidate) => candidate.id === owner.documentId,
+          )
+        : snapshot.projects?.find(
+            (candidate) => candidate.id === owner.projectId,
+          );
+    if (record === undefined) throw new Error("CONTENT_NOT_AVAILABLE");
+    return record;
   }
 
-  private scope(raw: {
-    readonly documentId: unknown;
+  private contentScope(raw: {
+    readonly owner: unknown;
     readonly spaceId: unknown;
   }) {
     return {
-      documentId: DocumentIdSchema.parse(raw.documentId),
+      owner: CollaborativeContentOwnerSchema.parse(raw.owner),
       workspaceId: this.input.workspaceId,
       spaceId: SpaceIdSchema.parse(raw.spaceId),
     };
+  }
+
+  private documentScope(raw: {
+    readonly documentId: unknown;
+    readonly spaceId: unknown;
+  }) {
+    return this.contentScope({
+      owner: {
+        kind: "document",
+        documentId: DocumentIdSchema.parse(raw.documentId),
+      },
+      spaceId: raw.spaceId,
+    });
   }
 
   private stateDigest(state: Uint8Array): string {
     return createHash("sha256").update(state).digest("hex");
   }
 
-  private indexDocument(
+  private indexContent(
     scope: {
-      readonly documentId: DocumentId;
+      readonly owner: CollaborativeContentOwner;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
     },
@@ -125,52 +154,53 @@ export class DocumentCollaborationBridge {
   ): "current" | "unavailable" {
     const adapter = new YjsRealtimeDocumentAdapter(state);
     try {
-      this.input.store.replaceDocumentSearchProjection({
+      this.input.store.replaceCollaborativeContentSearchProjection({
         ...scope,
         body: adapter.getText(),
         stateDigest: this.stateDigest(state),
         indexedAt: this.now(),
       });
-      this.unavailableSearchIndexes.delete(scope.documentId);
+      this.unavailableSearchIndexes.delete(ownerKey(scope.owner));
       return "current";
     } catch {
-      this.unavailableSearchIndexes.add(scope.documentId);
+      this.unavailableSearchIndexes.add(ownerKey(scope.owner));
       return "unavailable";
     } finally {
       adapter.destroy();
     }
   }
 
-  private scheduleDocumentIndex(
+  private scheduleContentIndex(
     scope: {
-      readonly documentId: DocumentId;
+      readonly owner: CollaborativeContentOwner;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
     },
     state: Uint8Array,
   ): void {
-    const currentTimer = this.searchIndexTimers.get(scope.documentId);
+    const key = ownerKey(scope.owner);
+    const currentTimer = this.searchIndexTimers.get(key);
     if (currentTimer !== undefined) clearTimeout(currentTimer);
     const stateCopy = state.slice();
     const timer = setTimeout(() => {
-      this.searchIndexTimers.delete(scope.documentId);
+      this.searchIndexTimers.delete(key);
       try {
-        const stored = this.input.store.loadDocumentCollaborationState(scope);
+        const stored = this.input.store.loadCollaborativeContentState(scope);
         if (
           stored !== undefined &&
           this.stateDigest(stored.state) === this.stateDigest(stateCopy)
         ) {
-          this.indexDocument(scope, stateCopy);
+          this.indexContent(scope, stateCopy);
         }
       } catch {
         // Revocation can race the debounce. Editing persistence and access
         // purge remain authoritative; a later authorized open rebuilds the
         // projection from the current encrypted Yjs state.
-        this.unavailableSearchIndexes.add(scope.documentId);
+        this.unavailableSearchIndexes.add(key);
       }
     }, 250);
     timer.unref();
-    this.searchIndexTimers.set(scope.documentId, timer);
+    this.searchIndexTimers.set(key, timer);
   }
 
   private async post(path: string, body: object): Promise<unknown> {
@@ -203,13 +233,34 @@ export class DocumentCollaborationBridge {
     return response.json() as Promise<unknown>;
   }
 
-  public async open(raw: {
-    readonly documentId: unknown;
+  private async openOwner(raw: {
+    readonly owner: unknown;
     readonly spaceId: unknown;
     readonly supportedDocumentFormats?: unknown;
   }): Promise<RendererDocumentOpenResult> {
-    const scope = this.scope(raw);
-    const state = this.input.store.loadDocumentCollaborationState(scope)?.state;
+    const scope = this.contentScope(raw);
+    let state = this.input.store.loadCollaborativeContentState(scope)?.state;
+    if (
+      state === undefined &&
+      scope.owner.kind === "project" &&
+      this.input.connection() === undefined
+    ) {
+      const project = this.ownerRecord(scope.owner);
+      if (!("intendedOutcome" in project)) {
+        throw new Error("CONTENT_NOT_AVAILABLE");
+      }
+      const seed = createRichDocumentSeed(
+        project.intendedOutcome,
+        createHash("sha256").update(project.intendedOutcome).digest("hex"),
+        { kind: "human", principalId: project.createdBy },
+      );
+      this.input.store.seedCollaborativeContentState({
+        ...scope,
+        state: seed,
+        updatedAt: this.now(),
+      });
+      state = this.input.store.loadCollaborativeContentState(scope)?.state;
+    }
     const formats = supportedFormats(
       raw.supportedDocumentFormats ?? ["plain-v1"],
     );
@@ -219,7 +270,7 @@ export class DocumentCollaborationBridge {
         if (!formats.includes(adapter.getFormat())) {
           throw new Error("DOCUMENT_SCHEMA_UPGRADE_REQUIRED");
         }
-        this.input.store.replaceDocumentEntityLinks({
+        this.input.store.replaceCollaborativeContentEntityLinks({
           ...scope,
           links: adapter.getEntityReferences(),
           updatedAt: this.now(),
@@ -232,16 +283,16 @@ export class DocumentCollaborationBridge {
       "current";
     if (state !== undefined) {
       const currentProjection =
-        this.input.store.getDocumentSearchProjection(scope);
+        this.input.store.getCollaborativeContentSearchProjection(scope);
       searchIndexState =
         currentProjection?.stateDigest === this.stateDigest(state)
           ? "current"
-          : this.indexDocument(scope, state);
-    } else if (this.unavailableSearchIndexes.has(scope.documentId)) {
+          : this.indexContent(scope, state);
+    } else if (this.unavailableSearchIndexes.has(ownerKey(scope.owner))) {
       searchIndexState = "unavailable";
     }
     const pendingUpdateCount =
-      this.input.store.listPendingDocumentUpdates(scope).length;
+      this.input.store.listPendingCollaborativeContentUpdates(scope).length;
     const connection = this.input.connection();
     if (connection === undefined) {
       return {
@@ -253,10 +304,17 @@ export class DocumentCollaborationBridge {
     }
     let value: Record<string, unknown>;
     try {
-      value = (await this.post("/v1/documents/session", {
-        documentId: scope.documentId,
-        supportedDocumentFormats: formats,
-      })) as Record<string, unknown>;
+      value = (await this.post(
+        scope.owner.kind === "document"
+          ? "/v1/documents/session"
+          : "/v1/content/session",
+        {
+          ...(scope.owner.kind === "document"
+            ? { documentId: scope.owner.documentId }
+            : { owner: scope.owner }),
+          supportedDocumentFormats: formats,
+        },
+      )) as Record<string, unknown>;
     } catch (error) {
       if (
         error instanceof Error &&
@@ -301,13 +359,36 @@ export class DocumentCollaborationBridge {
     };
   }
 
-  public persist(raw: {
+  public open(raw: {
     readonly documentId: unknown;
+    readonly spaceId: unknown;
+    readonly supportedDocumentFormats?: unknown;
+  }): Promise<RendererDocumentOpenResult> {
+    return this.openOwner({
+      owner: {
+        kind: "document",
+        documentId: DocumentIdSchema.parse(raw.documentId),
+      },
+      spaceId: raw.spaceId,
+      supportedDocumentFormats: raw.supportedDocumentFormats,
+    });
+  }
+
+  public openContent(raw: {
+    readonly owner: unknown;
+    readonly spaceId: unknown;
+    readonly supportedDocumentFormats?: unknown;
+  }): Promise<RendererDocumentOpenResult> {
+    return this.openOwner(raw);
+  }
+
+  private persistOwner(raw: {
+    readonly owner: unknown;
     readonly spaceId: unknown;
     readonly state: unknown;
     readonly update: unknown;
   }): void {
-    const scope = this.scope(raw);
+    const scope = this.contentScope(raw);
     const state = boundedBytes(raw.state);
     const update = boundedBytes(raw.update);
     const incoming = new YjsRealtimeDocumentAdapter(state);
@@ -319,7 +400,7 @@ export class DocumentCollaborationBridge {
         throw new Error("DOCUMENT_TEXT_SIZE_INVALID");
       }
       entityReferences = incoming.getEntityReferences();
-      const stored = this.input.store.loadDocumentCollaborationState(scope);
+      const stored = this.input.store.loadCollaborativeContentState(scope);
       if (stored !== undefined) {
         const current = new YjsRealtimeDocumentAdapter(stored.state);
         try {
@@ -338,53 +419,99 @@ export class DocumentCollaborationBridge {
     }
     const updatedAt = this.now();
     if (this.input.connection() === undefined) {
-      this.input.store.storeDocumentCollaborationState({
+      this.input.store.storeCollaborativeContentState({
         ...scope,
         state,
         updatedAt,
       });
-      this.input.store.replaceDocumentEntityLinks({
+      this.input.store.replaceCollaborativeContentEntityLinks({
         ...scope,
         links: entityReferences,
         updatedAt,
       });
-      this.scheduleDocumentIndex(scope, state);
+      this.scheduleContentIndex(scope, state);
       return;
     }
-    this.input.store.commitDocumentUpdate({
+    this.input.store.commitCollaborativeContentUpdate({
       id: randomUUID(),
       ...scope,
       state,
       update,
       createdAt: updatedAt,
     });
-    this.input.store.replaceDocumentEntityLinks({
+    this.input.store.replaceCollaborativeContentEntityLinks({
       ...scope,
       links: entityReferences,
       updatedAt,
     });
-    this.scheduleDocumentIndex(scope, state);
+    this.scheduleContentIndex(scope, state);
+  }
+
+  public persist(raw: {
+    readonly documentId: unknown;
+    readonly spaceId: unknown;
+    readonly state: unknown;
+    readonly update: unknown;
+  }): void {
+    this.persistOwner({
+      owner: {
+        kind: "document",
+        documentId: DocumentIdSchema.parse(raw.documentId),
+      },
+      spaceId: raw.spaceId,
+      state: raw.state,
+      update: raw.update,
+    });
+  }
+
+  public persistContent(raw: {
+    readonly owner: unknown;
+    readonly spaceId: unknown;
+    readonly state: unknown;
+    readonly update: unknown;
+  }): void {
+    this.persistOwner(raw);
+  }
+
+  private acknowledgeOwner(raw: {
+    readonly owner: unknown;
+    readonly spaceId: unknown;
+  }): void {
+    const scope = this.contentScope(raw);
+    const updateIds = this.input.store
+      .listPendingCollaborativeContentUpdates(scope)
+      .map((update) => update.id);
+    this.input.store.acknowledgeCollaborativeContentUpdates({
+      owner: scope.owner,
+      updateIds,
+    });
   }
 
   public acknowledge(raw: {
     readonly documentId: unknown;
     readonly spaceId: unknown;
   }): void {
-    const scope = this.scope(raw);
-    const updateIds = this.input.store
-      .listPendingDocumentUpdates(scope)
-      .map((update) => update.id);
-    this.input.store.acknowledgeDocumentUpdates({
-      documentId: scope.documentId,
-      updateIds,
+    this.acknowledgeOwner({
+      owner: {
+        kind: "document",
+        documentId: DocumentIdSchema.parse(raw.documentId),
+      },
+      spaceId: raw.spaceId,
     });
   }
 
-  public async createRevision(raw: {
-    readonly documentId: unknown;
+  public acknowledgeContent(raw: {
+    readonly owner: unknown;
+    readonly spaceId: unknown;
+  }): void {
+    this.acknowledgeOwner(raw);
+  }
+
+  private async createOwnerRevision(raw: {
+    readonly owner: unknown;
     readonly name: unknown;
   }): Promise<DocumentRevisionId> {
-    const documentId = DocumentIdSchema.parse(raw.documentId);
+    const owner = CollaborativeContentOwnerSchema.parse(raw.owner);
     if (typeof raw.name !== "string") throw new Error("REVISION_NAME_INVALID");
     const name = raw.name.trim();
     if (name.length < 1 || name.length > 120)
@@ -392,23 +519,23 @@ export class DocumentCollaborationBridge {
     const connection = this.input.connection();
     const correlationId = CorrelationIdSchema.parse(randomUUID());
     if (connection === undefined) {
-      const document = this.document(documentId);
+      const record = this.ownerRecord(owner);
       const scope = {
-        documentId,
+        owner,
         workspaceId: this.input.workspaceId,
-        spaceId: document.spaceId,
+        spaceId: record.spaceId,
       };
-      const stored = this.input.store.loadDocumentCollaborationState(scope);
+      const stored = this.input.store.loadCollaborativeContentState(scope);
       const adapter = new YjsRealtimeDocumentAdapter(stored?.state);
       try {
         const checkpoint = adapter.checkpoint();
         const id = DocumentRevisionIdSchema.parse(randomUUID());
-        this.input.store.storeDocumentRevision({
+        this.input.store.storeCollaborativeContentRevision({
           id,
           ...scope,
           name,
           ...checkpoint,
-          createdBy: document.createdBy,
+          createdBy: record.createdBy,
           createdByDeviceId: this.input.deviceId,
           correlationId,
           createdAt: this.now(),
@@ -418,25 +545,52 @@ export class DocumentCollaborationBridge {
         adapter.destroy();
       }
     }
-    const value = (await this.post("/v1/documents/revisions", {
-      documentId,
-      name,
-      correlationId,
-    })) as Record<string, unknown>;
+    const value = (await this.post(
+      owner.kind === "document"
+        ? "/v1/documents/revisions"
+        : "/v1/content/revisions",
+      {
+        ...(owner.kind === "document"
+          ? { documentId: owner.documentId }
+          : { owner }),
+        name,
+        correlationId,
+      },
+    )) as Record<string, unknown>;
     return DocumentRevisionIdSchema.parse(value.revisionId);
   }
 
-  public async listRevisions(raw: {
+  public createRevision(raw: {
     readonly documentId: unknown;
+    readonly name: unknown;
+  }): Promise<DocumentRevisionId> {
+    return this.createOwnerRevision({
+      owner: {
+        kind: "document",
+        documentId: DocumentIdSchema.parse(raw.documentId),
+      },
+      name: raw.name,
+    });
+  }
+
+  public createContentRevision(raw: {
+    readonly owner: unknown;
+    readonly name: unknown;
+  }): Promise<DocumentRevisionId> {
+    return this.createOwnerRevision(raw);
+  }
+
+  private async listOwnerRevisions(raw: {
+    readonly owner: unknown;
   }): Promise<readonly RendererDocumentRevision[]> {
-    const documentId = DocumentIdSchema.parse(raw.documentId);
+    const owner = CollaborativeContentOwnerSchema.parse(raw.owner);
     if (this.input.connection() === undefined) {
-      const document = this.document(documentId);
+      const record = this.ownerRecord(owner);
       return this.input.store
-        .listDocumentRevisions({
-          documentId,
+        .listCollaborativeContentRevisions({
+          owner,
           workspaceId: this.input.workspaceId,
-          spaceId: document.spaceId,
+          spaceId: record.spaceId,
         })
         .map(({ id, name, createdBy, createdAt, restoredFromRevisionId }) => ({
           id,
@@ -448,9 +602,12 @@ export class DocumentCollaborationBridge {
             : { restoredFromRevisionId }),
         }));
     }
-    const value = (await this.post("/v1/documents/revisions/list", {
-      documentId,
-    })) as { revisions?: readonly Record<string, unknown>[] };
+    const value = (await this.post(
+      owner.kind === "document"
+        ? "/v1/documents/revisions/list"
+        : "/v1/content/revisions/list",
+      owner.kind === "document" ? { documentId: owner.documentId } : { owner },
+    )) as { revisions?: readonly Record<string, unknown>[] };
     if (!Array.isArray(value.revisions))
       throw new Error("REVISION_LIST_INVALID");
     return value.revisions.map((revision) => ({
@@ -468,48 +625,66 @@ export class DocumentCollaborationBridge {
     }));
   }
 
-  public async restoreRevision(raw: {
+  public listRevisions(raw: {
     readonly documentId: unknown;
+  }): Promise<readonly RendererDocumentRevision[]> {
+    return this.listOwnerRevisions({
+      owner: {
+        kind: "document",
+        documentId: DocumentIdSchema.parse(raw.documentId),
+      },
+    });
+  }
+
+  public listContentRevisions(raw: {
+    readonly owner: unknown;
+  }): Promise<readonly RendererDocumentRevision[]> {
+    return this.listOwnerRevisions(raw);
+  }
+
+  private async restoreOwnerRevision(raw: {
+    readonly owner: unknown;
     readonly revisionId: unknown;
   }): Promise<void> {
-    const documentId = DocumentIdSchema.parse(raw.documentId);
+    const owner = CollaborativeContentOwnerSchema.parse(raw.owner);
     const revisionId = DocumentRevisionIdSchema.parse(raw.revisionId);
     const correlationId = CorrelationIdSchema.parse(randomUUID());
     if (this.input.connection() === undefined) {
-      const document = this.document(documentId);
+      const record = this.ownerRecord(owner);
       const scope = {
-        documentId,
+        owner,
         workspaceId: this.input.workspaceId,
-        spaceId: document.spaceId,
+        spaceId: record.spaceId,
       };
-      const revisions = this.input.store.listDocumentRevisions(scope);
+      const revisions =
+        this.input.store.listCollaborativeContentRevisions(scope);
       const revision = revisions.find(
         (candidate) => candidate.id === revisionId,
       );
-      if (revision === undefined) throw new Error("DOCUMENT_NOT_AVAILABLE");
+      if (revision === undefined) throw new Error("CONTENT_NOT_AVAILABLE");
       const current = new YjsRealtimeDocumentAdapter(
-        this.input.store.loadDocumentCollaborationState(scope)?.state,
+        this.input.store.loadCollaborativeContentState(scope)?.state,
       );
       try {
         current.restore(revision, revision.id);
         const checkpoint = current.checkpoint();
-        this.input.store.storeDocumentCollaborationState({
+        this.input.store.storeCollaborativeContentState({
           ...scope,
           state: checkpoint.state,
           updatedAt: this.now(),
         });
-        this.input.store.replaceDocumentEntityLinks({
+        this.input.store.replaceCollaborativeContentEntityLinks({
           ...scope,
           links: current.getEntityReferences(),
           updatedAt: this.now(),
         });
-        this.indexDocument(scope, checkpoint.state);
-        this.input.store.storeDocumentRevision({
+        this.indexContent(scope, checkpoint.state);
+        this.input.store.storeCollaborativeContentRevision({
           id: DocumentRevisionIdSchema.parse(randomUUID()),
           ...scope,
           name: `Restored ${revision.name}`,
           ...checkpoint,
-          createdBy: document.createdBy,
+          createdBy: record.createdBy,
           createdByDeviceId: this.input.deviceId,
           correlationId,
           createdAt: this.now(),
@@ -520,11 +695,38 @@ export class DocumentCollaborationBridge {
         current.destroy();
       }
     }
-    await this.post("/v1/documents/revisions/restore", {
-      documentId,
-      revisionId,
-      correlationId,
+    await this.post(
+      owner.kind === "document"
+        ? "/v1/documents/revisions/restore"
+        : "/v1/content/revisions/restore",
+      {
+        ...(owner.kind === "document"
+          ? { documentId: owner.documentId }
+          : { owner }),
+        revisionId,
+        correlationId,
+      },
+    );
+  }
+
+  public restoreRevision(raw: {
+    readonly documentId: unknown;
+    readonly revisionId: unknown;
+  }): Promise<void> {
+    return this.restoreOwnerRevision({
+      owner: {
+        kind: "document",
+        documentId: DocumentIdSchema.parse(raw.documentId),
+      },
+      revisionId: raw.revisionId,
     });
+  }
+
+  public restoreContentRevision(raw: {
+    readonly owner: unknown;
+    readonly revisionId: unknown;
+  }): Promise<void> {
+    return this.restoreOwnerRevision(raw);
   }
 }
 
@@ -546,6 +748,21 @@ export const createAgentDocumentTextPort = (input: {
     workspaceId: input.workspaceId,
     spaceId,
   });
+  type ContentAddress =
+    | {
+        readonly owner: CollaborativeContentOwner;
+        readonly spaceId: SpaceId;
+      }
+    | { readonly documentId: DocumentId; readonly spaceId: SpaceId };
+  const contentOwner = (request: ContentAddress): CollaborativeContentOwner =>
+    "owner" in request
+      ? request.owner
+      : { kind: "document", documentId: request.documentId };
+  const contentScope = (request: ContentAddress) => ({
+    owner: contentOwner(request),
+    workspaceId: input.workspaceId,
+    spaceId: request.spaceId,
+  });
   return {
     read: (request: {
       readonly documentId: DocumentId;
@@ -562,10 +779,9 @@ export const createAgentDocumentTextPort = (input: {
         adapter.destroy();
       }
     },
-    readStructured: (request: {
-      readonly documentId: DocumentId;
-      readonly spaceId: SpaceId;
-    }):
+    readStructured: (
+      request: ContentAddress,
+    ):
       | {
           readonly content: StructuredDocument;
           readonly text: string;
@@ -575,8 +791,8 @@ export const createAgentDocumentTextPort = (input: {
           readonly stateVectorSha256: string;
         }
       | undefined => {
-      const state = input.store.loadDocumentCollaborationState(
-        scope(request.documentId, request.spaceId),
+      const state = input.store.loadCollaborativeContentState(
+        contentScope(request),
       )?.state;
       if (state === undefined) return undefined;
       const adapter = new YjsRealtimeDocumentAdapter(state);
@@ -594,18 +810,19 @@ export const createAgentDocumentTextPort = (input: {
         adapter.destroy();
       }
     },
-    importStructured: (request: {
-      readonly documentId: DocumentId;
-      readonly spaceId: SpaceId;
-      readonly text: string;
-      readonly content: unknown;
-      readonly principalId: string;
-      readonly deviceId: DeviceId;
-    }): { readonly revisionId: DocumentRevisionId } | undefined => {
+    importStructured: (
+      request: ContentAddress & {
+        readonly spaceId: SpaceId;
+        readonly text: string;
+        readonly content: unknown;
+        readonly principalId: string;
+        readonly deviceId: DeviceId;
+      },
+    ): { readonly revisionId: DocumentRevisionId } | undefined => {
       if (request.text.length > MAX_DOCUMENT_TEXT_LENGTH) return undefined;
-      const documentScope = scope(request.documentId, request.spaceId);
+      const ownerScope = contentScope(request);
       const existing =
-        input.store.loadDocumentCollaborationState(documentScope)?.state;
+        input.store.loadCollaborativeContentState(ownerScope)?.state;
       const adapter = new YjsRealtimeDocumentAdapter(existing);
       try {
         const priorCheckpoint = adapter.checkpoint();
@@ -626,9 +843,9 @@ export const createAgentDocumentTextPort = (input: {
           return undefined;
         }
         const revisionId = DocumentRevisionIdSchema.parse(randomUUID());
-        input.store.storeDocumentRevision({
+        input.store.storeCollaborativeContentRevision({
           id: revisionId,
-          ...documentScope,
+          ...ownerScope,
           name: "Before structured import",
           ...priorCheckpoint,
           createdBy: request.principalId as never,
@@ -640,28 +857,28 @@ export const createAgentDocumentTextPort = (input: {
         const update = adapter.encodeUpdateSince(priorCheckpoint.stateVector);
         const updatedAt = now();
         if (input.connection() === undefined) {
-          input.store.storeDocumentCollaborationState({
-            ...documentScope,
+          input.store.storeCollaborativeContentState({
+            ...ownerScope,
             state,
             updatedAt,
           });
         } else {
-          input.store.commitDocumentUpdate({
+          input.store.commitCollaborativeContentUpdate({
             id: randomUUID(),
-            ...documentScope,
+            ...ownerScope,
             state,
             update,
             createdAt: updatedAt,
           });
         }
         try {
-          input.store.replaceDocumentEntityLinks({
-            ...documentScope,
+          input.store.replaceCollaborativeContentEntityLinks({
+            ...ownerScope,
             links: adapter.getEntityReferences(),
             updatedAt,
           });
-          input.store.replaceDocumentSearchProjection({
-            ...documentScope,
+          input.store.replaceCollaborativeContentSearchProjection({
+            ...ownerScope,
             body: adapter.getText(),
             stateDigest: createHash("sha256").update(state).digest("hex"),
             indexedAt: updatedAt,
@@ -767,16 +984,16 @@ export const createAgentDocumentTextPort = (input: {
         adapter.destroy();
       }
     },
-    replaceStructured: (request: {
-      readonly documentId: DocumentId;
-      readonly spaceId: SpaceId;
-      readonly content: unknown;
-      readonly expectedStateVectorSha256: string;
-      readonly idempotencyKey: string;
-      readonly principalId: string;
-      readonly runId: string;
-      readonly deviceId: DeviceId;
-    }):
+    replaceStructured: (
+      request: ContentAddress & {
+        readonly content: unknown;
+        readonly expectedStateVectorSha256: string;
+        readonly idempotencyKey: string;
+        readonly principalId: string;
+        readonly runId: string;
+        readonly deviceId: DeviceId;
+      },
+    ):
       | {
           readonly outcome: "success";
           readonly revisionId: DocumentRevisionId;
@@ -785,7 +1002,7 @@ export const createAgentDocumentTextPort = (input: {
         }
       | { readonly outcome: "conflict"; readonly diagnosticCode: string }
       | { readonly outcome: "rejected"; readonly diagnosticCode: string } => {
-      const documentScope = scope(request.documentId, request.spaceId);
+      const documentScope = contentScope(request);
       const keyDigest = createHash("sha256")
         .update(request.idempotencyKey)
         .digest("base64url")
@@ -809,7 +1026,8 @@ export const createAgentDocumentTextPort = (input: {
         .digest("base64url")
         .slice(0, 22);
       const receiptSuffix = `[${keyDigest}.${requestDigest}]`;
-      const revisions = input.store.listDocumentRevisions(documentScope);
+      const revisions =
+        input.store.listCollaborativeContentRevisions(documentScope);
       const receipt = revisions.find(
         (revision) =>
           revision.name.startsWith("Agent receipt ") &&
@@ -849,7 +1067,7 @@ export const createAgentDocumentTextPort = (input: {
           diagnosticCode: "document.idempotency_mismatch",
         };
       const existing =
-        input.store.loadDocumentCollaborationState(documentScope)?.state;
+        input.store.loadCollaborativeContentState(documentScope)?.state;
       if (existing === undefined)
         return {
           outcome: "rejected",
@@ -877,7 +1095,7 @@ export const createAgentDocumentTextPort = (input: {
             .slice(0, 22);
           if (currentContentDigest === requestedContentDigest) {
             const checkpoint = adapter.checkpoint();
-            input.store.storeDocumentRevision({
+            input.store.storeCollaborativeContentRevision({
               id: DocumentRevisionIdSchema.parse(randomUUID()),
               ...documentScope,
               name: `Agent receipt ${receiptSuffix}`,
@@ -934,7 +1152,7 @@ export const createAgentDocumentTextPort = (input: {
         const revisionId =
           pending?.id ?? DocumentRevisionIdSchema.parse(randomUUID());
         if (pending === undefined)
-          input.store.storeDocumentRevision({
+          input.store.storeCollaborativeContentRevision({
             id: revisionId,
             ...documentScope,
             name: `Before agent structured write (run ${request.runId.slice(0, 8)}) ${receiptSuffix}`,
@@ -947,13 +1165,13 @@ export const createAgentDocumentTextPort = (input: {
         const state = adapter.encodeState();
         const updatedAt = now();
         if (update === undefined || input.connection() === undefined) {
-          input.store.storeDocumentCollaborationState({
+          input.store.storeCollaborativeContentState({
             ...documentScope,
             state,
             updatedAt,
           });
         } else {
-          input.store.commitDocumentUpdate({
+          input.store.commitCollaborativeContentUpdate({
             id: randomUUID(),
             ...documentScope,
             state,
@@ -962,12 +1180,12 @@ export const createAgentDocumentTextPort = (input: {
           });
         }
         try {
-          input.store.replaceDocumentEntityLinks({
+          input.store.replaceCollaborativeContentEntityLinks({
             ...documentScope,
             links: adapter.getEntityReferences(),
             updatedAt,
           });
-          input.store.replaceDocumentSearchProjection({
+          input.store.replaceCollaborativeContentSearchProjection({
             ...documentScope,
             body: adapter.getText(),
             stateDigest: createHash("sha256").update(state).digest("hex"),
@@ -978,7 +1196,7 @@ export const createAgentDocumentTextPort = (input: {
           // its recovery revision are already durable.
         }
         const resultCheckpoint = adapter.checkpoint();
-        input.store.storeDocumentRevision({
+        input.store.storeCollaborativeContentRevision({
           id: DocumentRevisionIdSchema.parse(randomUUID()),
           ...documentScope,
           name: `Agent receipt ${receiptSuffix}`,
@@ -1001,16 +1219,16 @@ export const createAgentDocumentTextPort = (input: {
         adapter.destroy();
       }
     },
-    restoreStructured: (request: {
-      readonly documentId: DocumentId;
-      readonly spaceId: SpaceId;
-      readonly revisionId: string;
-      readonly expectedStateVectorSha256: string;
-      readonly idempotencyKey: string;
-      readonly principalId: string;
-      readonly runId: string;
-      readonly deviceId: DeviceId;
-    }):
+    restoreStructured: (
+      request: ContentAddress & {
+        readonly revisionId: string;
+        readonly expectedStateVectorSha256: string;
+        readonly idempotencyKey: string;
+        readonly principalId: string;
+        readonly runId: string;
+        readonly deviceId: DeviceId;
+      },
+    ):
       | {
           readonly outcome: "success";
           readonly recoveryRevisionId: DocumentRevisionId;
@@ -1021,7 +1239,7 @@ export const createAgentDocumentTextPort = (input: {
           readonly outcome: "conflict" | "rejected";
           readonly diagnosticCode: string;
         } => {
-      const documentScope = scope(request.documentId, request.spaceId);
+      const documentScope = contentScope(request);
       const keyDigest = createHash("sha256")
         .update(request.idempotencyKey)
         .digest("base64url")
@@ -1036,7 +1254,8 @@ export const createAgentDocumentTextPort = (input: {
         .digest("base64url")
         .slice(0, 22);
       const receiptSuffix = `[${keyDigest}.${requestDigest}]`;
-      const revisions = input.store.listDocumentRevisions(documentScope);
+      const revisions =
+        input.store.listCollaborativeContentRevisions(documentScope);
       const receipt = revisions.find(
         (revision) =>
           revision.name.startsWith("Agent restore receipt ") &&
@@ -1079,7 +1298,7 @@ export const createAgentDocumentTextPort = (input: {
         (revision) => revision.id === request.revisionId,
       );
       const existing =
-        input.store.loadDocumentCollaborationState(documentScope)?.state;
+        input.store.loadCollaborativeContentState(documentScope)?.state;
       if (target === undefined || existing === undefined)
         return {
           outcome: "rejected",
@@ -1109,7 +1328,7 @@ export const createAgentDocumentTextPort = (input: {
             .slice(0, 22);
           if (currentContentDigest === expectedContentDigest) {
             const checkpoint = adapter.checkpoint();
-            input.store.storeDocumentRevision({
+            input.store.storeCollaborativeContentRevision({
               id: DocumentRevisionIdSchema.parse(randomUUID()),
               ...documentScope,
               name: `Agent restore receipt ${receiptSuffix}`,
@@ -1154,7 +1373,7 @@ export const createAgentDocumentTextPort = (input: {
         const recoveryRevisionId =
           pending?.id ?? DocumentRevisionIdSchema.parse(randomUUID());
         if (pending === undefined)
-          input.store.storeDocumentRevision({
+          input.store.storeCollaborativeContentRevision({
             id: recoveryRevisionId,
             ...documentScope,
             name: `Before agent structured restore (run ${request.runId.slice(0, 8)}) ${receiptSuffix}`,
@@ -1168,13 +1387,13 @@ export const createAgentDocumentTextPort = (input: {
         const state = adapter.encodeState();
         const updatedAt = now();
         if (update === undefined || input.connection() === undefined) {
-          input.store.storeDocumentCollaborationState({
+          input.store.storeCollaborativeContentState({
             ...documentScope,
             state,
             updatedAt,
           });
         } else {
-          input.store.commitDocumentUpdate({
+          input.store.commitCollaborativeContentUpdate({
             id: randomUUID(),
             ...documentScope,
             state,
@@ -1183,12 +1402,12 @@ export const createAgentDocumentTextPort = (input: {
           });
         }
         try {
-          input.store.replaceDocumentEntityLinks({
+          input.store.replaceCollaborativeContentEntityLinks({
             ...documentScope,
             links: adapter.getEntityReferences(),
             updatedAt,
           });
-          input.store.replaceDocumentSearchProjection({
+          input.store.replaceCollaborativeContentSearchProjection({
             ...documentScope,
             body: adapter.getText(),
             stateDigest: createHash("sha256").update(state).digest("hex"),
@@ -1198,7 +1417,7 @@ export const createAgentDocumentTextPort = (input: {
           // Rebuildable projections never invalidate a durable restore.
         }
         const resultCheckpoint = adapter.checkpoint();
-        input.store.storeDocumentRevision({
+        input.store.storeCollaborativeContentRevision({
           id: DocumentRevisionIdSchema.parse(randomUUID()),
           ...documentScope,
           name: `Agent restore receipt ${receiptSuffix}`,
