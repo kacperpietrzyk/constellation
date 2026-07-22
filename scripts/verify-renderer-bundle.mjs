@@ -76,10 +76,14 @@ import path from "node:path";
 // operacyjnej Organizacji i routing przywracalnego kontekstu. Rozbudowany
 // widok klienta oraz jego CSS pozostają w leniwym chunku Relacji; główny
 // arkusz nie rośnie. Entry i total dostają poniżej 1% mierzonego zapasu.
+// 2026-07-22 (R15.4e): zwijane grupy są częścią zawsze dostępnej nawigacji
+// powłoki, więc ich zamknięty lokalny stan i semantyka disclosure muszą zostać
+// w entry. Po odchudzeniu implementacji entry rośnie o 1.1 kB, a gzip o
+// 420 B względem scalonego baseline; oba limity zachowują poniżej 0.3% zapasu.
 const limits = {
   entryBytes: 560_000,
-  entryGzipBytes: 147_000,
-  totalJavaScriptBytes: 1_320_000,
+  entryGzipBytes: 147_500,
+  totalJavaScriptBytes: 1_322_000,
   largestLazyJavaScriptBytes: 565_000,
   stylesheetBytes: 188_000,
 };
