@@ -966,6 +966,7 @@ it("manages saved view lifecycle with field filters and grouping", () => {
       },
       sort: "due_asc" as const,
       groupBy: "priority" as const,
+      layout: "board" as const,
     },
   };
   assert.equal(
@@ -1036,6 +1037,12 @@ it("manages saved view lifecycle with field filters and grouping", () => {
     { fieldId, predicate: { kind: "choice_is", option: "MSSP" } },
   ]);
   assert.equal(created?.groupBy, "priority");
+  assert.equal(created?.layout, "board");
+  assert.equal(
+    projectedView?.kind === "saved_view" ? projectedView.layout : undefined,
+    "board",
+    "the strict relationship projection carries the same durable layout",
+  );
 
   const renameCommand = {
     ...metadata("view-rename", { [savedViewId]: 1 }),
@@ -1071,6 +1078,11 @@ it("manages saved view lifecycle with field filters and grouping", () => {
   );
   assert.deepEqual(overview()[0]?.groupBy, { fieldId });
   assert.equal(
+    overview()[0]?.layout,
+    "board",
+    "changing grouping does not reset the spatial rendering",
+  );
+  assert.equal(
     unwrap(
       harness.kernel.execute(context(), {
         ...metadata("view-group-unknown", { [savedViewId]: 4 }),
@@ -1085,8 +1097,65 @@ it("manages saved view lifecycle with field filters and grouping", () => {
     "grouping requires an existing choice definition",
   );
 
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("view-board-without-group", { [savedViewId]: 4 }),
+        commandName: "savedView.update",
+        payload: { savedViewId, groupBy: null },
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+    "a board cannot silently lose the grouping that defines its columns",
+  );
+
+  const layoutCommand = {
+    ...metadata("view-layout-list", { [savedViewId]: 4 }),
+    commandName: "savedView.update" as const,
+    payload: { savedViewId, layout: "list" as const },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), layoutCommand)).outcome,
+    "success",
+  );
+  assert.equal(overview()[0]?.layout, "list");
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("view-layout-undo", { [savedViewId]: 5 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: layoutCommand.commandId },
+      }),
+    ).diagnosticCode,
+    "command.undone",
+  );
+  assert.equal(
+    overview()[0]?.layout,
+    "board",
+    "scoped undo restores the prior rendering along with the same Task view",
+  );
+
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("view-ungrouped-board-create"),
+        commandName: "savedView.create",
+        payload: {
+          savedViewId: uuid(),
+          spaceId: ids.space,
+          name: "Invalid board",
+          filters: {},
+          sort: "updated_desc",
+          layout: "board",
+        },
+      }),
+    ).diagnosticCode,
+    "command.precondition_failed",
+    "board creation requires declared grouping instead of inventing columns",
+  );
+
   const deleteCommand = {
-    ...metadata("view-delete", { [savedViewId]: 4 }),
+    ...metadata("view-delete", { [savedViewId]: 6 }),
     commandName: "savedView.delete" as const,
     payload: { savedViewId },
   };
@@ -1098,7 +1167,7 @@ it("manages saved view lifecycle with field filters and grouping", () => {
   assert.equal(
     unwrap(
       harness.kernel.execute(context(), {
-        ...metadata("view-delete-undo", { [savedViewId]: 5 }),
+        ...metadata("view-delete-undo", { [savedViewId]: 7 }),
         commandName: "command.undo",
         payload: { targetCommandId: deleteCommand.commandId },
       }),

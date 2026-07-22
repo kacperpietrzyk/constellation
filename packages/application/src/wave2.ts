@@ -2546,11 +2546,15 @@ export const executeWave2Command = (
           ...(command.payload.groupBy === undefined
             ? {}
             : { groupBy: command.payload.groupBy }),
+          ...(command.payload.layout === undefined
+            ? {}
+            : { layout: command.payload.layout }),
         };
         changedFields = [
           ...(command.payload.filters === undefined ? [] : ["filters"]),
           ...(command.payload.sort === undefined ? [] : ["sort"]),
           ...(command.payload.groupBy === undefined ? [] : ["groupBy"]),
+          ...(command.payload.layout === undefined ? [] : ["layout"]),
         ];
         if (
           update.groupBy !== undefined &&
@@ -2566,6 +2570,12 @@ export const executeWave2Command = (
           ) {
             return precondition(command, occurredAt);
           }
+        }
+        const resultingGroupBy =
+          update.groupBy === undefined ? record.groupBy : update.groupBy;
+        const resultingLayout = update.layout ?? record.layout ?? "list";
+        if (resultingLayout === "board" && resultingGroupBy == null) {
+          return precondition(command, occurredAt);
         }
       } else {
         update = { state: "deleted" };
@@ -2605,6 +2615,9 @@ export const executeWave2Command = (
           ...(record.groupBy === undefined
             ? {}
             : { priorGroupBy: record.groupBy }),
+          ...(record.layout === undefined
+            ? {}
+            : { priorLayout: record.layout }),
           priorState: record.state,
           resultingVersion: updated.version,
         },
@@ -2625,6 +2638,11 @@ export const executeWave2Command = (
         MAX_SAVED_VIEW_RELATION_CONDITIONS
       )
         return precondition(command, occurredAt);
+      if (
+        command.payload.layout === "board" &&
+        command.payload.groupBy === undefined
+      )
+        return precondition(command, occurredAt);
       const record = createSavedView({
         id: StrategicRecordIdSchema.parse(command.payload.savedViewId),
         workspaceId: command.workspaceId,
@@ -2635,6 +2653,9 @@ export const executeWave2Command = (
         ...(command.payload.groupBy === undefined
           ? {}
           : { groupBy: command.payload.groupBy }),
+        ...(command.payload.layout === undefined
+          ? {}
+          : { layout: command.payload.layout }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -2647,7 +2668,14 @@ export const executeWave2Command = (
         idempotency,
         occurredAt,
         record,
-        ["name", "filters", "sort", "state"],
+        [
+          "name",
+          "filters",
+          "sort",
+          ...(command.payload.groupBy === undefined ? [] : ["groupBy"]),
+          ...(command.payload.layout === undefined ? [] : ["layout"]),
+          "state",
+        ],
       );
     }
     case "recurrence.create": {
@@ -7351,6 +7379,7 @@ const applyUndo = (
         filters: descriptor.priorFilters,
         sort: descriptor.priorSort,
         groupBy: descriptor.priorGroupBy ?? null,
+        layout: descriptor.priorLayout ?? null,
         state: descriptor.priorState,
       },
       occurredAt,
@@ -7866,6 +7895,9 @@ export const executeWave2Query = (
             ...(savedView.groupBy === undefined
               ? {}
               : { groupBy: savedView.groupBy }),
+            ...(savedView.layout === undefined
+              ? {}
+              : { layout: savedView.layout }),
             ...(conditions.length === 0
               ? {}
               : {

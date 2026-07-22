@@ -1,4 +1,9 @@
+import { useMemo, useState } from "react";
+
+import type { RendererCommandResponse } from "@constellation/desktop-preload/client";
+
 import { WorkSurface } from "../WorkSurface.js";
+import { createScenarioClient } from "../client/scenario-client.js";
 import type { DesktopSnapshot } from "../client/workflow.js";
 
 const ids = {
@@ -18,6 +23,7 @@ const ids = {
   status2: "00000000-0000-4000-8000-000000000414",
   segmentField: "00000000-0000-4000-8000-000000000415",
   view2: "00000000-0000-4000-8000-000000000416",
+  status3: "00000000-0000-4000-8000-000000000417",
 } as const;
 
 const now = "2026-07-15T10:00:00.000Z";
@@ -54,6 +60,13 @@ export const workHarnessSnapshot = {
         label: "W przeglądzie",
         operationalSemantics: "waiting",
         position: 1,
+        version: 1,
+      },
+      {
+        id: ids.status3,
+        label: "Gotowe",
+        operationalSemantics: "actionable",
+        position: 2,
         version: 1,
       },
     ],
@@ -183,6 +196,7 @@ export const workHarnessSnapshot = {
           },
           sort: "updated_desc",
           groupBy: "status",
+          layout: "board",
           state: "active",
           version: 1,
         },
@@ -207,20 +221,97 @@ export const workHarnessSnapshot = {
   radar: { kind: "unavailable", message: "Scenario" },
 } as unknown as DesktopSnapshot;
 
-export const WorkHarness = () => (
-  <main className="app-shell" data-testid="work-harness">
-    <WorkSurface
-      client={undefined}
-      snapshot={workHarnessSnapshot}
-      selectedTaskId={undefined}
-      selectedProjectId={undefined}
-      selectedContextId={undefined}
-      onSelectTask={() => undefined}
-      onOpenTask={() => undefined}
-      onSelectProject={() => undefined}
-      onSelectContext={() => undefined}
-      onReload={async () => undefined}
-      onFailure={() => undefined}
-    />
-  </main>
-);
+const commandResult = (
+  commandId: string,
+  savedViewId: string,
+  version: number,
+): RendererCommandResponse =>
+  ({
+    kind: "command_outcome",
+    outcome: {
+      contractVersion: 1,
+      commandId,
+      kernelTime: now,
+      outcome: "success",
+      replayed: false,
+      recordVersions: { [savedViewId]: version },
+      changedFields: ["layout"],
+      diagnosticCode: "savedView.updated",
+      projection: {
+        kind: "strategic.record_changed",
+        recordKind: "saved_view",
+        id: savedViewId,
+        version,
+      },
+    },
+  }) as unknown as RendererCommandResponse;
+
+if (workHarnessSnapshot.work.kind !== "ready") {
+  throw new Error("Work harness requires a ready projection.");
+}
+const baseWork = workHarnessSnapshot.work.data;
+
+export const WorkHarness = () => {
+  const [layout, setLayout] = useState<"list" | "board">("board");
+  const snapshot = useMemo(
+    () =>
+      ({
+        ...workHarnessSnapshot,
+        work: {
+          ...workHarnessSnapshot.work,
+          data: {
+            ...baseWork,
+            savedViews: baseWork.savedViews.map((view) =>
+              view.id === ids.view2
+                ? { ...view, layout, version: layout === "board" ? 1 : 2 }
+                : view,
+            ),
+          },
+        },
+      }) as unknown as DesktopSnapshot,
+    [layout],
+  );
+  const client = useMemo(
+    () =>
+      createScenarioClient({
+        queries: {},
+        executeCommand: (command) => {
+          if (
+            command.commandName === "savedView.update" &&
+            command.payload.savedViewId === ids.view2 &&
+            command.payload.layout !== undefined
+          ) {
+            setLayout(command.payload.layout);
+            return commandResult(
+              command.commandId,
+              command.payload.savedViewId,
+              command.payload.layout === "board" ? 1 : 2,
+            );
+          }
+          return {
+            kind: "contract_rejected",
+            diagnosticCode: "contract.invalid",
+            issues: [],
+          } as RendererCommandResponse;
+        },
+      }),
+    [],
+  );
+  return (
+    <main className="app-shell" data-testid="work-harness">
+      <WorkSurface
+        client={client}
+        snapshot={snapshot}
+        selectedTaskId={undefined}
+        selectedProjectId={undefined}
+        selectedContextId={undefined}
+        onSelectTask={() => undefined}
+        onOpenTask={() => undefined}
+        onSelectProject={() => undefined}
+        onSelectContext={() => undefined}
+        onReload={async () => undefined}
+        onFailure={() => undefined}
+      />
+    </main>
+  );
+};

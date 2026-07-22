@@ -54,6 +54,14 @@ const accessStyles = readFileSync(
   "utf8",
 );
 const realApp = readFileSync(path.join(root, "src", "RealApp.tsx"), "utf8");
+const workSurface = readFileSync(
+  path.join(root, "src", "WorkSurface.tsx"),
+  "utf8",
+);
+const workBoardStyles = readFileSync(
+  path.join(root, "src", "work-board.css"),
+  "utf8",
+);
 const collaborationSurfaces = readFileSync(
   path.join(root, "src", "CollaborationSurfaces.tsx"),
   "utf8",
@@ -513,7 +521,7 @@ describe("interaction recovery contracts", () => {
     );
   });
 
-  it("separates Work context from the primary reading plane without card rows", () => {
+  it("keeps the Work list linear while separating context from its reading plane", () => {
     assert.match(
       styles,
       /\.work-context-column\s*\{[^}]*background:\s*var\(--surface-sunken\);[^}]*border:[^;]+;[^}]*border-radius:[^;]+;[^}]*padding:/s,
@@ -525,6 +533,28 @@ describe("interaction recovery contracts", () => {
     assert.match(
       styles,
       /\.work-context-row,\s*\.work-project-row,\s*\.work-task-row\s*\{[^}]*border-top:[^;]+;[^}]*background:\s*transparent;/s,
+    );
+  });
+
+  it("renders one saved Task set as an accessible board without implicit drag mutation", () => {
+    assert.match(workSurface, /setSavedWorkViewLayout/);
+    assert.match(
+      workSurface,
+      /activeView\?\.layout === "board" && groupBy !== undefined/,
+    );
+    assert.match(workSurface, /aria-label="Następne działania — tablica"/);
+    assert.match(workSurface, /className="work-board-column"/);
+    assert.match(workSurface, /aria-label=\{group\.label\}/);
+    assert.match(workSurface, />Brak zadań</);
+    assert.match(workSurface, /Tablica wymaga widoku grupowanego\./);
+    assert.doesNotMatch(workSurface, /draggable=|onDrag|onDrop/);
+    assert.match(
+      workBoardStyles,
+      /\.work-task-board\s*\{[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto/s,
+    );
+    assert.match(
+      workBoardStyles,
+      /@container \(max-width: 38\.75rem\)[\s\S]*?\.work-task-board\s*\{[^}]*grid-auto-columns:\s*minmax\(13\.25rem, 82%\)/s,
     );
   });
 

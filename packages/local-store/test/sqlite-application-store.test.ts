@@ -121,6 +121,8 @@ const context = (): ExecutionContext =>
       "relationship.workspace",
       "meeting.upsertImported",
       "meeting.editWorkItem",
+      "savedView.create",
+      "work.overview",
     ],
     origin: "desktop",
   });
@@ -2032,6 +2034,28 @@ describe("SQLite ApplicationStore", () => {
         throw new Error("Expected relation creation.");
       }
       const relationId = related.projection.relationId as RelationId;
+      const savedViewId = "00000000-0000-4000-8000-00000000008b";
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "savedView.create",
+              {
+                savedViewId,
+                spaceId: ids.rootSpace,
+                name: "Restart-safe board",
+                filters: {},
+                sort: "updated_desc",
+                groupBy: "status",
+                layout: "board",
+              },
+              "durable-saved-view-board-v1",
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
 
       assert.equal(
         unwrap(
@@ -2077,6 +2101,13 @@ describe("SQLite ApplicationStore", () => {
         assignmentId,
       );
       assert.equal(reopened.store.snapshot().comments?.[0]?.id, commentId);
+      const persistedSavedView = reopened.store
+        .snapshot()
+        .strategicRecords?.find((record) => record.id === savedViewId);
+      assert.equal(persistedSavedView?.kind, "saved_view");
+      if (persistedSavedView?.kind === "saved_view") {
+        assert.equal(persistedSavedView.layout, "board");
+      }
       assert.equal(
         reopened.store.snapshot().attentionSignals?.[0]?.reason,
         "task_assignment",

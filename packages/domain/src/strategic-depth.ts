@@ -245,6 +245,10 @@ export const createSavedView = (
       StrategicRecord,
       { kind: "saved_view" }
     >["groupBy"];
+    readonly layout?: Extract<
+      StrategicRecord,
+      { kind: "saved_view" }
+    >["layout"];
   },
 ): Extract<StrategicRecord, { kind: "saved_view" }> => ({
   ...base(input),
@@ -253,6 +257,7 @@ export const createSavedView = (
   filters: input.filters,
   sort: input.sort,
   ...(input.groupBy === undefined ? {} : { groupBy: input.groupBy }),
+  ...(input.layout === undefined ? {} : { layout: input.layout }),
   state: "active",
 });
 
@@ -267,6 +272,10 @@ export interface SavedViewUpdate {
     Extract<StrategicRecord, { kind: "saved_view" }>["groupBy"],
     undefined
   > | null;
+  readonly layout?: Exclude<
+    Extract<StrategicRecord, { kind: "saved_view" }>["layout"],
+    undefined
+  > | null;
   readonly state?: "active" | "deleted";
 }
 
@@ -275,19 +284,26 @@ export const updateSavedView = (
   update: SavedViewUpdate,
   occurredAt: string,
 ): Extract<StrategicRecord, { kind: "saved_view" }> => {
-  const { groupBy: priorGroupBy, ...rest } = record;
+  const { groupBy: priorGroupBy, layout: priorLayout, ...rest } = record;
   const groupBy =
     update.groupBy === undefined
       ? priorGroupBy
       : update.groupBy === null
         ? undefined
         : update.groupBy;
+  const layout =
+    update.layout === undefined
+      ? priorLayout
+      : update.layout === null
+        ? undefined
+        : update.layout;
   return {
     ...rest,
     name: update.name ?? record.name,
     filters: update.filters ?? record.filters,
     sort: update.sort ?? record.sort,
     ...(groupBy === undefined ? {} : { groupBy }),
+    ...(layout === undefined ? {} : { layout }),
     state: update.state ?? record.state,
     version: record.version + 1,
     updatedAt: occurredAt,

@@ -1291,6 +1291,8 @@ export interface SavedWorkViewFilters {
 export type SavedWorkViewGroupBy =
   "status" | "priority" | { readonly fieldId: string };
 
+export type SavedWorkViewLayout = "list" | "board";
+
 export const createSavedWorkView = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -1298,6 +1300,7 @@ export const createSavedWorkView = (
   filters: SavedWorkViewFilters,
   sort: "updated_desc" | "due_asc" | "title_asc" = "updated_desc",
   groupBy?: SavedWorkViewGroupBy,
+  layout?: SavedWorkViewLayout,
 ) => {
   const savedViewId = crypto.randomUUID() as StrategicRecordId;
   return execute(
@@ -1312,6 +1315,7 @@ export const createSavedWorkView = (
         filters,
         sort,
         ...(groupBy === undefined ? {} : { groupBy }),
+        ...(layout === undefined ? {} : { layout }),
       },
     },
     (response) =>
@@ -1337,6 +1341,29 @@ export const renameSavedWorkView = (
       }),
       commandName: "savedView.rename",
       payload: { savedViewId, name },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
+export const setSavedWorkViewLayout = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  savedViewId: string,
+  savedViewVersion: number,
+  layout: SavedWorkViewLayout,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [savedViewId]: savedViewVersion,
+      }),
+      commandName: "savedView.update",
+      payload: { savedViewId, layout },
     },
     (response) =>
       response.outcome.outcome === "success" &&

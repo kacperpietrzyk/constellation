@@ -20,6 +20,7 @@ import {
   createSavedWorkView,
   deleteSavedWorkView,
   renameSavedWorkView,
+  setSavedWorkViewLayout,
   createWorkLink,
   setTaskOperationalState,
   type DesktopSnapshot,
@@ -36,6 +37,8 @@ import {
   formatDate,
   instantForZonedDate,
 } from "./i18n.js";
+
+import "./work-board.css";
 
 export type WorkContextKind = "area" | "initiative";
 
@@ -215,25 +218,33 @@ export const WorkSurface = ({
     low: "Niski priorytet",
   } as const;
   const groupBy = activeView?.groupBy;
+  const orderedTaskStatuses = snapshot.bootstrap.taskStatuses.toSorted(
+    (left, right) => left.position - right.position,
+  );
   // Group order is declared, never inferred: status position, priority rank,
   // or the definition's option order, with an explicit trailing "Bez
   // wartości" group. Grouping composes before the view's sort.
   const groupFor = (
     task: NonNullable<typeof projection>["tasks"][number],
-  ): { readonly rank: number; readonly label: string } => {
+  ): {
+    readonly key: string;
+    readonly rank: number;
+    readonly label: string;
+  } => {
     if (groupBy === "status") {
-      const index = snapshot.bootstrap.taskStatuses.findIndex(
+      const index = orderedTaskStatuses.findIndex(
         (status) => status.id === task.statusId,
       );
       return {
+        key: index === -1 ? "status:historical" : `status:${task.statusId}`,
         rank: index === -1 ? Number.MAX_SAFE_INTEGER : index,
-        label:
-          snapshot.bootstrap.taskStatuses[index]?.label ?? "Status historyczny",
+        label: orderedTaskStatuses[index]?.label ?? "Status historyczny",
       };
     }
     if (groupBy === "priority") {
       const priority = task.priority ?? "normal";
       return {
+        key: `priority:${priority}`,
         rank: 3 - priorityRank[priority],
         label: priorityLabels[priority],
       };
@@ -248,10 +259,18 @@ export const WorkSurface = ({
       const index =
         value?.kind === "choice" ? options.indexOf(value.value) : -1;
       return index === -1
-        ? { rank: Number.MAX_SAFE_INTEGER, label: "Bez wartości" }
-        : { rank: index, label: options[index]! };
+        ? {
+            key: "field:empty",
+            rank: Number.MAX_SAFE_INTEGER,
+            label: "Bez wartości",
+          }
+        : {
+            key: `field:${options[index]!}`,
+            rank: index,
+            label: options[index]!,
+          };
     }
-    return { rank: 0, label: "" };
+    return { key: "all", rank: 0, label: "" };
   };
   const visibleTasks = (projection?.tasks ?? [])
     .filter(matchesActiveView)
@@ -280,6 +299,80 @@ export const WorkSurface = ({
       }
       return 0;
     });
+  const declaredGroups = (() => {
+    if (groupBy === "status") {
+      return orderedTaskStatuses
+        .map((status, index) => ({
+          key: `status:${status.id}`,
+          label: status.label,
+          rank: index,
+          state: status.state,
+          statusId: status.id,
+        }))
+        .filter(
+          (status) =>
+            status.state !== "archived" ||
+            visibleTasks.some((task) => task.statusId === status.statusId),
+        );
+    }
+    if (groupBy === "priority") {
+      return (["urgent", "high", "normal", "low"] as const).map(
+        (priority, index) => ({
+          key: `priority:${priority}`,
+          label: priorityLabels[priority],
+          rank: index,
+        }),
+      );
+    }
+    if (groupBy !== undefined) {
+      const definition = (snapshot.bootstrap.fieldDefinitions ?? []).find(
+        (candidate) => candidate.id === groupBy.fieldId,
+      );
+      return definition?.type.kind === "choice"
+        ? definition.type.options.map((option, index) => ({
+            key: `field:${option}`,
+            label: option,
+            rank: index,
+          }))
+        : [];
+    }
+    return [];
+  })();
+  const actualGroups = new Map<
+    string,
+    {
+      readonly key: string;
+      readonly label: string;
+      readonly rank: number;
+      readonly tasks: typeof visibleTasks;
+    }
+  >();
+  for (const task of visibleTasks) {
+    const group = groupFor(task);
+    const current = actualGroups.get(group.key);
+    if (current === undefined) {
+      actualGroups.set(group.key, { ...group, tasks: [task] });
+    } else {
+      actualGroups.set(group.key, {
+        ...current,
+        tasks: [...current.tasks, task],
+      });
+    }
+  }
+  const taskGroups = [
+    ...declaredGroups.map((group) => ({
+      ...group,
+      tasks: actualGroups.get(group.key)?.tasks ?? [],
+    })),
+    ...[...actualGroups.values()].filter(
+      (group) => !declaredGroups.some((declared) => declared.key === group.key),
+    ),
+  ].toSorted((left, right) => left.rank - right.rank);
+  const visibleTaskIndex = new Map(
+    visibleTasks.map((task, index) => [task.id, index]),
+  );
+  const activeLayout =
+    activeView?.layout === "board" && groupBy !== undefined ? "board" : "list";
   const taskNav = useListNavigation({
     itemCount: visibleTasks.length,
     onOpen: (index) => {
@@ -574,6 +667,204 @@ export const WorkSurface = ({
         waitingLabel,
         waitingDetails,
       ),
+    );
+  };
+
+  const changeLayout = (layout: "list" | "board") => {
+    if (!client || activeView === undefined || layout === activeLayout) return;
+    void run(`view-layout:${activeView.id}`, () =>
+      setSavedWorkViewLayout(
+        client,
+        snapshot,
+        activeView.id,
+        activeView.version,
+        layout,
+      ),
+    );
+  };
+
+  const renderTask = (
+    task: (typeof visibleTasks)[number],
+    index: number,
+    variant: "list" | "board",
+  ) => {
+    const dependency = activeLinks.find(
+      (link) =>
+        link.linkType === "task_depends_on_task" &&
+        link.sourceRecordId === task.id,
+    );
+    const dependencyTitle = projection.tasks.find(
+      (item) => item.id === dependency?.targetRecordId,
+    )?.title;
+    return (
+      <article
+        key={task.id}
+        className={`work-task-row work-task-row--${variant} state-${task.operationalState}${
+          task.id === selectedTaskId ? " selected" : ""
+        }`}
+      >
+        <span className="task-state-mark" aria-hidden="true" />
+        <button
+          type="button"
+          className="work-task-copy work-row-copy"
+          role="option"
+          aria-selected={task.id === selectedTaskId}
+          {...taskNav(index)}
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey) onOpenTask(task.id);
+            else onSelectTask(task.id);
+          }}
+          onDoubleClick={() => onOpenTask(task.id)}
+        >
+          <strong>{task.title}</strong>
+          <span>
+            {[
+              task.waitingOn
+                ? `${
+                    task.waitingOn.direction === "we_owe"
+                      ? "Zobowiązanie: "
+                      : "Czekamy na: "
+                  }${task.waitingOn.label}${
+                    task.waitingOn.expectedAt === undefined
+                      ? ""
+                      : ` · przegląd ${formatDate(
+                          task.waitingOn.expectedAt,
+                          snapshot.bootstrap.workspace.timezone,
+                        )}`
+                  }`
+                : dependencyTitle
+                  ? `Zależy od: ${dependencyTitle}`
+                  : "Gotowe do podjęcia",
+              ...(task.dueAt === undefined
+                ? []
+                : [
+                    `Termin: ${formatDate(
+                      task.dueAt,
+                      snapshot.bootstrap.workspace.timezone,
+                    )}${Date.parse(task.dueAt) < Date.now() ? " · po terminie" : ""}`,
+                  ]),
+              ...(task.priority === undefined ||
+              task.priority === "normal" ||
+              task.priority === "low"
+                ? []
+                : [task.priority === "urgent" ? "Pilne" : "Wysoki priorytet"]),
+            ].join(" · ")}
+          </span>
+        </button>
+        <InlinePopover
+          label={stateLabel[task.operationalState]}
+          panelLabel={`Zmień stan zadania: ${task.title}`}
+          triggerClassName="task-state-trigger"
+          open={openPopover === `state:${task.id}`}
+          onOpenChange={(next) =>
+            setOpenPopover(next ? `state:${task.id}` : undefined)
+          }
+        >
+          <div className="task-state-actions">
+            <button
+              type="button"
+              disabled={busyIds.has(`state:${task.id}`) || !client}
+              onClick={() => applyTaskState(task, "actionable")}
+            >
+              Do działania
+            </button>
+            <input
+              value={waitingDraft[task.id] ?? task.waitingOn?.label ?? ""}
+              onChange={(event) =>
+                setWaitingDraft((current) => ({
+                  ...current,
+                  [task.id]: event.target.value,
+                }))
+              }
+              placeholder="Na kogo lub co czekasz?"
+              aria-label={`Powód oczekiwania: ${task.title}`}
+            />
+            <select
+              value={
+                waitingDirectionDraft[task.id] ??
+                task.waitingOn?.direction ??
+                "waiting_on_them"
+              }
+              aria-label={`Kierunek oczekiwania: ${task.title}`}
+              onChange={(event) =>
+                setWaitingDirectionDraft((current) => ({
+                  ...current,
+                  [task.id]: event.target.value as "waiting_on_them" | "we_owe",
+                }))
+              }
+            >
+              <option value="waiting_on_them">Czekamy na nich</option>
+              <option value="we_owe">Nasze zobowiązanie</option>
+            </select>
+            <input
+              type="date"
+              value={
+                waitingExpectedDraft[task.id] ??
+                (task.waitingOn?.expectedAt === undefined
+                  ? ""
+                  : dateKeyInZone(
+                      task.waitingOn.expectedAt,
+                      snapshot.bootstrap.workspace.timezone,
+                    ))
+              }
+              aria-label={`Data przeglądu oczekiwania: ${task.title}`}
+              onChange={(event) =>
+                setWaitingExpectedDraft((current) => ({
+                  ...current,
+                  [task.id]: event.target.value,
+                }))
+              }
+            />
+            <button
+              type="button"
+              disabled={
+                busyIds.has(`state:${task.id}`) ||
+                !client ||
+                !(waitingDraft[task.id] ?? task.waitingOn?.label)?.trim()
+              }
+              onClick={() => {
+                const expectedDate =
+                  waitingExpectedDraft[task.id] ??
+                  (task.waitingOn?.expectedAt === undefined
+                    ? ""
+                    : dateKeyInZone(
+                        task.waitingOn.expectedAt,
+                        snapshot.bootstrap.workspace.timezone,
+                      ));
+                const expectedAt =
+                  expectedDate === ""
+                    ? undefined
+                    : instantForZonedDate(
+                        expectedDate,
+                        snapshot.bootstrap.workspace.timezone,
+                        "end",
+                      );
+                applyTaskState(
+                  task,
+                  "waiting",
+                  waitingDraft[task.id] ?? task.waitingOn?.label,
+                  {
+                    direction:
+                      waitingDirectionDraft[task.id] ??
+                      task.waitingOn?.direction ??
+                      "waiting_on_them",
+                    ...(expectedAt === undefined ? {} : { expectedAt }),
+                  },
+                );
+              }}
+            >
+              Ustaw oczekiwanie
+            </button>
+            <button
+              type="button"
+              disabled={busyIds.has(`state:${task.id}`) || !client}
+              onClick={() => applyTaskState(task, "blocked")}
+            >
+              Zablokowane
+            </button>
+          </div>
+        </InlinePopover>
+      </article>
     );
   };
 
@@ -985,16 +1276,58 @@ export const WorkSurface = ({
             <div>
               <h2 id="work-delivery-title">Projekty i następne działania</h2>
             </div>
-            <span>
-              {countLabel(
-                projection.projects.length,
-                "projekt",
-                "projekty",
-                "projektów",
-              )}{" "}
-              · {countLabel(visibleTasks.length, "zadanie", "zadania", "zadań")}
-              {activeView !== undefined ? ` · widok „${activeView.name}”` : ""}
-            </span>
+            <div className="work-heading-meta">
+              <span>
+                {countLabel(
+                  projection.projects.length,
+                  "projekt",
+                  "projekty",
+                  "projektów",
+                )}{" "}
+                ·{" "}
+                {countLabel(visibleTasks.length, "zadanie", "zadania", "zadań")}
+                {activeView !== undefined
+                  ? ` · widok „${activeView.name}”`
+                  : ""}
+              </span>
+              {activeView !== undefined && (
+                <fieldset className="work-layout-switch">
+                  <legend>Układ widoku</legend>
+                  <button
+                    type="button"
+                    aria-pressed={activeLayout === "list"}
+                    disabled={
+                      busyIds.has(`view-layout:${activeView.id}`) || !client
+                    }
+                    onClick={() => changeLayout("list")}
+                  >
+                    Lista
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={activeLayout === "board"}
+                    aria-describedby={
+                      groupBy === undefined
+                        ? "work-board-requirement"
+                        : undefined
+                    }
+                    disabled={
+                      groupBy === undefined ||
+                      busyIds.has(`view-layout:${activeView.id}`) ||
+                      !client
+                    }
+                    onClick={() => changeLayout("board")}
+                  >
+                    Tablica
+                  </button>
+                  {groupBy === undefined && (
+                    <small id="work-board-requirement">
+                      Tablica wymaga widoku grupowanego.
+                    </small>
+                  )}
+                </fieldset>
+              )}
+            </div>
           </div>
           {projection.projects.map((project) => (
             <button
@@ -1026,232 +1359,78 @@ export const WorkSurface = ({
           {/* Roving tabindex pairs with listbox/option semantics, matching the
               cockpit lists: AT learns this is one composite widget where Tab
               stops once and arrows move between rows. */}
-          <div
-            className="work-task-list"
-            role="listbox"
-            aria-label="Następne działania"
-          >
-            {visibleTasks.map((task, index) => {
-              const group = groupBy === undefined ? undefined : groupFor(task);
-              const previous = visibleTasks[index - 1];
-              const groupStarts =
-                group !== undefined &&
-                (previous === undefined ||
-                  groupFor(previous).label !== group.label);
-              const dependency = activeLinks.find(
-                (link) =>
-                  link.linkType === "task_depends_on_task" &&
-                  link.sourceRecordId === task.id,
-              );
-              const dependencyTitle = projection.tasks.find(
-                (item) => item.id === dependency?.targetRecordId,
-              )?.title;
-              return (
-                <Fragment key={task.id}>
-                  {groupStarts && group !== undefined && (
-                    <div className="work-group-heading" role="presentation">
-                      <span>{group.label}</span>
-                      <small>
-                        {countLabel(
-                          visibleTasks.filter(
-                            (candidate) =>
-                              groupFor(candidate).label === group.label,
-                          ).length,
-                          "zadanie",
-                          "zadania",
-                          "zadań",
-                        )}
-                      </small>
-                    </div>
-                  )}
-                  <article
-                    className={`work-task-row state-${task.operationalState}${
-                      task.id === selectedTaskId ? " selected" : ""
-                    }`}
-                  >
-                    <span className="task-state-mark" aria-hidden="true" />
-                    <button
-                      type="button"
-                      className="work-task-copy work-row-copy"
-                      role="option"
-                      aria-selected={task.id === selectedTaskId}
-                      {...taskNav(index)}
-                      onClick={(event) => {
-                        if (event.metaKey || event.ctrlKey) onOpenTask(task.id);
-                        else onSelectTask(task.id);
-                      }}
-                      onDoubleClick={() => onOpenTask(task.id)}
-                    >
-                      <strong>{task.title}</strong>
-                      <span>
-                        {[
-                          task.waitingOn
-                            ? `${
-                                task.waitingOn.direction === "we_owe"
-                                  ? "Zobowiązanie: "
-                                  : "Czekamy na: "
-                              }${task.waitingOn.label}${
-                                task.waitingOn.expectedAt === undefined
-                                  ? ""
-                                  : ` · przegląd ${formatDate(
-                                      task.waitingOn.expectedAt,
-                                      snapshot.bootstrap.workspace.timezone,
-                                    )}`
-                              }`
-                            : dependencyTitle
-                              ? `Zależy od: ${dependencyTitle}`
-                              : "Gotowe do podjęcia",
-                          ...(task.dueAt === undefined
-                            ? []
-                            : [
-                                `Termin: ${formatDate(
-                                  task.dueAt,
-                                  snapshot.bootstrap.workspace.timezone,
-                                )}${
-                                  Date.parse(task.dueAt) < Date.now()
-                                    ? " · po terminie"
-                                    : ""
-                                }`,
-                              ]),
-                          ...(task.priority === undefined ||
-                          task.priority === "normal" ||
-                          task.priority === "low"
-                            ? []
-                            : [
-                                task.priority === "urgent"
-                                  ? "Pilne"
-                                  : "Wysoki priorytet",
-                              ]),
-                        ].join(" · ")}
-                      </span>
-                    </button>
-                    <InlinePopover
-                      label={stateLabel[task.operationalState]}
-                      panelLabel={`Zmień stan zadania: ${task.title}`}
-                      triggerClassName="task-state-trigger"
-                      open={openPopover === `state:${task.id}`}
-                      onOpenChange={(next) =>
-                        setOpenPopover(next ? `state:${task.id}` : undefined)
-                      }
-                    >
-                      <div className="task-state-actions">
-                        <button
-                          type="button"
-                          disabled={busyIds.has(`state:${task.id}`) || !client}
-                          onClick={() => applyTaskState(task, "actionable")}
-                        >
-                          Do działania
-                        </button>
-                        <input
-                          value={
-                            waitingDraft[task.id] ?? task.waitingOn?.label ?? ""
-                          }
-                          onChange={(event) =>
-                            setWaitingDraft((current) => ({
-                              ...current,
-                              [task.id]: event.target.value,
-                            }))
-                          }
-                          placeholder="Na kogo lub co czekasz?"
-                          aria-label={`Powód oczekiwania: ${task.title}`}
-                        />
-                        <select
-                          value={
-                            waitingDirectionDraft[task.id] ??
-                            task.waitingOn?.direction ??
-                            "waiting_on_them"
-                          }
-                          aria-label={`Kierunek oczekiwania: ${task.title}`}
-                          onChange={(event) =>
-                            setWaitingDirectionDraft((current) => ({
-                              ...current,
-                              [task.id]: event.target.value as
-                                "waiting_on_them" | "we_owe",
-                            }))
-                          }
-                        >
-                          <option value="waiting_on_them">
-                            Czekamy na nich
-                          </option>
-                          <option value="we_owe">Nasze zobowiązanie</option>
-                        </select>
-                        <input
-                          type="date"
-                          value={
-                            waitingExpectedDraft[task.id] ??
-                            (task.waitingOn?.expectedAt === undefined
-                              ? ""
-                              : dateKeyInZone(
-                                  task.waitingOn.expectedAt,
-                                  snapshot.bootstrap.workspace.timezone,
-                                ))
-                          }
-                          aria-label={`Data przeglądu oczekiwania: ${task.title}`}
-                          onChange={(event) =>
-                            setWaitingExpectedDraft((current) => ({
-                              ...current,
-                              [task.id]: event.target.value,
-                            }))
-                          }
-                        />
-                        <button
-                          type="button"
-                          disabled={
-                            busyIds.has(`state:${task.id}`) ||
-                            !client ||
-                            !(
-                              waitingDraft[task.id] ?? task.waitingOn?.label
-                            )?.trim()
-                          }
-                          onClick={() => {
-                            const expectedDate =
-                              waitingExpectedDraft[task.id] ??
-                              (task.waitingOn?.expectedAt === undefined
-                                ? ""
-                                : dateKeyInZone(
-                                    task.waitingOn.expectedAt,
-                                    snapshot.bootstrap.workspace.timezone,
-                                  ));
-                            const expectedAt =
-                              expectedDate === ""
-                                ? undefined
-                                : instantForZonedDate(
-                                    expectedDate,
-                                    snapshot.bootstrap.workspace.timezone,
-                                    "end",
-                                  );
-                            applyTaskState(
-                              task,
-                              "waiting",
-                              waitingDraft[task.id] ?? task.waitingOn?.label,
-                              {
-                                direction:
-                                  waitingDirectionDraft[task.id] ??
-                                  task.waitingOn?.direction ??
-                                  "waiting_on_them",
-                                ...(expectedAt === undefined
-                                  ? {}
-                                  : { expectedAt }),
-                              },
-                            );
-                          }}
-                        >
-                          Ustaw oczekiwanie
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busyIds.has(`state:${task.id}`) || !client}
-                          onClick={() => applyTaskState(task, "blocked")}
-                        >
-                          Zablokowane
-                        </button>
+          {activeLayout === "list" && (
+            <div
+              className="work-task-list"
+              role="listbox"
+              aria-label="Następne działania — lista"
+            >
+              {visibleTasks.map((task, index) => {
+                const group =
+                  groupBy === undefined ? undefined : groupFor(task);
+                const previous = visibleTasks[index - 1];
+                const groupStarts =
+                  group !== undefined &&
+                  (previous === undefined ||
+                    groupFor(previous).key !== group.key);
+                return (
+                  <Fragment key={task.id}>
+                    {groupStarts && group !== undefined && (
+                      <div className="work-group-heading" role="presentation">
+                        <span>{group.label}</span>
+                        <small>
+                          {countLabel(
+                            visibleTasks.filter(
+                              (candidate) =>
+                                groupFor(candidate).key === group.key,
+                            ).length,
+                            "zadanie",
+                            "zadania",
+                            "zadań",
+                          )}
+                        </small>
                       </div>
-                    </InlinePopover>
-                  </article>
-                </Fragment>
-              );
-            })}
-          </div>
+                    )}
+                    {renderTask(task, index, "list")}
+                  </Fragment>
+                );
+              })}
+            </div>
+          )}
+          {activeLayout === "board" && (
+            <div
+              className="work-task-board"
+              role="listbox"
+              aria-label="Następne działania — tablica"
+            >
+              {taskGroups.map((group) => (
+                <section
+                  className="work-board-column"
+                  role="group"
+                  aria-label={group.label}
+                  key={group.key}
+                >
+                  <header>
+                    <h3>{group.label}</h3>
+                    <span>{group.tasks.length}</span>
+                  </header>
+                  <div className="work-board-cards">
+                    {group.tasks.length === 0 ? (
+                      <p>Brak zadań</p>
+                    ) : (
+                      group.tasks.map((task) =>
+                        renderTask(
+                          task,
+                          visibleTaskIndex.get(task.id)!,
+                          "board",
+                        ),
+                      )
+                    )}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
           {visibleTasks.length === 0 && (
             <WorkEmpty
               title={

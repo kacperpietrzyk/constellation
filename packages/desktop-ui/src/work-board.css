@@ -1,0 +1,163 @@
+/* PAT-45 — a board is only a spatial rendering of the active Saved View.
+   Columns follow its declared grouping and cards keep the canonical Task
+   selection/open behavior; the region owns narrow-width overflow so the shell
+   never widens. Loaded with the lazy Work surface, not at application start. */
+
+.work-heading-meta {
+  align-items: end;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.work-heading-meta > span {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.work-layout-switch {
+  align-items: center;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+}
+
+.work-layout-switch legend {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.work-layout-switch button {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+  min-height: 2rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.work-layout-switch button:first-of-type {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.work-layout-switch button:nth-of-type(2) {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.work-layout-switch button[aria-pressed="true"] {
+  background: var(--surface-selected);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.work-layout-switch button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.work-layout-switch small {
+  color: var(--text-tertiary);
+  flex-basis: 100%;
+  font-size: var(--text-2xs);
+  text-align: right;
+}
+
+.work-task-board {
+  display: grid;
+  gap: var(--space-3);
+  grid-auto-columns: minmax(12.5rem, 1fr);
+  grid-auto-flow: column;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding: var(--space-1) var(--space-1) var(--space-3);
+  scrollbar-gutter: stable;
+}
+
+.work-board-column {
+  align-self: start;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  min-width: 0;
+  padding: var(--space-3);
+}
+
+.work-board-column > header {
+  align-items: baseline;
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+  padding: 0 var(--space-1) var(--space-3);
+}
+
+.work-board-column > header h3 {
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.work-board-column > header span {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.work-board-cards {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.work-board-cards > p {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  margin: 0;
+  padding: var(--space-4) var(--space-2);
+  text-align: center;
+}
+
+.work-task-row.work-task-row--board {
+  background: var(--panel-reading-bg);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  grid-template-columns: 0.65rem minmax(0, 1fr);
+  padding: var(--space-3);
+}
+
+.work-task-row--board .task-state-trigger {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.work-task-row--board.selected {
+  border-color: var(--border-strong);
+}
+
+@container (max-width: 38.75rem) {
+  .work-section-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .work-heading-meta {
+    align-items: start;
+  }
+
+  .work-layout-switch small {
+    text-align: left;
+  }
+
+  .work-task-board {
+    grid-auto-columns: minmax(13.25rem, 82%);
+  }
+}

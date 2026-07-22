@@ -34,6 +34,7 @@ import {
   RelationConditionsSchema,
   SavedViewFiltersSchema,
   SavedViewGroupBySchema,
+  SavedViewLayoutSchema,
 } from "./command.js";
 import { RequestOriginSchema } from "./execution-context.js";
 import { ImportedMeetingSchema } from "./meeting-loop.js";
@@ -508,6 +509,7 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     filters: SavedViewFiltersSchema,
     sort: z.enum(["updated_desc", "due_asc", "title_asc"]),
     groupBy: SavedViewGroupBySchema.optional(),
+    layout: SavedViewLayoutSchema.optional(),
     state: z.enum(["active", "deleted"]),
   }).strict(),
   StrategicRecordBaseSchema.extend({
@@ -709,6 +711,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             filters: SavedViewFiltersSchema,
             sort: z.enum(["updated_desc", "due_asc", "title_asc"]),
             groupBy: SavedViewGroupBySchema.optional(),
+            layout: SavedViewLayoutSchema.optional(),
             // R13.5 / ADR-045 — the Task ids satisfying this view's relation
             // conditions, evaluated kernel-side by the same evaluator
             // `task.list` uses. Present only when the view carries relation
