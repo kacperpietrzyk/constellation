@@ -960,6 +960,8 @@ export const SavedViewGroupBySchema = z.union([
   z.object({ fieldId: FieldDefinitionIdSchema }).strict(),
 ]);
 
+export const SavedViewLayoutSchema = z.enum(["list", "board"]);
+
 export const SavedViewCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("savedView.create"),
   payload: z
@@ -970,6 +972,7 @@ export const SavedViewCreateCommandSchema = CommandMetadataSchema.extend({
       filters: SavedViewFiltersSchema,
       sort: z.enum(["updated_desc", "due_asc", "title_asc"]),
       groupBy: SavedViewGroupBySchema.optional(),
+      layout: SavedViewLayoutSchema.optional(),
     })
     .strict(),
 }).strict();
@@ -992,13 +995,15 @@ export const SavedViewUpdateCommandSchema = CommandMetadataSchema.extend({
       filters: SavedViewFiltersSchema.optional(),
       sort: z.enum(["updated_desc", "due_asc", "title_asc"]).optional(),
       groupBy: SavedViewGroupBySchema.nullable().optional(),
+      layout: SavedViewLayoutSchema.optional(),
     })
     .strict()
     .refine(
       (payload) =>
         payload.filters !== undefined ||
         payload.sort !== undefined ||
-        payload.groupBy !== undefined,
+        payload.groupBy !== undefined ||
+        payload.layout !== undefined,
       { message: "savedView.update requires at least one change." },
     ),
 }).strict();
