@@ -2,6 +2,31 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { DESKTOP_CHANNELS, createRendererClient } from "../src/client.js";
+import {
+  desktopSurfaceIds,
+  desktopSurfaceRegistry,
+  isDesktopSurface,
+} from "../src/surface-registry.js";
+
+test("desktop surface registry is unique, bounded, and derives its vocabulary", () => {
+  assert.equal(desktopSurfaceRegistry.length, 12);
+  assert.equal(new Set(desktopSurfaceIds).size, desktopSurfaceRegistry.length);
+  assert.equal(
+    new Set(desktopSurfaceRegistry.map((surface) => surface.label)).size,
+    desktopSurfaceRegistry.length,
+  );
+  const shortcuts = desktopSurfaceRegistry.flatMap((surface) =>
+    surface.shortcut === null ? [] : [surface.shortcut],
+  );
+  assert.deepEqual(shortcuts, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.equal(new Set(shortcuts).size, shortcuts.length);
+  assert.equal(
+    desktopSurfaceRegistry.every((surface) => surface.icon.length > 0),
+    true,
+  );
+  assert.equal(isDesktopSurface("documents"), true);
+  assert.equal(isDesktopSurface("chat"), false);
+});
 
 test("renderer client exposes only semantic application and recovery routes", () => {
   const calls: { channel: string; payload: unknown }[] = [];

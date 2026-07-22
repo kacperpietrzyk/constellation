@@ -14,6 +14,7 @@ import {
   DESKTOP_CHANNELS,
   type DesktopBuildInfo,
 } from "@constellation/desktop-preload/client";
+import { desktopSurfaceIds } from "@constellation/desktop-preload/surface-registry";
 
 import { DESKTOP_PREVIEW_VERSION } from "./index.js";
 import { installApplicationMenu } from "./app-menu.js";
@@ -101,20 +102,7 @@ const createDesktopRuntime = async (): Promise<DesktopRuntime> => {
   };
 };
 
-const DETACHABLE_SURFACES = new Set([
-  "cockpit",
-  "work",
-  "tasks",
-  "projects",
-  "history",
-  "activity",
-  "attention",
-  "access",
-  "documents",
-  "meetings",
-  "relationships",
-  "settings",
-]);
+const DETACHABLE_SURFACES = new Set<string>(desktopSurfaceIds);
 
 const createWindow = async (destination?: string): Promise<BrowserWindow> => {
   const window = new BrowserWindow({

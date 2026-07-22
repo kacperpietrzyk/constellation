@@ -27,6 +27,9 @@ import type {
   CaptureOriginal,
   CollaborativeContentOwner,
 } from "@constellation/contracts";
+import type { DesktopSurface } from "./surface-registry.js";
+
+export type { DesktopSurface } from "./surface-registry.js";
 
 export type {
   DataHomeStatus,
@@ -133,20 +136,6 @@ export const isDesktopShellCommand = (
     command.digit <= 9
   );
 };
-
-export type DesktopSurface =
-  | "cockpit"
-  | "work"
-  | "tasks"
-  | "projects"
-  | "history"
-  | "activity"
-  | "attention"
-  | "access"
-  | "documents"
-  | "meetings"
-  | "relationships"
-  | "settings";
 
 export interface DesktopWorkspaceEntry {
   readonly workspaceId: WorkspaceId;

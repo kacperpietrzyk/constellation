@@ -1,18 +1,7 @@
 import type { DesktopSnapshot } from "./workflow.js";
+import type { DesktopSurface } from "@constellation/desktop-preload/client";
 
-export type SurfaceId =
-  | "cockpit"
-  | "work"
-  | "tasks"
-  | "projects"
-  | "history"
-  | "activity"
-  | "attention"
-  | "access"
-  | "documents"
-  | "meetings"
-  | "relationships"
-  | "settings";
+export type SurfaceId = DesktopSurface;
 
 export type PreviewCondition =
   | "ready"
