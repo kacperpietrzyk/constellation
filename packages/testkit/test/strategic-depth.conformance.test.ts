@@ -1138,6 +1138,31 @@ it("manages saved view lifecycle with field filters and grouping", () => {
   assert.equal(
     unwrap(
       harness.kernel.execute(context(), {
+        ...metadata("view-layout-timeline", { [savedViewId]: 6 }),
+        commandName: "savedView.update",
+        payload: { savedViewId, layout: "timeline" },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(overview()[0]?.layout, "timeline");
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("view-timeline-without-group", { [savedViewId]: 7 }),
+        commandName: "savedView.update",
+        payload: { savedViewId, groupBy: null },
+      }),
+    ).outcome,
+    "success",
+    "timeline projects Task timing and does not require board columns",
+  );
+  assert.equal(overview()[0]?.groupBy, undefined);
+  assert.equal(overview()[0]?.layout, "timeline");
+
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
         ...metadata("view-ungrouped-board-create"),
         commandName: "savedView.create",
         payload: {
@@ -1155,7 +1180,7 @@ it("manages saved view lifecycle with field filters and grouping", () => {
   );
 
   const deleteCommand = {
-    ...metadata("view-delete", { [savedViewId]: 6 }),
+    ...metadata("view-delete", { [savedViewId]: 8 }),
     commandName: "savedView.delete" as const,
     payload: { savedViewId },
   };
@@ -1167,7 +1192,7 @@ it("manages saved view lifecycle with field filters and grouping", () => {
   assert.equal(
     unwrap(
       harness.kernel.execute(context(), {
-        ...metadata("view-delete-undo", { [savedViewId]: 7 }),
+        ...metadata("view-delete-undo", { [savedViewId]: 9 }),
         commandName: "command.undo",
         payload: { targetCommandId: deleteCommand.commandId },
       }),

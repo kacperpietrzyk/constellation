@@ -39,6 +39,7 @@ import {
 } from "./i18n.js";
 
 import "./work-board.css";
+import "./work-timeline.css";
 
 export type WorkContextKind = "area" | "initiative";
 
@@ -371,8 +372,30 @@ export const WorkSurface = ({
   const visibleTaskIndex = new Map(
     visibleTasks.map((task, index) => [task.id, index]),
   );
+  const requestedLayout = activeView?.layout ?? "list";
   const activeLayout =
-    activeView?.layout === "board" && groupBy !== undefined ? "board" : "list";
+    requestedLayout === "board" && groupBy === undefined
+      ? "list"
+      : requestedLayout;
+  const timelineInstants = visibleTasks.flatMap((task) =>
+    [task.startAt, task.dueAt]
+      .filter((instant): instant is string => instant !== undefined)
+      .map((instant) => Date.parse(instant)),
+  );
+  const timelineStart =
+    timelineInstants.length === 0 ? undefined : Math.min(...timelineInstants);
+  const timelineEnd =
+    timelineInstants.length === 0 ? undefined : Math.max(...timelineInstants);
+  const timelineRange =
+    timelineStart === undefined || timelineEnd === undefined
+      ? undefined
+      : Math.max(timelineEnd - timelineStart, 1);
+  const timelineTicks =
+    timelineStart === undefined ||
+    timelineEnd === undefined ||
+    timelineRange === undefined
+      ? []
+      : [timelineStart, timelineStart + timelineRange / 2, timelineEnd];
   const taskNav = useListNavigation({
     itemCount: visibleTasks.length,
     onOpen: (index) => {
@@ -670,7 +693,7 @@ export const WorkSurface = ({
     );
   };
 
-  const changeLayout = (layout: "list" | "board") => {
+  const changeLayout = (layout: "list" | "board" | "timeline") => {
     if (!client || activeView === undefined || layout === activeLayout) return;
     void run(`view-layout:${activeView.id}`, () =>
       setSavedWorkViewLayout(
@@ -686,7 +709,7 @@ export const WorkSurface = ({
   const renderTask = (
     task: (typeof visibleTasks)[number],
     index: number,
-    variant: "list" | "board",
+    variant: "list" | "board" | "timeline",
   ) => {
     const dependency = activeLinks.find(
       (link) =>
@@ -735,6 +758,14 @@ export const WorkSurface = ({
                 : dependencyTitle
                   ? `Zależy od: ${dependencyTitle}`
                   : "Gotowe do podjęcia",
+              ...(variant !== "timeline" || task.startAt === undefined
+                ? []
+                : [
+                    `Start: ${formatDate(
+                      task.startAt,
+                      snapshot.bootstrap.workspace.timezone,
+                    )}`,
+                  ]),
               ...(task.dueAt === undefined
                 ? []
                 : [
@@ -743,6 +774,11 @@ export const WorkSurface = ({
                       snapshot.bootstrap.workspace.timezone,
                     )}${Date.parse(task.dueAt) < Date.now() ? " · po terminie" : ""}`,
                   ]),
+              ...(variant !== "timeline" ||
+              task.startAt !== undefined ||
+              task.dueAt !== undefined
+                ? []
+                : ["Bez terminu"]),
               ...(task.priority === undefined ||
               task.priority === "normal" ||
               task.priority === "low"
@@ -1320,6 +1356,16 @@ export const WorkSurface = ({
                   >
                     Tablica
                   </button>
+                  <button
+                    type="button"
+                    aria-pressed={activeLayout === "timeline"}
+                    disabled={
+                      busyIds.has(`view-layout:${activeView.id}`) || !client
+                    }
+                    onClick={() => changeLayout("timeline")}
+                  >
+                    Oś czasu
+                  </button>
                   {groupBy === undefined && (
                     <small id="work-board-requirement">
                       Tablica wymaga widoku grupowanego.
@@ -1429,6 +1475,76 @@ export const WorkSurface = ({
                   </div>
                 </section>
               ))}
+            </div>
+          )}
+          {activeLayout === "timeline" && (
+            <div
+              className="work-task-timeline"
+              role="listbox"
+              aria-label="Następne działania — oś czasu"
+            >
+              <div className="work-timeline-content">
+                <div className="work-timeline-axis" aria-hidden="true">
+                  <span>Zadanie</span>
+                  {timelineTicks.length === 0 ? (
+                    <strong>Brak zaplanowanych dat</strong>
+                  ) : (
+                    <div>
+                      {timelineTicks.map((instant, index) => (
+                        <time
+                          dateTime={new Date(instant).toISOString()}
+                          key={`${instant}:${index}`}
+                        >
+                          {formatDate(
+                            new Date(instant).toISOString(),
+                            snapshot.bootstrap.workspace.timezone,
+                          )}
+                        </time>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {visibleTasks.map((task, index) => {
+                  const start = Date.parse(task.startAt ?? task.dueAt ?? "");
+                  const end = Date.parse(task.dueAt ?? task.startAt ?? "");
+                  const hasTiming =
+                    timelineStart !== undefined &&
+                    timelineRange !== undefined &&
+                    Number.isFinite(start) &&
+                    Number.isFinite(end);
+                  const left = hasTiming
+                    ? ((start - timelineStart) / timelineRange) * 100
+                    : 0;
+                  const width = hasTiming
+                    ? ((end - start) / timelineRange) * 100
+                    : 0;
+                  const isSpan = hasTiming && end > start;
+                  return (
+                    <div className="work-timeline-row" key={task.id}>
+                      {renderTask(task, index, "timeline")}
+                      <div className="work-timeline-track" aria-hidden="true">
+                        {hasTiming ? (
+                          <span
+                            className={
+                              isSpan
+                                ? "work-timeline-span"
+                                : "work-timeline-milestone"
+                            }
+                            style={{
+                              left: `${left}%`,
+                              ...(isSpan ? { width: `${width}%` } : {}),
+                            }}
+                          />
+                        ) : (
+                          <span className="work-timeline-unscheduled">
+                            Bez terminu
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
           {visibleTasks.length === 0 && (
