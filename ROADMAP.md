@@ -209,8 +209,16 @@ and shown outside rich Yjs content with exact filename, type, size, and
 device-local custody state. A missing local object can be fetched and
 digest-verified from the authorized Hub; unlinking is an undoable evidence
 change and never deletes a preserved Capture original. Tasks and comments reuse
-that managed custody without moving file bytes into their record payloads. The
-next connected-work boundary is the composed Organization/client hub.
+that managed custody without moving file bytes into their record payloads.
+
+The Organization/client hub now composes the relationship graph into one
+permission-safe operational page: relationship state and next action, active
+Projects and open work, people, Opportunities and Offers, Renewals, sourced
+facts, Meetings, linked Documents, and recent material activity. It reuses the
+existing typed edges and exact destination navigation, deduplicates shared
+Projects, and does not infer links or invent a parallel CRM store. The next
+human-surface boundary is spatial Saved View rendering and better control over
+visible complexity.
 
 ## Delivered foundation — coherent desktop Alpha and release candidate
 
