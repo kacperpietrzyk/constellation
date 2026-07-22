@@ -51,6 +51,8 @@ export type ProjectListProjection = Projection<"project.list">;
 export type WorkOverviewProjection = Projection<"work.overview">;
 export type ProjectOverviewProjection =
   Projection<"project.operationalOverview">;
+export type OrganizationOverviewProjection =
+  Projection<"organization.operationalOverview">;
 export type SearchProjection = Projection<"search.global">;
 export type CockpitProjection = Projection<"cockpit.week">;
 export type ActivityProjection = Projection<"activity.meaningful">;
@@ -1033,6 +1035,22 @@ export const loadProjectOverview = (
       },
     ),
     "project.operationalOverview",
+  );
+
+export const loadOrganizationOverview = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  organizationId: StrategicRecordId,
+  spaceId: SpaceId,
+) =>
+  queryProjection(
+    client,
+    queryEnvelope(
+      "organization.operationalOverview",
+      snapshot.bootstrap.workspace.id,
+      { organizationId, spaceId },
+    ),
+    "organization.operationalOverview",
   );
 
 export const searchGlobal = async (

@@ -83,6 +83,7 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "meeting.correctWorkItemResponsibility",
   "meeting.addWorkItem",
   "project.operationalOverview",
+  "organization.operationalOverview",
   "task.create",
   "task.updateDetails",
   "task.setParent",

@@ -2804,6 +2804,7 @@ export class ApplicationKernel {
         case "relationship.workspace":
         case "radar.review":
         case "project.operationalOverview":
+        case "organization.operationalOverview":
         case "search.global":
         case "cockpit.week":
         case "activity.meaningful":

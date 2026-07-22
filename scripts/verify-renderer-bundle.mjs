@@ -72,10 +72,14 @@ import path from "node:path";
 // Tiptap/Yjs co Dokument, ale wnosi własny mały lazy chunk powierzchni oraz
 // semantyczne IPC właściciela treści. Entry rośnie o routing, total o funkcję,
 // a stylesheet o responsywną powierzchnię edycji i odzyskiwania.
+// 2026-07-22 (R15.3): wspólny entry niesie ścisły schemat jednej projekcji
+// operacyjnej Organizacji i routing przywracalnego kontekstu. Rozbudowany
+// widok klienta oraz jego CSS pozostają w leniwym chunku Relacji; główny
+// arkusz nie rośnie. Entry i total dostają poniżej 1% mierzonego zapasu.
 const limits = {
-  entryBytes: 554_000,
+  entryBytes: 560_000,
   entryGzipBytes: 147_000,
-  totalJavaScriptBytes: 1_310_000,
+  totalJavaScriptBytes: 1_320_000,
   largestLazyJavaScriptBytes: 565_000,
   stylesheetBytes: 188_000,
 };

@@ -228,6 +228,17 @@ export const ProjectOperationalOverviewQuerySchema = QueryMetadataSchema.extend(
   },
 ).strict();
 
+export const OrganizationOperationalOverviewQuerySchema =
+  QueryMetadataSchema.extend({
+    queryName: z.literal("organization.operationalOverview"),
+    parameters: z
+      .object({
+        organizationId: StrategicRecordIdSchema,
+        spaceId: SpaceIdSchema,
+      })
+      .strict(),
+  }).strict();
+
 export const GlobalSearchQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("search.global"),
   parameters: z
@@ -333,6 +344,7 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   RelationshipWorkspaceQuerySchema,
   RadarReviewQuerySchema,
   ProjectOperationalOverviewQuerySchema,
+  OrganizationOperationalOverviewQuerySchema,
   GlobalSearchQuerySchema,
   CockpitWeekQuerySchema,
   MeaningfulActivityQuerySchema,
@@ -1446,6 +1458,161 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             relationshipState: z.enum(["prospect", "active", "inactive"]),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("organization.operationalOverview"),
+      organization: z
+        .object({
+          id: StrategicRecordIdSchema,
+          spaceId: SpaceIdSchema,
+          name: z.string(),
+          relationshipState: z.enum(["prospect", "active", "inactive"]),
+          nextAction: z.string().optional(),
+          version: z.int().positive(),
+          updatedAt: z.iso.datetime({ offset: true }),
+        })
+        .strict(),
+      people: z.array(
+        z
+          .object({
+            id: StrategicRecordIdSchema,
+            name: z.string(),
+            role: z.string().optional(),
+            email: z.string().optional(),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      opportunities: z.array(
+        z
+          .object({
+            id: StrategicRecordIdSchema,
+            title: z.string(),
+            need: z.string(),
+            stage: z.string(),
+            nextAction: z.string(),
+            state: z.enum(["open", "pursued", "deferred", "rejected", "lost"]),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      offers: z.array(
+        z
+          .object({
+            id: StrategicRecordIdSchema,
+            title: z.string(),
+            opportunityId: StrategicRecordIdSchema,
+            deliverableDocumentId: DocumentIdSchema,
+            ownerPrincipalId: PrincipalIdSchema,
+            state: z.enum([
+              "draft",
+              "ready",
+              "submitted",
+              "accepted",
+              "declined",
+            ]),
+            nextAction: z.string(),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      renewals: z.array(
+        z
+          .object({
+            id: StrategicRecordIdSchema,
+            title: z.string(),
+            scope: z.string(),
+            expiresAt: z.iso.datetime({ offset: true }),
+            leadTimeDays: z.int().nonnegative(),
+            followUpTaskId: TaskIdSchema,
+            state: z.enum([
+              "watching",
+              "renewed",
+              "not_renewing",
+              "irrelevant",
+            ]),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      facts: z.array(
+        z
+          .object({
+            id: StrategicRecordIdSchema,
+            factType: z.string(),
+            value: z.string(),
+            verifiedAt: z.iso.datetime({ offset: true }),
+            staleAfter: z.iso.datetime({ offset: true }),
+            state: z.enum(["current", "stale", "conflicted"]),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      activeProjects: z.array(
+        z
+          .object({
+            id: ProjectIdSchema,
+            title: z.string(),
+            intendedOutcome: z.string(),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      openTasks: z.array(
+        z
+          .object({
+            id: TaskIdSchema,
+            title: z.string(),
+            projectIds: z.array(ProjectIdSchema),
+            operationalState: z.enum(["actionable", "waiting", "blocked"]),
+            dueAt: z.iso.datetime({ offset: true }).optional(),
+            priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      meetings: z.array(
+        z
+          .object({
+            id: StrategicRecordIdSchema,
+            title: z.string(),
+            startedAt: z.iso.datetime({ offset: true }),
+            triage: z.enum(["ready", "partial", "conflicted", "needs_review"]),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      documents: z.array(
+        z
+          .object({
+            id: DocumentIdSchema,
+            title: z.string(),
+            role: z.enum(["note", "document", "deliverable"]),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      recentActivity: z.array(
+        z
+          .object({
+            eventId: z.uuid(),
+            eventType: z.string(),
+            recordId: z.uuid(),
+            occurredAt: z.iso.datetime({ offset: true }),
           })
           .strict(),
       ),

@@ -259,6 +259,7 @@ export type Wave2Query = Extract<
       | "relationship.workspace"
       | "radar.review"
       | "project.operationalOverview"
+      | "organization.operationalOverview"
       | "search.global"
       | "cockpit.week"
       | "activity.meaningful"
@@ -8065,33 +8066,35 @@ export const executeWave2Query = (
               ? [project.spaceId]
               : [];
           })()
-        : query.queryName === "knowledge.documentContext"
-          ? (() => {
-              const document = view.getDocument(query.parameters.documentId);
-              return document?.workspaceId === query.workspaceId
-                ? [document.spaceId]
-                : [];
-            })()
-          : query.queryName === "recovery.preview"
+        : query.queryName === "organization.operationalOverview"
+          ? [query.parameters.spaceId]
+          : query.queryName === "knowledge.documentContext"
             ? (() => {
-                const receipt = view.getAuditReceiptByCommand(
-                  query.parameters.targetCommandId,
-                );
-                return receipt?.workspaceId === query.workspaceId
-                  ? [receipt.spaceId]
+                const document = view.getDocument(query.parameters.documentId);
+                return document?.workspaceId === query.workspaceId
+                  ? [document.spaceId]
                   : [];
               })()
-            : query.queryName === "document.backlinks"
+            : query.queryName === "recovery.preview"
               ? (() => {
-                  const target = resolveDocumentEntityTarget(
-                    view,
-                    query.workspaceId,
-                    query.parameters.targetKind,
-                    query.parameters.targetId,
+                  const receipt = view.getAuditReceiptByCommand(
+                    query.parameters.targetCommandId,
                   );
-                  return target === undefined ? [] : [target.spaceId];
+                  return receipt?.workspaceId === query.workspaceId
+                    ? [receipt.spaceId]
+                    : [];
                 })()
-              : [query.parameters.spaceId];
+              : query.queryName === "document.backlinks"
+                ? (() => {
+                    const target = resolveDocumentEntityTarget(
+                      view,
+                      query.workspaceId,
+                      query.parameters.targetKind,
+                      query.parameters.targetId,
+                    );
+                    return target === undefined ? [] : [target.spaceId];
+                  })()
+                : [query.parameters.spaceId];
   if (
     spaceIds.length === 0 ||
     !authorizeSpaces(dependencies, view, context, query, spaceIds)
@@ -8631,6 +8634,288 @@ export const executeWave2Query = (
           relationshipState: record.relationshipState,
           version: record.version,
           updatedAt: record.updatedAt,
+        })),
+    });
+  }
+  if (query.queryName === "organization.operationalOverview") {
+    const strategicRecords = view.listStrategicRecords(
+      query.workspaceId,
+      query.parameters.spaceId,
+    );
+    const organization = strategicRecords.find(
+      (
+        record,
+      ): record is Extract<
+        StrategicRecord,
+        { readonly kind: "organization" }
+      > =>
+        record.kind === "organization" &&
+        record.id === query.parameters.organizationId,
+    );
+    if (organization === undefined) {
+      return queryRejected(query, kernelTime, "authorization.denied");
+    }
+    const people = strategicRecords
+      .filter(
+        (
+          record,
+        ): record is Extract<StrategicRecord, { readonly kind: "person" }> =>
+          record.kind === "person" && record.organizationId === organization.id,
+      )
+      .sort((left, right) => left.name.localeCompare(right.name));
+    const opportunities = strategicRecords
+      .filter(
+        (
+          record,
+        ): record is Extract<
+          StrategicRecord,
+          { readonly kind: "opportunity" }
+        > =>
+          record.kind === "opportunity" &&
+          record.organizationId === organization.id &&
+          record.state !== "rejected" &&
+          record.state !== "lost",
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          left.title.localeCompare(right.title),
+      );
+    const opportunityIds = new Set(
+      opportunities.map((opportunity) => opportunity.id),
+    );
+    const offers = strategicRecords
+      .filter(
+        (
+          record,
+        ): record is Extract<StrategicRecord, { readonly kind: "offer" }> =>
+          record.kind === "offer" && opportunityIds.has(record.opportunityId),
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          left.title.localeCompare(right.title),
+      );
+    const renewals = strategicRecords
+      .filter(
+        (
+          record,
+        ): record is Extract<StrategicRecord, { readonly kind: "renewal" }> =>
+          record.kind === "renewal" &&
+          record.organizationId === organization.id &&
+          record.state !== "irrelevant",
+      )
+      .sort(
+        (left, right) =>
+          left.expiresAt.localeCompare(right.expiresAt) ||
+          left.title.localeCompare(right.title),
+      );
+    const facts = strategicRecords
+      .filter(
+        (
+          record,
+        ): record is Extract<
+          StrategicRecord,
+          { readonly kind: "relationship_fact" }
+        > =>
+          record.kind === "relationship_fact" &&
+          record.organizationId === organization.id,
+      )
+      .sort(
+        (left, right) =>
+          left.state.localeCompare(right.state) ||
+          left.factType.localeCompare(right.factType),
+      );
+    const meetings = strategicRecords
+      .filter(
+        (
+          record,
+        ): record is Extract<StrategicRecord, { readonly kind: "meeting" }> =>
+          record.kind === "meeting" &&
+          record.meeting.organizationId === organization.id,
+      )
+      .sort((left, right) =>
+        right.meeting.startedAt.localeCompare(left.meeting.startedAt),
+      );
+    const projectIds = new Set(
+      opportunities.flatMap((opportunity) => opportunity.projectIds),
+    );
+    const activeProjects = view
+      .listProjects(query.workspaceId, organization.spaceId)
+      .filter(
+        (project) =>
+          project.lifecycle === "active" && projectIds.has(project.id),
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          left.title.localeCompare(right.title),
+      );
+    const activeProjectIds = new Set(
+      activeProjects.map((project) => project.id),
+    );
+    const projectIdsByTask = new Map<string, Set<ProjectId>>();
+    for (const relation of view.listRelations(
+      query.workspaceId,
+      organization.spaceId,
+    )) {
+      if (
+        relation.state !== "active" ||
+        !activeProjectIds.has(relation.projectId)
+      )
+        continue;
+      const ids = projectIdsByTask.get(relation.taskId) ?? new Set<ProjectId>();
+      ids.add(relation.projectId);
+      projectIdsByTask.set(relation.taskId, ids);
+    }
+    const openTasks = view
+      .listTasksInSpace(query.workspaceId, organization.spaceId)
+      .filter(
+        (task) =>
+          task.recordState !== "removed" &&
+          task.completionState === "open" &&
+          projectIdsByTask.has(task.id),
+      )
+      .sort(
+        (left, right) =>
+          (left.dueAt ?? "9999").localeCompare(right.dueAt ?? "9999") ||
+          left.title.localeCompare(right.title),
+      );
+    const documentIds = new Set(
+      view
+        .listDocumentEntityLinks(
+          query.workspaceId,
+          "organization",
+          organization.id,
+        )
+        .filter((link) => link.spaceId === organization.spaceId)
+        .map((link) => link.documentId),
+    );
+    const documents = view
+      .listDocuments(query.workspaceId, organization.spaceId)
+      .filter((document) => documentIds.has(document.id))
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) ||
+          left.title.localeCompare(right.title),
+      );
+    const relatedRecordIds = new Set<string>([
+      organization.id,
+      ...people.map((record) => record.id),
+      ...opportunities.map((record) => record.id),
+      ...offers.map((record) => record.id),
+      ...renewals.map((record) => record.id),
+      ...facts.map((record) => record.id),
+      ...meetings.map((record) => record.id),
+      ...activeProjects.map((record) => record.id),
+      ...openTasks.map((record) => record.id),
+      ...documents.map((record) => record.id),
+    ]);
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "organization.operationalOverview",
+      organization: {
+        id: organization.id,
+        spaceId: organization.spaceId,
+        name: organization.name,
+        relationshipState: organization.relationshipState,
+        ...(organization.nextAction === undefined
+          ? {}
+          : { nextAction: organization.nextAction }),
+        version: organization.version,
+        updatedAt: organization.updatedAt,
+      },
+      people: people.slice(0, 100).map((record) => ({
+        id: record.id,
+        name: record.name,
+        ...(record.role === undefined ? {} : { role: record.role }),
+        ...(record.email === undefined ? {} : { email: record.email }),
+        version: record.version,
+        updatedAt: record.updatedAt,
+      })),
+      opportunities: opportunities.slice(0, 100).map((record) => ({
+        id: record.id,
+        title: record.title,
+        need: record.need,
+        stage: record.stage,
+        nextAction: record.nextAction,
+        state: record.state,
+        version: record.version,
+        updatedAt: record.updatedAt,
+      })),
+      offers: offers.slice(0, 100).map((record) => ({
+        id: record.id,
+        title: record.title,
+        opportunityId: record.opportunityId,
+        deliverableDocumentId: record.deliverableDocumentId,
+        ownerPrincipalId: record.ownerPrincipalId,
+        state: record.state,
+        nextAction: record.nextAction,
+        version: record.version,
+        updatedAt: record.updatedAt,
+      })),
+      renewals: renewals.slice(0, 100).map((record) => ({
+        id: record.id,
+        title: record.title,
+        scope: record.scope,
+        expiresAt: record.expiresAt,
+        leadTimeDays: record.leadTimeDays,
+        followUpTaskId: record.followUpTaskId,
+        state: record.state,
+        version: record.version,
+        updatedAt: record.updatedAt,
+      })),
+      facts: facts.slice(0, 100).map((record) => ({
+        id: record.id,
+        factType: record.factType,
+        value: record.value,
+        verifiedAt: record.verifiedAt,
+        staleAfter: record.staleAfter,
+        state: record.state,
+        version: record.version,
+        updatedAt: record.updatedAt,
+      })),
+      activeProjects: activeProjects.slice(0, 100).map((project) => ({
+        id: project.id,
+        title: project.title,
+        intendedOutcome: project.intendedOutcome,
+        version: project.version,
+        updatedAt: project.updatedAt,
+      })),
+      openTasks: openTasks.slice(0, 100).map((task) => ({
+        id: task.id,
+        title: task.title,
+        projectIds: [...(projectIdsByTask.get(task.id) ?? [])].sort(),
+        operationalState: task.operationalState,
+        ...(task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
+        ...(task.priority === undefined ? {} : { priority: task.priority }),
+        version: task.version,
+        updatedAt: task.updatedAt,
+      })),
+      meetings: meetings.slice(0, 100).map((record) => ({
+        id: record.id,
+        title: record.meeting.title ?? "Spotkanie bez tytułu",
+        startedAt: record.meeting.startedAt,
+        triage: record.meeting.triage,
+        version: record.version,
+        updatedAt: record.updatedAt,
+      })),
+      documents: documents.slice(0, 100).map((document) => ({
+        id: document.id,
+        title: document.title,
+        role: document.role ?? "document",
+        version: document.version,
+        updatedAt: document.updatedAt,
+      })),
+      recentActivity: view
+        .listEvents(query.workspaceId, organization.spaceId)
+        .filter((event) => relatedRecordIds.has(event.aggregateId))
+        .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
+        .slice(0, 20)
+        .map((event) => ({
+          eventId: event.id,
+          eventType: event.type,
+          recordId: event.aggregateId,
+          occurredAt: event.occurredAt,
         })),
     });
   }

@@ -24,6 +24,10 @@ const surfaces = readFileSync(
   "utf8",
 );
 const styles = readFileSync(path.join(root, "src", "styles.css"), "utf8");
+const organizationStyles = readFileSync(
+  path.join(root, "src", "organization-context.css"),
+  "utf8",
+);
 const tokens = readFileSync(path.join(root, "src", "tokens.css"), "utf8");
 const activitySurface = readFileSync(
   path.join(root, "src", "ActivitySurface.tsx"),
@@ -251,6 +255,56 @@ describe("interaction recovery contracts", () => {
     assert.match(
       styles,
       /@container \(max-width: 34rem\)[\s\S]*\.project-context-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,
+    );
+  });
+
+  it("opens Organization as one restorable client context with real navigation", () => {
+    for (const heading of [
+      "Aktywna praca",
+      "Osoby",
+      "Szanse i oferty",
+      "Odnowienia",
+      "Fakty o relacji",
+      "Spotkania",
+      "Dokumenty",
+    ])
+      assert.match(strategicSurface, new RegExp(`>${heading}<`));
+    assert.match(strategicSurface, /overview\.activeProjects\.map/);
+    assert.match(strategicSurface, /overview\.openTasks\.map/);
+    assert.match(strategicSurface, /overview\.people\.map/);
+    assert.match(strategicSurface, /overview\.opportunities\.map/);
+    assert.match(strategicSurface, /overview\.renewals\.map/);
+    assert.match(strategicSurface, /overview\.facts\.map/);
+    assert.match(strategicSurface, /overview\.meetings\.map/);
+    assert.match(strategicSurface, /overview\.documents\.map/);
+    assert.match(
+      strategicSurface,
+      /onDoubleClick=\{\(\) =>[\s\S]*onOpenOrganization/,
+    );
+    assert.match(strategicSurface, /event\.key !== "Enter"/);
+    assert.match(realApp, /organizationContext\(id, name\)/);
+    assert.match(strategicSurface, /loadOrganizationOverview\(/);
+    assert.match(strategicSurface, /export const OrganizationContextLoader/);
+    assert.match(strategicSurface, /Spróbuj ponownie/);
+    assert.match(
+      surfaces,
+      /relationshipKinds\.has\(item\.recordKind\)[\s\S]*\? "relationships"/,
+    );
+    assert.match(
+      realApp,
+      /nextSurface === "relationships"[\s\S]*record\?\.kind === "organization"[\s\S]*organizationContext\(record\.id, record\.name\)/,
+    );
+    assert.match(realApp, /onOpenProject=\{\(id, title\) =>/);
+    assert.match(realApp, /onOpenTask=\{\(id, title\) =>/);
+    assert.match(realApp, /onOpenDocument=\{\(id, title\) =>/);
+    assert.match(
+      organizationStyles,
+      /\.organization-context__grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s,
+    );
+    assert.match(organizationStyles, /@container \(max-width: 720px\)/);
+    assert.match(
+      organizationStyles,
+      /@media \(forced-colors: active\)[\s\S]*\.organization-context__rows/,
     );
   });
 

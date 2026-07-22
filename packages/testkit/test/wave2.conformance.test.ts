@@ -61,6 +61,7 @@ const context = (): ExecutionContext =>
       "project.updateOutcome",
       "project.list",
       "project.operationalOverview",
+      "organization.operationalOverview",
       "document.create",
       "document.list",
       "document.linkCandidates",
@@ -1237,6 +1238,188 @@ describe("Wave 2 reference semantics", () => {
       overview.result.projection.clientOrganizations[0]?.id,
       organizationId,
     );
+  });
+
+  it("composes one Organization read without duplicating shared Project work", () => {
+    const harness = setup();
+    const organizationId = StrategicRecordIdSchema.parse(requestId());
+    const personId = StrategicRecordIdSchema.parse(requestId());
+    const opportunityAId = StrategicRecordIdSchema.parse(requestId());
+    const opportunityBId = StrategicRecordIdSchema.parse(requestId());
+    const meetingId = StrategicRecordIdSchema.parse(requestId());
+    const documentId = DocumentIdSchema.parse(requestId());
+    const { projectId } = createProjectRecord(harness, "Client delivery");
+    const taskId = createTask(harness, "Confirm client rollout");
+    for (const command of [
+      {
+        ...metadata("client-hub-organization"),
+        commandName: "relationship.organizationCreate" as const,
+        payload: {
+          organizationId,
+          spaceId: ids.rootSpace,
+          name: "Client Hub Ltd",
+          relationshipState: "active" as const,
+          nextAction: "Confirm rollout date",
+        },
+      },
+      {
+        ...metadata("client-hub-person"),
+        commandName: "relationship.personCreate" as const,
+        payload: {
+          personId,
+          spaceId: ids.rootSpace,
+          name: "Marta Client",
+          organizationId,
+          role: "Sponsor",
+          email: "marta@example.test",
+        },
+      },
+      ...[opportunityAId, opportunityBId].map((opportunityId, index) => ({
+        ...metadata(`client-hub-opportunity-${index}`),
+        commandName: "opportunity.create" as const,
+        payload: {
+          opportunityId,
+          spaceId: ids.rootSpace,
+          title: `Client opportunity ${index + 1}`,
+          organizationId,
+          personIds: [personId],
+          need: "Deliver verified work",
+          qualification: "Qualified",
+          stage: "active",
+          nextAction: "Continue delivery",
+          evidenceSourceIds: [],
+        },
+      })),
+    ]) {
+      assert.equal(
+        unwrap(harness.kernel.execute(context(), command)).outcome,
+        "success",
+      );
+    }
+    for (const opportunityId of [opportunityAId, opportunityBId]) {
+      const opportunity = harness.store
+        .snapshot()
+        .strategicRecords?.find((record) => record.id === opportunityId);
+      assert.ok(opportunity);
+      assert.equal(
+        unwrap(
+          harness.kernel.execute(context(), {
+            ...metadata(`client-hub-link-${opportunityId}`, {
+              [opportunityId]: opportunity.version,
+              [projectId]: 1,
+            }),
+            commandName: "opportunity.linkOutcomes",
+            payload: {
+              opportunityId,
+              offerIds: [],
+              projectIds: [projectId],
+              state: "open",
+              nextAction: "Continue delivery",
+            },
+          }),
+        ).outcome,
+        "success",
+      );
+    }
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("client-hub-task", {
+            [taskId]: 1,
+            [projectId]: 1,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_project",
+            taskId,
+            projectId,
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("client-hub-meeting"),
+          commandName: "meeting.upsertImported",
+          payload: {
+            meeting: {
+              id: meetingId,
+              workspaceId: ids.workspace,
+              spaceId: ids.rootSpace,
+              connectionId: "jamie-client-hub",
+              externalMeetingId: "client-hub-meeting",
+              title: "Client steering",
+              startedAt: "2026-07-22T08:00:00.000Z",
+              participants: [],
+              organizationId,
+              workItems: [],
+              contentHash: "b".repeat(64),
+              triage: "ready",
+              missingComponents: [],
+              version: 1,
+              updatedAt: "2026-07-22T09:00:00.000Z",
+            },
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("client-hub-document"),
+          commandName: "document.create",
+          payload: {
+            documentId,
+            spaceId: ids.rootSpace,
+            title: "Client operating brief",
+            role: "document",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    harness.store.replaceDocumentEntityLinks(documentId, [
+      {
+        workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+        spaceId: SpaceIdSchema.parse(ids.rootSpace),
+        documentId,
+        targetKind: "organization",
+        targetId: organizationId,
+        updatedAt: "2026-07-22T09:00:00.000Z",
+      },
+    ]);
+
+    const overview = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "organization.operationalOverview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { organizationId, spaceId: ids.rootSpace },
+    });
+    if (
+      overview.kind !== "query_result" ||
+      overview.result.outcome !== "success" ||
+      overview.result.projection.kind !== "organization.operationalOverview"
+    )
+      throw new Error("Expected composed Organization overview.");
+    assert.equal(overview.result.projection.organization.id, organizationId);
+    assert.equal(overview.result.projection.people[0]?.id, personId);
+    assert.equal(overview.result.projection.opportunities.length, 2);
+    assert.deepEqual(
+      overview.result.projection.activeProjects.map((project) => project.id),
+      [projectId],
+    );
+    assert.deepEqual(
+      overview.result.projection.openTasks.map((task) => task.id),
+      [taskId],
+    );
+    assert.equal(overview.result.projection.meetings[0]?.id, meetingId);
+    assert.equal(overview.result.projection.documents[0]?.id, documentId);
+    assert.ok(overview.result.projection.recentActivity.length > 0);
   });
 
   it("completes, reopens, and changes Task status with expected-version and replay safety", () => {
@@ -2923,6 +3106,9 @@ describe("Wave 2 reference semantics", () => {
       "10000000-0000-4000-8000-00000000dcbc",
     );
     const hiddenDocumentId = "10000000-0000-4000-8000-00000000dcbd" as never;
+    const hiddenOrganizationId = StrategicRecordIdSchema.parse(
+      "10000000-0000-4000-8000-00000000dcbe",
+    );
     harness.store.transact((transaction) => {
       assert.equal(isApplicationWave2Transaction(transaction), true);
       if (!isApplicationWave2Transaction(transaction)) {
@@ -2967,6 +3153,19 @@ describe("Wave 2 reference semantics", () => {
         spaceId: hiddenSpaceId,
         title: "SECRET_DOCUMENT_TITLE",
         role: "note",
+        createdBy: context().principalId,
+        version: 1,
+        createdAt: "2026-07-12T12:00:00.000Z",
+        updatedAt: "2026-07-12T12:00:00.000Z",
+      });
+      transaction.insertStrategicRecord({
+        id: hiddenOrganizationId,
+        workspaceId: context().workspaceId,
+        spaceId: hiddenSpaceId,
+        kind: "organization",
+        name: "SECRET_ORGANIZATION_TITLE",
+        relationshipState: "active",
+        nextAction: "SECRET_ORGANIZATION_ACTION",
         createdBy: context().principalId,
         version: 1,
         createdAt: "2026-07-12T12:00:00.000Z",
@@ -3031,6 +3230,25 @@ describe("Wave 2 reference semantics", () => {
       JSON.stringify(visibleTargetBacklinks).includes("SECRET"),
       false,
     );
+    const hiddenOrganization = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "organization.operationalOverview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: {
+        organizationId: hiddenOrganizationId,
+        spaceId: hiddenSpaceId,
+      },
+    });
+    assert.equal(hiddenOrganization.kind, "query_result");
+    if (hiddenOrganization.kind === "query_result") {
+      assert.equal(hiddenOrganization.result.outcome, "rejected");
+      assert.equal(
+        JSON.stringify(hiddenOrganization).includes("SECRET"),
+        false,
+      );
+    }
     const deniedRelation = unwrap(
       harness.kernel.execute(context(), {
         ...metadata("cross-space-relate", {

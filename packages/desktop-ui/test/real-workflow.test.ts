@@ -11,6 +11,7 @@ import {
   ProjectIdSchema,
   RelationIdSchema,
   SpaceIdSchema,
+  StrategicRecordIdSchema,
   TaskIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
@@ -26,6 +27,7 @@ import {
   createSavedWorkView,
   createWorkLink,
   loadDesktopSnapshot,
+  loadOrganizationOverview,
   previewUndo,
   relateTask,
   searchGlobal,
@@ -46,6 +48,9 @@ const statusId = TaskStatusIdSchema.parse(
 );
 const taskId = TaskIdSchema.parse("00000000-0000-4000-8000-000000000004");
 const projectId = ProjectIdSchema.parse("00000000-0000-4000-8000-000000000005");
+const organizationId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-000000000012",
+);
 const relationId = RelationIdSchema.parse(
   "00000000-0000-4000-8000-000000000006",
 );
@@ -429,6 +434,37 @@ const createTypedClient = () => {
               },
             ],
           }) as Awaited<ReturnType<ConstellationRendererClient["runQuery"]>>;
+        case "organization.operationalOverview":
+          return successQuery(query, {
+            kind: "organization.operationalOverview",
+            organization: {
+              id: organizationId,
+              spaceId,
+              name: "Client Alpha",
+              relationshipState: "active",
+              nextAction: "Potwierdź odbiór",
+              version: 2,
+              updatedAt: "2026-07-13T10:00:00.000Z",
+            },
+            people: [],
+            opportunities: [],
+            offers: [],
+            renewals: [],
+            facts: [],
+            activeProjects: [
+              {
+                id: projectId,
+                title: "Alpha",
+                intendedOutcome: "Działa lokalnie",
+                version: 2,
+                updatedAt: "2026-07-13T10:00:00.000Z",
+              },
+            ],
+            openTasks: [],
+            meetings: [],
+            documents: [],
+            recentActivity: [],
+          }) as Awaited<ReturnType<ConstellationRendererClient["runQuery"]>>;
         case "work.overview":
           return successQuery(query, {
             kind: "work.overview",
@@ -616,6 +652,28 @@ describe("real Wave 2 renderer workflow", () => {
     const snapshot = await loadDesktopSnapshot(client);
     assert.equal(snapshot.dataHome, undefined);
     assert.equal(snapshot.tasks.length, 1);
+  });
+
+  it("loads one Organization context through the shared query port", async () => {
+    const { client, queries } = createTypedClient();
+    const snapshot = await loadDesktopSnapshot(client);
+    const overview = await loadOrganizationOverview(
+      client,
+      snapshot,
+      organizationId,
+      spaceId,
+    );
+    assert.equal(overview.organization.name, "Client Alpha");
+    assert.deepEqual(
+      overview.activeProjects.map((project) => project.id),
+      [projectId],
+    );
+    const query = queries.at(-1);
+    assert.equal(query?.queryName, "organization.operationalOverview");
+    if (query?.queryName === "organization.operationalOverview") {
+      assert.equal(query.parameters.organizationId, organizationId);
+      assert.equal(query.parameters.spaceId, spaceId);
+    }
   });
 
   it("explains recoverable capacity and permission failures without partial-save ambiguity", async () => {

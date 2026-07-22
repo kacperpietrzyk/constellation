@@ -2218,6 +2218,18 @@ export const SearchOverlay = ({
   }, [activeIndex, optionCount]);
   const choose = (item: SearchProjection["items"][number] | undefined) => {
     if (!item) return;
+    const relationshipKinds = new Set([
+      "organization",
+      "person",
+      "opportunity",
+      "offer",
+      "renewal",
+      "relationship_fact",
+      "decision",
+      "impact_review",
+      "recurrence",
+      "radar_candidate",
+    ]);
     onNavigate(
       item.recordKind === "project"
         ? "projects"
@@ -2225,7 +2237,11 @@ export const SearchOverlay = ({
           ? "tasks"
           : item.recordKind === "capture"
             ? "history"
-            : "documents",
+            : item.recordKind === "meeting"
+              ? "meetings"
+              : relationshipKinds.has(item.recordKind)
+                ? "relationships"
+                : "documents",
       item.recordId,
     );
     onClose();
