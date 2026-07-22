@@ -1,0 +1,123 @@
+/* PAT-48 — density is a local preference for this operational surface only.
+   Compact mode changes spacing, never membership, content, controls, or the
+   accepted calmer density of reading and rich-document surfaces. */
+
+.work-header-controls {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.work-density-switch {
+  border: 0;
+  display: flex;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+}
+
+.work-density-switch legend {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.work-density-switch button {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  min-height: 2rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.work-density-switch button:first-of-type {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.work-density-switch button:last-of-type {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.work-density-switch button[aria-pressed="true"] {
+  background: var(--surface-selected);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.work-surface[data-density="compact"] .saved-view-strip {
+  margin-bottom: var(--space-4);
+  min-height: 2.75rem;
+}
+
+.work-surface[data-density="compact"] .work-thread {
+  gap: var(--space-4);
+}
+
+.work-surface[data-density="compact"] .work-context-column,
+.work-surface[data-density="compact"] .work-delivery-column {
+  padding: var(--space-3);
+}
+
+.work-surface[data-density="compact"] .work-section-heading {
+  margin-bottom: var(--space-2);
+}
+
+.work-surface[data-density="compact"] .work-context-row,
+.work-surface[data-density="compact"] .work-project-row,
+.work-surface[data-density="compact"] .work-task-row {
+  gap: var(--space-2);
+  padding-block: 0.58rem;
+}
+
+.work-surface[data-density="compact"] .work-create-pair,
+.work-surface[data-density="compact"] .work-link-tools {
+  margin-top: var(--space-3);
+}
+
+.work-surface[data-density="compact"] .work-board-column,
+.work-surface[data-density="compact"] .work-task-row--board,
+.work-surface[data-density="compact"] .work-task-row--timeline,
+.work-surface[data-density="compact"] .work-calendar-overflow-group {
+  padding: var(--space-2);
+}
+
+.work-surface[data-density="compact"] .work-board-cards,
+.work-surface[data-density="compact"] .work-calendar-overflow-group > div {
+  gap: var(--space-1);
+}
+
+.work-surface[data-density="compact"] .work-timeline-row {
+  min-height: 4.5rem;
+  padding: var(--space-1);
+}
+
+.work-surface[data-density="compact"] .work-calendar-day {
+  min-height: 6.25rem;
+  padding: var(--space-1);
+}
+
+.work-surface[data-density="compact"] .work-task-row--calendar {
+  padding: var(--space-1);
+}
+
+@container (max-width: 38.75rem) {
+  .work-header {
+    flex-direction: column;
+  }
+
+  .work-header-controls {
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .work-surface[data-density="compact"] .work-context-column,
+  .work-surface[data-density="compact"] .work-delivery-column {
+    padding: var(--space-3);
+  }
+}
