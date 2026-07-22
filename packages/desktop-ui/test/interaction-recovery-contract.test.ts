@@ -648,6 +648,23 @@ describe("interaction recovery contracts", () => {
     }
   });
 
+  it("collapses labelled navigation groups without hiding rail destinations or hidden focus targets", () => {
+    assert.match(realApp, /useCollapsedNavigationGroups\(\)/);
+    assert.match(realApp, /aria-expanded=\{expanded\}/);
+    assert.match(realApp, /aria-controls=\{groupId\}/);
+    assert.match(realApp, /role="group"/);
+    assert.match(realApp, /hidden=\{!expanded\}/);
+    assert.match(
+      realApp,
+      /const expanded =\s*railMode \|\| !collapsedNavigationGroups\.includes\(group\)/,
+    );
+    assert.match(
+      realApp,
+      /\.nav-item, \.nav-group-toggle[\s\S]*?button\.closest\("\[hidden\]"\) === null/,
+    );
+    assert.match(styles, /\.nav-group-toggle\s*\{[^}]*min-height:\s*2rem/s);
+  });
+
   it("keeps Projects as a collection until the user deliberately opens its full view", () => {
     assert.match(realApp, /onSelectProject=\{selectProjectInInspector\}/);
     assert.match(realApp, /activeProjectId=\{activeContext\.projectId\}/);
