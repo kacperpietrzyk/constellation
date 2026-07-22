@@ -9,9 +9,11 @@ import {
 import type {
   CaptureId,
   CommandId,
+  DocumentId,
   PrincipalId,
   ProjectId,
   RelationId,
+  StrategicRecordId,
   TaskId,
   TaskStatusId,
 } from "@constellation/contracts";
@@ -30,6 +32,7 @@ import {
 } from "./client/workflow.js";
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
+import ProjectContextSections from "./ProjectContextSections.js";
 import { modifierLabel } from "./components/ShortcutsOverlay.js";
 import { calendarReadRefusal } from "./client/calendar-reservation.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
@@ -1475,6 +1478,9 @@ export const ProjectsSurface = ({
   onSetLifecycle,
   onRelate,
   onUnrelate,
+  onOpenDocument,
+  onOpenMeeting,
+  onOpenRelationship,
 }: {
   readonly snapshot: DesktopSnapshot;
   readonly selectedProjectId: ProjectId | undefined;
@@ -1501,6 +1507,9 @@ export const ProjectsSurface = ({
   readonly onSetLifecycle: (lifecycle: "active" | "closed") => void;
   readonly onRelate: (taskId: TaskId) => void;
   readonly onUnrelate: () => void;
+  readonly onOpenDocument: (id: DocumentId, title: string) => void;
+  readonly onOpenMeeting: (id: StrategicRecordId) => void;
+  readonly onOpenRelationship: (id: StrategicRecordId) => void;
 }) => {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -1791,6 +1800,12 @@ export const ProjectsSurface = ({
               )}
             </div>
           </section>
+          <ProjectContextSections
+            overview={overview}
+            onOpenDocument={onOpenDocument}
+            onOpenMeeting={onOpenMeeting}
+            onOpenRelationship={onOpenRelationship}
+          />
           <section
             className="project-work reading-panel"
             aria-labelledby="project-work-title"

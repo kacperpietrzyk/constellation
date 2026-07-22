@@ -169,6 +169,14 @@ without adding generated answers to the desktop application. These records use
 the same deterministic search, activity, export, audit, recovery, MCP, local
 store, and Space-scoped Hub projection rules as the earlier graph.
 
+The Project page now composes its existing graph instead of stopping at an
+outcome and Task list. One permission-safe `project.operationalOverview` read
+returns routed meetings, rich documents that reference the Project, linked
+Decisions, and client Organizations reached through Opportunities or meetings;
+the desktop presents each as a navigable section without copying relation data.
+Project-owned collaborative rich body content remains the next boundary before
+Project-as-document is complete.
+
 Native documents have crossed the first connected-document boundary. The
 desktop now edits versioned structured Yjs content with paragraphs, headings,
 lists, emphasis, links, and code blocks; existing plaintext documents migrate

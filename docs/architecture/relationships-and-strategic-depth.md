@@ -12,6 +12,14 @@ action, and source IDs. Offers point to an existing Deliverable document;
 Projects remain independent outcome records. Linking an Offer or Project to an
 Opportunity preserves each record's identity and version history.
 
+`project.operationalOverview` composes the authorized Project context from
+those existing edges: active Task relations, meetings routed to the Project,
+Documents whose derived rich-content links target it, Decisions whose stable
+linked IDs include it, and client Organizations reached through an Opportunity
+or routed meeting. Every contributing record must share the Project Workspace
+and Space before its label or count is projected. The read is bounded and does
+not create a second set of relations.
+
 Desktop and MCP operators call the same commands. The desktop relationship
 surface creates Organizations, People, Opportunities, Offer drafts tied to a
 Deliverable, Renewals with one follow-up, sourced facts, Decisions and their

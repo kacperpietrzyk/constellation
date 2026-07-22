@@ -395,6 +395,14 @@ Decision impact review, recurrence generation, Project closure, and finite
 Radar behavior are domain rules rather than UI or MCP special cases. See
 [Relationships and strategic depth](relationships-and-strategic-depth.md).
 
+The Project operational overview is a composed query, not a stored dashboard.
+It resolves active Tasks, routed meetings, derived Document references, linked
+Decisions, and client Organizations from the current authorized Space on every
+read. The renderer can navigate each returned identity, while hidden Spaces
+contribute neither labels nor counts. The Project remains the sole graph record;
+its collaborative rich-body stream is a separate implementation boundary still
+in progress, not a hidden Native Document.
+
 ## Boundary rules
 
 - Zod schemas validate untrusted envelopes at runtime and reject unknown fields.

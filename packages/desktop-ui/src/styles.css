@@ -5464,6 +5464,18 @@ button.mention-chip:disabled {
   max-width: none;
   margin: 0;
 }
+.project-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.project-context-card {
+  min-width: 0;
+  overflow: hidden;
+}
+.project-client-context {
+  grid-column: 1 / -1;
+}
 @container (max-width: 34rem) {
   .project-portfolio > header {
     align-items: flex-start;
@@ -5473,6 +5485,14 @@ button.mention-chip:disabled {
 
   .project-portfolio > header > span {
     white-space: normal;
+  }
+
+  .project-context-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-client-context {
+    grid-column: auto;
   }
 }
 .overview-intent {

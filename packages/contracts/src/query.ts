@@ -1404,6 +1404,51 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           })
           .strict(),
       ),
+      relatedMeetings: z.array(
+        z
+          .object({
+            id: StrategicRecordIdSchema,
+            title: z.string(),
+            startedAt: z.iso.datetime({ offset: true }),
+            triage: z.enum(["ready", "partial", "conflicted", "needs_review"]),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      relatedDocuments: z.array(
+        z
+          .object({
+            id: DocumentIdSchema,
+            title: z.string(),
+            role: z.enum(["note", "document", "deliverable"]),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      relatedDecisions: z.array(
+        z
+          .object({
+            id: StrategicRecordIdSchema,
+            title: z.string(),
+            state: z.enum(["current", "superseded"]),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
+      clientOrganizations: z.array(
+        z
+          .object({
+            id: StrategicRecordIdSchema,
+            name: z.string(),
+            relationshipState: z.enum(["prospect", "active", "inactive"]),
+            version: z.int().positive(),
+            updatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      ),
     })
     .strict(),
   z
