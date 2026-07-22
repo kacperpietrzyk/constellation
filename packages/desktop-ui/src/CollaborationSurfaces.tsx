@@ -1,10 +1,15 @@
 import {
+  useEffect,
   useState,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 
-import type { PrincipalId } from "@constellation/contracts";
+import type {
+  CaptureOriginal,
+  KnowledgeSourceId,
+  PrincipalId,
+} from "@constellation/contracts";
 
 import type {
   AttentionInboxProjection,
@@ -17,6 +22,14 @@ import { countLabel, formatDateTime } from "./i18n.js";
 
 type Comment = CommentListProjection["threads"][number];
 type Candidate = MentionCandidatesProjection["candidates"][number];
+type Attachment = Comment["attachments"][number];
+type PendingAttachment = {
+  readonly sourceId: KnowledgeSourceId;
+  readonly original: Extract<
+    CaptureOriginal,
+    { kind: "managed_file" | "screenshot" }
+  >;
+};
 
 // Author identity stays compact: initials in a neutral chip. Blue remains
 // reserved for collaboration identity — mention chips and the own-entry seam.
@@ -64,7 +77,10 @@ export const CommentsPanel = ({
   canResolve,
   busy,
   onAdd,
+  onAttach,
   onEdit,
+  onInspectAttachment,
+  onRestoreAttachment,
   onResolve,
 }: {
   readonly comments: DataSlice<CommentListProjection>;
@@ -79,13 +95,56 @@ export const CommentsPanel = ({
     body: string,
     mentions: readonly PrincipalId[],
     parent?: Comment,
+    attachmentSourceIds?: readonly KnowledgeSourceId[],
   ) => Promise<boolean>;
-  readonly onEdit: (comment: Comment, body: string) => Promise<boolean>;
+  readonly onAttach?: () => Promise<PendingAttachment | undefined>;
+  readonly onEdit: (
+    comment: Comment,
+    body: string,
+    attachmentSourceIds?: readonly KnowledgeSourceId[],
+  ) => Promise<boolean>;
+  readonly onInspectAttachment?: (
+    attachment: Attachment,
+  ) => Promise<"available" | "unavailable">;
+  readonly onRestoreAttachment?: (
+    attachment: Attachment,
+  ) => Promise<"available" | "unavailable">;
   readonly onResolve: (comment: Comment, resolved: boolean) => void;
 }) => {
   const [body, setBody] = useState("");
   const [mentions, setMentions] = useState<readonly PrincipalId[]>([]);
   const [replyTo, setReplyTo] = useState<Comment>();
+  const [pendingAttachments, setPendingAttachments] = useState<
+    readonly PendingAttachment[]
+  >([]);
+  const [attachmentCustody, setAttachmentCustody] = useState<
+    Readonly<Record<string, "checking" | "available" | "unavailable">>
+  >({});
+  useEffect(() => {
+    if (comments.kind !== "ready" || onInspectAttachment === undefined) return;
+    let active = true;
+    const attachments = comments.data.threads.flatMap(
+      (comment) => comment.attachments,
+    );
+    setAttachmentCustody(
+      Object.fromEntries(
+        attachments.map((attachment) => [attachment.sourceId, "checking"]),
+      ),
+    );
+    void Promise.all(
+      attachments.map(async (attachment) => {
+        const state = await onInspectAttachment(attachment);
+        if (!active) return;
+        setAttachmentCustody((current) => ({
+          ...current,
+          [attachment.sourceId]: state,
+        }));
+      }),
+    );
+    return () => {
+      active = false;
+    };
+  }, [comments, onInspectAttachment]);
   const [editingId, setEditingId] = useState<Comment["id"]>();
   // Szkice edycji trzymane per wpis: przełączenie edycji na inny komentarz
   // nie kasuje niezapisanych zmian — wracają po ponownym wejściu w edycję.
@@ -137,10 +196,16 @@ export const CommentsPanel = ({
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!busy && canComment && body.trim()) {
-      void onAdd(body.trim(), mentions, replyTo).then((saved) => {
+      void onAdd(
+        body.trim(),
+        mentions,
+        replyTo,
+        pendingAttachments.map((attachment) => attachment.sourceId),
+      ).then((saved) => {
         if (!saved) return;
         setBody("");
         setMentions([]);
+        setPendingAttachments([]);
         setReplyTo(undefined);
       });
     }
@@ -223,6 +288,75 @@ export const CommentsPanel = ({
           candidateById={candidateById}
           currentPrincipalId={currentPrincipalId}
         />
+        {comment.attachments.length > 0 && (
+          <ul
+            className="managed-attachment-list"
+            aria-label="Załączniki komentarza"
+          >
+            {comment.attachments.map((attachment) => (
+              <li key={attachment.sourceId}>
+                <span>
+                  <strong>{attachment.original.payload.displayName}</strong>
+                  <small>
+                    {Math.ceil(attachment.original.payload.byteLength / 1024)}{" "}
+                    KB
+                  </small>
+                </span>
+                <span
+                  className={`attachment-state ${attachmentCustody[attachment.sourceId] ?? "checking"}`}
+                >
+                  {attachmentCustody[attachment.sourceId] === "available"
+                    ? "W zarządzanym magazynie"
+                    : attachmentCustody[attachment.sourceId] === "unavailable"
+                      ? "Niedostępny na tym urządzeniu"
+                      : "Sprawdzam przechowanie…"}
+                </span>
+                {attachmentCustody[attachment.sourceId] === "unavailable" &&
+                  onRestoreAttachment && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={busy}
+                      onClick={() => {
+                        setAttachmentCustody((current) => ({
+                          ...current,
+                          [attachment.sourceId]: "checking",
+                        }));
+                        void onRestoreAttachment(attachment).then((state) =>
+                          setAttachmentCustody((current) => ({
+                            ...current,
+                            [attachment.sourceId]: state,
+                          })),
+                        );
+                      }}
+                    >
+                      Pobierz ponownie
+                    </button>
+                  )}
+                {comment.author.principalId === currentPrincipalId && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() =>
+                      void onEdit(
+                        comment,
+                        comment.body,
+                        comment.attachments
+                          .filter(
+                            (item) => item.sourceId !== attachment.sourceId,
+                          )
+                          .map((item) => item.sourceId),
+                      )
+                    }
+                  >
+                    Odłącz
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </>
     );
   const draftPreserved = (comment: Comment) =>
@@ -395,10 +529,59 @@ export const CommentsPanel = ({
             </div>
           </fieldset>
         )}
+        {pendingAttachments.length > 0 && (
+          <ul
+            className="managed-attachment-list pending"
+            aria-label="Załączniki nowego komentarza"
+          >
+            {pendingAttachments.map((attachment) => (
+              <li key={attachment.sourceId}>
+                <span>
+                  <strong>{attachment.original.payload.displayName}</strong>
+                  <small>Gotowy do dołączenia</small>
+                </span>
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() =>
+                    setPendingAttachments((current) =>
+                      current.filter(
+                        (item) => item.sourceId !== attachment.sourceId,
+                      ),
+                    )
+                  }
+                >
+                  Usuń
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="comment-composer-actions">
           <span className="comment-composer-hint">
             <kbd>⌘ Enter</kbd> wysyła
           </span>
+          {onAttach && (
+            <button
+              className="text-button"
+              type="button"
+              disabled={!canComment || busy || pendingAttachments.length >= 20}
+              onClick={() => {
+                void onAttach().then((attachment) => {
+                  if (attachment === undefined) return;
+                  setPendingAttachments((current) => [
+                    ...current.filter(
+                      (item) => item.sourceId !== attachment.sourceId,
+                    ),
+                    attachment,
+                  ]);
+                });
+              }}
+            >
+              Dołącz plik
+            </button>
+          )}
           <button
             className="secondary-button compact"
             type="submit"

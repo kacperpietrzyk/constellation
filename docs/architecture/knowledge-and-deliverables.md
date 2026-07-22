@@ -103,12 +103,21 @@ a deterministic retrieval index, not a generated-answer or RAG path.
 - Unlinking removes only the evidence relation and remains undoable. The
   preserved Capture continues to protect the original, so another reference or
   recovery path cannot lose bytes through an ordinary document action.
+- Tasks and comments reuse the same Capture-backed Knowledge Source instead of
+  storing another copy or embedding bytes in record JSON. Their bounded source
+  ID lists are versioned through `task.updateDetails`, `comment.add`, and
+  `comment.edit`; every newly referenced source participates in the command's
+  exact-version precondition.
+- `task.list` and `comment.list` project only the managed-file descriptor,
+  Capture identity, and source-availability fact. The desktop independently
+  inspects device-local custody; a coordinated device can restore missing bytes
+  through the same authorized digest-verified Hub path. Unlinking a Task or
+  comment removes only that relation and preserves the shared Capture.
 
 ## Current limits
 
 This slice does not yet implement approvals, external Artifact transfer,
 automatic citation extraction, source freshness schedules, relationship-record
-exchange for Person, Organization, and Meeting links, or managed attachment
-surfaces on Tasks and comments. Those outcomes must extend the
+exchange for Person, Organization, and Meeting links. Those outcomes must extend the
 same typed records, authorization boundary, and deterministic query model
 rather than add a second document system or an embedded reasoning layer.

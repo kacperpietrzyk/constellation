@@ -62,6 +62,7 @@ export interface TaskDetailsUpdate {
   readonly startAt?: string | null;
   readonly dueAt?: string | null;
   readonly priority?: TaskPriority | null;
+  readonly attachmentSourceIds?: Task["attachmentSourceIds"];
 }
 
 const mergeOptional = <Value>(
@@ -81,6 +82,7 @@ export const updateTaskDetails = (
     startAt: currentStartAt,
     dueAt: currentDueAt,
     priority: currentPriority,
+    attachmentSourceIds: currentAttachmentSourceIds,
     ...base
   } = task;
   const description = mergeOptional(currentDescription, update.description);
@@ -88,6 +90,8 @@ export const updateTaskDetails = (
   const startAt = mergeOptional(currentStartAt, update.startAt);
   const dueAt = mergeOptional(currentDueAt, update.dueAt);
   const priority = mergeOptional(currentPriority, update.priority);
+  const attachmentSourceIds =
+    update.attachmentSourceIds ?? currentAttachmentSourceIds;
   return {
     ...base,
     title: update.title ?? task.title,
@@ -96,6 +100,7 @@ export const updateTaskDetails = (
     ...(startAt === undefined ? {} : { startAt }),
     ...(dueAt === undefined ? {} : { dueAt }),
     ...(priority === undefined ? {} : { priority }),
+    ...(attachmentSourceIds === undefined ? {} : { attachmentSourceIds }),
     version: task.version + 1,
     updatedAt: occurredAt,
   };

@@ -238,7 +238,7 @@ const createProjectRecord = (
 };
 
 describe("Wave 2 reference semantics", () => {
-  it("projects only the managed Capture behind a document file source", () => {
+  it("projects one managed Capture safely through document, Task, and comment attachments", () => {
     const harness = setup();
     const submitted = unwrap(
       harness.kernel.execute(context(), {
@@ -333,6 +333,103 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(attachment?.original.kind, "managed_file");
     if (attachment?.original.kind === "managed_file")
       assert.equal(attachment.original.payload.displayName, "scope.pdf");
+
+    const taskId = createTask(harness, "Review the attached scope");
+    const missingSourceVersion = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("attachment-task-stale", { [taskId]: 1 }),
+        commandName: "task.updateDetails",
+        payload: {
+          taskId,
+          attachmentSourceIds: [routed.projection.sourceId],
+        },
+      }),
+    );
+    assert.equal(
+      missingSourceVersion.diagnosticCode,
+      "record.version_conflict",
+      "linking a managed source requires its exact version",
+    );
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("attachment-task", {
+          [taskId]: 1,
+          [routed.projection.sourceId]: 1,
+        }),
+        commandName: "task.updateDetails",
+        payload: {
+          taskId,
+          attachmentSourceIds: [routed.projection.sourceId],
+        },
+      }),
+    );
+    const tasks = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      tasks.kind !== "query_result" ||
+      tasks.result.outcome !== "success" ||
+      tasks.result.projection.kind !== "task.list"
+    )
+      assert.fail("Expected Task list.");
+    assert.equal(tasks.result.projection.items[0]?.attachments.length, 1);
+    assert.equal(
+      tasks.result.projection.items[0]?.attachments[0]?.captureId,
+      submitted.projection.captureId,
+    );
+
+    const commentId = requestId();
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("attachment-comment", {
+          [taskId]: 2,
+          [routed.projection.sourceId]: 1,
+        }),
+        commandName: "comment.add",
+        payload: {
+          commentId,
+          target: { kind: "task", taskId },
+          body: "The scope is attached.",
+          attachmentSourceIds: [routed.projection.sourceId],
+        },
+      }),
+    );
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("attachment-comment-edit", { [commentId]: 1 }),
+        commandName: "comment.edit",
+        payload: {
+          commentId,
+          body: "The reviewed scope is attached.",
+        },
+      }),
+    );
+    const comments = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "comment.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { target: { kind: "task", taskId } },
+    });
+    if (
+      comments.kind !== "query_result" ||
+      comments.result.outcome !== "success" ||
+      comments.result.projection.kind !== "comment.list"
+    )
+      assert.fail("Expected comments.");
+    assert.equal(comments.result.projection.threads[0]?.attachments.length, 1);
+    assert.equal(
+      harness.store.snapshot().comments?.[0]?.revisions[0]
+        ?.attachmentSourceIds?.[0],
+      routed.projection.sourceId,
+      "a text-only edit preserves attachment history",
+    );
   });
 
   it("preserves source provenance through notes, deliverables, named versions, search, and undo", () => {

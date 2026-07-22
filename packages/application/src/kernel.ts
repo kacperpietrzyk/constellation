@@ -3188,7 +3188,32 @@ export class ApplicationKernel {
         ((assignee.role === "owner" &&
           view.getWorkspace(query.workspaceId)?.rootSpaceId === task.spaceId) ||
           assigneeGrant?.status === "active");
-      return status?.workspaceId === query.workspaceId
+      const attachments = (task.attachmentSourceIds ?? []).map((sourceId) => {
+        if (!isApplicationWave2ReadView(view)) return undefined;
+        const source = view.getKnowledgeSource(sourceId);
+        const capture =
+          source?.sourceCaptureId === undefined
+            ? undefined
+            : view.getCapture(source.sourceCaptureId);
+        return source?.workspaceId === query.workspaceId &&
+          source.spaceId === task.spaceId &&
+          capture?.workspaceId === query.workspaceId &&
+          capture.spaceId === task.spaceId &&
+          (capture.original.kind === "managed_file" ||
+            capture.original.kind === "screenshot")
+          ? {
+              sourceId: source.id,
+              captureId: capture.id,
+              original: capture.original,
+              availability:
+                source.availability === "available"
+                  ? ("available" as const)
+                  : ("unavailable" as const),
+            }
+          : undefined;
+      });
+      return status?.workspaceId === query.workspaceId &&
+        !attachments.some((attachment) => attachment === undefined)
         ? {
             id: task.id,
             spaceId: task.spaceId,
@@ -3209,6 +3234,7 @@ export class ApplicationKernel {
               ? {}
               : { calendarBlock: task.calendarBlock }),
             ...(task.fields === undefined ? {} : { fields: task.fields }),
+            attachments,
             status: {
               id: status.id,
               label: status.label,

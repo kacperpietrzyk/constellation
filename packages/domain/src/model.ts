@@ -350,6 +350,7 @@ export interface Task {
     readonly endsAt: string;
   };
   readonly sourceCaptureId?: CaptureId;
+  readonly attachmentSourceIds?: readonly KnowledgeSourceId[];
   readonly createdBy: PrincipalId;
   readonly version: number;
   readonly createdAt: string;
@@ -383,6 +384,7 @@ export type AttentionDestination =
 export interface CommentRevision {
   readonly body: string;
   readonly mentionPrincipalIds: readonly PrincipalId[];
+  readonly attachmentSourceIds?: readonly KnowledgeSourceId[];
   readonly editedBy: PrincipalId;
   readonly editedAt: string;
 }
@@ -396,6 +398,7 @@ export interface RecordComment {
   readonly rootCommentId: CommentId;
   readonly body: string;
   readonly mentionPrincipalIds: readonly PrincipalId[];
+  readonly attachmentSourceIds?: readonly KnowledgeSourceId[];
   readonly authorPrincipalId: PrincipalId;
   readonly threadState: "open" | "resolved";
   readonly revisions: readonly CommentRevision[];
@@ -987,6 +990,7 @@ export type UndoDescriptor =
       readonly priorStartAt?: string;
       readonly priorDueAt?: string;
       readonly priorPriority?: TaskPriority;
+      readonly priorAttachmentSourceIds?: readonly KnowledgeSourceId[];
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }
