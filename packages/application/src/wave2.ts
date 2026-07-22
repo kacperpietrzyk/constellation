@@ -38,6 +38,9 @@ import {
   type SpaceId,
   type WorkspaceId,
   type KnowledgeSourceId,
+  type GlobalSearchRecordKind,
+  globalSearchRecordKindIds,
+  isGlobalSearchRecordKind,
 } from "@constellation/contracts";
 import {
   completeTask,
@@ -8965,39 +8968,9 @@ export const executeWave2Query = (
   }
   if (query.queryName === "search.global") {
     const needle = normalizeSearch(query.parameters.text);
-    const kinds = new Set(
-      query.parameters.kinds ?? [
-        "task",
-        "project",
-        "capture",
-        "source",
-        "note",
-        "document",
-        "deliverable",
-        "organization",
-        "person",
-        "opportunity",
-        "offer",
-        "renewal",
-        "relationship_fact",
-        "decision",
-        "impact_review",
-        "area",
-        "recurrence",
-        "radar_candidate",
-        "meeting",
-      ],
-    );
+    const kinds = new Set(query.parameters.kinds ?? globalSearchRecordKindIds);
     const items: Array<{
-      recordKind:
-        | "task"
-        | "project"
-        | "capture"
-        | "source"
-        | "note"
-        | "document"
-        | "deliverable"
-        | StrategicRecord["kind"];
+      recordKind: GlobalSearchRecordKind;
       recordId: string;
       spaceId: SpaceId;
       title: string;
@@ -9201,7 +9174,8 @@ export const executeWave2Query = (
         query.workspaceId,
         spaceId,
       )) {
-        if (!kinds.has(record.kind)) continue;
+        if (!isGlobalSearchRecordKind(record.kind) || !kinds.has(record.kind))
+          continue;
         const content = strategicSearchText(record);
         const title = normalizeSearch(content.title);
         const detail = normalizeSearch(content.detail);

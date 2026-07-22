@@ -38,6 +38,7 @@ import {
 } from "./command.js";
 import { RequestOriginSchema } from "./execution-context.js";
 import { ImportedMeetingSchema } from "./meeting-loop.js";
+import { GlobalSearchRecordKindSchema } from "./record-kind-registry.js";
 
 const QueryMetadataSchema = z
   .object({
@@ -246,32 +247,7 @@ export const GlobalSearchQuerySchema = QueryMetadataSchema.extend({
     .object({
       spaceIds: z.array(SpaceIdSchema).min(1).max(50),
       text: z.string().trim().min(1).max(500),
-      kinds: z
-        .array(
-          z.enum([
-            "task",
-            "project",
-            "capture",
-            "source",
-            "note",
-            "document",
-            "deliverable",
-            "organization",
-            "person",
-            "opportunity",
-            "offer",
-            "renewal",
-            "relationship_fact",
-            "decision",
-            "impact_review",
-            "area",
-            "recurrence",
-            "radar_candidate",
-            "meeting",
-          ]),
-        )
-        .min(1)
-        .optional(),
+      kinds: z.array(GlobalSearchRecordKindSchema).min(1).optional(),
       limit: z.int().min(1).max(100).optional(),
     })
     .strict(),
@@ -1628,27 +1604,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
       items: z.array(
         z
           .object({
-            recordKind: z.enum([
-              "task",
-              "project",
-              "capture",
-              "source",
-              "note",
-              "document",
-              "deliverable",
-              "organization",
-              "person",
-              "opportunity",
-              "offer",
-              "renewal",
-              "relationship_fact",
-              "decision",
-              "impact_review",
-              "area",
-              "recurrence",
-              "radar_candidate",
-              "meeting",
-            ]),
+            recordKind: GlobalSearchRecordKindSchema,
             recordId: z.uuid(),
             spaceId: SpaceIdSchema,
             title: z.string(),

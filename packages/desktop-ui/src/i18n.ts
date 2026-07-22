@@ -2,6 +2,8 @@
 // one timestamp format keep the tool voice identical across surfaces instead
 // of each file re-deriving Polish grammar locally.
 
+import { humanRecordKindRegistry } from "@constellation/contracts";
+
 const pluralRules = new Intl.PluralRules("pl-PL");
 
 // Picks the Polish plural form for a cardinal count: "one" (1), "few" (2–4
@@ -28,29 +30,13 @@ export const countLabel = (
 // strategic ledger, impact reviews). Raw contract identifiers must not reach
 // the UI. "Capture" and "Deliverable" stay untranslated only where the product
 // already treats them as proper nouns; the display dictionary prefers Polish.
-export const recordKindLabels: { readonly [kind: string]: string } = {
-  task: "Zadanie",
-  project: "Projekt",
-  capture: "Capture",
-  source: "Źródło",
-  note: "Notatka",
-  document: "Dokument",
-  deliverable: "Rezultat",
-  organization: "Organizacja",
-  person: "Osoba",
-  opportunity: "Szansa",
-  offer: "Oferta",
-  renewal: "Odnowienie",
-  relationship_fact: "Fakt relacji",
-  fact: "Fakt",
-  decision: "Decyzja",
-  impact_review: "Przegląd skutków",
-  area: "Obszar",
-  recurrence: "Cykl",
-  radar_candidate: "Radar wiedzy",
-  meeting: "Spotkanie",
-  commitment: "Zobowiązanie",
-};
+export const recordKindLabels: Readonly<Record<string, string>> =
+  Object.fromEntries(
+    humanRecordKindRegistry.map((descriptor) => [
+      descriptor.id,
+      descriptor.label,
+    ]),
+  );
 
 // Product-wide timestamp: pl-PL, date plus time without seconds. Seconds are
 // audit-level detail and stay in the audit log, not in reading surfaces.

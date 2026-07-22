@@ -7,4 +7,5 @@ export * from "./ids.js";
 export * from "./meeting-loop.js";
 export * from "./outcome.js";
 export * from "./query.js";
+export * from "./record-kind-registry.js";
 export * from "./validation.js";
