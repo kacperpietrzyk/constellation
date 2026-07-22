@@ -1,4 +1,5 @@
 export * from "./command.js";
+export * from "./content-owner.js";
 export * from "./data-home.js";
 export * from "./execution-context.js";
 export * from "./hub.js";
