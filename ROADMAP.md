@@ -216,9 +216,15 @@ permission-safe operational page: relationship state and next action, active
 Projects and open work, people, Opportunities and Offers, Renewals, sourced
 facts, Meetings, linked Documents, and recent material activity. It reuses the
 existing typed edges and exact destination navigation, deduplicates shared
-Projects, and does not infer links or invent a parallel CRM store. The next
-human-surface boundary is spatial Saved View rendering and better control over
-visible complexity.
+Projects, and does not infer links or invent a parallel CRM store.
+
+Saved Views now persist list, grouped board, timeline, and monthly Task-calendar
+renderings over the same permission-safe filtered Task set. Board columns use
+declared status, priority, or choice-field grouping; timeline projects real
+start/deadline spans; calendar places each Task once by deadline or start while
+keeping out-of-month and undated work explicit. None of these layouts creates a
+second work model or implies drag-based mutation or a system-calendar write.
+The remaining human-surface boundary is better control over visible complexity.
 
 ## Delivered foundation — coherent desktop Alpha and release candidate
 

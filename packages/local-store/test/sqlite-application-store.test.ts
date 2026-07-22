@@ -2077,6 +2077,27 @@ describe("SQLite ApplicationStore", () => {
         ).outcome,
         "success",
       );
+      const calendarViewId = "00000000-0000-4000-8000-00000000008d";
+      assert.equal(
+        unwrap(
+          first.kernel.execute(
+            context(),
+            wave2Command(
+              "savedView.create",
+              {
+                savedViewId: calendarViewId,
+                spaceId: ids.rootSpace,
+                name: "Restart-safe calendar",
+                filters: {},
+                sort: "updated_desc",
+                layout: "calendar",
+              },
+              "durable-saved-view-calendar-v1",
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
 
       assert.equal(
         unwrap(
@@ -2135,6 +2156,13 @@ describe("SQLite ApplicationStore", () => {
       assert.equal(persistedTimeline?.kind, "saved_view");
       if (persistedTimeline?.kind === "saved_view") {
         assert.equal(persistedTimeline.layout, "timeline");
+      }
+      const persistedCalendar = reopened.store
+        .snapshot()
+        .strategicRecords?.find((record) => record.id === calendarViewId);
+      assert.equal(persistedCalendar?.kind, "saved_view");
+      if (persistedCalendar?.kind === "saved_view") {
+        assert.equal(persistedCalendar.layout, "calendar");
       }
       assert.equal(
         reopened.store.snapshot().attentionSignals?.[0]?.reason,

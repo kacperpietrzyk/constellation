@@ -51,11 +51,11 @@
   border-radius: var(--radius-md) 0 0 var(--radius-md);
 }
 
-.work-layout-switch button:nth-of-type(2) {
+.work-layout-switch button:not(:first-of-type):not(:last-of-type) {
   border-radius: 0;
 }
 
-.work-layout-switch button:nth-of-type(3) {
+.work-layout-switch button:last-of-type {
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
 }
 

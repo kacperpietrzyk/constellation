@@ -1163,6 +1163,22 @@ it("manages saved view lifecycle with field filters and grouping", () => {
   assert.equal(
     unwrap(
       harness.kernel.execute(context(), {
+        ...metadata("view-layout-calendar", { [savedViewId]: 8 }),
+        commandName: "savedView.update",
+        payload: { savedViewId, layout: "calendar" },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    overview()[0]?.layout,
+    "calendar",
+    "calendar remains the same ungrouped Saved View rather than a new model",
+  );
+
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
         ...metadata("view-ungrouped-board-create"),
         commandName: "savedView.create",
         payload: {
@@ -1180,7 +1196,7 @@ it("manages saved view lifecycle with field filters and grouping", () => {
   );
 
   const deleteCommand = {
-    ...metadata("view-delete", { [savedViewId]: 8 }),
+    ...metadata("view-delete", { [savedViewId]: 9 }),
     commandName: "savedView.delete" as const,
     payload: { savedViewId },
   };
@@ -1192,7 +1208,7 @@ it("manages saved view lifecycle with field filters and grouping", () => {
   assert.equal(
     unwrap(
       harness.kernel.execute(context(), {
-        ...metadata("view-delete-undo", { [savedViewId]: 9 }),
+        ...metadata("view-delete-undo", { [savedViewId]: 10 }),
         commandName: "command.undo",
         payload: { targetCommandId: deleteCommand.commandId },
       }),
