@@ -39,9 +39,46 @@ import {
 } from "./i18n.js";
 
 import "./work-board.css";
+import "./work-calendar.css";
 import "./work-timeline.css";
 
 export type WorkContextKind = "area" | "initiative";
+
+const shiftMonthKey = (monthKey: string, offset: number): string => {
+  const [year, month] = monthKey.split("-").map(Number);
+  return new Date(Date.UTC(year!, month! - 1 + offset, 1))
+    .toISOString()
+    .slice(0, 7);
+};
+
+const monthDateKeys = (monthKey: string): readonly (string | undefined)[] => {
+  const [year, month] = monthKey.split("-").map(Number);
+  const first = new Date(Date.UTC(year!, month! - 1, 1));
+  const leading = (first.getUTCDay() + 6) % 7;
+  const dayCount = new Date(Date.UTC(year!, month!, 0)).getUTCDate();
+  const cells: (string | undefined)[] = Array.from(
+    { length: leading },
+    () => undefined,
+  );
+  for (let day = 1; day <= dayCount; day += 1) {
+    cells.push(`${monthKey}-${String(day).padStart(2, "0")}`);
+  }
+  while (cells.length % 7 !== 0) cells.push(undefined);
+  return cells;
+};
+
+const monthLabel = (monthKey: string): string =>
+  new Intl.DateTimeFormat("pl-PL", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${monthKey}-01T12:00:00.000Z`));
+
+const fullDateLabel = (dateKey: string): string =>
+  new Intl.DateTimeFormat("pl-PL", {
+    dateStyle: "full",
+    timeZone: "UTC",
+  }).format(new Date(`${dateKey}T12:00:00.000Z`));
 
 const stateLabel = {
   actionable: "Do działania",
@@ -125,6 +162,9 @@ export const WorkSurface = ({
     (view) => view.id === activeViewId,
   );
   const todayKey = dateKeyInZone(new Date(), timeZone);
+  const [calendarMonthKey, setCalendarMonthKey] = useState(() =>
+    todayKey.slice(0, 7),
+  );
   const weekdayIndex = (() => {
     try {
       const name = new Intl.DateTimeFormat("en", {
@@ -396,6 +436,40 @@ export const WorkSurface = ({
     timelineRange === undefined
       ? []
       : [timelineStart, timelineStart + timelineRange / 2, timelineEnd];
+  const calendarCells = monthDateKeys(calendarMonthKey);
+  const calendarMonthStart = `${calendarMonthKey}-01`;
+  const calendarMonthEnd = [...calendarCells]
+    .reverse()
+    .find((dateKey): dateKey is string => dateKey !== undefined)!;
+  const calendarTasksByDate = new Map<string, typeof visibleTasks>();
+  const calendarBeforeTasks: typeof visibleTasks = [];
+  const calendarAfterTasks: typeof visibleTasks = [];
+  const calendarUndatedTasks: typeof visibleTasks = [];
+  for (const task of visibleTasks) {
+    const anchor = task.dueAt ?? task.startAt;
+    if (anchor === undefined) {
+      calendarUndatedTasks.push(task);
+      continue;
+    }
+    const anchorKey = dateKeyInZone(anchor, timeZone);
+    if (anchorKey < calendarMonthStart) {
+      calendarBeforeTasks.push(task);
+      continue;
+    }
+    if (anchorKey > calendarMonthEnd) {
+      calendarAfterTasks.push(task);
+      continue;
+    }
+    calendarTasksByDate.set(anchorKey, [
+      ...(calendarTasksByDate.get(anchorKey) ?? []),
+      task,
+    ]);
+  }
+  const calendarOverflowGroups = [
+    { label: "Wcześniej", tasks: calendarBeforeTasks },
+    { label: "Później", tasks: calendarAfterTasks },
+    { label: "Bez daty", tasks: calendarUndatedTasks },
+  ] as const;
   const taskNav = useListNavigation({
     itemCount: visibleTasks.length,
     onOpen: (index) => {
@@ -693,7 +767,7 @@ export const WorkSurface = ({
     );
   };
 
-  const changeLayout = (layout: "list" | "board" | "timeline") => {
+  const changeLayout = (layout: "list" | "board" | "timeline" | "calendar") => {
     if (!client || activeView === undefined || layout === activeLayout) return;
     void run(`view-layout:${activeView.id}`, () =>
       setSavedWorkViewLayout(
@@ -709,7 +783,7 @@ export const WorkSurface = ({
   const renderTask = (
     task: (typeof visibleTasks)[number],
     index: number,
-    variant: "list" | "board" | "timeline",
+    variant: "list" | "board" | "timeline" | "calendar",
   ) => {
     const dependency = activeLinks.find(
       (link) =>
@@ -758,7 +832,8 @@ export const WorkSurface = ({
                 : dependencyTitle
                   ? `Zależy od: ${dependencyTitle}`
                   : "Gotowe do podjęcia",
-              ...(variant !== "timeline" || task.startAt === undefined
+              ...((variant !== "timeline" && variant !== "calendar") ||
+              task.startAt === undefined
                 ? []
                 : [
                     `Start: ${formatDate(
@@ -774,7 +849,7 @@ export const WorkSurface = ({
                       snapshot.bootstrap.workspace.timezone,
                     )}${Date.parse(task.dueAt) < Date.now() ? " · po terminie" : ""}`,
                   ]),
-              ...(variant !== "timeline" ||
+              ...((variant !== "timeline" && variant !== "calendar") ||
               task.startAt !== undefined ||
               task.dueAt !== undefined
                 ? []
@@ -1366,6 +1441,16 @@ export const WorkSurface = ({
                   >
                     Oś czasu
                   </button>
+                  <button
+                    type="button"
+                    aria-pressed={activeLayout === "calendar"}
+                    disabled={
+                      busyIds.has(`view-layout:${activeView.id}`) || !client
+                    }
+                    onClick={() => changeLayout("calendar")}
+                  >
+                    Kalendarz
+                  </button>
                   {groupBy === undefined && (
                     <small id="work-board-requirement">
                       Tablica wymaga widoku grupowanego.
@@ -1546,6 +1631,137 @@ export const WorkSurface = ({
                 })}
               </div>
             </div>
+          )}
+          {activeLayout === "calendar" && (
+            <section
+              className="work-task-calendar"
+              aria-labelledby="work-calendar-month-label"
+            >
+              <header className="work-calendar-toolbar">
+                <div>
+                  <span>Kalendarz zadań</span>
+                  <h3 id="work-calendar-month-label">
+                    {monthLabel(calendarMonthKey)}
+                  </h3>
+                </div>
+                <nav aria-label="Nawigacja miesiąca">
+                  <button
+                    type="button"
+                    aria-label="Poprzedni miesiąc"
+                    onClick={() =>
+                      setCalendarMonthKey((current) =>
+                        shiftMonthKey(current, -1),
+                      )
+                    }
+                  >
+                    ←
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCalendarMonthKey(todayKey.slice(0, 7))}
+                  >
+                    Dzisiaj
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Następny miesiąc"
+                    onClick={() =>
+                      setCalendarMonthKey((current) =>
+                        shiftMonthKey(current, 1),
+                      )
+                    }
+                  >
+                    →
+                  </button>
+                </nav>
+              </header>
+              <div className="work-calendar-scroll">
+                <div className="work-calendar-content">
+                  <div className="work-calendar-weekdays" aria-hidden="true">
+                    {["Pon", "Wt", "Śr", "Czw", "Pt", "Sob", "Niedz"].map(
+                      (weekday) => (
+                        <span key={weekday}>{weekday}</span>
+                      ),
+                    )}
+                  </div>
+                  <div
+                    className="work-calendar-grid"
+                    role="listbox"
+                    aria-label={`Zadania — ${monthLabel(calendarMonthKey)}`}
+                  >
+                    {calendarCells.map((dateKey, cellIndex) => {
+                      if (dateKey === undefined) {
+                        return (
+                          <div
+                            className="work-calendar-day work-calendar-day--blank"
+                            aria-hidden="true"
+                            key={`blank:${cellIndex}`}
+                          />
+                        );
+                      }
+                      const tasks = calendarTasksByDate.get(dateKey) ?? [];
+                      return (
+                        <section
+                          className={`work-calendar-day${
+                            dateKey === todayKey
+                              ? " work-calendar-day--today"
+                              : ""
+                          }`}
+                          role="group"
+                          aria-label={fullDateLabel(dateKey)}
+                          key={dateKey}
+                        >
+                          <header>
+                            <time dateTime={dateKey}>
+                              {Number(dateKey.slice(-2))}
+                            </time>
+                            {dateKey === todayKey && <span>Dziś</span>}
+                          </header>
+                          <div className="work-calendar-day-tasks">
+                            {tasks.map((task) =>
+                              renderTask(
+                                task,
+                                visibleTaskIndex.get(task.id)!,
+                                "calendar",
+                              ),
+                            )}
+                          </div>
+                        </section>
+                      );
+                    })}
+                    {calendarTasksByDate.size === 0 && (
+                      <p className="work-calendar-month-empty" role="status">
+                        Brak zadań z datą w tym miesiącu
+                      </p>
+                    )}
+                    {calendarOverflowGroups.map(({ label, tasks }) =>
+                      tasks.length === 0 ? null : (
+                        <section
+                          className="work-calendar-overflow-group"
+                          role="group"
+                          aria-label={label}
+                          key={label}
+                        >
+                          <header>
+                            <h4>{label}</h4>
+                            <span>{tasks.length}</span>
+                          </header>
+                          <div>
+                            {tasks.map((task) =>
+                              renderTask(
+                                task,
+                                visibleTaskIndex.get(task.id)!,
+                                "calendar",
+                              ),
+                            )}
+                          </div>
+                        </section>
+                      ),
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
           )}
           {visibleTasks.length === 0 && (
             <WorkEmpty

@@ -960,7 +960,12 @@ export const SavedViewGroupBySchema = z.union([
   z.object({ fieldId: FieldDefinitionIdSchema }).strict(),
 ]);
 
-export const SavedViewLayoutSchema = z.enum(["list", "board", "timeline"]);
+export const SavedViewLayoutSchema = z.enum([
+  "list",
+  "board",
+  "timeline",
+  "calendar",
+]);
 
 export const SavedViewCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("savedView.create"),

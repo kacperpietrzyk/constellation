@@ -25,6 +25,8 @@ const ids = {
   view2: "00000000-0000-4000-8000-000000000416",
   status3: "00000000-0000-4000-8000-000000000417",
   view3: "00000000-0000-4000-8000-000000000418",
+  task4: "00000000-0000-4000-8000-000000000419",
+  view4: "00000000-0000-4000-8000-000000000420",
 } as const;
 
 const now = "2026-07-15T10:00:00.000Z";
@@ -130,6 +132,16 @@ export const workHarnessSnapshot = {
           version: 1,
           updatedAt: now,
         },
+        {
+          id: ids.task4,
+          title: "Przygotować pakiet wdrożeniowy",
+          statusId: ids.status,
+          operationalState: "actionable",
+          completionState: "open",
+          dueAt: "2026-08-04T21:59:59.999Z",
+          version: 1,
+          updatedAt: now,
+        },
       ],
       projects: [
         {
@@ -213,6 +225,15 @@ export const workHarnessSnapshot = {
           state: "active",
           version: 1,
         },
+        {
+          id: ids.view4,
+          name: "Kalendarz wdrożenia",
+          filters: {},
+          sort: "updated_desc",
+          layout: "calendar",
+          state: "active",
+          version: 1,
+        },
       ],
       freshness: {
         mode: "local_authoritative",
@@ -265,7 +286,9 @@ if (workHarnessSnapshot.work.kind !== "ready") {
 const baseWork = workHarnessSnapshot.work.data;
 
 export const WorkHarness = () => {
-  const [layout, setLayout] = useState<"list" | "board" | "timeline">("board");
+  const [layout, setLayout] = useState<
+    "list" | "board" | "timeline" | "calendar"
+  >("board");
   const snapshot = useMemo(
     () =>
       ({
@@ -279,7 +302,14 @@ export const WorkHarness = () => {
                 ? {
                     ...view,
                     layout,
-                    version: layout === "board" ? 1 : layout === "list" ? 2 : 3,
+                    version:
+                      layout === "board"
+                        ? 1
+                        : layout === "list"
+                          ? 2
+                          : layout === "timeline"
+                            ? 3
+                            : 4,
                   }
                 : view,
             ),
@@ -306,7 +336,9 @@ export const WorkHarness = () => {
                 ? 1
                 : command.payload.layout === "list"
                   ? 2
-                  : 3,
+                  : command.payload.layout === "timeline"
+                    ? 3
+                    : 4,
             );
           }
           return {

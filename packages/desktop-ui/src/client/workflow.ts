@@ -1291,7 +1291,7 @@ export interface SavedWorkViewFilters {
 export type SavedWorkViewGroupBy =
   "status" | "priority" | { readonly fieldId: string };
 
-export type SavedWorkViewLayout = "list" | "board" | "timeline";
+export type SavedWorkViewLayout = "list" | "board" | "timeline" | "calendar";
 
 export const createSavedWorkView = (
   client: ConstellationRendererClient,

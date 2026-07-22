@@ -66,6 +66,10 @@ const workTimelineStyles = readFileSync(
   path.join(root, "src", "work-timeline.css"),
   "utf8",
 );
+const workCalendarStyles = readFileSync(
+  path.join(root, "src", "work-calendar.css"),
+  "utf8",
+);
 const collaborationSurfaces = readFileSync(
   path.join(root, "src", "CollaborationSurfaces.tsx"),
   "utf8",
@@ -577,6 +581,29 @@ describe("interaction recovery contracts", () => {
     assert.match(
       workTimelineStyles,
       /\.work-timeline-content\s*\{[^}]*min-width:\s*36rem/s,
+    );
+  });
+
+  it("renders every Saved View Task once in a navigable month calendar without invoking calendar writes", () => {
+    assert.match(workSurface, />\s*Kalendarz\s*</);
+    assert.match(workSurface, /aria-label="Nawigacja miesiąca"/);
+    assert.match(workSurface, /task\.dueAt \?\? task\.startAt/);
+    assert.match(workSurface, /calendarTasksByDate\.set/);
+    assert.match(workSurface, /label: "Wcześniej"/);
+    assert.match(workSurface, /label: "Później"/);
+    assert.match(workSurface, /label: "Bez daty"/);
+    assert.match(workSurface, /setCalendarMonthKey/);
+    assert.doesNotMatch(
+      workSurface,
+      /previewCalendarBlocks|confirmCalendarBlocks|calendarWriter|draggable=|onDrag|onDrop/,
+    );
+    assert.match(
+      workCalendarStyles,
+      /\.work-calendar-scroll\s*\{[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto/s,
+    );
+    assert.match(
+      workCalendarStyles,
+      /\.work-calendar-grid\s*\{[^}]*grid-template-columns:\s*repeat\(7,/s,
     );
   });
 
