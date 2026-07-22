@@ -197,10 +197,11 @@ it was generated for and a renewal follow-up carries its review deadline.
 A Task can also carry the time reserved to do it. `task.setCalendarBlock`
 records or clears the calendar block a Task owns — its owned-block identifier,
 provider calendar, last known revision, and reserved window — so any authorized
-device or agent can later update or release that block. It is deliberately a
-recording command: it never contacts a calendar provider and never bypasses the
-exact, single-use consent preview that governs every calendar write, which
-stays device-local. Because the provider write and this record are two steps, a
+device or agent can later update, release, or delete that block. It is
+deliberately a recording command: it never contacts a calendar provider and
+never bypasses the exact, single-use consent preview that governs every
+calendar write or deletion, which stays device-local. Because the provider
+change and this record are two steps, a
 crash between them can leave an event the Task does not yet know about; the
 next preview for that Task reconciles against the existing marker.
 
@@ -255,16 +256,22 @@ Allowed-transition matrices are deliberately not introduced yet.
 
 Core records accept typed workspace extension fields. A field definition is
 workspace-scoped (target kind Task or Project, label, closed type union of
-text/number/date/constrained choice, active/retired lifecycle) and is managed
+text/number/date/constrained choice plus bounded formula and Task-subtask rollup
+definitions, active/retired lifecycle) and is managed
 by workspace maintainers through versioned `fieldDef.*` commands with audit
 and previewed undo. Values live on the target record itself
 (`record.setFieldValue`, expected-version, explicit null to clear, at most 32
 populated fields), so Space authorization, audit, export, backup, Hub
 projection, and revocation are inherited from the record — a value can never
 out-scope its record, definitions cannot bypass authorization, and no
-arbitrary JSON enters the graph. A retired definition stops being assignable
-while existing values keep rendering with a historical marker. Field-based
-saved-view filters and search indexing are deliberately later steps.
+arbitrary JSON enters the graph. Formula fields sum explicitly named numeric
+scalar fields on the same Task. Task rollups count active direct subtasks or
+sum one numeric scalar field across them. Computed values are derived only at
+authorized query time, remain read-only in UI and commands, and are never
+persisted as editable record values. A retired definition stops being
+assignable while existing scalar values keep rendering with a historical
+marker. Saved-view authoring excludes computed fields until the filter
+evaluator gains the same vocabulary.
 
 Project templates bundle a reusable start: a workspace-scoped template
 definition (name, up to 24 starter Task titles, referenced project-targeted

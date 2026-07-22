@@ -67,6 +67,7 @@ import {
   taskStatusState,
   updateTaskStatusDefinition,
   taskTimingAfterUpdate,
+  taskFieldsWithComputedValues,
   updateTaskDetails,
   createNativeDocument,
   relateTaskToProject,
@@ -4924,6 +4925,42 @@ export const executeWave2Command = (
         });
       }
       const definitions = transaction.listFieldDefinitions(command.workspaceId);
+      const computedType = command.payload.type;
+      if (computedType.kind === "formula") {
+        if (command.payload.targetKind !== "task")
+          return precondition(command, occurredAt);
+        const operands = computedType.fieldIds.map((fieldId) =>
+          definitions.find((definition) => definition.id === fieldId),
+        );
+        if (
+          new Set(computedType.fieldIds).size !==
+            computedType.fieldIds.length ||
+          operands.some(
+            (definition) =>
+              definition === undefined ||
+              definition.targetKind !== command.payload.targetKind ||
+              fieldDefinitionState(definition) !== "active" ||
+              definition.type.kind !== "number",
+          )
+        )
+          return precondition(command, occurredAt);
+      }
+      if (computedType.kind === "rollup") {
+        if (command.payload.targetKind !== "task")
+          return precondition(command, occurredAt);
+        if (computedType.operation === "sum") {
+          const source = definitions.find(
+            (definition) => definition.id === computedType.fieldId,
+          );
+          if (
+            source === undefined ||
+            source.targetKind !== "task" ||
+            fieldDefinitionState(source) !== "active" ||
+            source.type.kind !== "number"
+          )
+            return precondition(command, occurredAt);
+        }
+      }
       const normalizedLabel = command.payload.label.toLocaleLowerCase("pl-PL");
       if (
         definitions.some(
@@ -7782,6 +7819,23 @@ export const executeWave2Query = (
     )
       return queryRejected(query, kernelTime, "authorization.denied");
     const records = view.listStrategicRecords(query.workspaceId, space.id);
+    const spaceTasks = view.listTasksInSpace(query.workspaceId, space.id);
+    const fieldDefinitions = view.listFieldDefinitions(query.workspaceId);
+    const subtasksByParent = new Map<
+      string,
+      Array<(typeof spaceTasks)[number]>
+    >();
+    for (const candidate of spaceTasks) {
+      if (
+        candidate.parentTaskId === undefined ||
+        candidate.recordState !== "active"
+      )
+        continue;
+      const siblings = subtasksByParent.get(candidate.parentTaskId);
+      if (siblings === undefined)
+        subtasksByParent.set(candidate.parentTaskId, [candidate]);
+      else siblings.push(candidate);
+    }
     const stateOrder = { waiting: 0, blocked: 1, actionable: 2 } as const;
     return querySuccess(query, kernelTime, freshness, {
       kind: "work.overview",
@@ -7816,7 +7870,14 @@ export const executeWave2Query = (
           ...(task.parentTaskId === undefined
             ? {}
             : { parentTaskId: task.parentTaskId }),
-          ...(task.fields === undefined ? {} : { fields: task.fields }),
+          ...(() => {
+            const fields = taskFieldsWithComputedValues(
+              task.fields,
+              fieldDefinitions,
+              subtasksByParent.get(task.id) ?? [],
+            );
+            return fields === undefined ? {} : { fields };
+          })(),
           version: task.version,
           updatedAt: task.updatedAt,
         })),

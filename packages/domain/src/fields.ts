@@ -7,6 +7,58 @@ import type {
   FieldValueMap,
 } from "./model.js";
 
+const numericField = (
+  fields: FieldValueMap | undefined,
+  fieldId: FieldDefinitionId,
+): number | undefined => {
+  const value = fields?.[fieldId];
+  return value?.kind === "number" ? value.value : undefined;
+};
+
+/**
+ * Adds deterministic derived values to a Task projection. Computed values are
+ * never persisted: callers provide only related records already authorized
+ * for the same Space, which keeps the evaluator permission-safe by design.
+ */
+export const taskFieldsWithComputedValues = (
+  stored: FieldValueMap | undefined,
+  definitions: readonly FieldDefinition[],
+  subtasks: readonly { readonly fields?: FieldValueMap }[],
+): FieldValueMap | undefined => {
+  const next: Record<string, FieldValue> = { ...(stored ?? {}) };
+  for (const definition of definitions) {
+    if (
+      definition.targetKind !== "task" ||
+      fieldDefinitionState(definition) !== "active"
+    )
+      continue;
+    if (definition.type.kind === "formula") {
+      const operands = definition.type.fieldIds.map((fieldId) =>
+        numericField(stored, fieldId),
+      );
+      if (operands.every((value): value is number => value !== undefined)) {
+        const value = operands.reduce((sum, operand) => sum + operand, 0);
+        if (Number.isFinite(value))
+          next[definition.id] = { kind: "number", value };
+      }
+      continue;
+    }
+    if (definition.type.kind !== "rollup") continue;
+    if (definition.type.operation === "count") {
+      next[definition.id] = { kind: "number", value: subtasks.length };
+      continue;
+    }
+    const sourceFieldId = definition.type.fieldId;
+    const value = subtasks.reduce(
+      (sum, subtask) =>
+        sum + (numericField(subtask.fields, sourceFieldId) ?? 0),
+      0,
+    );
+    if (Number.isFinite(value)) next[definition.id] = { kind: "number", value };
+  }
+  return Object.keys(next).length === 0 ? undefined : next;
+};
+
 export const fieldDefinitionState = (
   definition: FieldDefinition,
 ): "active" | "retired" => definition.state ?? "active";

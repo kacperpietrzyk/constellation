@@ -1,4 +1,34 @@
-import type { CalendarCapability } from "@constellation/contracts";
+import type {
+  CalendarBlockDraft,
+  CalendarCapability,
+  TaskId,
+} from "@constellation/contracts";
+
+export const calendarDeletionDraft = (
+  block: {
+    readonly ownedBlockExternalId: string;
+    readonly calendarExternalId: string;
+    readonly revision: string;
+    readonly startsAt: string;
+    readonly endsAt: string;
+  },
+  taskId: TaskId,
+  taskTitle: string,
+): CalendarBlockDraft => ({
+  ownedBlockExternalId: block.ownedBlockExternalId,
+  calendarExternalId: block.calendarExternalId,
+  title: taskTitle,
+  startsAt: block.startsAt,
+  endsAt: block.endsAt,
+  expectedRevision: block.revision,
+  sourceRecordIds: [`task:${taskId}`],
+});
+
+// A same-day 09:00 default becomes a guaranteed provider failure once the
+// owner opens the inspector later in the day. Start one hour ahead instead;
+// the surface still validates at submit time in case the form stayed open.
+export const nextReservationStart = (now = new Date()): Date =>
+  new Date(now.getTime() + 3_600_000);
 
 // R12.6 / ADR-042 — decides whether this device can reserve time for a Task,
 // and where that reservation would be written.

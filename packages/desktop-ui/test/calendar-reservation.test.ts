@@ -1,12 +1,42 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { CalendarCapability } from "@constellation/contracts";
+import {
+  CalendarBlockDraftSchema,
+  TaskIdSchema,
+  type CalendarCapability,
+} from "@constellation/contracts";
 
 import {
+  calendarDeletionDraft,
   calendarReadRefusal,
+  nextReservationStart,
   reservationTarget,
 } from "../src/client/calendar-reservation.js";
+
+test("calendar deletion sends the strict provider draft without stored revision metadata", () => {
+  const draft = calendarDeletionDraft(
+    {
+      ownedBlockExternalId: "task-block:00000000-0000-4000-8000-000000000001",
+      calendarExternalId: "calendar-default",
+      revision: "2026-07-22T11:25:15Z",
+      startsAt: "2026-07-22T12:24:00.000Z",
+      endsAt: "2026-07-22T13:24:00.000Z",
+    },
+    TaskIdSchema.parse("00000000-0000-4000-8000-000000000001"),
+    "Release R16",
+  );
+  assert.deepEqual(Object.keys(draft).sort(), [
+    "calendarExternalId",
+    "endsAt",
+    "expectedRevision",
+    "ownedBlockExternalId",
+    "sourceRecordIds",
+    "startsAt",
+    "title",
+  ]);
+  assert.doesNotThrow(() => CalendarBlockDraftSchema.parse(draft));
+});
 
 const writable: CalendarCapability = {
   platform: "macos",
@@ -17,6 +47,14 @@ const writable: CalendarCapability = {
   detailCode: "ok",
   defaultWriteCalendarExternalId: "calendar-default",
 };
+
+test("a new reservation starts in the future even after the old 09:00 default", () => {
+  const now = new Date("2026-07-22T23:30:00+02:00");
+  assert.equal(
+    nextReservationStart(now).toISOString(),
+    "2026-07-22T22:30:00.000Z",
+  );
+});
 
 test("reserving time targets the calendar the provider uses for new events", () => {
   const target = reservationTarget(writable);

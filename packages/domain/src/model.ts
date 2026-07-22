@@ -257,7 +257,23 @@ export type FieldDefinitionType =
   | { readonly kind: "text" }
   | { readonly kind: "number" }
   | { readonly kind: "date" }
-  | { readonly kind: "choice"; readonly options: readonly string[] };
+  | { readonly kind: "choice"; readonly options: readonly string[] }
+  | {
+      readonly kind: "formula";
+      readonly operator: "sum";
+      readonly fieldIds: readonly FieldDefinitionId[];
+    }
+  | {
+      readonly kind: "rollup";
+      readonly relationPath: "task.subtasks";
+      readonly operation: "count";
+    }
+  | {
+      readonly kind: "rollup";
+      readonly relationPath: "task.subtasks";
+      readonly operation: "sum";
+      readonly fieldId: FieldDefinitionId;
+    };
 
 export interface FieldDefinition {
   readonly id: FieldDefinitionId;

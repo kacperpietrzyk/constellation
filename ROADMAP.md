@@ -243,7 +243,7 @@ and inspector destinations while keeping internal audit kinds and domain
 invariants separate. These are internal compile-time contracts, not a public
 extension API or runtime plugin system.
 
-## Delivered foundation — coherent desktop Alpha and release candidate
+## Delivered foundation — coherent desktop Alpha and first public release
 
 The desktop application is now one coherent, recoverable product surface rather
 than a collection of architectural demonstrations. Universal Capture handles
@@ -256,33 +256,33 @@ navigation, detached windows, and starter imports complete the current Alpha.
 
 Hosted macOS and Windows gates prove the application, Hub, collaboration,
 recovery, update, compatible rollback, and uninstall journeys. A protected
-workflow has also produced an unpublished `0.1.0` GitHub Release draft whose
-Apple Silicon and Intel artifacts are Developer ID signed, notarized, stapled,
-and Gatekeeper accepted. Windows remains built and packaged as a first-class
-target, while paid Windows production signing is intentionally deferred.
+workflow publishes the `0.1.0` GitHub Release whose Apple Silicon and Intel
+artifacts are Developer ID signed, notarized, stapled, and Gatekeeper accepted.
+Windows remains built and packaged as a first-class target, while paid Windows
+production signing is intentionally deferred and unsigned artifacts are not
+presented as a production release.
 
-This is a dogfoodable desktop Alpha and a release candidate, not yet the final
-desktop product or a published release.
+This is a public, dogfoodable desktop Alpha, not yet a stable desktop product.
 
-## Current — desktop product readiness
+## Delivered foundation — desktop product readiness
 
-Close the remaining difference between a verified Alpha and a desktop product
-that can carry real daily work:
+The first release gate closed the remaining difference between the verified
+candidate and a desktop Alpha that can carry representative daily work:
 
-1. dogfood representative personal work through onboarding, capture, planning,
+1. dogfooded representative personal work through onboarding, capture, planning,
    meetings, knowledge, relationships, recovery, and weekly review; convert
    observed friction into bounded fixes without committing private work data;
-2. complete Universal Capture on desktop with managed file payloads,
+2. completed Universal Capture on desktop with managed file payloads,
    screenshots, dictation, encrypted short voice notes, explicit retention, and
    the full ambiguity/failure/permission/conflict recovery vocabulary;
-3. close daily-use gaps exposed by dogfooding while preserving the shared
+3. closed daily-use gaps exposed by dogfooding while preserving the shared
    command/query, authorization, audit, sync, and recovery boundaries;
-4. finish Visual Atlas review plus keyboard, screen-reader, contrast,
+4. finished Visual Atlas review plus keyboard, screen-reader, contrast,
    transparency, motion, narrow-window, macOS, and Windows quality gates;
-5. prove supported upgrades, backup/restore, Hub recovery, performance, and
+5. proved supported upgrades, backup/restore, Hub recovery, performance, and
    clean-checkout reliability at the release candidate;
-6. publish a reviewed signed and notarized macOS release only after those gates
-   pass, while retaining Windows functional and packaged parity without calling
+6. published a reviewed signed and notarized macOS release only after those
+   gates passed, while retaining Windows functional and packaged parity without calling
    an unsigned Windows artifact a production release.
 
 Desktop product readiness does not require a managed Constellation backend, a
@@ -367,6 +367,13 @@ completion, and an elapsed waiting-review date raises a deduplicated
 attention signal through an idempotent, rate-bounded sweep — automated
 effects never cascade and disabling a rule never rewrites history.
 
+The release vocabulary also includes deterministic computed Task fields without
+introducing a formula language. A formula sums named numeric scalar fields on
+the same Task; direct-subtask rollups count active children or sum one numeric
+scalar field across them. These values are evaluated through authorized queries,
+are visibly read-only, survive restart through their definitions and source
+values, and never become editable stored facts.
+
 Data also moves in and out honestly. One import engine covers a versioned
 JSON exchange format and a documented tasks CSV, both validated whole-file
 at preview with row-numbered errors, executed only through the ordinary
@@ -398,6 +405,21 @@ scope. A new capability cannot quietly land outside that decision, because
 an unclassified one fails the build. The same partition governs remote
 grants through a self-hosted Hub, and a refused capability is now named
 instead of being reported as an unreachable Hub.
+
+The macOS calendar loop now closes its ownership lifecycle as well as opening
+it. A Task can stop tracking a block without claiming the provider event was
+removed, or request exact EventKit deletion through a fresh operation-bound
+consent preview. Content-derived provider revisions reject meaningful external
+edits, and partial provider/graph outcomes remain recoverable and explicit.
+
+## Current — post-release hardening
+
+Use the public desktop Alpha to harden real workflows, compatibility, and
+supportability without broadening the product boundary. Priorities are verified
+upgrade feedback, crash and recovery evidence, self-hosted Hub operability,
+bounded performance regressions, and small daily-use corrections that preserve
+the shared command/query, authorization, audit, synchronization, and recovery
+contracts.
 
 ## Later — desktop ecosystem after product readiness
 

@@ -31,6 +31,7 @@ import {
   CaptureOriginalSchema,
   CaptureReviewReasonSchema,
   ContractVersionSchema,
+  FieldDefinitionTypeSchema,
   RelationConditionsSchema,
   SavedViewFiltersSchema,
   SavedViewGroupBySchema,
@@ -901,17 +902,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               id: FieldDefinitionIdSchema,
               targetKind: z.enum(["task", "project"]),
               label: z.string(),
-              type: z.discriminatedUnion("kind", [
-                z.object({ kind: z.literal("text") }).strict(),
-                z.object({ kind: z.literal("number") }).strict(),
-                z.object({ kind: z.literal("date") }).strict(),
-                z
-                  .object({
-                    kind: z.literal("choice"),
-                    options: z.array(z.string()),
-                  })
-                  .strict(),
-              ]),
+              type: FieldDefinitionTypeSchema,
               state: z.enum(["active", "retired"]).optional(),
               position: z.int().nonnegative(),
               version: z.int().positive(),

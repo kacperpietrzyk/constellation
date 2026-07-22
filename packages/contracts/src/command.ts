@@ -1269,7 +1269,7 @@ export const TaskStatusSemanticsSchema = z.enum([
   "paused",
 ]);
 
-const FieldTypeSchema = z.discriminatedUnion("kind", [
+export const FieldDefinitionTypeSchema = z.union([
   z.object({ kind: z.literal("text") }).strict(),
   z.object({ kind: z.literal("number") }).strict(),
   z.object({ kind: z.literal("date") }).strict(),
@@ -1285,6 +1285,30 @@ const FieldTypeSchema = z.discriminatedUnion("kind", [
         }),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal("formula"),
+      operator: z.literal("sum"),
+      fieldIds: z.array(FieldDefinitionIdSchema).min(1).max(16),
+    })
+    .strict(),
+  z.discriminatedUnion("operation", [
+    z
+      .object({
+        kind: z.literal("rollup"),
+        relationPath: z.literal("task.subtasks"),
+        operation: z.literal("count"),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal("rollup"),
+        relationPath: z.literal("task.subtasks"),
+        operation: z.literal("sum"),
+        fieldId: FieldDefinitionIdSchema,
+      })
+      .strict(),
+  ]),
 ]);
 
 export const FieldValueSchema = z.discriminatedUnion("kind", [
@@ -1464,7 +1488,7 @@ export const FieldDefCreateCommandSchema = CommandMetadataSchema.extend({
       fieldId: FieldDefinitionIdSchema,
       targetKind: z.enum(["task", "project"]),
       label: z.string().trim().min(1).max(120),
-      type: FieldTypeSchema,
+      type: FieldDefinitionTypeSchema,
     })
     .strict(),
 }).strict();

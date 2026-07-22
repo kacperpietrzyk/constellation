@@ -129,6 +129,10 @@ const createHarness = (writer?: CalendarWriter) => {
           outcome: "applied",
           revisions: ["rev-2"],
         }),
+        deleteOwnedBlocks: async () => ({
+          outcome: "applied",
+          revisions: [],
+        }),
       } satisfies CalendarWriter),
     clock: { now: () => now },
     evidence: {
@@ -620,9 +624,65 @@ test("calendar consent is bound to exact values and is single use", async () => 
   assert.deepEqual(replay, { outcome: "rejected", code: "already_consumed" });
 });
 
+test("calendar deletion has a distinct exact consent and cannot be replayed as a write", async () => {
+  const deleted: CalendarBlockDraft[][] = [];
+  const writer: CalendarWriter = {
+    writeOwnedBlocks: async () => ({
+      outcome: "applied",
+      revisions: ["unexpected-write"],
+    }),
+    deleteOwnedBlocks: async ({ blocks }) => {
+      deleted.push([...blocks]);
+      return { outcome: "applied", revisions: [] };
+    },
+  };
+  const { service } = createHarness(writer);
+  const preview = service.previewCalendarDelete({
+    authorization,
+    blocks: [{ ...block, expectedRevision: "rev-2" }],
+  });
+  assert.equal(preview?.operation, "delete");
+  assert.ok(preview);
+  assert.deepEqual(
+    await service.confirmCalendarWrite({
+      authorization,
+      previewId: preview.previewId,
+      consentToken: preview.consentToken,
+      blocks: preview.blocks,
+    }),
+    { outcome: "rejected", code: "altered_preview" },
+  );
+  assert.deepEqual(deleted, []);
+  assert.equal(
+    (
+      await service.confirmCalendarDelete({
+        authorization,
+        previewId: preview.previewId,
+        consentToken: preview.consentToken,
+        blocks: preview.blocks,
+      })
+    ).outcome,
+    "applied",
+  );
+  assert.deepEqual(deleted, [preview.blocks]);
+  assert.deepEqual(
+    await service.confirmCalendarDelete({
+      authorization,
+      previewId: preview.previewId,
+      consentToken: preview.consentToken,
+      blocks: preview.blocks,
+    }),
+    { outcome: "rejected", code: "already_consumed" },
+  );
+});
+
 test("expired and stale calendar previews fail closed", async () => {
   const staleWriter: CalendarWriter = {
     writeOwnedBlocks: async () => ({
+      outcome: "rejected",
+      code: "stale_revision",
+    }),
+    deleteOwnedBlocks: async () => ({
       outcome: "rejected",
       code: "stale_revision",
     }),

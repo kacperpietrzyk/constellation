@@ -4236,7 +4236,6 @@ export const RealApp = ({
                 taskVersion={selectedTask.version}
                 taskTitle={selectedTask.title}
                 block={selectedTask.calendarBlock}
-                timeZone={state.snapshot.bootstrap.workspace.timezone}
                 onRecorded={refreshAfter}
                 onFailure={showFailure}
               />
@@ -4402,7 +4401,9 @@ export const RealApp = ({
                           {definition.label}
                           {retired ? " (wycofane)" : ""}
                         </span>
-                        {retired ? (
+                        {retired ||
+                        definition.type.kind === "formula" ||
+                        definition.type.kind === "rollup" ? (
                           <span className="task-field-value">
                             {current?.kind === "date"
                               ? formatDate(
@@ -4410,6 +4411,11 @@ export const RealApp = ({
                                   state.snapshot.bootstrap.workspace.timezone,
                                 )
                               : String(current?.value ?? "—")}
+                            {!retired &&
+                            (definition.type.kind === "formula" ||
+                              definition.type.kind === "rollup")
+                              ? " · wyliczane"
+                              : ""}
                           </span>
                         ) : definition.type.kind === "choice" ? (
                           <select

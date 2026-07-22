@@ -18,7 +18,7 @@ import {
 import type { SqliteApplicationStore } from "@constellation/local-store";
 
 export type CalendarHelperRunner = (
-  command: "read" | "request-access" | "write",
+  command: "read" | "request-access" | "write" | "delete",
   payload: unknown,
 ) => Promise<unknown>;
 
@@ -144,6 +144,45 @@ export class NativeCalendarAdapter implements CalendarReader, CalendarWriter {
             (value): value is string => typeof value === "string",
           ),
         };
+      }
+      const code = response.code;
+      if (
+        code === "permission_denied" ||
+        code === "provider_unavailable" ||
+        code === "offline" ||
+        code === "stale_revision"
+      ) {
+        return { outcome: "rejected", code };
+      }
+      return { outcome: "rejected", code: "provider_error" };
+    } catch {
+      return { outcome: "rejected", code: "provider_error" };
+    }
+  }
+
+  public async deleteOwnedBlocks(input: {
+    readonly blocks: readonly CalendarBlockDraft[];
+  }): Promise<
+    | { readonly outcome: "applied"; readonly revisions: readonly string[] }
+    | {
+        readonly outcome: "rejected";
+        readonly code:
+          | "permission_denied"
+          | "provider_unavailable"
+          | "offline"
+          | "stale_revision"
+          | "provider_error";
+      }
+  > {
+    if (this.platform !== "darwin" || this.run === undefined)
+      return { outcome: "rejected", code: "provider_unavailable" };
+    try {
+      const response = (await this.run("delete", input)) as Record<
+        string,
+        unknown
+      >;
+      if (response.outcome === "applied") {
+        return { outcome: "applied", revisions: [] };
       }
       const code = response.code;
       if (

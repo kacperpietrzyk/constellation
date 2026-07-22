@@ -2156,6 +2156,51 @@ it("previews a batch without a trace and applies it up to the first failure", ()
   assert.deepEqual(applied.remaining, []);
   assert.equal(harness.store.snapshot().tasks.length, 3);
 
+  // The business acceptance says "hundreds", while one atomic envelope is
+  // intentionally capped at 100. Three bounded batches prove the operational
+  // shape without weakening that safety bound; each preview is trace-free and
+  // replaying each applied envelope returns the same 100 outcomes exactly.
+  const bulkBatches = Array.from({ length: 3 }, (_, batchIndex) => ({
+    contractVersion: 1 as const,
+    batchId: requestId(),
+    workspaceId: ids.workspace,
+    correlationId: requestId(),
+    mode: "apply" as const,
+    commands: Array.from({ length: 100 }, (_, itemIndex) => {
+      const taskId = requestId();
+      return {
+        ...commandMetadata(`bulk-${batchIndex}-${itemIndex}`),
+        commandName: "task.create" as const,
+        payload: {
+          taskId,
+          spaceId: ids.rootSpace,
+          title: `Bulk ${batchIndex + 1}.${itemIndex + 1}`,
+        },
+      };
+    }),
+  }));
+  for (const bulk of bulkBatches) {
+    const preview = harness.kernel.executeBatch(context(), {
+      ...bulk,
+      mode: "preview",
+    });
+    assert.equal(preview.kind, "batch_result");
+    if (preview.kind !== "batch_result") throw new Error("Expected a batch.");
+    assert.equal(preview.outcomes.length, 100);
+    assert.equal(preview.applied, false);
+
+    const first = harness.kernel.executeBatch(context(), bulk);
+    const replay = harness.kernel.executeBatch(context(), bulk);
+    assert.equal(first.kind, "batch_result");
+    assert.equal(replay.kind, "batch_result");
+    if (first.kind !== "batch_result" || replay.kind !== "batch_result")
+      throw new Error("Expected a batch.");
+    assert.equal(first.outcomes.length, 100);
+    assert.equal(first.applied, true);
+    assert.deepEqual(replay, first);
+  }
+  assert.equal(harness.store.snapshot().tasks.length, 303);
+
   // Partial success: the second item collides with an existing id, so the
   // first applies, the second reports, and the third is never attempted.
   const survivor = requestId();
