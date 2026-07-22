@@ -211,6 +211,10 @@ const client = createScenarioClient({
         updatedAt: "2026-07-14T11:00:00.000Z",
       },
       relatedTasks: [],
+      relatedMeetings: [],
+      relatedDocuments: [],
+      relatedDecisions: [],
+      clientOrganizations: [],
     }),
     "capture.history": result({
       kind: "capture.history",

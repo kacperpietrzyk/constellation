@@ -54,6 +54,10 @@ const taskAttachments = readFileSync(
   path.join(root, "src", "TaskAttachmentsSection.tsx"),
   "utf8",
 );
+const projectContextSections = readFileSync(
+  path.join(root, "src", "ProjectContextSections.tsx"),
+  "utf8",
+);
 const meetings = readFileSync(
   path.join(root, "src", "MeetingsSurface.tsx"),
   "utf8",
@@ -224,6 +228,26 @@ describe("interaction recovery contracts", () => {
       /\.task-control-strip\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
     );
     assert.match(styles, /@container \(max-width: 42rem\)/);
+  });
+
+  it("composes Project context as navigable sections without duplicating records", () => {
+    for (const heading of ["Klient", "Spotkania", "Dokumenty", "Decyzje"])
+      assert.match(projectContextSections, new RegExp(`title: "${heading}"`));
+    assert.match(projectContextSections, /overview\.clientOrganizations\.map/);
+    assert.match(projectContextSections, /overview\.relatedMeetings\.map/);
+    assert.match(projectContextSections, /overview\.relatedDocuments\.map/);
+    assert.match(projectContextSections, /overview\.relatedDecisions\.map/);
+    assert.match(projectContextSections, /onOpenDocument\(document\.id/);
+    assert.match(projectContextSections, /onOpenMeeting\(meeting\.id\)/);
+    assert.match(projectContextSections, /onOpenRelationship\(decision\.id\)/);
+    assert.match(
+      styles,
+      /\.project-context-grid\s*\{[^}]*grid-template-columns/s,
+    );
+    assert.match(
+      styles,
+      /@container \(max-width: 34rem\)[\s\S]*\.project-context-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,
+    );
   });
 
   it("keeps Attention mutations behind deliberate signal selection", () => {

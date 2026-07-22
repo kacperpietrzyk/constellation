@@ -223,6 +223,13 @@ same versioned commands, and the records participate in deterministic search,
 meaningful activity, scoped export, encrypted restart, and Hub projections.
 See [Relationships and strategic depth](docs/architecture/relationships-and-strategic-depth.md).
 
+An opened Project now reads its authorized graph context as one page: client
+Organizations, routed meetings, rich documents that reference it, linked
+Decisions, and related Tasks come from one bounded operational-overview query
+and open their exact source surfaces. This is the composed-read half of
+Project-as-document; the Project-owned collaborative rich body is still in
+progress and is not represented by a hidden duplicate Document record.
+
 Local-only workspaces now expose a versioned MCP server through the same
 Application Kernel used by the desktop. The Access surface creates a distinct
 agent principal with an independently selected capability preset, Space scope,

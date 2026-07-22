@@ -7,10 +7,12 @@ import {
 } from "@constellation/application";
 import {
   ExecutionContextSchema,
+  DocumentIdSchema,
   WorkspaceIdSchema,
   KnowledgeSourceIdSchema,
   ProjectIdSchema,
   SpaceIdSchema,
+  StrategicRecordIdSchema,
   TaskStatusIdSchema,
   type CommandOutcome,
   type ExecutionContext,
@@ -75,6 +77,8 @@ const context = (): ExecutionContext =>
       "opportunity.create",
       "opportunity.offerCreate",
       "opportunity.linkOutcomes",
+      "decision.create",
+      "meeting.upsertImported",
       "relationship.workspace",
       "task.create",
       "task.updateDetails",
@@ -1081,6 +1085,157 @@ describe("Wave 2 reference semantics", () => {
         "project_created",
         "capture_routed",
       ],
+    );
+  });
+
+  it("composes one Project read from authorized graph relations", () => {
+    const harness = setup();
+    const { projectId } = createProjectRecord(harness, "Northstar project");
+    const organizationId = StrategicRecordIdSchema.parse(requestId());
+    const opportunityId = StrategicRecordIdSchema.parse(requestId());
+    const decisionId = StrategicRecordIdSchema.parse(requestId());
+    const meetingId = StrategicRecordIdSchema.parse(requestId());
+    const documentId = DocumentIdSchema.parse(requestId());
+
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("project-client"),
+        commandName: "relationship.organizationCreate",
+        payload: {
+          organizationId,
+          spaceId: ids.rootSpace,
+          name: "Northstar Client",
+          relationshipState: "active",
+        },
+      }),
+    );
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("project-opportunity"),
+        commandName: "opportunity.create",
+        payload: {
+          opportunityId,
+          spaceId: ids.rootSpace,
+          title: "Northstar delivery",
+          organizationId,
+          personIds: [],
+          need: "Deliver the project",
+          qualification: "Qualified",
+          stage: "won",
+          nextAction: "Execute",
+          evidenceSourceIds: [],
+        },
+      }),
+    );
+    const opportunity = harness.store
+      .snapshot()
+      .strategicRecords?.find((record) => record.id === opportunityId);
+    assert.ok(opportunity);
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("project-opportunity-link", {
+          [opportunityId]: opportunity.version,
+          [projectId]: 1,
+        }),
+        commandName: "opportunity.linkOutcomes",
+        payload: {
+          opportunityId,
+          offerIds: [],
+          projectIds: [projectId],
+          state: "open",
+          nextAction: "Execute",
+        },
+      }),
+    );
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("project-decision"),
+        commandName: "decision.create",
+        payload: {
+          decisionId,
+          spaceId: ids.rootSpace,
+          title: "Ship the composed Project page",
+          rationale: "Project context belongs together.",
+          evidenceSourceIds: [],
+          linkedRecordIds: [projectId],
+        },
+      }),
+    );
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("project-meeting"),
+        commandName: "meeting.upsertImported",
+        payload: {
+          meeting: {
+            id: meetingId,
+            workspaceId: ids.workspace,
+            spaceId: ids.rootSpace,
+            connectionId: "jamie-project",
+            externalMeetingId: "meeting-project",
+            title: "Northstar review",
+            startedAt: "2026-07-21T09:00:00.000Z",
+            participants: [],
+            projectId,
+            organizationId,
+            workItems: [],
+            contentHash: "a".repeat(64),
+            triage: "ready",
+            missingComponents: [],
+            version: 1,
+            updatedAt: "2026-07-21T10:00:00.000Z",
+          },
+        },
+      }),
+    );
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("project-document"),
+        commandName: "document.create",
+        payload: {
+          documentId,
+          spaceId: ids.rootSpace,
+          title: "Northstar working brief",
+          role: "document",
+        },
+      }),
+    );
+    harness.store.replaceDocumentEntityLinks(documentId, [
+      {
+        workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+        spaceId: SpaceIdSchema.parse(ids.rootSpace),
+        documentId,
+        targetKind: "project",
+        targetId: projectId,
+        updatedAt: "2026-07-21T10:00:00.000Z",
+      },
+    ]);
+
+    const overview = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "project.operationalOverview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { projectId },
+    });
+    if (
+      overview.kind !== "query_result" ||
+      overview.result.outcome !== "success" ||
+      overview.result.projection.kind !== "project.operationalOverview"
+    )
+      throw new Error("Expected composed Project overview.");
+    assert.equal(overview.result.projection.relatedMeetings[0]?.id, meetingId);
+    assert.equal(
+      overview.result.projection.relatedDocuments[0]?.id,
+      documentId,
+    );
+    assert.equal(
+      overview.result.projection.relatedDecisions[0]?.id,
+      decisionId,
+    );
+    assert.equal(
+      overview.result.projection.clientOrganizations[0]?.id,
+      organizationId,
     );
   });
 
@@ -2669,6 +2824,24 @@ describe("Wave 2 reference semantics", () => {
       "relation.removed",
     );
     assert.equal(harness.store.snapshot().relations[0]?.state, "removed");
+    const relatedCount = () => {
+      const projects = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "project.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace },
+      });
+      if (
+        projects.kind !== "query_result" ||
+        projects.result.outcome !== "success" ||
+        projects.result.projection.kind !== "project.list"
+      )
+        throw new Error("Expected Project list.");
+      return projects.result.projection.items[0]?.relatedOpenTaskCount;
+    };
+    assert.equal(relatedCount(), 0, "a removed relation cannot inflate counts");
     const undo = unwrap(
       harness.kernel.execute(context(), {
         ...metadata("restore-relation", { [relationId]: 2 }),
@@ -2678,6 +2851,7 @@ describe("Wave 2 reference semantics", () => {
     );
     assert.equal(undo.diagnosticCode, "command.undone");
     assert.equal(harness.store.snapshot().relations[0]?.version, 3);
+    assert.equal(relatedCount(), 1);
   });
 
   it("fails closed for revoked search, cockpit, activity, relation, and undo access", () => {

@@ -3377,6 +3377,17 @@ export const RealApp = ({
               onBackToProjects={() =>
                 openContext(destinationContext("projects", "Projekty"))
               }
+              onOpenDocument={(id, title) =>
+                openContext(documentContext(id, title))
+              }
+              onOpenMeeting={(id) => {
+                setSelectedMeetingId(id);
+                openContext(destinationContext("meetings", "Spotkania"));
+              }}
+              onOpenRelationship={(id) => {
+                setSelectedStrategicId(id);
+                openContext(destinationContext("relationships", "Relacje"));
+              }}
               onCreate={async (title, outcome, templateId) => {
                 if (!client) return false;
                 setProjectBusy(true);

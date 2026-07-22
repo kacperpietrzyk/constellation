@@ -8207,6 +8207,7 @@ export const executeWave2Query = (
           relatedOpenTaskCount: relations.filter(
             (relation) =>
               relation.projectId === project.id &&
+              relation.state === "active" &&
               openTasks.has(relation.taskId),
           ).length,
           version: project.version,
@@ -8464,8 +8465,50 @@ export const executeWave2Query = (
     const taskIds = new Set(
       view
         .listRelations(query.workspaceId, project.spaceId)
-        .filter((relation) => relation.projectId === project.id)
+        .filter(
+          (relation) =>
+            relation.projectId === project.id && relation.state === "active",
+        )
         .map((relation) => relation.taskId),
+    );
+    const strategicRecords = view.listStrategicRecords(
+      query.workspaceId,
+      project.spaceId,
+    );
+    const relatedMeetings = strategicRecords.filter(
+      (
+        record,
+      ): record is Extract<StrategicRecord, { readonly kind: "meeting" }> =>
+        record.kind === "meeting" && record.meeting.projectId === project.id,
+    );
+    const relatedDecisions = strategicRecords.filter(
+      (
+        record,
+      ): record is Extract<StrategicRecord, { readonly kind: "decision" }> =>
+        record.kind === "decision" &&
+        record.linkedRecordIds.includes(project.id),
+    );
+    const clientOrganizationIds = new Set(
+      strategicRecords.flatMap((record): readonly string[] => {
+        if (
+          record.kind === "opportunity" &&
+          record.projectIds.includes(project.id)
+        )
+          return [record.organizationId];
+        if (
+          record.kind === "meeting" &&
+          record.meeting.projectId === project.id &&
+          record.meeting.organizationId !== undefined
+        )
+          return [record.meeting.organizationId];
+        return [];
+      }),
+    );
+    const documentIds = new Set(
+      view
+        .listDocumentEntityLinks(query.workspaceId, "project", project.id)
+        .filter((link) => link.spaceId === project.spaceId)
+        .map((link) => link.documentId),
     );
     return querySuccess(query, kernelTime, freshness, {
       kind: "project.operationalOverview",
@@ -8542,7 +8585,53 @@ export const executeWave2Query = (
                   },
                 }),
           };
-        }),
+        })
+        .slice(0, 100),
+      relatedMeetings: relatedMeetings.slice(0, 100).map((record) => ({
+        id: record.id,
+        title: record.meeting.title ?? "Spotkanie bez tytułu",
+        startedAt: record.meeting.startedAt,
+        triage: record.meeting.triage,
+        version: record.version,
+        updatedAt: record.updatedAt,
+      })),
+      relatedDocuments: view
+        .listDocuments(query.workspaceId, project.spaceId)
+        .filter((document) => documentIds.has(document.id))
+        .slice(0, 100)
+        .map((document) => ({
+          id: document.id,
+          title: document.title,
+          role: document.role ?? "document",
+          version: document.version,
+          updatedAt: document.updatedAt,
+        })),
+      relatedDecisions: relatedDecisions.slice(0, 100).map((record) => ({
+        id: record.id,
+        title: record.title,
+        state: record.state,
+        version: record.version,
+        updatedAt: record.updatedAt,
+      })),
+      clientOrganizations: strategicRecords
+        .filter(
+          (
+            record,
+          ): record is Extract<
+            StrategicRecord,
+            { readonly kind: "organization" }
+          > =>
+            record.kind === "organization" &&
+            clientOrganizationIds.has(record.id),
+        )
+        .slice(0, 100)
+        .map((record) => ({
+          id: record.id,
+          name: record.name,
+          relationshipState: record.relationshipState,
+          version: record.version,
+          updatedAt: record.updatedAt,
+        })),
     });
   }
   if (query.queryName === "recovery.preview") {

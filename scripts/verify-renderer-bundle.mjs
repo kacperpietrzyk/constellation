@@ -69,7 +69,7 @@ import path from "node:path";
 // zadania pozostaje osobnym leniwym chunkiem; total JavaScript nie wymaga
 // podniesienia, więc limity rosną tylko o zmierzony koszt wspólnego kontraktu.
 const limits = {
-  entryBytes: 551_000,
+  entryBytes: 552_500,
   entryGzipBytes: 146_000,
   totalJavaScriptBytes: 1_290_000,
   largestLazyJavaScriptBytes: 565_000,
