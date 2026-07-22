@@ -74,6 +74,10 @@ const workDensityStyles = readFileSync(
   path.join(root, "src", "work-density.css"),
   "utf8",
 );
+const workFieldVisibilityStyles = readFileSync(
+  path.join(root, "src", "work-field-visibility.css"),
+  "utf8",
+);
 const collaborationSurfaces = readFileSync(
   path.join(root, "src", "CollaborationSurfaces.tsx"),
   "utf8",
@@ -646,6 +650,35 @@ describe("interaction recovery contracts", () => {
         "compact density may change spacing but must not hide content or shrink type",
       );
     }
+  });
+
+  it("configures personal Work list fields without hiding title, state, or narrow labels", () => {
+    assert.match(workSurface, /useWorkListFieldVisibility\(/);
+    assert.match(workSurface, /activeView\?\.id \?\? "all"/);
+    assert.match(
+      workSurface,
+      /Tytuł i stan działania pozostają zawsze widoczne/,
+    );
+    assert.match(workSurface, /type="checkbox"/);
+    assert.match(workSurface, /Przywróć zalecane/);
+    assert.match(workSurface, /className="work-list-field-headings"/);
+    assert.match(workSurface, /className="work-list-field-cell"/);
+    assert.doesNotMatch(
+      workSurface,
+      /setSavedWorkView.*Field|commandName:\s*"savedView\.update"[\s\S]*visible/,
+    );
+    assert.match(
+      workFieldVisibilityStyles,
+      /\.work-list-field-headings,[\s\S]*?grid-template-columns:\s*repeat\(/,
+    );
+    assert.match(
+      workFieldVisibilityStyles,
+      /@container \(max-width: 64rem\)[\s\S]*?\.work-list-columns\s*\{[^}]*display:\s*none/s,
+    );
+    assert.match(
+      workFieldVisibilityStyles,
+      /\.work-list-field-cell > small\s*\{[^}]*display:\s*block/s,
+    );
   });
 
   it("collapses labelled navigation groups without hiding rail destinations or hidden focus targets", () => {

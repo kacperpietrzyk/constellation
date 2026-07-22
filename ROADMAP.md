@@ -224,7 +224,13 @@ declared status, priority, or choice-field grouping; timeline projects real
 start/deadline spans; calendar places each Task once by deadline or start while
 keeping out-of-month and undated work explicit. None of these layouts creates a
 second work model or implies drag-based mutation or a system-calendar write.
-The remaining human-surface boundary is better control over visible complexity.
+Visible complexity is now personally controllable without changing shared
+records: Work has comfortable and compact density, full-sidebar product groups
+can collapse while the narrow rail retains every destination, and each Work
+list can choose aligned core or active custom-field columns independently for
+All Tasks and each Saved View. Title and operational state remain visible;
+narrow layouts relabel selected values instead of widening the document, and
+these local preferences never change permissions, audit, Hub, or MCP results.
 
 ## Delivered foundation — coherent desktop Alpha and release candidate
 

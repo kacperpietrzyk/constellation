@@ -2,6 +2,7 @@ import {
   Fragment,
   useMemo,
   useState,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -33,6 +34,10 @@ import {
 import { useListNavigation } from "./hooks/useListNavigation.js";
 import { useSurfaceDensity } from "./hooks/useSurfaceDensity.js";
 import {
+  useWorkListFieldVisibility,
+  type WorkListFieldKey,
+} from "./hooks/useWorkListFieldVisibility.js";
+import {
   countLabel,
   dateKeyInZone,
   formatDate,
@@ -42,6 +47,7 @@ import {
 import "./work-board.css";
 import "./work-calendar.css";
 import "./work-density.css";
+import "./work-field-visibility.css";
 import "./work-timeline.css";
 
 export type WorkContextKind = "area" | "initiative";
@@ -87,6 +93,18 @@ const stateLabel = {
   waiting: "Czekam na",
   blocked: "Zablokowane",
 } as const;
+
+const coreWorkListFields: readonly {
+  readonly key: WorkListFieldKey;
+  readonly label: string;
+}[] = [
+  { key: "context", label: "Kontekst" },
+  { key: "status", label: "Status" },
+  { key: "assignee", label: "Odpowiedzialność" },
+  { key: "priority", label: "Priorytet" },
+  { key: "start", label: "Start" },
+  { key: "due", label: "Termin" },
+];
 
 const WorkEmpty = ({
   title,
@@ -163,6 +181,25 @@ export const WorkSurface = ({
   // time. Week membership follows the workspace calendar.
   const activeView = projection?.savedViews.find(
     (view) => view.id === activeViewId,
+  );
+  const activeTaskFieldDefinitions = (
+    snapshot.bootstrap.fieldDefinitions ?? []
+  ).filter(
+    (definition) =>
+      definition.targetKind === "task" && definition.state !== "retired",
+  );
+  const availableListFields = [
+    ...coreWorkListFields,
+    ...activeTaskFieldDefinitions.map((definition) => ({
+      key: `field:${definition.id}` as WorkListFieldKey,
+      label: definition.label,
+    })),
+  ];
+  const availableListFieldKeys = availableListFields.map((field) => field.key);
+  const [visibleListFieldKeys, toggleListField, resetListFields] =
+    useWorkListFieldVisibility(activeView?.id ?? "all", availableListFieldKeys);
+  const visibleListFields = availableListFields.filter((field) =>
+    visibleListFieldKeys.includes(field.key),
   );
   const todayKey = dateKeyInZone(new Date(), timeZone);
   const [calendarMonthKey, setCalendarMonthKey] = useState(() =>
@@ -783,11 +820,15 @@ export const WorkSurface = ({
     );
   };
 
-  const renderTask = (
-    task: (typeof visibleTasks)[number],
-    index: number,
-    variant: "list" | "board" | "timeline" | "calendar",
-  ) => {
+  const assigneeNames = new Map(
+    snapshot.assignmentCandidates.kind === "ready"
+      ? snapshot.assignmentCandidates.data.candidates.map((candidate) => [
+          candidate.principalId,
+          candidate.displayName,
+        ])
+      : [],
+  );
+  const taskContextLabel = (task: (typeof visibleTasks)[number]): string => {
     const dependency = activeLinks.find(
       (link) =>
         link.linkType === "task_depends_on_task" &&
@@ -796,10 +837,79 @@ export const WorkSurface = ({
     const dependencyTitle = projection.tasks.find(
       (item) => item.id === dependency?.targetRecordId,
     )?.title;
+    if (task.waitingOn !== undefined) {
+      const direction =
+        task.waitingOn.direction === "we_owe"
+          ? "Zobowiązanie: "
+          : "Czekamy na: ";
+      const review =
+        task.waitingOn.expectedAt === undefined
+          ? ""
+          : ` · przegląd ${formatDate(
+              task.waitingOn.expectedAt,
+              snapshot.bootstrap.workspace.timezone,
+            )}`;
+      return `${direction}${task.waitingOn.label}${review}`;
+    }
+    return dependencyTitle === undefined
+      ? "Gotowe do podjęcia"
+      : `Zależy od: ${dependencyTitle}`;
+  };
+  const listFieldValue = (
+    task: (typeof visibleTasks)[number],
+    field: (typeof availableListFields)[number],
+  ): string => {
+    switch (field.key) {
+      case "context":
+        return taskContextLabel(task);
+      case "status":
+        return (
+          orderedTaskStatuses.find((status) => status.id === task.statusId)
+            ?.label ?? "Status historyczny"
+        );
+      case "assignee":
+        return task.assigneePrincipalId === undefined
+          ? "Nieprzypisane"
+          : (assigneeNames.get(task.assigneePrincipalId) ??
+              "Osoba poza bieżącym zakresem");
+      case "priority":
+        return priorityLabels[task.priority ?? "normal"];
+      case "start":
+        return task.startAt === undefined
+          ? "—"
+          : formatDate(task.startAt, snapshot.bootstrap.workspace.timezone);
+      case "due":
+        return task.dueAt === undefined
+          ? "—"
+          : `${formatDate(
+              task.dueAt,
+              snapshot.bootstrap.workspace.timezone,
+            )}${Date.parse(task.dueAt) < Date.now() ? " · po terminie" : ""}`;
+      default: {
+        const value = task.fields?.[field.key.slice("field:".length)];
+        if (value === undefined) return "—";
+        if (value.kind === "date")
+          return formatDate(value.value, snapshot.bootstrap.workspace.timezone);
+        if (value.kind === "number")
+          return new Intl.NumberFormat("pl-PL").format(value.value);
+        return value.value;
+      }
+    }
+  };
+
+  const renderTask = (
+    task: (typeof visibleTasks)[number],
+    index: number,
+    variant: "list" | "board" | "timeline" | "calendar",
+  ) => {
     return (
       <article
         key={task.id}
-        className={`work-task-row work-task-row--${variant} state-${task.operationalState}${
+        className={`work-task-row work-task-row--${variant}${
+          variant === "list" && visibleListFields.length > 0
+            ? " has-list-fields"
+            : ""
+        } state-${task.operationalState}${
           task.id === selectedTaskId ? " selected" : ""
         }`}
       >
@@ -817,54 +927,60 @@ export const WorkSurface = ({
           onDoubleClick={() => onOpenTask(task.id)}
         >
           <strong>{task.title}</strong>
-          <span>
-            {[
-              task.waitingOn
-                ? `${
-                    task.waitingOn.direction === "we_owe"
-                      ? "Zobowiązanie: "
-                      : "Czekamy na: "
-                  }${task.waitingOn.label}${
-                    task.waitingOn.expectedAt === undefined
-                      ? ""
-                      : ` · przegląd ${formatDate(
-                          task.waitingOn.expectedAt,
-                          snapshot.bootstrap.workspace.timezone,
-                        )}`
-                  }`
-                : dependencyTitle
-                  ? `Zależy od: ${dependencyTitle}`
-                  : "Gotowe do podjęcia",
-              ...((variant !== "timeline" && variant !== "calendar") ||
-              task.startAt === undefined
-                ? []
-                : [
-                    `Start: ${formatDate(
-                      task.startAt,
-                      snapshot.bootstrap.workspace.timezone,
-                    )}`,
-                  ]),
-              ...(task.dueAt === undefined
-                ? []
-                : [
-                    `Termin: ${formatDate(
-                      task.dueAt,
-                      snapshot.bootstrap.workspace.timezone,
-                    )}${Date.parse(task.dueAt) < Date.now() ? " · po terminie" : ""}`,
-                  ]),
-              ...((variant !== "timeline" && variant !== "calendar") ||
-              task.startAt !== undefined ||
-              task.dueAt !== undefined
-                ? []
-                : ["Bez terminu"]),
-              ...(task.priority === undefined ||
-              task.priority === "normal" ||
-              task.priority === "low"
-                ? []
-                : [task.priority === "urgent" ? "Pilne" : "Wysoki priorytet"]),
-            ].join(" · ")}
-          </span>
+          {variant !== "list" && (
+            <span>
+              {[
+                taskContextLabel(task),
+                ...((variant !== "timeline" && variant !== "calendar") ||
+                task.startAt === undefined
+                  ? []
+                  : [
+                      `Start: ${formatDate(
+                        task.startAt,
+                        snapshot.bootstrap.workspace.timezone,
+                      )}`,
+                    ]),
+                ...(task.dueAt === undefined
+                  ? []
+                  : [
+                      `Termin: ${formatDate(
+                        task.dueAt,
+                        snapshot.bootstrap.workspace.timezone,
+                      )}${Date.parse(task.dueAt) < Date.now() ? " · po terminie" : ""}`,
+                    ]),
+                ...((variant !== "timeline" && variant !== "calendar") ||
+                task.startAt !== undefined ||
+                task.dueAt !== undefined
+                  ? []
+                  : ["Bez terminu"]),
+                ...(task.priority === undefined ||
+                task.priority === "normal" ||
+                task.priority === "low"
+                  ? []
+                  : [
+                      task.priority === "urgent" ? "Pilne" : "Wysoki priorytet",
+                    ]),
+              ].join(" · ")}
+            </span>
+          )}
         </button>
+        {variant === "list" && visibleListFields.length > 0 && (
+          <span
+            className="work-list-field-grid"
+            style={
+              {
+                "--work-list-field-count": visibleListFields.length,
+              } as CSSProperties
+            }
+          >
+            {visibleListFields.map((field) => (
+              <span className="work-list-field-cell" key={field.key}>
+                <small>{field.label}</small>
+                <span>{listFieldValue(task, field)}</span>
+              </span>
+            ))}
+          </span>
+        )}
         <InlinePopover
           label={stateLabel[task.operationalState]}
           panelLabel={`Zmień stan zadania: ${task.title}`}
@@ -1480,6 +1596,42 @@ export const WorkSurface = ({
                   )}
                 </fieldset>
               )}
+              {activeLayout === "list" && (
+                <InlinePopover
+                  label={`Pola · ${visibleListFields.length}`}
+                  panelLabel={`Widoczne pola listy: ${activeView?.name ?? "Wszystkie"}`}
+                  triggerClassName="work-field-visibility-trigger"
+                  open={openPopover === "list-fields"}
+                  onOpenChange={(next) =>
+                    setOpenPopover(next ? "list-fields" : undefined)
+                  }
+                >
+                  <fieldset className="work-field-visibility">
+                    <legend>
+                      Pola listy — {activeView?.name ?? "Wszystkie"}
+                    </legend>
+                    <p>
+                      Tytuł i stan działania pozostają zawsze widoczne. Wybór
+                      dotyczy tylko tego urządzenia.
+                    </p>
+                    <div className="work-field-visibility-options">
+                      {availableListFields.map((field) => (
+                        <label key={field.key}>
+                          <input
+                            type="checkbox"
+                            checked={visibleListFieldKeys.includes(field.key)}
+                            onChange={() => toggleListField(field.key)}
+                          />
+                          <span>{field.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <button type="button" onClick={resetListFields}>
+                      Przywróć zalecane
+                    </button>
+                  </fieldset>
+                </InlinePopover>
+              )}
             </div>
           </div>
           {projection.projects.map((project) => (
@@ -1513,41 +1665,67 @@ export const WorkSurface = ({
               cockpit lists: AT learns this is one composite widget where Tab
               stops once and arrows move between rows. */}
           {activeLayout === "list" && (
-            <div
-              className="work-task-list"
-              role="listbox"
-              aria-label="Następne działania — lista"
-            >
-              {visibleTasks.map((task, index) => {
-                const group =
-                  groupBy === undefined ? undefined : groupFor(task);
-                const previous = visibleTasks[index - 1];
-                const groupStarts =
-                  group !== undefined &&
-                  (previous === undefined ||
-                    groupFor(previous).key !== group.key);
-                return (
-                  <Fragment key={task.id}>
-                    {groupStarts && group !== undefined && (
-                      <div className="work-group-heading" role="presentation">
-                        <span>{group.label}</span>
-                        <small>
-                          {countLabel(
-                            visibleTasks.filter(
-                              (candidate) =>
-                                groupFor(candidate).key === group.key,
-                            ).length,
-                            "zadanie",
-                            "zadania",
-                            "zadań",
-                          )}
-                        </small>
-                      </div>
-                    )}
-                    {renderTask(task, index, "list")}
-                  </Fragment>
-                );
-              })}
+            <div className="work-task-list-shell">
+              <div
+                className={`work-list-columns${
+                  visibleListFields.length > 0 ? " has-list-fields" : ""
+                }`}
+                aria-hidden="true"
+              >
+                <span />
+                <span>Zadanie</span>
+                {visibleListFields.length > 0 && (
+                  <span
+                    className="work-list-field-headings"
+                    style={
+                      {
+                        "--work-list-field-count": visibleListFields.length,
+                      } as CSSProperties
+                    }
+                  >
+                    {visibleListFields.map((field) => (
+                      <span key={field.key}>{field.label}</span>
+                    ))}
+                  </span>
+                )}
+                <span>Stan</span>
+              </div>
+              <div
+                className="work-task-list"
+                role="listbox"
+                aria-label="Następne działania — lista"
+              >
+                {visibleTasks.map((task, index) => {
+                  const group =
+                    groupBy === undefined ? undefined : groupFor(task);
+                  const previous = visibleTasks[index - 1];
+                  const groupStarts =
+                    group !== undefined &&
+                    (previous === undefined ||
+                      groupFor(previous).key !== group.key);
+                  return (
+                    <Fragment key={task.id}>
+                      {groupStarts && group !== undefined && (
+                        <div className="work-group-heading" role="presentation">
+                          <span>{group.label}</span>
+                          <small>
+                            {countLabel(
+                              visibleTasks.filter(
+                                (candidate) =>
+                                  groupFor(candidate).key === group.key,
+                              ).length,
+                              "zadanie",
+                              "zadania",
+                              "zadań",
+                            )}
+                          </small>
+                        </div>
+                      )}
+                      {renderTask(task, index, "list")}
+                    </Fragment>
+                  );
+                })}
+              </div>
             </div>
           )}
           {activeLayout === "board" && (
