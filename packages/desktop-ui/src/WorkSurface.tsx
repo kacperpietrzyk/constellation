@@ -31,6 +31,7 @@ import {
   reportFirstEmptyRequiredField,
 } from "./components/InlinePopover.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
+import { useSurfaceDensity } from "./hooks/useSurfaceDensity.js";
 import {
   countLabel,
   dateKeyInZone,
@@ -40,6 +41,7 @@ import {
 
 import "./work-board.css";
 import "./work-calendar.css";
+import "./work-density.css";
 import "./work-timeline.css";
 
 export type WorkContextKind = "area" | "initiative";
@@ -154,6 +156,7 @@ export const WorkSurface = ({
   const [activeViewId, setActiveViewId] = useState<string>();
   const [viewFieldId, setViewFieldId] = useState("");
   const [confirmingViewDelete, setConfirmingViewDelete] = useState(false);
+  const [density, setDensity] = useSurfaceDensity("work");
   const timeZone = snapshot.bootstrap.workspace.timezone;
   // The applied saved view is a deterministic client-side projection of the
   // already permission-safe work overview: same filters, same order, every
@@ -980,7 +983,7 @@ export const WorkSurface = ({
   };
 
   return (
-    <div className="surface-scroll work-surface">
+    <div className="surface-scroll work-surface" data-density={density}>
       <header className="surface-header wave2-header work-header">
         <div>
           <p className="eyebrow">Obszar → inicjatywa → projekt → działanie</p>
@@ -993,11 +996,30 @@ export const WorkSurface = ({
             blokowane.
           </p>
         </div>
-        <span className="work-freshness">
-          {projection.freshness.mode === "local_authoritative"
-            ? "Lokalne źródło prawdy"
-            : "Projekcja zsynchronizowana"}
-        </span>
+        <div className="work-header-controls">
+          <span className="work-freshness">
+            {projection.freshness.mode === "local_authoritative"
+              ? "Lokalne źródło prawdy"
+              : "Projekcja zsynchronizowana"}
+          </span>
+          <fieldset className="work-density-switch">
+            <legend>Gęstość powierzchni Praca</legend>
+            <button
+              type="button"
+              aria-pressed={density === "comfortable"}
+              onClick={() => setDensity("comfortable")}
+            >
+              Spokojna
+            </button>
+            <button
+              type="button"
+              aria-pressed={density === "compact"}
+              onClick={() => setDensity("compact")}
+            >
+              Zwarta
+            </button>
+          </fieldset>
+        </div>
       </header>
 
       <nav className="saved-view-strip" aria-label="Zapisane widoki pracy">

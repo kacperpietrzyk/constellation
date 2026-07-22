@@ -70,6 +70,10 @@ const workCalendarStyles = readFileSync(
   path.join(root, "src", "work-calendar.css"),
   "utf8",
 );
+const workDensityStyles = readFileSync(
+  path.join(root, "src", "work-density.css"),
+  "utf8",
+);
 const collaborationSurfaces = readFileSync(
   path.join(root, "src", "CollaborationSurfaces.tsx"),
   "utf8",
@@ -605,6 +609,43 @@ describe("interaction recovery contracts", () => {
       workCalendarStyles,
       /\.work-calendar-grid\s*\{[^}]*grid-template-columns:\s*repeat\(7,/s,
     );
+  });
+
+  it("changes only Work spacing through a local per-surface density preference", () => {
+    assert.match(workSurface, /useSurfaceDensity\("work"\)/);
+    assert.match(workSurface, /data-density=\{density\}/);
+    assert.match(workSurface, />\s*Gęstość powierzchni Praca\s*</);
+    assert.match(workSurface, />\s*Spokojna\s*</);
+    assert.match(workSurface, />\s*Zwarta\s*</);
+    assert.match(
+      workDensityStyles,
+      /\.work-surface\[data-density="compact"\] \.work-context-row/,
+    );
+    assert.match(
+      workDensityStyles,
+      /\.work-surface\[data-density="compact"\] \.work-board-column/,
+    );
+    assert.match(
+      workDensityStyles,
+      /\.work-surface\[data-density="compact"\] \.work-timeline-row/,
+    );
+    assert.match(
+      workDensityStyles,
+      /\.work-surface\[data-density="compact"\] \.work-calendar-day/,
+    );
+    assert.match(
+      workDensityStyles,
+      /@container \(max-width: 38\.75rem\)[\s\S]*?\.work-header\s*\{[^}]*flex-direction:\s*column/,
+    );
+    for (const match of workDensityStyles.matchAll(
+      /\.work-surface\[data-density="compact"\][^{]+\{([^}]*)\}/g,
+    )) {
+      assert.doesNotMatch(
+        match[1] ?? "",
+        /display\s*:|visibility\s*:|font-size\s*:/,
+        "compact density may change spacing but must not hide content or shrink type",
+      );
+    }
   });
 
   it("keeps Projects as a collection until the user deliberately opens its full view", () => {
