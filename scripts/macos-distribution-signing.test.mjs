@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
+  notarizeAndStapleMacArtifact,
   resolveNotarizationOptions,
   signAndNotarizeMacApp,
 } from "./macos-distribution-signing.mjs";
@@ -96,6 +100,41 @@ test("imports one Developer ID identity before signing and notarizing", async ()
   assert.equal(lifecycle[0][1].platform, "darwin");
   assert.equal(lifecycle[1][0], "notarize");
   assert.equal(lifecycle[1][1].appPath, "/tmp/Constellation.app");
+});
+
+test("notarizes, staples, and Gatekeeper-assesses the final disk image", async () => {
+  const temporaryRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "constellation-dmg-proof-"),
+  );
+  const artifactPath = path.join(temporaryRoot, "Constellation.dmg");
+  const lifecycle = [];
+  fs.writeFileSync(artifactPath, "disk-image");
+
+  try {
+    await notarizeAndStapleMacArtifact({
+      artifactPath,
+      env: {
+        APPLE_API_KEY: "/tmp/AuthKey.p8",
+        APPLE_API_KEY_ID: "KEY123",
+        APPLE_API_ISSUER: "issuer-id",
+      },
+      notarizer: async (options) => lifecycle.push(["notarize", options]),
+      processRunner: (command, args) => {
+        lifecycle.push([command, args]);
+        return { status: 0 };
+      },
+    });
+  } finally {
+    fs.rmSync(temporaryRoot, { recursive: true, force: true });
+  }
+
+  assert.equal(lifecycle[0][0], "notarize");
+  assert.equal(lifecycle[0][1].appPath, artifactPath);
+  assert.deepEqual(lifecycle.slice(1), [
+    ["xcrun", ["stapler", "staple", artifactPath]],
+    ["xcrun", ["stapler", "validate", artifactPath]],
+    ["spctl", ["--assess", "--type", "install", "--verbose=2", artifactPath]],
+  ]);
 });
 
 test("fails closed without one Developer ID identity", async () => {
