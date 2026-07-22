@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   DocumentIdSchema,
   ProjectIdSchema,
+  StrategicRecordIdSchema,
   TaskIdSchema,
 } from "@constellation/contracts";
 
@@ -19,6 +20,7 @@ import {
   navigateShellContext,
   openShellContext,
   openShellContextReportingEviction,
+  organizationContext,
   projectContext,
   pruneInaccessibleShellContexts,
   restoreShellNavigation,
@@ -30,6 +32,9 @@ const taskId = TaskIdSchema.parse("00000000-0000-4000-8000-000000000001");
 const projectId = ProjectIdSchema.parse("00000000-0000-4000-8000-000000000002");
 const documentId = DocumentIdSchema.parse(
   "00000000-0000-4000-8000-000000000003",
+);
+const organizationId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-000000000004",
 );
 
 describe("stable shell navigation", () => {
@@ -199,6 +204,10 @@ describe("stable shell navigation", () => {
       state,
       projectContext(projectId, "Poufny projekt"),
     );
+    state = openShellContext(
+      state,
+      organizationContext(organizationId, "Poufna organizacja"),
+    );
 
     const pruned = pruneInaccessibleShellContexts(
       state,
@@ -206,6 +215,7 @@ describe("stable shell navigation", () => {
         taskIds: new Set(),
         projectIds: new Set(),
         documentIds: new Set(),
+        organizationIds: new Set(),
       },
       cockpit,
     );

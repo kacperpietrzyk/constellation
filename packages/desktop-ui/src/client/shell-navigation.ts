@@ -1,4 +1,9 @@
-import type { DocumentId, ProjectId, TaskId } from "@constellation/contracts";
+import type {
+  DocumentId,
+  ProjectId,
+  StrategicRecordId,
+  TaskId,
+} from "@constellation/contracts";
 
 import type { SurfaceId } from "./wave2-fixtures.js";
 
@@ -12,6 +17,7 @@ export interface ShellContext {
   readonly taskId?: TaskId;
   readonly projectId?: ProjectId;
   readonly documentId?: DocumentId;
+  readonly organizationId?: StrategicRecordId;
 }
 
 // Wpisy historii pochodzące z nawigacji w obrębie jednej karty niosą marker
@@ -65,6 +71,11 @@ const isRestorableShellContext = (value: unknown): value is ShellContext => {
     typeof context.documentId !== "string"
   )
     return false;
+  if (
+    context.organizationId !== undefined &&
+    typeof context.organizationId !== "string"
+  )
+    return false;
   // Prefiks klucza musi być spójny z obecnością identyfikatora — inaczej
   // wpis nigdy nie zostałby przycięty przez pruneInaccessibleShellContexts.
   if (context.key.startsWith("task:") && context.taskId === undefined)
@@ -72,6 +83,11 @@ const isRestorableShellContext = (value: unknown): value is ShellContext => {
   if (context.key.startsWith("project:") && context.projectId === undefined)
     return false;
   if (context.key.startsWith("document:") && context.documentId === undefined)
+    return false;
+  if (
+    context.key.startsWith("organization:") &&
+    context.organizationId === undefined
+  )
     return false;
   return true;
 };
@@ -133,6 +149,7 @@ export const pruneInaccessibleShellContexts = (
     readonly taskIds: ReadonlySet<TaskId>;
     readonly projectIds: ReadonlySet<ProjectId>;
     readonly documentIds: ReadonlySet<DocumentId>;
+    readonly organizationIds: ReadonlySet<StrategicRecordId>;
   },
   fallback: ShellContext,
 ): ShellNavigationState => {
@@ -141,7 +158,9 @@ export const pruneInaccessibleShellContexts = (
     (context.projectId === undefined ||
       access.projectIds.has(context.projectId)) &&
     (context.documentId === undefined ||
-      access.documentIds.has(context.documentId));
+      access.documentIds.has(context.documentId)) &&
+    (context.organizationId === undefined ||
+      access.organizationIds.has(context.organizationId));
   const tabs = state.tabs.filter(accessible);
   if (tabs.length === 0) return createShellNavigation(fallback);
   const activeKey = tabs.some((tab) => tab.key === state.activeKey)
@@ -198,6 +217,16 @@ export const documentContext = (
   label,
   surface: "documents",
   documentId,
+});
+
+export const organizationContext = (
+  organizationId: StrategicRecordId,
+  label: string,
+): ShellContext => ({
+  key: `organization:${organizationId}`,
+  label,
+  surface: "relationships",
+  organizationId,
 });
 
 export const createShellNavigation = (

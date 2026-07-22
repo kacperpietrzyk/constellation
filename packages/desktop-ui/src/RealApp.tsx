@@ -130,6 +130,7 @@ import {
   moveShellHistory,
   navigateShellContext,
   openShellContextReportingEviction,
+  organizationContext,
   projectContext,
   pruneInaccessibleShellContexts,
   restoreShellNavigation,
@@ -270,10 +271,18 @@ const loadAccessSurface = async () => {
 const AccessSurface = lazy(() =>
   loadAccessSurface().then((module) => ({ default: module.AccessSurface })),
 );
-const loadStrategicDepthSurface = () => import("./StrategicDepthSurface.js");
+const loadStrategicDepthSurface = async () => {
+  await import("./organization-context.css");
+  return import("./StrategicDepthSurface.js");
+};
 const StrategicDepthSurface = lazy(() =>
   loadStrategicDepthSurface().then((module) => ({
     default: module.StrategicDepthSurface,
+  })),
+);
+const OrganizationContextLoader = lazy(() =>
+  loadStrategicDepthSurface().then((module) => ({
+    default: module.OrganizationContextLoader,
   })),
 );
 // Onboarding i recovery są modalne oraz rzadkie; ich kod nie należy do
@@ -1765,13 +1774,21 @@ export const RealApp = ({
   useEffect(() => {
     setSelectedTaskId(activeContext.taskId);
     setSelectedProjectId(activeContext.projectId);
-    if (activeContext.taskId || activeContext.projectId) {
+    if (
+      activeContext.taskId ||
+      activeContext.projectId ||
+      activeContext.organizationId
+    ) {
       setSelectedWorkContext(undefined);
       setSelectedStrategicId(undefined);
       setSelectedCaptureId(undefined);
       setSelectedAttentionId(undefined);
     }
-  }, [activeContext.projectId, activeContext.taskId]);
+  }, [
+    activeContext.organizationId,
+    activeContext.projectId,
+    activeContext.taskId,
+  ]);
 
   // Inspector selection is intentionally separate from the active context:
   // selecting a row keeps the collection surface in place and only feeds the
@@ -1904,10 +1921,17 @@ export const RealApp = ({
         ? snapshot.documents.data.items.map((document) => document.id)
         : [],
     );
+    const organizationIds = new Set(
+      snapshot.relationships.kind === "ready"
+        ? snapshot.relationships.data.records
+            .filter((record) => record.kind === "organization")
+            .map((record) => record.id)
+        : [],
+    );
     setNavigation((current) =>
       pruneInaccessibleShellContexts(
         current,
-        { taskIds, projectIds, documentIds },
+        { taskIds, projectIds, documentIds, organizationIds },
         destinationContext("cockpit", "Tydzień"),
       ),
     );
@@ -3157,14 +3181,44 @@ export const RealApp = ({
           {surface === "relationships" && (
             <LazySurfaceBoundary label="Relacje">
               <Suspense fallback={<SurfaceLoadingState label="Relacje" />}>
-                <StrategicDepthSurface
-                  client={client}
-                  snapshot={state.snapshot}
-                  selectedRecordId={selectedStrategicId}
-                  onSelectRecord={selectStrategicInInspector}
-                  onReload={reload}
-                  onFailure={showFailure}
-                />
+                {activeContext.organizationId === undefined ? (
+                  <StrategicDepthSurface
+                    client={client}
+                    snapshot={state.snapshot}
+                    selectedRecordId={selectedStrategicId}
+                    onSelectRecord={selectStrategicInInspector}
+                    onOpenOrganization={(id, name) =>
+                      openContext(organizationContext(id, name))
+                    }
+                    onReload={reload}
+                    onFailure={showFailure}
+                  />
+                ) : (
+                  <OrganizationContextLoader
+                    client={client}
+                    snapshot={state.snapshot}
+                    organizationId={activeContext.organizationId}
+                    onOpenProject={(id, title) =>
+                      openContext(projectContext(id, title))
+                    }
+                    onOpenTask={(id, title) =>
+                      openContext(taskContext(id, title))
+                    }
+                    onOpenDocument={(id, title) =>
+                      openContext(documentContext(id, title))
+                    }
+                    onOpenMeeting={(id) => {
+                      setSelectedMeetingId(id);
+                      openContext(destinationContext("meetings", "Spotkania"));
+                    }}
+                    onOpenRelationship={(id) => {
+                      openContext(
+                        destinationContext("relationships", "Relacje"),
+                      );
+                      selectStrategicInInspector(id);
+                    }}
+                  />
+                )}
               </Suspense>
             </LazySurfaceBoundary>
           )}
@@ -4985,6 +5039,22 @@ export const RealApp = ({
                   destinationContext(nextSurface, item?.label ?? "Dokumenty"),
                 );
               }
+            } else if (nextSurface === "relationships") {
+              const record =
+                state.snapshot.relationships.kind === "ready"
+                  ? state.snapshot.relationships.data.records.find(
+                      (item) => item.id === recordId,
+                    )
+                  : undefined;
+              if (record?.kind === "organization") {
+                openContext(organizationContext(record.id, record.name));
+              } else {
+                openContext(destinationContext("relationships", "Relacje"));
+                selectStrategicInInspector(recordId);
+              }
+            } else if (nextSurface === "meetings") {
+              setSelectedMeetingId(recordId);
+              openContext(destinationContext("meetings", "Spotkania"));
             } else {
               const item = navItems.find((entry) => entry.id === nextSurface);
               openContext(

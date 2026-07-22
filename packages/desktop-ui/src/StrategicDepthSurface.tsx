@@ -1,16 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import type { StrategicRecordId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import { StrategicCreatePanel } from "./StrategicCreatePanel.js";
 
 import {
   generateRecurrenceOccurrence,
+  loadOrganizationOverview,
   resolveDecisionImpact,
   resolveRadarCandidate,
   resolveRenewal,
   type DesktopSnapshot,
   type MutationFailure,
+  type OrganizationOverviewProjection,
   type RelationshipWorkspaceProjection,
 } from "./client/workflow.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
@@ -41,6 +44,7 @@ export const StrategicDepthSurface = ({
   snapshot,
   selectedRecordId,
   onSelectRecord,
+  onOpenOrganization,
   onReload,
   onFailure,
 }: {
@@ -49,6 +53,7 @@ export const StrategicDepthSurface = ({
   /** Rekord pokazywany w shellowym inspectorze (select, nie open). */
   readonly selectedRecordId: string | undefined;
   readonly onSelectRecord: (id: string) => void;
+  readonly onOpenOrganization: (id: Record["id"], name: string) => void;
   readonly onReload: () => Promise<void>;
   readonly onFailure: (failure: MutationFailure) => void;
 }) => {
@@ -273,6 +278,17 @@ export const StrategicDepthSurface = ({
                         className="relationship-select"
                         aria-pressed={selectedRecordId === organization.id}
                         onClick={() => onSelectRecord(organization.id)}
+                        onDoubleClick={() =>
+                          onOpenOrganization(organization.id, organization.name)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter") return;
+                          event.preventDefault();
+                          onOpenOrganization(
+                            organization.id,
+                            organization.name,
+                          );
+                        }}
                       >
                         <strong>{organization.name}</strong>
                         <small>
@@ -578,5 +594,465 @@ export const StrategicDepthSurface = ({
         </div>
       )}
     </div>
+  );
+};
+
+const emptySectionCopy = {
+  people: "Nie ma jeszcze osób powiązanych z tą organizacją.",
+  opportunities: "Nie ma aktywnych szans powiązanych z tą organizacją.",
+  projects: "Nie ma aktywnych projektów wynikających z tych szans.",
+  tasks: "Nie ma otwartych zadań w aktywnych projektach klienta.",
+  renewals: "Nie ma odnowień wymagających śledzenia.",
+  facts: "Nie ma jeszcze zweryfikowanych faktów o relacji.",
+  meetings: "Nie ma spotkań przypisanych do tej organizacji.",
+  documents: "Nie ma dokumentów połączonych z tą organizacją.",
+} as const;
+
+const EmptyOrganizationSection = ({
+  children,
+}: {
+  readonly children: string;
+}) => <p className="organization-empty">{children}</p>;
+
+export const OrganizationContextSurface = ({
+  overview,
+  onOpenProject,
+  onOpenTask,
+  onOpenDocument,
+  onOpenMeeting,
+  onOpenRelationship,
+}: {
+  readonly overview: OrganizationOverviewProjection;
+  readonly onOpenProject: (
+    id: OrganizationOverviewProjection["activeProjects"][number]["id"],
+    title: string,
+  ) => void;
+  readonly onOpenTask: (
+    id: OrganizationOverviewProjection["openTasks"][number]["id"],
+    title: string,
+  ) => void;
+  readonly onOpenDocument: (
+    id: OrganizationOverviewProjection["documents"][number]["id"],
+    title: string,
+  ) => void;
+  readonly onOpenMeeting: (
+    id: OrganizationOverviewProjection["meetings"][number]["id"],
+  ) => void;
+  readonly onOpenRelationship: (
+    id: OrganizationOverviewProjection["opportunities"][number]["id"],
+  ) => void;
+}) => {
+  const { organization } = overview;
+  const lastMeeting = overview.meetings[0];
+  const nextRenewal = overview.renewals[0];
+  return (
+    <div className="surface-scroll organization-context">
+      <header className="surface-header organization-context__header">
+        <div>
+          <p className="eyebrow">Organizacja · pełny kontekst</p>
+          <h1 id="surface-title" tabIndex={-1}>
+            {organization.name}
+          </h1>
+          <p>
+            {organization.nextAction ??
+              "Nie ustalono jeszcze następnego ruchu."}
+          </p>
+        </div>
+        <StateMark state={organization.relationshipState} />
+      </header>
+
+      <section
+        className="organization-context__pulse"
+        aria-label="Stan relacji"
+      >
+        <div>
+          <span>Aktywne projekty</span>
+          <strong>{overview.activeProjects.length}</strong>
+        </div>
+        <div>
+          <span>Otwarte zadania</span>
+          <strong>{overview.openTasks.length}</strong>
+        </div>
+        <div>
+          <span>Ostatni kontakt</span>
+          <strong>
+            {lastMeeting
+              ? new Date(lastMeeting.startedAt).toLocaleDateString("pl-PL")
+              : "—"}
+          </strong>
+        </div>
+        <div>
+          <span>Najbliższe odnowienie</span>
+          <strong>
+            {nextRenewal
+              ? new Date(nextRenewal.expiresAt).toLocaleDateString("pl-PL")
+              : "—"}
+          </strong>
+        </div>
+      </section>
+
+      <div className="organization-context__grid">
+        <section
+          className="organization-context__section organization-context__section--wide"
+          aria-labelledby="org-work-title"
+        >
+          <header>
+            <div>
+              <p className="section-label">Realizacja</p>
+              <h2 id="org-work-title">Aktywna praca</h2>
+            </div>
+          </header>
+          {overview.activeProjects.length === 0 ? (
+            <EmptyOrganizationSection>
+              {emptySectionCopy.projects}
+            </EmptyOrganizationSection>
+          ) : (
+            <ul className="organization-context__rows">
+              {overview.activeProjects.map((project) => (
+                <li key={project.id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenProject(project.id, project.title)}
+                  >
+                    <span>
+                      <strong>{project.title}</strong>
+                      <small>{project.intendedOutcome}</small>
+                    </span>
+                    <span aria-hidden="true">→</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {overview.openTasks.length === 0 ? (
+            <EmptyOrganizationSection>
+              {emptySectionCopy.tasks}
+            </EmptyOrganizationSection>
+          ) : (
+            <ul className="organization-context__rows organization-context__rows--tasks">
+              {overview.openTasks.map((task) => (
+                <li key={task.id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenTask(task.id, task.title)}
+                  >
+                    <span>
+                      <strong>{task.title}</strong>
+                      <small>
+                        {task.dueAt
+                          ? `Termin ${new Date(task.dueAt).toLocaleDateString("pl-PL")}`
+                          : "Bez terminu"}{" "}
+                        ·{" "}
+                        {strategicStateLabels[task.operationalState] ??
+                          task.operationalState}
+                      </small>
+                    </span>
+                    <span aria-hidden="true">→</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section
+          className="organization-context__section"
+          aria-labelledby="org-people-title"
+        >
+          <header>
+            <div>
+              <p className="section-label">Relacja</p>
+              <h2 id="org-people-title">Osoby</h2>
+            </div>
+            <span>{overview.people.length}</span>
+          </header>
+          {overview.people.length === 0 ? (
+            <EmptyOrganizationSection>
+              {emptySectionCopy.people}
+            </EmptyOrganizationSection>
+          ) : (
+            <ul className="organization-context__plain-list">
+              {overview.people.map((person) => (
+                <li key={person.id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenRelationship(person.id)}
+                  >
+                    <strong>{person.name}</strong>
+                    <span>{person.role ?? person.email ?? "Kontakt"}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section
+          className="organization-context__section"
+          aria-labelledby="org-pipeline-title"
+        >
+          <header>
+            <div>
+              <p className="section-label">Pipeline</p>
+              <h2 id="org-pipeline-title">Szanse i oferty</h2>
+            </div>
+            <span>{overview.opportunities.length}</span>
+          </header>
+          {overview.opportunities.length === 0 ? (
+            <EmptyOrganizationSection>
+              {emptySectionCopy.opportunities}
+            </EmptyOrganizationSection>
+          ) : (
+            <ul className="organization-context__plain-list">
+              {overview.opportunities.map((opportunity) => (
+                <li key={opportunity.id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenRelationship(opportunity.id)}
+                  >
+                    <strong>{opportunity.title}</strong>
+                    <span>{opportunity.nextAction}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {overview.offers.map((offer) => (
+            <button
+              className="organization-context__inline-link"
+              type="button"
+              key={offer.id}
+              onClick={() => onOpenRelationship(offer.id)}
+            >
+              {offer.title} · {strategicStateLabels[offer.state] ?? offer.state}
+            </button>
+          ))}
+        </section>
+
+        <section
+          className="organization-context__section"
+          aria-labelledby="org-renewals-title"
+        >
+          <header>
+            <div>
+              <p className="section-label">Terminy</p>
+              <h2 id="org-renewals-title">Odnowienia</h2>
+            </div>
+            <span>{overview.renewals.length}</span>
+          </header>
+          {overview.renewals.length === 0 ? (
+            <EmptyOrganizationSection>
+              {emptySectionCopy.renewals}
+            </EmptyOrganizationSection>
+          ) : (
+            <ul className="organization-context__plain-list">
+              {overview.renewals.map((renewal) => (
+                <li key={renewal.id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenRelationship(renewal.id)}
+                  >
+                    <strong>{renewal.title}</strong>
+                    <span>
+                      {new Date(renewal.expiresAt).toLocaleDateString("pl-PL")}{" "}
+                      · {renewal.scope}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section
+          className="organization-context__section"
+          aria-labelledby="org-facts-title"
+        >
+          <header>
+            <div>
+              <p className="section-label">Wiedza</p>
+              <h2 id="org-facts-title">Fakty o relacji</h2>
+            </div>
+            <span>{overview.facts.length}</span>
+          </header>
+          {overview.facts.length === 0 ? (
+            <EmptyOrganizationSection>
+              {emptySectionCopy.facts}
+            </EmptyOrganizationSection>
+          ) : (
+            <dl className="organization-context__facts">
+              {overview.facts.map((fact) => (
+                <div key={fact.id}>
+                  <dt>{fact.factType}</dt>
+                  <dd>
+                    {fact.value}
+                    <small>
+                      {strategicStateLabels[fact.state] ?? fact.state}
+                    </small>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </section>
+
+        <section
+          className="organization-context__section"
+          aria-labelledby="org-meetings-title"
+        >
+          <header>
+            <div>
+              <p className="section-label">Kontakt</p>
+              <h2 id="org-meetings-title">Spotkania</h2>
+            </div>
+            <span>{overview.meetings.length}</span>
+          </header>
+          {overview.meetings.length === 0 ? (
+            <EmptyOrganizationSection>
+              {emptySectionCopy.meetings}
+            </EmptyOrganizationSection>
+          ) : (
+            <ul className="organization-context__plain-list">
+              {overview.meetings.map((meeting) => (
+                <li key={meeting.id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenMeeting(meeting.id)}
+                  >
+                    <strong>{meeting.title}</strong>
+                    <span>
+                      {new Date(meeting.startedAt).toLocaleString("pl-PL")}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section
+          className="organization-context__section"
+          aria-labelledby="org-docs-title"
+        >
+          <header>
+            <div>
+              <p className="section-label">Materiały</p>
+              <h2 id="org-docs-title">Dokumenty</h2>
+            </div>
+            <span>{overview.documents.length}</span>
+          </header>
+          {overview.documents.length === 0 ? (
+            <EmptyOrganizationSection>
+              {emptySectionCopy.documents}
+            </EmptyOrganizationSection>
+          ) : (
+            <ul className="organization-context__plain-list">
+              {overview.documents.map((document) => (
+                <li key={document.id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenDocument(document.id, document.title)}
+                  >
+                    <strong>{document.title}</strong>
+                    <span>
+                      {recordKindLabels[document.role] ?? document.role}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+};
+
+type OrganizationContextNavigation = Pick<
+  Parameters<typeof OrganizationContextSurface>[0],
+  | "onOpenProject"
+  | "onOpenTask"
+  | "onOpenDocument"
+  | "onOpenMeeting"
+  | "onOpenRelationship"
+>;
+
+export const OrganizationContextLoader = ({
+  client,
+  snapshot,
+  organizationId,
+  ...navigation
+}: {
+  readonly client: ConstellationRendererClient | undefined;
+  readonly snapshot: DesktopSnapshot;
+  readonly organizationId: StrategicRecordId;
+} & OrganizationContextNavigation) => {
+  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState<
+    | { readonly kind: "loading" }
+    | { readonly kind: "ready"; readonly data: OrganizationOverviewProjection }
+    | { readonly kind: "unavailable"; readonly message: string }
+  >({ kind: "loading" });
+  useEffect(() => {
+    const organization =
+      snapshot.relationships.kind === "ready"
+        ? snapshot.relationships.data.records.find(
+            (record) =>
+              record.kind === "organization" && record.id === organizationId,
+          )
+        : undefined;
+    if (!client || !organization || organization.kind !== "organization") {
+      setState({
+        kind: "unavailable",
+        message: "Kontekst tej organizacji nie jest już dostępny.",
+      });
+      return;
+    }
+    let active = true;
+    setState({ kind: "loading" });
+    void loadOrganizationOverview(
+      client,
+      snapshot,
+      organization.id,
+      organization.spaceId,
+    )
+      .then((data) => active && setState({ kind: "ready", data }))
+      .catch(() => {
+        if (active)
+          setState({
+            kind: "unavailable",
+            message:
+              "Nie udało się pobrać przeglądu. Dane nie zostały zmienione.",
+          });
+      });
+    return () => {
+      active = false;
+    };
+  }, [attempt, client, organizationId, snapshot]);
+  if (state.kind === "ready")
+    return <OrganizationContextSurface overview={state.data} {...navigation} />;
+  return (
+    <section
+      className="surface-load-state"
+      role={state.kind === "loading" ? "status" : "alert"}
+    >
+      <p className="eyebrow">Organizacja</p>
+      <h1 id="surface-title" tabIndex={-1}>
+        {state.kind === "loading"
+          ? "Otwieram kontekst klienta…"
+          : "Nie udało się otworzyć kontekstu klienta"}
+      </h1>
+      {state.kind === "unavailable" && (
+        <>
+          <p>{state.message}</p>
+          <button
+            className="secondary-button"
+            onClick={() => setAttempt((value) => value + 1)}
+          >
+            Spróbuj ponownie
+          </button>
+        </>
+      )}
+    </section>
   );
 };

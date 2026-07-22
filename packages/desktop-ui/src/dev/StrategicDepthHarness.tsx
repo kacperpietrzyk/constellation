@@ -9,10 +9,15 @@ import {
   WorkspaceIdSchema,
 } from "@constellation/contracts";
 
-import { StrategicDepthSurface } from "../StrategicDepthSurface.js";
+import {
+  OrganizationContextSurface,
+  StrategicDepthSurface,
+} from "../StrategicDepthSurface.js";
+import "../organization-context.css";
 import { createScenarioClient } from "../client/scenario-client.js";
 import type {
   DesktopSnapshot,
+  OrganizationOverviewProjection,
   RadarReviewProjection,
   RelationshipWorkspaceProjection,
 } from "../client/workflow.js";
@@ -284,14 +289,144 @@ const snapshot: DesktopSnapshot = {
   radar: { kind: "ready", data: radar },
 };
 
+const organizationOverview: OrganizationOverviewProjection = {
+  kind: "organization.operationalOverview",
+  organization: {
+    id: organizationId,
+    spaceId,
+    name: "Northstar Industries",
+    relationshipState: "active",
+    nextAction: "Potwierdź sponsora i termin warsztatu.",
+    version: 1,
+    updatedAt: timestamp,
+  },
+  people: [
+    {
+      id: personId,
+      name: "Marta Nowak",
+      role: "Sponsor programu",
+      email: "marta@example.test",
+      version: 1,
+      updatedAt: timestamp,
+    },
+  ],
+  opportunities: [
+    {
+      id: opportunityId,
+      title: "Program bezpieczeństwa Northstar",
+      need: "Wybrać pierwszy program naprawczy.",
+      stage: "qualified",
+      nextAction: "Przeprowadź zaakceptowany warsztat.",
+      state: "pursued",
+      version: 1,
+      updatedAt: timestamp,
+    },
+  ],
+  offers: [
+    {
+      id: offerId,
+      title: "Oferta warsztatu bezpieczeństwa",
+      opportunityId,
+      deliverableDocumentId: "19000000-0000-4000-8000-000000000030" as never,
+      ownerPrincipalId: principalId,
+      state: "accepted",
+      nextAction: "Przekaż zespół do realizacji.",
+      version: 1,
+      updatedAt: timestamp,
+    },
+  ],
+  renewals: [
+    {
+      id: renewalId,
+      title: "Umowa wsparcia",
+      scope: "Managed support",
+      expiresAt: "2026-09-30T12:00:00.000Z",
+      leadTimeDays: 60,
+      followUpTaskId: "19000000-0000-4000-8000-000000000031" as never,
+      state: "watching",
+      version: 1,
+      updatedAt: timestamp,
+    },
+  ],
+  facts: [
+    {
+      id: factId,
+      factType: "Stack bezpieczeństwa",
+      value: "CrowdStrike · Fortinet",
+      verifiedAt: "2026-07-12T12:00:00.000Z",
+      staleAfter: "2026-10-12T12:00:00.000Z",
+      state: "current",
+      version: 1,
+      updatedAt: timestamp,
+    },
+  ],
+  activeProjects: [
+    {
+      id: projectId,
+      title: "Pilotaż EDR",
+      intendedOutcome: "Potwierdzony zakres i odpowiedzialność partnerów.",
+      version: 1,
+      updatedAt: timestamp,
+    },
+  ],
+  openTasks: [
+    {
+      id: "19000000-0000-4000-8000-000000000031" as never,
+      title: "Domknij model cenowy",
+      projectIds: [projectId],
+      operationalState: "actionable",
+      dueAt: "2026-07-23T15:00:00.000Z",
+      priority: "high",
+      version: 1,
+      updatedAt: timestamp,
+    },
+  ],
+  meetings: [
+    {
+      id: "19000000-0000-4000-8000-000000000060" as never,
+      title: "Przegląd wdrożenia",
+      startedAt: "2026-07-15T09:42:00.000Z",
+      triage: "ready",
+      version: 1,
+      updatedAt: timestamp,
+    },
+  ],
+  documents: [
+    {
+      id: "19000000-0000-4000-8000-000000000030" as never,
+      title: "Zakres i odpowiedzialności",
+      role: "deliverable",
+      version: 1,
+      updatedAt: timestamp,
+    },
+  ],
+  recentActivity: [],
+};
+
 export const StrategicDepthHarness = () => {
   const [selectedRecordId, setSelectedRecordId] = useState<string>();
+  const [organizationOpen, setOrganizationOpen] = useState(
+    () =>
+      new URLSearchParams(window.location.search).get("organization") === "1",
+  );
+  if (organizationOpen)
+    return (
+      <OrganizationContextSurface
+        overview={organizationOverview}
+        onOpenProject={() => undefined}
+        onOpenTask={() => undefined}
+        onOpenDocument={() => undefined}
+        onOpenMeeting={() => undefined}
+        onOpenRelationship={() => setOrganizationOpen(false)}
+      />
+    );
   return (
     <StrategicDepthSurface
       client={client}
       snapshot={snapshot}
       selectedRecordId={selectedRecordId}
       onSelectRecord={setSelectedRecordId}
+      onOpenOrganization={() => setOrganizationOpen(true)}
       onReload={async () => undefined}
       onFailure={() => undefined}
     />
