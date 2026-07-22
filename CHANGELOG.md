@@ -8,7 +8,19 @@ releases begin.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-22
+
 ### Added
+
+- First public signed, notarized, and stapled macOS desktop Alpha for Apple
+  Silicon and Intel, with explicit update, compatible rollback, backup/restore,
+  and data-preserving uninstall gates. Windows remains packaged parity evidence
+  until production signing is provisioned.
+- Deterministic read-only formula sums and direct-subtask count/sum rollups for
+  typed Task fields, evaluated through the same permission-safe query boundary.
+- Explicit EventKit deletion for Constellation-owned Task blocks through a
+  fresh, exact, expiring, single-use consent preview, with stale revision and
+  partial provider/graph recovery behavior.
 
 - Versioned local MCP tools and capability resource over the shared Application
   Kernel, with a production-bundled stdio adapter verified in Codex CLI and

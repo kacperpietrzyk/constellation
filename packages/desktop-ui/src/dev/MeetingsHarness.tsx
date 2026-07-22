@@ -155,6 +155,7 @@ const client: ConstellationRendererClient = {
     ],
   }),
   previewCalendarBlocks: async ({ blocks }) => ({
+    operation: "write",
     previewId: "00000000-0000-4000-8000-000000000220",
     consentToken: "token".repeat(10),
     workspaceId: "00000000-0000-4000-8000-000000000001" as never,

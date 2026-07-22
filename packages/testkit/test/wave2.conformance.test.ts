@@ -2321,6 +2321,149 @@ describe("Wave 2 reference semantics", () => {
     );
   });
 
+  it("projects identical formula and subtask rollup values after changes and restart", () => {
+    const harness = setup();
+    const parentId = createTask(harness, "Computed parent");
+    const childId = createTask(harness, "Computed child");
+    const effortId = requestId();
+    const riskId = requestId();
+    const totalId = requestId();
+    const childCountId = requestId();
+    const childEffortId = requestId();
+    const createDefinition = (
+      fieldId: string,
+      label: string,
+      type: Record<string, unknown>,
+    ) =>
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`computed-${label}`),
+          commandName: "fieldDef.create",
+          payload: { fieldId, targetKind: "task", label, type },
+        }),
+      );
+    assert.equal(
+      createDefinition(effortId, "Effort", { kind: "number" }).outcome,
+      "success",
+    );
+    assert.equal(
+      createDefinition(riskId, "Risk", { kind: "number" }).outcome,
+      "success",
+    );
+    const projectFormula = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("computed-project-formula"),
+        commandName: "fieldDef.create",
+        payload: {
+          fieldId: requestId(),
+          targetKind: "project",
+          label: "Unsupported project formula",
+          type: {
+            kind: "formula",
+            operator: "sum",
+            fieldIds: [effortId],
+          },
+        },
+      }),
+    );
+    assert.equal(projectFormula.diagnosticCode, "command.precondition_failed");
+    assert.equal(
+      createDefinition(totalId, "Effort plus risk", {
+        kind: "formula",
+        operator: "sum",
+        fieldIds: [effortId, riskId],
+      }).outcome,
+      "success",
+    );
+    assert.equal(
+      createDefinition(childCountId, "Subtask count", {
+        kind: "rollup",
+        relationPath: "task.subtasks",
+        operation: "count",
+      }).outcome,
+      "success",
+    );
+    assert.equal(
+      createDefinition(childEffortId, "Subtask effort", {
+        kind: "rollup",
+        relationPath: "task.subtasks",
+        operation: "sum",
+        fieldId: effortId,
+      }).outcome,
+      "success",
+    );
+
+    const version = (taskId: TaskId): number => {
+      const value = harness.store
+        .snapshot()
+        .tasks.find((task) => task.id === taskId)?.version;
+      if (value === undefined) throw new Error("Task missing.");
+      return value;
+    };
+    const setNumber = (taskId: TaskId, fieldId: string, value: number) =>
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`computed-set-${taskId}-${fieldId}-${value}`, {
+            [taskId]: version(taskId),
+          }),
+          commandName: "record.setFieldValue",
+          payload: {
+            targetKind: "task",
+            recordId: taskId,
+            fieldId,
+            value: { kind: "number", value },
+          },
+        }),
+      );
+    assert.equal(setNumber(parentId, effortId, 2).outcome, "success");
+    assert.equal(setNumber(parentId, riskId, 3).outcome, "success");
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("computed-parent", { [childId]: version(childId) }),
+          commandName: "task.setParent",
+          payload: { taskId: childId, parentTaskId: parentId },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(setNumber(childId, effortId, 7).outcome, "success");
+
+    const projected = (candidate: ReferenceHarness) => {
+      const result = candidate.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "task.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace },
+      });
+      if (
+        result.kind !== "query_result" ||
+        result.result.outcome !== "success" ||
+        result.result.projection.kind !== "task.list"
+      )
+        throw new Error("Expected task list.");
+      return result.result.projection.items.find((task) => task.id === parentId)
+        ?.fields;
+    };
+    assert.deepEqual(projected(harness), {
+      [effortId]: { kind: "number", value: 2 },
+      [riskId]: { kind: "number", value: 3 },
+      [totalId]: { kind: "number", value: 5 },
+      [childCountId]: { kind: "number", value: 1 },
+      [childEffortId]: { kind: "number", value: 7 },
+    });
+    assert.equal(setNumber(childId, effortId, 11).outcome, "success");
+    assert.equal(projected(harness)?.[childEffortId]?.value, 11);
+
+    const restarted = createReferenceHarness({
+      initialState: JSON.parse(JSON.stringify(harness.store.snapshot())),
+    });
+    restarted.authorization.register(context());
+    assert.deepEqual(projected(restarted), projected(harness));
+  });
+
   it("bundles project starters into templates applied prospectively with scoped undo", () => {
     const harness = setup();
     const templateId = "10000000-0000-4000-8000-00000000c301";

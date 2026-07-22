@@ -21,6 +21,36 @@ test("Windows calendar capability is explicit and never invokes EventKit", async
     outcome: "rejected",
     code: "provider_unavailable",
   });
+  assert.deepEqual(await adapter.deleteOwnedBlocks({ blocks: [] }), {
+    outcome: "rejected",
+    code: "provider_unavailable",
+  });
+});
+
+test("macOS calendar adapter deletes only through the native delete command", async () => {
+  const blocks = [
+    {
+      calendarExternalId: "calendar-1",
+      ownedBlockExternalId: "task-block:task-1",
+      title: "Release review",
+      startsAt: "2026-07-22T08:00:00.000Z",
+      endsAt: "2026-07-22T09:00:00.000Z",
+      expectedRevision: "rev-1",
+      sourceRecordIds: ["task:task-1"],
+    },
+  ];
+  const adapter = new NativeCalendarAdapter(
+    "darwin",
+    async (command, payload) => {
+      assert.equal(command, "delete");
+      assert.deepEqual(payload, { blocks });
+      return { outcome: "applied", revisions: [] };
+    },
+  );
+  assert.deepEqual(await adapter.deleteOwnedBlocks({ blocks }), {
+    outcome: "applied",
+    revisions: [],
+  });
 });
 
 test("macOS calendar adapter validates the native projection boundary", async () => {

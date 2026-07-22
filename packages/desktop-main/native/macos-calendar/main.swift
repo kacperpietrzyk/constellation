@@ -1,4 +1,5 @@
 import EventKit
+import CryptoKit
 import Foundation
 
 struct Capability: Encodable {
@@ -53,6 +54,60 @@ struct WriteResponse: Encodable { let outcome: String; let revisions: [String]?;
 let encoder = JSONEncoder()
 encoder.outputFormatting = [.sortedKeys]
 let iso = ISO8601DateFormatter()
+let fractionalIso = ISO8601DateFormatter()
+fractionalIso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+func parseIsoDate(_ value: String) -> Date? {
+    fractionalIso.date(from: value) ?? iso.date(from: value)
+}
+
+// EventKit-backed providers may advance lastModifiedDate after a successful
+// save while assigning remote metadata, even when the user-visible event did
+// not change. Use the exact owned content as the optimistic concurrency token
+// so provider bookkeeping does not create an unrecoverable false conflict.
+func eventRevision(_ event: EKEvent) -> String {
+    let attendees = (event.attendees ?? [])
+        .map { participant in
+            [
+                participant.url.absoluteString,
+                participant.name ?? "",
+                String(participant.participantStatus.rawValue),
+                String(participant.participantRole.rawValue),
+            ].joined(separator: ":")
+        }
+        .sorted()
+        .joined(separator: ",")
+    let recurrence = (event.recurrenceRules ?? [])
+        .map { $0.description }
+        .sorted()
+        .joined(separator: ",")
+    let alarms = (event.alarms ?? [])
+        .map { alarm in
+            alarm.absoluteDate.map { "absolute:\(iso.string(from: $0))" }
+                ?? "relative:\(alarm.relativeOffset)"
+        }
+        .sorted()
+        .joined(separator: ",")
+    let values = [
+        event.calendar.calendarIdentifier,
+        event.title ?? "",
+        iso.string(from: event.startDate),
+        iso.string(from: event.endDate),
+        event.isAllDay ? "1" : "0",
+        event.location ?? "",
+        event.notes ?? "",
+        event.url?.absoluteString ?? "",
+        event.timeZone?.identifier ?? "",
+        String(event.availability.rawValue),
+        attendees,
+        recurrence,
+        alarms,
+    ]
+    let canonical = values.map { "\($0.utf8.count):\($0)" }.joined(separator: "|")
+    return SHA256.hash(data: Data(canonical.utf8))
+        .map { String(format: "%02x", $0) }
+        .joined()
+}
 
 func emit<T: Encodable>(_ value: T) -> Never {
     do {
@@ -94,7 +149,7 @@ func capabilityWithWriteTarget() -> Capability {
 
 guard CommandLine.arguments.count == 3,
       let requestData = Data(base64Encoded: CommandLine.arguments[2]) else {
-    FileHandle.standardError.write(Data("Expected read/write and a base64 JSON payload.\n".utf8))
+    FileHandle.standardError.write(Data("Expected read/write/delete and a base64 JSON payload.\n".utf8))
     exit(64)
 }
 
@@ -115,8 +170,8 @@ if CommandLine.arguments[1] == "request-access" {
 if CommandLine.arguments[1] == "read" {
     guard currentCapability.canRead,
           let request = try? JSONDecoder().decode(ReadRequest.self, from: requestData),
-          let from = iso.date(from: request.from),
-          let to = iso.date(from: request.to), to > from else {
+          let from = parseIsoDate(request.from),
+          let to = parseIsoDate(request.to), to > from else {
         emit(ReadResponse(capability: currentCapability, events: []))
     }
     let events = store.events(matching: store.predicateForEvents(withStart: from, end: to, calendars: nil))
@@ -125,7 +180,7 @@ if CommandLine.arguments[1] == "read" {
             EventProjection(
                 calendarExternalId: event.calendar.calendarIdentifier,
                 eventExternalId: event.calendarItemExternalIdentifier,
-                revision: event.lastModifiedDate.map { iso.string(from: $0) } ?? "unknown",
+                revision: eventRevision(event),
                 title: event.title ?? "Untitled event",
                 startsAt: iso.string(from: event.startDate),
                 endsAt: iso.string(from: event.endDate),
@@ -153,6 +208,42 @@ if CommandLine.arguments[1] == "read" {
     emit(ReadResponse(capability: currentCapability, events: events))
 }
 
+if CommandLine.arguments[1] == "delete" {
+    guard currentCapability.canWriteOwnedBlocks,
+          let request = try? JSONDecoder().decode(WriteRequest.self, from: requestData) else {
+        emit(WriteResponse(outcome: "rejected", revisions: nil, code: "permission_denied"))
+    }
+    do {
+        var events: [EKEvent] = []
+        for block in request.blocks {
+            guard let start = parseIsoDate(block.startsAt),
+                  let end = parseIsoDate(block.endsAt), end > start,
+                  let calendar = store.calendar(withIdentifier: block.calendarExternalId),
+                  let expected = block.expectedRevision,
+                  let encodedId = block.ownedBlockExternalId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else {
+                emit(WriteResponse(outcome: "rejected", revisions: nil, code: "provider_error"))
+            }
+            let marker = "constellation://calendar-block/\(encodedId)"
+            let matches = store.events(matching: store.predicateForEvents(withStart: start.addingTimeInterval(-86400), end: end.addingTimeInterval(86400), calendars: [calendar]))
+                .filter { $0.url?.absoluteString == marker }
+            guard matches.count == 1,
+                  let event = matches.first,
+                  eventRevision(event) == expected else {
+                emit(WriteResponse(outcome: "rejected", revisions: nil, code: "stale_revision"))
+            }
+            events.append(event)
+        }
+        for event in events {
+            try store.remove(event, span: .thisEvent, commit: false)
+        }
+        try store.commit()
+        emit(WriteResponse(outcome: "applied", revisions: [], code: nil))
+    } catch {
+        store.reset()
+        emit(WriteResponse(outcome: "rejected", revisions: nil, code: "provider_error"))
+    }
+}
+
 guard CommandLine.arguments[1] == "write",
       currentCapability.canWriteOwnedBlocks,
       let request = try? JSONDecoder().decode(WriteRequest.self, from: requestData) else {
@@ -162,8 +253,8 @@ guard CommandLine.arguments[1] == "write",
 do {
     var writtenEvents: [EKEvent] = []
     for block in request.blocks {
-        guard let start = iso.date(from: block.startsAt),
-              let end = iso.date(from: block.endsAt), end > start,
+        guard let start = parseIsoDate(block.startsAt),
+              let end = parseIsoDate(block.endsAt), end > start,
               let calendar = store.calendar(withIdentifier: block.calendarExternalId) else {
             emit(WriteResponse(outcome: "rejected", revisions: nil, code: "provider_error"))
         }
@@ -178,7 +269,7 @@ do {
         }
         let event = matches.first ?? EKEvent(eventStore: store)
         if let expected = block.expectedRevision,
-           event.lastModifiedDate.map({ iso.string(from: $0) }) != expected {
+           eventRevision(event) != expected {
             emit(WriteResponse(outcome: "rejected", revisions: nil, code: "stale_revision"))
         }
         event.calendar = calendar
@@ -191,9 +282,7 @@ do {
         writtenEvents.append(event)
     }
     try store.commit()
-    let revisions = writtenEvents.map { event in
-        event.lastModifiedDate.map { iso.string(from: $0) } ?? event.eventIdentifier ?? "unknown"
-    }
+    let revisions = writtenEvents.map(eventRevision)
     emit(WriteResponse(outcome: "applied", revisions: revisions, code: nil))
 } catch {
     store.reset()

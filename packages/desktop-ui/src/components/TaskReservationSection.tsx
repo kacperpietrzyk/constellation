@@ -8,7 +8,11 @@ import type {
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import { CalendarConsentDialog } from "./CalendarConsentDialog.js";
-import { reservationTarget } from "../client/calendar-reservation.js";
+import {
+  calendarDeletionDraft,
+  nextReservationStart,
+  reservationTarget,
+} from "../client/calendar-reservation.js";
 import {
   setTaskCalendarBlock,
   type DesktopSnapshot,
@@ -23,6 +27,8 @@ type ReservedBlock = {
   readonly startsAt: string;
   readonly endsAt: string;
 };
+
+const previewFailed = "Nie udało się przygotować podglądu. Bez zmian.";
 
 // R12.6 / ADR-042 — "when I will do it", kept deliberately separate from the
 // deadline shown above it in the inspector.
@@ -40,7 +46,6 @@ export const TaskReservationSection = ({
   taskVersion,
   taskTitle,
   block,
-  timeZone,
   onRecorded,
   onFailure,
 }: {
@@ -50,7 +55,6 @@ export const TaskReservationSection = ({
   readonly taskVersion: number;
   readonly taskTitle: string;
   readonly block: ReservedBlock | undefined;
-  readonly timeZone: string | undefined;
   readonly onRecorded: (message: string) => Promise<void>;
   readonly onFailure: (result: MutationFailure) => void;
 }) => {
@@ -58,8 +62,11 @@ export const TaskReservationSection = ({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
   const [preview, setPreview] = useState<CalendarWritePreview>();
-  const [date, setDate] = useState(() => dateKeyInZone(new Date(), timeZone));
-  const [startTime, setStartTime] = useState("09:00");
+  const [defaultStart] = useState(nextReservationStart);
+  const [date, setDate] = useState(() => dateKeyInZone(defaultStart));
+  const [startTime, setStartTime] = useState(() =>
+    defaultStart.toTimeString().slice(0, 5),
+  );
   const [minutes, setMinutes] = useState(60);
   // Captured when the preview is opened, so the recording step uses the
   // version that was current before the provider write rather than one read
@@ -123,6 +130,11 @@ export const TaskReservationSection = ({
           setNotice("Podaj poprawną datę i godzinę rozpoczęcia.");
           return;
         }
+        if (startsAt.getTime() <= Date.now()) {
+          setBusy(false);
+          setNotice("Wybierz przyszłą godzinę rozpoczęcia.");
+          return;
+        }
         const draft: CalendarBlockDraft = {
           calendarExternalId: target.calendarExternalId,
           ownedBlockExternalId: `task-block:${taskId}`,
@@ -137,32 +149,52 @@ export const TaskReservationSection = ({
         setPendingVersion(taskVersion);
         return client.previewCalendarBlocks({ blocks: [draft] }).then((r) => {
           setBusy(false);
-          if (r === undefined)
-            setNotice(
-              "Nie udało się przygotować bezpiecznego podglądu. Nic nie zapisano.",
-            );
+          if (r === undefined) setNotice(previewFailed);
           else setPreview(r);
         });
       });
   };
 
-  const release = () => {
+  const clearReservation = (version: number, calendarDeleted = false) => {
     setBusy(true);
     setNotice(undefined);
-    void setTaskCalendarBlock(client, snapshot, taskId, taskVersion, null).then(
+    void setTaskCalendarBlock(client, snapshot, taskId, version, null).then(
       async (result) => {
         setBusy(false);
         if (result.kind === "success")
-          // ADR-042 §4: clearing the descriptor releases Constellation's claim.
-          // Until the native delete mode lands the provider event is still
-          // there, and implying otherwise would strand a calendar entry the
-          // owner believes is gone.
           await onRecorded(
-            "Zwolniono rezerwację. Wydarzenie pozostaje w kalendarzu — usuń je tam, jeśli ma zniknąć.",
+            calendarDeleted
+              ? "Usunięto wydarzenie i rezerwację."
+              : "Zwolniono rezerwację. Wydarzenie pozostaje w kalendarzu.",
+          );
+        else if (calendarDeleted)
+          setNotice(
+            "Wydarzenie usunięto, ale zadanie nadal pokazuje rezerwację. Przestań ją śledzić.",
           );
         else onFailure(result);
       },
     );
+  };
+
+  const release = () => clearReservation(taskVersion);
+
+  const previewDeletion = () => {
+    if (block === undefined) return;
+    setBusy(true);
+    setNotice(undefined);
+    const draft = calendarDeletionDraft(block, taskId, taskTitle);
+    setPendingVersion(taskVersion);
+    void client
+      .previewCalendarBlocks({ operation: "delete", blocks: [draft] })
+      .then((result) => {
+        setBusy(false);
+        if (result === undefined) setNotice(previewFailed);
+        else setPreview(result);
+      })
+      .catch(() => {
+        setBusy(false);
+        setNotice(previewFailed);
+      });
   };
 
   return (
@@ -216,7 +248,7 @@ export const TaskReservationSection = ({
           </label>
         </div>
       )}
-      <div className="task-reservation-actions">
+      <div className="task-reservation-actions task-removal-actions">
         {block === undefined ? (
           open ? (
             <>
@@ -250,14 +282,24 @@ export const TaskReservationSection = ({
             </button>
           )
         ) : (
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={busy}
-            onClick={release}
-          >
-            {busy ? "Zwalniam…" : "Zwolnij rezerwację"}
-          </button>
+          <>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={busy}
+              onClick={release}
+            >
+              {busy ? "Zwalniam…" : "Przestań śledzić"}
+            </button>
+            <button
+              type="button"
+              className="secondary-button status-danger"
+              disabled={busy}
+              onClick={previewDeletion}
+            >
+              Usuń z kalendarza…
+            </button>
+          </>
         )}
       </div>
       {preview && (
@@ -267,8 +309,13 @@ export const TaskReservationSection = ({
           onClose={() => setPreview(undefined)}
           onApplied={(revisions) => {
             const draft = preview.blocks[0]!;
+            const deleting = preview.operation === "delete";
             const revision = revisions[0];
             setPreview(undefined);
+            if (deleting) {
+              clearReservation(pendingVersion, true);
+              return;
+            }
             if (revision === undefined) {
               setNotice(
                 "Kalendarz nie zwrócił rewizji zapisu, więc rezerwacji nie zapisano przy zadaniu.",

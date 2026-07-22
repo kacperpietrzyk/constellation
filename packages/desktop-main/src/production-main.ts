@@ -2228,17 +2228,28 @@ const startProductionDesktop = async (): Promise<void> => {
         raw === null ||
         typeof raw !== "object" ||
         Array.isArray(raw) ||
-        Object.keys(raw).join(",") !== "blocks" ||
-        !Array.isArray((raw as Record<string, unknown>).blocks)
+        !["blocks", "blocks,operation"].includes(
+          Object.keys(raw).sort().join(","),
+        )
       )
         throw new Error("Invalid calendar preview.");
-      const blocks = (raw as { blocks: unknown[] }).blocks.map((block) =>
-        CalendarBlockDraftSchema.parse(block),
-      );
-      return meetingLoop.service.previewCalendarWrite({
+      const candidate = raw as Record<string, unknown>;
+      if (
+        !Array.isArray(candidate.blocks) ||
+        (candidate.operation !== undefined &&
+          candidate.operation !== "write" &&
+          candidate.operation !== "delete")
+      )
+        throw new Error("Invalid calendar preview.");
+      const input = {
         authorization: meetingLoop.authorization(),
-        blocks,
-      });
+        blocks: candidate.blocks.map((block) =>
+          CalendarBlockDraftSchema.parse(block),
+        ),
+      };
+      return candidate.operation === "delete"
+        ? meetingLoop.service.previewCalendarDelete(input)
+        : meetingLoop.service.previewCalendarWrite(input);
     },
   );
   ipcMain.handle(
@@ -2251,21 +2262,29 @@ const startProductionDesktop = async (): Promise<void> => {
         throw new Error("Invalid calendar confirmation.");
       const candidate = raw as Record<string, unknown>;
       if (
-        Object.keys(candidate).sort().join(",") !==
-          "blocks,consentToken,previewId" ||
+        ![
+          "blocks,consentToken,previewId",
+          "blocks,consentToken,operation,previewId",
+        ].includes(Object.keys(candidate).sort().join(",")) ||
         typeof candidate.previewId !== "string" ||
         typeof candidate.consentToken !== "string" ||
-        !Array.isArray(candidate.blocks)
+        !Array.isArray(candidate.blocks) ||
+        (candidate.operation !== undefined &&
+          candidate.operation !== "write" &&
+          candidate.operation !== "delete")
       )
         throw new Error("Invalid calendar confirmation.");
-      return meetingLoop.service.confirmCalendarWrite({
+      const input = {
         authorization: meetingLoop.authorization(),
         previewId: candidate.previewId,
         consentToken: candidate.consentToken,
         blocks: candidate.blocks.map((block) =>
           CalendarBlockDraftSchema.parse(block),
         ),
-      });
+      };
+      return candidate.operation === "delete"
+        ? meetingLoop.service.confirmCalendarDelete(input)
+        : meetingLoop.service.confirmCalendarWrite(input);
     },
   );
   ipcMain.handle(DESKTOP_CHANNELS.openDocument, (event, input: unknown) => {

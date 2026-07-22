@@ -12,15 +12,16 @@ recording or model execution into Constellation.
   extraction. Constellation imports its result and retains provider identity.
 - Constellation creates deterministic factual briefs from authorized graph
   evidence. It does not generate a narrative brief or call a model.
-- Constellation writes only work blocks that it owns. Every concrete write or
-  batch requires a fresh user confirmation.
+- Constellation writes or deletes only work blocks that it owns. Every concrete
+  change or batch requires a fresh user confirmation.
 
 ## Platform capability
 
 The macOS Alpha packages a narrow Swift EventKit helper. It requests full event
-access, reads a bounded date range, and writes only events marked with a
-Constellation ownership URL. EventKit identifiers and revisions remain at the
-adapter boundary. The shared application and UI do not import native types.
+access, reads a bounded date range, and writes or deletes only events marked
+with a Constellation ownership URL. EventKit identifiers and content-derived
+revisions remain at the adapter boundary. The shared application and UI do not
+import native types.
 
 Windows currently reports `provider_unavailable`. Meeting results and their
 follow-up work remain usable without calendar access; no silent fallback claims
@@ -78,11 +79,14 @@ already be referenced elsewhere.
 
 ## Calendar-write consent
 
-A preview is bound to the workspace, human principal, provider calendar,
-Constellation-owned block identity, exact title and time, source records, and
-expected provider revision. The consent token is single use and expires after
-five minutes. Altered values, replay, expired previews, and stale provider
-revisions fail closed before a provider write.
+A preview is bound to its operation (`write` or `delete`), workspace, human
+principal, provider calendar, Constellation-owned block identity, exact title
+and time, source records, and expected provider revision. The consent token is
+single use and expires after five minutes. Altered values, cross-operation
+replay, expired previews, and stale provider revisions fail closed before the
+provider changes. A Task may clear only its graph descriptor without claiming
+that the EventKit event was removed; provider deletion and descriptor clearing
+are reported separately if the second step fails.
 
 ## Current limitation
 

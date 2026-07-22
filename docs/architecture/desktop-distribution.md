@@ -20,13 +20,14 @@ review, and holds platform credentials outside the repository. The public
 update origin is fixed to this repository's GitHub Releases rather than entered
 by a workflow caller.
 
-The macOS build must pass Developer ID signing, notarization, stapling,
+The first public desktop Alpha is `0.1.0`. The macOS build must pass Developer
+ID signing, notarization, stapling,
 Gatekeeper assessment, and signature verification. It produces separate Apple
 Silicon and Intel artifacts, then creates one architecture-aware
-`latest-mac.yml`. The protected workflow creates a draft GitHub Release; a
-human must inspect and publish that draft before it becomes the public update
-channel. Existing versions are immutable and cannot be replaced by the
-workflow.
+`latest-mac.yml`. The protected workflow creates a draft GitHub Release; an
+authorized release reviewer must inspect its exact-head evidence and publish
+that draft before it becomes the public update channel. Existing versions are
+immutable and cannot be replaced by the workflow.
 
 Prerelease SemVer identifiers are rejected because GitHub's `latest` endpoint
 does not expose prerelease releases. A future alpha/beta channel must introduce

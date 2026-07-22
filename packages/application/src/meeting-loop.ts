@@ -135,6 +135,20 @@ export interface CalendarWriter {
           | "provider_error";
       }
   >;
+  deleteOwnedBlocks(input: {
+    readonly blocks: readonly CalendarBlockDraft[];
+  }): Promise<
+    | { readonly outcome: "applied"; readonly revisions: readonly string[] }
+    | {
+        readonly outcome: "rejected";
+        readonly code:
+          | "permission_denied"
+          | "provider_unavailable"
+          | "offline"
+          | "stale_revision"
+          | "provider_error";
+      }
+  >;
 }
 
 export interface MeetingEvidenceReader {
@@ -666,6 +680,23 @@ export class MeetingLoopService {
     readonly authorization: MeetingLoopAuthorization;
     readonly blocks: readonly CalendarBlockDraft[];
   }): CalendarWritePreview | undefined {
+    return this.previewCalendarChange("write", input);
+  }
+
+  public previewCalendarDelete(input: {
+    readonly authorization: MeetingLoopAuthorization;
+    readonly blocks: readonly CalendarBlockDraft[];
+  }): CalendarWritePreview | undefined {
+    return this.previewCalendarChange("delete", input);
+  }
+
+  private previewCalendarChange(
+    operation: "write" | "delete",
+    input: {
+      readonly authorization: MeetingLoopAuthorization;
+      readonly blocks: readonly CalendarBlockDraft[];
+    },
+  ): CalendarWritePreview | undefined {
     if (!input.authorization.canWriteCalendar) return undefined;
     const blocks = input.blocks.map((block) =>
       CalendarBlockDraftSchema.parse(block),
@@ -677,9 +708,11 @@ export class MeetingLoopService {
     const exactDigest = this.dependencies.hasher.fingerprint({
       workspaceId: input.authorization.workspaceId,
       principalId: input.authorization.principalId,
+      operation,
       blocks,
     });
     const preview: CalendarWritePreview = {
+      operation,
       previewId,
       consentToken: this.dependencies.ids.opaqueToken(),
       workspaceId: input.authorization.workspaceId,
@@ -728,6 +761,59 @@ export class MeetingLoopService {
           | "provider_error";
       }
   > {
+    return this.confirmCalendarChange("write", input);
+  }
+
+  public async confirmCalendarDelete(input: {
+    readonly authorization: MeetingLoopAuthorization;
+    readonly previewId: string;
+    readonly consentToken: string;
+    readonly blocks: readonly CalendarBlockDraft[];
+  }): Promise<
+    | { readonly outcome: "applied"; readonly revisions: readonly string[] }
+    | {
+        readonly outcome: "rejected";
+        readonly code:
+          | "unauthorized"
+          | "missing_preview"
+          | "expired"
+          | "already_consumed"
+          | "altered_preview"
+          | "permission_denied"
+          | "provider_unavailable"
+          | "offline"
+          | "stale_revision"
+          | "provider_error";
+      }
+  > {
+    return this.confirmCalendarChange("delete", input);
+  }
+
+  private async confirmCalendarChange(
+    operation: "write" | "delete",
+    input: {
+      readonly authorization: MeetingLoopAuthorization;
+      readonly previewId: string;
+      readonly consentToken: string;
+      readonly blocks: readonly CalendarBlockDraft[];
+    },
+  ): Promise<
+    | { readonly outcome: "applied"; readonly revisions: readonly string[] }
+    | {
+        readonly outcome: "rejected";
+        readonly code:
+          | "unauthorized"
+          | "missing_preview"
+          | "expired"
+          | "already_consumed"
+          | "altered_preview"
+          | "permission_denied"
+          | "provider_unavailable"
+          | "offline"
+          | "stale_revision"
+          | "provider_error";
+      }
+  > {
     if (!input.authorization.canWriteCalendar)
       return { outcome: "rejected", code: "unauthorized" };
     const state = this.dependencies.repository.load(
@@ -740,6 +826,8 @@ export class MeetingLoopService {
       return { outcome: "rejected", code: "missing_preview" };
     if (preview.state !== "pending")
       return { outcome: "rejected", code: "already_consumed" };
+    if ((preview.operation ?? "write") !== operation)
+      return { outcome: "rejected", code: "altered_preview" };
     if (
       Date.parse(preview.expiresAt) <= Date.parse(this.dependencies.clock.now())
     ) {
@@ -754,6 +842,7 @@ export class MeetingLoopService {
     const exactDigest = this.dependencies.hasher.fingerprint({
       workspaceId: input.authorization.workspaceId,
       principalId: input.authorization.principalId,
+      operation,
       blocks: input.blocks,
     });
     if (
@@ -776,10 +865,13 @@ export class MeetingLoopService {
     ) {
       return { outcome: "rejected", code: "already_consumed" };
     }
-    const written = await this.dependencies.calendarWriter.writeOwnedBlocks({
-      blocks: input.blocks,
-    });
-    return written;
+    return operation === "write"
+      ? this.dependencies.calendarWriter.writeOwnedBlocks({
+          blocks: input.blocks,
+        })
+      : this.dependencies.calendarWriter.deleteOwnedBlocks({
+          blocks: input.blocks,
+        });
   }
 
   private updatePreview(

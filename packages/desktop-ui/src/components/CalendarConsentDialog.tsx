@@ -38,6 +38,7 @@ export const CalendarConsentDialog = ({
     return () => dialogRef.current?.close();
   }, []);
   const block = preview.blocks[0]!;
+  const deleting = preview.operation === "delete";
   return (
     <dialog
       ref={dialogRef}
@@ -54,8 +55,12 @@ export const CalendarConsentDialog = ({
       <section className="meeting-consent-dialog">
         <header>
           <div>
-            <p className="eyebrow">Dokładny zapis do kalendarza</p>
-            <h2 id="calendar-consent-title">Potwierdź ten blok pracy</h2>
+            <p className="eyebrow">Zgoda kalendarza</p>
+            <h2 id="calendar-consent-title">
+              {deleting
+                ? "Usuń blok z kalendarza?"
+                : "Potwierdź ten blok pracy"}
+            </h2>
           </div>
           <button
             className="icon-button"
@@ -85,15 +90,16 @@ export const CalendarConsentDialog = ({
           </div>
         </dl>
         <p className="meeting-consent-note">
-          Zgoda dotyczy wyłącznie tych wartości i wygasa po pięciu minutach.
-          Zmiana treści albo rewizji wymaga nowego podglądu.
+          {deleting
+            ? "To usuwa wydarzenie. Bez cofania. Zgoda wygasa za pięć minut."
+            : "Jednorazowa zgoda dotyczy tych wartości i wygasa po pięciu minutach. Zmiana wymaga nowego podglądu."}
         </p>
         {error && (
           <p id="calendar-consent-error" className="inline-error" role="alert">
             {error}
           </p>
         )}
-        <footer>
+        <footer className="task-removal-actions">
           <button
             ref={cancelRef}
             className="secondary-button"
@@ -103,7 +109,9 @@ export const CalendarConsentDialog = ({
             Anuluj
           </button>
           <button
-            className="primary-button"
+            className={
+              deleting ? "secondary-button status-danger" : "primary-button"
+            }
             disabled={busy}
             aria-describedby={error ? "calendar-consent-error" : undefined}
             onClick={() => {
@@ -113,6 +121,7 @@ export const CalendarConsentDialog = ({
                 .confirmCalendarBlocks({
                   previewId: preview.previewId,
                   consentToken: preview.consentToken,
+                  operation: preview.operation,
                   blocks: preview.blocks,
                 })
                 .then((result) => {
@@ -121,13 +130,17 @@ export const CalendarConsentDialog = ({
                   else
                     setError(
                       result.code === "stale_revision"
-                        ? "Kalendarz zmienił się od czasu podglądu. Otwórz nowy podgląd."
-                        : "Zapis nie został wykonany. Sprawdź uprawnienie i spróbuj ponownie.",
+                        ? "Kalendarz się zmienił. Ponów."
+                        : "Operacja nieudana. Sprawdź uprawnienie.",
                     );
                 });
             }}
           >
-            {busy ? "Zapisuję blok…" : "Zapisz ten blok"}
+            {busy
+              ? "Pracuję…"
+              : deleting
+                ? "Usuń z kalendarza"
+                : "Zapisz ten blok"}
           </button>
         </footer>
       </section>

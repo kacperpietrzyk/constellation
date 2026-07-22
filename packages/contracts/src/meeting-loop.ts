@@ -394,6 +394,7 @@ export type CalendarBlockDraft = z.infer<typeof CalendarBlockDraftSchema>;
 
 export const CalendarWritePreviewSchema = z
   .object({
+    operation: z.enum(["write", "delete"]).default("write"),
     previewId: z.uuid(),
     consentToken: z.string().trim().min(32).max(500),
     workspaceId: WorkspaceIdSchema,

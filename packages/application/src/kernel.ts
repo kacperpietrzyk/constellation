@@ -60,6 +60,7 @@ import {
   routeCaptureAsKnowledgeSource,
   routeCaptureAsTask,
   submitCapture,
+  taskFieldsWithComputedValues,
   setAttentionState,
   type AuditReceipt,
   type AttentionSignal,
@@ -3164,6 +3165,27 @@ export class ApplicationKernel {
       return this.queryRejected(query, kernelTime, "query.cursor_invalid");
     }
     const visibleItems = items.slice(0, limit);
+    const spaceTasks = isApplicationWave2ReadView(view)
+      ? view.listTasksInSpace(query.workspaceId, query.parameters.spaceId)
+      : visibleItems;
+    const fieldDefinitions = isApplicationWave2ReadView(view)
+      ? view.listFieldDefinitions(query.workspaceId)
+      : [];
+    const subtasksByParent = new Map<
+      string,
+      Array<(typeof spaceTasks)[number]>
+    >();
+    for (const candidate of spaceTasks) {
+      if (
+        candidate.parentTaskId === undefined ||
+        candidate.recordState !== "active"
+      )
+        continue;
+      const siblings = subtasksByParent.get(candidate.parentTaskId);
+      if (siblings === undefined)
+        subtasksByParent.set(candidate.parentTaskId, [candidate]);
+      else siblings.push(candidate);
+    }
     const projections = visibleItems.map((task) => {
       const status = view.getTaskStatus(task.statusId);
       const assignment = view.getActiveTaskAssignment(task.id);
@@ -3213,6 +3235,11 @@ export class ApplicationKernel {
             }
           : undefined;
       });
+      const projectedFields = taskFieldsWithComputedValues(
+        task.fields,
+        fieldDefinitions,
+        subtasksByParent.get(task.id) ?? [],
+      );
       return status?.workspaceId === query.workspaceId &&
         !attachments.some((attachment) => attachment === undefined)
         ? {
@@ -3234,7 +3261,9 @@ export class ApplicationKernel {
             ...(task.calendarBlock === undefined
               ? {}
               : { calendarBlock: task.calendarBlock }),
-            ...(task.fields === undefined ? {} : { fields: task.fields }),
+            ...(projectedFields === undefined
+              ? {}
+              : { fields: projectedFields }),
             attachments,
             status: {
               id: status.id,

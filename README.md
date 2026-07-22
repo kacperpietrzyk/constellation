@@ -1,7 +1,7 @@
 # Constellation
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-0b7285.svg)](LICENSE)
-[![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-c2410c.svg)](#project-status)
+[![Status: desktop alpha](https://img.shields.io/badge/status-desktop%20alpha-2563eb.svg)](#project-status)
 [![CI](https://github.com/kacperpietrzyk/constellation/actions/workflows/ci.yml/badge.svg)](https://github.com/kacperpietrzyk/constellation/actions/workflows/ci.yml)
 
 Constellation is an open-source, cross-platform work system built around a
@@ -51,15 +51,15 @@ already solve well:
 
 ## Project status
 
-Constellation is in **pre-alpha local Alpha work**. There is no published signed
-release yet, and no contract should be considered stable. A protected,
-product-owner-reviewed workflow can prepare a signed and notarized macOS GitHub
-Release draft for Apple Silicon and Intel; it never publishes the draft
-automatically. Paid Windows signing and a public Windows release remain
-deferred, while Windows build and packaged behavior continue to be tested. The
-repository now contains a storage-neutral Application Kernel, a restart-safe
-encrypted local store, an in-memory Electron developer preview, and a packaged
-Alpha candidate.
+Constellation `0.1.0` is the first public **desktop Alpha**. The macOS release is
+Developer ID signed, notarized, stapled, and published for Apple Silicon and
+Intel through [GitHub Releases](https://github.com/kacperpietrzyk/constellation/releases/latest).
+Contracts are still allowed to evolve before a stable release. Windows remains
+a first-class build and packaged-behavior target, but its unsigned artifacts
+are parity evidence rather than a production download until paid Authenticode
+credentials are provisioned. The repository contains the storage-neutral
+Application Kernel, restart-safe encrypted local storage, the Electron desktop,
+local and remote MCP transports, and the self-hosted Hub.
 The implemented desktop journey covers Universal Quick Capture for text, URLs,
 file references, one managed file or pasted screenshot, and a short voice note
 whose bytes enter the encrypted workspace before deterministic processing.
@@ -280,23 +280,25 @@ commands rather than import side effects: only participants carrying an exact
 email address are linked or created, participants known by name alone wait for a
 decision instead of being guessed at, and a repeated Jamie delivery never
 duplicates a meeting, a person, or a task. Creating or changing a
-Constellation-owned
-calendar block always requires an exact, five-minute, single-use preview. The
+Constellation-owned calendar block always requires an exact, five-minute,
+single-use preview. The same consent boundary governs deletion: the Task offers
+a distinct graph-only “stop tracking” action and an exact provider deletion,
+and stale EventKit content is refused before either side is misrepresented. The
 normalized imported meeting is also published through the existing Hub
 command/receipt feed, so another authorized device receives the same stable
 meeting projection without a meeting-specific synchronization path. The
 boundary and current limitations are documented in
 [Meetings and calendar](docs/architecture/meetings-and-calendar.md).
 
-The distribution gate now also produces a DMG plus update ZIP on macOS and a
+The distribution gate produces a DMG plus update ZIP on macOS and a
 per-user NSIS installer on Windows. Hosted drills install the application,
 reopen the encrypted workspace through a compatible update and rollback, and
-remove application files while preserving workspace data. These mechanism-only
-artifacts remain ad-hoc/unsigned evidence, not a release. A separate manual
-workflow fails closed unless macOS Developer ID signing/notarization or Windows
-Authenticode succeeds; the in-app updater is enabled only in that production
-tier and requires explicit check, download, and restart actions. The Hub is
-still an operator preview rather than a hosted service. The distribution
+remove application files while preserving workspace data. The public `0.1.0`
+macOS artifacts pass the separate fail-closed Developer ID signing,
+notarization, stapling, and Gatekeeper workflow; the in-app updater requires
+explicit check, download, and restart actions. Windows mechanism artifacts stay
+unsigned parity evidence and are not attached as a production release. The Hub
+is still an operator preview rather than a hosted service. The distribution
 boundary and current limitations are documented in
 [Desktop distribution](docs/architecture/desktop-distribution.md).
 

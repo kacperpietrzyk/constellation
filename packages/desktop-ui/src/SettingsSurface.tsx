@@ -40,6 +40,8 @@ const fieldTypeLabels: Record<string, string> = {
   number: "Liczba",
   date: "Data",
   choice: "Wybór",
+  formula: "Formuła",
+  rollup: "Rollup",
 };
 
 const statusSemanticsLabels: Record<string, string> = {

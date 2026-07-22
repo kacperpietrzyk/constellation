@@ -395,9 +395,11 @@ export interface ConstellationRendererClient {
     readonly to: string;
   }): Promise<MeetingLoopSurface>;
   previewCalendarBlocks(input: {
+    readonly operation?: "write" | "delete";
     readonly blocks: readonly CalendarBlockDraft[];
   }): Promise<CalendarWritePreview | undefined>;
   confirmCalendarBlocks(input: {
+    readonly operation?: "write" | "delete";
     readonly previewId: string;
     readonly consentToken: string;
     readonly blocks: readonly CalendarBlockDraft[];

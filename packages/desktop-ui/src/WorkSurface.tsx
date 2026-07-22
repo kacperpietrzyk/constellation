@@ -1317,7 +1317,9 @@ export const WorkSurface = ({
             {(snapshot.bootstrap.fieldDefinitions ?? []).some(
               (definition) =>
                 definition.targetKind === "task" &&
-                definition.state !== "retired",
+                definition.state !== "retired" &&
+                definition.type.kind !== "formula" &&
+                definition.type.kind !== "rollup",
             ) && (
               <>
                 <select
@@ -1330,7 +1332,9 @@ export const WorkSurface = ({
                     .filter(
                       (definition) =>
                         definition.targetKind === "task" &&
-                        definition.state !== "retired",
+                        definition.state !== "retired" &&
+                        definition.type.kind !== "formula" &&
+                        definition.type.kind !== "rollup",
                     )
                     .map((definition) => (
                       <option key={definition.id} value={definition.id}>
