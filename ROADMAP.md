@@ -174,8 +174,13 @@ outcome and Task list. One permission-safe `project.operationalOverview` read
 returns routed meetings, rich documents that reference the Project, linked
 Decisions, and client Organizations reached through Opportunities or meetings;
 the desktop presents each as a navigable section without copying relation data.
-Project-owned collaborative rich body content remains the next boundary before
-Project-as-document is complete.
+The Project itself now also owns a collaborative rich body rather than hiding
+one in a duplicate Document record. Its one-time outcome seed, local and Hub
+editing, revisions, deterministic body search, typed entity references,
+structured MCP operations, and revocation purge all use an explicit
+Project-or-Document content owner. This completes Project-as-document while
+keeping scalar outcome changes and collaborative writing independently
+recoverable.
 
 Native documents have crossed the first connected-document boundary. The
 desktop now edits versioned structured Yjs content with paragraphs, headings,
@@ -191,20 +196,21 @@ document. Global search now finds phrases inside locally available authorized
 document bodies, identifies the match as `Treść`, opens the exact document, and
 purges the rebuildable encrypted index on access loss. Structured local/remote
 agent editing now uses one bounded v1 block contract over that same Yjs state.
-Every write reauthorizes the document, Space, grant, schema, state vector, and
-typed targets; stale work conflicts, retries are idempotent, and the returned
-rich revision can be restored through MCP as a new reversible change. The v5
-exchange package carries current structured content, body text, and remappable
-Task or Project links while excluding revision history and live awareness.
+Every write reauthorizes the content owner, Space, grant, schema, state vector,
+and typed targets; stale work conflicts, retries are idempotent, and the
+returned rich revision can be restored through MCP as a new reversible change.
+The v6 exchange package carries current Document and Project structured
+content, body text where applicable, and remappable Task or Project links while
+excluding revision history and live awareness.
 Documents can now attach a selected file through the existing managed Capture
 custody: the original is encrypted locally, published to a coordinated Hub
 before its command, represented as a versioned Knowledge Source/evidence link,
 and shown outside rich Yjs content with exact filename, type, size, and
 device-local custody state. A missing local object can be fetched and
 digest-verified from the authorized Hub; unlinking is an undoable evidence
-change and never deletes a preserved Capture original. Task/comment consumers
-and the remaining connected-document layers are the next work on this
-foundation.
+change and never deletes a preserved Capture original. Tasks and comments reuse
+that managed custody without moving file bytes into their record payloads. The
+next connected-work boundary is the composed Organization/client hub.
 
 ## Delivered foundation — coherent desktop Alpha and release candidate
 

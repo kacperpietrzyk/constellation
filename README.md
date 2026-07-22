@@ -226,9 +226,13 @@ See [Relationships and strategic depth](docs/architecture/relationships-and-stra
 An opened Project now reads its authorized graph context as one page: client
 Organizations, routed meetings, rich documents that reference it, linked
 Decisions, and related Tasks come from one bounded operational-overview query
-and open their exact source surfaces. This is the composed-read half of
-Project-as-document; the Project-owned collaborative rich body is still in
-progress and is not represented by a hidden duplicate Document record.
+and open their exact source surfaces. The Project also owns a rich collaborative
+body keyed directly by its typed identity, not by a hidden duplicate Document.
+The desktop and local/remote MCP edit the same Yjs state with explicit Space,
+grant, state-vector, attribution, revision, and recovery rules. Project body
+text participates in its existing deterministic search result, exchange v6
+round-trips structured content and remapped entity references, and revocation
+purges local state and rebuildable projections.
 
 Local-only workspaces now expose a versioned MCP server through the same
 Application Kernel used by the desktop. The Access surface creates a distinct
