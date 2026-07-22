@@ -237,8 +237,11 @@ plugins: one typed registry now owns every surface ID, label, navigation group,
 icon, shortcut, and eager/lazy classification. The renderer sidebar, native
 menu, restored and detached-window routes, and lazy-loader completeness derive
 from that contract, so a future surface cannot silently omit one of those
-integration points. Record-kind registration remains a separate readiness
-step; this is an internal compile-time contract, not a public extension API.
+integration points. A second typed registry now owns the human-facing record
+vocabulary across strict search schemas, default search participation, labels,
+and inspector destinations while keeping internal audit kinds and domain
+invariants separate. These are internal compile-time contracts, not a public
+extension API or runtime plugin system.
 
 ## Delivered foundation — coherent desktop Alpha and release candidate
 

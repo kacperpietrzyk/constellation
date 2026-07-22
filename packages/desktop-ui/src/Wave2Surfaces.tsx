@@ -19,6 +19,7 @@ import type {
   TaskId,
   TaskStatusId,
 } from "@constellation/contracts";
+import { getHumanRecordKindDescriptor } from "@constellation/contracts";
 import type {
   ConstellationRendererClient,
   DesktopWorkspaceCockpitEntry,
@@ -2218,30 +2219,8 @@ export const SearchOverlay = ({
   }, [activeIndex, optionCount]);
   const choose = (item: SearchProjection["items"][number] | undefined) => {
     if (!item) return;
-    const relationshipKinds = new Set([
-      "organization",
-      "person",
-      "opportunity",
-      "offer",
-      "renewal",
-      "relationship_fact",
-      "decision",
-      "impact_review",
-      "recurrence",
-      "radar_candidate",
-    ]);
     onNavigate(
-      item.recordKind === "project"
-        ? "projects"
-        : item.recordKind === "task"
-          ? "tasks"
-          : item.recordKind === "capture"
-            ? "history"
-            : item.recordKind === "meeting"
-              ? "meetings"
-              : relationshipKinds.has(item.recordKind)
-                ? "relationships"
-                : "documents",
+      getHumanRecordKindDescriptor(item.recordKind).inspectorSurface,
       item.recordId,
     );
     onClose();

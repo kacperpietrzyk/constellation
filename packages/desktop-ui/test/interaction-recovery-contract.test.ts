@@ -312,7 +312,7 @@ describe("interaction recovery contracts", () => {
     assert.match(strategicSurface, /Spróbuj ponownie/);
     assert.match(
       surfaces,
-      /relationshipKinds\.has\(item\.recordKind\)[\s\S]*\? "relationships"/,
+      /getHumanRecordKindDescriptor\(item\.recordKind\)\.inspectorSurface/,
     );
     assert.match(
       realApp,

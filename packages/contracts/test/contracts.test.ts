@@ -3,7 +3,12 @@ import { describe, it } from "node:test";
 
 import {
   CommandOutcomeSchema,
+  GlobalSearchRecordKindSchema,
   QueryResultSchema,
+  getHumanRecordKindDescriptor,
+  globalSearchRecordKindIds,
+  humanRecordKindRegistry,
+  isGlobalSearchRecordKind,
   validateCommandEnvelope,
   validateExecutionContext,
   validateQueryEnvelope,
@@ -97,6 +102,58 @@ const processCaptureCommand = {
 };
 
 describe("application contracts", () => {
+  it("derives human record discovery from one bounded registry", () => {
+    assert.equal(
+      new Set(humanRecordKindRegistry.map((descriptor) => descriptor.id)).size,
+      humanRecordKindRegistry.length,
+    );
+    assert.deepEqual(globalSearchRecordKindIds, [
+      "task",
+      "project",
+      "capture",
+      "source",
+      "note",
+      "document",
+      "deliverable",
+      "organization",
+      "person",
+      "opportunity",
+      "offer",
+      "renewal",
+      "relationship_fact",
+      "decision",
+      "impact_review",
+      "area",
+      "recurrence",
+      "radar_candidate",
+      "meeting",
+    ]);
+    assert.equal(
+      humanRecordKindRegistry.every(
+        (descriptor) =>
+          descriptor.label.length > 0 &&
+          (descriptor.searchable
+            ? descriptor.searchSource !== null
+            : descriptor.searchSource === null),
+      ),
+      true,
+    );
+    assert.equal(
+      GlobalSearchRecordKindSchema.safeParse("meeting").success,
+      true,
+    );
+    assert.equal(
+      GlobalSearchRecordKindSchema.safeParse("saved_view").success,
+      false,
+    );
+    assert.equal(isGlobalSearchRecordKind("document"), true);
+    assert.equal(isGlobalSearchRecordKind("commitment"), false);
+    assert.equal(
+      getHumanRecordKindDescriptor("organization").inspectorSurface,
+      "relationships",
+    );
+  });
+
   it("accepts strict execution, command, and query envelopes", () => {
     assert.equal(validateExecutionContext(context).ok, true);
     assert.equal(validateCommandEnvelope(captureCommand).ok, true);
