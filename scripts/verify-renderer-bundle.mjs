@@ -80,10 +80,13 @@ import path from "node:path";
 // powłoki, więc ich zamknięty lokalny stan i semantyka disclosure muszą zostać
 // w entry. Po odchudzeniu implementacji entry rośnie o 1.1 kB, a gzip o
 // 420 B względem scalonego baseline; oba limity zachowują poniżej 0.3% zapasu.
+// 2026-07-22 (R15.4f): konfiguracja pól, formatowanie wartości i responsywna
+// lista pozostają w leniwym module Pracy. Total JS rośnie o 3.7 kB; entry raw
+// jest bez zmian, a gzip różni się o 5 B. Limit total zachowuje 0.1% zapasu.
 const limits = {
   entryBytes: 560_000,
   entryGzipBytes: 147_500,
-  totalJavaScriptBytes: 1_322_000,
+  totalJavaScriptBytes: 1_326_000,
   largestLazyJavaScriptBytes: 565_000,
   stylesheetBytes: 188_000,
 };

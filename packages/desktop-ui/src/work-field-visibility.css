@@ -1,0 +1,192 @@
+/* PAT-50 — field visibility is a personal list-presentation preference. The
+   wide table aligns labels and values; narrower layouts keep the exact same
+   values as labelled metadata without widening the document. */
+
+.inline-popover-trigger.work-field-visibility-trigger {
+  border-radius: var(--radius-md);
+  min-height: 2rem;
+}
+
+.work-field-visibility {
+  border: 0;
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+}
+
+.work-field-visibility legend {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  padding: 0;
+}
+
+.work-field-visibility > p {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.work-field-visibility-options {
+  display: grid;
+  gap: var(--space-1);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.work-field-visibility-options label {
+  align-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  display: flex;
+  font-size: var(--text-xs);
+  gap: var(--space-2);
+  min-height: 2rem;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+}
+
+.work-field-visibility-options label:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.inline-popover .work-field-visibility-options input[type="checkbox"] {
+  accent-color: var(--text-primary);
+  flex: 0 0 auto;
+  height: 1rem;
+  margin: 0;
+  padding: 0;
+  width: 1rem;
+}
+
+.work-field-visibility-options span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-task-list-shell {
+  min-width: 0;
+}
+
+.work-list-columns,
+.work-task-row--list {
+  display: grid;
+  grid-template-columns: 0.65rem minmax(0, 1fr) auto;
+}
+
+.work-list-columns.has-list-fields,
+.work-task-row--list.has-list-fields {
+  grid-template-columns:
+    0.65rem minmax(9rem, 0.9fr) minmax(12rem, 1.35fr)
+    auto;
+}
+
+.work-list-columns {
+  align-items: end;
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-quaternary);
+  gap: var(--space-3);
+  margin-left: 0.7rem;
+  padding: 0 var(--space-2) var(--space-2) 1.2rem;
+  text-transform: uppercase;
+}
+
+.work-list-columns > span {
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  min-width: 0;
+}
+
+.work-list-field-headings,
+.work-list-field-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(var(--work-list-field-count), minmax(0, 1fr));
+  min-width: 0;
+}
+
+.work-list-field-headings > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-list-field-cell {
+  color: var(--text-secondary);
+  display: block;
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.work-list-field-cell > small {
+  display: none;
+}
+
+@container (max-width: 64rem) {
+  .work-list-columns {
+    display: none;
+  }
+
+  .work-task-row--list,
+  .work-task-row--list.has-list-fields {
+    grid-template-columns: 0.65rem minmax(0, 1fr) auto;
+  }
+
+  .work-task-row--list .work-list-field-grid {
+    grid-column: 2 / 4;
+    grid-row: 2;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  }
+
+  .work-task-row--list .task-state-trigger {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .work-list-field-cell {
+    display: grid;
+    gap: var(--space-1);
+    grid-template-columns: minmax(5rem, 0.6fr) minmax(0, 1fr);
+  }
+
+  .work-list-field-cell > small {
+    color: var(--text-quaternary);
+    display: block;
+    font-size: var(--text-2xs);
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+}
+
+@container (max-width: 38.75rem) {
+  .work-task-row--list,
+  .work-task-row--list.has-list-fields {
+    grid-template-columns: 0.65rem minmax(0, 1fr);
+  }
+
+  .work-task-row--list .work-list-field-grid,
+  .work-task-row--list .task-state-trigger {
+    grid-column: 2;
+  }
+
+  .work-task-row--list .work-list-field-grid {
+    grid-row: auto;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .work-task-row--list .task-state-trigger {
+    grid-row: auto;
+  }
+
+  .work-field-visibility-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
