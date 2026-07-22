@@ -72,6 +72,8 @@ export type RelationshipWorkspaceProjection =
   Projection<"relationship.workspace">;
 export type RadarReviewProjection = Projection<"radar.review">;
 export type CommentTarget = CommentListProjection["target"];
+export type ManagedAttachment =
+  TaskListProjection["items"][number]["attachments"][number];
 
 export type DataSlice<T> =
   | { readonly kind: "ready"; readonly data: T }
@@ -1988,6 +1990,7 @@ export interface TaskDetailsDraft {
   readonly startAt?: string | null;
   readonly dueAt?: string | null;
   readonly priority?: "urgent" | "high" | "normal" | "low" | null;
+  readonly attachmentSourceIds?: readonly KnowledgeSourceId[];
 }
 
 export const updateTaskDetails = (
@@ -2002,6 +2005,16 @@ export const updateTaskDetails = (
     {
       ...commandBase(snapshot.bootstrap.workspace.id, {
         [taskId]: taskVersion,
+        ...(draft.attachmentSourceIds === undefined ||
+        snapshot.knowledge.kind !== "ready"
+          ? {}
+          : Object.fromEntries(
+              snapshot.knowledge.data.sources
+                .filter((source) =>
+                  draft.attachmentSourceIds!.includes(source.id),
+                )
+                .map((source) => [source.id, source.version]),
+            )),
       }),
       commandName: "task.updateDetails",
       payload: {
@@ -2016,6 +2029,9 @@ export const updateTaskDetails = (
         ...(draft.startAt === undefined ? {} : { startAt: draft.startAt }),
         ...(draft.dueAt === undefined ? {} : { dueAt: draft.dueAt }),
         ...(draft.priority === undefined ? {} : { priority: draft.priority }),
+        ...(draft.attachmentSourceIds === undefined
+          ? {}
+          : { attachmentSourceIds: draft.attachmentSourceIds }),
       },
     },
     (response) =>
@@ -2551,6 +2567,7 @@ export const addComment = (
   body: string,
   mentionPrincipalIds: readonly PrincipalId[],
   parent?: CommentListProjection["threads"][number],
+  attachmentSourceIds: readonly KnowledgeSourceId[] = [],
 ) =>
   execute(
     client,
@@ -2559,6 +2576,13 @@ export const addComment = (
         [target.kind === "task" ? target.taskId : target.projectId]:
           targetVersion,
         ...(parent === undefined ? {} : { [parent.id]: parent.version }),
+        ...(snapshot.knowledge.kind !== "ready"
+          ? {}
+          : Object.fromEntries(
+              snapshot.knowledge.data.sources
+                .filter((source) => attachmentSourceIds.includes(source.id))
+                .map((source) => [source.id, source.version]),
+            )),
       }),
       commandName: "comment.add",
       payload: {
@@ -2567,6 +2591,7 @@ export const addComment = (
         ...(parent === undefined ? {} : { parentCommentId: parent.id }),
         body,
         mentionPrincipalIds,
+        attachmentSourceIds,
       },
     },
     (response) =>
@@ -2583,13 +2608,29 @@ export const editComment = (
   version: number,
   body: string,
   mentionPrincipalIds: readonly PrincipalId[],
+  attachmentSourceIds?: readonly KnowledgeSourceId[],
 ) =>
   execute(
     client,
     {
-      ...commandBase(snapshot.bootstrap.workspace.id, { [commentId]: version }),
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [commentId]: version,
+        ...(attachmentSourceIds === undefined ||
+        snapshot.knowledge.kind !== "ready"
+          ? {}
+          : Object.fromEntries(
+              snapshot.knowledge.data.sources
+                .filter((source) => attachmentSourceIds.includes(source.id))
+                .map((source) => [source.id, source.version]),
+            )),
+      }),
       commandName: "comment.edit",
-      payload: { commentId, body, mentionPrincipalIds },
+      payload: {
+        commentId,
+        body,
+        mentionPrincipalIds,
+        ...(attachmentSourceIds === undefined ? {} : { attachmentSourceIds }),
+      },
     },
     (response) =>
       response.outcome.outcome === "success" &&
@@ -3093,11 +3134,19 @@ export const submitQuickCapture = async (
   }
 };
 
-export const attachManagedFileToDocument = async (
+export interface StagedManagedAttachment {
+  readonly sourceId: KnowledgeSourceId;
+  readonly original: Extract<
+    CaptureOriginal,
+    { kind: "managed_file" | "screenshot" }
+  >;
+  readonly snapshot: DesktopSnapshot;
+}
+
+export const stageManagedAttachment = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
-  documentId: DocumentId,
-): Promise<MutationResult<DesktopSnapshot>> => {
+): Promise<MutationResult<StagedManagedAttachment>> => {
   if (client.selectCapturePayload === undefined)
     return {
       kind: "unavailable",
@@ -3117,14 +3166,15 @@ export const attachManagedFileToDocument = async (
             : "Nie udało się bezpiecznie przygotować pliku.",
     };
   }
-  const initialContext = await loadKnowledgeDocumentContext(
-    client,
-    snapshot,
-    documentId,
-  ).catch(() => undefined);
-  if (initialContext === undefined) {
+  if (
+    selected.original.kind !== "managed_file" &&
+    selected.original.kind !== "screenshot"
+  ) {
     await client.discardCapturePayload?.(selected.original);
-    return { kind: "unavailable", message: "Dokument nie jest już dostępny." };
+    return {
+      kind: "error",
+      message: "Wybrany oryginał nie jest obsługiwanym załącznikiem.",
+    };
   }
   const routed = await submitQuickCapture(
     client,
@@ -3136,11 +3186,35 @@ export const attachManagedFileToDocument = async (
   if (routed.result.kind !== "knowledge_source")
     return {
       kind: "error",
-      message: "Plik zachowano, ale nie powstało źródło dokumentu.",
+      message: "Plik zachowano, ale nie powstało źródło załącznika.",
     };
+  return {
+    kind: "success",
+    data: {
+      sourceId: routed.result.sourceId,
+      original: selected.original,
+      snapshot: routed.snapshot,
+    },
+  };
+};
+
+export const attachManagedFileToDocument = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  documentId: DocumentId,
+): Promise<MutationResult<DesktopSnapshot>> => {
+  const initialContext = await loadKnowledgeDocumentContext(
+    client,
+    snapshot,
+    documentId,
+  ).catch(() => undefined);
+  if (initialContext === undefined)
+    return { kind: "unavailable", message: "Dokument nie jest już dostępny." };
+  const staged = await stageManagedAttachment(client, snapshot);
+  if (staged.kind !== "success") return staged;
   const currentContext = await loadKnowledgeDocumentContext(
     client,
-    routed.snapshot,
+    staged.data.snapshot,
     documentId,
   ).catch(() => undefined);
   if (currentContext === undefined)
@@ -3151,14 +3225,14 @@ export const attachManagedFileToDocument = async (
     };
   const linked = await setKnowledgeEvidence(
     client,
-    routed.snapshot,
+    staged.data.snapshot,
     documentId,
     [
       ...new Set([
         ...currentContext.evidence
           .filter((item) => item.kind === "source")
           .map((item) => item.recordId as KnowledgeSourceId),
-        routed.result.sourceId,
+        staged.data.sourceId,
       ]),
     ],
     currentContext.evidence

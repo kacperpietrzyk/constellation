@@ -1235,6 +1235,7 @@ export const TaskUpdateDetailsCommandSchema = CommandMetadataSchema.extend({
       startAt: TaskInstantSchema.nullable().optional(),
       dueAt: TaskInstantSchema.nullable().optional(),
       priority: TaskPrioritySchema.nullable().optional(),
+      attachmentSourceIds: z.array(KnowledgeSourceIdSchema).max(20).optional(),
     })
     .strict()
     .refine(
@@ -1244,7 +1245,8 @@ export const TaskUpdateDetailsCommandSchema = CommandMetadataSchema.extend({
         payload.nextAction !== undefined ||
         payload.startAt !== undefined ||
         payload.dueAt !== undefined ||
-        payload.priority !== undefined,
+        payload.priority !== undefined ||
+        payload.attachmentSourceIds !== undefined,
       { message: "task.updateDetails requires at least one field change." },
     ),
 }).strict();
@@ -1634,6 +1636,7 @@ export const CommentAddCommandSchema = CommandMetadataSchema.extend({
       parentCommentId: CommentIdSchema.optional(),
       body: z.string().trim().min(1).max(16_000),
       mentionPrincipalIds: z.array(PrincipalIdSchema).max(50).default([]),
+      attachmentSourceIds: z.array(KnowledgeSourceIdSchema).max(20).optional(),
     })
     .strict(),
 }).strict();
@@ -1645,6 +1648,7 @@ export const CommentEditCommandSchema = CommandMetadataSchema.extend({
       commentId: CommentIdSchema,
       body: z.string().trim().min(1).max(16_000),
       mentionPrincipalIds: z.array(PrincipalIdSchema).max(50).default([]),
+      attachmentSourceIds: z.array(KnowledgeSourceIdSchema).max(20).optional(),
     })
     .strict(),
 }).strict();

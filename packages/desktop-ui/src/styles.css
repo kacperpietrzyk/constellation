@@ -3210,6 +3210,50 @@ kbd {
   border-radius: var(--radius-md);
   background: var(--panel-reading-bg);
 }
+.managed-attachment-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.managed-attachment-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+.managed-attachment-list li > span:first-child {
+  min-width: 0;
+  margin-right: auto;
+}
+.managed-attachment-list strong,
+.managed-attachment-list small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.managed-attachment-list small {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+.task-attachments .section-heading-row {
+  align-items: start;
+}
+.task-attachments .section-heading-row p:last-child {
+  margin: var(--space-1) 0 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+@container inspector (max-width: 24rem) {
+  .managed-attachment-list li {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
 /* Wybór wzmianek w kompozerze: przełączane chipy zamiast <select multiple>;
    wciśnięty chip przyjmuje tożsamość współpracy. */
 .mention-picker {

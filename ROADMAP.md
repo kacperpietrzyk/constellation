@@ -333,6 +333,14 @@ with its full strict envelope schema, generated from the kernel's own
 contracts so it cannot drift — making the agent surface discoverable
 without out-of-band documentation.
 
+Rich knowledge work now also reuses Universal Capture custody for managed
+attachments. Documents keep file sources outside collaborative Yjs content,
+while Tasks and comments carry the same bounded, versioned Knowledge Source
+relations. The desktop makes staging, unavailable-device recovery, and unlink
+explicit; local and coordinated projections never expose raw bytes, and the
+packaged Hub journey proves that one source reaches every consumer before a
+second authorized device restores the digest-verified original.
+
 Agent access also stopped promising more than it granted. The capability
 scope behind each preset is now derived from one classification of the whole
 vocabulary, so a granted agent operates through the same commands as the

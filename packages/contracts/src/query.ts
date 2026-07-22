@@ -574,6 +574,18 @@ const CaptureHistoryItemSchema = z.discriminatedUnion("processingState", [
   }).strict(),
 ]);
 
+const ManagedAttachmentProjectionSchema = z
+  .object({
+    sourceId: KnowledgeSourceIdSchema,
+    captureId: CaptureIdSchema,
+    original: z.union([
+      CaptureOriginalSchema.options[3],
+      CaptureOriginalSchema.options[4],
+    ]),
+    availability: z.enum(["available", "unavailable"]),
+  })
+  .strict();
+
 export const QueryProjectionSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -1033,6 +1045,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             completionState: z.enum(["open", "completed"]),
             completedAt: z.iso.datetime({ offset: true }).optional(),
             sourceCaptureId: CaptureIdSchema.optional(),
+            attachments: z.array(ManagedAttachmentProjectionSchema),
             createdAt: z.iso.datetime({ offset: true }),
             updatedAt: z.iso.datetime({ offset: true }),
             version: z.int().positive(),
@@ -1191,6 +1204,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               })
               .strict(),
             mentionPrincipalIds: z.array(PrincipalIdSchema),
+            attachments: z.array(ManagedAttachmentProjectionSchema),
             threadState: z.enum(["open", "resolved"]),
             version: z.int().positive(),
             createdAt: z.iso.datetime({ offset: true }),

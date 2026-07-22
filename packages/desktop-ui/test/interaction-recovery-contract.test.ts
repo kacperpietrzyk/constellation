@@ -50,6 +50,10 @@ const collaborationSurfaces = readFileSync(
   path.join(root, "src", "CollaborationSurfaces.tsx"),
   "utf8",
 );
+const taskAttachments = readFileSync(
+  path.join(root, "src", "TaskAttachmentsSection.tsx"),
+  "utf8",
+);
 const meetings = readFileSync(
   path.join(root, "src", "MeetingsSurface.tsx"),
   "utf8",
@@ -508,6 +512,22 @@ describe("interaction recovery contracts", () => {
     assert.match(
       styles,
       /@container \(max-width: 32rem\)[\s\S]*?\.document-attachment-actions\s*\{[^}]*flex-direction:\s*column[\s\S]*?\.document-attachment-list li\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,
+    );
+  });
+
+  it("reuses managed custody for Task and comment attachments", () => {
+    assert.match(taskAttachments, /stageManagedAttachment/);
+    assert.match(taskAttachments, /inspectManagedPayload/);
+    assert.match(taskAttachments, /attachmentSourceIds/);
+    assert.match(taskAttachments, /Pobierz ponownie/);
+    assert.match(taskAttachments, />\s*Odłącz\s*</s);
+    assert.match(collaborationSurfaces, /aria-label="Załączniki komentarza"/);
+    assert.match(collaborationSurfaces, /Gotowy do dołączenia/);
+    assert.match(collaborationSurfaces, /onInspectAttachment/);
+    assert.match(collaborationSurfaces, /pendingAttachments\.map/);
+    assert.match(
+      styles,
+      /\.managed-attachment-list li\s*\{[^}]*display:\s*flex;[^}]*min-width:\s*0/s,
     );
   });
 

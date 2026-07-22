@@ -478,12 +478,66 @@ const attachPackagedPayloadToDocument = async (
       linked?.kind !== "command_outcome" ||
       linked.outcome?.outcome !== "success"
     ) return { outcome: "failure", code: "LINK_FAILED" };
+    const tasks = await window.constellation.runQuery({
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: crypto.randomUUID(),
+      workspaceId: ${JSON.stringify(workspaceId)},
+      consistency: "local_projection",
+      parameters: { spaceId: ${JSON.stringify(spaceId)} },
+    });
+    const task = tasks?.result?.projection?.items?.[0];
+    if (task === undefined)
+      return { outcome: "failure", code: "TASK_MISSING" };
+    const taskCommandId = crypto.randomUUID();
+    const taskLinked = await window.constellation.executeCommand({
+      ...commandBase(taskCommandId, {
+        [task.id]: task.version,
+        [source.sourceId]: source.sourceVersion,
+      }),
+      commandName: "task.updateDetails",
+      payload: {
+        taskId: task.id,
+        attachmentSourceIds: [source.sourceId],
+      },
+    });
+    if (
+      taskLinked?.kind !== "command_outcome" ||
+      taskLinked.outcome?.outcome !== "success"
+    ) return { outcome: "failure", code: "TASK_LINK_FAILED" };
+    const commentId = crypto.randomUUID();
+    const commentCommandId = crypto.randomUUID();
+    const commented = await window.constellation.executeCommand({
+      ...commandBase(commentCommandId, {
+        [task.id]: task.version + 1,
+        [source.sourceId]: source.sourceVersion,
+      }),
+      commandName: "comment.add",
+      payload: {
+        commentId,
+        target: { kind: "task", taskId: task.id },
+        body: "Packaged managed attachment evidence.",
+        attachmentSourceIds: [source.sourceId],
+      },
+    });
+    if (
+      commented?.kind !== "command_outcome" ||
+      commented.outcome?.outcome !== "success"
+    ) return { outcome: "failure", code: "COMMENT_LINK_FAILED" };
     return {
       outcome: "success",
       captureId: capture.captureId,
       sourceId: source.sourceId,
+      taskId: task.id,
+      commentId,
       original: staged.original,
-      commandIds: [submitCommandId, routeCommandId, linkCommandId],
+      commandIds: [
+        submitCommandId,
+        routeCommandId,
+        linkCommandId,
+        taskCommandId,
+        commentCommandId,
+      ],
     };
   })()`);
 
@@ -834,12 +888,20 @@ try {
         const document = state.snapshot.documents.find(
           (item) => item.id === collaborativeDocumentId,
         );
+        const task = state.snapshot.tasks.find(
+          (item) => item.id === packagedDocumentAttachment.taskId,
+        );
+        const comment = state.snapshot.comments?.find(
+          (item) => item.id === packagedDocumentAttachment.commentId,
+        );
         return {
           capture: state.snapshot.captures.some(
             (item) => item.id === packagedDocumentAttachment.captureId,
           ),
           sourceCaptureId: source?.sourceCaptureId,
           sourceIds: document?.evidence?.sourceIds,
+          taskSourceIds: task?.attachmentSourceIds,
+          commentSourceIds: comment?.attachmentSourceIds,
         };
       },
     );
@@ -848,6 +910,12 @@ try {
       authoritativeAttachment.sourceCaptureId ===
         packagedDocumentAttachment.captureId &&
       authoritativeAttachment.sourceIds?.includes(
+        packagedDocumentAttachment.sourceId,
+      ) &&
+      authoritativeAttachment.taskSourceIds?.includes(
+        packagedDocumentAttachment.sourceId,
+      ) &&
+      authoritativeAttachment.commentSourceIds?.includes(
         packagedDocumentAttachment.sourceId,
       )
     )
@@ -862,6 +930,12 @@ try {
     authoritativeAttachment.sourceCaptureId !==
       packagedDocumentAttachment.captureId ||
     !authoritativeAttachment.sourceIds?.includes(
+      packagedDocumentAttachment.sourceId,
+    ) ||
+    !authoritativeAttachment.taskSourceIds?.includes(
+      packagedDocumentAttachment.sourceId,
+    ) ||
+    !authoritativeAttachment.commentSourceIds?.includes(
       packagedDocumentAttachment.sourceId,
     )
   ) {
@@ -1028,6 +1102,44 @@ try {
         projectionKind: context?.result?.projection?.kind,
         evidence: context?.result?.projection?.evidence,
       };
+    const tasks = await window.constellation.runQuery({
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: crypto.randomUUID(),
+      workspaceId: ${JSON.stringify(workspaceId)},
+      consistency: "local_projection",
+      parameters: { spaceId: ${JSON.stringify(rootSpaceId)} },
+    });
+    const taskAttachment = tasks?.result?.projection?.items
+      ?.find((item) => item.id === ${JSON.stringify(packagedDocumentAttachment.taskId)})
+      ?.attachments?.find(
+        (item) => item.sourceId === ${JSON.stringify(packagedDocumentAttachment.sourceId)},
+      );
+    const comments = await window.constellation.runQuery({
+      contractVersion: 1,
+      queryName: "comment.list",
+      queryId: crypto.randomUUID(),
+      workspaceId: ${JSON.stringify(workspaceId)},
+      consistency: "local_projection",
+      parameters: {
+        target: {
+          kind: "task",
+          taskId: ${JSON.stringify(packagedDocumentAttachment.taskId)},
+        },
+      },
+    });
+    const commentAttachment = comments?.result?.projection?.threads
+      ?.find((item) => item.id === ${JSON.stringify(packagedDocumentAttachment.commentId)})
+      ?.attachments?.find(
+        (item) => item.sourceId === ${JSON.stringify(packagedDocumentAttachment.sourceId)},
+      );
+    if (taskAttachment === undefined || commentAttachment === undefined)
+      return {
+        outcome: "failure",
+        code: "CONSUMER_METADATA_MISSING",
+        taskAttachment,
+        commentAttachment,
+      };
     const before = await window.constellation.inspectManagedPayload({
       captureId: attachment.captureId,
       original: attachment.original,
@@ -1043,6 +1155,8 @@ try {
     return {
       outcome: "success",
       captureId: attachment.captureId,
+      taskCaptureId: taskAttachment.captureId,
+      commentCaptureId: commentAttachment.captureId,
       before: before?.state,
       restored: restored?.state,
       after: after?.state,
@@ -1051,6 +1165,10 @@ try {
   if (
     memberAttachmentRecovery.outcome !== "success" ||
     memberAttachmentRecovery.captureId !==
+      packagedDocumentAttachment.captureId ||
+    memberAttachmentRecovery.taskCaptureId !==
+      packagedDocumentAttachment.captureId ||
+    memberAttachmentRecovery.commentCaptureId !==
       packagedDocumentAttachment.captureId ||
     memberAttachmentRecovery.before !== "unavailable" ||
     memberAttachmentRecovery.restored !== "available" ||

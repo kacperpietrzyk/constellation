@@ -1,4 +1,4 @@
-import type { PrincipalId } from "@constellation/contracts";
+import type { KnowledgeSourceId, PrincipalId } from "@constellation/contracts";
 
 import type { AttentionSignal, RecordComment } from "./model.js";
 
@@ -8,15 +8,21 @@ export const editComment = (
   mentionPrincipalIds: readonly PrincipalId[],
   editedBy: PrincipalId,
   occurredAt: string,
+  attachmentSourceIds: readonly KnowledgeSourceId[] = comment.attachmentSourceIds ??
+    [],
 ): RecordComment => ({
   ...comment,
   body,
   mentionPrincipalIds,
+  attachmentSourceIds,
   revisions: [
     ...comment.revisions,
     {
       body: comment.body,
       mentionPrincipalIds: comment.mentionPrincipalIds,
+      ...(comment.attachmentSourceIds === undefined
+        ? {}
+        : { attachmentSourceIds: comment.attachmentSourceIds }),
       editedBy,
       editedAt: occurredAt,
     },

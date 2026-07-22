@@ -64,12 +64,16 @@ import path from "node:path";
 // powiększa wspólny entry, a izolowany node-view i dostępny picker encji
 // pozostają w leniwym chunku Dokumentów. Limity rosną o zmierzony koszt tej
 // pionowej funkcji, nadal zostawiając mniej niż 2% zapasu.
+// 2026-07-22 (R15.1 attachments): entry i stylesheet po wspólnym kompozerze
+// załączników dla komentarzy oraz relacji w inspektorze zadania. Sam blok
+// zadania pozostaje osobnym leniwym chunkiem; total JavaScript nie wymaga
+// podniesienia, więc limity rosną tylko o zmierzony koszt wspólnego kontraktu.
 const limits = {
-  entryBytes: 545_000,
-  entryGzipBytes: 145_000,
+  entryBytes: 551_000,
+  entryGzipBytes: 146_000,
   totalJavaScriptBytes: 1_290_000,
   largestLazyJavaScriptBytes: 565_000,
-  stylesheetBytes: 183_000,
+  stylesheetBytes: 184_000,
 };
 
 const dist = path.join(process.cwd(), "packages", "desktop-ui", "dist");

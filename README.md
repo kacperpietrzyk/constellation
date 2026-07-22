@@ -92,6 +92,13 @@ replacing a missing ready database. If an established workspace cannot open,
 the same packaged application presents a recovery-only restore path rather than
 requiring a developer tool.
 
+Managed files now remain one Capture-backed, encrypted original when attached
+to a rich document, Task, or comment. Each consumer stores only a bounded,
+versioned Knowledge Source relation; query projections expose safe metadata and
+honest device availability, unlink removes only that relation, and a coordinated
+device restores bytes only after the Hub response passes exact length and digest
+verification.
+
 The desktop can create and switch independent workspaces without sharing their
 database, key, Data Home, Hub credential, or local MCP endpoint. A personal
 Cockpit may read a bounded focus summary from locally authorized workspace

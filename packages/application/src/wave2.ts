@@ -37,6 +37,7 @@ import {
   type QueryResult,
   type SpaceId,
   type WorkspaceId,
+  type KnowledgeSourceId,
 } from "@constellation/contracts";
 import {
   completeTask,
@@ -1145,6 +1146,43 @@ const taskProjection = (kind: string, task: Task): Record<string, unknown> => ({
   ...(task.completedAt === undefined ? {} : { completedAt: task.completedAt }),
   version: task.version,
 });
+
+const managedAttachments = (
+  view: ApplicationWave2ReadView,
+  workspaceId: WorkspaceId,
+  spaceId: SpaceId,
+  sourceIds: readonly KnowledgeSourceId[],
+) => {
+  const items = sourceIds.map((sourceId) => {
+    const source = view.getKnowledgeSource(sourceId);
+    const capture =
+      source?.sourceCaptureId === undefined
+        ? undefined
+        : view.getCapture(source.sourceCaptureId);
+    return source?.workspaceId === workspaceId &&
+      source.spaceId === spaceId &&
+      capture?.workspaceId === workspaceId &&
+      capture.spaceId === spaceId &&
+      (capture.original.kind === "managed_file" ||
+        capture.original.kind === "screenshot")
+      ? {
+          source,
+          projection: {
+            sourceId: source.id,
+            captureId: capture.id,
+            original: capture.original,
+            availability:
+              source.availability === "available"
+                ? ("available" as const)
+                : ("unavailable" as const),
+          },
+        }
+      : undefined;
+  });
+  return items.some((item) => item === undefined)
+    ? undefined
+    : items.map((item) => item!);
+};
 
 const targetRecord = (
   view: ApplicationWave2ReadView,
@@ -3956,11 +3994,29 @@ export const executeWave2Command = (
     case "task.updateDetails": {
       const task = transaction.getTask(command.payload.taskId);
       if (task === undefined) return precondition(command, occurredAt);
-      if (!exactExpected(command, { [task.id]: task.version })) {
-        return versionConflict(command, occurredAt, {
-          [task.id]: task.version,
-        });
-      }
+      const attachmentSourceIds =
+        command.payload.attachmentSourceIds === undefined
+          ? undefined
+          : [...new Set(command.payload.attachmentSourceIds)];
+      const attachments =
+        attachmentSourceIds === undefined
+          ? undefined
+          : managedAttachments(
+              transaction,
+              task.workspaceId,
+              task.spaceId,
+              attachmentSourceIds,
+            );
+      if (attachmentSourceIds !== undefined && attachments === undefined)
+        return precondition(command, occurredAt);
+      const expected = {
+        [task.id]: task.version,
+        ...Object.fromEntries(
+          (attachments ?? []).map(({ source }) => [source.id, source.version]),
+        ),
+      };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
       const detailsUpdate = {
         ...(command.payload.title === undefined
           ? {}
@@ -3980,6 +4036,7 @@ export const executeWave2Command = (
         ...(command.payload.priority === undefined
           ? {}
           : { priority: command.payload.priority }),
+        ...(attachmentSourceIds === undefined ? {} : { attachmentSourceIds }),
       };
       if (!isTaskTimingValid(taskTimingAfterUpdate(task, detailsUpdate))) {
         return precondition(command, occurredAt);
@@ -3997,6 +4054,9 @@ export const executeWave2Command = (
         ...(command.payload.startAt === undefined ? [] : ["startAt"]),
         ...(command.payload.dueAt === undefined ? [] : ["dueAt"]),
         ...(command.payload.priority === undefined ? [] : ["priority"]),
+        ...(command.payload.attachmentSourceIds === undefined
+          ? []
+          : ["attachmentSourceIds"]),
       ];
       return appendJournal(
         dependencies,
@@ -4055,6 +4115,9 @@ export const executeWave2Command = (
           ...(task.priority === undefined
             ? {}
             : { priorPriority: task.priority }),
+          ...(task.attachmentSourceIds === undefined
+            ? {}
+            : { priorAttachmentSourceIds: task.attachmentSourceIds }),
           resultingVersion: updated.version,
         },
       );
@@ -5857,6 +5920,18 @@ export const executeWave2Command = (
           ? undefined
           : transaction.getComment(command.payload.parentCommentId);
       const mentions = [...new Set(command.payload.mentionPrincipalIds)];
+      const attachmentSourceIds = [
+        ...new Set(command.payload.attachmentSourceIds ?? []),
+      ];
+      const attachments =
+        record === undefined
+          ? undefined
+          : managedAttachments(
+              transaction,
+              command.workspaceId,
+              record.spaceId,
+              attachmentSourceIds,
+            );
       if (
         record === undefined ||
         // ADR-043 §5 — no new association may attach to a removed Task, or the
@@ -5877,12 +5952,16 @@ export const executeWave2Command = (
               record.spaceId,
               principalId,
             ),
-        )
+        ) ||
+        attachments === undefined
       )
         return precondition(command, occurredAt);
       const expected = {
         [record.id]: record.version,
         ...(parent === undefined ? {} : { [parent.id]: parent.version }),
+        ...Object.fromEntries(
+          attachments.map(({ source }) => [source.id, source.version]),
+        ),
       };
       if (!exactExpected(command, expected))
         return versionConflict(command, occurredAt, expected);
@@ -5895,6 +5974,7 @@ export const executeWave2Command = (
         rootCommentId: parent?.rootCommentId ?? command.payload.commentId,
         body: command.payload.body,
         mentionPrincipalIds: mentions,
+        attachmentSourceIds,
         authorPrincipalId: context.principalId,
         threadState: parent?.threadState ?? "open",
         revisions: [],
@@ -5945,7 +6025,7 @@ export const executeWave2Command = (
           occurredAt,
         },
         versions,
-        ["body", "mentionPrincipalIds", "threadState"],
+        ["body", "mentionPrincipalIds", "attachmentSourceIds", "threadState"],
         {
           diagnosticCode: "comment.added",
           projection: {
@@ -5967,9 +6047,26 @@ export const executeWave2Command = (
     case "comment.edit": {
       const comment = transaction.getComment(command.payload.commentId);
       const mentions = [...new Set(command.payload.mentionPrincipalIds)];
+      const attachmentSourceIds = [
+        ...new Set(
+          command.payload.attachmentSourceIds ??
+            comment?.attachmentSourceIds ??
+            [],
+        ),
+      ];
+      const attachments =
+        comment === undefined
+          ? undefined
+          : managedAttachments(
+              transaction,
+              command.workspaceId,
+              comment.spaceId,
+              attachmentSourceIds,
+            );
       if (
         comment === undefined ||
         comment.authorPrincipalId !== context.principalId ||
+        attachments === undefined ||
         mentions.some(
           (principalId) =>
             !eligibleMention(
@@ -5981,7 +6078,15 @@ export const executeWave2Command = (
         )
       )
         return precondition(command, occurredAt);
-      const expected = { [comment.id]: comment.version };
+      const expected = {
+        [comment.id]: comment.version,
+        ...Object.fromEntries(
+          (command.payload.attachmentSourceIds === undefined
+            ? []
+            : attachments
+          ).map(({ source }) => [source.id, source.version]),
+        ),
+      };
       if (!exactExpected(command, expected))
         return versionConflict(command, occurredAt, expected);
       const updated = editComment(
@@ -5990,6 +6095,7 @@ export const executeWave2Command = (
         mentions,
         context.principalId,
         occurredAt,
+        attachmentSourceIds,
       );
       if (!transaction.updateComment(updated, comment.version))
         return versionConflict(command, occurredAt, expected);
@@ -6035,7 +6141,7 @@ export const executeWave2Command = (
           occurredAt,
         },
         versions,
-        ["body", "mentionPrincipalIds", "revisions"],
+        ["body", "mentionPrincipalIds", "attachmentSourceIds", "revisions"],
         {
           diagnosticCode: "comment.edited",
           projection: {
@@ -7214,6 +7320,7 @@ const applyUndo = (
         startAt: descriptor.priorStartAt ?? null,
         dueAt: descriptor.priorDueAt ?? null,
         priority: descriptor.priorPriority ?? null,
+        attachmentSourceIds: descriptor.priorAttachmentSourceIds ?? [],
       },
       occurredAt,
     );
@@ -7845,58 +7952,66 @@ export const executeWave2Query = (
     const comments = view
       .listComments(query.workspaceId, record.spaceId)
       .filter((comment) => targetId(comment.target) === record.id);
-    return querySuccess(query, kernelTime, freshness, {
-      kind: "comment.list",
-      target: query.parameters.target,
-      threads: comments.map((comment) => {
-        const author = view.getMembership(
+    const threads = comments.map((comment) => {
+      const attachments = managedAttachments(
+        view,
+        query.workspaceId,
+        comment.spaceId,
+        comment.attachmentSourceIds ?? [],
+      );
+      if (attachments === undefined) return undefined;
+      const author = view.getMembership(
+        query.workspaceId,
+        comment.authorPrincipalId,
+      );
+      const visibleAuthor =
+        author !== undefined &&
+        author.status !== "revoked" &&
+        eligibleMention(
+          view,
           query.workspaceId,
-          comment.authorPrincipalId,
+          comment.spaceId,
+          author.principalId,
         );
-        const visibleAuthor =
-          author !== undefined &&
-          author.status !== "revoked" &&
+      const root =
+        comment.rootCommentId === comment.id
+          ? comment
+          : view.getComment(comment.rootCommentId);
+      return {
+        id: comment.id,
+        ...(comment.parentCommentId === undefined
+          ? {}
+          : { parentCommentId: comment.parentCommentId }),
+        rootCommentId: comment.rootCommentId,
+        body: comment.body,
+        author: {
+          ...(visibleAuthor ? { principalId: comment.authorPrincipalId } : {}),
+          displayName: visibleAuthor
+            ? (author.displayName ?? "Workspace member")
+            : "Former member",
+        },
+        mentionPrincipalIds: comment.mentionPrincipalIds.filter((principalId) =>
           eligibleMention(
             view,
             query.workspaceId,
             comment.spaceId,
-            author.principalId,
-          );
-        const root =
-          comment.rootCommentId === comment.id
-            ? comment
-            : view.getComment(comment.rootCommentId);
-        return {
-          id: comment.id,
-          ...(comment.parentCommentId === undefined
-            ? {}
-            : { parentCommentId: comment.parentCommentId }),
-          rootCommentId: comment.rootCommentId,
-          body: comment.body,
-          author: {
-            ...(visibleAuthor
-              ? { principalId: comment.authorPrincipalId }
-              : {}),
-            displayName: visibleAuthor
-              ? (author.displayName ?? "Workspace member")
-              : "Former member",
-          },
-          mentionPrincipalIds: comment.mentionPrincipalIds.filter(
-            (principalId) =>
-              eligibleMention(
-                view,
-                query.workspaceId,
-                comment.spaceId,
-                principalId,
-              ),
+            principalId,
           ),
-          threadState: root?.threadState ?? "open",
-          version: comment.version,
-          createdAt: comment.createdAt,
-          updatedAt: comment.updatedAt,
-          edited: comment.revisions.length > 0,
-        };
-      }),
+        ),
+        attachments: attachments.map(({ projection }) => projection),
+        threadState: root?.threadState ?? "open",
+        version: comment.version,
+        createdAt: comment.createdAt,
+        updatedAt: comment.updatedAt,
+        edited: comment.revisions.length > 0,
+      };
+    });
+    if (threads.some((thread) => thread === undefined))
+      return queryRejected(query, kernelTime, "query.consistency_unavailable");
+    return querySuccess(query, kernelTime, freshness, {
+      kind: "comment.list",
+      target: query.parameters.target,
+      threads,
     });
   }
   if (query.queryName === "attention.inbox") {

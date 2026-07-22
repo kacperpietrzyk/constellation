@@ -92,6 +92,7 @@ import {
   setWorkspaceMemberAccess,
   setCommentResolved,
   setProjectLifecycle,
+  stageManagedAttachment,
   submitQuickCapture,
   undoCommand,
   unrelateTask,
@@ -239,6 +240,11 @@ const loadDocumentsSurface = () => import("./DocumentsSurface.js");
 const DocumentsSurface = lazy(() =>
   loadDocumentsSurface().then((module) => ({
     default: module.DocumentsSurface,
+  })),
+);
+const TaskAttachmentsSection = lazy(() =>
+  import("./TaskAttachmentsSection.js").then((module) => ({
+    default: module.TaskAttachmentsSection,
   })),
 );
 const loadMeetingsSurface = () => import("./MeetingsSurface.js");
@@ -1476,6 +1482,7 @@ export const RealApp = ({
   const [projectBusy, setProjectBusy] = useState(false);
   const [accessBusy, setAccessBusy] = useState(false);
   const [commentBusy, setCommentBusy] = useState(false);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [attentionBusy, setAttentionBusy] = useState(false);
   const [historyBusyCaptureId, setHistoryBusyCaptureId] = useState<CaptureId>();
   const [comments, setComments] = useState<DataSlice<CommentListProjection>>({
@@ -2330,6 +2337,54 @@ export const RealApp = ({
       message,
       ...(undoCommandId === undefined ? {} : { undoCommandId }),
     });
+  };
+  const stageCommentAttachment = async () => {
+    if (!client || !snapshot) return undefined;
+    const result = await stageManagedAttachment(client, snapshot);
+    if (result.kind !== "success") {
+      if (result.message !== "Nie wybrano pliku.") showFailure(result);
+      return undefined;
+    }
+    setState({ kind: "ready", snapshot: result.data.snapshot });
+    return {
+      sourceId: result.data.sourceId,
+      original: result.data.original,
+    };
+  };
+  const inspectManagedAttachment = async (
+    attachment: DesktopSnapshot["tasks"][number]["attachments"][number],
+  ): Promise<"available" | "unavailable"> => {
+    if (!client?.inspectManagedPayload) return "unavailable";
+    return client
+      .inspectManagedPayload({
+        captureId: attachment.captureId,
+        original: attachment.original,
+      })
+      .then((result) => result.state)
+      .catch(() => "unavailable");
+  };
+  const restoreManagedAttachment = async (
+    attachment: DesktopSnapshot["tasks"][number]["attachments"][number],
+  ): Promise<"available" | "unavailable"> => {
+    if (!client?.restoreManagedPayload) return "unavailable";
+    try {
+      const result = await client.restoreManagedPayload({
+        captureId: attachment.captureId,
+        original: attachment.original,
+      });
+      if (result.state === "available") {
+        await reloadSnapshot();
+        pushToast({ message: "Załącznik jest ponownie dostępny." });
+        return "available";
+      }
+    } catch {
+      // The content-safe recovery below is the same for native and Hub errors.
+    }
+    showFailure({
+      kind: "retry",
+      message: "Nie udało się jeszcze pobrać załącznika na to urządzenie.",
+    });
+    return "unavailable";
   };
 
   type AttentionItem = AttentionInboxProjection["items"][number];
@@ -4423,6 +4478,22 @@ export const RealApp = ({
                 <p>Brak powiązanego źródła Capture.</p>
               )}
             </section>
+            <Suspense fallback={null}>
+              <TaskAttachmentsSection
+                client={client}
+                snapshot={state.snapshot}
+                task={selectedTask}
+                canEdit={Boolean(canResolveComments)}
+                busy={attachmentBusy}
+                onBusyChange={setAttachmentBusy}
+                onSnapshot={(next) =>
+                  setState({ kind: "ready", snapshot: next })
+                }
+                onChanged={refreshAfter}
+                onFailure={showFailure}
+                onRestore={restoreManagedAttachment}
+              />
+            </Suspense>
             <section className="inspector-section audit-block">
               <p className="section-label">Ślad audytowy</p>
               {receipt ? (
@@ -4468,7 +4539,10 @@ export const RealApp = ({
               canComment={Boolean(canComment)}
               canResolve={Boolean(canResolveComments)}
               busy={commentBusy}
-              onAdd={(body, mentions, parent) => {
+              onAttach={stageCommentAttachment}
+              onInspectAttachment={inspectManagedAttachment}
+              onRestoreAttachment={restoreManagedAttachment}
+              onAdd={(body, mentions, parent, attachmentSourceIds) => {
                 if (!client) return Promise.resolve(false);
                 setCommentBusy(true);
                 return addComment(
@@ -4479,6 +4553,7 @@ export const RealApp = ({
                   body,
                   mentions,
                   parent,
+                  attachmentSourceIds,
                 ).then(async (result) => {
                   setCommentBusy(false);
                   if (result.kind === "success") {
@@ -4494,7 +4569,7 @@ export const RealApp = ({
                   return false;
                 });
               }}
-              onEdit={(comment, body) => {
+              onEdit={(comment, body, attachmentSourceIds) => {
                 if (!client) return Promise.resolve(false);
                 setCommentBusy(true);
                 return editComment(
@@ -4504,6 +4579,7 @@ export const RealApp = ({
                   comment.version,
                   body,
                   comment.mentionPrincipalIds,
+                  attachmentSourceIds,
                 ).then(async (result) => {
                   setCommentBusy(false);
                   if (result.kind === "success") {
@@ -4580,7 +4656,10 @@ export const RealApp = ({
               canComment={Boolean(canComment)}
               canResolve={Boolean(canResolveComments)}
               busy={commentBusy}
-              onAdd={(body, mentions, parent) => {
+              onAttach={stageCommentAttachment}
+              onInspectAttachment={inspectManagedAttachment}
+              onRestoreAttachment={restoreManagedAttachment}
+              onAdd={(body, mentions, parent, attachmentSourceIds) => {
                 if (!client) return Promise.resolve(false);
                 setCommentBusy(true);
                 return addComment(
@@ -4591,6 +4670,7 @@ export const RealApp = ({
                   body,
                   mentions,
                   parent,
+                  attachmentSourceIds,
                 ).then(async (result) => {
                   setCommentBusy(false);
                   if (result.kind === "success") {
@@ -4606,7 +4686,7 @@ export const RealApp = ({
                   return false;
                 });
               }}
-              onEdit={(comment, body) => {
+              onEdit={(comment, body, attachmentSourceIds) => {
                 if (!client) return Promise.resolve(false);
                 setCommentBusy(true);
                 return editComment(
@@ -4616,6 +4696,7 @@ export const RealApp = ({
                   comment.version,
                   body,
                   comment.mentionPrincipalIds,
+                  attachmentSourceIds,
                 ).then(async (result) => {
                   setCommentBusy(false);
                   if (result.kind === "success") {
