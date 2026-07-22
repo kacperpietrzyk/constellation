@@ -4,7 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { signAndNotarizeMacApp } from "./macos-distribution-signing.mjs";
+import {
+  notarizeAndStapleMacArtifact,
+  signAndNotarizeMacApp,
+} from "./macos-distribution-signing.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const releaseRoot = path.join(root, "release");
@@ -166,6 +169,11 @@ if (production && process.platform === "darwin") {
   if (typeof alphaManifest.appBundle !== "string") {
     throw new Error("MACOS_APPLICATION_BUNDLE_MISSING");
   }
+  const diskImages = files.filter((file) => file.endsWith(".dmg"));
+  if (diskImages.length !== 1) {
+    throw new Error("MACOS_DISTRIBUTION_ARTIFACT_SET_INVALID");
+  }
+  await notarizeAndStapleMacArtifact({ artifactPath: diskImages[0] });
   for (const command of [
     ["codesign", ["--verify", "--deep", "--strict", alphaManifest.appBundle]],
     [

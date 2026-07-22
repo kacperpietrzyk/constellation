@@ -11,6 +11,9 @@ import { sign } from "@electron/osx-sign";
 const runSecurity = (args) =>
   spawnSync("security", args, { encoding: "utf8", timeout: 120_000 });
 
+const runProcess = (command, args) =>
+  spawnSync(command, args, { encoding: "utf8", timeout: 120_000 });
+
 const requireSuccessfulSecurityCommand = (result, errorCode) => {
   if (result.status !== 0) throw new Error(errorCode);
   return result;
@@ -50,6 +53,32 @@ export const resolveNotarizationOptions = (appPath, env) => {
     };
   }
   throw new Error("MACOS_NOTARIZATION_CREDENTIALS_REQUIRED");
+};
+
+export const notarizeAndStapleMacArtifact = async ({
+  artifactPath,
+  env = process.env,
+  notarizer = notarize,
+  processRunner = runProcess,
+}) => {
+  if (
+    typeof artifactPath !== "string" ||
+    path.extname(artifactPath).toLowerCase() !== ".dmg" ||
+    !fs.existsSync(artifactPath)
+  ) {
+    throw new Error("MACOS_DISTRIBUTION_ARTIFACT_INVALID");
+  }
+
+  await notarizer(resolveNotarizationOptions(artifactPath, env));
+  for (const [command, args] of [
+    ["xcrun", ["stapler", "staple", artifactPath]],
+    ["xcrun", ["stapler", "validate", artifactPath]],
+    ["spctl", ["--assess", "--type", "install", "--verbose=2", artifactPath]],
+  ]) {
+    if (processRunner(command, args).status !== 0) {
+      throw new Error("MACOS_DISTRIBUTION_ARTIFACT_PROOF_FAILED");
+    }
+  }
 };
 
 const writePkcs12 = (cscLink, destination) => {
