@@ -303,6 +303,7 @@ const baseClient = createScenarioClient({
           title: "Domknięcie aplikacji",
           intendedOutcome:
             "Główne powierzchnie są operacyjne i spójne z roadmapą",
+          needsReview: false,
           lifecycle: "active",
           relatedOpenTaskCount: 3,
           version: 2,
@@ -314,6 +315,7 @@ const baseClient = createScenarioClient({
           title: "Migracja magazynu",
           intendedOutcome:
             "Dane działają na SQLCipher bez utraty historii i dowodów",
+          needsReview: false,
           lifecycle: "active",
           relatedOpenTaskCount: 2,
           version: 1,
@@ -324,6 +326,7 @@ const baseClient = createScenarioClient({
           spaceId,
           title: "Alfa interaktywna",
           intendedOutcome: "Pełny tydzień przepracowany na realnych danych",
+          needsReview: false,
           lifecycle: "active",
           relatedOpenTaskCount: 1,
           version: 1,

@@ -13,6 +13,7 @@ import {
   QueryEnvelopeSchema,
   ProjectIdSchema,
   WorkspaceIdSchema,
+  type QueryResult,
 } from "@constellation/contracts";
 import { MAX_DOCUMENT_TEXT_LENGTH } from "@constellation/realtime-documents";
 
@@ -42,6 +43,131 @@ export const MCP_TOOL_NAMES = [
 
 export const MCP_PAYLOAD_RESOURCE_TEMPLATE =
   "constellation://v1/workspaces/{workspaceId}/captures/{captureId}/payload{?agentRunId,hostRunId,hostName}";
+
+/**
+ * The local runtime and the Hub each own a copy of the checkpoint revert loop,
+ * so its diagnostics live here: a code that means "later unrelated work
+ * exists" locally and something else remotely is worse than no code at all.
+ */
+export const MCP_CHECKPOINT_REVERT_DIAGNOSTICS = {
+  reverted: "agent.checkpoint_reverted",
+  partial: "agent.checkpoint_revert_partial",
+  conflict: "agent.checkpoint_revert_conflict",
+  unsupported: "agent.checkpoint_revert_unsupported",
+  alreadyReverted: "agent.checkpoint_already_reverted",
+  previewFailed: "agent.checkpoint_revert_preview_failed",
+} as const;
+
+export type CheckpointRevertBlock = {
+  readonly targetCommandId: string;
+  /**
+   * The first three are the recovery.preview projection's own
+   * `unavailableReason`, reported unfolded so a caller reads the same word the
+   * paired preview query gives it; the last two are this layer's, for a
+   * preview that could not be taken and for one that reported no reason.
+   */
+  readonly unavailableReason:
+    | "unsupported"
+    | "already_undone"
+    | "later_change"
+    | "preview_failed"
+    | "unknown";
+  readonly commandName?: string;
+  /** The rejecting query's own code, when the preview itself failed. */
+  readonly diagnosticCode?: string;
+};
+
+/**
+ * The shape of a recovery.preview response, stated structurally because this
+ * package sits below the application kernel it is classifying.
+ */
+export type CheckpointRevertPreviewResponse =
+  | { readonly kind: "query_result"; readonly result: QueryResult }
+  | { readonly kind: "contract_rejected"; readonly diagnosticCode: string };
+
+/**
+ * One preview, classified. Both runtimes narrow through here so that a failed
+ * preview forwards the same underlying code on either transport.
+ */
+export const checkpointRevertPreview = (
+  targetCommandId: string,
+  preview: CheckpointRevertPreviewResponse,
+):
+  | {
+      readonly ok: true;
+      readonly requiredVersions: Readonly<Record<string, number>>;
+    }
+  | { readonly ok: false; readonly blocked: CheckpointRevertBlock } => {
+  if (preview.kind !== "query_result")
+    return {
+      ok: false,
+      blocked: {
+        targetCommandId,
+        unavailableReason: "preview_failed",
+        diagnosticCode: preview.diagnosticCode,
+      },
+    };
+  if (preview.result.outcome !== "success")
+    return {
+      ok: false,
+      blocked: {
+        targetCommandId,
+        unavailableReason: "preview_failed",
+        diagnosticCode: preview.result.diagnosticCode,
+      },
+    };
+  const projection = preview.result.projection;
+  if (projection.kind !== "recovery.preview")
+    return {
+      ok: false,
+      blocked: { targetCommandId, unavailableReason: "preview_failed" },
+    };
+  if (!projection.available)
+    return {
+      ok: false,
+      blocked: {
+        targetCommandId,
+        unavailableReason: projection.unavailableReason ?? "unknown",
+      },
+    };
+  return { ok: true, requiredVersions: projection.requiredVersions };
+};
+
+/**
+ * Why nothing was applied, in terms an integrator can act on: an uncompensable
+ * command is permanent and no retry will ever change it, while later work is
+ * something a human can undo.
+ *
+ * Precedence when several blockers co-occur: never advertise a retry that
+ * provably cannot succeed, so every definite reason outranks a preview that
+ * failed to run. Among the definite ones, "unsupported" is fatal for the
+ * command kind and comes first; "later_change", "already_undone" and an
+ * unstated reason are all "a compensation this checkpoint needs no longer
+ * applies", which is what the published conflict guidance describes — and what
+ * the paired agent.checkpointPreviewRevert query already reports as
+ * "later_change" for a consumed descriptor, so folding them together keeps
+ * revert and its own preview telling one story.
+ */
+export const checkpointRevertRefusal = (
+  checkpointId: string,
+  blocked: readonly CheckpointRevertBlock[],
+): {
+  readonly outcome: McpOperatorResponse["outcome"];
+  readonly result: unknown;
+} => {
+  const reasons = new Set(blocked.map((item) => item.unavailableReason));
+  const [outcome, diagnosticCode] = reasons.has("unsupported")
+    ? (["rejected", MCP_CHECKPOINT_REVERT_DIAGNOSTICS.unsupported] as const)
+    : reasons.has("later_change") ||
+        reasons.has("already_undone") ||
+        reasons.has("unknown")
+      ? (["conflict", MCP_CHECKPOINT_REVERT_DIAGNOSTICS.conflict] as const)
+      : ([
+          "retryable",
+          MCP_CHECKPOINT_REVERT_DIAGNOSTICS.previewFailed,
+        ] as const);
+  return { outcome, result: { diagnosticCode, checkpointId, blocked } };
+};
 
 export const HostRunMetadataSchema = z
   .object({

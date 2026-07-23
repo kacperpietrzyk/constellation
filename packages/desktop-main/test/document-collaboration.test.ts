@@ -355,6 +355,53 @@ describe("desktop document collaboration bridge", () => {
     database.close();
   });
 
+  it("opens a narrative-less Project body offline as empty local content", async () => {
+    const { database, store, runtime } = setup();
+    const created = runtime.execute({
+      contractVersion: 1,
+      commandName: "project.create",
+      commandId: "00000000-0000-4000-8000-000000001320",
+      workspaceId: ids.workspace,
+      idempotencyKey: "document-bridge-project-no-outcome",
+      expectedVersions: {},
+      correlationId: "00000000-0000-4000-8000-000000001321",
+      payload: {
+        spaceId: context().spaceScope[0]!,
+        title: "Narrative-less Project",
+      },
+    });
+    assert.equal(created.kind, "command_outcome");
+    let projectId: ProjectId | undefined;
+    if (
+      created.kind === "command_outcome" &&
+      created.outcome.outcome === "success" &&
+      created.outcome.projection.kind === "project.created"
+    ) {
+      projectId = created.outcome.projection.projectId;
+    }
+    if (projectId === undefined) throw new Error("Expected Project creation.");
+    const bridge = new DocumentCollaborationBridge({
+      workspaceId: ids.workspace,
+      deviceId: ids.device,
+      store,
+      connection: () => undefined,
+      now: () => "2026-07-22T03:00:00.000Z",
+    });
+    const owner = { kind: "project", projectId } as const;
+    // A Project imported without an intendedOutcome seeds no body. The offline
+    // open must degrade gracefully like the hub — empty local content — rather
+    // than throwing CONTENT_NOT_AVAILABLE off the now-optional narrative.
+    const opened = await bridge.openContent({
+      owner,
+      spaceId: ids.space,
+      supportedDocumentFormats: ["rich-v1"],
+    });
+    assert.equal(opened.mode, "local");
+    assert.equal(opened.state, undefined);
+    assert.equal(opened.pendingUpdateCount, 0);
+    database.close();
+  });
+
   it("keeps the durable device credential in main and returns only a short session", async () => {
     const { database, store } = setup();
     let authorizationHeader = "";

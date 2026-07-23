@@ -27,6 +27,7 @@ const ids = {
   view3: "00000000-0000-4000-8000-000000000418",
   task4: "00000000-0000-4000-8000-000000000419",
   view4: "00000000-0000-4000-8000-000000000420",
+  projectWithoutOutcome: "00000000-0000-4000-8000-000000000421",
 } as const;
 
 const now = "2026-07-15T10:00:00.000Z";
@@ -149,6 +150,15 @@ export const workHarnessSnapshot = {
           title: "Domknięcie aplikacji",
           intendedOutcome:
             "Główne powierzchnie są operacyjne i spójne z roadmapą",
+          needsReview: false,
+          lifecycle: "active",
+          version: 1,
+        },
+        {
+          id: ids.projectWithoutOutcome,
+          title: "Przejęte po migracji",
+          intendedOutcome: "",
+          needsReview: true,
           lifecycle: "active",
           version: 1,
         },
@@ -159,6 +169,7 @@ export const workHarnessSnapshot = {
           title: "Produkt Constellation",
           responsibility:
             "Utrzymywać użyteczny, bezpieczny i możliwy do migracji system pracy",
+          needsReview: false,
           state: "active",
           version: 1,
         },
@@ -168,6 +179,7 @@ export const workHarnessSnapshot = {
           id: ids.initiative,
           title: "Interaktywna alfa",
           intendedOutcome: "Przepracować pełny tydzień na rzeczywistych danych",
+          needsReview: false,
           state: "active",
           version: 1,
         },

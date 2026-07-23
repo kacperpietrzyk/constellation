@@ -36,6 +36,8 @@ import {
   setTaskStatus,
   undoCommand,
   unrelateTask,
+  updateAreaResponsibility,
+  updateInitiativeOutcome,
   updateProjectOutcome,
 } from "../src/client/workflow.js";
 
@@ -56,6 +58,12 @@ const relationId = RelationIdSchema.parse(
 );
 const targetCommandId = CommandIdSchema.parse(
   "00000000-0000-4000-8000-000000000007",
+);
+const areaId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-000000000013",
+);
+const initiativeId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-000000000014",
 );
 
 const successQuery = (query: QueryEnvelope, projection: object) => ({
@@ -95,7 +103,9 @@ const commandProjection = (command: CommandEnvelope) => {
         version: 3,
       };
     case "area.create":
+    case "area.updateResponsibility":
     case "initiative.create":
+    case "initiative.updateOutcome":
     case "savedView.create":
     case "work.linkCreate":
       return {
@@ -109,9 +119,11 @@ const commandProjection = (command: CommandEnvelope) => {
                 ? command.payload.savedViewId
                 : command.payload.linkId,
         recordType:
-          command.commandName === "area.create"
+          command.commandName === "area.create" ||
+          command.commandName === "area.updateResponsibility"
             ? "area"
-            : command.commandName === "initiative.create"
+            : command.commandName === "initiative.create" ||
+                command.commandName === "initiative.updateOutcome"
               ? "initiative"
               : command.commandName === "savedView.create"
                 ? "saved_view"
@@ -752,6 +764,7 @@ describe("real Wave 2 renderer workflow", () => {
         spaceId,
         title: "Alpha",
         intendedOutcome: "Działa",
+        needsReview: false,
         lifecycle: "active",
         version: 2,
         updatedAt: "2026-07-13T10:00:00.000Z",
@@ -779,6 +792,58 @@ describe("real Wave 2 renderer workflow", () => {
         "record.unrelate",
       ],
     );
+  });
+
+  it("creates strategic records without a narrative instead of sending an empty one", async () => {
+    const { client, commands } = createTypedClient();
+    const snapshot = await loadDesktopSnapshot(client);
+    await createProject(client, snapshot, "Import bez wyniku");
+    await createArea(client, snapshot, "Obszar bez opisu");
+    await createInitiative(client, snapshot, "Inicjatywa bez wyniku");
+    assert.deepEqual(
+      commands.map((command) => command.commandName),
+      ["project.create", "area.create", "initiative.create"],
+    );
+    for (const command of commands) {
+      const payload: Readonly<Record<string, unknown>> = command.payload;
+      assert.ok(
+        !("intendedOutcome" in payload) && !("responsibility" in payload),
+        `${command.commandName} must omit the narrative, never send ""`,
+      );
+    }
+  });
+
+  it("writes a narrative that was left blank at creation through the update commands", async () => {
+    const { client, commands } = createTypedClient();
+    const snapshot = await loadDesktopSnapshot(client);
+    await createProject(client, snapshot, "Alpha", "Gotowe");
+    await updateAreaResponsibility(
+      client,
+      snapshot,
+      { id: areaId, version: 1 },
+      "Utrzymuj jakość produktu",
+    );
+    await updateInitiativeOutcome(
+      client,
+      snapshot,
+      { id: initiativeId, version: 2 },
+      "Pełny tydzień przepracowany",
+    );
+    assert.deepEqual(
+      commands.map((command) => command.commandName),
+      [
+        "project.create",
+        "area.updateResponsibility",
+        "initiative.updateOutcome",
+      ],
+    );
+    assert.deepEqual(commands[0]?.payload, {
+      spaceId,
+      title: "Alpha",
+      intendedOutcome: "Gotowe",
+    });
+    assert.deepEqual(commands[1]?.expectedVersions, { [areaId]: 1 });
+    assert.deepEqual(commands[2]?.expectedVersions, { [initiativeId]: 2 });
   });
 
   it("requires matching recovery.preview and command.previewUndo before undo", async () => {

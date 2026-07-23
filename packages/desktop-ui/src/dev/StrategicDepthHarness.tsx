@@ -365,6 +365,7 @@ const organizationOverview: OrganizationOverviewProjection = {
       id: projectId,
       title: "Pilotaż EDR",
       intendedOutcome: "Potwierdzony zakres i odpowiedzialność partnerów.",
+      needsReview: false,
       version: 1,
       updatedAt: timestamp,
     },

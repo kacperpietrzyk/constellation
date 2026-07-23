@@ -46,6 +46,8 @@ const ids = {
   managedPayload: "51000000-0000-4000-8000-000000000018",
   voiceCapture: "51000000-0000-4000-8000-000000000020",
   voicePayload: "51000000-0000-4000-8000-000000000021",
+  checkpoint2: "51000000-0000-4000-8000-000000000022",
+  createdTask: "51000000-0000-4000-8000-000000000023",
 } as const;
 
 const ownerContext = ExecutionContextSchema.parse({
@@ -74,6 +76,7 @@ const agentCapabilities = [
   "capture.transcriptWrite",
   "project.create",
   "project.updateOutcome",
+  "task.create",
   "project.list",
   "project.readContent",
   "project.replaceContent",
@@ -866,6 +869,70 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
       "reverted",
     );
 
+    // A checkpoint whose only command creates a Task used to be unrevertable:
+    // task.create recorded no compensation, and checkpoint revert is
+    // all-or-nothing over every command it covers.
+    const createCheckpoint = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "command",
+      run,
+      command: CommandEnvelopeSchema.parse({
+        ...commandMetadata("checkpoint-create-only"),
+        commandName: "agent.checkpointCreate",
+        payload: {
+          checkpointId: ids.checkpoint2,
+          runId: ids.run,
+          label: "Before creating a Task",
+        },
+      }),
+    });
+    assert.equal(
+      createCheckpoint.outcome,
+      "success",
+      JSON.stringify(createCheckpoint.result),
+    );
+    const createdTask = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "command",
+      run,
+      command: CommandEnvelopeSchema.parse({
+        ...commandMetadata("checkpointed-task-create"),
+        checkpointId: ids.checkpoint2,
+        commandName: "task.create",
+        payload: {
+          taskId: ids.createdTask,
+          spaceId: ids.space,
+          title: "Task the agent invented",
+        },
+      }),
+    });
+    assert.equal(
+      createdTask.outcome,
+      "success",
+      JSON.stringify(createdTask.result),
+    );
+    const revertedCreate = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "checkpoint_revert",
+      run,
+      checkpointId: CheckpointIdSchema.parse(ids.checkpoint2),
+      correlationId: CorrelationIdSchema.parse(crypto.randomUUID()),
+      idempotencyKey: "revert-checkpoint-2",
+    });
+    assert.equal(
+      revertedCreate.outcome,
+      "success",
+      JSON.stringify(revertedCreate.result),
+    );
+    assert.equal(
+      store.snapshot().tasks.find((item) => item.id === ids.createdTask)
+        ?.recordState,
+      "removed",
+    );
+
     const rotated = runtime.credentialCustody.prepare(ids.grant as GrantId);
     successful(
       owner.execute({
@@ -922,5 +989,351 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
   } finally {
     await runtime.close();
     rmSync(stateRoot, { recursive: true, force: true });
+  }
+});
+
+const revertIds = {
+  checkpoint: "51000000-0000-4000-8000-000000000030",
+  project: "51000000-0000-4000-8000-000000000031",
+  otherProject: "51000000-0000-4000-8000-000000000032",
+} as const;
+
+type RevertBody = {
+  readonly diagnosticCode?: string;
+  readonly checkpointId?: string;
+  readonly blocked?: readonly {
+    readonly targetCommandId: string;
+    readonly unavailableReason: string;
+    readonly commandName?: string;
+  }[];
+  readonly outcomes?: readonly {
+    readonly outcome?: {
+      readonly projection?: { readonly targetCommandId?: string };
+    };
+  }[];
+};
+
+const startRevertHarness = async (
+  capabilities: readonly Capability[] = agentCapabilities,
+) => {
+  const stateRoot = mkdtempSync(
+    path.join(tmpdir(), "constellation-mcp-revert-"),
+  );
+  const store = new InMemoryReferenceStore();
+  const owner = createRuntimeKernelService({ context: ownerContext, store });
+  successful(
+    owner.execute({
+      ...commandMetadata("revert-bootstrap"),
+      commandName: "workspace.createLocal",
+      payload: {
+        workspaceId: ids.workspace,
+        rootSpaceId: ids.space,
+        ownerPrincipalId: ids.owner,
+        name: "MCP revert boundary",
+        timezone: "Europe/Warsaw",
+      },
+    }),
+  );
+  const runtime = new LocalMcpRuntime({
+    stateRoot,
+    workspaceId: ownerContext.workspaceId,
+    store,
+  });
+  const prepared = runtime.credentialCustody.prepare(ids.grant as GrantId);
+  successful(
+    owner.execute(
+      CommandEnvelopeSchema.parse({
+        ...commandMetadata("revert-agent-create", { [ids.workspace]: 1 }),
+        commandName: "agent.grantCreate",
+        payload: {
+          grantId: ids.grant,
+          membershipId: ids.membership,
+          agentPrincipalId: ids.agent,
+          displayName: "Codex local",
+          preset: "full_access",
+          capabilityScope: capabilities,
+          spaces: [
+            {
+              spaceGrantId: ids.spaceGrant,
+              spaceId: ids.space,
+              access: "edit",
+            },
+          ],
+          credentialId: prepared.credentialId,
+          credentialDigest: prepared.credentialDigest,
+        },
+      }),
+    ),
+  );
+  const endpoint = await runtime.start();
+  const descriptor = runtime.credentialCustody.publish({
+    workspaceId: ownerContext.workspaceId,
+    grantId: ids.grant as GrantId,
+    endpoint,
+    credential: prepared,
+  });
+  const command = async (input: {
+    readonly key: string;
+    readonly commandName: string;
+    readonly payload: Record<string, unknown>;
+    readonly checkpointId?: string;
+    readonly expectedVersions?: Readonly<Record<string, number>>;
+  }) => {
+    const envelope = CommandEnvelopeSchema.parse({
+      ...commandMetadata(input.key, input.expectedVersions ?? {}),
+      ...(input.checkpointId === undefined
+        ? {}
+        : { checkpointId: input.checkpointId }),
+      commandName: input.commandName,
+      payload: input.payload,
+    });
+    const response = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "command",
+      run,
+      command: envelope,
+    });
+    assert.equal(response.outcome, "success", JSON.stringify(response.result));
+    return envelope.commandId;
+  };
+  const checkpoint = async (checkpointId: string, label: string) => {
+    await command({
+      key: `checkpoint-${checkpointId}`,
+      commandName: "agent.checkpointCreate",
+      payload: { checkpointId, runId: ids.run, label },
+    });
+  };
+  const revert = async (checkpointId: string, key: string) =>
+    invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "checkpoint_revert",
+      run,
+      checkpointId: CheckpointIdSchema.parse(checkpointId),
+      correlationId: CorrelationIdSchema.parse(crypto.randomUUID()),
+      idempotencyKey: key,
+    });
+  const status = (checkpointId: string) =>
+    store.snapshot().agentCheckpoints?.find((item) => item.id === checkpointId)
+      ?.status;
+  const project = (projectId: string) =>
+    store.snapshot().projects?.find((item) => item.id === projectId);
+  return {
+    command,
+    checkpoint,
+    revert,
+    status,
+    project,
+    close: async () => {
+      await runtime.close();
+      rmSync(stateRoot, { recursive: true, force: true });
+    },
+  };
+};
+
+test("local MCP checkpoint revert names the uncompensable commands instead of blaming later work", async () => {
+  const harness = await startRevertHarness();
+  try {
+    await harness.checkpoint(revertIds.checkpoint, "Before the import");
+    const created = await harness.command({
+      key: "revert-project-create",
+      commandName: "project.create",
+      checkpointId: revertIds.checkpoint,
+      payload: {
+        projectId: revertIds.project,
+        spaceId: ids.space,
+        title: "Imported project",
+        intendedOutcome: "Ship the import",
+      },
+    });
+    const reverted = await harness.revert(revertIds.checkpoint, "revert-1");
+    assert.equal(reverted.outcome, "rejected", JSON.stringify(reverted.result));
+    const body = reverted.result as RevertBody;
+    assert.equal(body.diagnosticCode, "agent.checkpoint_revert_unsupported");
+    assert.deepEqual(body.blocked, [
+      {
+        targetCommandId: created,
+        unavailableReason: "unsupported",
+        commandName: "project.create",
+      },
+    ]);
+    assert.equal(harness.status(revertIds.checkpoint), "open");
+    assert.equal(harness.project(revertIds.project)?.version, 1);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("local MCP checkpoint revert keeps the conflict diagnostic for genuine later work", async () => {
+  const harness = await startRevertHarness();
+  try {
+    await harness.command({
+      key: "conflict-project-create",
+      commandName: "project.create",
+      payload: {
+        projectId: revertIds.project,
+        spaceId: ids.space,
+        title: "Existing project",
+        intendedOutcome: "Original outcome",
+      },
+    });
+    await harness.checkpoint(revertIds.checkpoint, "Before the edit");
+    const edited = await harness.command({
+      key: "conflict-project-edit",
+      commandName: "project.updateOutcome",
+      checkpointId: revertIds.checkpoint,
+      expectedVersions: { [revertIds.project]: 1 },
+      payload: {
+        projectId: revertIds.project,
+        intendedOutcome: "Agent outcome",
+      },
+    });
+    await harness.command({
+      key: "conflict-later-edit",
+      commandName: "project.updateOutcome",
+      expectedVersions: { [revertIds.project]: 2 },
+      payload: {
+        projectId: revertIds.project,
+        intendedOutcome: "Later unrelated outcome",
+      },
+    });
+    const reverted = await harness.revert(revertIds.checkpoint, "revert-2");
+    assert.equal(reverted.outcome, "conflict", JSON.stringify(reverted.result));
+    const body = reverted.result as RevertBody;
+    assert.equal(body.diagnosticCode, "agent.checkpoint_revert_conflict");
+    assert.deepEqual(body.blocked, [
+      {
+        targetCommandId: edited,
+        unavailableReason: "later_change",
+        commandName: "project.updateOutcome",
+      },
+    ]);
+    assert.equal(harness.status(revertIds.checkpoint), "open");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("local MCP checkpoint revert reverts every command in reverse order and refuses a second revert", async () => {
+  const harness = await startRevertHarness();
+  try {
+    await harness.command({
+      key: "ordered-project-create",
+      commandName: "project.create",
+      payload: {
+        projectId: revertIds.project,
+        spaceId: ids.space,
+        title: "First project",
+        intendedOutcome: "First outcome",
+      },
+    });
+    await harness.command({
+      key: "ordered-other-create",
+      commandName: "project.create",
+      payload: {
+        projectId: revertIds.otherProject,
+        spaceId: ids.space,
+        title: "Second project",
+        intendedOutcome: "Second outcome",
+      },
+    });
+    await harness.checkpoint(revertIds.checkpoint, "Before both edits");
+    await harness.command({
+      key: "ordered-first-edit",
+      commandName: "project.updateOutcome",
+      checkpointId: revertIds.checkpoint,
+      expectedVersions: { [revertIds.project]: 1 },
+      payload: {
+        projectId: revertIds.project,
+        intendedOutcome: "Agent rewrote the first",
+      },
+    });
+    const second = await harness.command({
+      key: "ordered-second-edit",
+      commandName: "project.updateOutcome",
+      checkpointId: revertIds.checkpoint,
+      expectedVersions: { [revertIds.otherProject]: 1 },
+      payload: {
+        projectId: revertIds.otherProject,
+        intendedOutcome: "Agent rewrote the second",
+      },
+    });
+    const reverted = await harness.revert(revertIds.checkpoint, "revert-3");
+    assert.equal(reverted.outcome, "success", JSON.stringify(reverted.result));
+    const body = reverted.result as RevertBody;
+    // Each undo carries the expectedVersions of the preview taken for its own
+    // command: a mispaired preview would undo with another record's version
+    // and the whole revert would come back partial.
+    assert.equal(
+      body.outcomes?.[0]?.outcome?.projection?.targetCommandId,
+      second,
+    );
+    assert.equal(
+      harness.project(revertIds.project)?.intendedOutcome,
+      "First outcome",
+    );
+    assert.equal(
+      harness.project(revertIds.otherProject)?.intendedOutcome,
+      "Second outcome",
+    );
+    assert.equal(harness.status(revertIds.checkpoint), "reverted");
+
+    const again = await harness.revert(revertIds.checkpoint, "revert-4");
+    assert.equal(again.outcome, "rejected", JSON.stringify(again.result));
+    assert.equal(
+      (again.result as RevertBody).diagnosticCode,
+      "agent.checkpoint_already_reverted",
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("local MCP checkpoint revert reports an unreadable preview as retryable, with the query's own code", async () => {
+  const harness = await startRevertHarness(
+    agentCapabilities.filter((capability) => capability !== "recovery.preview"),
+  );
+  try {
+    await harness.command({
+      key: "unreadable-project-create",
+      commandName: "project.create",
+      payload: {
+        projectId: revertIds.project,
+        spaceId: ids.space,
+        title: "Existing project",
+        intendedOutcome: "Original outcome",
+      },
+    });
+    await harness.checkpoint(revertIds.checkpoint, "Before the edit");
+    const edited = await harness.command({
+      key: "unreadable-project-edit",
+      commandName: "project.updateOutcome",
+      checkpointId: revertIds.checkpoint,
+      expectedVersions: { [revertIds.project]: 1 },
+      payload: {
+        projectId: revertIds.project,
+        intendedOutcome: "Agent outcome",
+      },
+    });
+    const reverted = await harness.revert(revertIds.checkpoint, "revert-5");
+    assert.equal(
+      reverted.outcome,
+      "retryable",
+      JSON.stringify(reverted.result),
+    );
+    const body = reverted.result as RevertBody;
+    assert.equal(body.diagnosticCode, "agent.checkpoint_revert_preview_failed");
+    assert.deepEqual(body.blocked, [
+      {
+        targetCommandId: edited,
+        unavailableReason: "preview_failed",
+        diagnosticCode: "authorization.denied",
+        commandName: "project.updateOutcome",
+      },
+    ]);
+    assert.equal(harness.status(revertIds.checkpoint), "open");
+  } finally {
+    await harness.close();
   }
 });

@@ -468,7 +468,9 @@ export interface Project {
   readonly title: string;
   readonly fields?: FieldValueMap;
   readonly appliedTemplateId?: ProjectTemplateId;
-  readonly intendedOutcome: string;
+  // Absent means the intent was never written, not that it is empty. See
+  // RecordNarrativeSchema; projections coalesce it and raise needsReview.
+  readonly intendedOutcome?: string;
   readonly lifecycle: "active" | "closed";
   readonly closedAt?: string;
   readonly closedBy?: PrincipalId;
@@ -652,13 +654,13 @@ export type StrategicRecord =
   | (StrategicRecordBase & {
       readonly kind: "area";
       readonly title: string;
-      readonly responsibility: string;
+      readonly responsibility?: string;
       readonly state: "active" | "archived";
     })
   | (StrategicRecordBase & {
       readonly kind: "initiative";
       readonly title: string;
-      readonly intendedOutcome: string;
+      readonly intendedOutcome?: string;
       readonly state: "active" | "closed";
     })
   | (StrategicRecordBase & {
@@ -753,7 +755,29 @@ export type UndoDescriptor =
       readonly spaceId: SpaceId;
       readonly kind: "project.restore_outcome";
       readonly projectId: ProjectId;
-      readonly priorOutcome: string;
+      // Absent restores the record to "never written", which is what an
+      // import that supplied no narrative has to be able to return to.
+      readonly priorOutcome?: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "area.restore_responsibility";
+      readonly areaId: StrategicRecordId;
+      readonly priorResponsibility?: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "initiative.restore_outcome";
+      readonly initiativeId: StrategicRecordId;
+      readonly priorOutcome?: string;
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }
@@ -995,6 +1019,18 @@ export type UndoDescriptor =
       readonly kind: "task.restore_record_state";
       readonly taskId: TaskId;
       readonly priorRecordState: "active" | "removed";
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      // Undoing task.create soft-removes the Task the create made. Kept apart
+      // from task.restore_record_state, whose availability arm also serves
+      // setParent/setCalendarBlock/updateDetails and must stay version-only.
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "task.undo_create";
+      readonly taskId: TaskId;
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }

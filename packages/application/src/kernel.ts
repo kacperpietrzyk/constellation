@@ -355,7 +355,9 @@ const isCurrentlyAuthorized = (
     case "decision.supersede":
     case "decision.resolveImpact":
     case "area.create":
+    case "area.updateResponsibility":
     case "initiative.create":
+    case "initiative.updateOutcome":
     case "work.linkCreate":
     case "work.linkRemove":
     case "savedView.create":
@@ -830,7 +832,9 @@ export class ApplicationKernel {
       case "decision.supersede":
       case "decision.resolveImpact":
       case "area.create":
+      case "area.updateResponsibility":
       case "initiative.create":
+      case "initiative.updateOutcome":
       case "work.linkCreate":
       case "work.linkRemove":
       case "savedView.create":

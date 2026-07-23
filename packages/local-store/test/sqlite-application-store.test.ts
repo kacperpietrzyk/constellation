@@ -2908,3 +2908,97 @@ describe("SQLite ApplicationStore", () => {
     database.close();
   });
 });
+
+describe("narrative-less records in the durable store", () => {
+  it("persists and searches a Project whose intended outcome was never written", () => {
+    const database = new DatabaseSync(":memory:");
+    const { kernel } = createKernel(database);
+    assert.equal(
+      unwrap(kernel.execute(context(), workspaceCommand)).outcome,
+      "success",
+    );
+    const created = unwrap(
+      kernel.execute(
+        context(),
+        wave2Command(
+          "project.create",
+          { spaceId: ids.rootSpace, title: "Imported reporting pack" },
+          "durable-project-without-outcome",
+        ),
+      ),
+    );
+    if (
+      created.outcome !== "success" ||
+      created.projection.kind !== "project.created"
+    )
+      throw new Error("Expected Project creation.");
+    assert.equal(created.projection.needsReview, true);
+
+    // The FTS trigger materialises the narrative as the Project's search body.
+    // Absent, it has to index as empty rather than NULL, and the row must stay
+    // findable by title.
+    assert.equal(
+      (
+        database
+          .prepare(
+            "SELECT body FROM work_search WHERE record_kind = 'project' AND record_id = ?",
+          )
+          .get(created.projection.projectId) as { body: string }
+      ).body,
+      "",
+    );
+    const found = kernel.query(
+      context(),
+      QueryEnvelopeSchema.parse({
+        contractVersion: 1,
+        queryName: "search.global",
+        queryId: "00000000-0000-4000-8000-0000000001c0",
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: {
+          spaceIds: [ids.rootSpace],
+          text: "reporting pack",
+        },
+      }),
+    );
+    if (
+      found.kind !== "query_result" ||
+      found.result.outcome !== "success" ||
+      found.result.projection.kind !== "search.global"
+    )
+      throw new Error("Expected a search result.");
+    // The durable store matches the whole FTS row, so a title hit also reports
+    // "body"; what matters here is that the absent narrative never matches.
+    assert.equal(
+      found.result.projection.items[0]?.matchedFields.includes("title"),
+      true,
+    );
+    assert.equal(
+      found.result.projection.items[0]?.matchedFields.includes(
+        "intendedOutcome",
+      ),
+      false,
+    );
+
+    const listed = kernel.query(
+      context(),
+      QueryEnvelopeSchema.parse({
+        contractVersion: 1,
+        queryName: "project.list",
+        queryId: "00000000-0000-4000-8000-0000000001c1",
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace },
+      }),
+    );
+    if (
+      listed.kind !== "query_result" ||
+      listed.result.outcome !== "success" ||
+      listed.result.projection.kind !== "project.list"
+    )
+      throw new Error("Expected a project list.");
+    assert.equal(listed.result.projection.items[0]?.intendedOutcome, "");
+    assert.equal(listed.result.projection.items[0]?.needsReview, true);
+    database.close();
+  });
+});

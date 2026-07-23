@@ -5,6 +5,8 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
+import { CapabilitySchema } from "@constellation/contracts";
+
 import { createConstellationMcpServer } from "../src/server.js";
 import type {
   McpOperatorInvocation,
@@ -69,6 +71,28 @@ test("publishes a versioned strict MCP tool and resource contract", async () => 
     );
     assert.equal(tools.tools[0]?.annotations?.readOnlyHint, true);
     assert.equal(tools.tools[1]?.annotations?.destructiveHint, true);
+
+    // `run` appears in no catalog entry, so the tool schema is the only place
+    // a host can learn its shape before the first call.
+    for (const tool of tools.tools) {
+      const runSchema = (
+        tool.inputSchema.properties as Record<string, unknown> | undefined
+      )?.["run"] as
+        | {
+            readonly properties?: Record<string, unknown>;
+            readonly required?: readonly string[];
+            readonly additionalProperties?: boolean;
+          }
+        | undefined;
+      assert.deepEqual(
+        runSchema?.required,
+        ["agentRunId", "hostRunId", "hostName"],
+        `${tool.name} publishes the required run fields`,
+      );
+      assert.equal(runSchema?.additionalProperties, false, tool.name);
+      assert.ok(runSchema?.properties?.["intent"] !== undefined, tool.name);
+      assert.ok(runSchema?.properties?.["modelName"] !== undefined, tool.name);
+    }
 
     const query = await client.callTool({
       name: "constellation.query.v1",
@@ -283,6 +307,7 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     "work.overview",
     "record.relate",
     "agent.checkpoint.create",
+    "agent.checkpoint.previewRevert",
     "agent.checkpoint.revert",
     "capture.audioRead",
   ];
@@ -325,6 +350,7 @@ test("serves a grant-filtered operation catalog generated from the contract", as
         readonly kind: string;
         readonly tool: string;
         readonly schema: string;
+        readonly revertable?: string;
       }[];
     };
     const names = catalog.operations.map((operation) => operation.name);
@@ -333,6 +359,7 @@ test("serves a grant-filtered operation catalog generated from the contract", as
       [
         "agent.checkpoint.revert",
         "agent.checkpointCreate",
+        "agent.checkpointPreviewRevert",
         // Unconditional: a batch authorizes each item, so any grant that can
         // run a command can batch it (ADR-048).
         "command.batch",
@@ -391,7 +418,137 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     );
     assert.equal(taskList?.kind, "query");
     assert.equal(taskList?.tool, "constellation.query.v1");
+    // An agent sizes a checkpoint before writing, so revertability is on the
+    // index a host reads first, not only on the individual schema.
+    assert.equal(taskCreate?.revertable, "always");
+    assert.equal(
+      catalog.operations.find(
+        (operation) => operation.name === "task.updateDetails",
+      )?.revertable,
+      "always",
+    );
+    assert.equal(
+      catalog.operations.find(
+        (operation) => operation.name === "project.create",
+      )?.revertable,
+      "never",
+    );
+    assert.equal(taskList?.revertable, undefined, "a query is not a write");
     assert.ok(catalog.guidance["command"]?.includes("expectedVersions"));
+    assert.ok(catalog.guidance["command"]?.includes("idempotency.key_reused"));
+    assert.ok(catalog.guidance["query"]?.includes("spaceIds"));
+    // A payload runId that does not name the calling run is a field defect;
+    // the guidance has to name the field, because the outcome cannot.
+    assert.ok(
+      catalog.guidance["command"]?.includes(
+        "runId in the payload: it must repeat the agentRunId",
+      ),
+    );
+    // Single-command recovery is granted separately from the checkpoint
+    // capabilities and is keyed by a command, not a checkpoint.
+    assert.ok(catalog.guidance["recovery"]?.includes("targetCommandId"));
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("publishes a structurally valid schema for every authorized operation", async () => {
+  const server = createConstellationMcpServer({
+    invoke: (invocation) =>
+      Promise.resolve({
+        contractVersion: 1,
+        requestId: invocation.requestId,
+        outcome: "success",
+        result: { grant: { capabilityScope: CapabilitySchema.options } },
+      } satisfies McpOperatorResponse),
+  });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "schema-shape-test", version: "1.0.0" });
+  await Promise.all([
+    server.connect(serverTransport),
+    client.connect(clientTransport),
+  ]);
+  const readJson = async (uri: string): Promise<unknown> => {
+    const read = await client.readResource({ uri });
+    const content = read.contents[0];
+    const text =
+      content !== undefined && "text" in content ? content.text : undefined;
+    assert.ok(typeof text === "string", uri);
+    return JSON.parse(text);
+  };
+  try {
+    const index = (await readJson("constellation://v1/operations")) as {
+      readonly operations: readonly { readonly name: string }[];
+    };
+    // A key beside `properties` under additionalProperties:false is invisible
+    // to a validator and makes every real envelope invalid for a client
+    // generated from the published schema — the command.batch defect.
+    const allowed = new Set([
+      "$schema",
+      "type",
+      "description",
+      "properties",
+      "required",
+      "additionalProperties",
+    ]);
+    for (const entry of index.operations) {
+      const operation = (await readJson(
+        `constellation://v1/operations/${encodeURIComponent(entry.name)}`,
+      )) as { readonly envelopeSchema: Record<string, unknown> };
+      const stray = Object.keys(operation.envelopeSchema).filter(
+        (key) => !allowed.has(key),
+      );
+      assert.deepEqual(
+        stray,
+        [],
+        `${entry.name} publishes only schema keywords`,
+      );
+      assert.equal(operation.envelopeSchema["type"], "object", entry.name);
+      const properties = operation.envelopeSchema["properties"] as
+        Record<string, unknown> | undefined;
+      const required = operation.envelopeSchema["required"] as
+        readonly string[] | undefined;
+      assert.ok(properties !== undefined, entry.name);
+      for (const name of required ?? [])
+        assert.ok(name in properties, `${entry.name} requires ${name}`);
+    }
+    const batch = (await readJson(
+      "constellation://v1/operations/command.batch",
+    )) as {
+      readonly envelopeSchema: {
+        readonly properties?: Record<string, unknown>;
+        readonly required?: readonly string[];
+      };
+    };
+    assert.ok(
+      batch.envelopeSchema.properties?.["commands"] !== undefined,
+      "the item array is a property, not a sibling of properties",
+    );
+    assert.ok(
+      batch.envelopeSchema.required?.includes("commands"),
+      "the contract makes commands mandatory",
+    );
+    // spaceIds and text are the two parameter names an agent guesses wrong,
+    // and a strict envelope gives no second chance — so they say so in place.
+    const search = (await readJson(
+      "constellation://v1/operations/search.global",
+    )) as {
+      readonly envelopeSchema: {
+        readonly properties: {
+          readonly parameters: {
+            readonly properties: Record<
+              string,
+              { readonly description?: string }
+            >;
+          };
+        };
+      };
+    };
+    const parameters = search.envelopeSchema.properties.parameters.properties;
+    assert.ok(parameters["spaceIds"]?.description?.includes("spaceId"));
+    assert.ok(parameters["text"]?.description?.includes("not query"));
   } finally {
     await client.close();
     await server.close();

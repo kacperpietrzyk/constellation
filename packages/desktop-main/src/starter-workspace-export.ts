@@ -123,7 +123,9 @@ export const buildExchangeManifest = (input: {
             {
               key: recordKey("area", record.id),
               title: record.title,
-              responsibility: record.responsibility,
+              ...(record.responsibility === undefined
+                ? {}
+                : { responsibility: record.responsibility }),
             },
           ]
         : [],
@@ -134,7 +136,9 @@ export const buildExchangeManifest = (input: {
             {
               key: recordKey("initiative", record.id),
               title: record.title,
-              intendedOutcome: record.intendedOutcome,
+              ...(record.intendedOutcome === undefined
+                ? {}
+                : { intendedOutcome: record.intendedOutcome }),
             },
           ]
         : [],
@@ -169,7 +173,9 @@ export const buildExchangeManifest = (input: {
         return {
           key: recordKey("project", project.id),
           title: project.title,
-          intendedOutcome: project.intendedOutcome,
+          ...(project.intendedOutcome === undefined
+            ? {}
+            : { intendedOutcome: project.intendedOutcome }),
           ...(areaId === undefined
             ? {}
             : { areaKey: recordKey("area", areaId) }),

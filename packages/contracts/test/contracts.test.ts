@@ -409,6 +409,99 @@ describe("application contracts", () => {
     }
   });
 
+  it("states one recovery vocabulary for commands and one for checkpoints", () => {
+    const undoPreview = (
+      projection: Readonly<Record<string, unknown>>,
+    ): boolean =>
+      CommandOutcomeSchema.safeParse({
+        outcome: "preview",
+        contractVersion: 1,
+        commandId: ids.command,
+        correlationId: ids.correlation,
+        kernelTime: "2026-07-22T00:00:00.000Z",
+        diagnosticCode: "undo.previewed",
+        projection: {
+          kind: "undo.previewed",
+          targetCommandId: ids.command,
+          available: false,
+          affectedRecordIds: [],
+          requiredVersions: {},
+          ...projection,
+        },
+      }).success;
+    const recoveryPreview = (
+      projection: Readonly<Record<string, unknown>>,
+    ): boolean =>
+      QueryResultSchema.safeParse({
+        outcome: "success",
+        contractVersion: 1,
+        queryId: ids.query,
+        kernelTime: "2026-07-22T00:00:00.000Z",
+        freshness: {
+          mode: "local_authoritative",
+          checkpoint: null,
+          missingCapabilities: [],
+        },
+        projection: {
+          kind: "recovery.preview",
+          targetCommandId: ids.command,
+          available: false,
+          affectedRecordIds: [],
+          requiredVersions: {},
+          ...projection,
+        },
+      }).success;
+    const checkpointPreview = (
+      projection: Readonly<Record<string, unknown>>,
+    ): boolean =>
+      QueryResultSchema.safeParse({
+        outcome: "success",
+        contractVersion: 1,
+        queryId: ids.query,
+        kernelTime: "2026-07-22T00:00:00.000Z",
+        freshness: {
+          mode: "local_authoritative",
+          checkpoint: null,
+          missingCapabilities: [],
+        },
+        projection: {
+          kind: "agent.checkpoint_revert_preview",
+          checkpointId: ids.query,
+          available: false,
+          commandIds: [ids.command],
+          affectedRecordIds: [],
+          ...projection,
+        },
+      }).success;
+
+    for (const unavailableReason of [
+      "unsupported",
+      "already_undone",
+      "later_change",
+    ] as const) {
+      assert.equal(undoPreview({ unavailableReason }), true);
+      assert.equal(recoveryPreview({ unavailableReason }), true);
+    }
+    for (const unavailableReason of [
+      "unsupported",
+      "already_reverted",
+      "later_change",
+    ] as const) {
+      assert.equal(checkpointPreview({ unavailableReason }), true);
+    }
+
+    assert.equal(undoPreview({ unavailableReason: "already_reverted" }), false);
+    assert.equal(
+      recoveryPreview({ unavailableReason: "already_reverted" }),
+      false,
+    );
+    assert.equal(checkpointPreview({ unavailableReason: "missing" }), false);
+    assert.equal(
+      checkpointPreview({ unavailableReason: "already_undone" }),
+      false,
+    );
+  });
+
   it("allows a direct Task projection without fabricated Capture provenance", () => {
     const result = QueryResultSchema.safeParse({
       outcome: "success",

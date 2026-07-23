@@ -68,7 +68,10 @@ refused over the network as they are locally. A grant request that names one of
 them is answered `403` with `grant.capability_not_delegable` and the exact
 capabilities refused, so a policy refusal is never reported as an unreachable
 Hub. Commands
-retain expected-version conflicts and durable idempotent replay. Queries label
+retain expected-version conflicts and durable idempotent replay. Checkpoint
+revert answers with the same outcomes and diagnostic codes as the local
+runtime, including naming the commands that blocked a revert and why, so an
+agent reads one behaviour on either transport. Queries label
 record content as Hub-authoritative, Space-scoped, untrusted evidence.
 
 Rich document operations go directly through the Hub's realtime gateway, not a

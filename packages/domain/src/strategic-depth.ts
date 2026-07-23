@@ -196,24 +196,58 @@ export const createDecision = (
 });
 
 export const createArea = (
-  input: Common & { readonly title: string; readonly responsibility: string },
+  input: Common & { readonly title: string; readonly responsibility?: string },
 ): Extract<StrategicRecord, { kind: "area" }> => ({
   ...base(input),
   kind: "area",
   title: input.title,
-  responsibility: input.responsibility,
+  ...(input.responsibility === undefined
+    ? {}
+    : { responsibility: input.responsibility }),
   state: "active",
 });
 
+export const updateAreaResponsibility = (
+  record: Extract<StrategicRecord, { kind: "area" }>,
+  responsibility: string | undefined,
+  occurredAt: string,
+): Extract<StrategicRecord, { kind: "area" }> => {
+  const { responsibility: _prior, ...rest } = record;
+  void _prior;
+  return {
+    ...rest,
+    ...(responsibility === undefined ? {} : { responsibility }),
+    version: record.version + 1,
+    updatedAt: occurredAt,
+  };
+};
+
 export const createInitiative = (
-  input: Common & { readonly title: string; readonly intendedOutcome: string },
+  input: Common & { readonly title: string; readonly intendedOutcome?: string },
 ): Extract<StrategicRecord, { kind: "initiative" }> => ({
   ...base(input),
   kind: "initiative",
   title: input.title,
-  intendedOutcome: input.intendedOutcome,
+  ...(input.intendedOutcome === undefined
+    ? {}
+    : { intendedOutcome: input.intendedOutcome }),
   state: "active",
 });
+
+export const updateInitiativeOutcome = (
+  record: Extract<StrategicRecord, { kind: "initiative" }>,
+  intendedOutcome: string | undefined,
+  occurredAt: string,
+): Extract<StrategicRecord, { kind: "initiative" }> => {
+  const { intendedOutcome: _prior, ...rest } = record;
+  void _prior;
+  return {
+    ...rest,
+    ...(intendedOutcome === undefined ? {} : { intendedOutcome }),
+    version: record.version + 1,
+    updatedAt: occurredAt,
+  };
+};
 
 export const createWorkLink = (
   input: Common & {

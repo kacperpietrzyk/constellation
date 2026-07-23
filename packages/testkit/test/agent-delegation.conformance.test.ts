@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  AgentRunIdSchema,
   ExecutionContextSchema,
+  GrantIdSchema,
+  PrincipalIdSchema,
   WorkspaceIdSchema,
   capabilitiesForAgentGrantPreset,
   type CommandOutcome,
@@ -23,6 +26,12 @@ const ids = {
   agentMembership: "41000000-0000-4000-8000-000000000009",
   agentSpaceGrant: "41000000-0000-4000-8000-000000000010",
   task: "41000000-0000-4000-8000-000000000011",
+  hostAgentRun: "41000000-0000-4000-8000-000000000012",
+  otherAgentRun: "41000000-0000-4000-8000-000000000013",
+  checkpoint: "41000000-0000-4000-8000-000000000014",
+  otherCheckpoint: "41000000-0000-4000-8000-000000000015",
+  handoff: "41000000-0000-4000-8000-000000000016",
+  otherHandoff: "41000000-0000-4000-8000-000000000017",
 } as const;
 
 let sequence = 30_000;
@@ -86,14 +95,17 @@ const currentPolicyVersion = (
     view.getWorkspace(WorkspaceIdSchema.parse(ids.workspace)),
   )?.policyVersion ?? 1;
 
-const outcome = (response: {
+const commandOutcome = (response: {
   readonly kind: string;
-}): CommandOutcome["outcome"] => {
+}): CommandOutcome => {
   if (response.kind !== "command_outcome")
     throw new Error(`Expected a command outcome, received ${response.kind}.`);
-  return (response as unknown as { readonly outcome: CommandOutcome }).outcome
-    .outcome;
+  return (response as unknown as { readonly outcome: CommandOutcome }).outcome;
 };
+
+const outcome = (response: {
+  readonly kind: string;
+}): CommandOutcome["outcome"] => commandOutcome(response).outcome;
 
 /**
  * ADR-046. The delegation partition decides what a grant may carry; these
@@ -253,5 +265,166 @@ describe("agent grant delegation reaches the product without widening scope", ()
       result.result.projection.members.map((member) => member.principalId),
       [ids.agent],
     );
+  });
+
+  // Two runs the same grant owns: the ownership guard cannot tell them apart,
+  // so only the host-run comparison keeps a checkpoint attached to the run
+  // that is actually executing.
+  const runningAgent = (): {
+    readonly agent: ExecutionContext;
+    readonly harness: ReturnType<typeof createReferenceHarness>;
+  } => {
+    const { harness, owner } = bootstrap();
+    harness.kernel.execute(owner, {
+      ...metadata("delegation-grant", { [ids.workspace]: 1 }),
+      commandName: "agent.grantCreate",
+      payload: {
+        grantId: ids.agentGrant,
+        membershipId: ids.agentMembership,
+        agentPrincipalId: ids.agent,
+        displayName: "Full access operator",
+        preset: "full_access",
+        capabilityScope: [...capabilitiesForAgentGrantPreset("full_access")],
+        spaces: [
+          {
+            spaceGrantId: ids.agentSpaceGrant,
+            spaceId: ids.space,
+            access: "edit",
+          },
+        ],
+        credentialId: ids.agentCredential,
+        credentialDigest: "b".repeat(64),
+      },
+    });
+    const agent = ExecutionContextSchema.parse({
+      ...agentContext("full_access", currentPolicyVersion(harness)),
+      hostRun: { runId: "host-run-1", agentRunId: ids.hostAgentRun },
+    });
+    harness.authorization.register(agent);
+    harness.store.transact((transaction) => {
+      for (const [index, runId] of [
+        ids.hostAgentRun,
+        ids.otherAgentRun,
+      ].entries()) {
+        transaction.insertAgentRun({
+          id: AgentRunIdSchema.parse(runId),
+          workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+          agentPrincipalId: PrincipalIdSchema.parse(ids.agent),
+          grantId: GrantIdSchema.parse(ids.agentGrant),
+          hostRunId: `host-run-${index + 1}`,
+          hostName: "conformance-host",
+          attributionTrust: "host_asserted",
+          status: "active",
+          startedAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        });
+      }
+    });
+    return { agent, harness };
+  };
+
+  const withoutCapability = (
+    agent: ExecutionContext,
+    capability: string,
+  ): ExecutionContext =>
+    ExecutionContextSchema.parse({
+      ...agent,
+      capabilityScope: agent.capabilityScope.filter(
+        (entry) => entry !== capability,
+      ),
+    });
+
+  it("reads a checkpoint run mismatch as a payload defect, not a denied grant", () => {
+    const { agent, harness } = runningAgent();
+    const mismatched = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("checkpoint-run-mismatch"),
+        commandName: "agent.checkpointCreate",
+        payload: {
+          checkpointId: ids.otherCheckpoint,
+          runId: ids.otherAgentRun,
+          label: "Wrong run",
+        },
+      }),
+    );
+    // The grant authorized the operation; runId named a run this agent owns
+    // but is not executing. Reporting that as authorization.denied sends an
+    // integrator to the grant instead of to the field it must correct.
+    assert.equal(mismatched.outcome, "rejected");
+    assert.equal(mismatched.diagnosticCode, "command.precondition_failed");
+    assert.equal(harness.store.snapshot().agentCheckpoints?.length ?? 0, 0);
+
+    const created = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("checkpoint-run-match"),
+        commandName: "agent.checkpointCreate",
+        payload: {
+          checkpointId: ids.checkpoint,
+          runId: ids.hostAgentRun,
+          label: "Before the risky slice",
+        },
+      }),
+    );
+    assert.equal(created.outcome, "success");
+    assert.equal(created.diagnosticCode, "agent.checkpoint_created");
+
+    const denied = commandOutcome(
+      harness.kernel.execute(
+        withoutCapability(agent, "agent.checkpoint.create"),
+        {
+          ...metadata("checkpoint-denied"),
+          commandName: "agent.checkpointCreate",
+          payload: {
+            checkpointId: ids.otherCheckpoint,
+            runId: ids.hostAgentRun,
+            label: "Out of scope",
+          },
+        },
+      ),
+    );
+    assert.equal(denied.outcome, "rejected");
+    assert.equal(denied.diagnosticCode, "authorization.denied");
+  });
+
+  it("reads a handoff run mismatch as a payload defect, not a denied grant", () => {
+    const { agent, harness } = runningAgent();
+    const handoff = (handoffId: string, runId: string) => ({
+      handoffId,
+      runId,
+      evidence: ["audit-receipt-1"],
+      changes: ["Wrote one Task"],
+      decisions: ["Kept the existing owner"],
+      remainingWork: ["Review the Task"],
+      nextAction: "Hand back to the operator",
+    });
+    const mismatched = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("handoff-run-mismatch"),
+        commandName: "agent.handoffSubmit",
+        payload: handoff(ids.otherHandoff, ids.otherAgentRun),
+      }),
+    );
+    assert.equal(mismatched.outcome, "rejected");
+    assert.equal(mismatched.diagnosticCode, "command.precondition_failed");
+
+    const submitted = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("handoff-run-match"),
+        commandName: "agent.handoffSubmit",
+        payload: handoff(ids.handoff, ids.hostAgentRun),
+      }),
+    );
+    assert.equal(submitted.outcome, "success");
+    assert.equal(submitted.diagnosticCode, "agent.handoff_submitted");
+
+    const denied = commandOutcome(
+      harness.kernel.execute(withoutCapability(agent, "agent.handoff.submit"), {
+        ...metadata("handoff-denied"),
+        commandName: "agent.handoffSubmit",
+        payload: handoff(ids.otherHandoff, ids.hostAgentRun),
+      }),
+    );
+    assert.equal(denied.outcome, "rejected");
+    assert.equal(denied.diagnosticCode, "authorization.denied");
   });
 });

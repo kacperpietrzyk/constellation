@@ -47,12 +47,16 @@ import {
 import type { AgentAccessGrant, AgentRun } from "@constellation/domain";
 import { structuredDocumentEntityReferences } from "@constellation/realtime-documents";
 import {
+  MCP_CHECKPOINT_REVERT_DIAGNOSTICS,
   MCP_CONTRACT_VERSION,
   MCP_TOOL_NAMES,
   MAX_MCP_PAYLOAD_CHUNK_BYTES,
   MCP_PAYLOAD_RESOURCE_TEMPLATE,
   McpOperatorResponseSchema,
   RemoteMcpCredentialSchema,
+  checkpointRevertPreview,
+  checkpointRevertRefusal,
+  type CheckpointRevertBlock,
   type HostRunMetadata,
   type McpOperatorInvocation,
   type McpOperatorResponse,
@@ -183,6 +187,24 @@ const nestedOutcome = (value: unknown): McpOperatorResponse["outcome"] => {
     ? (outcome as McpOperatorResponse["outcome"])
     : "rejected";
 };
+
+/**
+ * A blocked command id alone is not actionable, and the unavailable preview
+ * carries no compensation kind to name it with; the audit receipt does.
+ */
+const namedBlocks = (
+  store: InMemoryReferenceStore,
+  blocked: readonly CheckpointRevertBlock[],
+): readonly CheckpointRevertBlock[] =>
+  store.read((view) => {
+    if (!isApplicationWave2ReadView(view)) return blocked;
+    return blocked.map((item) => {
+      const receipt = view.getAuditReceiptByCommand(item.targetCommandId);
+      return receipt === undefined
+        ? item
+        : { ...item, commandName: receipt.commandName };
+    });
+  });
 
 const mergedSnapshot = (state: HubWorkspaceState) => {
   const base = fromHubSnapshot(state.snapshot, state.workspaceId);
@@ -1603,10 +1625,20 @@ export class HubRemoteMcpService {
       return response(requestId, "rejected", {
         diagnosticCode: "authorization.denied",
       });
+    if (checkpoint.status === "reverted")
+      return response(requestId, "rejected", {
+        diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.alreadyReverted,
+        checkpointId: checkpoint.id,
+      });
     const service = this.kernel(store, context);
-    const previews = [...checkpoint.commandIds]
-      .reverse()
-      .map((targetCommandId) =>
+    // Compensation runs newest-first, and every preview is taken before any of
+    // it is applied, so previews and undos walk one shared reversed sequence:
+    // an undo paired with another command's preview would carry the wrong
+    // expectedVersions and half-apply the checkpoint.
+    const targets = [...checkpoint.commandIds].reverse();
+    const previews = targets.map((targetCommandId) =>
+      checkpointRevertPreview(
+        targetCommandId,
         service.kernel.query(context, {
           contractVersion: 1,
           queryName: "recovery.preview",
@@ -1615,36 +1647,33 @@ export class HubRemoteMcpService {
           consistency: "local_authoritative",
           parameters: { targetCommandId },
         }),
-      );
-    const parsed = previews.map((item) =>
-      item.kind === "query_result" &&
-      item.result.outcome === "success" &&
-      item.result.projection.kind === "recovery.preview" &&
-      item.result.projection.available
-        ? item.result.projection
-        : undefined,
+      ),
     );
-    if (parsed.some((item) => item === undefined))
-      return response(requestId, "conflict", {
-        diagnosticCode: "agent.checkpoint_revert_conflict",
-      });
-    const outcomes = checkpoint.commandIds
-      .slice()
-      .reverse()
-      .map((targetCommandId, index) => {
-        const command = {
-          contractVersion: 1 as const,
-          commandName: "command.undo" as const,
-          commandId: CommandIdSchema.parse(randomUUID()),
-          workspaceId: checkpoint.workspaceId,
-          idempotencyKey: `${idempotencyKey}:${index}`,
-          expectedVersions: parsed[index]?.requiredVersions ?? {},
-          correlationId: CorrelationIdSchema.parse(correlationId),
-          payload: { targetCommandId },
-        };
-        service.ids.begin(command.commandId);
-        return service.kernel.execute(context, command);
-      });
+    const blocked = previews.flatMap((preview) =>
+      preview.ok ? [] : [preview.blocked],
+    );
+    if (blocked.length > 0) {
+      const refusal = checkpointRevertRefusal(
+        checkpoint.id,
+        namedBlocks(store, blocked),
+      );
+      return response(requestId, refusal.outcome, refusal.result);
+    }
+    const outcomes = targets.map((targetCommandId, index) => {
+      const preview = previews[index];
+      const command = {
+        contractVersion: 1 as const,
+        commandName: "command.undo" as const,
+        commandId: CommandIdSchema.parse(randomUUID()),
+        workspaceId: checkpoint.workspaceId,
+        idempotencyKey: `${idempotencyKey}:${index}`,
+        expectedVersions: preview?.ok === true ? preview.requiredVersions : {},
+        correlationId: CorrelationIdSchema.parse(correlationId),
+        payload: { targetCommandId },
+      };
+      service.ids.begin(command.commandId);
+      return service.kernel.execute(context, command);
+    });
     if (
       outcomes.some(
         (item) =>
@@ -1652,7 +1681,7 @@ export class HubRemoteMcpService {
       )
     )
       return response(requestId, "partial", {
-        diagnosticCode: "agent.checkpoint_revert_partial",
+        diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.partial,
         outcomes,
       });
     store.transact((transaction) => {
@@ -1667,7 +1696,7 @@ export class HubRemoteMcpService {
       });
     });
     return response(requestId, "success", {
-      diagnosticCode: "agent.checkpoint_reverted",
+      diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.reverted,
       checkpointId: checkpoint.id,
       outcomes,
     });
