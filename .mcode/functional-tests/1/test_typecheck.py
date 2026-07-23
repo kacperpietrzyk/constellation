@@ -33,8 +33,8 @@ class TestTypecheck:
         result = run_cmd("npx", "tsc", "-b", "--pretty", "false")
         assert result.returncode == 0, (
             f"tsc -b failed with exit code {result.returncode}.\n"
-            f"stdout: {result.stdout[:2000]}\n"
-            f"stderr: {result.stderr[:2000]}"
+            f"stdout (last 2000 chars): {result.stdout[-2000:]}\n"
+            f"stderr (last 2000 chars): {result.stderr[-2000:]}"
         )
         # Verify no error output (tsc prints errors to stdout with --pretty false)
         error_lines = [
