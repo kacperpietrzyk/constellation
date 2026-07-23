@@ -11,7 +11,7 @@ import pytest
 
 WORKSPACE_DIR = os.environ.get(
     "WORKSPACE_DIR",
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 )
 REPO_DIR = os.path.join(WORKSPACE_DIR, "constellation")
 
