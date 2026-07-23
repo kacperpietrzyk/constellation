@@ -3,7 +3,6 @@
     "composite": true,
     "declaration": true,
     "declarationMap": true,
-    "esModuleInterop": true,
     "exactOptionalPropertyTypes": true,
     "forceConsistentCasingInFileNames": true,
     "lib": ["ES2023"],
@@ -16,7 +15,6 @@
     "sourceMap": true,
     "strict": true,
     "target": "ES2023",
-    "useUnknownInCatchVariables": true,
     "verbatimModuleSyntax": true
   }
 }
