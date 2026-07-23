@@ -22,6 +22,11 @@
       "intendedOutcome": "Capture, plan, and close one real week without leaving the application.",
       "areaKey": "product",
       "initiativeKey": "first-release"
+    },
+    {
+      "key": "inherited-backlog",
+      "title": "Inherited backlog from the previous tool",
+      "areaKey": "product"
     }
   ],
   "tasks": [

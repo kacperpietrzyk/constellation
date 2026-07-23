@@ -231,9 +231,12 @@ export const isAgentAccessCommandAuthorized = (
       })
     );
   }
+  // `payload.runId` is deliberately not checked here. Whether the payload
+  // names the run the caller is executing is a property of the payload, not of
+  // the grant, and a denial routes an integrator to the access it already
+  // holds; the handler rejects the mismatch as a failed precondition instead.
   return (
     context.principalKind === "agent" &&
-    context.hostRun?.agentRunId === command.payload.runId &&
     dependencies.authorization.authorize({
       context,
       capability:
@@ -492,6 +495,11 @@ export const executeAgentAccessCommand = (
     );
   }
 
+  // A grant can own several runs, so ownership alone would let a checkpoint or
+  // a handoff attach to a run the caller is not executing. The comparison is
+  // still a precondition on the payload, not an authorization decision.
+  if (command.payload.runId !== context.hostRun?.agentRunId)
+    return rejected(command, occurredAt);
   const run = transaction.getAgentRun(command.payload.runId);
   if (
     run?.workspaceId !== workspace.id ||
@@ -742,6 +750,10 @@ export const executeAgentAccessQuery = (
         switch (descriptor.kind) {
           case "project.restore_outcome":
             return [descriptor.projectId];
+          case "area.restore_responsibility":
+            return [descriptor.areaId];
+          case "initiative.restore_outcome":
+            return [descriptor.initiativeId];
           case "taskStatus.restore_definition":
             return [descriptor.statusId];
           case "fieldDef.restore_definition":
@@ -765,6 +777,7 @@ export const executeAgentAccessQuery = (
             return [descriptor.workspaceId];
           case "task.restore_calendar_block":
           case "task.restore_record_state":
+          case "task.undo_create":
           case "task.restore_state":
           case "task.restore_details":
           case "task.restore_parent":

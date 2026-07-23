@@ -8,6 +8,41 @@ releases begin.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-23
+
+### Added
+
+- `project.create` accepts an optional client-supplied `projectId`, mirroring
+  `initiative.create`, so a project can be forward-referenced inside the same
+  MCP batch instead of requiring an extra round trip.
+- Compensation (scoped revert / `command.undo`) for `task.create` and
+  `savedView.create`, so an agent checkpoint containing them can be reverted
+  cleanly; `area.updateResponsibility` and `initiative.updateOutcome` commands
+  to fill in a narrative that was left blank at creation.
+- Per-operation revertability in the `constellation://v1/operations` catalog and
+  a typed `run` envelope schema on every MCP tool, so an external integrator can
+  size safe work and satisfy required inputs without a failed probing call.
+
+### Changed
+
+- Project, Area, and Initiative narratives (`intendedOutcome` / `responsibility`)
+  are optional at creation; a record left without one is surfaced as
+  needs-review rather than forcing the importer to fabricate prose.
+- Checkpoint revert now distinguishes an uncompensable command, a genuine
+  later-work conflict, and an already-reverted checkpoint, and names the
+  commands that blocked it, instead of reporting every case as a conflict.
+
+### Fixed
+
+- `agent.checkpointCreate` reports a `runId` that does not match the run as a
+  validation precondition instead of `authorization.denied`.
+- The published `command.batch` envelope schema now declares `commands` as a
+  real property, so a strict client generated from the catalog accepts valid
+  batches.
+- Unified the recovery/undo `unavailableReason` vocabulary into a single shared
+  schema and corrected the idempotency and recovery guidance and the
+  capability-to-operation alias for checkpoint preview-revert.
+
 ## [0.1.0] - 2026-07-22
 
 ### Added

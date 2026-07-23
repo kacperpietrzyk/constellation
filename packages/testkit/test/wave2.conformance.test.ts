@@ -893,6 +893,127 @@ describe("Wave 2 reference semantics", () => {
     }
   });
 
+  it("adopts a client-supplied Project id and refuses a second Project on it", () => {
+    const harness = setup();
+    const projectId = ProjectIdSchema.parse(requestId());
+    const create = (idempotencyKey: string) => ({
+      ...metadata(idempotencyKey),
+      commandName: "project.create",
+      payload: {
+        projectId,
+        spaceId: ids.rootSpace,
+        title: "Client-identified Project",
+        intendedOutcome: "The importer names the record before it exists",
+      },
+    });
+    const created = unwrap(
+      harness.kernel.execute(context(), create("project-client-id")),
+    );
+    assert.equal(created.outcome, "success");
+    if (
+      created.outcome !== "success" ||
+      created.projection.kind !== "project.created"
+    ) {
+      throw new Error("Expected Project.");
+    }
+    assert.equal(created.projection.projectId, projectId);
+    assert.equal(
+      harness.store
+        .snapshot()
+        .projects.some((project) => project.id === projectId),
+      true,
+    );
+
+    // A fresh command id and idempotency key carry the collision past the
+    // idempotency ledger and onto the record itself.
+    const duplicate = unwrap(
+      harness.kernel.execute(context(), create("project-client-id-again")),
+    );
+    assert.equal(duplicate.outcome, "conflict");
+    if (duplicate.outcome !== "conflict") throw new Error("Expected conflict.");
+    assert.equal(duplicate.diagnosticCode, "record.already_exists");
+    assert.deepEqual(duplicate.currentVersions, { [projectId]: 1 });
+
+    const generated = createProjectRecord(harness, "Kernel-identified Project");
+    assert.notEqual(generated.projectId, projectId);
+  });
+
+  it("creates and forward-references a client-identified Project in one batch", () => {
+    const harness = setup();
+    const projectId = ProjectIdSchema.parse(requestId());
+    const taskId = requestId();
+    const commands = [
+      {
+        ...metadata("batch-project-create"),
+        commandName: "project.create",
+        payload: {
+          projectId,
+          spaceId: ids.rootSpace,
+          title: "Batch-identified Project",
+          intendedOutcome: "Creation and attachment compose in one envelope",
+        },
+      },
+      {
+        ...metadata("batch-project-task"),
+        commandName: "task.create",
+        payload: {
+          taskId,
+          spaceId: ids.rootSpace,
+          title: "Batched contribution",
+        },
+      },
+      {
+        ...metadata("batch-project-relation", { [taskId]: 1, [projectId]: 1 }),
+        commandName: "record.relate",
+        payload: {
+          relationType: "task_contributes_to_project",
+          taskId,
+          projectId,
+        },
+      },
+    ];
+    const run = (mode: "preview" | "apply") =>
+      harness.kernel.executeBatch(context(), {
+        contractVersion: 1,
+        batchId: requestId(),
+        workspaceId: ids.workspace,
+        correlationId: requestId(),
+        mode,
+        commands,
+      });
+
+    const previewed = run("preview");
+    assert.equal(previewed.kind, "batch_result");
+    if (previewed.kind !== "batch_result") throw new Error("Expected a batch.");
+    assert.deepEqual(
+      previewed.outcomes.map((item) => item.outcome.outcome),
+      ["success", "success", "success"],
+    );
+    assert.equal(previewed.applied, false);
+    assert.equal(harness.store.snapshot().projects.length, 0);
+
+    const applied = run("apply");
+    assert.equal(applied.kind, "batch_result");
+    if (applied.kind !== "batch_result") throw new Error("Expected a batch.");
+    assert.equal(applied.applied, true);
+    assert.deepEqual(applied.remaining, []);
+    const related = applied.outcomes[2]?.outcome;
+    if (
+      related?.outcome !== "success" ||
+      related.projection.kind !== "relation.created"
+    ) {
+      throw new Error("Expected a relation.");
+    }
+    assert.equal(related.projection.projectId, projectId);
+    assert.equal(related.projection.taskId, taskId);
+    assert.equal(
+      harness.store
+        .snapshot()
+        .projects.some((project) => project.id === projectId),
+      true,
+    );
+  });
+
   it("rolls back a reversible update including its undo descriptor", () => {
     const boundaries: readonly FailureBoundary[] = [
       "project-update",
@@ -3065,6 +3186,126 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(blocked.diagnosticCode, "undo.not_available");
   });
 
+  it("reports an uncompensated command as unsupported and refuses to preview an unknown one", () => {
+    const harness = setup();
+    const { commandId } = createProjectRecord(harness, "Uncompensated project");
+    const previewUndo = (
+      targetCommandId: string,
+      key: string,
+    ): CommandOutcome =>
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(key),
+          commandName: "command.previewUndo",
+          payload: { targetCommandId },
+        }),
+      );
+
+    const created = previewUndo(commandId, "uncompensated-preview");
+    if (created.outcome !== "preview") throw new Error("Expected preview.");
+    assert.equal(created.projection.available, false);
+    assert.equal(created.projection.unavailableReason, "unsupported");
+
+    // "unsupported" carries one meaning only because an id this workspace never
+    // applied never reaches the projection.
+    const unknown = previewUndo(requestId(), "unknown-preview");
+    assert.equal(unknown.outcome, "rejected");
+    assert.equal(unknown.diagnosticCode, "authorization.denied");
+
+    const recoveryPreview = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "recovery.preview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { targetCommandId: commandId },
+    });
+    if (
+      recoveryPreview.kind !== "query_result" ||
+      recoveryPreview.result.outcome !== "success" ||
+      recoveryPreview.result.projection.kind !== "recovery.preview"
+    ) {
+      throw new Error("Expected recovery preview query.");
+    }
+    assert.equal(recoveryPreview.result.projection.available, false);
+    assert.equal(
+      recoveryPreview.result.projection.unavailableReason,
+      "unsupported",
+    );
+
+    const unknownRecovery = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "recovery.preview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { targetCommandId: requestId() },
+    });
+    if (unknownRecovery.kind !== "query_result")
+      throw new Error("Expected recovery preview query.");
+    assert.equal(unknownRecovery.result.outcome, "rejected");
+  });
+
+  it("names every compensation kind the recovery query can meet", () => {
+    const harness = setup();
+    const submitted = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("knowledge-route-submit"),
+        commandName: "capture.submit",
+        payload: {
+          spaceId: ids.rootSpace,
+          original: {
+            kind: "url",
+            url: "https://example.test/reference",
+            title: "Reference source",
+          },
+          deviceId: "test-device",
+          source: "global_quick_capture",
+        },
+      }),
+    );
+    if (
+      submitted.outcome !== "success" ||
+      submitted.projection.kind !== "capture.stored"
+    )
+      assert.fail("Expected a stored Capture.");
+    const route = {
+      ...metadata("knowledge-route", {
+        [submitted.projection.captureId]: submitted.projection.version,
+      }),
+      commandName: "capture.process" as const,
+      payload: {
+        captureId: submitted.projection.captureId,
+        destination: "knowledge_source" as const,
+      },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), route)).outcome,
+      "success",
+    );
+
+    const preview = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "recovery.preview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { targetCommandId: route.commandId },
+    });
+    if (
+      preview.kind !== "query_result" ||
+      preview.result.outcome !== "success" ||
+      preview.result.projection.kind !== "recovery.preview"
+    ) {
+      throw new Error("Expected recovery preview query.");
+    }
+    assert.equal(preview.result.projection.available, true);
+    assert.equal(
+      preview.result.projection.compensationKind,
+      "capture.undo_knowledge_route",
+    );
+  });
+
   it("undoes Capture routing without losing the original or exposing a removed Task", () => {
     const harness = setup();
     const before = harness.store.snapshot();
@@ -4349,5 +4590,269 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(removed.kind, "query_result");
     if (removed.kind !== "query_result") return;
     assert.equal(removed.result.outcome, "rejected");
+  });
+
+  it("compensates task.create so a Task an agent created can be taken back", () => {
+    const harness = setup();
+    const taskId = requestId();
+    const create = {
+      ...metadata("create-undo-task"),
+      commandName: "task.create" as const,
+      payload: {
+        taskId,
+        spaceId: ids.rootSpace,
+        title: "Draft the migration note",
+      },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), create)).outcome,
+      "success",
+    );
+
+    const preview = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("create-undo-task-preview"),
+        commandName: "command.previewUndo",
+        payload: { targetCommandId: create.commandId },
+      }),
+    );
+    if (preview.outcome !== "preview") assert.fail("Expected an undo preview");
+    assert.equal(preview.projection.available, true);
+    assert.equal(preview.projection.compensationKind, "task.undo_create");
+    assert.deepEqual(preview.projection.affectedRecordIds, [taskId]);
+
+    // recovery.preview restates the same enum in a second schema, so the
+    // desktop surface has to accept the kind too.
+    const recovery = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "recovery.preview",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { targetCommandId: create.commandId },
+    });
+    if (
+      recovery.kind !== "query_result" ||
+      recovery.result.outcome !== "success" ||
+      recovery.result.projection.kind !== "recovery.preview"
+    )
+      assert.fail("Expected a recovery preview");
+    assert.equal(
+      recovery.result.projection.compensationKind,
+      "task.undo_create",
+    );
+
+    const undone = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(
+          "create-undo-task-undo",
+          preview.projection.requiredVersions,
+        ),
+        commandName: "command.undo",
+        payload: { targetCommandId: create.commandId },
+      }),
+    );
+    assert.equal(undone.diagnosticCode, "command.undone");
+    if (
+      undone.outcome !== "success" ||
+      undone.projection.kind !== "command.undone"
+    )
+      assert.fail("Expected an undone projection");
+    assert.deepEqual(undone.projection.compensatedRecordIds, [taskId]);
+    assert.equal(undone.projection.recordVersions[taskId], 2);
+
+    assert.equal(
+      harness.store.snapshot().tasks.find((task) => task.id === taskId)
+        ?.recordState,
+      "removed",
+    );
+    const listResult = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.rootSpace },
+    });
+    if (
+      listResult.kind !== "query_result" ||
+      listResult.result.outcome !== "success" ||
+      listResult.result.projection.kind !== "task.list"
+    )
+      assert.fail("Expected a task.list result");
+    assert.equal(
+      listResult.result.projection.items.some((item) => item.id === taskId),
+      false,
+    );
+
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("create-undo-task-again"),
+          commandName: "command.undo",
+          payload: { targetCommandId: create.commandId },
+        }),
+      ).diagnosticCode,
+      "undo.already_applied",
+    );
+  });
+
+  it("refuses to take back a created Task that moved on, completed, or grew a child", () => {
+    const harness = setup();
+    const createTaskCommand = (
+      key: string,
+      title: string,
+    ): { commandId: string; taskId: TaskId } => {
+      const taskId = requestId() as TaskId;
+      const command = {
+        ...metadata(key),
+        commandName: "task.create" as const,
+        payload: { taskId, spaceId: ids.rootSpace, title },
+      };
+      assert.equal(
+        unwrap(harness.kernel.execute(context(), command)).outcome,
+        "success",
+      );
+      return { commandId: command.commandId, taskId };
+    };
+    const reasonFor = (targetCommandId: string): string | undefined => {
+      const preview = unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`refuse-preview-${targetCommandId}`),
+          commandName: "command.previewUndo",
+          payload: { targetCommandId },
+        }),
+      );
+      if (preview.outcome !== "preview")
+        assert.fail("Expected an undo preview");
+      assert.equal(preview.projection.available, false);
+      return preview.projection.unavailableReason;
+    };
+
+    const edited = createTaskCommand("refuse-edited", "Edited later");
+    const editedTaskId = edited.taskId;
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("refuse-edited-update", { [editedTaskId]: 1 }),
+        commandName: "task.updateDetails",
+        payload: { taskId: editedTaskId, title: "Edited after creation" },
+      }),
+    );
+    assert.equal(reasonFor(edited.commandId), "later_change");
+
+    const completed = createTaskCommand("refuse-completed", "Completed later");
+    const completedTaskId = completed.taskId;
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("refuse-completed-complete", { [completedTaskId]: 1 }),
+        commandName: "task.complete",
+        payload: { taskId: completedTaskId },
+      }),
+    );
+    assert.equal(reasonFor(completed.commandId), "later_change");
+
+    // A child does not bump the parent's version, so version equality alone
+    // would let the undo through and orphan the child (ADR-043 §3).
+    const parent = createTaskCommand("refuse-parent", "Grew a child");
+    const parentTaskId = parent.taskId;
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("refuse-parent-child"),
+          commandName: "task.create",
+          payload: {
+            taskId: requestId(),
+            spaceId: ids.rootSpace,
+            title: "Child of the created parent",
+            parentTaskId,
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(
+      harness.store.snapshot().tasks.find((task) => task.id === parentTaskId)
+        ?.version,
+      1,
+    );
+    assert.equal(reasonFor(parent.commandId), "later_change");
+
+    const blocked = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("refuse-parent-undo", { [parentTaskId]: 1 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: parent.commandId },
+      }),
+    );
+    assert.equal(blocked.diagnosticCode, "undo.not_available");
+    assert.equal(
+      harness.store.snapshot().tasks.find((task) => task.id === parentTaskId)
+        ?.recordState,
+      "active",
+    );
+  });
+
+  it("compensates savedView.create through the definition descriptor it already had", () => {
+    const harness = setup();
+    const savedViewId = requestId();
+    const create = {
+      ...metadata("create-undo-view"),
+      commandName: "savedView.create" as const,
+      payload: {
+        savedViewId,
+        spaceId: ids.rootSpace,
+        name: "Agent scratch view",
+        filters: {},
+        sort: "updated_desc" as const,
+      },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), create)).outcome,
+      "success",
+    );
+
+    const preview = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("create-undo-view-preview"),
+        commandName: "command.previewUndo",
+        payload: { targetCommandId: create.commandId },
+      }),
+    );
+    if (preview.outcome !== "preview") assert.fail("Expected an undo preview");
+    assert.equal(preview.projection.available, true);
+    assert.equal(
+      preview.projection.compensationKind,
+      "savedView.restore_definition",
+    );
+
+    const undone = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(
+          "create-undo-view-undo",
+          preview.projection.requiredVersions,
+        ),
+        commandName: "command.undo",
+        payload: { targetCommandId: create.commandId },
+      }),
+    );
+    assert.equal(undone.diagnosticCode, "command.undone");
+    const record = harness.store
+      .snapshot()
+      .strategicRecords?.find((candidate) => candidate.id === savedViewId);
+    assert.equal(
+      record?.kind === "saved_view" ? record.state : undefined,
+      "deleted",
+    );
+
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("create-undo-view-again"),
+          commandName: "command.undo",
+          payload: { targetCommandId: create.commandId },
+        }),
+      ).diagnosticCode,
+      "undo.already_applied",
+    );
   });
 });

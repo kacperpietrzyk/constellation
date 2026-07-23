@@ -37,12 +37,14 @@ import {
 } from "@constellation/desktop-preload/surface-registry";
 
 import { Icon } from "./components/Icon.js";
+import { NarrativeGap } from "./components/RecordNarrative.js";
 import {
   ShortcutsOverlay,
   modifierLabel,
   surfaceShortcutHint,
   type SurfaceShortcutHint,
 } from "./components/ShortcutsOverlay.js";
+import { recordNarrativeGaps } from "./record-narrative.js";
 import { TaskRemovalSection } from "./components/TaskRemovalSection.js";
 import { TaskReservationSection } from "./components/TaskReservationSection.js";
 import {
@@ -103,6 +105,8 @@ import {
   submitQuickCapture,
   undoCommand,
   unrelateTask,
+  updateAreaResponsibility,
+  updateInitiativeOutcome,
   updateProjectOutcome,
   updateAttention,
   createAgentGrant,
@@ -1379,6 +1383,9 @@ export const RealApp = ({
     readonly kind: WorkContextKind;
     readonly id: string;
   }>();
+  // Obszar i Inicjatywa nie mają własnej powierzchni edycji, więc nienapisaną
+  // intencję uzupełnia się tam, gdzie jest widoczna — w inspectorze.
+  const [workContextNarrative, setWorkContextNarrative] = useState<string>();
   const [selectedStrategicId, setSelectedStrategicId] = useState<string>();
   const [selectedCaptureId, setSelectedCaptureId] = useState<CaptureId>();
   const [selectedAttentionId, setSelectedAttentionId] = useState<string>();
@@ -1810,8 +1817,11 @@ export const RealApp = ({
         ? undefined
         : {
             kind: "area" as const,
+            id: area.id,
+            version: area.version,
             title: area.title,
             detail: area.responsibility,
+            needsReview: area.needsReview,
             stateLabel: area.state === "active" ? "Aktywny" : "Zarchiwizowany",
           };
     }
@@ -1822,11 +1832,20 @@ export const RealApp = ({
       ? undefined
       : {
           kind: "initiative" as const,
+          id: initiative.id,
+          version: initiative.version,
           title: initiative.title,
           detail: initiative.intendedOutcome,
+          needsReview: initiative.needsReview,
           stateLabel: initiative.state === "active" ? "Aktywna" : "Zamknięta",
         };
   }, [selectedWorkContext, snapshot]);
+  // Szkic należy do wybranego rekordu, nie do inspectora — zmiana wyboru nie
+  // może przenieść nienapisanej intencji na inny Obszar czy Inicjatywę.
+  useEffect(
+    () => setWorkContextNarrative(undefined),
+    [selectedWorkContext?.kind, selectedWorkContext?.id],
+  );
   const selectedStrategicRecord = useMemo(
     () =>
       snapshot?.relationships.kind === "ready" &&
@@ -2289,6 +2308,30 @@ export const RealApp = ({
     pushToast({
       message,
       ...(undoCommandId === undefined ? {} : { undoCommandId }),
+    });
+  };
+  const writeWorkContextNarrative = () => {
+    const record = selectedWorkContextRecord;
+    const narrative = workContextNarrative?.trim();
+    if (!client || !snapshot || record === undefined || !narrative) return;
+    setProjectBusy(true);
+    const target = { id: record.id, version: record.version };
+    void (
+      record.kind === "area"
+        ? updateAreaResponsibility(client, snapshot, target, narrative)
+        : updateInitiativeOutcome(client, snapshot, target, narrative)
+    ).then(async (result) => {
+      setProjectBusy(false);
+      if (result.kind !== "success") {
+        showFailure(result);
+        return;
+      }
+      setWorkContextNarrative(undefined);
+      await refreshAfter(
+        record.kind === "area"
+          ? "Stałą odpowiedzialność zapisano."
+          : "Zamierzony wynik zapisano.",
+      );
     });
   };
   const stageCommentAttachment = async () => {
@@ -4702,7 +4745,20 @@ export const RealApp = ({
             </p>
             <section className="inspector-section provenance-block">
               <p className="section-label">Zamierzony wynik</p>
-              <blockquote>{selectedProject.intendedOutcome}</blockquote>
+              {/* Inspector jest podglądem, więc luka prowadzi na powierzchnię
+                  Projektu, gdzie wynik da się napisać. */}
+              {selectedProject.needsReview ? (
+                <NarrativeGap
+                  kind="project"
+                  onWrite={() =>
+                    openContext(
+                      projectContext(selectedProject.id, selectedProject.title),
+                    )
+                  }
+                />
+              ) : (
+                <blockquote>{selectedProject.intendedOutcome}</blockquote>
+              )}
               <p>Wynik pozostaje częścią wersjonowanego rekordu Projektu.</p>
             </section>
             <section className="inspector-section">
@@ -4823,7 +4879,51 @@ export const RealApp = ({
                   ? "Stała odpowiedzialność"
                   : "Zamierzony wynik"}
               </p>
-              <blockquote>{selectedWorkContextRecord.detail}</blockquote>
+              {!selectedWorkContextRecord.needsReview ? (
+                <blockquote>{selectedWorkContextRecord.detail}</blockquote>
+              ) : workContextNarrative === undefined ? (
+                <NarrativeGap
+                  kind={selectedWorkContextRecord.kind}
+                  onWrite={() => setWorkContextNarrative("")}
+                />
+              ) : (
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    writeWorkContextNarrative();
+                  }}
+                >
+                  <label className="sr-only" htmlFor="work-context-narrative">
+                    {recordNarrativeGaps[selectedWorkContextRecord.kind].field}
+                  </label>
+                  <textarea
+                    id="work-context-narrative"
+                    value={workContextNarrative}
+                    autoFocus
+                    onChange={(event) =>
+                      setWorkContextNarrative(event.target.value)
+                    }
+                  />
+                  <div className="capture-footer">
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => setWorkContextNarrative(undefined)}
+                    >
+                      Anuluj
+                    </button>
+                    <button
+                      className="primary-button"
+                      disabled={
+                        projectBusy || workContextNarrative.trim() === ""
+                      }
+                      type="submit"
+                    >
+                      Zapisz
+                    </button>
+                  </div>
+                </form>
+              )}
               <p>
                 {selectedWorkContextRecord.kind === "area"
                   ? "Obszar nie ma daty końca; zamyka się projektami."

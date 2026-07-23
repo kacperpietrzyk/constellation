@@ -333,12 +333,12 @@ const schemaV2 = `
   END;
   CREATE TRIGGER work_search_project_insert AFTER INSERT ON projects BEGIN
     INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
-    VALUES (new.id, new.workspace_id, new.space_id, 'project', json_extract(new.payload_json, '$.title'), json_extract(new.payload_json, '$.intendedOutcome'));
+    VALUES (new.id, new.workspace_id, new.space_id, 'project', json_extract(new.payload_json, '$.title'), coalesce(json_extract(new.payload_json, '$.intendedOutcome'), ''));
   END;
   CREATE TRIGGER work_search_project_update AFTER UPDATE OF payload_json ON projects BEGIN
     DELETE FROM work_search WHERE record_kind = 'project' AND record_id = old.id;
     INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
-    VALUES (new.id, new.workspace_id, new.space_id, 'project', json_extract(new.payload_json, '$.title'), json_extract(new.payload_json, '$.intendedOutcome'));
+    VALUES (new.id, new.workspace_id, new.space_id, 'project', json_extract(new.payload_json, '$.title'), coalesce(json_extract(new.payload_json, '$.intendedOutcome'), ''));
   END;
   CREATE TRIGGER work_search_project_delete AFTER DELETE ON projects BEGIN
     DELETE FROM work_search WHERE record_kind = 'project' AND record_id = old.id;
@@ -923,7 +923,7 @@ const schemaV23 = `
   CREATE TRIGGER work_search_project_insert AFTER INSERT ON projects BEGIN
     INSERT INTO work_search(record_id, workspace_id, space_id, record_kind, title, body)
     VALUES (new.id, new.workspace_id, new.space_id, 'project',
-      json_extract(new.payload_json, '$.title'), json_extract(new.payload_json, '$.intendedOutcome'));
+      json_extract(new.payload_json, '$.title'), coalesce(json_extract(new.payload_json, '$.intendedOutcome'), ''));
   END;
   CREATE TRIGGER work_search_project_update AFTER UPDATE OF payload_json ON projects BEGIN
     DELETE FROM work_search WHERE record_kind = 'project' AND record_id = old.id;

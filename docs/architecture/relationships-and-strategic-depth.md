@@ -44,6 +44,14 @@ CRM or generic database builder.
 - An Initiative is a completable multi-Project outcome. Typed work links connect
   Projects to Areas or Initiatives and Tasks to their dependencies without
   forcing every record into one containment tree.
+- An Area's responsibility and a Project's or Initiative's intended outcome are
+  optional at creation. Imported work that predates the record often has no
+  written intent, and requiring one only guarantees a plausible invention. A
+  record created without it carries a derived `needsReview` flag in every
+  projection that reads it; the desktop shows that gap instead of an empty line
+  and routes to `project.updateOutcome`, `area.updateResponsibility`, or
+  `initiative.updateOutcome`. Writing the text clears the flag; the empty string
+  stays unrepresentable, so a blank can never pass for prose.
 - Task operational state distinguishes actionable, waiting, and blocked work.
   Waiting records its direction explicitly; saved views keep deterministic
   structured filters rather than generated recommendations.
@@ -62,7 +70,8 @@ audit receipts, expected-version conflicts, and generic local or remote MCP
 transport.
 
 The desktop Work destination presents this composition as one thread from
-responsibility through outcome to next action. The desktop does not generate
+responsibility through outcome to next action, and states plainly where a link
+in that thread has not been written yet. The desktop does not generate
 recommendations or answers from these records.
 External agents may reason over authorized evidence through MCP, but their
 mutations remain attributable, auditable, scoped, version-checked, and

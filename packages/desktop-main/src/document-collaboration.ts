@@ -246,20 +246,24 @@ export class DocumentCollaborationBridge {
       this.input.connection() === undefined
     ) {
       const project = this.ownerRecord(scope.owner);
-      if (!("intendedOutcome" in project)) {
-        throw new Error("CONTENT_NOT_AVAILABLE");
+      // `lifecycle` is a mandatory Project field absent on NativeDocument, so it
+      // narrows the owner union without depending on the now-optional narrative.
+      // A project created without an intendedOutcome seeds no body — matching the
+      // hub, which omits initialText and leaves the working body empty rather than
+      // failing the open (service.ts / realtime-documents.ts).
+      if ("lifecycle" in project && project.intendedOutcome !== undefined) {
+        const seed = createRichDocumentSeed(
+          project.intendedOutcome,
+          createHash("sha256").update(project.intendedOutcome).digest("hex"),
+          { kind: "human", principalId: project.createdBy },
+        );
+        this.input.store.seedCollaborativeContentState({
+          ...scope,
+          state: seed,
+          updatedAt: this.now(),
+        });
+        state = this.input.store.loadCollaborativeContentState(scope)?.state;
       }
-      const seed = createRichDocumentSeed(
-        project.intendedOutcome,
-        createHash("sha256").update(project.intendedOutcome).digest("hex"),
-        { kind: "human", principalId: project.createdBy },
-      );
-      this.input.store.seedCollaborativeContentState({
-        ...scope,
-        state: seed,
-        updatedAt: this.now(),
-      });
-      state = this.input.store.loadCollaborativeContentState(scope)?.state;
     }
     const formats = supportedFormats(
       raw.supportedDocumentFormats ?? ["plain-v1"],

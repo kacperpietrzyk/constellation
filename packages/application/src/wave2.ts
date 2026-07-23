@@ -91,7 +91,9 @@ import {
   createRelationshipFact,
   createDecision,
   createArea,
+  updateAreaResponsibility,
   createInitiative,
+  updateInitiativeOutcome,
   createWorkLink,
   createSavedView,
   createRecurrence,
@@ -182,7 +184,9 @@ export type Wave2Command = Extract<
       | "decision.supersede"
       | "decision.resolveImpact"
       | "area.create"
+      | "area.updateResponsibility"
       | "initiative.create"
+      | "initiative.updateOutcome"
       | "work.linkCreate"
       | "work.linkRemove"
       | "savedView.create"
@@ -413,6 +417,30 @@ export const isWave2CommandAuthorized = (
         context,
         command,
         space?.workspaceId === command.workspaceId ? space.id : undefined,
+      );
+    }
+    case "area.updateResponsibility": {
+      const record = view.getStrategicRecord(command.payload.areaId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        record?.workspaceId === command.workspaceId
+          ? record.spaceId
+          : undefined,
+      );
+    }
+    case "initiative.updateOutcome": {
+      const record = view.getStrategicRecord(command.payload.initiativeId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        record?.workspaceId === command.workspaceId
+          ? record.spaceId
+          : undefined,
       );
     }
     case "savedView.rename":
@@ -1142,6 +1170,37 @@ const precondition = (
     outcome: "rejected",
     diagnosticCode: "command.precondition_failed",
   });
+
+// Every projection carrying a record narrative derives the same two fields
+// from it: the text, coalesced so a reader needs no null handling, and the
+// gap, stated as a flag so an unwritten narrative stays visible instead of
+// reading as an empty one. Spread rather than restated per projection, because
+// restating a shape is how projections drift out of step with each other.
+const intendedOutcomeFields = (
+  intendedOutcome: string | undefined,
+): { readonly intendedOutcome: string; readonly needsReview: boolean } => ({
+  intendedOutcome: intendedOutcome ?? "",
+  needsReview: intendedOutcome === undefined,
+});
+
+const responsibilityFields = (
+  responsibility: string | undefined,
+): { readonly responsibility: string; readonly needsReview: boolean } => ({
+  responsibility: responsibility ?? "",
+  needsReview: responsibility === undefined,
+});
+
+// The strategic record projection is the domain record itself, so the two
+// kinds carrying a narrative are the only ones the derivation has to reach.
+const strategicRecordProjection = (
+  record: StrategicRecord,
+): Record<string, unknown> => {
+  if (record.kind === "area")
+    return { ...record, ...responsibilityFields(record.responsibility) };
+  if (record.kind === "initiative")
+    return { ...record, ...intendedOutcomeFields(record.intendedOutcome) };
+  return { ...record };
+};
 
 const taskProjection = (kind: string, task: Task): Record<string, unknown> => ({
   kind,
@@ -2351,7 +2410,9 @@ export const executeWave2Command = (
         workspaceId: command.workspaceId,
         spaceId: command.payload.spaceId,
         title: command.payload.title,
-        responsibility: command.payload.responsibility,
+        ...(command.payload.responsibility === undefined
+          ? {}
+          : { responsibility: command.payload.responsibility }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -2367,6 +2428,43 @@ export const executeWave2Command = (
         ["title", "responsibility", "state"],
       );
     }
+    case "area.updateResponsibility": {
+      const current = transaction.getStrategicRecord(command.payload.areaId);
+      if (current?.kind !== "area") return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const record = updateAreaResponsibility(
+        current,
+        command.payload.responsibility,
+        occurredAt,
+      );
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["responsibility"],
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: current.workspaceId,
+          spaceId: current.spaceId,
+          kind: "area.restore_responsibility",
+          areaId: current.id,
+          ...(current.responsibility === undefined
+            ? {}
+            : { priorResponsibility: current.responsibility }),
+          resultingVersion: record.version,
+        },
+      );
+    }
     case "initiative.create": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       if (
@@ -2379,7 +2477,9 @@ export const executeWave2Command = (
         workspaceId: command.workspaceId,
         spaceId: command.payload.spaceId,
         title: command.payload.title,
-        intendedOutcome: command.payload.intendedOutcome,
+        ...(command.payload.intendedOutcome === undefined
+          ? {}
+          : { intendedOutcome: command.payload.intendedOutcome }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -2393,6 +2493,46 @@ export const executeWave2Command = (
         occurredAt,
         record,
         ["title", "intendedOutcome", "state"],
+      );
+    }
+    case "initiative.updateOutcome": {
+      const current = transaction.getStrategicRecord(
+        command.payload.initiativeId,
+      );
+      if (current?.kind !== "initiative")
+        return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const record = updateInitiativeOutcome(
+        current,
+        command.payload.intendedOutcome,
+        occurredAt,
+      );
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        ["intendedOutcome"],
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: current.workspaceId,
+          spaceId: current.spaceId,
+          kind: "initiative.restore_outcome",
+          initiativeId: current.id,
+          ...(current.intendedOutcome === undefined
+            ? {}
+            : { priorOutcome: current.intendedOutcome }),
+          resultingVersion: record.version,
+        },
       );
     }
     case "work.linkCreate": {
@@ -2680,6 +2820,28 @@ export const executeWave2Command = (
           ...(command.payload.layout === undefined ? [] : ["layout"]),
           "state",
         ],
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: record.workspaceId,
+          spaceId: record.spaceId,
+          kind: "savedView.restore_definition",
+          savedViewId: record.id,
+          priorName: record.name,
+          priorFilters: record.filters,
+          priorSort: record.sort,
+          ...(record.groupBy === undefined
+            ? {}
+            : { priorGroupBy: record.groupBy }),
+          ...(record.layout === undefined
+            ? {}
+            : { priorLayout: record.layout }),
+          // A saved view that never existed undoes to "deleted": the same
+          // state savedView.delete leaves, which every read side already hides.
+          priorState: "deleted",
+          resultingVersion: record.version,
+        },
       );
     }
     case "recurrence.create": {
@@ -3685,12 +3847,25 @@ export const executeWave2Command = (
     }
     case "project.create": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
+      const projectId = ProjectIdSchema.parse(
+        command.payload.projectId ?? dependencies.ids.next("project"),
+      );
+      const existing = transaction.getProject(projectId);
+      if (existing !== undefined) {
+        return outcome(command, occurredAt, {
+          outcome: "conflict",
+          diagnosticCode: "record.already_exists",
+          currentVersions: { [existing.id]: existing.version },
+        });
+      }
       const project = createProject({
-        id: ProjectIdSchema.parse(dependencies.ids.next("project")),
+        id: projectId,
         workspaceId: command.workspaceId,
         spaceId: command.payload.spaceId,
         title: command.payload.title,
-        intendedOutcome: command.payload.intendedOutcome,
+        ...(command.payload.intendedOutcome === undefined
+          ? {}
+          : { intendedOutcome: command.payload.intendedOutcome }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -3718,7 +3893,7 @@ export const executeWave2Command = (
             kind: "project.created",
             projectId: project.id,
             title: project.title,
-            intendedOutcome: project.intendedOutcome,
+            ...intendedOutcomeFields(project.intendedOutcome),
             lifecycle: project.lifecycle,
             version: project.version,
           },
@@ -3766,7 +3941,7 @@ export const executeWave2Command = (
             kind: "project.outcome_updated",
             projectId: updated.id,
             title: updated.title,
-            intendedOutcome: updated.intendedOutcome,
+            ...intendedOutcomeFields(updated.intendedOutcome),
             lifecycle: updated.lifecycle,
             version: updated.version,
           },
@@ -3777,7 +3952,9 @@ export const executeWave2Command = (
           spaceId: project.spaceId,
           kind: "project.restore_outcome",
           projectId: project.id,
-          priorOutcome: project.intendedOutcome,
+          ...(project.intendedOutcome === undefined
+            ? {}
+            : { priorOutcome: project.intendedOutcome }),
           resultingVersion: updated.version,
         },
       );
@@ -3880,6 +4057,14 @@ export const executeWave2Command = (
             completionState: task.completionState,
             version: task.version,
           },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: task.workspaceId,
+          spaceId: task.spaceId,
+          kind: "task.undo_create",
+          taskId: task.id,
+          resultingVersion: task.version,
         },
       );
     }
@@ -6523,6 +6708,38 @@ const descriptorState = (
             reason: "later_change",
           };
     }
+    case "area.restore_responsibility": {
+      const area = view.getStrategicRecord(descriptor.areaId);
+      return area?.kind === "area" &&
+        area.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [area.id],
+            versions: { [area.id]: area.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "initiative.restore_outcome": {
+      const initiative = view.getStrategicRecord(descriptor.initiativeId);
+      return initiative?.kind === "initiative" &&
+        initiative.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [initiative.id],
+            versions: { [initiative.id]: initiative.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
     case "task.restore_state": {
       const task = view.getTask(descriptor.taskId);
       return task?.version === descriptor.resultingVersion
@@ -6716,6 +6933,34 @@ const descriptorState = (
             available: true,
             recordIds: [workspace.id],
             versions: { [workspace.id]: workspace.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "task.undo_create": {
+      // Taking a create back removes the Task, so version equality is not
+      // enough: a child does not bump its parent's version, and removing a
+      // parent that has one would orphan it (ADR-043 §3, as task.remove).
+      const task = view.getTask(descriptor.taskId);
+      const orphans =
+        task === undefined
+          ? false
+          : view
+              .listTasksInSpace(task.workspaceId, task.spaceId)
+              .some((candidate) => candidate.parentTaskId === task.id);
+      return task !== undefined &&
+        task.recordState === "active" &&
+        task.completionState === "open" &&
+        task.version === descriptor.resultingVersion &&
+        !orphans
+        ? {
+            available: true,
+            recordIds: [task.id],
+            versions: { [task.id]: task.version },
           }
         : {
             available: false,
@@ -6920,6 +7165,10 @@ const undoPreviewProjection = (
 ): Record<string, unknown> => {
   const descriptor = view.getUndoDescriptor(targetCommandId);
   if (descriptor === undefined) {
+    // Both entry points already require an audit receipt in the caller's
+    // workspace, so an unknown or foreign command id is rejected as
+    // authorization.denied before it reaches here: "unsupported" means the
+    // target applied and its kind records no compensation, nothing else.
     return {
       kind,
       targetCommandId,
@@ -7004,6 +7253,31 @@ const applyUndo = (
     transaction.updateProject(restored, project.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "project" };
+  } else if (descriptor.kind === "area.restore_responsibility") {
+    const area = transaction.getStrategicRecord(descriptor.areaId) as Extract<
+      StrategicRecord,
+      { kind: "area" }
+    >;
+    const restored = updateAreaResponsibility(
+      area,
+      descriptor.priorResponsibility,
+      occurredAt,
+    );
+    transaction.updateStrategicRecord(restored, area.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
+  } else if (descriptor.kind === "initiative.restore_outcome") {
+    const initiative = transaction.getStrategicRecord(
+      descriptor.initiativeId,
+    ) as Extract<StrategicRecord, { kind: "initiative" }>;
+    const restored = updateInitiativeOutcome(
+      initiative,
+      descriptor.priorOutcome,
+      occurredAt,
+    );
+    transaction.updateStrategicRecord(restored, initiative.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
   } else if (descriptor.kind === "task.restore_state") {
     const task = transaction.getTask(descriptor.taskId) as Task;
     const base = setTaskStatus(task, descriptor.priorStatusId, occurredAt);
@@ -7363,6 +7637,17 @@ const applyUndo = (
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "task" };
+  } else if (descriptor.kind === "task.undo_create") {
+    const task = transaction.getTask(descriptor.taskId) as Task;
+    const removed: Task = {
+      ...task,
+      recordState: "removed",
+      version: task.version + 1,
+      updatedAt: occurredAt,
+    };
+    transaction.updateTask(removed, task.version);
+    compensatedVersions = { [removed.id]: removed.version };
+    compensatedKinds = { [removed.id]: "task" };
   } else if (descriptor.kind === "task.restore_calendar_block") {
     const task = transaction.getTask(descriptor.taskId) as Task;
     const { calendarBlock: _current, ...base } = task;
@@ -7745,9 +8030,9 @@ const strategicSearchText = (
     case "impact_review":
       return { title: "Decision impact review", detail: record.reason };
     case "area":
-      return { title: record.title, detail: record.responsibility };
+      return { title: record.title, detail: record.responsibility ?? "" };
     case "initiative":
-      return { title: record.title, detail: record.intendedOutcome };
+      return { title: record.title, detail: record.intendedOutcome ?? "" };
     case "work_link":
       return {
         title: record.linkType.replaceAll("_", " "),
@@ -7886,7 +8171,7 @@ export const executeWave2Query = (
         .map((project) => ({
           id: project.id,
           title: project.title,
-          intendedOutcome: project.intendedOutcome,
+          ...intendedOutcomeFields(project.intendedOutcome),
           lifecycle: project.lifecycle,
           version: project.version,
         })),
@@ -7898,7 +8183,7 @@ export const executeWave2Query = (
         .map((area) => ({
           id: area.id,
           title: area.title,
-          responsibility: area.responsibility,
+          ...responsibilityFields(area.responsibility),
           state: area.state,
           version: area.version,
         })),
@@ -7912,7 +8197,7 @@ export const executeWave2Query = (
         .map((initiative) => ({
           id: initiative.id,
           title: initiative.title,
-          intendedOutcome: initiative.intendedOutcome,
+          ...intendedOutcomeFields(initiative.intendedOutcome),
           state: initiative.state,
           version: initiative.version,
         })),
@@ -8258,10 +8543,9 @@ export const executeWave2Query = (
   if (query.queryName === "relationship.workspace") {
     return querySuccess(query, kernelTime, freshness, {
       kind: "relationship.workspace",
-      records: view.listStrategicRecords(
-        query.workspaceId,
-        query.parameters.spaceId,
-      ),
+      records: view
+        .listStrategicRecords(query.workspaceId, query.parameters.spaceId)
+        .map(strategicRecordProjection),
       freshness,
     });
   }
@@ -8301,7 +8585,7 @@ export const executeWave2Query = (
           id: project.id,
           spaceId: project.spaceId,
           title: project.title,
-          intendedOutcome: project.intendedOutcome,
+          ...intendedOutcomeFields(project.intendedOutcome),
           lifecycle: project.lifecycle,
           relatedOpenTaskCount: relations.filter(
             (relation) =>
@@ -8615,7 +8899,7 @@ export const executeWave2Query = (
         id: project.id,
         spaceId: project.spaceId,
         title: project.title,
-        intendedOutcome: project.intendedOutcome,
+        ...intendedOutcomeFields(project.intendedOutcome),
         lifecycle: project.lifecycle,
         ...(project.appliedTemplateId === undefined
           ? {}
@@ -8973,7 +9257,7 @@ export const executeWave2Query = (
       activeProjects: activeProjects.slice(0, 100).map((project) => ({
         id: project.id,
         title: project.title,
-        intendedOutcome: project.intendedOutcome,
+        ...intendedOutcomeFields(project.intendedOutcome),
         version: project.version,
         updatedAt: project.updatedAt,
       })),
@@ -9101,7 +9385,7 @@ export const executeWave2Query = (
         );
         for (const project of view.listProjects(query.workspaceId, spaceId)) {
           const title = normalizeSearch(project.title);
-          const projectOutcome = normalizeSearch(project.intendedOutcome);
+          const projectOutcome = normalizeSearch(project.intendedOutcome ?? "");
           const bodySnippet = projectBodyMatches.get(project.id);
           const matchedFields: Array<"title" | "intendedOutcome" | "body"> = [];
           if (title.includes(needle)) matchedFields.push("title");
@@ -9126,7 +9410,7 @@ export const executeWave2Query = (
               matchedFields.includes("title")
                 ? project.title
                 : matchedFields.includes("intendedOutcome")
-                  ? project.intendedOutcome
+                  ? (project.intendedOutcome ?? "")
                   : (bodySnippet ?? project.title),
               needle,
             ),

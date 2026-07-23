@@ -797,3 +797,74 @@ test("an exported package re-imports elsewhere without duplicating anything", ()
     ]),
   );
 });
+
+test("an exchanged workspace keeps records whose narrative was never written", () => {
+  const manifest = parseStarterWorkspaceManifest({
+    ...manifestValue,
+    areas: [{ key: "product", title: "Product" }],
+    initiatives: [{ key: "alpha", title: "Alpha" }],
+    projects: [
+      {
+        key: "dogfood",
+        title: "Dogfood",
+        areaKey: "product",
+        initiativeKey: "alpha",
+      },
+    ],
+  });
+  assert.ok(manifest);
+
+  const service = createRuntimeKernelService({
+    context,
+    store: new InMemoryReferenceStore(),
+  });
+  const spaceId = context.spaceScope[0]!;
+  service.execute(
+    CommandEnvelopeSchema.parse({
+      contractVersion: 1,
+      commandName: "workspace.createLocal",
+      commandId: crypto.randomUUID(),
+      workspaceId: context.workspaceId,
+      idempotencyKey: "starter-blank-workspace",
+      expectedVersions: {},
+      correlationId: crypto.randomUUID(),
+      payload: {
+        workspaceId: context.workspaceId,
+        rootSpaceId: spaceId,
+        ownerPrincipalId: context.principalId,
+        name: "Starter test",
+        timezone: "Europe/Warsaw",
+      },
+    }),
+  );
+  assert.equal(
+    importStarterWorkspace({
+      service,
+      workspaceId: context.workspaceId,
+      spaceId,
+      deviceId: DeviceIdSchema.parse("starter-test-device"),
+      manifest,
+    }).projects,
+    1,
+  );
+
+  const overview = service.query(
+    QueryEnvelopeSchema.parse({
+      contractVersion: 1,
+      queryName: "work.overview",
+      queryId: crypto.randomUUID(),
+      workspaceId: context.workspaceId,
+      consistency: "local_authoritative",
+      parameters: { spaceId },
+    }),
+  );
+  if (
+    overview.kind !== "query_result" ||
+    overview.result.outcome !== "success" ||
+    overview.result.projection.kind !== "work.overview"
+  )
+    throw new Error("Expected Work overview.");
+  assert.equal(overview.result.projection.areas[0]?.needsReview, true);
+  assert.equal(overview.result.projection.initiatives[0]?.needsReview, true);
+  assert.equal(overview.result.projection.projects[0]?.needsReview, true);
+});

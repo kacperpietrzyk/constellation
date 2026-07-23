@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { StrategicRecordId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
+import { NarrativeText } from "./components/RecordNarrative.js";
 import { StrategicCreatePanel } from "./StrategicCreatePanel.js";
 
 import {
@@ -716,7 +717,13 @@ export const OrganizationContextSurface = ({
                   >
                     <span>
                       <strong>{project.title}</strong>
-                      <small>{project.intendedOutcome}</small>
+                      <small>
+                        <NarrativeText
+                          kind="project"
+                          text={project.intendedOutcome}
+                          needsReview={project.needsReview}
+                        />
+                      </small>
                     </span>
                     <span aria-hidden="true">→</span>
                   </button>

@@ -43,6 +43,7 @@ import {
   MeetingWorkItemStateSchema,
   MeetingWorkItemTitleSchema,
 } from "./meeting-loop.js";
+import { RecordNarrativeSchema } from "./narrative.js";
 
 export const ContractVersionSchema = z.literal(1);
 export type ContractVersion = z.infer<typeof ContractVersionSchema>;
@@ -470,9 +471,10 @@ export const ProjectCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("project.create"),
   payload: z
     .object({
+      projectId: ProjectIdSchema.optional(),
       spaceId: SpaceIdSchema,
       title: z.string().trim().min(1).max(500),
-      intendedOutcome: z.string().trim().min(1).max(4_000),
+      intendedOutcome: RecordNarrativeSchema.optional(),
     })
     .strict(),
 }).strict();
@@ -742,10 +744,21 @@ export const AreaCreateCommandSchema = CommandMetadataSchema.extend({
       areaId: StrategicRecordIdSchema,
       spaceId: SpaceIdSchema,
       title: z.string().trim().min(1).max(500),
-      responsibility: z.string().trim().min(1).max(4_000),
+      responsibility: RecordNarrativeSchema.optional(),
     })
     .strict(),
 }).strict();
+
+export const AreaUpdateResponsibilityCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("area.updateResponsibility"),
+    payload: z
+      .object({
+        areaId: StrategicRecordIdSchema,
+        responsibility: RecordNarrativeSchema,
+      })
+      .strict(),
+  }).strict();
 
 export const InitiativeCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("initiative.create"),
@@ -754,10 +767,21 @@ export const InitiativeCreateCommandSchema = CommandMetadataSchema.extend({
       initiativeId: StrategicRecordIdSchema,
       spaceId: SpaceIdSchema,
       title: z.string().trim().min(1).max(500),
-      intendedOutcome: z.string().trim().min(1).max(4_000),
+      intendedOutcome: RecordNarrativeSchema.optional(),
     })
     .strict(),
 }).strict();
+
+export const InitiativeUpdateOutcomeCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("initiative.updateOutcome"),
+    payload: z
+      .object({
+        initiativeId: StrategicRecordIdSchema,
+        intendedOutcome: RecordNarrativeSchema,
+      })
+      .strict(),
+  }).strict();
 
 export const WorkLinkCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("work.linkCreate"),
@@ -1199,7 +1223,7 @@ export const ProjectUpdateOutcomeCommandSchema = CommandMetadataSchema.extend({
   payload: z
     .object({
       projectId: ProjectIdSchema,
-      intendedOutcome: z.string().trim().min(1).max(4_000),
+      intendedOutcome: RecordNarrativeSchema,
     })
     .strict(),
 }).strict();
@@ -1773,7 +1797,9 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   DecisionSupersedeCommandSchema,
   DecisionResolveImpactCommandSchema,
   AreaCreateCommandSchema,
+  AreaUpdateResponsibilityCommandSchema,
   InitiativeCreateCommandSchema,
+  InitiativeUpdateOutcomeCommandSchema,
   WorkLinkCreateCommandSchema,
   WorkLinkRemoveCommandSchema,
   SavedViewCreateCommandSchema,

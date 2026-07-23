@@ -31,6 +31,8 @@ import {
   StrategicRecordIdSchema,
 } from "./ids.js";
 import { CaptureReviewReasonSchema, ContractVersionSchema } from "./command.js";
+import { NeedsReviewSchema } from "./narrative.js";
+import { UndoUnavailableReasonSchema } from "./recovery.js";
 
 export const DiagnosticCodeSchema = z.enum([
   "workspace.created",
@@ -307,6 +309,7 @@ const ProjectProjectionFields = {
   projectId: ProjectIdSchema,
   title: z.string(),
   intendedOutcome: z.string(),
+  needsReview: NeedsReviewSchema,
   lifecycle: z.enum(["active", "closed"]),
   version: z.int().positive(),
 } as const;
@@ -1284,10 +1287,13 @@ export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
       compensationKind: z
         .enum([
           "project.restore_outcome",
+          "area.restore_responsibility",
+          "initiative.restore_outcome",
           "task.restore_state",
           "task.restore_details",
           "task.restore_calendar_block",
           "task.restore_record_state",
+          "task.undo_create",
           "task.restore_parent",
           "taskStatus.restore_definition",
           "workspace.restore_default_status",
@@ -1314,9 +1320,7 @@ export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
         .optional(),
       affectedRecordIds: z.array(z.uuid()),
       requiredVersions: z.record(z.uuid(), z.int().positive()),
-      unavailableReason: z
-        .enum(["unsupported", "already_undone", "later_change"])
-        .optional(),
+      unavailableReason: UndoUnavailableReasonSchema.optional(),
     })
     .strict(),
 }).strict();

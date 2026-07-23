@@ -22,19 +22,21 @@ import type { DesktopKernelService } from "./runtime-kernel-service.js";
 interface StarterArea {
   readonly key: string;
   readonly title: string;
-  readonly responsibility: string;
+  // Optional for the same reason it is optional on the command: an exported
+  // workspace may legitimately hold work whose intent was never written.
+  readonly responsibility?: string;
 }
 
 interface StarterInitiative {
   readonly key: string;
   readonly title: string;
-  readonly intendedOutcome: string;
+  readonly intendedOutcome?: string;
 }
 
 interface StarterProject {
   readonly key: string;
   readonly title: string;
-  readonly intendedOutcome: string;
+  readonly intendedOutcome?: string;
   readonly areaKey?: string;
   readonly initiativeKey?: string;
   readonly structuredContent?: StructuredDocument;
@@ -192,13 +194,25 @@ export const parseStarterWorkspaceManifest = (
     return undefined;
   const version = value.version;
   const areas = parseArray(value.areas, (item): StarterArea | undefined => {
-    if (!isRecord(item) || !exactKeys(item, ["key", "title", "responsibility"]))
+    if (
+      !isRecord(item) ||
+      !exactKeys(item, ["key", "title"], ["responsibility"])
+    )
       return undefined;
     const parsedKey = key(item.key);
     const title = text(item.title, 500);
-    const responsibility = text(item.responsibility, 4_000);
-    return parsedKey && title && responsibility
-      ? { key: parsedKey, title, responsibility }
+    const responsibility =
+      item.responsibility === undefined
+        ? undefined
+        : text(item.responsibility, 4_000);
+    return parsedKey &&
+      title &&
+      (item.responsibility === undefined || responsibility !== undefined)
+      ? {
+          key: parsedKey,
+          title,
+          ...(responsibility === undefined ? {} : { responsibility }),
+        }
       : undefined;
   });
   const initiatives = parseArray(
@@ -206,14 +220,23 @@ export const parseStarterWorkspaceManifest = (
     (item): StarterInitiative | undefined => {
       if (
         !isRecord(item) ||
-        !exactKeys(item, ["key", "title", "intendedOutcome"])
+        !exactKeys(item, ["key", "title"], ["intendedOutcome"])
       )
         return undefined;
       const parsedKey = key(item.key);
       const title = text(item.title, 500);
-      const intendedOutcome = text(item.intendedOutcome, 4_000);
-      return parsedKey && title && intendedOutcome
-        ? { key: parsedKey, title, intendedOutcome }
+      const intendedOutcome =
+        item.intendedOutcome === undefined
+          ? undefined
+          : text(item.intendedOutcome, 4_000);
+      return parsedKey &&
+        title &&
+        (item.intendedOutcome === undefined || intendedOutcome !== undefined)
+        ? {
+            key: parsedKey,
+            title,
+            ...(intendedOutcome === undefined ? {} : { intendedOutcome }),
+          }
         : undefined;
     },
   );
@@ -224,14 +247,23 @@ export const parseStarterWorkspaceManifest = (
         !isRecord(item) ||
         !exactKeys(
           item,
-          ["key", "title", "intendedOutcome"],
-          ["areaKey", "initiativeKey", "structuredContent", "entityReferences"],
+          ["key", "title"],
+          [
+            "intendedOutcome",
+            "areaKey",
+            "initiativeKey",
+            "structuredContent",
+            "entityReferences",
+          ],
         )
       )
         return undefined;
       const parsedKey = key(item.key);
       const title = text(item.title, 500);
-      const intendedOutcome = text(item.intendedOutcome, 4_000);
+      const intendedOutcome =
+        item.intendedOutcome === undefined
+          ? undefined
+          : text(item.intendedOutcome, 4_000);
       const areaKey =
         item.areaKey === undefined ? undefined : key(item.areaKey);
       const initiativeKey =
@@ -284,7 +316,7 @@ export const parseStarterWorkspaceManifest = (
       if (
         !parsedKey ||
         !title ||
-        !intendedOutcome ||
+        (item.intendedOutcome !== undefined && intendedOutcome === undefined) ||
         (item.areaKey !== undefined && !areaKey) ||
         (item.initiativeKey !== undefined && !initiativeKey) ||
         ((item.structuredContent !== undefined ||
@@ -304,7 +336,7 @@ export const parseStarterWorkspaceManifest = (
       return {
         key: parsedKey,
         title,
-        intendedOutcome,
+        ...(intendedOutcome === undefined ? {} : { intendedOutcome }),
         ...(areaKey ? { areaKey } : {}),
         ...(initiativeKey ? { initiativeKey } : {}),
         ...(structuredContent === undefined ? {} : { structuredContent }),
@@ -986,7 +1018,9 @@ export const importStarterWorkspace = (input: {
         areaId,
         spaceId: input.spaceId,
         title: area.title,
-        responsibility: area.responsibility,
+        ...(area.responsibility === undefined
+          ? {}
+          : { responsibility: area.responsibility }),
       },
     });
     areaIds.set(area.key, areaId);
@@ -1004,7 +1038,9 @@ export const importStarterWorkspace = (input: {
         initiativeId,
         spaceId: input.spaceId,
         title: initiative.title,
-        intendedOutcome: initiative.intendedOutcome,
+        ...(initiative.intendedOutcome === undefined
+          ? {}
+          : { intendedOutcome: initiative.intendedOutcome }),
       },
     });
     initiativeIds.set(initiative.key, initiativeId);
@@ -1016,7 +1052,9 @@ export const importStarterWorkspace = (input: {
       payload: {
         spaceId: input.spaceId,
         title: project.title,
-        intendedOutcome: project.intendedOutcome,
+        ...(project.intendedOutcome === undefined
+          ? {}
+          : { intendedOutcome: project.intendedOutcome }),
       },
     });
     if (result.projection.kind !== "project.created")

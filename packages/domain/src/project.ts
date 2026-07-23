@@ -12,7 +12,7 @@ export const createProject = (input: {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
   readonly title: string;
-  readonly intendedOutcome: string;
+  readonly intendedOutcome?: string;
   readonly createdBy: PrincipalId;
   readonly occurredAt: string;
 }): Project => ({
@@ -20,7 +20,9 @@ export const createProject = (input: {
   workspaceId: input.workspaceId,
   spaceId: input.spaceId,
   title: input.title,
-  intendedOutcome: input.intendedOutcome,
+  ...(input.intendedOutcome === undefined
+    ? {}
+    : { intendedOutcome: input.intendedOutcome }),
   lifecycle: "active",
   createdBy: input.createdBy,
   version: 1,
@@ -30,14 +32,18 @@ export const createProject = (input: {
 
 export const updateProjectOutcome = (
   project: Project,
-  intendedOutcome: string,
+  intendedOutcome: string | undefined,
   occurredAt: string,
-): Project => ({
-  ...project,
-  intendedOutcome,
-  version: project.version + 1,
-  updatedAt: occurredAt,
-});
+): Project => {
+  const { intendedOutcome: _prior, ...rest } = project;
+  void _prior;
+  return {
+    ...rest,
+    ...(intendedOutcome === undefined ? {} : { intendedOutcome }),
+    version: project.version + 1,
+    updatedAt: occurredAt,
+  };
+};
 
 export const closeProject = (
   project: Project,

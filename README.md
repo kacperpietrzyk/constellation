@@ -108,7 +108,11 @@ main-process-validated, read-only count preview; a separate confirmation is
 required before any command runs. The example at
 [`docs/examples/starter-workspace.json`](docs/examples/starter-workspace.json)
 creates Areas, Initiatives, Projects, Tasks, and explicit links through the same
-idempotent, audited commands used by the UI and MCP.
+idempotent, audited commands used by the UI and MCP. It includes one Project
+imported without a written outcome, because an Area's responsibility and a
+Project's or Initiative's intended outcome are optional at creation: a record
+that never received one is marked as needing review and stays completable
+instead of carrying invented prose.
 
 Each durable workspace reports a versioned Data Home descriptor. The
 local-only provider says explicitly that its encrypted database is canonical on

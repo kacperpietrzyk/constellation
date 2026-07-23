@@ -35,6 +35,8 @@ import {
 } from "./client/workflow.js";
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
+import { NarrativeGap, NarrativeText } from "./components/RecordNarrative.js";
+import { recordNarrativeGaps } from "./record-narrative.js";
 import ProjectContextSections from "./ProjectContextSections.js";
 import type { DocumentEntityTargetKind } from "./document-entity-reference.js";
 import { modifierLabel } from "./components/ShortcutsOverlay.js";
@@ -921,7 +923,13 @@ export const CockpitSurface = ({
                   {String(index + 1).padStart(2, "0")}
                 </span>
                 <span>
-                  <strong>{project.intendedOutcome}</strong>
+                  <strong>
+                    <NarrativeText
+                      kind="project"
+                      text={project.intendedOutcome}
+                      needsReview={project.needsReview}
+                    />
+                  </strong>
                   <small>{project.title}</small>
                 </span>
                 <em>
@@ -1508,7 +1516,7 @@ export const ProjectsSurface = ({
   readonly onBackToProjects: () => void;
   readonly onCreate: (
     title: string,
-    outcome: string,
+    outcome: string | undefined,
     templateId?: string,
   ) => Promise<boolean>;
   readonly onApplyTemplate: (templateId: string) => void;
@@ -1605,10 +1613,10 @@ export const ProjectsSurface = ({
           className="project-overview"
           onSubmit={(event: FormEvent) => {
             event.preventDefault();
-            if (title.trim() && newOutcome.trim()) {
+            if (title.trim()) {
               void onCreate(
                 title,
-                newOutcome,
+                newOutcome.trim() === "" ? undefined : newOutcome,
                 createTemplateId === "" ? undefined : createTemplateId,
               ).then((created) => {
                 if (!created) return;
@@ -1631,13 +1639,15 @@ export const ProjectsSurface = ({
               maxLength={160}
               required
             />
-            <label htmlFor="project-outcome">Zamierzony wynik</label>
+            <label htmlFor="project-outcome">
+              Zamierzony wynik (opcjonalnie)
+            </label>
             <textarea
               id="project-outcome"
               value={newOutcome}
               onChange={(event) => setNewOutcome(event.target.value)}
               maxLength={2_000}
-              required
+              placeholder="Po czym poznasz, że praca jest skończona? Możesz uzupełnić później."
             />
             {activeTemplates.length > 0 && (
               <>
@@ -1710,7 +1720,7 @@ export const ProjectsSurface = ({
                     </button>
                     <button
                       className="primary-button"
-                      disabled={busy}
+                      disabled={busy || editedOutcome.trim() === ""}
                       type="submit"
                     >
                       Zapisz wynik
@@ -1719,17 +1729,33 @@ export const ProjectsSurface = ({
                 </form>
               ) : (
                 <>
-                  <h2 id="project-outcome-title">
-                    {overview.project.intendedOutcome}
-                  </h2>
+                  {overview.project.needsReview ? (
+                    <>
+                      {/* Nagłówek zostaje dostępną nazwą sekcji, ale nie udaje
+                          treści, której nikt nie napisał. */}
+                      <h2 id="project-outcome-title" className="sr-only">
+                        {recordNarrativeGaps.project.field}
+                      </h2>
+                      <NarrativeGap
+                        kind="project"
+                        onWrite={() => setEditing(true)}
+                      />
+                    </>
+                  ) : (
+                    <h2 id="project-outcome-title">
+                      {overview.project.intendedOutcome}
+                    </h2>
+                  )}
                   <div className="capture-footer">
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={() => setEditing(true)}
-                    >
-                      Edytuj wynik
-                    </button>
+                    {!overview.project.needsReview && (
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => setEditing(true)}
+                      >
+                        Edytuj wynik
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="secondary-button compact"
@@ -1916,7 +1942,13 @@ export const ProjectsSurface = ({
                 <Mark kind="project" />
                 <span>
                   <strong>{project.title}</strong>
-                  <small>{project.intendedOutcome}</small>
+                  <small>
+                    <NarrativeText
+                      kind="project"
+                      text={project.intendedOutcome}
+                      needsReview={project.needsReview}
+                    />
+                  </small>
                 </span>
                 <em>{project.relatedOpenTaskCount} otw.</em>
               </button>

@@ -88,12 +88,18 @@ import path from "node:path";
 // przed zgodą. Błąd wykrył dopiero zapis z zainstalowanej aplikacji do
 // prawdziwego EventKit; limit dostaje 1 kB mierzonego zapasu, pozostałe limity
 // pozostają bez zmian.
+// 2026-07-23 (0.1.1 — narracja opcjonalna): Projekt/Obszar/Inicjatywa mogą
+// powstać bez „intendedOutcome"/„responsibility", więc wspólny komponent
+// needs-review i jego formatowanie jadą do leniwych chunków Pracy/Strategii
+// (entry i największy leniwy chunk bez zmian). Total JS rośnie o ok. 5 kB,
+// stylesheet o ok. 0.8 kB względem zmierzonego baseline; oba limity dostają
+// niecały 1 kB zapasu.
 const limits = {
   entryBytes: 560_000,
   entryGzipBytes: 147_500,
-  totalJavaScriptBytes: 1_327_000,
+  totalJavaScriptBytes: 1_333_000,
   largestLazyJavaScriptBytes: 565_000,
-  stylesheetBytes: 188_000,
+  stylesheetBytes: 189_500,
 };
 
 const dist = path.join(process.cwd(), "packages", "desktop-ui", "dist");

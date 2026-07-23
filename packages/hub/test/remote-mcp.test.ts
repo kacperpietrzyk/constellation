@@ -7,6 +7,7 @@ import {
   CommandEnvelopeSchema,
   CaptureOriginalSchema,
   CaptureIdSchema,
+  CheckpointIdSchema,
   AgentRunIdSchema,
   DeviceIdSchema,
   DocumentIdSchema,
@@ -18,6 +19,7 @@ import {
   capabilitiesForAgentGrantPreset,
   SpaceIdSchema,
   WorkspaceIdSchema,
+  type Capability,
   type ExecutionContext,
 } from "@constellation/contracts";
 import { isApplicationWave2Transaction } from "@constellation/application";
@@ -297,6 +299,7 @@ const createRemoteGrant = async (
   remote: HubRemoteMcpService,
   deviceCredential: string,
   audioRead = false,
+  extra: readonly Capability[] = [],
 ) => {
   const result = await remote.createGrant(deviceCredential, {
     protocolVersion: 1,
@@ -316,6 +319,7 @@ const createRemoteGrant = async (
       "document.replaceContent",
       "project.readContent",
       "project.replaceContent",
+      ...extra,
     ],
     spaces: [{ spaceId: ids.space, access: "edit" }],
     federationScope: {
@@ -1187,5 +1191,120 @@ describe("remote MCP Hub gateway", () => {
       await client.close().catch(() => undefined);
       await server.close();
     }
+  });
+  it("names why a checkpoint revert changed nothing instead of always reporting a conflict", async () => {
+    const { remote, deviceCredential } = await setup();
+    const created = await createRemoteGrant(remote, deviceCredential, false, [
+      "agent.checkpoint.create",
+      "agent.checkpoint.revert",
+      "recovery.preview",
+      "command.undo",
+      "project.create",
+      "project.updateOutcome",
+    ]);
+    const command = async (input: {
+      readonly key: string;
+      readonly commandName: string;
+      readonly payload: Record<string, unknown>;
+      readonly checkpointId?: string;
+      readonly expectedVersions?: Readonly<Record<string, number>>;
+    }) => {
+      const envelope = CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: input.commandName,
+        commandId: uuid(),
+        workspaceId: ids.workspace,
+        idempotencyKey: input.key,
+        expectedVersions: input.expectedVersions ?? {},
+        correlationId: uuid(),
+        ...(input.checkpointId === undefined
+          ? {}
+          : { checkpointId: input.checkpointId }),
+        payload: input.payload,
+      });
+      const applied = await remote.invoke(ids.workspace, created.bearerToken, {
+        contractVersion: 1,
+        requestId: uuid(),
+        kind: "command",
+        run,
+        command: envelope,
+      });
+      assert.equal(applied.outcome, "success", JSON.stringify(applied.result));
+      return envelope.commandId;
+    };
+    const revert = async (checkpointId: string, key: string) =>
+      remote.invoke(ids.workspace, created.bearerToken, {
+        contractVersion: 1,
+        requestId: uuid(),
+        kind: "checkpoint_revert",
+        run,
+        checkpointId: CheckpointIdSchema.parse(checkpointId),
+        correlationId: uuid(),
+        idempotencyKey: key,
+      });
+
+    const uncompensable = uuid();
+    await command({
+      key: "remote-checkpoint-1",
+      commandName: "agent.checkpointCreate",
+      payload: {
+        checkpointId: uncompensable,
+        runId: run.agentRunId,
+        label: "Before the import",
+      },
+    });
+    const projectCreate = await command({
+      key: "remote-project-create",
+      commandName: "project.create",
+      checkpointId: uncompensable,
+      payload: {
+        projectId: uuid(),
+        spaceId: ids.space,
+        title: "Imported project",
+        intendedOutcome: "Ship the import",
+      },
+    });
+    const blocked = await revert(uncompensable, "remote-revert-1");
+    assert.equal(blocked.outcome, "rejected", JSON.stringify(blocked.result));
+    assert.deepEqual(blocked.result, {
+      diagnosticCode: "agent.checkpoint_revert_unsupported",
+      checkpointId: uncompensable,
+      blocked: [
+        {
+          targetCommandId: projectCreate,
+          unavailableReason: "unsupported",
+          commandName: "project.create",
+        },
+      ],
+    });
+
+    const revertable = uuid();
+    await command({
+      key: "remote-checkpoint-2",
+      commandName: "agent.checkpointCreate",
+      payload: {
+        checkpointId: revertable,
+        runId: run.agentRunId,
+        label: "Before the edit",
+      },
+    });
+    await command({
+      key: "remote-project-edit",
+      commandName: "project.updateOutcome",
+      checkpointId: revertable,
+      expectedVersions: { [ids.project]: 1 },
+      payload: {
+        projectId: ids.project,
+        intendedOutcome: "Agent rewrote the outcome",
+      },
+    });
+    const reverted = await revert(revertable, "remote-revert-2");
+    assert.equal(reverted.outcome, "success", JSON.stringify(reverted.result));
+    const again = await revert(revertable, "remote-revert-3");
+    assert.equal(again.outcome, "rejected", JSON.stringify(again.result));
+    assert.deepEqual(again.result, {
+      diagnosticCode: "agent.checkpoint_already_reverted",
+      checkpointId: revertable,
+    });
   });
 });

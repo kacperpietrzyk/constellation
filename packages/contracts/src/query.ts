@@ -39,7 +39,12 @@ import {
 } from "./command.js";
 import { RequestOriginSchema } from "./execution-context.js";
 import { ImportedMeetingSchema } from "./meeting-loop.js";
+import { NeedsReviewSchema } from "./narrative.js";
 import { GlobalSearchRecordKindSchema } from "./record-kind-registry.js";
+import {
+  CheckpointRevertUnavailableReasonSchema,
+  UndoUnavailableReasonSchema,
+} from "./recovery.js";
 
 const QueryMetadataSchema = z
   .object({
@@ -246,8 +251,22 @@ export const GlobalSearchQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("search.global"),
   parameters: z
     .object({
-      spaceIds: z.array(SpaceIdSchema).min(1).max(50),
-      text: z.string().trim().min(1).max(500),
+      // The only query that spans Spaces, so the only one taking the plural;
+      // every other Space-scoped query takes a single spaceId. Both names are
+      // easy to guess wrong, and a strict envelope gives no second chance.
+      spaceIds: z
+        .array(SpaceIdSchema)
+        .min(1)
+        .max(50)
+        .describe(
+          "Every Space to search, each authorized in turn. Single-Space queries take spaceId instead.",
+        ),
+      text: z
+        .string()
+        .trim()
+        .min(1)
+        .max(500)
+        .describe("The search term. This field is named text, not query."),
       kinds: z.array(GlobalSearchRecordKindSchema).min(1).optional(),
       limit: z.int().min(1).max(100).optional(),
     })
@@ -458,12 +477,14 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     kind: z.literal("area"),
     title: z.string(),
     responsibility: z.string(),
+    needsReview: NeedsReviewSchema,
     state: z.enum(["active", "archived"]),
   }).strict(),
   StrategicRecordBaseSchema.extend({
     kind: z.literal("initiative"),
     title: z.string(),
     intendedOutcome: z.string(),
+    needsReview: NeedsReviewSchema,
     state: z.enum(["active", "closed"]),
   }).strict(),
   StrategicRecordBaseSchema.extend({
@@ -637,6 +658,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             id: ProjectIdSchema,
             title: z.string(),
             intendedOutcome: z.string(),
+            needsReview: NeedsReviewSchema,
             lifecycle: z.enum(["active", "closed"]),
             version: z.int().positive(),
           })
@@ -648,6 +670,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             id: StrategicRecordIdSchema,
             title: z.string(),
             responsibility: z.string(),
+            needsReview: NeedsReviewSchema,
             state: z.enum(["active", "archived"]),
             version: z.int().positive(),
           })
@@ -659,6 +682,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             id: StrategicRecordIdSchema,
             title: z.string(),
             intendedOutcome: z.string(),
+            needsReview: NeedsReviewSchema,
             state: z.enum(["active", "closed"]),
             version: z.int().positive(),
           })
@@ -770,9 +794,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
       available: z.boolean(),
       commandIds: z.array(CommandIdSchema),
       affectedRecordIds: z.array(z.uuid()),
-      unavailableReason: z
-        .enum(["missing", "already_reverted", "unsupported", "later_change"])
-        .optional(),
+      unavailableReason: CheckpointRevertUnavailableReasonSchema.optional(),
     })
     .strict(),
   z
@@ -1284,6 +1306,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             spaceId: SpaceIdSchema,
             title: z.string(),
             intendedOutcome: z.string(),
+            needsReview: NeedsReviewSchema,
             lifecycle: z.enum(["active", "closed"]),
             relatedOpenTaskCount: z.int().nonnegative(),
             version: z.int().positive(),
@@ -1356,6 +1379,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           spaceId: SpaceIdSchema,
           title: z.string(),
           intendedOutcome: z.string(),
+          needsReview: NeedsReviewSchema,
           lifecycle: z.enum(["active", "closed"]),
           appliedTemplateId: ProjectTemplateIdSchema.optional(),
           version: z.int().positive(),
@@ -1534,6 +1558,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             id: ProjectIdSchema,
             title: z.string(),
             intendedOutcome: z.string(),
+            needsReview: NeedsReviewSchema,
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
           })
@@ -1787,10 +1812,13 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
       compensationKind: z
         .enum([
           "project.restore_outcome",
+          "area.restore_responsibility",
+          "initiative.restore_outcome",
           "task.restore_state",
           "task.restore_details",
           "task.restore_calendar_block",
           "task.restore_record_state",
+          "task.undo_create",
           "task.restore_parent",
           "taskStatus.restore_definition",
           "workspace.restore_default_status",
@@ -1809,6 +1837,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           "relation.remove",
           "relation.restore",
           "capture.undo_route",
+          "capture.undo_knowledge_route",
           "knowledge.restore_source",
           "knowledge.restore_evidence",
           "knowledge.void_named_version",
@@ -1816,9 +1845,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
         .optional(),
       affectedRecordIds: z.array(z.uuid()),
       requiredVersions: z.record(z.uuid(), z.int().positive()),
-      unavailableReason: z
-        .enum(["unsupported", "already_undone", "later_change"])
-        .optional(),
+      unavailableReason: UndoUnavailableReasonSchema.optional(),
     })
     .strict(),
   z

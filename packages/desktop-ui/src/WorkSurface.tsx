@@ -31,6 +31,7 @@ import {
   InlinePopover,
   reportFirstEmptyRequiredField,
 } from "./components/InlinePopover.js";
+import { NarrativeText } from "./components/RecordNarrative.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
 import { useSurfaceDensity } from "./hooks/useSurfaceDensity.js";
 import {
@@ -621,12 +622,19 @@ export const WorkSurface = ({
     const title = String(data.get("title") ?? "").trim();
     const responsibility = String(data.get("responsibility") ?? "").trim();
     if (!client) return;
-    if (!title || !responsibility) {
+    if (!title) {
       reportFirstEmptyRequiredField(form);
       return;
     }
+    // Pusta odpowiedzialność jest odrzucana przez kontrakt, więc pomijamy klucz
+    // zamiast wysyłać "" — rekord powstaje z jawną luką do uzupełnienia.
     await run("area", () =>
-      createArea(client, snapshot, title, responsibility),
+      createArea(
+        client,
+        snapshot,
+        title,
+        responsibility === "" ? undefined : responsibility,
+      ),
     );
   };
   const submitInitiative = async (event: FormEvent<HTMLFormElement>) => {
@@ -636,12 +644,17 @@ export const WorkSurface = ({
     const title = String(data.get("title") ?? "").trim();
     const outcome = String(data.get("outcome") ?? "").trim();
     if (!client) return;
-    if (!title || !outcome) {
+    if (!title) {
       reportFirstEmptyRequiredField(form);
       return;
     }
     await run("initiative", () =>
-      createInitiative(client, snapshot, title, outcome),
+      createInitiative(
+        client,
+        snapshot,
+        title,
+        outcome === "" ? undefined : outcome,
+      ),
     );
   };
   const submitView = async (event: FormEvent<HTMLFormElement>) => {
@@ -1437,7 +1450,13 @@ export const WorkSurface = ({
               <span className="work-row-copy">
                 <small>Obszar odpowiedzialności</small>
                 <strong>{area.title}</strong>
-                <span>{area.responsibility}</span>
+                <span>
+                  <NarrativeText
+                    kind="area"
+                    text={area.responsibility}
+                    needsReview={area.needsReview}
+                  />
+                </span>
               </span>
             </button>
           ))}
@@ -1457,7 +1476,13 @@ export const WorkSurface = ({
               <span className="work-row-copy">
                 <small>Inicjatywa · wynik do zamknięcia</small>
                 <strong>{initiative.title}</strong>
-                <span>{initiative.intendedOutcome}</span>
+                <span>
+                  <NarrativeText
+                    kind="initiative"
+                    text={initiative.intendedOutcome}
+                    needsReview={initiative.needsReview}
+                  />
+                </span>
               </span>
             </button>
           ))}
@@ -1483,9 +1508,8 @@ export const WorkSurface = ({
                 />
                 <textarea
                   name="responsibility"
-                  aria-label="Stała odpowiedzialność obszaru"
-                  placeholder="Za co stale odpowiadasz?"
-                  required
+                  aria-label="Stała odpowiedzialność obszaru (opcjonalnie)"
+                  placeholder="Za co stale odpowiadasz? Możesz uzupełnić później."
                 />
                 <button disabled={busyIds.has("area") || !client}>
                   {busyIds.has("area") ? "Zapisuję…" : "Dodaj"}
@@ -1509,9 +1533,8 @@ export const WorkSurface = ({
                 />
                 <textarea
                   name="outcome"
-                  aria-label="Oczekiwany wynik inicjatywy"
-                  placeholder="Jaki wynik pozwoli ją zamknąć?"
-                  required
+                  aria-label="Oczekiwany wynik inicjatywy (opcjonalnie)"
+                  placeholder="Jaki wynik pozwoli ją zamknąć? Możesz uzupełnić później."
                 />
                 <button disabled={busyIds.has("initiative") || !client}>
                   {busyIds.has("initiative") ? "Zapisuję…" : "Dodaj"}
@@ -1655,7 +1678,13 @@ export const WorkSurface = ({
                     "Projekt bez przypisanego kontekstu"}
                 </small>
                 <strong>{project.title}</strong>
-                <span>{project.intendedOutcome}</span>
+                <span>
+                  <NarrativeText
+                    kind="project"
+                    text={project.intendedOutcome}
+                    needsReview={project.needsReview}
+                  />
+                </span>
               </span>
             </button>
           ))}

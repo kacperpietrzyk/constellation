@@ -1148,18 +1148,24 @@ const commandBase = (
   correlationId: crypto.randomUUID(),
 });
 
+// Intencja jest opcjonalna na tworzeniu, a pusty tekst zostaje odrzucony przez
+// kontrakt — klucz musi więc zniknąć z payloadu, nigdy nie pojechać jako "".
 export const createProject = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
   title: string,
-  intendedOutcome: string,
+  intendedOutcome?: string,
 ) =>
   execute(
     client,
     {
       ...commandBase(snapshot.bootstrap.workspace.id, {}),
       commandName: "project.create",
-      payload: { spaceId: firstSpace(snapshot), title, intendedOutcome },
+      payload: {
+        spaceId: firstSpace(snapshot),
+        title,
+        ...(intendedOutcome === undefined ? {} : { intendedOutcome }),
+      },
     },
     (response) =>
       response.outcome.outcome === "success" &&
@@ -1215,7 +1221,7 @@ export const createArea = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
   title: string,
-  responsibility: string,
+  responsibility?: string,
 ) => {
   const areaId = crypto.randomUUID() as StrategicRecordId;
   return execute(
@@ -1227,7 +1233,7 @@ export const createArea = (
         areaId,
         spaceId: firstSpace(snapshot),
         title,
-        responsibility,
+        ...(responsibility === undefined ? {} : { responsibility }),
       },
     },
     (response) =>
@@ -1238,11 +1244,33 @@ export const createArea = (
   );
 };
 
+export const updateAreaResponsibility = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  area: { readonly id: StrategicRecordId; readonly version: number },
+  responsibility: string,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [area.id]: area.version,
+      }),
+      commandName: "area.updateResponsibility",
+      payload: { areaId: area.id, responsibility },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export const createInitiative = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
   title: string,
-  intendedOutcome: string,
+  intendedOutcome?: string,
 ) => {
   const initiativeId = crypto.randomUUID() as StrategicRecordId;
   return execute(
@@ -1254,7 +1282,7 @@ export const createInitiative = (
         initiativeId,
         spaceId: firstSpace(snapshot),
         title,
-        intendedOutcome,
+        ...(intendedOutcome === undefined ? {} : { intendedOutcome }),
       },
     },
     (response) =>
@@ -1264,6 +1292,28 @@ export const createInitiative = (
         : undefined,
   );
 };
+
+export const updateInitiativeOutcome = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  initiative: { readonly id: StrategicRecordId; readonly version: number },
+  intendedOutcome: string,
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [initiative.id]: initiative.version,
+      }),
+      commandName: "initiative.updateOutcome",
+      payload: { initiativeId: initiative.id, intendedOutcome },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_changed"
+        ? response.outcome.projection
+        : undefined,
+  );
 
 export interface SavedWorkViewFilters {
   readonly operationalStates?: readonly (
