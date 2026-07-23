@@ -65,3 +65,11 @@ Desktop.ini
 
 # Local Playwright MCP verification artifacts (snapshots, console logs, shots)
 .playwright-mcp/
+
+# Python testing artifacts
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
