@@ -7,7 +7,6 @@ type-aware ESLint rules.
 
 import os
 import subprocess
-import pytest
 
 WORKSPACE_DIR = os.environ.get(
     "WORKSPACE_DIR",

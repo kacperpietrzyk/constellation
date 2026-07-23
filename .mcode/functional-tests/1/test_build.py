@@ -7,7 +7,6 @@ the full build pipeline including Vite bundles.
 
 import os
 import subprocess
-import pytest
 
 WORKSPACE_DIR = os.environ.get(
     "WORKSPACE_DIR",

@@ -7,7 +7,6 @@ The test script does clean+build internally so build artifacts must exist first.
 
 import os
 import subprocess
-import pytest
 
 WORKSPACE_DIR = os.environ.get(
     "WORKSPACE_DIR",

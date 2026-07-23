@@ -7,7 +7,6 @@ from tsconfig.base.json does not break type-checking.
 
 import os
 import subprocess
-import pytest
 
 WORKSPACE_DIR = os.environ.get(
     "WORKSPACE_DIR",
