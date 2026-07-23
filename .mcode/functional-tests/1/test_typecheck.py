@@ -6,13 +6,8 @@ from tsconfig.base.json does not break type-checking.
 """
 
 import os
-import subprocess
 
-WORKSPACE_DIR = os.environ.get(
-    "WORKSPACE_DIR",
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-)
-REPO_DIR = os.path.join(WORKSPACE_DIR, "constellation")
+from conftest import REPO_DIR, run_cmd
 
 # All 11 packages that must compile
 EXPECTED_PACKAGES = [
@@ -28,18 +23,6 @@ EXPECTED_PACKAGES = [
     "desktop-main",
     "desktop-ui",
 ]
-
-
-def run_cmd(*args, timeout=300):
-    """Helper to run a command in the repo directory."""
-    result = subprocess.run(
-        args,
-        cwd=REPO_DIR,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    return result
 
 
 class TestTypecheck:

@@ -6,25 +6,8 @@ the full build pipeline including Vite bundles.
 """
 
 import os
-import subprocess
 
-WORKSPACE_DIR = os.environ.get(
-    "WORKSPACE_DIR",
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-)
-REPO_DIR = os.path.join(WORKSPACE_DIR, "constellation")
-
-
-def run_cmd(*args, timeout=600):
-    """Helper to run a command in the repo directory."""
-    result = subprocess.run(
-        args,
-        cwd=REPO_DIR,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    return result
+from conftest import REPO_DIR, run_cmd
 
 
 class TestBuild:
