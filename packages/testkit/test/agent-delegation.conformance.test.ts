@@ -5,7 +5,10 @@ import {
   AgentRunIdSchema,
   ExecutionContextSchema,
   GrantIdSchema,
+  MembershipIdSchema,
   PrincipalIdSchema,
+  SpaceGrantIdSchema,
+  SpaceIdSchema,
   WorkspaceIdSchema,
   capabilitiesForAgentGrantPreset,
   type CommandOutcome,
@@ -33,6 +36,14 @@ const ids = {
   handoff: "41000000-0000-4000-8000-000000000016",
   otherHandoff: "41000000-0000-4000-8000-000000000017",
   otherTask: "41000000-0000-4000-8000-000000000018",
+  secondSpace: "41000000-0000-4000-8000-000000000019",
+  secondSpaceGrant: "41000000-0000-4000-8000-000000000020",
+  unusedSpaceGrant: "41000000-0000-4000-8000-000000000021",
+  ownerSecondSpaceGrant: "41000000-0000-4000-8000-000000000022",
+  member: "41000000-0000-4000-8000-000000000023",
+  memberCredential: "41000000-0000-4000-8000-000000000024",
+  memberGrant: "41000000-0000-4000-8000-000000000025",
+  memberMembership: "41000000-0000-4000-8000-000000000026",
 } as const;
 
 let sequence = 30_000;
@@ -507,6 +518,29 @@ describe("agent grant delegation reaches the product without widening scope", ()
       ),
       "success",
     );
+    // A re-scope can only reach a Space the delegating human can already edit,
+    // so the cases below need a second Space and the owner's grant on it. No
+    // command mints a Space, so both records are seeded directly.
+    harness.store.transact((transaction) => {
+      transaction.insertSpace({
+        id: SpaceIdSchema.parse(ids.secondSpace),
+        workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+        name: "Second space",
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      transaction.insertSpaceGrant({
+        id: SpaceGrantIdSchema.parse(ids.ownerSecondSpaceGrant),
+        workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+        spaceId: SpaceIdSchema.parse(ids.secondSpace),
+        principalId: PrincipalIdSchema.parse(ids.owner),
+        access: "edit",
+        status: "active",
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+    });
     return { harness, owner };
   };
 
@@ -522,6 +556,9 @@ describe("agent grant delegation reaches the product without widening scope", ()
     const owner = ExecutionContextSchema.parse({
       ...ownerContext(),
       policyVersion: currentPolicyVersion(harness),
+      // Space access is only effective inside the context's own scope, so the
+      // owner has to be carrying the second Space to be able to delegate it.
+      spaceScope: [ids.space, ids.secondSpace],
     });
     harness.authorization.register(owner);
     return owner;
@@ -539,6 +576,71 @@ describe("agent grant delegation reaches the product without widening scope", ()
         view.getAgentGrant(GrantIdSchema.parse(ids.agentGrant)),
       )?.version ?? 0,
   });
+
+  /**
+   * Stating `spaces` widens what the command changes, so it widens what the
+   * caller must agree with. Only the *active* Space grants: a revoked one is
+   * absent from the projection the caller read, so it cannot state a version
+   * for the record a re-add reactivates.
+   */
+  const scopeVersions = (
+    harness: ReturnType<typeof createReferenceHarness>,
+  ): Readonly<Record<string, number>> => ({
+    ...currentVersions(harness),
+    ...Object.fromEntries(
+      harness.store
+        .read((view) =>
+          view.listSpaceGrants(
+            WorkspaceIdSchema.parse(ids.workspace),
+            PrincipalIdSchema.parse(ids.agent),
+          ),
+        )
+        .filter((grant) => grant.status === "active")
+        .map((grant) => [grant.id, grant.version]),
+    ),
+  });
+
+  /**
+   * A workspace admin: it may manage agent access, so the only thing it lacks
+   * is reach into the second Space — which is what the refusal has to be about.
+   */
+  const memberWithoutSpaceAccess = (
+    harness: ReturnType<typeof createReferenceHarness>,
+  ): ExecutionContext => {
+    harness.store.transact((transaction) =>
+      transaction.insertMembership({
+        id: MembershipIdSchema.parse(ids.memberMembership),
+        workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+        principalId: PrincipalIdSchema.parse(ids.member),
+        displayName: "Admin without reach",
+        role: "admin",
+        status: "active",
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    const member = ExecutionContextSchema.parse({
+      principalId: ids.member,
+      principalKind: "human",
+      credentialId: ids.memberCredential,
+      grantId: ids.memberGrant,
+      policyVersion: currentPolicyVersion(harness),
+      workspaceId: ids.workspace,
+      // The second Space is in scope and still unreachable: the missing piece
+      // is the Space grant, not the context, so the guard under test is the
+      // access level and nothing else.
+      spaceScope: [ids.space, ids.secondSpace],
+      capabilityScope: [
+        "workspace.access",
+        "agent.manageAccess",
+        "agent.access",
+      ],
+      origin: "desktop",
+    });
+    harness.authorization.register(member);
+    return member;
+  };
 
   /** The context the runtime rebuilds from the stored grant on every call. */
   const contextFromStoredGrant = (
@@ -686,6 +788,198 @@ describe("agent grant delegation reaches the product without widening scope", ()
     );
     assert.equal(denied.outcome, "rejected");
     assert.equal(denied.diagnosticCode, "authorization.denied");
+  });
+
+  const agentSpaceGrants = (
+    harness: ReturnType<typeof createReferenceHarness>,
+  ) =>
+    harness.store.read((view) =>
+      view.listSpaceGrants(
+        WorkspaceIdSchema.parse(ids.workspace),
+        PrincipalIdSchema.parse(ids.agent),
+      ),
+    );
+
+  it("adds a Space, removes a Space, and re-adds a removed one without duplicating the grant", () => {
+    const { harness } = grantWithScope([
+      ...capabilitiesForAgentGrantPreset("operate"),
+    ]);
+    const added = commandOutcome(
+      harness.kernel.execute(ownerNow(harness), {
+        ...metadata("rescope-add-space", scopeVersions(harness)),
+        commandName: "agent.grantSetScope",
+        payload: {
+          grantId: ids.agentGrant,
+          preset: "operate",
+          capabilityScope: [...capabilitiesForAgentGrantPreset("operate")],
+          spaces: [
+            {
+              spaceGrantId: ids.agentSpaceGrant,
+              spaceId: ids.space,
+              access: "edit",
+            },
+            {
+              spaceGrantId: ids.secondSpaceGrant,
+              spaceId: ids.secondSpace,
+              access: "edit",
+            },
+          ],
+        },
+      }),
+    );
+    assert.equal(added.outcome, "success");
+
+    const removed = commandOutcome(
+      harness.kernel.execute(ownerNow(harness), {
+        ...metadata("rescope-remove-space", scopeVersions(harness)),
+        commandName: "agent.grantSetScope",
+        payload: {
+          grantId: ids.agentGrant,
+          preset: "operate",
+          capabilityScope: [...capabilitiesForAgentGrantPreset("operate")],
+          spaces: [
+            {
+              spaceGrantId: ids.agentSpaceGrant,
+              spaceId: ids.space,
+              access: "edit",
+            },
+          ],
+        },
+      }),
+    );
+    assert.equal(removed.outcome, "success");
+
+    // The re-add supplies a *fresh* id on purpose: the removed Space fell out of
+    // the projection, so the desktop cannot know the old spaceGrantId. The
+    // kernel must reactivate the existing record and ignore this id: both
+    // stores hold one grant per (Space, principal), so taking the insert path
+    // here aborts the command with a store error rather than duplicating it.
+    const readded = commandOutcome(
+      harness.kernel.execute(ownerNow(harness), {
+        ...metadata("rescope-readd-space", scopeVersions(harness)),
+        commandName: "agent.grantSetScope",
+        payload: {
+          grantId: ids.agentGrant,
+          preset: "operate",
+          capabilityScope: [...capabilitiesForAgentGrantPreset("operate")],
+          spaces: [
+            {
+              spaceGrantId: ids.agentSpaceGrant,
+              spaceId: ids.space,
+              access: "edit",
+            },
+            {
+              spaceGrantId: ids.unusedSpaceGrant,
+              spaceId: ids.secondSpace,
+              access: "edit",
+            },
+          ],
+        },
+      }),
+    );
+    assert.equal(readded.outcome, "success");
+    const grants = agentSpaceGrants(harness);
+    assert.equal(
+      grants.filter((grant) => grant.spaceId === ids.secondSpace).length,
+      1,
+      "a re-added Space must reuse its record, not create a second one",
+    );
+    assert.equal(
+      grants.find((grant) => grant.spaceId === ids.secondSpace)?.status,
+      "active",
+    );
+  });
+
+  it("refuses a re-scope naming a Space the delegating human cannot edit", () => {
+    // Mirrors the guard grantCreate applies: delegation can never hand out reach
+    // the delegator does not have.
+    const { harness } = grantWithScope([
+      ...capabilitiesForAgentGrantPreset("operate"),
+    ]);
+    const refused = commandOutcome(
+      harness.kernel.execute(memberWithoutSpaceAccess(harness), {
+        ...metadata("rescope-unreachable-space", scopeVersions(harness)),
+        commandName: "agent.grantSetScope",
+        payload: {
+          grantId: ids.agentGrant,
+          preset: "operate",
+          capabilityScope: [...capabilitiesForAgentGrantPreset("operate")],
+          spaces: [
+            {
+              spaceGrantId: ids.secondSpaceGrant,
+              spaceId: ids.secondSpace,
+              access: "edit",
+            },
+          ],
+        },
+      }),
+    );
+    assert.equal(refused.outcome, "rejected");
+    // The caller could manage agent access, so the refusal is about the Space
+    // and not about its grant — and the Space the payload dropped is still
+    // reachable, because a refused command changes nothing.
+    assert.equal(refused.diagnosticCode, "command.precondition_failed");
+    assert.deepEqual(
+      agentSpaceGrants(harness).map((grant) => [grant.spaceId, grant.status]),
+      [[ids.space, "active"]],
+    );
+  });
+
+  it("refuses a re-scope that names one Space twice", () => {
+    const { harness } = grantWithScope([
+      ...capabilitiesForAgentGrantPreset("operate"),
+    ]);
+    const refused = commandOutcome(
+      harness.kernel.execute(ownerNow(harness), {
+        ...metadata("rescope-duplicate-space", scopeVersions(harness)),
+        commandName: "agent.grantSetScope",
+        payload: {
+          grantId: ids.agentGrant,
+          preset: "operate",
+          capabilityScope: [...capabilitiesForAgentGrantPreset("operate")],
+          spaces: [
+            {
+              spaceGrantId: ids.agentSpaceGrant,
+              spaceId: ids.space,
+              access: "edit",
+            },
+            {
+              spaceGrantId: ids.secondSpaceGrant,
+              spaceId: ids.space,
+              access: "view",
+            },
+          ],
+        },
+      }),
+    );
+    assert.equal(refused.outcome, "rejected");
+    assert.equal(refused.diagnosticCode, "command.precondition_failed");
+  });
+
+  it("demands the version of every active Space grant when spaces are stated", () => {
+    const { harness } = grantWithScope([
+      ...capabilitiesForAgentGrantPreset("operate"),
+    ]);
+    const stale = commandOutcome(
+      harness.kernel.execute(ownerNow(harness), {
+        // currentVersions omits the space grants: the exact-key rule must reject.
+        ...metadata("rescope-missing-versions", currentVersions(harness)),
+        commandName: "agent.grantSetScope",
+        payload: {
+          grantId: ids.agentGrant,
+          preset: "operate",
+          capabilityScope: [...capabilitiesForAgentGrantPreset("operate")],
+          spaces: [
+            {
+              spaceGrantId: ids.agentSpaceGrant,
+              spaceId: ids.space,
+              access: "edit",
+            },
+          ],
+        },
+      }),
+    );
+    assert.equal(stale.outcome, "conflict");
   });
 
   /**

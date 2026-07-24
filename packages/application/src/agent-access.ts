@@ -16,6 +16,7 @@ import {
 import {
   addWorkspaceMember,
   bumpWorkspacePolicy,
+  changeSpaceAccess,
   createAgentAccessGrant,
   createAgentCheckpoint,
   grantSpaceAccess,
@@ -442,12 +443,6 @@ export const executeAgentAccessCommand = (
     const current = transaction.getAgentGrant(command.payload.grantId);
     if (current?.workspaceId !== workspace.id || current.status !== "active")
       return rejected(command, occurredAt);
-    const expected = {
-      [workspace.id]: workspace.version,
-      [current.id]: current.version,
-    };
-    if (!exactExpected(command, expected))
-      return conflict(command, occurredAt, expected);
     // The delegation partition (ADR-046) is a property of the capability, not
     // of the transport, so it is enforced here — the same gate the Hub applies
     // to a remote grant. Without it this command would be a way to hand an
@@ -458,22 +453,141 @@ export const executeAgentAccessCommand = (
       )
     )
       return rejected(command, occurredAt);
+    const activeSpaceGrants = transaction
+      .listSpaceGrants(workspace.id, current.agentPrincipalId)
+      .filter((item) => item.status === "active");
+    const targetSpaces = command.payload.spaces;
+
+    // Stating Spaces widens what the command changes, so it widens what it
+    // must agree with: the same exact-key rule agent.grantRevoke uses.
+    //
+    // ACTIVE grants only, and the asymmetry with the write set below is
+    // deliberate. Re-adding a removed Space reactivates a revoked record and
+    // bumps its version, but the caller cannot state a version it was never
+    // shown: listSpaceGrants returns revoked records while the agent.access
+    // projection maps over spaceScope, from which a removed Space has already
+    // fallen out. Demanding it would make a re-add inexpressible. The
+    // compare-and-set on updateSpaceGrant still runs with the version actually
+    // read, so a competing mutation is still caught — only the caller's
+    // statement about an invisible record is given up.
+    const expected = {
+      [workspace.id]: workspace.version,
+      [current.id]: current.version,
+      ...(targetSpaces === undefined
+        ? {}
+        : Object.fromEntries(
+            activeSpaceGrants.map((item) => [item.id, item.version]),
+          )),
+    };
+    if (!exactExpected(command, expected))
+      return conflict(command, occurredAt, expected);
+    if (targetSpaces !== undefined) {
+      const uniqueSpaces = new Set(targetSpaces.map((item) => item.spaceId));
+      if (
+        uniqueSpaces.size !== targetSpaces.length ||
+        targetSpaces.some(
+          (item) =>
+            transaction.getSpace(item.spaceId)?.workspaceId !== workspace.id ||
+            !canEditSpace(transaction, context, workspace.id, item.spaceId),
+        )
+      )
+        return rejected(command, occurredAt);
+    }
+
+    // Resolution order matters and is the whole reason this is not a one-liner.
+    // A record is found by (workspace, space, principal) FIRST, because a
+    // re-added Space still has its old — revoked — record and the desktop
+    // cannot know its id: the projection maps over spaceScope, so a removed
+    // Space's spaceGrantId is not visible to it. Taking the insert path there
+    // does not produce a second record — both stores hold one grant per
+    // (workspace, space, principal) — it aborts the command with a store error
+    // instead of any outcome the caller can read.
+    //
+    // changeSpaceAccess is the reactivation: it strips revokedAt and sets
+    // status active, so a level change and an un-removal are one function.
+    const spaceWrites = (targetSpaces ?? []).map((item) => {
+      const existing = transaction.getSpaceGrantForPrincipal(
+        workspace.id,
+        item.spaceId,
+        current.agentPrincipalId,
+      );
+      return existing === undefined
+        ? {
+            kind: "insert" as const,
+            grant: grantSpaceAccess({
+              id: item.spaceGrantId,
+              workspaceId: workspace.id,
+              spaceId: item.spaceId,
+              principalId: current.agentPrincipalId,
+              access: item.access,
+              occurredAt,
+            }),
+          }
+        : {
+            kind: "update" as const,
+            previousVersion: existing.version,
+            grant: changeSpaceAccess(existing, item.access, occurredAt),
+          };
+    });
+    // The supplied id is only ever a proposal for the insert path, so a
+    // collision is only a defect there.
+    if (
+      spaceWrites.some(
+        (write) =>
+          write.kind === "insert" &&
+          transaction.getSpaceGrant(write.grant.id) !== undefined,
+      )
+    )
+      return rejected(command, occurredAt);
+    const targetSpaceIds = new Set(
+      (targetSpaces ?? []).map((item) => item.spaceId),
+    );
+    const spaceRevocations =
+      targetSpaces === undefined
+        ? []
+        : activeSpaceGrants
+            .filter((item) => !targetSpaceIds.has(item.spaceId))
+            .map((item) => ({
+              previousVersion: item.version,
+              grant: revokeSpaceGrant(item, occurredAt),
+            }));
+
     const rescoped = setAgentGrantScope(
       current,
       command.payload.preset,
       command.payload.capabilityScope,
-      current.spaceScope,
+      targetSpaces === undefined
+        ? current.spaceScope
+        : targetSpaces.map((item) => item.spaceId),
       occurredAt,
     );
     // The policy version moves because the authority of every live context
     // changed; a reader that pinned the old one has to re-read rather than
     // keep authorizing against a scope that no longer exists.
     const updatedWorkspace = bumpWorkspacePolicy(workspace, occurredAt);
+    // An insert has no version to compare against, so only the updates are
+    // conditional; anything that fails still rolls the whole unit of work back.
+    spaceWrites.forEach((write) => {
+      if (write.kind === "insert") transaction.insertSpaceGrant(write.grant);
+    });
     if (
+      spaceWrites.some(
+        (write) =>
+          write.kind === "update" &&
+          !transaction.updateSpaceGrant(write.grant, write.previousVersion),
+      ) ||
+      spaceRevocations.some(
+        (item) =>
+          !transaction.updateSpaceGrant(item.grant, item.previousVersion),
+      ) ||
       !transaction.updateAgentGrant(rescoped, current.version) ||
       !transaction.updateWorkspace(updatedWorkspace, workspace.version)
     )
       throw new RetryableUnitOfWorkError();
+    const touchedSpaceGrants = [
+      ...spaceWrites.map((write) => write.grant),
+      ...spaceRevocations.map((item) => item.grant),
+    ];
     return commit(
       dependencies,
       transaction,
@@ -488,12 +602,23 @@ export const executeAgentAccessCommand = (
         recordVersions: {
           [updatedWorkspace.id]: updatedWorkspace.version,
           [rescoped.id]: rescoped.version,
+          ...Object.fromEntries(
+            touchedSpaceGrants.map((item) => [item.id, item.version]),
+          ),
         },
         affectedKinds: {
           [updatedWorkspace.id]: "workspace",
           [rescoped.id]: "agentGrant",
+          ...Object.fromEntries(
+            touchedSpaceGrants.map((item) => [item.id, "spaceGrant"]),
+          ),
         },
-        changedFields: ["preset", "capabilityScope", "policyVersion"],
+        changedFields: [
+          "preset",
+          "capabilityScope",
+          ...(targetSpaces === undefined ? [] : ["spaceScope"]),
+          "policyVersion",
+        ],
         diagnosticCode: "agent.grant_scope_changed",
         projection: {
           kind: "agent.grant_scope_changed",
