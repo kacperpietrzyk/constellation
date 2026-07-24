@@ -8,6 +8,8 @@ releases begin.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-24
+
 ### Added
 
 - Removal for every entity an agent or a person can create — organization,
