@@ -21,6 +21,7 @@ import {
   type GrantId,
 } from "@constellation/contracts";
 import { HostRunMetadataSchema, invokeDesktopMcp } from "@constellation/mcp";
+import type { McpOperatorInvocation } from "@constellation/mcp/protocol";
 import { contractFingerprint } from "@constellation/mcp/contract-stamp";
 import { InMemoryReferenceStore } from "@constellation/testkit";
 
@@ -417,6 +418,25 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
     assert.equal(build.process, "desktop-host");
     assert.equal(build.appVersion, "9.9.9-test");
     assert.equal(build.contractFingerprint, contractFingerprint());
+    // The build stamp says "current" while the grant can still be a release
+    // behind, because a grant authorizes against the scope frozen when it was
+    // issued. This fixture holds a hand-picked subset under the full_access
+    // label, which is exactly the shape of a grant that predates an upgrade,
+    // so the drift has to be named here — nothing else reveals it before a
+    // command fails.
+    const grantBlock = capabilities.result as {
+      readonly grant: {
+        readonly scopeStatus: string;
+        readonly missingFromPreset: readonly string[];
+      };
+    };
+    assert.equal(grantBlock.grant.scopeStatus, "behind_preset");
+    assert.ok(grantBlock.grant.missingFromPreset.includes("task.remove"));
+    assert.equal(
+      grantBlock.grant.missingFromPreset.includes("capture.transcriptWrite"),
+      false,
+      "a capability the grant does hold is not reported as missing",
+    );
     // A capability read changes nothing, so it raises no change signal.
     assert.deepEqual(mutations, []);
 
@@ -618,6 +638,17 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
         "base64",
       ),
       voiceBytes,
+    );
+    // The capability and its command are spelled differently on purpose-free
+    // grounds: the grant carries `capture.transcriptWrite`, the command is
+    // `capture.writeTranscript`, and the kernel bridges them. An integrator
+    // reading its own capabilityScope sees no command by that name, so the
+    // bridge is asserted here rather than assumed — the catalog states it as
+    // `requiredCapability`.
+    const heldCapabilities: readonly string[] = agentCapabilities;
+    assert.ok(
+      heldCapabilities.includes("capture.transcriptWrite") &&
+        !heldCapabilities.includes("capture.writeTranscript"),
     );
     const transcript = await invokeDesktopMcp(descriptor, {
       contractVersion: 1,
@@ -1077,6 +1108,10 @@ type RevertBody = {
 
 const startRevertHarness = async (
   capabilities: readonly Capability[] = agentCapabilities,
+  faults: {
+    readonly onRuntimeFault?: (error: unknown) => void;
+    readonly failReads?: () => boolean;
+  } = {},
 ) => {
   const stateRoot = mkdtempSync(
     path.join(tmpdir(), "constellation-mcp-revert-"),
@@ -1099,7 +1134,22 @@ const startRevertHarness = async (
   const runtime = new LocalMcpRuntime({
     stateRoot,
     workspaceId: ownerContext.workspaceId,
-    store,
+    store:
+      faults.failReads === undefined
+        ? store
+        : ({
+            ...store,
+            read: (project: (view: never) => unknown) => {
+              if (faults.failReads?.() === true)
+                throw new Error("simulated defect inside the runtime");
+              return store.read(project as never);
+            },
+            transact: (work: (transaction: never) => unknown) =>
+              store.transact(work as never),
+          } as unknown as InMemoryReferenceStore),
+    ...(faults.onRuntimeFault === undefined
+      ? {}
+      : { onRuntimeFault: faults.onRuntimeFault }),
   });
   const prepared = runtime.credentialCustody.prepare(ids.grant as GrantId);
   successful(
@@ -1181,12 +1231,15 @@ const startRevertHarness = async (
       ?.status;
   const project = (projectId: string) =>
     store.snapshot().projects?.find((item) => item.id === projectId);
+  const raw = async (invocation: McpOperatorInvocation) =>
+    invokeDesktopMcp(descriptor, invocation);
   return {
     command,
     checkpoint,
     revert,
     status,
     project,
+    raw,
     close: async () => {
       await runtime.close();
       rmSync(stateRoot, { recursive: true, force: true });
@@ -1348,6 +1401,79 @@ test("local MCP checkpoint revert reverts every command in reverse order and ref
       (again.result as RevertBody).diagnosticCode,
       "agent.checkpoint_already_reverted",
     );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("local MCP separates a defect in this build from a runtime worth retrying", async () => {
+  const faults: unknown[] = [];
+  let failing = false;
+  const harness = await startRevertHarness(agentCapabilities, {
+    onRuntimeFault: (error) => faults.push(error),
+    failReads: () => failing,
+  });
+  try {
+    failing = true;
+    const response = await harness.raw({
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "capabilities",
+    });
+    // Reported as retryable, this reads as a passing outage: a caller waits,
+    // retries, and gets the same answer forever, while the actual error exists
+    // nowhere at all. It is a rejection, and the error reaches the host.
+    assert.equal(response.outcome, "rejected");
+    assert.equal(
+      (response.result as { readonly diagnosticCode?: string }).diagnosticCode,
+      "mcp.runtime_fault",
+    );
+    assert.equal(faults.length, 1);
+    assert.match(String(faults[0]), /simulated defect inside the runtime/u);
+
+    failing = false;
+    const recovered = await harness.raw({
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "capabilities",
+    });
+    assert.equal(recovered.outcome, "success");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("local MCP checkpoint revert refuses a checkpoint that captured nothing instead of spending it", async () => {
+  const harness = await startRevertHarness();
+  try {
+    await harness.checkpoint(revertIds.checkpoint, "Before the slice");
+    // The command shares the run and follows the checkpoint, but its envelope
+    // does not name it, so the checkpoint holds nothing. Answering
+    // `agent.checkpoint_reverted` here is the success-shaped failure: the
+    // caller believes its slice was rolled back, and the revert would consume
+    // the checkpoint, destroying the one honest recovery path it had left.
+    await harness.command({
+      key: "empty-project-create",
+      commandName: "project.create",
+      payload: {
+        projectId: revertIds.project,
+        spaceId: ids.space,
+        title: "Never captured",
+        intendedOutcome: "Original outcome",
+      },
+    });
+    const reverted = await harness.revert(revertIds.checkpoint, "revert-6");
+    assert.equal(reverted.outcome, "rejected", JSON.stringify(reverted.result));
+    const body = reverted.result as RevertBody;
+    assert.equal(body.diagnosticCode, "agent.checkpoint_revert_empty");
+    assert.equal(body.checkpointId, revertIds.checkpoint);
+    assert.equal(
+      harness.project(revertIds.project)?.intendedOutcome,
+      "Original outcome",
+    );
+    // Still open: a checkpoint that refused is a checkpoint the caller can
+    // still use once it starts naming it.
+    assert.equal(harness.status(revertIds.checkpoint), "open");
   } finally {
     await harness.close();
   }

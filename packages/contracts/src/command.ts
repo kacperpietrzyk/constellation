@@ -209,6 +209,36 @@ export const AgentGrantRevokeCommandSchema = CommandMetadataSchema.extend({
   payload: z.object({ grantId: GrantIdSchema }).strict(),
 }).strict();
 
+/**
+ * A grant's capabilityScope is a snapshot taken when it was issued, and the
+ * kernel authorizes against that snapshot — so an upgrade that adds a
+ * capability to a preset never reaches a grant already in the field. This is
+ * the lever that closes it: a human re-states the scope, deliberately, with an
+ * audit receipt. The scope stays a snapshot on purpose; resolving the preset
+ * live would widen every issued grant on every release without anyone
+ * deciding to.
+ *
+ * The new scope replaces the old one whole rather than adding to it, so the
+ * command can narrow as well as widen, and so its outcome does not depend on
+ * what the grant happened to hold when it was sent.
+ */
+export const AgentGrantSetScopeCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("agent.grantSetScope"),
+  payload: z
+    .object({
+      grantId: GrantIdSchema,
+      preset: AgentAccessPresetSchema,
+      capabilityScope: z
+        .array(CapabilitySchema)
+        .min(1)
+        .max(CapabilitySchema.options.length),
+    })
+    .strict(),
+}).strict();
+export type AgentGrantSetScopeCommand = z.infer<
+  typeof AgentGrantSetScopeCommandSchema
+>;
+
 export const AgentCheckpointCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("agent.checkpointCreate"),
   payload: z
@@ -1834,6 +1864,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   AgentGrantCreateCommandSchema,
   AgentGrantRotateCredentialCommandSchema,
   AgentGrantRevokeCommandSchema,
+  AgentGrantSetScopeCommandSchema,
   AgentCheckpointCreateCommandSchema,
   AgentHandoffSubmitCommandSchema,
   CaptureSubmitCommandSchema,

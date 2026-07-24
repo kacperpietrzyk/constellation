@@ -1760,6 +1760,12 @@ describe("reference kernel conformance", () => {
       }),
     );
 
+    // The invariant is that these four are the same answer, not which answer:
+    // a caller that can tell "no such Capture" from "a Capture I may not see"
+    // has an existence oracle for records outside its scope. They report a
+    // precondition rather than a denial because the grant carried the
+    // capability in every one of them — `authorization.denied` is reserved for
+    // a refusal the grant itself caused.
     for (const outcome of [
       noMembership,
       missing,
@@ -1767,7 +1773,7 @@ describe("reference kernel conformance", () => {
       crossWorkspace,
     ]) {
       assert.equal(outcome.outcome, "rejected");
-      assert.equal(outcome.diagnosticCode, "authorization.denied");
+      assert.equal(outcome.diagnosticCode, "command.precondition_failed");
     }
     assert.deepEqual(routeCounts(harness), before);
 

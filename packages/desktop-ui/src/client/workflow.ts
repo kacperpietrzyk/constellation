@@ -388,6 +388,8 @@ export const loadDesktopSnapshot = async (
             preset:
               grant.preset as AgentAccessProjection["grants"][number]["preset"],
             capabilityScope: grant.capabilityScope,
+            scopeStatus: grant.scopeStatus,
+            missingFromPreset: grant.missingFromPreset,
             status: grant.status,
             ...(grant.expiresAt === undefined
               ? {}
@@ -916,6 +918,61 @@ export const revokeAgentGrant = async (
   }
 };
 
+/**
+ * Brings an issued grant up to what its preset carries today. A grant
+ * authorizes against the scope frozen when it was issued, so a release that
+ * widens a preset never reaches an agent already connected; this is the human
+ * act that closes that, and the agent picks it up on its next call without
+ * reconnecting or taking a new credential.
+ */
+export const updateAgentGrantScope = async (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  grant: AgentAccessProjection["grants"][number],
+): Promise<MutationResult<undefined>> => {
+  if (snapshot.agentAccess.kind !== "ready")
+    return { kind: "unavailable", message: "Dostęp agentów jest niedostępny." };
+  if (grant.preset === "custom")
+    return {
+      kind: "unavailable",
+      message:
+        "Ten dostęp ma ręcznie wybrany zakres — nie ma presetu, do którego można go dociągnąć.",
+    };
+  try {
+    const response = await client.executeCommand(
+      CommandEnvelopeSchema.parse({
+        contractVersion: 1,
+        commandName: "agent.grantSetScope",
+        commandId: crypto.randomUUID(),
+        workspaceId: snapshot.bootstrap.workspace.id,
+        idempotencyKey: `agent-grant-set-scope:${grant.grantId}:${grant.version}`,
+        expectedVersions: {
+          [snapshot.bootstrap.workspace.id]:
+            snapshot.agentAccess.data.workspaceVersion,
+          [grant.grantId]: grant.version,
+        },
+        correlationId: crypto.randomUUID(),
+        payload: {
+          grantId: grant.grantId,
+          preset: grant.preset,
+          capabilityScope: agentCapabilities(grant.preset),
+        },
+      }),
+    );
+    if (
+      response.kind !== "command_outcome" ||
+      response.outcome.outcome !== "success"
+    )
+      return commandFailure(response);
+    return { kind: "success", data: undefined };
+  } catch {
+    return {
+      kind: "error",
+      message: "Nie udało się zaktualizować zakresu dostępu agenta.",
+    };
+  }
+};
+
 export const createRemoteAgentGrant = async (
   client: ConstellationRendererClient,
   input: {
@@ -1100,10 +1157,14 @@ const commandFailure = (response: RendererCommandResponse): MutationFailure => {
   if (outcome.outcome === "rejected")
     return {
       kind: "unavailable",
+      // `authorization.denied` now means only "this access does not carry the
+      // capability". A refusal because the record is out of reach — another
+      // Space, an access level too low, or simply not there — arrives as a
+      // precondition, so that copy has to cover reach as well as staleness.
       message:
         outcome.diagnosticCode === "authorization.denied"
           ? "Brak uprawnienia do tej zmiany."
-          : "Warunki polecenia nie są już aktualne.",
+          : "Nie można wykonać tej zmiany: rekord jest poza Twoim dostępem albo jego stan się zmienił.",
     };
   return {
     kind: "unavailable",

@@ -4,6 +4,7 @@ import net from "node:net";
 import path from "node:path";
 
 import {
+  RetryableUnitOfWorkError,
   isApplicationWave2ReadView,
   resolveDocumentEntityTarget,
   type ApplicationStore,
@@ -14,6 +15,7 @@ import {
   CommandIdSchema,
   CorrelationIdSchema,
   QueryIdSchema,
+  grantScopeDrift,
   isCustodiedCaptureOriginal,
   type CaptureOriginal,
   type CaptureId,
@@ -176,6 +178,17 @@ export class LocalMcpRuntime {
         readonly workspaceId: WorkspaceId;
         readonly origin: "agent";
       }) => void;
+      /**
+       * Called with the error behind an unexpected runtime fault. Without it
+       * the catch below is the end of the road: the caller is told the runtime
+       * is unavailable and the actual failure exists nowhere, so a defect that
+       * reproduces on every call looks like a transient outage from both
+       * sides.
+       */
+      readonly onRuntimeFault?: (
+        error: unknown,
+        invocation: { readonly kind: string; readonly requestId: string },
+      ) => void;
       readonly readCapturePayload?: (
         original: CaptureOriginal,
       ) => Uint8Array | undefined;
@@ -338,22 +351,39 @@ export class LocalMcpRuntime {
         diagnosticCode: "authorization.denied",
       });
     }
-    const grant = this.authenticate(
-      parsed.credentialId,
-      parsed.secret,
-      parsed.invocation,
-    );
-    if (grant === undefined)
-      return contentSafeResponse(parsed.invocation.requestId, "rejected", {
-        diagnosticCode: "authorization.denied",
-      });
     try {
+      // Authentication reads the store, so it can throw for the same reasons
+      // the invocation can. It used to sit outside this guard, where a throw
+      // escaped into the socket handler and the caller was answered by nothing
+      // at all.
+      const grant = this.authenticate(
+        parsed.credentialId,
+        parsed.secret,
+        parsed.invocation,
+      );
+      if (grant === undefined)
+        return contentSafeResponse(parsed.invocation.requestId, "rejected", {
+          diagnosticCode: "authorization.denied",
+        });
       const response = this.invoke(grant, parsed.invocation);
       this.announceMutation(parsed.invocation, response);
       return response;
-    } catch {
-      return contentSafeResponse(parsed.invocation.requestId, "retryable", {
-        diagnosticCode: "mcp.runtime_unavailable",
+    } catch (error) {
+      // A store that could not commit is genuinely worth retrying; anything
+      // else reaching here is a fault in this build, and telling a caller to
+      // retry it costs them a run to learn otherwise. The two are reported
+      // apart, and the fault is handed to the host so it exists somewhere
+      // other than in this catch.
+      if (error instanceof RetryableUnitOfWorkError)
+        return contentSafeResponse(parsed.invocation.requestId, "retryable", {
+          diagnosticCode: "mcp.runtime_unavailable",
+        });
+      this.input.onRuntimeFault?.(error, {
+        kind: parsed.invocation.kind,
+        requestId: parsed.invocation.requestId,
+      });
+      return contentSafeResponse(parsed.invocation.requestId, "rejected", {
+        diagnosticCode: "mcp.runtime_fault",
       });
     }
   }
@@ -466,6 +496,11 @@ export class LocalMcpRuntime {
           capabilityScope: grant.capabilityScope,
           spaceScope: grant.spaceScope,
           expiresAt: grant.expiresAt ?? null,
+          // The grant, not the build, is what a caller is actually bounded by,
+          // and an upgrade does not reach a grant already issued. Naming the
+          // difference here is the only place it becomes visible before a
+          // command fails.
+          ...grantScopeDrift(grant.preset, grant.capabilityScope),
         },
       });
     }
@@ -922,6 +957,15 @@ export class LocalMcpRuntime {
     if (checkpoint.status === "reverted")
       return contentSafeResponse(requestId, "rejected", {
         diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.alreadyReverted,
+        checkpointId: checkpoint.id,
+      });
+    // Refuse before the checkpoint is spent: it captured nothing, so applying
+    // it would report success, change nothing, and leave the caller without
+    // the checkpoint it still needs. agent.checkpointPreviewRevert reports the
+    // same state as unavailableReason "empty".
+    if (checkpoint.commandIds.length === 0)
+      return contentSafeResponse(requestId, "rejected", {
+        diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.empty,
         checkpointId: checkpoint.id,
       });
     // Compensation runs newest-first, and every preview is taken before any of

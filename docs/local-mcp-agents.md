@@ -109,13 +109,20 @@ desktop surfaces those records as work to complete. The gap is filled later by
 `initiative.updateOutcome`, each an ordinary versioned, undoable command.
 
 `constellation://v1/operations` lists every operation your grant authorizes —
-name, kind, tool, whether a command is revertable, and the URI of its full
-schema — and
+name, kind, tool, whether a command is revertable, the capability it requires,
+and the URI of its full schema — and
 `constellation://v1/operations/<name>` returns that operation's complete strict
 envelope JSON Schema. Read them individually: a measured operate-class grant
 authorizes 116 operations whose combined schemas are 342 KB, which hosts
 truncate. An operation outside your grant reads the same as one that does not
 exist.
+
+`requiredCapability` is stated because an operation's name is not always the
+capability that authorizes it. `capture.writeTranscript` is reached through
+`capture.transcriptWrite`, and the two checkpoint operations through
+`agent.checkpoint.create` and `agent.checkpoint.previewRevert`. Compare that
+field against your `capabilityScope` rather than matching names; the batch is
+the one entry without it, because it authorizes each item individually.
 
 The `constellation://v1/capabilities` resource reports the active contract and
 authorized scope without credential material.
@@ -174,6 +181,34 @@ Capture History.
   `agent.checkpoint_already_reverted` for a checkpoint reverted before;
   `retryable` / `agent.checkpoint_revert_preview_failed` when the preview
   itself could not be read.
+- Put each command inside the checkpoint explicitly. A command belongs to a
+  checkpoint only when its own envelope carries the top-level `checkpointId`
+  field — a sibling of `commandId`, not part of `payload` — or when it rides in
+  a batch whose envelope carries one. Applying a command after
+  `agent.checkpointCreate`, in the same run, without that field leaves it
+  outside: ordering, the run, and the grant never imply membership. A
+  checkpoint that captured nothing says so rather than reporting an empty
+  rollback as a success: `agent.checkpointPreviewRevert` answers
+  `available: false` with `unavailableReason: "empty"`, and
+  `constellation.checkpoint.revert.v1` is `rejected` /
+  `agent.checkpoint_revert_empty` and leaves the checkpoint open.
+- Re-read `grant.scopeStatus` at the start of a run. A grant authorizes against
+  the capability scope frozen when it was issued, so a Constellation release
+  that adds a capability to a preset does not reach a grant already in use —
+  and `build.appVersion` reports the new version while the grant is a release
+  behind. When `scopeStatus` is `behind_preset`, `missingFromPreset` names
+  exactly what the grant is missing, and a human closes it in the desktop
+  under Agent access. Nothing is reissued: the credential, the descriptor and
+  the connection stay, and the widened scope applies from your next call.
+- Read a rejection for what it says. `authorization.denied` means one thing:
+  the capability the command needs is not in your grant. Compare the
+  operation's `requiredCapability` with your `capabilityScope`. Every other
+  refusal is `command.precondition_failed` — a target that does not exist, a
+  target in a Space your grant does not reach, a payload the command cannot
+  accept. Those are indistinguishable on purpose, so a rejection never reveals
+  whether an id you guessed belongs to a record you may not see. This applies
+  to commands; a query outside your scope is still rejected as
+  `authorization.denied`.
 - Recover one command without a checkpoint. `recovery.preview` and
   `command.previewUndo` take a `targetCommandId`, never a `checkpointId`, and
   are granted independently of the checkpoint capabilities.

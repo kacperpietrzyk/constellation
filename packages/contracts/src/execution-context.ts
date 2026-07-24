@@ -396,6 +396,40 @@ export const capabilitiesForAgentGrantPreset = (
   }
 };
 
+export const GrantScopeStatusSchema = z.enum(["current", "behind_preset"]);
+export type GrantScopeStatus = z.infer<typeof GrantScopeStatusSchema>;
+
+/**
+ * A grant authorizes against the scope frozen when it was issued, so a release
+ * that adds a capability to a preset leaves every existing grant a version
+ * behind — silently, because the build stamp and the contract fingerprint both
+ * report current. This is what makes that visible on the first read of
+ * `constellation://v1/capabilities`, to the agent and to the human who can
+ * close it with `agent.grantSetScope`.
+ *
+ * A `custom` scope was hand-picked and has no preset to fall behind, so it is
+ * always current; reporting a deliberately narrowed grant as stale would train
+ * everyone to ignore the field.
+ */
+export const grantScopeDrift = (
+  preset: AgentAccessPreset,
+  capabilityScope: readonly Capability[],
+): {
+  readonly scopeStatus: GrantScopeStatus;
+  readonly missingFromPreset: readonly Capability[];
+} => {
+  if (preset === "custom")
+    return { scopeStatus: "current", missingFromPreset: [] };
+  const held = new Set(capabilityScope);
+  const missingFromPreset = capabilitiesForAgentGrantPreset(preset).filter(
+    (capability) => !held.has(capability),
+  );
+  return {
+    scopeStatus: missingFromPreset.length === 0 ? "current" : "behind_preset",
+    missingFromPreset,
+  };
+};
+
 /**
  * Capabilities an agent grant may carry at all. `runtime` and
  * `administrative` capabilities are excluded by design; the Hub enforces the

@@ -7,7 +7,7 @@ import { z } from "zod";
 export const UndoUnavailableReasonSchema = z
   .enum(["unsupported", "already_undone", "later_change"])
   .describe(
-    'Why the target command cannot be compensated now. "unsupported": the command applied but its kind records no compensation, so no undo will ever become available — an unknown or mistyped command id is rejected as authorization.denied instead of previewed. "already_undone": the compensation was consumed by an earlier undo. "later_change": a record moved past the version the compensation requires.',
+    'Why the target command cannot be compensated now. "unsupported": the command applied but its kind records no compensation, so no undo will ever become available — an unknown or mistyped command id is rejected as command.precondition_failed instead of previewed, never as authorization.denied, which states only that the grant lacks the capability. "already_undone": the compensation was consumed by an earlier undo. "later_change": a record moved past the version the compensation requires.',
   );
 
 // Checkpoint reverts span a set of commands, so the vocabulary differs by one
@@ -15,9 +15,9 @@ export const UndoUnavailableReasonSchema = z
 // ("already_reverted"), while "already_undone" is a per-descriptor state only a
 // single-command preview can report.
 export const CheckpointRevertUnavailableReasonSchema = z
-  .enum(["already_reverted", "unsupported", "later_change"])
+  .enum(["already_reverted", "empty", "unsupported", "later_change"])
   .describe(
-    'Why the checkpoint cannot be reverted now. "already_reverted": the checkpoint was reverted before. "unsupported": at least one command in it records no compensation. "later_change": at least one compensation was already consumed by a later undo.',
+    'Why the checkpoint cannot be reverted now. "already_reverted": the checkpoint was reverted before. "empty": no command named this checkpoint in its envelope, so it captured nothing and reverting it would change nothing — membership is opt-in per command, never implied by sharing a run. "unsupported": at least one command in it records no compensation. "later_change": at least one compensation was already consumed by a later undo.',
   );
 
 // The compensation a command recorded, named. It was restated in two

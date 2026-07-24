@@ -37,7 +37,10 @@ import {
   SavedViewGroupBySchema,
   SavedViewLayoutSchema,
 } from "./command.js";
-import { RequestOriginSchema } from "./execution-context.js";
+import {
+  GrantScopeStatusSchema,
+  RequestOriginSchema,
+} from "./execution-context.js";
 import { ImportedMeetingSchema } from "./meeting-loop.js";
 import { NeedsReviewSchema } from "./narrative.js";
 import { GlobalSearchRecordKindSchema } from "./record-kind-registry.js";
@@ -773,6 +776,8 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               "custom",
             ]),
             capabilityScope: z.array(z.string()),
+            scopeStatus: GrantScopeStatusSchema,
+            missingFromPreset: z.array(z.string()),
             status: z.enum(["active", "expired", "revoked"]),
             expiresAt: z.iso.datetime({ offset: true }).optional(),
             credentialVersion: z.int().positive(),
