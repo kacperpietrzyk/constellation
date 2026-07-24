@@ -381,3 +381,82 @@ export const createRadarCandidate = (
   relevance: input.relevance,
   state: "pending",
 });
+
+/**
+ * The one recordState transition. The explicit remove commands, the undo of a
+ * create, and the undo of a remove all go through here, so a record can never
+ * be taken out of the graph by one path and put back by a different rule.
+ */
+export const setStrategicRecordState = (
+  record: StrategicRecord,
+  recordState: "active" | "removed",
+  occurredAt: string,
+): StrategicRecord => ({
+  ...record,
+  recordState,
+  version: record.version + 1,
+  updatedAt: occurredAt,
+});
+
+export const strategicRecordState = (
+  record: StrategicRecord,
+): "active" | "removed" => record.recordState ?? "active";
+
+/**
+ * The same reading for the records that keep their own table — Project,
+ * NativeDocument, KnowledgeSource. Absent means active, so nothing written
+ * before removal existed has to be migrated.
+ */
+export const recordIsActive = (record: {
+  readonly recordState?: "active" | "removed";
+}): boolean => (record.recordState ?? "active") === "active";
+
+/**
+ * Every strategic-record reference one record can hold to another, flattened.
+ * Removal reads this to refuse rather than orphan (ADR-043 §3, as task.remove):
+ * a record still pointed at by live work stays, and the caller resolves the
+ * reference first.
+ */
+export const strategicRecordReferences = (
+  record: StrategicRecord,
+): readonly StrategicRecordId[] => {
+  switch (record.kind) {
+    case "person":
+      return record.organizationId === undefined ? [] : [record.organizationId];
+    case "opportunity":
+      return [record.organizationId, ...record.personIds, ...record.offerIds];
+    case "offer":
+      return [record.opportunityId];
+    case "renewal":
+    case "relationship_fact":
+      return [record.organizationId];
+    case "decision":
+      return [
+        ...(record.supersededById === undefined ? [] : [record.supersededById]),
+        ...record.linkedRecordIds.filter(
+          (id): id is StrategicRecordId => typeof id === "string",
+        ),
+      ];
+    case "impact_review":
+      return [record.priorDecisionId, record.replacementDecisionId];
+    case "work_link":
+      // A removed link no longer holds its ends: work.linkRemove is the
+      // documented way to detach, and a detached link must not keep an Area or
+      // Initiative pinned in place.
+      return record.state === "active"
+        ? [record.sourceRecordId, record.targetRecordId].filter(
+            (id): id is StrategicRecordId => typeof id === "string",
+          )
+        : [];
+    case "recurrence":
+      return record.contextRecordId === undefined
+        ? []
+        : [record.contextRecordId as StrategicRecordId];
+    case "radar_candidate":
+      return record.resolutionRecordId === undefined
+        ? []
+        : [record.resolutionRecordId as StrategicRecordId];
+    default:
+      return [];
+  }
+};

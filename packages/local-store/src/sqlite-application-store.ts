@@ -1792,7 +1792,9 @@ class SqliteReadView implements ApplicationWave2ReadView {
   ): readonly Project[] {
     return this.database
       .prepare(
-        "SELECT id, payload_json FROM projects WHERE workspace_id = ? AND space_id = ? ORDER BY updated_at DESC, id DESC",
+        // Removed records keep their rows and leave every list at once;
+        // absent recordState means active, so no row needs migrating.
+        "SELECT id, payload_json FROM projects WHERE workspace_id = ? AND space_id = ? AND json_extract(payload_json, '$.recordState') IS NOT 'removed' ORDER BY updated_at DESC, id DESC",
       )
       .all(workspaceId, spaceId)
       .map((row) => {
@@ -1824,7 +1826,9 @@ class SqliteReadView implements ApplicationWave2ReadView {
   ): readonly NativeDocument[] {
     return this.database
       .prepare(
-        "SELECT id, payload_json FROM documents WHERE workspace_id = ? AND space_id = ? ORDER BY updated_at DESC, id DESC",
+        // Removed records keep their rows and leave every list at once;
+        // absent recordState means active, so no row needs migrating.
+        "SELECT id, payload_json FROM documents WHERE workspace_id = ? AND space_id = ? AND json_extract(payload_json, '$.recordState') IS NOT 'removed' ORDER BY updated_at DESC, id DESC",
       )
       .all(workspaceId, spaceId)
       .map((row) => {
@@ -1971,7 +1975,9 @@ class SqliteReadView implements ApplicationWave2ReadView {
   ): readonly KnowledgeSource[] {
     return this.database
       .prepare(
-        "SELECT id, payload_json FROM knowledge_sources WHERE workspace_id = ? AND space_id = ? ORDER BY updated_at DESC, id DESC",
+        // Removed records keep their rows and leave every list at once;
+        // absent recordState means active, so no row needs migrating.
+        "SELECT id, payload_json FROM knowledge_sources WHERE workspace_id = ? AND space_id = ? AND json_extract(payload_json, '$.recordState') IS NOT 'removed' ORDER BY updated_at DESC, id DESC",
       )
       .all(workspaceId, spaceId)
       .map((row) => {
@@ -2066,7 +2072,11 @@ class SqliteReadView implements ApplicationWave2ReadView {
   ): readonly StrategicRecord[] {
     return this.database
       .prepare(
-        "SELECT id, payload_json FROM strategic_records WHERE workspace_id = ? AND space_id = ? ORDER BY updated_at DESC, id DESC",
+        // A removed record keeps its row, its version history and its audit
+        // trail, and leaves every projection at once. Absent means active:
+        // rows written before removal existed carry no recordState, and
+        // `IS NOT` is the comparison that treats SQL NULL as a value.
+        "SELECT id, payload_json FROM strategic_records WHERE workspace_id = ? AND space_id = ? AND json_extract(payload_json, '$.recordState') IS NOT 'removed' ORDER BY updated_at DESC, id DESC",
       )
       .all(workspaceId, spaceId)
       .map((row) => {

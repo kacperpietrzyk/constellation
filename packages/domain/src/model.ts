@@ -465,6 +465,12 @@ export interface Project {
   readonly id: ProjectId;
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
+  /**
+   * Whether the record is still part of the graph; absent means active, as on
+   * a strategic record. Removal is a soft delete: the row, its versions and
+   * its audit trail stay, and it leaves every list at once.
+   */
+  readonly recordState?: "active" | "removed";
   readonly title: string;
   readonly fields?: FieldValueMap;
   readonly appliedTemplateId?: ProjectTemplateId;
@@ -484,6 +490,12 @@ export interface NativeDocument {
   readonly id: DocumentId;
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
+  /**
+   * Whether the record is still part of the graph; absent means active, as on
+   * a strategic record. Removal is a soft delete: the row, its versions and
+   * its audit trail stay, and it leaves every list at once.
+   */
+  readonly recordState?: "active" | "removed";
   readonly title: string;
   readonly role?: "note" | "document" | "deliverable";
   readonly evidence?: {
@@ -518,6 +530,12 @@ export interface KnowledgeSource {
   readonly id: KnowledgeSourceId;
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
+  /**
+   * Whether the record is still part of the graph; absent means active, as on
+   * a strategic record. Removal is a soft delete: the row, its versions and
+   * its audit trail stay, and it leaves every list at once.
+   */
+  readonly recordState?: "active" | "removed";
   readonly sourceKind: "url" | "file" | "screenshot" | "excerpt";
   readonly title: string;
   readonly canonicalUrl?: string;
@@ -562,6 +580,16 @@ interface StrategicRecordBase {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
   readonly createdBy: PrincipalId;
+  /**
+   * Whether the record is still part of the graph. Absent means active: every
+   * record written before removal existed carries no value, and revalidating
+   * stored payloads on load is exactly the drift this model avoids.
+   *
+   * A removed record keeps its row, its history, and its audit trail; it stops
+   * appearing in listStrategicRecords, which is the single choke point every
+   * projection, search and relation read goes through.
+   */
+  readonly recordState?: "active" | "removed";
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -1035,6 +1063,54 @@ export type UndoDescriptor =
       readonly consumedByCommandId?: CommandId;
     }
   | {
+      // Undoing the create of a strategic record removes it. One descriptor
+      // for every kind in the union: the compensation is the same recordState
+      // toggle whichever create recorded it, and the availability arm has to
+      // re-run the same inbound-reference guard the explicit remove runs —
+      // work attached after the create must not be orphaned by an undo.
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "strategic.undo_create";
+      readonly recordId: StrategicRecordId;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      // Project, NativeDocument and KnowledgeSource keep their own tables but
+      // share one removal: naming the table in the descriptor keeps a single
+      // pair of arms instead of three near-identical ones.
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "record.undo_create";
+      readonly recordKind: "project" | "document" | "knowledgeSource";
+      readonly recordId: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "record.restore_record_state";
+      readonly recordKind: "project" | "document" | "knowledgeSource";
+      readonly recordId: string;
+      readonly priorRecordState: "active" | "removed";
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "strategic.restore_record_state";
+      readonly recordId: StrategicRecordId;
+      readonly priorRecordState: "active" | "removed";
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
@@ -1311,6 +1387,17 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
       readonly aggregateId: ProjectId;
+      readonly aggregateVersion: number;
+      readonly occurredAt: string;
+    }
+  | {
+      // One event for the three table-backed removals: the aggregate is named
+      // by its id, and the projection that reads it already knows the kind.
+      readonly id: EventId;
+      readonly type: "record.removed";
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly aggregateId: ProjectId | DocumentId | KnowledgeSourceId;
       readonly aggregateVersion: number;
       readonly occurredAt: string;
     }

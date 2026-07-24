@@ -1198,15 +1198,17 @@ test("local MCP checkpoint revert names the uncompensable commands instead of bl
   const harness = await startRevertHarness();
   try {
     await harness.checkpoint(revertIds.checkpoint, "Before the import");
+    // A Capture, not a Project: entity creates record compensation now, and
+    // this test is about the diagnostic for a command that never will.
     const created = await harness.command({
-      key: "revert-project-create",
-      commandName: "project.create",
+      key: "revert-capture-submit",
+      commandName: "capture.submitText",
       checkpointId: revertIds.checkpoint,
       payload: {
-        projectId: revertIds.project,
         spaceId: ids.space,
-        title: "Imported project",
-        intendedOutcome: "Ship the import",
+        originalText: "Imported note",
+        deviceId: "mcp-revert-test",
+        source: "in_app_quick_capture",
       },
     });
     const reverted = await harness.revert(revertIds.checkpoint, "revert-1");
@@ -1217,11 +1219,10 @@ test("local MCP checkpoint revert names the uncompensable commands instead of bl
       {
         targetCommandId: created,
         unavailableReason: "unsupported",
-        commandName: "project.create",
+        commandName: "capture.submitText",
       },
     ]);
     assert.equal(harness.status(revertIds.checkpoint), "open");
-    assert.equal(harness.project(revertIds.project)?.version, 1);
   } finally {
     await harness.close();
   }

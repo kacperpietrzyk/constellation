@@ -114,6 +114,7 @@ const context = (): ExecutionContext =>
       "knowledge.list",
       "knowledge.documentContext",
       "relationship.organizationCreate",
+      "relationship.organizationRemove",
       "relationship.personCreate",
       "opportunity.create",
       "opportunity.offerCreate",
@@ -591,6 +592,105 @@ describe("SQLite ApplicationStore", () => {
         1,
       );
       assert.equal(snapshot.namedDocumentVersions?.[0]?.state, "active");
+      reopenedDatabase.close();
+    });
+  });
+
+  it("keeps a removed record out of every list after restart, and puts it back on undo", () => {
+    withDatabase((filename) => {
+      const organizationId = "00000000-0000-4000-8000-000000000140";
+      const keptId = "00000000-0000-4000-8000-000000000141";
+      const firstDatabase = new DatabaseSync(filename);
+      const first = createKernel(firstDatabase);
+      assert.equal(
+        unwrap(first.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      for (const [id, name, key] of [
+        [organizationId, "Removed organization", "removed-org"],
+        [keptId, "Kept organization", "kept-org"],
+      ] as const) {
+        assert.equal(
+          unwrap(
+            first.kernel.execute(
+              context(),
+              wave2Command(
+                "relationship.organizationCreate",
+                {
+                  organizationId: id,
+                  spaceId: ids.rootSpace,
+                  name,
+                  relationshipState: "active",
+                },
+                key,
+              ),
+            ),
+          ).outcome,
+          "success",
+        );
+      }
+      const removal = wave2Command(
+        "relationship.organizationRemove",
+        { organizationId },
+        "remove-org",
+        { [organizationId]: 1 },
+      );
+      assert.equal(
+        unwrap(first.kernel.execute(context(), removal)).outcome,
+        "success",
+      );
+      firstDatabase.close();
+
+      // The soft delete has to survive the trip through SQLite: an in-memory
+      // store would report it removed either way, and a record that comes back
+      // on restart is the same invisibility defect from the other direction.
+      const reopenedDatabase = new DatabaseSync(filename);
+      const reopened = createKernel(reopenedDatabase);
+      const listed = (): readonly string[] => {
+        const result = reopened.kernel.query(
+          context(),
+          QueryEnvelopeSchema.parse({
+            contractVersion: 1,
+            queryName: "relationship.workspace",
+            queryId: wave2RequestId(),
+            workspaceId: ids.workspace,
+            consistency: "local_authoritative",
+            parameters: { spaceId: ids.rootSpace },
+          }),
+        );
+        if (
+          result.kind !== "query_result" ||
+          result.result.outcome !== "success" ||
+          result.result.projection.kind !== "relationship.workspace"
+        )
+          throw new Error("Expected the relationship projection.");
+        return result.result.projection.records.map((record) => record.id);
+      };
+      assert.deepEqual(listed(), [keptId]);
+      // The row is still there — removal is a soft delete, not a purge.
+      assert.equal(
+        reopened.store
+          .snapshot()
+          .strategicRecords?.find((record) => record.id === organizationId)
+          ?.recordState,
+        "removed",
+      );
+
+      assert.equal(
+        unwrap(
+          reopened.kernel.execute(
+            context(),
+            wave2Command(
+              "command.undo",
+              { targetCommandId: removal.commandId },
+              "undo-remove-org",
+              { [organizationId]: 2 },
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      assert.deepEqual([...listed()].sort(), [keptId, organizationId].sort());
       reopenedDatabase.close();
     });
   });

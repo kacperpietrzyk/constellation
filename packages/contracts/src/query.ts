@@ -43,6 +43,7 @@ import { NeedsReviewSchema } from "./narrative.js";
 import { GlobalSearchRecordKindSchema } from "./record-kind-registry.js";
 import {
   CheckpointRevertUnavailableReasonSchema,
+  CompensationKindSchema,
   UndoUnavailableReasonSchema,
 } from "./recovery.js";
 
@@ -375,6 +376,11 @@ const StrategicRecordBaseSchema = z.object({
   workspaceId: WorkspaceIdSchema,
   spaceId: SpaceIdSchema,
   createdBy: PrincipalIdSchema,
+  // Projections list active records only, so this is always "active" when it
+  // appears at all. It is carried rather than dropped because a reader that
+  // holds a projection alongside a record it removed needs the two to be
+  // distinguishable, and because the domain field must have a home here.
+  recordState: z.enum(["active", "removed"]).optional(),
   version: z.int().positive(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
@@ -1809,40 +1815,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
       kind: z.literal("recovery.preview"),
       targetCommandId: CommandIdSchema,
       available: z.boolean(),
-      compensationKind: z
-        .enum([
-          "project.restore_outcome",
-          "area.restore_responsibility",
-          "initiative.restore_outcome",
-          "task.restore_state",
-          "task.restore_details",
-          "task.restore_calendar_block",
-          "task.restore_record_state",
-          "task.undo_create",
-          "task.restore_parent",
-          "taskStatus.restore_definition",
-          "workspace.restore_default_status",
-          "fieldDef.restore_definition",
-          "record.restore_field_value",
-          "template.restore_definition",
-          "automation.restore_definition",
-          "project.unapply_template",
-          "meeting.unpromote_work_item",
-          "meeting.restore_routing",
-          "meeting.restore_work_item",
-          "meeting.restore_participant_links",
-          "task.restore_operational_state",
-          "work_link.restore_state",
-          "savedView.restore_definition",
-          "relation.remove",
-          "relation.restore",
-          "capture.undo_route",
-          "capture.undo_knowledge_route",
-          "knowledge.restore_source",
-          "knowledge.restore_evidence",
-          "knowledge.void_named_version",
-        ])
-        .optional(),
+      compensationKind: CompensationKindSchema.optional(),
       affectedRecordIds: z.array(z.uuid()),
       requiredVersions: z.record(z.uuid(), z.int().positive()),
       unavailableReason: UndoUnavailableReasonSchema.optional(),

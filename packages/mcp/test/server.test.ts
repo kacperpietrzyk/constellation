@@ -431,9 +431,17 @@ test("serves a grant-filtered operation catalog generated from the contract", as
       )?.revertable,
       "always",
     );
+    // Entity creates are compensable; what still is not is a command with no
+    // removal state to return to, and the catalog has to say which is which.
     assert.equal(
       catalog.operations.find(
         (operation) => operation.name === "project.create",
+      )?.revertable,
+      "always",
+    );
+    assert.equal(
+      catalog.operations.find(
+        (operation) => operation.name === "agent.checkpointCreate",
       )?.revertable,
       "never",
     );

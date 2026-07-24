@@ -37,7 +37,9 @@ import type {
 } from "@constellation/contracts";
 import {
   compareTasksByDue,
+  recordIsActive,
   effectiveTaskPriority,
+  strategicRecordState,
   taskMatchesFilters,
 } from "@constellation/domain";
 import type {
@@ -540,7 +542,9 @@ class ReadView implements ApplicationReadView {
     return [...this.state.projects.values()]
       .filter(
         (project) =>
-          project.workspaceId === workspaceId && project.spaceId === spaceId,
+          project.workspaceId === workspaceId &&
+          project.spaceId === spaceId &&
+          recordIsActive(project),
       )
       .sort(
         (left, right) =>
@@ -560,7 +564,9 @@ class ReadView implements ApplicationReadView {
     return [...this.state.documents.values()]
       .filter(
         (document) =>
-          document.workspaceId === workspaceId && document.spaceId === spaceId,
+          document.workspaceId === workspaceId &&
+          document.spaceId === spaceId &&
+          recordIsActive(document),
       )
       .sort(
         (left, right) =>
@@ -631,7 +637,9 @@ class ReadView implements ApplicationReadView {
     return [...this.state.knowledgeSources.values()]
       .filter(
         (source) =>
-          source.workspaceId === workspaceId && source.spaceId === spaceId,
+          source.workspaceId === workspaceId &&
+          source.spaceId === spaceId &&
+          recordIsActive(source),
       )
       .sort(
         (left, right) =>
@@ -678,7 +686,14 @@ class ReadView implements ApplicationReadView {
     return [...this.state.strategicRecords.values()]
       .filter(
         (record) =>
-          record.workspaceId === workspaceId && record.spaceId === spaceId,
+          record.workspaceId === workspaceId &&
+          record.spaceId === spaceId &&
+          // The single choke point for removal: every projection, search and
+          // relation read reaches strategic records through this list, so a
+          // removed record leaves all of them at once instead of each call
+          // site remembering to filter. getStrategicRecord stays unfiltered —
+          // undo has to find what it is putting back.
+          strategicRecordState(record) === "active",
       )
       .sort(
         (left, right) =>

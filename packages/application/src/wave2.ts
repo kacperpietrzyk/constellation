@@ -100,7 +100,11 @@ import {
   createRadarCandidate,
   closeProject,
   reopenProject,
+  recordIsActive,
   restoreTaskProjectRelation,
+  setStrategicRecordState,
+  strategicRecordReferences,
+  strategicRecordState,
   setTaskStatus,
   setTaskOperationalState,
   undoCaptureTaskRoute,
@@ -166,26 +170,38 @@ export type Wave2Command = Extract<
   {
     commandName:
       | "project.create"
+      | "project.remove"
       | "document.create"
+      | "document.remove"
       | "knowledge.sourceCreate"
+      | "knowledge.sourceRemove"
       | "knowledge.sourceUpdate"
       | "knowledge.documentSetEvidence"
       | "knowledge.namedVersionCreate"
       | "knowledge.namedVersionVoid"
       | "relationship.organizationCreate"
+      | "relationship.organizationRemove"
       | "relationship.personCreate"
+      | "relationship.personRemove"
       | "opportunity.create"
+      | "opportunity.remove"
       | "opportunity.offerCreate"
+      | "opportunity.offerRemove"
       | "opportunity.linkOutcomes"
       | "relationship.renewalCreate"
+      | "relationship.renewalRemove"
       | "relationship.renewalResolve"
       | "relationship.factCreate"
+      | "relationship.factRemove"
       | "decision.create"
+      | "decision.remove"
       | "decision.supersede"
       | "decision.resolveImpact"
       | "area.create"
+      | "area.remove"
       | "area.updateResponsibility"
       | "initiative.create"
+      | "initiative.remove"
       | "initiative.updateOutcome"
       | "work.linkCreate"
       | "work.linkRemove"
@@ -315,6 +331,42 @@ export const isWave2CommandAuthorized = (
         space?.workspaceId === command.workspaceId ? space.id : undefined,
       );
     }
+    case "project.remove": {
+      const project = view.getProject(command.payload.projectId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        project?.workspaceId === command.workspaceId
+          ? project.spaceId
+          : undefined,
+      );
+    }
+    case "document.remove": {
+      const document = view.getDocument(command.payload.documentId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        document?.workspaceId === command.workspaceId
+          ? document.spaceId
+          : undefined,
+      );
+    }
+    case "knowledge.sourceRemove": {
+      const source = view.getKnowledgeSource(command.payload.sourceId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        source?.workspaceId === command.workspaceId
+          ? source.spaceId
+          : undefined,
+      );
+    }
     case "document.create": {
       const space = view.getSpace(command.payload.spaceId);
       return authorized(
@@ -417,6 +469,29 @@ export const isWave2CommandAuthorized = (
         context,
         command,
         space?.workspaceId === command.workspaceId ? space.id : undefined,
+      );
+    }
+    // Every removal names one record it already knows, so the Space it is
+    // authorized against is the record's own — there is no spaceId in the
+    // payload to trust.
+    case "relationship.organizationRemove":
+    case "relationship.personRemove":
+    case "opportunity.remove":
+    case "opportunity.offerRemove":
+    case "relationship.renewalRemove":
+    case "relationship.factRemove":
+    case "decision.remove":
+    case "area.remove":
+    case "initiative.remove": {
+      const record = view.getStrategicRecord(removedStrategicRecordId(command));
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        record?.workspaceId === command.workspaceId
+          ? record.spaceId
+          : undefined,
       );
     }
     case "area.updateResponsibility": {
@@ -1171,6 +1246,367 @@ const precondition = (
     diagnosticCode: "command.precondition_failed",
   });
 
+/**
+ * What still points at a Project, a Document or a Knowledge Source inside its
+ * Space. Same rule as every other removal: refuse rather than orphan, and read
+ * the filtered lists, so a reference held by an already-removed record is not
+ * a reason to keep this one.
+ */
+const tableRecordDependents = (
+  view: ApplicationWave2ReadView,
+  record: {
+    readonly id: string;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+  },
+  recordKind: "project" | "document" | "knowledgeSource",
+): readonly string[] => {
+  const { workspaceId, spaceId, id } = record;
+  const strategic = view.listStrategicRecords(workspaceId, spaceId);
+  if (recordKind === "project")
+    return [
+      ...view
+        .listRelations(workspaceId, spaceId)
+        .filter(
+          (relation) =>
+            relation.projectId === id && relation.state === "active",
+        )
+        .map((relation) => relation.id),
+      ...strategic
+        .filter(
+          (candidate) =>
+            (candidate.kind === "work_link" &&
+              candidate.state === "active" &&
+              (candidate.sourceRecordId === id ||
+                candidate.targetRecordId === id)) ||
+            (candidate.kind === "opportunity" &&
+              candidate.projectIds.some((projectId) => projectId === id)) ||
+            (candidate.kind === "recurrence" &&
+              candidate.contextRecordId === id),
+        )
+        .map((candidate) => candidate.id),
+    ];
+  if (recordKind === "document")
+    return [
+      ...strategic
+        .filter(
+          (candidate) =>
+            candidate.kind === "offer" &&
+            candidate.deliverableDocumentId === id,
+        )
+        .map((candidate) => candidate.id),
+      ...view
+        .listDocuments(workspaceId, spaceId)
+        .filter((candidate) =>
+          candidate.evidence?.noteDocumentIds.some(
+            (documentId) => documentId === id,
+          ),
+        )
+        .map((candidate) => candidate.id),
+      // A named version is the frozen record of what was delivered. Voiding it
+      // is the deliberate act; until then the document it froze stays.
+      ...view
+        .listNamedDocumentVersions(workspaceId, spaceId)
+        .filter(
+          (version) => version.documentId === id && version.state === "active",
+        )
+        .map((version) => version.id),
+    ];
+  return [
+    ...strategic
+      .filter((candidate) =>
+        "evidenceSourceIds" in candidate
+          ? candidate.evidenceSourceIds.some((sourceId) => sourceId === id)
+          : candidate.kind === "radar_candidate" && candidate.sourceId === id,
+      )
+      .map((candidate) => candidate.id),
+    ...view
+      .listDocuments(workspaceId, spaceId)
+      .filter((candidate) =>
+        candidate.evidence?.sourceIds.some((sourceId) => sourceId === id),
+      )
+      .map((candidate) => candidate.id),
+    ...view
+      .listTasksInSpace(workspaceId, spaceId)
+      .filter((task) =>
+        task.attachmentSourceIds?.some((sourceId) => sourceId === id),
+      )
+      .map((task) => task.id),
+  ];
+};
+
+/**
+ * The compensation a create records: taking it back removes the record it
+ * made. One shape for every strategic kind, because the toggle is one shape.
+ */
+const strategicCreateUndo = (
+  command: Wave2Command,
+  record: StrategicRecord,
+): UndoDescriptor => ({
+  targetCommandId: command.commandId,
+  workspaceId: record.workspaceId,
+  spaceId: record.spaceId,
+  kind: "strategic.undo_create",
+  recordId: record.id,
+  resultingVersion: record.version,
+});
+
+/**
+ * The kind each removal is allowed to act on. Naming it keeps a command from
+ * removing a record of the wrong kind that happens to share an id space:
+ * decision.remove must refuse an Area, not soft-remove it.
+ */
+const REMOVED_STRATEGIC_KIND = {
+  "relationship.organizationRemove": "organization",
+  "relationship.personRemove": "person",
+  "opportunity.remove": "opportunity",
+  "opportunity.offerRemove": "offer",
+  "relationship.renewalRemove": "renewal",
+  "relationship.factRemove": "relationship_fact",
+  "decision.remove": "decision",
+  "area.remove": "area",
+  "initiative.remove": "initiative",
+} as const satisfies Readonly<Record<string, StrategicRecord["kind"]>>;
+
+/**
+ * The record a removal names. Each kind keeps its own payload field, because
+ * the field name is what makes the command readable at the call site; this is
+ * the one place that has to know them all.
+ */
+const removedStrategicRecordId = (
+  command: Extract<
+    Wave2Command,
+    {
+      commandName:
+        | "relationship.organizationRemove"
+        | "relationship.personRemove"
+        | "opportunity.remove"
+        | "opportunity.offerRemove"
+        | "relationship.renewalRemove"
+        | "relationship.factRemove"
+        | "decision.remove"
+        | "area.remove"
+        | "initiative.remove";
+    }
+  >,
+): StrategicRecordId => {
+  switch (command.commandName) {
+    case "relationship.organizationRemove":
+      return command.payload.organizationId;
+    case "relationship.personRemove":
+      return command.payload.personId;
+    case "opportunity.remove":
+      return command.payload.opportunityId;
+    case "opportunity.offerRemove":
+      return command.payload.offerId;
+    case "relationship.renewalRemove":
+      return command.payload.renewalId;
+    case "relationship.factRemove":
+      return command.payload.factId;
+    case "decision.remove":
+      return command.payload.decisionId;
+    case "area.remove":
+      return command.payload.areaId;
+    case "initiative.remove":
+      return command.payload.initiativeId;
+  }
+};
+
+/**
+ * What still points at a strategic record, inside its own Space. Removal and
+ * the undo of a create both consult it: a create that other work has since
+ * attached itself to is no longer a lone create, and taking it back would
+ * orphan that work.
+ *
+ * Space-scoped like every other relation read here, and it reads the filtered
+ * list on purpose — a reference held by an already-removed record is not a
+ * reason to keep a record in the graph.
+ */
+const strategicRecordDependents = (
+  view: ApplicationWave2ReadView,
+  record: StrategicRecord,
+): readonly StrategicRecordId[] =>
+  view
+    .listStrategicRecords(record.workspaceId, record.spaceId)
+    .filter(
+      (candidate) =>
+        candidate.id !== record.id &&
+        strategicRecordReferences(candidate).includes(record.id),
+    )
+    .map((candidate) => candidate.id);
+
+/**
+ * The removal path for the three records that keep their own table. Same
+ * shape as removeStrategicRecord, over a different set of tables: read, check
+ * the version, refuse if anything points at it, toggle, compensate.
+ */
+const removeTableRecord = (
+  dependencies: ApplicationKernelDependencies,
+  transaction: ApplicationWave2Transaction,
+  context: ExecutionContext,
+  command: Wave2Command,
+  idempotency: Omit<IdempotencyRecord, "outcome">,
+  occurredAt: string,
+  recordKind: "project" | "document" | "knowledgeSource",
+  recordId: string,
+): CommandOutcome => {
+  const record =
+    recordKind === "project"
+      ? transaction.getProject(ProjectIdSchema.parse(recordId))
+      : recordKind === "document"
+        ? transaction.getDocument(DocumentIdSchema.parse(recordId))
+        : transaction.getKnowledgeSource(
+            KnowledgeSourceIdSchema.parse(recordId),
+          );
+  if (
+    record === undefined ||
+    record.workspaceId !== command.workspaceId ||
+    !recordIsActive(record)
+  )
+    return precondition(command, occurredAt);
+  if (!exactExpected(command, { [record.id]: record.version }))
+    return versionConflict(command, occurredAt, {
+      [record.id]: record.version,
+    });
+  if (tableRecordDependents(transaction, record, recordKind).length > 0)
+    return precondition(command, occurredAt);
+  const priorRecordState = recordIsActive(record) ? "active" : "removed";
+  const removed = {
+    ...record,
+    recordState: "removed" as const,
+    version: record.version + 1,
+    updatedAt: occurredAt,
+  };
+  const stored =
+    recordKind === "project"
+      ? transaction.updateProject(removed as Project, record.version)
+      : recordKind === "document"
+        ? transaction.updateDocument(removed as NativeDocument, record.version)
+        : transaction.updateKnowledgeSource(
+            removed as KnowledgeSource,
+            record.version,
+          );
+  if (!stored)
+    return versionConflict(command, occurredAt, {
+      [record.id]: record.version,
+    });
+  return appendJournal(
+    dependencies,
+    transaction,
+    context,
+    command,
+    idempotency,
+    occurredAt,
+    {
+      type: "record.removed",
+      workspaceId: removed.workspaceId,
+      spaceId: removed.spaceId,
+      aggregateId: removed.id,
+      aggregateVersion: removed.version,
+      occurredAt,
+    },
+    { [removed.id]: removed.version },
+    ["recordState"],
+    {
+      diagnosticCode: "record.removed",
+      projection: {
+        kind: "record.removed",
+        recordId: removed.id,
+        recordKind,
+        version: removed.version,
+      },
+    },
+    {
+      targetCommandId: command.commandId,
+      workspaceId: removed.workspaceId,
+      spaceId: removed.spaceId,
+      kind: "record.restore_record_state",
+      recordKind,
+      recordId: removed.id,
+      priorRecordState,
+      resultingVersion: removed.version,
+    },
+    { [removed.id]: recordKind },
+  );
+};
+
+/**
+ * The explicit removal path, shared by every strategic kind: one guard, one
+ * recordState transition, one compensation. Per-kind commands differ only in
+ * the capability they carry and the id they name.
+ */
+const removeStrategicRecord = (
+  dependencies: ApplicationKernelDependencies,
+  transaction: ApplicationWave2Transaction,
+  context: ExecutionContext,
+  command: Wave2Command,
+  idempotency: Omit<IdempotencyRecord, "outcome">,
+  occurredAt: string,
+  recordId: StrategicRecordId,
+  kind: StrategicRecord["kind"],
+): CommandOutcome => {
+  const record = transaction.getStrategicRecord(recordId);
+  if (
+    record === undefined ||
+    record.kind !== kind ||
+    record.workspaceId !== command.workspaceId ||
+    strategicRecordState(record) !== "active"
+  )
+    return precondition(command, occurredAt);
+  if (!exactExpected(command, { [record.id]: record.version }))
+    return versionConflict(command, occurredAt, {
+      [record.id]: record.version,
+    });
+  // ADR-043 §3, as task.remove: refuse rather than orphan. The caller detaches
+  // the referring record first, which keeps every removal a decision someone
+  // made rather than a cascade nobody saw.
+  if (strategicRecordDependents(transaction, record).length > 0)
+    return precondition(command, occurredAt);
+  const priorRecordState = strategicRecordState(record);
+  const removed = setStrategicRecordState(record, "removed", occurredAt);
+  if (!transaction.updateStrategicRecord(removed, record.version))
+    return versionConflict(command, occurredAt, {
+      [record.id]: record.version,
+    });
+  return appendJournal(
+    dependencies,
+    transaction,
+    context,
+    command,
+    idempotency,
+    occurredAt,
+    {
+      type: "strategic.record_changed",
+      workspaceId: removed.workspaceId,
+      spaceId: removed.spaceId,
+      aggregateId: removed.id,
+      aggregateVersion: removed.version,
+      occurredAt,
+    },
+    { [removed.id]: removed.version },
+    ["recordState"],
+    {
+      diagnosticCode: "strategic.record_removed",
+      projection: {
+        kind: "strategic.record_removed",
+        recordId: removed.id,
+        recordType: removed.kind,
+        version: removed.version,
+      },
+    },
+    {
+      targetCommandId: command.commandId,
+      workspaceId: removed.workspaceId,
+      spaceId: removed.spaceId,
+      kind: "strategic.restore_record_state",
+      recordId: removed.id,
+      priorRecordState,
+      resultingVersion: removed.version,
+    },
+    { [removed.id]: "strategicRecord" },
+  );
+};
+
 // Every projection carrying a record narrative derives the same two fields
 // from it: the text, coalesced so a reader needs no null handling, and the
 // gap, stated as a flag so an unwritten narrative stays visible instead of
@@ -1297,16 +1733,19 @@ export const resolveDocumentEntityTarget = (
   }
   if (targetKind === "project") {
     const project = view.getProject(ProjectIdSchema.parse(targetId));
-    return project?.workspaceId === workspaceId
+    return project?.workspaceId === workspaceId && recordIsActive(project)
       ? { targetKind, targetId, label: project.title, spaceId: project.spaceId }
       : undefined;
   }
   const record = view.getStrategicRecord(
     StrategicRecordIdSchema.parse(targetId),
   );
+  // A removed record resolves to nothing, exactly as a removed Task does: a
+  // link into it must not keep rendering its title after it left the graph.
   if (
     record?.workspaceId !== workspaceId ||
     record.kind !== targetKind ||
+    strategicRecordState(record) !== "active" ||
     !["person", "organization", "meeting"].includes(record.kind)
   )
     return undefined;
@@ -1525,7 +1964,15 @@ export const executeWave2Command = (
             version: document.version,
           },
         },
-        undefined,
+        {
+          targetCommandId: command.commandId,
+          workspaceId: document.workspaceId,
+          spaceId: document.spaceId,
+          kind: "record.undo_create",
+          recordKind: "document",
+          recordId: document.id,
+          resultingVersion: document.version,
+        },
         { [document.id]: "document" },
       );
     }
@@ -1586,7 +2033,15 @@ export const executeWave2Command = (
             version: source.version,
           },
         },
-        undefined,
+        {
+          targetCommandId: command.commandId,
+          workspaceId: source.workspaceId,
+          spaceId: source.spaceId,
+          kind: "record.undo_create",
+          recordKind: "knowledgeSource",
+          recordId: source.id,
+          resultingVersion: source.version,
+        },
         { [source.id]: "knowledgeSource" },
       );
     }
@@ -2009,10 +2464,62 @@ export const executeWave2Command = (
             version: record.version,
           },
         },
-        undefined,
+        strategicCreateUndo(command, record),
         { [record.id]: "strategicRecord" },
       );
     }
+    case "project.remove":
+      return removeTableRecord(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        "project",
+        command.payload.projectId,
+      );
+    case "document.remove":
+      return removeTableRecord(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        "document",
+        command.payload.documentId,
+      );
+    case "knowledge.sourceRemove":
+      return removeTableRecord(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        "knowledgeSource",
+        command.payload.sourceId,
+      );
+    case "relationship.organizationRemove":
+    case "relationship.personRemove":
+    case "opportunity.remove":
+    case "opportunity.offerRemove":
+    case "relationship.renewalRemove":
+    case "relationship.factRemove":
+    case "decision.remove":
+    case "area.remove":
+    case "initiative.remove":
+      return removeStrategicRecord(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        removedStrategicRecordId(command),
+        REMOVED_STRATEGIC_KIND[command.commandName],
+      );
     case "relationship.renewalCreate": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       if (
@@ -2222,6 +2729,9 @@ export const executeWave2Command = (
           "staleAfter",
           "state",
         ],
+        {},
+        {},
+        strategicCreateUndo(command, record),
       );
     }
     case "decision.create": {
@@ -2261,6 +2771,9 @@ export const executeWave2Command = (
         occurredAt,
         record,
         ["title", "rationale", "evidenceSourceIds", "linkedRecordIds", "state"],
+        {},
+        {},
+        strategicCreateUndo(command, record),
       );
     }
     case "decision.supersede": {
@@ -2426,6 +2939,9 @@ export const executeWave2Command = (
         occurredAt,
         record,
         ["title", "responsibility", "state"],
+        {},
+        {},
+        strategicCreateUndo(command, record),
       );
     }
     case "area.updateResponsibility": {
@@ -2493,6 +3009,9 @@ export const executeWave2Command = (
         occurredAt,
         record,
         ["title", "intendedOutcome", "state"],
+        {},
+        {},
+        strategicCreateUndo(command, record),
       );
     }
     case "initiative.updateOutcome": {
@@ -3003,7 +3522,7 @@ export const executeWave2Command = (
             version: record.version,
           },
         },
-        undefined,
+        strategicCreateUndo(command, record),
         { [record.id]: "strategicRecord" },
       );
     }
@@ -3089,7 +3608,7 @@ export const executeWave2Command = (
             version: record.version,
           },
         },
-        undefined,
+        strategicCreateUndo(command, record),
         { [record.id]: "strategicRecord" },
       );
     }
@@ -3164,7 +3683,7 @@ export const executeWave2Command = (
             version: record.version,
           },
         },
-        undefined,
+        strategicCreateUndo(command, record),
         { [record.id]: "strategicRecord" },
       );
     }
@@ -3897,6 +4416,15 @@ export const executeWave2Command = (
             lifecycle: project.lifecycle,
             version: project.version,
           },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          kind: "record.undo_create",
+          recordKind: "project",
+          recordId: project.id,
+          resultingVersion: project.version,
         },
       );
     }
@@ -6987,6 +7515,71 @@ const descriptorState = (
             reason: "later_change",
           };
     }
+    case "strategic.undo_create": {
+      // Taking a create back removes the record, so version equality is not
+      // enough: a person, opportunity or link attached afterwards does not
+      // bump the record's version, and removing it would orphan them.
+      const record = view.getStrategicRecord(descriptor.recordId);
+      return record !== undefined &&
+        strategicRecordState(record) === "active" &&
+        record.version === descriptor.resultingVersion &&
+        strategicRecordDependents(view, record).length === 0
+        ? {
+            available: true,
+            recordIds: [record.id],
+            versions: { [record.id]: record.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "record.undo_create":
+    case "record.restore_record_state": {
+      const record =
+        descriptor.recordKind === "project"
+          ? view.getProject(ProjectIdSchema.parse(descriptor.recordId))
+          : descriptor.recordKind === "document"
+            ? view.getDocument(DocumentIdSchema.parse(descriptor.recordId))
+            : view.getKnowledgeSource(
+                KnowledgeSourceIdSchema.parse(descriptor.recordId),
+              );
+      // Undoing a create removes the record, so it has to re-run the guard the
+      // explicit removal runs; restoring one only has to find it unchanged.
+      const orphans =
+        descriptor.kind === "record.undo_create" &&
+        record !== undefined &&
+        tableRecordDependents(view, record, descriptor.recordKind).length > 0;
+      return record?.version === descriptor.resultingVersion && !orphans
+        ? {
+            available: true,
+            recordIds: [record.id],
+            versions: { [record.id]: record.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "strategic.restore_record_state": {
+      const record = view.getStrategicRecord(descriptor.recordId);
+      return record?.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [record.id],
+            versions: { [record.id]: record.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
     case "savedView.restore_definition": {
       const record = view.getStrategicRecord(descriptor.savedViewId);
       return record?.kind === "saved_view" &&
@@ -7693,6 +8286,23 @@ const applyUndo = (
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "task" };
+  } else if (
+    descriptor.kind === "strategic.undo_create" ||
+    descriptor.kind === "strategic.restore_record_state"
+  ) {
+    const record = transaction.getStrategicRecord(
+      descriptor.recordId,
+    ) as StrategicRecord;
+    const restored = setStrategicRecordState(
+      record,
+      descriptor.kind === "strategic.undo_create"
+        ? "removed"
+        : descriptor.priorRecordState,
+      occurredAt,
+    );
+    transaction.updateStrategicRecord(restored, record.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
   } else if (descriptor.kind === "savedView.restore_definition") {
     const record = transaction.getStrategicRecord(
       descriptor.savedViewId,
@@ -7832,6 +8442,54 @@ const applyUndo = (
     transaction.updateKnowledgeSource(restored, source.version);
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "knowledgeSource" };
+  } else if (
+    descriptor.kind === "record.undo_create" ||
+    descriptor.kind === "record.restore_record_state"
+  ) {
+    const recordState =
+      descriptor.kind === "record.undo_create"
+        ? "removed"
+        : descriptor.priorRecordState;
+    if (descriptor.recordKind === "project") {
+      const project = transaction.getProject(
+        ProjectIdSchema.parse(descriptor.recordId),
+      )!;
+      const restored: Project = {
+        ...project,
+        recordState,
+        version: project.version + 1,
+        updatedAt: occurredAt,
+      };
+      transaction.updateProject(restored, project.version);
+      compensatedVersions = { [restored.id]: restored.version };
+      compensatedKinds = { [restored.id]: "project" };
+    } else if (descriptor.recordKind === "document") {
+      const document = transaction.getDocument(
+        DocumentIdSchema.parse(descriptor.recordId),
+      )!;
+      const restored: NativeDocument = {
+        ...document,
+        recordState,
+        version: document.version + 1,
+        updatedAt: occurredAt,
+      };
+      transaction.updateDocument(restored, document.version);
+      compensatedVersions = { [restored.id]: restored.version };
+      compensatedKinds = { [restored.id]: "document" };
+    } else {
+      const source = transaction.getKnowledgeSource(
+        KnowledgeSourceIdSchema.parse(descriptor.recordId),
+      )!;
+      const restored: KnowledgeSource = {
+        ...source,
+        recordState,
+        version: source.version + 1,
+        updatedAt: occurredAt,
+      };
+      transaction.updateKnowledgeSource(restored, source.version);
+      compensatedVersions = { [restored.id]: restored.version };
+      compensatedKinds = { [restored.id]: "knowledgeSource" };
+    }
   } else if (descriptor.kind === "knowledge.restore_evidence") {
     const document = transaction.getDocument(descriptor.documentId)!;
     const restored = setDocumentEvidence(document, {

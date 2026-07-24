@@ -39,6 +39,8 @@ const context = (): ExecutionContext =>
     capabilityScope: [
       "workspace.createLocal",
       "relationship.organizationCreate",
+      "relationship.organizationRemove",
+      "relationship.personRemove",
       "relationship.personCreate",
       "opportunity.create",
       "opportunity.offerCreate",
@@ -2317,4 +2319,123 @@ it("corrects meeting work items through the kernel, attributed and undoable", ()
     false,
   );
   assert.deepEqual(item().responsibilityOverride, { name: "Antek" });
+});
+
+it("refuses to remove a record other work still points at, and hides it once removed", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("removal-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Removal",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const organizationId = uuid();
+  const personId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("removal-organization"),
+        commandName: "relationship.organizationCreate",
+        payload: {
+          organizationId,
+          spaceId: ids.space,
+          name: "Orbit",
+          relationshipState: "active",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("removal-person"),
+        commandName: "relationship.personCreate",
+        payload: {
+          personId,
+          spaceId: ids.space,
+          name: "Ada",
+          organizationId,
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  const remove = (key: string, id: string, version: number) =>
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(key, { [id]: version }),
+        commandName:
+          id === organizationId
+            ? "relationship.organizationRemove"
+            : "relationship.personRemove",
+        payload:
+          id === organizationId ? { organizationId: id } : { personId: id },
+      }),
+    );
+
+  // ADR-043 §3, as task.remove: refuse rather than orphan. The person still
+  // names this organization, so the organization stays until they are detached
+  // or removed themselves.
+  const blocked = remove("removal-blocked", organizationId, 1);
+  assert.equal(blocked.outcome, "rejected");
+  assert.equal(blocked.diagnosticCode, "command.precondition_failed");
+
+  assert.equal(remove("removal-person-go", personId, 1).outcome, "success");
+  const removed = remove("removal-organization-go", organizationId, 1);
+  assert.equal(removed.outcome, "success");
+
+  const records = (): readonly string[] => {
+    const result = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "relationship.workspace",
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space },
+    });
+    if (
+      result.kind !== "query_result" ||
+      result.result.outcome !== "success" ||
+      result.result.projection.kind !== "relationship.workspace"
+    )
+      throw new Error("Expected the relationship projection.");
+    return result.result.projection.records.map((record) => record.id);
+  };
+  assert.deepEqual(records(), []);
+  // Search reads the same list, so a removed record leaves both at once
+  // rather than lingering in one surface.
+  const search = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "search.global",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceIds: [ids.space], text: "Orbit" },
+  });
+  if (
+    search.kind !== "query_result" ||
+    search.result.outcome !== "success" ||
+    search.result.projection.kind !== "search.global"
+  )
+    throw new Error("Expected the search projection.");
+  assert.deepEqual(search.result.projection.items, []);
+
+  // Removing twice is a precondition failure, not a second soft delete.
+  assert.equal(
+    remove("removal-organization-again", organizationId, 2).outcome,
+    "rejected",
+  );
 });

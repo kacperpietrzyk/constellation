@@ -1201,6 +1201,7 @@ describe("remote MCP Hub gateway", () => {
       "command.undo",
       "project.create",
       "project.updateOutcome",
+      "capture.submitText",
     ]);
     const command = async (input: {
       readonly key: string;
@@ -1253,15 +1254,17 @@ describe("remote MCP Hub gateway", () => {
         label: "Before the import",
       },
     });
-    const projectCreate = await command({
-      key: "remote-project-create",
-      commandName: "project.create",
+    // A Capture, not a Project: entity creates are compensable now, and this
+    // asserts the diagnostic for a command that records none.
+    const captureSubmit = await command({
+      key: "remote-capture-submit",
+      commandName: "capture.submitText",
       checkpointId: uncompensable,
       payload: {
-        projectId: uuid(),
         spaceId: ids.space,
-        title: "Imported project",
-        intendedOutcome: "Ship the import",
+        originalText: "Imported note",
+        deviceId: "remote-mcp-test",
+        source: "in_app_quick_capture",
       },
     });
     const blocked = await revert(uncompensable, "remote-revert-1");
@@ -1271,9 +1274,9 @@ describe("remote MCP Hub gateway", () => {
       checkpointId: uncompensable,
       blocked: [
         {
-          targetCommandId: projectCreate,
+          targetCommandId: captureSubmit,
           unavailableReason: "unsupported",
-          commandName: "project.create",
+          commandName: "capture.submitText",
         },
       ],
     });
