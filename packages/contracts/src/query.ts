@@ -386,6 +386,9 @@ const StrategicRecordBaseSchema = z.object({
   updatedAt: z.iso.datetime({ offset: true }),
 });
 
+export type StrategicRecordProjection = z.infer<
+  typeof StrategicRecordProjectionSchema
+>;
 export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
   StrategicRecordBaseSchema.extend({
     kind: z.literal("organization"),

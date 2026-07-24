@@ -11,4 +11,5 @@ export * from "./query.js";
 export * from "./record-kind-registry.js";
 export * from "./recovery.js";
 export * from "./revertability.js";
+export * from "./strategic-references.js";
 export * from "./validation.js";

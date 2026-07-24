@@ -15,6 +15,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { strategicRecordReferences } from "@constellation/contracts";
 import type {
   CaptureId,
   CaptureOriginal,
@@ -45,6 +46,7 @@ import {
   type SurfaceShortcutHint,
 } from "./components/ShortcutsOverlay.js";
 import { recordNarrativeGaps } from "./record-narrative.js";
+import { RecordRemovalSection } from "./components/RecordRemovalSection.js";
 import { TaskRemovalSection } from "./components/TaskRemovalSection.js";
 import { TaskReservationSection } from "./components/TaskReservationSection.js";
 import {
@@ -504,12 +506,35 @@ const strategicRecordTitle = (record: StrategicRecord): string =>
 // Relacje (albo klik licznika ofert/projektów) prowadzi tutaj. Powiązane
 // oferty wybiera się dalej w inspectorze, a projekty otwierają się jako
 // pełnoprawny kontekst shellu.
+// What the kernel would refuse this removal for, in the reader's words. The
+// same references strategicRecordReferences names on the kernel side, read out
+// of the projection the inspector already holds — so the block is explained
+// before the click, not after the rejection.
+const strategicDependentLabels = (
+  record: StrategicRecord,
+  records: readonly StrategicRecord[],
+): readonly string[] =>
+  records
+    .filter(
+      (candidate) =>
+        candidate.id !== record.id &&
+        strategicRecordReferences(candidate).includes(record.id),
+    )
+    .map(
+      (candidate) =>
+        `${recordKindLabels[candidate.kind] ?? "rekord"}: ${strategicRecordTitle(candidate)}`,
+    );
+
 const StrategicRecordInspector = ({
   record,
   records,
   projects,
+  client,
+  snapshot,
   onSelectRecord,
   onOpenProject,
+  onRemoved,
+  onRemoveFailure,
 }: {
   readonly record: StrategicRecord;
   readonly records: readonly StrategicRecord[];
@@ -517,8 +542,12 @@ const StrategicRecordInspector = ({
     readonly id: ProjectId;
     readonly title: string;
   }[];
+  readonly client: ConstellationRendererClient | undefined;
+  readonly snapshot: DesktopSnapshot;
   readonly onSelectRecord: (id: string) => void;
   readonly onOpenProject: (id: ProjectId, title: string) => void;
+  readonly onRemoved: (message: string) => Promise<void>;
+  readonly onRemoveFailure: (result: MutationFailure) => void;
 }) => {
   const state = strategicRecordState(record);
   const organization =
@@ -743,6 +772,16 @@ const StrategicRecordInspector = ({
           <blockquote>{record.relevance}</blockquote>
           <p>Kandydat czeka na decyzję w przeglądzie Relacji.</p>
         </section>
+      )}
+      {client !== undefined && (
+        <RecordRemovalSection
+          client={client}
+          snapshot={snapshot}
+          record={record}
+          dependentLabels={strategicDependentLabels(record, records)}
+          onRemoved={onRemoved}
+          onFailure={onRemoveFailure}
+        />
       )}
     </div>
   );
@@ -4981,10 +5020,17 @@ export const RealApp = ({
                 ? state.snapshot.projects.data.items
                 : []
             }
+            client={client}
+            snapshot={state.snapshot}
             onSelectRecord={selectStrategicInInspector}
             onOpenProject={(id, title) =>
               openContext(projectContext(id, title))
             }
+            onRemoved={async (message) => {
+              await refreshAfter(message);
+              setSelectedStrategicId(undefined);
+            }}
+            onRemoveFailure={showFailure}
           />
         ) : (
           <div className="inspector-empty workspace-context">

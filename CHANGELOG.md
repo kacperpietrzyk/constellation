@@ -10,6 +10,14 @@ releases begin.
 
 ### Added
 
+- Removal for every entity an agent or a person can create — organization,
+  person, opportunity, offer, renewal, relationship fact, decision, area,
+  initiative, project, document and knowledge source. Removal is a soft delete
+  that keeps history and audit, refuses while another record still points at
+  the record, and is itself revertable. The creates now record compensation
+  too, so a checkpoint containing one can be reverted; the desktop inspector
+  offers the same removal, naming what blocks it before the click.
+
 - `constellation://v1/capabilities` and the operations catalog name the build
   that produced them: the application version plus a contract fingerprint from
   the desktop host and from the MCP server process. When a long-lived MCP

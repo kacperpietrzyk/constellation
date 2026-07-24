@@ -1549,6 +1549,66 @@ export const createOrganization = (
   );
 };
 
+// The kinds a human can remove from the inspector, and the payload field each
+// removal names. Kinds absent here have their own lifecycle command (a saved
+// view is deleted, a work link is detached) or no removal at all.
+const STRATEGIC_REMOVE_COMMANDS: Readonly<
+  Record<string, { readonly name: string; readonly idField: string }>
+> = {
+  organization: {
+    name: "relationship.organizationRemove",
+    idField: "organizationId",
+  },
+  person: { name: "relationship.personRemove", idField: "personId" },
+  opportunity: { name: "opportunity.remove", idField: "opportunityId" },
+  offer: { name: "opportunity.offerRemove", idField: "offerId" },
+  renewal: { name: "relationship.renewalRemove", idField: "renewalId" },
+  relationship_fact: {
+    name: "relationship.factRemove",
+    idField: "factId",
+  },
+  decision: { name: "decision.remove", idField: "decisionId" },
+  area: { name: "area.remove", idField: "areaId" },
+  initiative: { name: "initiative.remove", idField: "initiativeId" },
+};
+
+/**
+ * Removing a strategic record. A soft delete, refused by the kernel while
+ * another record still points at it — the surface reports that refusal as what
+ * it is rather than as a generic failure, and undo puts the record back.
+ */
+export const removeStrategicRecord = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  record: {
+    readonly id: StrategicRecordId;
+    readonly kind: string;
+    readonly version: number;
+  },
+) => {
+  const command = STRATEGIC_REMOVE_COMMANDS[record.kind];
+  if (command === undefined)
+    return Promise.resolve<MutationResult<never>>({
+      kind: "error",
+      message: "Tego rodzaju rekordu nie da się usunąć.",
+    });
+  return execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [record.id]: record.version,
+      }),
+      commandName: command.name,
+      payload: { [command.idField]: record.id },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "strategic.record_removed"
+        ? response.outcome.projection
+        : undefined,
+  );
+};
+
 export const createOpportunity = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
