@@ -3858,6 +3858,20 @@ export const RealApp = ({
                       target,
                     );
                     setAccessBusy(false);
+                    if (result.kind === "conflict") {
+                      // The versions the dialog read are the ones that just
+                      // lost the race, so every retry from it would re-send
+                      // them. Reload instead, and say that plainly — the
+                      // workflow's own "refresh and try again" would be asking
+                      // for something this line has already done.
+                      setNotice({
+                        kind: "conflict",
+                        message:
+                          "Ten dostęp zmienił się w międzyczasie, więc zapis nie przeszedł. Dane odświeżono — otwórz „Zmień uprawnienia” ponownie i sprawdź zakres przed zapisem.",
+                      });
+                      await reloadSnapshot();
+                      return undefined;
+                    }
                     if (result.kind !== "success") {
                       showFailure(result);
                       // Returned as well as noticed: the notice sits on a

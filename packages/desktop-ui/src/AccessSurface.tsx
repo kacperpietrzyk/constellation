@@ -302,7 +302,11 @@ export const AccessSurface = ({
     };
   }) => void;
   readonly onAgentRotate: (grant: AgentGrant) => void;
-  /** Resolves with the failure to show in the dialog, or nothing on success. */
+  /**
+   * Resolves with the refusal the dialog should show and stay open for, or
+   * with nothing when there is nothing left for it to do — the save landed,
+   * or the caller refreshed the data the dialog was built from.
+   */
   readonly onAgentRescope: (
     grant: AgentGrant,
     target: {
@@ -378,6 +382,9 @@ export const AccessSurface = ({
     setRescopePreset(grant.preset === "custom" ? undefined : grant.preset);
     setRescopeSpaceIds(grant.spaces.map((space) => space.spaceId));
     setRescopeFailure(undefined);
+    // The floor under the in-flight flag: an opened dialog is never mid-save,
+    // whatever happened to the one before it.
+    setRescopeSaving(false);
   };
   const closeRescope = () => {
     const trigger = rescopeTriggerRef.current;
@@ -420,15 +427,23 @@ export const AccessSurface = ({
     void onAgentRescope(
       rescoping,
       rescopeTarget(rescoping, rescopePreset, rescopeSpaceIds),
-    ).then((failure) => {
-      setRescopeSaving(false);
-      // An applied re-scope bumps the version of every Space grant it names,
-      // so the versions read here are stale the moment one succeeds. A failure
-      // invalidated nothing — keeping the dialog open is what lets the person
-      // act on the reason instead of rebuilding the same doomed request.
-      if (failure === undefined) closeRescope();
-      else setRescopeFailure(failure);
-    });
+    )
+      .then((failure) => {
+        setRescopeSaving(false);
+        // A refusal the person can answer leaves the versions this dialog read
+        // intact, so it stays open holding them. Anything else — a save that
+        // landed and bumped them, or a lost race the caller has already
+        // refreshed under it — leaves nothing here worth keeping.
+        if (failure === undefined) closeRescope();
+        else setRescopeFailure(failure);
+      })
+      .catch(() => {
+        // Reading the outcome failed, which says nothing about the command:
+        // it may well have landed. Claiming a refusal would be a guess, and
+        // stranding the flag would leave the dialog saving forever.
+        setRescopeSaving(false);
+        closeRescope();
+      });
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
