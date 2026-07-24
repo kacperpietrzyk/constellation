@@ -71,11 +71,12 @@ const grantRow = (
 });
 
 /**
- * A grant issued before a release does not gain what that release added to its
- * preset, and nothing in the product said so — the human who can close it is
- * the one person who could not see it.
+ * Changing what an issued agent may do is the reason the grant is editable at
+ * all: the alternative is revoking it, which mints a new credential and forces
+ * the host on the other side to be reconfigured. The affordance therefore does
+ * not wait for drift — but it also cannot be offered where it cannot reach.
  */
-test("a grant whose scope predates an upgrade offers the human a way to close it", () => {
+test("every local grant can be re-scoped, and a Hub grant still cannot", () => {
   const surface = (
     grant: Record<string, unknown>,
     agentTransport: "local_stdio" | "remote_hub" = "local_stdio",
@@ -115,6 +116,9 @@ test("a grant whose scope predates an upgrade offers the human a way to close it
       } as never),
     );
 
+  // A grant issued before a release does not gain what that release added to
+  // its preset. The row still names that state — it explains a refusal before
+  // anyone opens the dialog.
   const behind = surface(
     grantRow({
       scopeStatus: "behind_preset",
@@ -123,15 +127,16 @@ test("a grant whose scope predates an upgrade offers the human a way to close it
   );
   assert.match(behind, /zakres sprzed aktualizacji/u);
   assert.match(behind, /brakuje 2 uprawnień/u);
-  assert.match(behind, /Zaktualizuj zakres/u);
+  assert.match(behind, /Zmień uprawnienia/u);
 
-  // A current grant must not carry the affordance: an action that is always
-  // there stops meaning anything when it matters.
+  // A grant that is current has nothing to catch up to and everything still
+  // to change — the person who wants a narrower agent starts here.
   const current = surface(grantRow({}));
   assert.doesNotMatch(current, /zakres sprzed aktualizacji/u);
-  assert.doesNotMatch(current, /Zaktualizuj zakres/u);
+  assert.match(current, /Zmień uprawnienia/u);
 
-  // A hand-picked scope has no preset to be behind, so it is never nagged.
+  // A hand-picked scope is never nagged about drift, and the dialog is its
+  // only exit — so the action has to be there.
   const custom = surface(
     grantRow({
       preset: "custom",
@@ -139,7 +144,11 @@ test("a grant whose scope predates an upgrade offers the human a way to close it
       missingFromPreset: [],
     }),
   );
-  assert.doesNotMatch(custom, /Zaktualizuj zakres/u);
+  assert.doesNotMatch(custom, /zakres sprzed aktualizacji/u);
+  assert.match(custom, /Zmień uprawnienia/u);
+  // …and it is labelled as what it is, not silently rendered as the lowest
+  // level it is not.
+  assert.match(custom, /Ręcznie dobrany/u);
 
   // A Hub grant is changed through the Hub's own management API, which carries
   // no scope method yet, so the state is named and the action withheld — an
@@ -152,5 +161,5 @@ test("a grant whose scope predates an upgrade offers the human a way to close it
     "remote_hub",
   );
   assert.match(hub, /zakres sprzed aktualizacji/u);
-  assert.doesNotMatch(hub, /Zaktualizuj zakres/u);
+  assert.doesNotMatch(hub, /Zmień uprawnienia/u);
 });

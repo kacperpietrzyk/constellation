@@ -19,14 +19,68 @@ import { reportFirstEmptyRequiredField } from "./components/InlinePopover.js";
 
 type Member = AccessProjection["members"][number];
 type AgentGrant = AgentAccessProjection["grants"][number];
+/** Every level a person can choose; `custom` is only ever a grant's past. */
+type GrantPreset = Exclude<AgentGrant["preset"], "custom">;
 
-const AccessCreateDialog = ({
+const presetLabel = (preset: AgentGrant["preset"]): string =>
+  preset === "full_access"
+    ? "Pełny dostęp"
+    : preset === "operate"
+      ? "Działa"
+      : preset === "propose"
+        ? "Proponuje"
+        : preset === "custom"
+          ? "Ręcznie dobrany"
+          : "Obserwuje";
+
+const sameSpaceSet = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((spaceId) => b.includes(spaceId));
+
+/**
+ * The difference a save would make, not the state it would set — a person
+ * deciding needs to see what leaves and what arrives. Empty when the choices
+ * still match the grant, so the caller can say why saving is unavailable
+ * instead of describing a change that is not there.
+ */
+export const summariseRescope = (
+  grant: AgentGrant,
+  preset: GrantPreset | undefined,
+  spaceIds: readonly string[],
+  spaces: readonly { readonly id: SpaceId; readonly name: string }[],
+): string => {
+  const held: readonly string[] = grant.spaces.map((space) => space.spaceId);
+  // A Space dropped from the workspace still exists on the grant, and only
+  // the grant carries its name — otherwise a removal would read as a UUID.
+  const nameOf = (spaceId: string): string =>
+    spaces.find((space) => space.id === spaceId)?.name ??
+    grant.spaces.find((space) => space.spaceId === spaceId)?.spaceName ??
+    spaceId;
+  const added = spaceIds.filter((spaceId) => !held.includes(spaceId));
+  const removed = held.filter((spaceId) => !spaceIds.includes(spaceId));
+  return [
+    preset !== undefined && preset !== grant.preset
+      ? `Poziom: ${presetLabel(grant.preset)} → ${presetLabel(preset)}.`
+      : undefined,
+    added.length > 0
+      ? `Dodajesz dostęp do: ${added.map(nameOf).join(", ")}.`
+      : undefined,
+    removed.length > 0
+      ? `Odbierasz dostęp do: ${removed.map(nameOf).join(", ")}.`
+      : undefined,
+  ]
+    .filter((sentence) => sentence !== undefined)
+    .join(" ");
+};
+
+const AccessDialog = ({
+  eyebrow,
   title,
   description,
   open,
   onClose,
   children,
 }: {
+  readonly eyebrow: string;
   readonly title: string;
   readonly description: string;
   readonly open: boolean;
@@ -41,11 +95,21 @@ const AccessCreateDialog = ({
     const dialog = dialogRef.current;
     if (open && dialog !== null && !dialog.open) {
       dialog.showModal();
-      dialog
-        .querySelector<HTMLElement>(
-          "input:not(:disabled), select:not(:disabled), textarea:not(:disabled)",
-        )
-        ?.focus();
+      const first = dialog.querySelector<HTMLElement>(
+        "input:not(:disabled), select:not(:disabled), textarea:not(:disabled)",
+      );
+      // A radio group's focus belongs on the option that is chosen, the way
+      // tabbing into one behaves: landing on an unchosen option turns the
+      // first arrow key from navigation into a change nobody asked for.
+      const selected =
+        first instanceof HTMLInputElement &&
+        first.type === "radio" &&
+        !first.checked
+          ? dialog.querySelector<HTMLElement>(
+              `input[type="radio"][name="${CSS.escape(first.name)}"]:checked`,
+            )
+          : null;
+      (selected ?? first)?.focus();
     }
   }, [open]);
 
@@ -71,7 +135,7 @@ const AccessCreateDialog = ({
       <section className="concept-help-dialog access-dialog">
         <header>
           <div>
-            <p className="eyebrow">Nowy dostęp</p>
+            <p className="eyebrow">{eyebrow}</p>
             <h2 id={titleId}>{title}</h2>
             <p id={descriptionId}>{description}</p>
           </div>
@@ -131,7 +195,13 @@ export const AccessSurface = ({
     };
   }) => void;
   readonly onAgentRotate: (grant: AgentGrant) => void;
-  readonly onAgentRescope: (grant: AgentGrant) => void;
+  readonly onAgentRescope: (
+    grant: AgentGrant,
+    target: {
+      readonly preset: GrantPreset;
+      readonly spaceIds: readonly SpaceId[];
+    },
+  ) => void;
   readonly onAgentRevoke: (grant: AgentGrant) => void;
 }) => {
   // One armed destructive/irreversible action at a time: member revoke,
@@ -160,6 +230,16 @@ export const AccessSurface = ({
     derivedResultWrite: false,
     sourceMaterialization: false,
   });
+  const [rescoping, setRescoping] = useState<AgentGrant | undefined>(undefined);
+  const [rescopePreset, setRescopePreset] = useState<GrantPreset | undefined>(
+    undefined,
+  );
+  const [rescopeSpaceIds, setRescopeSpaceIds] = useState<readonly SpaceId[]>(
+    [],
+  );
+  // Each row owns its own trigger, so the button that opened the dialog is
+  // captured on the way in rather than held in a ref per grant.
+  const rescopeTriggerRef = useRef<HTMLButtonElement | null>(null);
   // The empty-scope alert appears only after the user touched the scope
   // fieldset or tried to submit — not on first render.
   const [spacesTouched, setSpacesTouched] = useState(false);
@@ -174,6 +254,56 @@ export const AccessSurface = ({
         : agentTriggerRef.current
       )?.focus();
     });
+  };
+  const openRescope = (grant: AgentGrant, trigger: HTMLButtonElement) => {
+    rescopeTriggerRef.current = trigger;
+    setRescoping(grant);
+    // A hand-picked scope has no level to preselect; leaving it unchosen is
+    // what makes the warning inside the dialog true.
+    setRescopePreset(grant.preset === "custom" ? undefined : grant.preset);
+    setRescopeSpaceIds(grant.spaces.map((space) => space.spaceId));
+  };
+  const closeRescope = () => {
+    const trigger = rescopeTriggerRef.current;
+    setRescoping(undefined);
+    requestAnimationFrame(() => {
+      if (trigger?.isConnected === true) trigger.focus();
+    });
+  };
+  const rescopeHeldSpaceIds =
+    rescoping?.spaces.map((space) => space.spaceId) ?? [];
+  const rescopeChangesLevel =
+    rescopePreset !== undefined && rescopePreset !== rescoping?.preset;
+  const rescopeChangesSpaces = !sameSpaceSet(
+    rescopeHeldSpaceIds,
+    rescopeSpaceIds,
+  );
+  // Restating the same level is not a no-op for a grant that predates an
+  // upgrade: the command carries today's capability list for that level,
+  // which is exactly what closes the drift.
+  const rescopeClosesDrift =
+    rescoping?.scopeStatus === "behind_preset" &&
+    rescopePreset === rescoping.preset;
+  const rescopeBlocked =
+    rescopePreset === undefined
+      ? "Wybierz poziom możliwości, aby zapisać."
+      : rescopeSpaceIds.length === 0
+        ? "Wybierz co najmniej jeden Space, aby zapisać."
+        : rescopeChangesLevel || rescopeChangesSpaces || rescopeClosesDrift
+          ? undefined
+          : "Nic się nie zmienia — nie ma czego zapisać.";
+  const submitRescope = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (busy || rescoping === undefined) return;
+    if (rescopePreset === undefined || rescopeBlocked !== undefined) return;
+    onAgentRescope(rescoping, {
+      preset: rescopePreset,
+      spaceIds: rescopeSpaceIds,
+    });
+    // An applied re-scope bumps the version of every Space grant it names, so
+    // the versions this dialog read are stale the moment it is sent. Closing
+    // makes reopening from the refreshed projection the only retry there is.
+    closeRescope();
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -387,7 +517,8 @@ export const AccessSurface = ({
       </section>
 
       {current.canManage && openCreation === "person" && (
-        <AccessCreateDialog
+        <AccessDialog
+          eyebrow="Nowy dostęp"
           title="Dodaj osobę"
           description="Utwórz trwałą tożsamość, a rolę w workspace i dostęp do bieżącego Space przyznaj osobno."
           open
@@ -472,7 +603,7 @@ export const AccessSurface = ({
               </button>
             </div>
           </form>
-        </AccessCreateDialog>
+        </AccessDialog>
       )}
 
       <section
@@ -532,7 +663,8 @@ export const AccessSurface = ({
         ) : (
           <>
             {agentAccess.data.canManage && openCreation === "agent" && (
-              <AccessCreateDialog
+              <AccessDialog
+                eyebrow="Nowy dostęp"
                 title={
                   agentTransport === "remote_hub"
                     ? "Dodaj zdalnego agenta"
@@ -732,7 +864,132 @@ export const AccessSurface = ({
                     </p>
                   )}
                 </form>
-              </AccessCreateDialog>
+              </AccessDialog>
+            )}
+
+            {agentAccess.data.canManage && rescoping !== undefined && (
+              <AccessDialog
+                eyebrow="Zmiana uprawnień"
+                title={`Zmień uprawnienia: ${rescoping.displayName}`}
+                description="Poziom możliwości i zakres danych zmieniają się razem, jednym zapisem. Poświadczenie zostaje bez zmian."
+                open
+                onClose={closeRescope}
+              >
+                <form
+                  className="agent-access-composer"
+                  onSubmit={submitRescope}
+                >
+                  <div className="agent-trust-boundary" aria-hidden="true">
+                    <span>Co może zrobić</span>
+                    <i />
+                    <span>Co może zobaczyć</span>
+                  </div>
+                  <fieldset>
+                    <legend>Poziom możliwości</legend>
+                    {(
+                      [
+                        ["observe", "Obserwuj", "Tylko odczyt i dowody"],
+                        [
+                          "propose",
+                          "Proponuj",
+                          "Odczyt i sugestie w komentarzach",
+                        ],
+                        [
+                          "operate",
+                          "Działaj",
+                          "Typowe zmiany bez administracji",
+                        ],
+                        [
+                          "full_access",
+                          "Pełny dostęp",
+                          "Wszystkie przyznane operacje",
+                        ],
+                      ] as const
+                    ).map(([value, label, description]) => (
+                      <label key={value} className="agent-option">
+                        <input
+                          type="radio"
+                          name="rescope-preset"
+                          checked={rescopePreset === value}
+                          onChange={() => setRescopePreset(value)}
+                          disabled={busy}
+                        />
+                        <span>
+                          <strong>{label}</strong>
+                          <small>{description}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
+                  <fieldset className="agent-space-scope">
+                    <legend>Zakres danych</legend>
+                    {spaces.length === 0 ? (
+                      <p className="access-boundary-note">
+                        Ten workspace nie ma jeszcze żadnego Space, więc nie da
+                        się zmienić zakresu danych.
+                      </p>
+                    ) : (
+                      spaces.map((space) => (
+                        <label key={space.id} className="agent-option">
+                          <input
+                            type="checkbox"
+                            checked={rescopeSpaceIds.includes(space.id)}
+                            onChange={() =>
+                              setRescopeSpaceIds((current) =>
+                                current.includes(space.id)
+                                  ? current.filter((id) => id !== space.id)
+                                  : [...current, space.id],
+                              )
+                            }
+                            disabled={busy}
+                          />
+                          <span>
+                            <strong>{space.name}</strong>
+                            <small>Relacje nie poszerzą tego zakresu.</small>
+                          </span>
+                        </label>
+                      ))
+                    )}
+                  </fieldset>
+                  {rescoping.preset === "custom" && (
+                    <p className="access-dialog-note">
+                      Ten grant ma ręcznie dobrany zestaw uprawnień. Wybór
+                      poziomu zastąpi go w całości.
+                    </p>
+                  )}
+                  {rescopeClosesDrift && (
+                    <p className="access-dialog-note">
+                      Ten poziom niesie dziś{" "}
+                      {rescoping.missingFromPreset.length} uprawnień, których
+                      ten grant nie ma — zapis je doda.
+                    </p>
+                  )}
+                  {/* The difference is the decision, and it changes with every
+                      box ticked — a person who cannot see the dialog has to
+                      hear it, including the reason saving is unavailable. */}
+                  <p className="access-dialog-note" aria-live="polite">
+                    {rescopeBlocked ??
+                      `${summariseRescope(rescoping, rescopePreset, rescopeSpaceIds, spaces)} Zadziała od następnego wywołania agenta — bez ponownego łączenia.`.trim()}
+                  </p>
+                  <div className="access-dialog-actions">
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={closeRescope}
+                      disabled={busy}
+                    >
+                      Anuluj
+                    </button>
+                    <button
+                      className="primary-button"
+                      type="submit"
+                      disabled={busy || rescopeBlocked !== undefined}
+                    >
+                      {busy ? "Zapisuję…" : "Zapisz uprawnienia"}
+                    </button>
+                  </div>
+                </form>
+              </AccessDialog>
             )}
 
             <div className="agent-grant-list" aria-live="polite">
@@ -758,13 +1015,7 @@ export const AccessSurface = ({
                     <div className="agent-grant-identity">
                       <strong>{grant.displayName}</strong>
                       <span>
-                        {grant.preset === "full_access"
-                          ? "Pełny dostęp"
-                          : grant.preset === "operate"
-                            ? "Działa"
-                            : grant.preset === "propose"
-                              ? "Proponuje"
-                              : "Obserwuje"}
+                        {presetLabel(grant.preset)}
                         {` · ${grant.spaces.map((space) => space.spaceName).join(", ")}`}
                       </span>
                       <small>
@@ -808,29 +1059,6 @@ export const AccessSurface = ({
                                 Potwierdź rotację
                               </button>
                             </>
-                          ) : confirmAction ===
-                            `agent-rescope-${grant.grantId}` ? (
-                            <>
-                              <button
-                                className="secondary-button"
-                                type="button"
-                                onClick={() => setConfirmAction(undefined)}
-                                disabled={busy}
-                              >
-                                Anuluj
-                              </button>
-                              <button
-                                className="secondary-button"
-                                type="button"
-                                onClick={() => {
-                                  setConfirmAction(undefined);
-                                  onAgentRescope(grant);
-                                }}
-                                disabled={busy}
-                              >
-                                Potwierdź aktualizację zakresu
-                              </button>
-                            </>
                           ) : confirmAction === `agent-${grant.grantId}` ? (
                             <>
                               <button
@@ -855,29 +1083,28 @@ export const AccessSurface = ({
                             </>
                           ) : (
                             <>
-                              {grant.scopeStatus === "behind_preset" &&
-                                grant.preset !== "custom" &&
+                              {
                                 // Re-scoping is a local-kernel command; a Hub
                                 // grant is changed through the Hub's own
-                                // management API, which has no scope method
-                                // yet. The state is still worth naming above —
-                                // it explains a refusal — but offering an
-                                // action that cannot reach the grant would be
-                                // worse than offering none.
+                                // management API, which has no scope method yet.
+                                // Drift is still worth naming above — it explains
+                                // a refusal — but offering an action that cannot
+                                // reach the grant would be worse than offering
+                                // none.
                                 agentTransport !== "remote_hub" && (
                                   <button
                                     className="secondary-button"
                                     type="button"
-                                    onClick={() =>
-                                      setConfirmAction(
-                                        `agent-rescope-${grant.grantId}`,
-                                      )
+                                    aria-haspopup="dialog"
+                                    onClick={(event) =>
+                                      openRescope(grant, event.currentTarget)
                                     }
                                     disabled={busy}
                                   >
-                                    Zaktualizuj zakres
+                                    Zmień uprawnienia
                                   </button>
-                                )}
+                                )
+                              }
                               <button
                                 className="secondary-button"
                                 type="button"

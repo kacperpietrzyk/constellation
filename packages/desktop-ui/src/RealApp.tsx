@@ -3846,29 +3846,20 @@ export const RealApp = ({
                       } else showFailure(result);
                     });
                   }}
-                  onAgentRescope={(grant) => {
+                  onAgentRescope={(grant, target) => {
                     if (!client) return;
-                    // No dialog picks a target yet (that lands with the
-                    // "Zmień uprawnienia" surface) — until then this just
-                    // re-applies the grant's own current preset with Spaces
-                    // left untouched, which "custom" has no preset for.
-                    if (grant.preset === "custom") {
-                      showFailure({
-                        kind: "unavailable",
-                        message:
-                          "Ten dostęp ma ręcznie wybrany zakres — nie ma presetu, do którego można go dociągnąć.",
-                      });
-                      return;
-                    }
                     setAccessBusy(true);
                     setNotice(undefined);
-                    void updateAgentGrantScope(client, state.snapshot, grant, {
-                      preset: grant.preset,
-                    }).then(async (result) => {
+                    void updateAgentGrantScope(
+                      client,
+                      state.snapshot,
+                      grant,
+                      target,
+                    ).then(async (result) => {
                       setAccessBusy(false);
                       if (result.kind === "success")
                         await refreshAfter(
-                          "Zakres dostępu zaktualizowano. Agent zobaczy nowe uprawnienia przy następnym wywołaniu — bez ponownego łączenia.",
+                          "Uprawnienia agenta zaktualizowano.",
                         );
                       else showFailure(result);
                     });

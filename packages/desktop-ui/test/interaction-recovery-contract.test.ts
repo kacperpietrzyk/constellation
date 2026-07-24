@@ -846,7 +846,9 @@ describe("interaction recovery contracts", () => {
   });
 
   it("keeps Access ledgers primary and opens grant construction deliberately", () => {
-    assert.match(accessSurface, /const AccessCreateDialog =/);
+    // One shell for both deliberate acts: issuing a grant and changing one.
+    assert.match(accessSurface, /const AccessDialog =/);
+    assert.match(accessSurface, /eyebrow="Zmiana uprawnień"/);
     assert.match(accessSurface, /dialog\.showModal\(\)/);
     assert.match(accessSurface, /openCreation === "person"/);
     assert.match(accessSurface, /openCreation === "agent"/);

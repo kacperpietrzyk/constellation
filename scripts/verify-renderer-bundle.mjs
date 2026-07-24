@@ -105,10 +105,16 @@ import path from "node:path";
 // Dostępu (entry, największy leniwy chunk i stylesheet bez zmian). Total JS
 // rośnie o ok. 1.7 kB względem zmierzonego baseline; limit total dostaje
 // ok. 1.4 kB zapasu, pozostałe bez zmian.
+// 2026-07-24 (dialog „Zmień uprawnienia"): edycja wydanego dostępu dostaje
+// własne okno w leniwym chunku Dostępu — ta sama grupa poziomów i lista Space
+// co przy tworzeniu, podsumowanie różnicy i trzy noty wyjaśniające (entry,
+// największy leniwy chunk i stylesheet bez zmian). Total JS rośnie o ok. 4 kB
+// względem zmierzonego baseline; limit total dostaje ok. 0.9 kB zapasu,
+// pozostałe bez zmian.
 const limits = {
   entryBytes: 560_000,
   entryGzipBytes: 147_500,
-  totalJavaScriptBytes: 1_344_000,
+  totalJavaScriptBytes: 1_347_500,
   largestLazyJavaScriptBytes: 565_000,
   stylesheetBytes: 189_500,
 };
