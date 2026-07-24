@@ -138,6 +138,35 @@ test("sends the chosen preset, its capabilities, and the target Spaces", async (
   });
 });
 
+/**
+ * `spaces` is optional on the contract precisely so a preset-only change
+ * can leave every Space grant untouched kernel-side (no version bump, no
+ * exact-key demand on Space grants a person never meant to touch). Omitting
+ * the payload key is what selects that branch — `spaces: undefined` would
+ * not, since `"spaces" in payload` is what the kernel's own optional check
+ * inspects — so this pins the key's absence, not just its value.
+ */
+test("omitting spaceIds leaves Spaces out of the command entirely", async () => {
+  const sent: CommandEnvelope[] = [];
+  const result = await updateAgentGrantScope(
+    recordingClient(sent),
+    snapshot("operate"),
+    grantOf("operate"),
+    { preset: "observe" },
+  );
+  assert.equal(result.kind, "success");
+  const envelope = sent[0];
+  if (envelope?.commandName !== "agent.grantSetScope")
+    throw new Error("Expected the scope command.");
+  assert.equal("spaces" in envelope.payload, false);
+  // Only the workspace and the grant — none of the grant's Space grants,
+  // because none of them are being restated.
+  assert.deepEqual(envelope.expectedVersions, {
+    [ids.workspace]: 4,
+    [ids.grant]: 3,
+  });
+});
+
 test("mints an id for a Space the grant does not hold yet", async () => {
   const sent: CommandEnvelope[] = [];
   await updateAgentGrantScope(

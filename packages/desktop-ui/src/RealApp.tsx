@@ -3850,8 +3850,8 @@ export const RealApp = ({
                     if (!client) return;
                     // No dialog picks a target yet (that lands with the
                     // "Zmień uprawnienia" surface) — until then this just
-                    // re-applies the grant's own current preset and Spaces,
-                    // which "custom" has neither of.
+                    // re-applies the grant's own current preset with Spaces
+                    // left untouched, which "custom" has no preset for.
                     if (grant.preset === "custom") {
                       showFailure({
                         kind: "unavailable",
@@ -3864,7 +3864,6 @@ export const RealApp = ({
                     setNotice(undefined);
                     void updateAgentGrantScope(client, state.snapshot, grant, {
                       preset: grant.preset,
-                      spaceIds: grant.spaces.map((space) => space.spaceId),
                     }).then(async (result) => {
                       setAccessBusy(false);
                       if (result.kind === "success")

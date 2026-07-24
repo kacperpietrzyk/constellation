@@ -920,14 +920,20 @@ export const revokeAgentGrant = async (
 };
 
 /**
- * Re-scopes an issued grant to a chosen preset and a chosen Space set,
- * replacing both whole. A grant authorizes against the scope frozen when it
- * was issued, so a release that widens a preset never reaches an agent
- * already connected, and — before this — the only way to change what a grant
- * carries was to revoke and re-create it, minting a new credential and
- * forcing the connected host to be reconfigured. This is the human act that
- * avoids that: the agent picks the new scope up on its next call without
- * reconnecting or taking a new credential.
+ * Re-scopes an issued grant to a chosen preset and, when `spaceIds` is
+ * given, a chosen Space set — both replaced whole. Omitting `spaceIds`
+ * changes only the preset and its capabilities, leaving every Space grant
+ * exactly as it stood; that is what the contract's own `spaces` field being
+ * optional is for; stating it always, even to restate the Spaces a grant
+ * already has, would bump every Space grant's version on every re-scope,
+ * including one that never meant to touch Spaces at all. A grant authorizes
+ * against the scope frozen when it was issued, so a release that widens a
+ * preset never reaches an agent already connected, and — before this — the
+ * only way to change what a grant carries was to revoke and re-create it,
+ * minting a new credential and forcing the connected host to be
+ * reconfigured. This is the human act that avoids that: the agent picks the
+ * new scope up on its next call without reconnecting or taking a new
+ * credential.
  */
 export const updateAgentGrantScope = async (
   client: ConstellationRendererClient,
@@ -935,23 +941,26 @@ export const updateAgentGrantScope = async (
   grant: AgentAccessProjection["grants"][number],
   target: {
     readonly preset: AgentGrantPreset;
-    readonly spaceIds: readonly string[];
+    readonly spaceIds?: readonly string[];
   },
 ): Promise<MutationResult<undefined>> => {
   if (snapshot.agentAccess.kind !== "ready")
     return { kind: "unavailable", message: "Dostęp agentów jest niedostępny." };
-  // A grant with no active Space fails authorization outright (the runtime
-  // has no resource left to explain), so send that as a clear refusal rather
-  // than an empty `spaces` array the schema's `min(1)` would reject anyway.
-  if (target.spaceIds.length === 0)
+  // A stated-but-empty list is a deliberate "zero Spaces", which fails
+  // authorization outright once applied (the runtime has no resource left
+  // to explain) — refuse it here rather than let the schema's `min(1)`
+  // throw inside the `try` and flatten into a generic error. An *omitted*
+  // list is a different thing entirely: "don't touch Spaces", handled below.
+  if (target.spaceIds?.length === 0)
     return {
       kind: "unavailable",
       message: "Dostęp agenta musi obejmować co najmniej jedną Przestrzeń.",
     };
+  const spaceIds = target.spaceIds;
+  const access = spaceAccessForPreset(target.preset);
   const existingSpaceGrantIds = new Map<string, string>(
     grant.spaces.map((space) => [space.spaceId, space.spaceGrantId]),
   );
-  const access = spaceAccessForPreset(target.preset);
   try {
     const response = await client.executeCommand(
       CommandEnvelopeSchema.parse({
@@ -964,28 +973,40 @@ export const updateAgentGrantScope = async (
           [snapshot.bootstrap.workspace.id]:
             snapshot.agentAccess.data.workspaceVersion,
           [grant.grantId]: grant.version,
-          // The kernel enforces an exact key set on this command: every
-          // active Space grant's version has to be agreed with, or it
-          // answers `conflict` — even for a Space the target list drops.
-          ...Object.fromEntries(
-            grant.spaces.map((space) => [space.spaceGrantId, space.version]),
-          ),
+          // The kernel only widens its exact-key rule to every active Space
+          // grant's version when the command actually restates Spaces
+          // (mirrors `targetSpaces === undefined` kernel-side) — leaving
+          // `spaceIds` undefined leaves those versions untouched, so nothing
+          // about them needs to be agreed here either.
+          ...(spaceIds === undefined
+            ? {}
+            : Object.fromEntries(
+                grant.spaces.map((space) => [
+                  space.spaceGrantId,
+                  space.version,
+                ]),
+              )),
         },
         correlationId: crypto.randomUUID(),
         payload: {
           grantId: grant.grantId,
           preset: target.preset,
           capabilityScope: agentCapabilities(target.preset),
-          spaces: target.spaceIds.map((spaceId) => ({
-            // Reuse the Space's existing grant record when the target keeps
-            // it; the kernel looks one up by (workspace, Space, principal)
-            // and ignores this id for a Space the grant does not hold yet,
-            // so minting a fresh one there is correct, not just a filler.
-            spaceGrantId:
-              existingSpaceGrantIds.get(spaceId) ?? crypto.randomUUID(),
-            spaceId,
-            access,
-          })),
+          ...(spaceIds === undefined
+            ? {}
+            : {
+                spaces: spaceIds.map((spaceId) => ({
+                  // Reuse the Space's existing grant record when the target
+                  // keeps it; the kernel looks one up by (workspace, Space,
+                  // principal) and ignores this id for a Space the grant
+                  // does not hold yet, so minting a fresh one there is
+                  // correct, not just a filler.
+                  spaceGrantId:
+                    existingSpaceGrantIds.get(spaceId) ?? crypto.randomUUID(),
+                  spaceId,
+                  access,
+                })),
+              }),
         },
       }),
     );
