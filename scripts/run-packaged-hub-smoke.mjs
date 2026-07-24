@@ -1295,10 +1295,15 @@ try {
       },
     })})`,
   );
+  // The boundary is that nothing is written; the code says which boundary it
+  // was. This member's grant carries capture.submitText — its access level in
+  // the Space is what refuses — so this is a precondition, not
+  // `authorization.denied`, which now states only that a grant lacks a
+  // capability (ADR-067).
   if (
     forbiddenCapture.kind !== "command_outcome" ||
     forbiddenCapture.outcome.outcome !== "rejected" ||
-    forbiddenCapture.outcome.diagnosticCode !== "authorization.denied"
+    forbiddenCapture.outcome.diagnosticCode !== "command.precondition_failed"
   ) {
     throw new Error("COMMENTER_MUTATED_WORK");
   }
