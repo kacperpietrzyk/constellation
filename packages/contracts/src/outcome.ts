@@ -110,6 +110,7 @@ export const DiagnosticCodeSchema = z.enum([
   "command.undone",
   "authorization.denied",
   "command.precondition_failed",
+  "record.still_referenced",
   "idempotency.key_reused",
   "record.already_exists",
   "record.version_conflict",
@@ -369,28 +370,31 @@ export const KnowledgeNamedVersionMutationProjectionSchema = z
     version: z.int().positive(),
   })
   .strict();
+export const StrategicRecordTypeSchema = z.enum([
+  "organization",
+  "person",
+  "opportunity",
+  "offer",
+  "renewal",
+  "relationship_fact",
+  "decision",
+  "impact_review",
+  "area",
+  "initiative",
+  "work_link",
+  "saved_view",
+  "recurrence",
+  "radar_candidate",
+  "meeting",
+]);
+export type StrategicRecordType = z.infer<typeof StrategicRecordTypeSchema>;
+
 // Shared rather than restated: the changed and removed projections carry the
 // same three fields, and a copy is how two projections of one record drift
 // apart.
 const StrategicRecordMutationFields = {
   recordId: StrategicRecordIdSchema,
-  recordType: z.enum([
-    "organization",
-    "person",
-    "opportunity",
-    "offer",
-    "renewal",
-    "relationship_fact",
-    "decision",
-    "impact_review",
-    "area",
-    "initiative",
-    "work_link",
-    "saved_view",
-    "recurrence",
-    "radar_candidate",
-    "meeting",
-  ]),
+  recordType: StrategicRecordTypeSchema,
   version: z.int().positive(),
 } as const;
 export const StrategicRecordMutationProjectionSchema = z
@@ -1397,6 +1401,35 @@ export const RejectedOutcomeSchema = OutcomeMetadataSchema.extend({
   ]),
 }).strict();
 
+export const BlockingRecordSchema = z
+  .object({
+    recordId: z.uuid(),
+    recordKind: RecordKindSchema,
+    // `strategicRecord` is one kind covering fifteen types, and "detach the
+    // person" is a different instruction from "detach the offer", so the type
+    // is named when there is one.
+    recordType: StrategicRecordTypeSchema.optional(),
+  })
+  .strict();
+export type BlockingRecord = z.infer<typeof BlockingRecordSchema>;
+
+/**
+ * A removal refused because something still points at the target. This is the
+ * one refusal whose cause is safe to name: the blocking record is inside the
+ * target's own Space, and this branch is only reached after an authorization
+ * pass that required that Space, so the caller can already read it. The three
+ * causes merged into command.precondition_failed stay merged — naming them
+ * would answer whether a record outside the caller's reach exists.
+ */
+export const BlockedOutcomeSchema = OutcomeMetadataSchema.extend({
+  outcome: z.literal("rejected"),
+  diagnosticCode: z.literal("record.still_referenced"),
+  // Capped because a dependent set is bounded by nothing in the domain — a
+  // Space can hold many tasks. blockedByCount states the real size.
+  blockedBy: z.array(BlockingRecordSchema).min(1).max(20),
+  blockedByCount: z.int().positive(),
+}).strict();
+
 export const UnknownReconcileOutcomeSchema = OutcomeMetadataSchema.extend({
   outcome: z.literal("unknown_reconcile"),
   diagnosticCode: z.literal("external.unknown_reconcile"),
@@ -1410,6 +1443,7 @@ export const CommandOutcomeSchema = z.union([
   ConflictOutcomeSchema,
   RetryableOutcomeSchema,
   RejectedOutcomeSchema,
+  BlockedOutcomeSchema,
   UnknownReconcileOutcomeSchema,
 ]);
 export type CommandOutcome = z.infer<typeof CommandOutcomeSchema>;
