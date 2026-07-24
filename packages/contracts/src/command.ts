@@ -710,12 +710,6 @@ export const RelationshipRenewalResolveCommandSchema =
       .strict(),
   }).strict();
 
-export const RelationshipRenewalRemoveCommandSchema =
-  CommandMetadataSchema.extend({
-    commandName: z.literal("relationship.renewalRemove"),
-    payload: z.object({ renewalId: StrategicRecordIdSchema }).strict(),
-  }).strict();
-
 export const RelationshipFactCreateCommandSchema = CommandMetadataSchema.extend(
   {
     commandName: z.literal("relationship.factCreate"),
@@ -1871,7 +1865,6 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   OpportunityOfferRemoveCommandSchema,
   OpportunityLinkOutcomesCommandSchema,
   RelationshipRenewalCreateCommandSchema,
-  RelationshipRenewalRemoveCommandSchema,
   RelationshipRenewalResolveCommandSchema,
   RelationshipFactCreateCommandSchema,
   RelationshipFactRemoveCommandSchema,

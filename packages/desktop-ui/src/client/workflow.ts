@@ -1562,7 +1562,6 @@ const STRATEGIC_REMOVE_COMMANDS: Readonly<
   person: { name: "relationship.personRemove", idField: "personId" },
   opportunity: { name: "opportunity.remove", idField: "opportunityId" },
   offer: { name: "opportunity.offerRemove", idField: "offerId" },
-  renewal: { name: "relationship.renewalRemove", idField: "renewalId" },
   relationship_fact: {
     name: "relationship.factRemove",
     idField: "factId",

@@ -87,7 +87,6 @@ export const LOCAL_ALPHA_CAPABILITIES: readonly Capability[] = [
   "opportunity.linkOutcomes",
   "relationship.workspace",
   "relationship.renewalCreate",
-  "relationship.renewalRemove",
   "relationship.renewalResolve",
   "relationship.factCreate",
   "relationship.factRemove",

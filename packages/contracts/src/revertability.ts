@@ -66,7 +66,6 @@ export const COMMAND_REVERTABILITY: Readonly<
   "opportunity.offerRemove": "always",
   "opportunity.linkOutcomes": "never",
   "relationship.renewalCreate": "never",
-  "relationship.renewalRemove": "always",
   "relationship.renewalResolve": "never",
   "relationship.factCreate": "always",
   "relationship.factRemove": "always",

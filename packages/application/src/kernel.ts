@@ -356,7 +356,6 @@ const isCurrentlyAuthorized = (
     case "opportunity.offerRemove":
     case "opportunity.linkOutcomes":
     case "relationship.renewalCreate":
-    case "relationship.renewalRemove":
     case "relationship.renewalResolve":
     case "relationship.factCreate":
     case "relationship.factRemove":
@@ -845,7 +844,6 @@ export class ApplicationKernel {
       case "opportunity.offerRemove":
       case "opportunity.linkOutcomes":
       case "relationship.renewalCreate":
-      case "relationship.renewalRemove":
       case "relationship.renewalResolve":
       case "relationship.factCreate":
       case "relationship.factRemove":

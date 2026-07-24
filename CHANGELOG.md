@@ -11,8 +11,9 @@ releases begin.
 ### Added
 
 - Removal for every entity an agent or a person can create — organization,
-  person, opportunity, offer, renewal, relationship fact, decision, area,
-  initiative, project, document and knowledge source. Removal is a soft delete
+  person, opportunity, offer, relationship fact, decision, area, initiative,
+  project, document and knowledge source (renewals are resolved rather than
+  removed: their create also raises a follow-up Task and an attention signal). Removal is a soft delete
   that keeps history and audit, refuses while another record still points at
   the record, and is itself revertable. The creates now record compensation
   too, so a checkpoint containing one can be reverted; the desktop inspector

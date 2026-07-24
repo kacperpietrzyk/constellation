@@ -189,7 +189,6 @@ export type Wave2Command = Extract<
       | "opportunity.offerRemove"
       | "opportunity.linkOutcomes"
       | "relationship.renewalCreate"
-      | "relationship.renewalRemove"
       | "relationship.renewalResolve"
       | "relationship.factCreate"
       | "relationship.factRemove"
@@ -478,7 +477,6 @@ export const isWave2CommandAuthorized = (
     case "relationship.personRemove":
     case "opportunity.remove":
     case "opportunity.offerRemove":
-    case "relationship.renewalRemove":
     case "relationship.factRemove":
     case "decision.remove":
     case "area.remove":
@@ -1361,7 +1359,6 @@ const REMOVED_STRATEGIC_KIND = {
   "relationship.personRemove": "person",
   "opportunity.remove": "opportunity",
   "opportunity.offerRemove": "offer",
-  "relationship.renewalRemove": "renewal",
   "relationship.factRemove": "relationship_fact",
   "decision.remove": "decision",
   "area.remove": "area",
@@ -1382,7 +1379,6 @@ const removedStrategicRecordId = (
         | "relationship.personRemove"
         | "opportunity.remove"
         | "opportunity.offerRemove"
-        | "relationship.renewalRemove"
         | "relationship.factRemove"
         | "decision.remove"
         | "area.remove"
@@ -1399,8 +1395,6 @@ const removedStrategicRecordId = (
       return command.payload.opportunityId;
     case "opportunity.offerRemove":
       return command.payload.offerId;
-    case "relationship.renewalRemove":
-      return command.payload.renewalId;
     case "relationship.factRemove":
       return command.payload.factId;
     case "decision.remove":
@@ -2505,7 +2499,6 @@ export const executeWave2Command = (
     case "relationship.personRemove":
     case "opportunity.remove":
     case "opportunity.offerRemove":
-    case "relationship.renewalRemove":
     case "relationship.factRemove":
     case "decision.remove":
     case "area.remove":

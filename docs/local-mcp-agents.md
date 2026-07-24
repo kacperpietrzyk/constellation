@@ -178,10 +178,12 @@ Capture History.
   `command.previewUndo` take a `targetCommandId`, never a `checkpointId`, and
   are granted independently of the checkpoint capabilities.
 - Remove a record you should not have created. Every entity create —
-  organization, person, opportunity, offer, renewal, relationship fact,
-  decision, area, initiative, project, document, knowledge source — has a
-  matching removal command, so a record found to be wrong after the checkpoint
-  has moved on is still reachable. Removal is a soft delete: history and audit
+  organization, person, opportunity, offer, relationship fact, decision, area,
+  initiative, project, document, knowledge source — has a matching removal
+  command, so a record found to be wrong after the checkpoint has moved on is
+  still reachable. Renewals are the exception: they are resolved through
+  `relationship.renewalResolve`, because creating one also raises a follow-up
+  Task and an attention signal that a record-level removal would strand. Removal is a soft delete: history and audit
   stay, the record leaves every list and search, and the removal is itself
   revertable. It is refused with `command.precondition_failed` while another
   record still points at the one being removed; detach or remove that first,

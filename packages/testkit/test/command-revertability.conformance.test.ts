@@ -434,12 +434,23 @@ describe("Command revertability", () => {
       evidenceSourceIds: [sourceId],
       linkedRecordIds: [taskId],
     });
+    // Renewals have no removal command — they are resolved, not removed, and
+    // their create also raises a follow-up Task and an attention signal. So the
+    // renewal hangs off an organization this test leaves standing; the removed
+    // one has to end up with nothing pointing at it.
+    const keptOrganizationId = uuid();
+    apply("relationship.organizationCreate", {
+      organizationId: keptOrganizationId,
+      spaceId: ids.rootSpace,
+      name: "Organization the renewal keeps",
+      relationshipState: "active",
+    });
     const renewalId = uuid();
     apply("relationship.renewalCreate", {
       renewalId,
       followUpTaskId: uuid(),
       spaceId: ids.rootSpace,
-      organizationId,
+      organizationId: keptOrganizationId,
       title: "Support entitlement",
       scope: "Managed support",
       expiresAt: "2027-03-31T12:00:00.000Z",
@@ -451,7 +462,6 @@ describe("Command revertability", () => {
 
     apply("decision.remove", { decisionId }, versions(decisionId));
     apply("relationship.factRemove", { factId }, versions(factId));
-    apply("relationship.renewalRemove", { renewalId }, versions(renewalId));
     apply("opportunity.offerRemove", { offerId }, versions(offerId));
     apply("opportunity.remove", { opportunityId }, versions(opportunityId));
     apply("relationship.personRemove", { personId }, versions(personId));
