@@ -856,7 +856,15 @@ export const AccessSurface = ({
                           ) : (
                             <>
                               {grant.scopeStatus === "behind_preset" &&
-                                grant.preset !== "custom" && (
+                                grant.preset !== "custom" &&
+                                // Re-scoping is a local-kernel command; a Hub
+                                // grant is changed through the Hub's own
+                                // management API, which has no scope method
+                                // yet. The state is still worth naming above —
+                                // it explains a refusal — but offering an
+                                // action that cannot reach the grant would be
+                                // worse than offering none.
+                                agentTransport !== "remote_hub" && (
                                   <button
                                     className="secondary-button"
                                     type="button"

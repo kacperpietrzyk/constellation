@@ -76,7 +76,10 @@ const grantRow = (
  * the one person who could not see it.
  */
 test("a grant whose scope predates an upgrade offers the human a way to close it", () => {
-  const surface = (grant: Record<string, unknown>): string =>
+  const surface = (
+    grant: Record<string, unknown>,
+    agentTransport: "local_stdio" | "remote_hub" = "local_stdio",
+  ): string =>
     renderToStaticMarkup(
       createElement(AccessSurface, {
         access: {
@@ -100,7 +103,7 @@ test("a grant whose scope predates an upgrade offers the human a way to close it
           },
         },
         spaces: [],
-        agentTransport: "local_stdio",
+        agentTransport,
         busy: false,
         onAdd: () => undefined,
         onSetAccess: () => undefined,
@@ -137,4 +140,17 @@ test("a grant whose scope predates an upgrade offers the human a way to close it
     }),
   );
   assert.doesNotMatch(custom, /Zaktualizuj zakres/u);
+
+  // A Hub grant is changed through the Hub's own management API, which carries
+  // no scope method yet, so the state is named and the action withheld — an
+  // action that cannot reach the grant is worse than none.
+  const hub = surface(
+    grantRow({
+      scopeStatus: "behind_preset",
+      missingFromPreset: ["task.remove"],
+    }),
+    "remote_hub",
+  );
+  assert.match(hub, /zakres sprzed aktualizacji/u);
+  assert.doesNotMatch(hub, /Zaktualizuj zakres/u);
 });

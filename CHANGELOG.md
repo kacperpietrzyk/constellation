@@ -32,7 +32,10 @@ no way to tell them apart.
   more than the grant does. Every staleness check the previous release added
   reports "current" in this situation, because the build is current — it is the
   grant that is a release behind. The desktop shows the same state on the grant
-  row and offers the single action that closes it.
+  row and, on a local workspace, offers the single action that closes it. A Hub
+  grant is changed through the Hub's own management API, which carries no scope
+  method yet, so a coordinated workspace names the state without offering an
+  action that could not reach the grant.
 
 - Every operation in the catalog states the `requiredCapability` a grant must
   hold for it, which is not always the operation's own name:
