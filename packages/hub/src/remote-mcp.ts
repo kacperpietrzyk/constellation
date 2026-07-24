@@ -25,6 +25,7 @@ import {
   CorrelationIdSchema,
   CredentialIdSchema,
   DELEGABLE_CAPABILITIES,
+  grantScopeDrift,
   ExecutionContextSchema,
   GrantIdSchema,
   MembershipIdSchema,
@@ -262,6 +263,10 @@ const projection = (
     agentPrincipalId: grant.agentPrincipalId,
     preset: grant.preset,
     capabilityScope: grant.capabilityScope,
+    // Same signal the local transport publishes: a grant issued before a
+    // release does not gain what that release added to its preset, and nothing
+    // else in this projection says so.
+    ...grantScopeDrift(grant.preset, grant.capabilityScope),
     spaceScope: grant.spaceScope,
     federationScope: state.federationScopes[grant.id] ?? {
       crossWorkspaceRead: false,
@@ -1628,6 +1633,15 @@ export class HubRemoteMcpService {
     if (checkpoint.status === "reverted")
       return response(requestId, "rejected", {
         diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.alreadyReverted,
+        checkpointId: checkpoint.id,
+      });
+    // Refuse before the checkpoint is spent: it captured nothing, so applying
+    // it would report success, change nothing, and leave the caller without
+    // the checkpoint it still needs. agent.checkpointPreviewRevert reports the
+    // same state as unavailableReason "empty".
+    if (checkpoint.commandIds.length === 0)
+      return response(requestId, "rejected", {
+        diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.empty,
         checkpointId: checkpoint.id,
       });
     const service = this.kernel(store, context);

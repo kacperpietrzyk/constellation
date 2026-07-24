@@ -97,6 +97,12 @@ const unwrap = (response: ApplicationCommandResponse): CommandOutcome => {
 };
 
 describe("collaboration-safe policy kernel", () => {
+  // Every refusal below is `command.precondition_failed`, and the owner and
+  // the member carry the same capabilityScope on purpose: each one is about a
+  // Space the caller may not reach or an access level too low for the
+  // operation, never about a capability the grant lacks.
+  // `authorization.denied` is reserved for the latter, so that a caller can
+  // read it as the verdict on its grant that its name claims to be.
   it("filters hidden content and reauthorizes view-only and revoked members", () => {
     const harness = createReferenceHarness();
     const ownerV1 = context("owner", 1, [ids.shared, ids.private]);
@@ -139,7 +145,7 @@ describe("collaboration-safe policy kernel", () => {
           },
         }),
       ).diagnosticCode,
-      "authorization.denied",
+      "command.precondition_failed",
     );
     harness.store.transact((transaction) =>
       transaction.insertSpaceGrant({
@@ -410,7 +416,7 @@ describe("collaboration-safe policy kernel", () => {
           },
         }),
       ).diagnosticCode,
-      "authorization.denied",
+      "command.precondition_failed",
     );
 
     assert.equal(
@@ -448,7 +454,7 @@ describe("collaboration-safe policy kernel", () => {
           },
         }),
       ).diagnosticCode,
-      "authorization.denied",
+      "command.precondition_failed",
     );
     assert.equal(
       unwrap(
@@ -463,7 +469,7 @@ describe("collaboration-safe policy kernel", () => {
           },
         }),
       ).diagnosticCode,
-      "authorization.denied",
+      "command.precondition_failed",
     );
 
     const ownerV3 = context("owner", 3, [ids.shared, ids.private]);

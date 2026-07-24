@@ -113,6 +113,7 @@ import {
   updateAttention,
   createAgentGrant,
   rotateAgentCredential,
+  updateAgentGrantScope,
   revokeAgentGrant,
   createRemoteAgentGrant,
   rotateRemoteAgentCredential,
@@ -3843,6 +3844,23 @@ export const RealApp = ({
                               },
                         );
                       } else showFailure(result);
+                    });
+                  }}
+                  onAgentRescope={(grant) => {
+                    if (!client) return;
+                    setAccessBusy(true);
+                    setNotice(undefined);
+                    void updateAgentGrantScope(
+                      client,
+                      state.snapshot,
+                      grant,
+                    ).then(async (result) => {
+                      setAccessBusy(false);
+                      if (result.kind === "success")
+                        await refreshAfter(
+                          "Zakres dostępu zaktualizowano. Agent zobaczy nowe uprawnienia przy następnym wywołaniu — bez ponownego łączenia.",
+                        );
+                      else showFailure(result);
                     });
                   }}
                   onAgentRevoke={(grant) => {

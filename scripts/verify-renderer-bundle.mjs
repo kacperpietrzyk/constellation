@@ -99,10 +99,16 @@ import path from "node:path";
 // ok. 7 kB względem zmierzonego baseline; sekcja usuwania w inspektorze jedzie
 // w leniwym chunku (entry i największy leniwy chunk bez zmian). Limit total
 // dostaje ok. 1 kB zapasu, pozostałe bez zmian.
+// 2026-07-24 (przeskopowanie wydanego dostępu): `agent.grantSetScope` wchodzi
+// do unii CommandEnvelopeSchema, którą renderer waliduje, a sygnał
+// „zakres sprzed aktualizacji" i akcja domykająca go jadą w leniwym chunku
+// Dostępu (entry, największy leniwy chunk i stylesheet bez zmian). Total JS
+// rośnie o ok. 1.7 kB względem zmierzonego baseline; limit total dostaje
+// ok. 1.4 kB zapasu, pozostałe bez zmian.
 const limits = {
   entryBytes: 560_000,
   entryGzipBytes: 147_500,
-  totalJavaScriptBytes: 1_341_000,
+  totalJavaScriptBytes: 1_344_000,
   largestLazyJavaScriptBytes: 565_000,
   stylesheetBytes: 189_500,
 };

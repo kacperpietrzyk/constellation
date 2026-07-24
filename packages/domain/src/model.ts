@@ -1228,6 +1228,7 @@ export type DomainEvent = { readonly commandId: CommandId } & (
         | "agent.grant_created"
         | "agent.credential_rotated"
         | "agent.grant_revoked"
+        | "agent.grant_scope_changed"
         | "agent.checkpoint_created"
         | "agent.handoff_submitted";
       readonly workspaceId: WorkspaceId;

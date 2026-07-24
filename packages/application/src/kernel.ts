@@ -81,6 +81,7 @@ import {
   type ApplicationReadView,
   type ApplicationTransaction,
   type ApplicationWave2Transaction,
+  type AuthorizationRequest,
   type CurrentAuthorizationPolicy,
   type CapturePaginationCursor,
   type StoreFreshness,
@@ -180,6 +181,53 @@ const isWorkspaceAdministrator = (
   membership: WorkspaceMembership | undefined,
 ): boolean => membership?.role === "owner" || membership?.role === "admin";
 
+/**
+ * Splits "your grant does not carry this" from every other reason the
+ * authorization pass can refuse — a target that is not there, one the caller
+ * cannot see, a missing membership, another workspace.
+ *
+ * `authorization.denied` has to be a statement about the grant alone, because
+ * that is the question an integrator asks it. So the verdict is re-taken
+ * without a Space: the capabilities the pass actually consulted are asked
+ * again at workspace level, and only a refusal there — a capability the grant
+ * does not carry, a revoked grant, a stale policy version — is denial. Every
+ * other refusal is a precondition.
+ *
+ * The capabilities are recorded rather than restated because each branch
+ * decides for itself which one it needs (`capture.writeTranscript` authorizes
+ * against `capture.transcriptWrite`), and a second table would drift from the
+ * pass the first time either changed.
+ *
+ * Deliberately indistinguishable: a record that does not exist, a record in a
+ * Space the caller cannot reach, and a caller with no membership all answer
+ * `command.precondition_failed`. Splitting them would turn the diagnostic into
+ * an oracle for the existence of records outside the caller's scope. Reading
+ * the answer the other way is safe — a caller learns only what its own
+ * `capabilityScope` already tells it.
+ */
+class RecordedAuthorization implements CurrentAuthorizationPolicy {
+  private readonly consulted: AuthorizationRequest[] = [];
+
+  public constructor(private readonly policy: CurrentAuthorizationPolicy) {}
+
+  public authorize(request: AuthorizationRequest): boolean {
+    this.consulted.push(request);
+    return this.policy.authorize(request);
+  }
+
+  /** Only true when the grant itself is what refused. */
+  public get grantRefused(): boolean {
+    return this.consulted.some(
+      (request) =>
+        !this.policy.authorize({
+          context: request.context,
+          capability: request.capability,
+          workspaceId: request.workspaceId,
+        }),
+    );
+  }
+}
+
 const isCurrentlyAuthorized = (
   authorization: CurrentAuthorizationPolicy,
   view: ApplicationReadView,
@@ -260,6 +308,7 @@ const isCurrentlyAuthorized = (
     case "agent.grantCreate":
     case "agent.grantRotateCredential":
     case "agent.grantRevoke":
+    case "agent.grantSetScope":
     case "agent.checkpointCreate":
     case "agent.handoffSubmit":
       return isAgentAccessCommandAuthorized(
@@ -620,17 +669,15 @@ export class ApplicationKernel {
     const fingerprint = this.dependencies.hasher.fingerprint(
       semanticCommandInput(command),
     );
-    if (
-      !isCurrentlyAuthorized(
-        this.dependencies.authorization,
-        transaction,
-        context,
-        command,
-      )
-    ) {
+    const authorization = new RecordedAuthorization(
+      this.dependencies.authorization,
+    );
+    if (!isCurrentlyAuthorized(authorization, transaction, context, command)) {
       return this.outcome(command, occurredAt, {
         outcome: "rejected",
-        diagnosticCode: "authorization.denied",
+        diagnosticCode: authorization.grantRefused
+          ? "authorization.denied"
+          : "command.precondition_failed",
       });
     }
     const existing = transaction.getIdempotency(scope);
@@ -733,6 +780,7 @@ export class ApplicationKernel {
       case "agent.grantCreate":
       case "agent.grantRotateCredential":
       case "agent.grantRevoke":
+      case "agent.grantSetScope":
       case "agent.checkpointCreate":
       case "agent.handoffSubmit":
         return executeAgentAccessCommand(

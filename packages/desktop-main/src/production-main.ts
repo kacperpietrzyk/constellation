@@ -1389,6 +1389,15 @@ const startProductionDesktop = async (): Promise<void> => {
           window.webContents.send(DESKTOP_CHANNELS.workspaceChanged, event);
         }
       },
+      // An MCP caller is told a fault happened but never what it was, and the
+      // desktop has no window open on the agent transport. Without this the
+      // error exists nowhere a maintainer can reach.
+      onRuntimeFault: (error, invocation) => {
+        console.error(
+          `Constellation MCP runtime fault (${invocation.kind}, request ${invocation.requestId}):`,
+          error,
+        );
+      },
       readCapturePayload: (original) => capturePayloadCustody?.read(original),
       finalizeVoiceAudio,
       documentText: (() => {

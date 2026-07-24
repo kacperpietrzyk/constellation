@@ -12,6 +12,7 @@ import {
 import {
   AgentAccessPresetSchema,
   CapabilitySchema,
+  GrantScopeStatusSchema,
 } from "./execution-context.js";
 import { CommandOutcomeSchema } from "./outcome.js";
 
@@ -271,6 +272,11 @@ export const RemoteMcpGrantProjectionSchema = z
     agentPrincipalId: PrincipalIdSchema,
     preset: z.string(),
     capabilityScope: z.array(CapabilitySchema),
+    // Whether the scope this grant froze at issue time still matches what its
+    // preset carries. Restating the grant block without these is how a reader
+    // ends up unable to see the one thing that explains a refusal.
+    scopeStatus: GrantScopeStatusSchema,
+    missingFromPreset: z.array(CapabilitySchema),
     spaceScope: z.array(SpaceIdSchema),
     federationScope: RemoteMcpFederationScopeSchema,
     credentialId: CredentialIdSchema,

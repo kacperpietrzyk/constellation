@@ -7753,8 +7753,8 @@ const undoPreviewProjection = (
   if (descriptor === undefined) {
     // Both entry points already require an audit receipt in the caller's
     // workspace, so an unknown or foreign command id is rejected as
-    // authorization.denied before it reaches here: "unsupported" means the
-    // target applied and its kind records no compensation, nothing else.
+    // command.precondition_failed before it reaches here: "unsupported" means
+    // the target applied and its kind records no compensation, nothing else.
     return {
       kind,
       targetCommandId,

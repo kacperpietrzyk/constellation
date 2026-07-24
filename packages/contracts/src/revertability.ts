@@ -35,6 +35,9 @@ export const COMMAND_REVERTABILITY: Readonly<
   "agent.grantCreate": "never",
   "agent.grantRotateCredential": "never",
   "agent.grantRevoke": "never",
+  // Deliberately uncompensated: a security scope a human narrowed must not be
+  // widened again by reverting a checkpoint that happened to contain it.
+  "agent.grantSetScope": "never",
   "agent.checkpointCreate": "never",
   "agent.handoffSubmit": "never",
   "capture.submit": "never",

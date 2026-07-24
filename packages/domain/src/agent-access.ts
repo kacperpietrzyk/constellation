@@ -51,6 +51,24 @@ export const rotateAgentCredential = (
   updatedAt: occurredAt,
 });
 
+/**
+ * Replaces the scope whole. The credential is untouched on purpose: the agent
+ * keeps working through the same descriptor and simply may do more, or less,
+ * from its next call onwards — a re-scope is not a reissue.
+ */
+export const setAgentGrantScope = (
+  grant: AgentAccessGrant,
+  preset: AgentAccessPreset,
+  capabilityScope: readonly Capability[],
+  occurredAt: string,
+): AgentAccessGrant => ({
+  ...grant,
+  preset,
+  capabilityScope,
+  version: grant.version + 1,
+  updatedAt: occurredAt,
+});
+
 export const revokeAgentAccessGrant = (
   grant: AgentAccessGrant,
   occurredAt: string,

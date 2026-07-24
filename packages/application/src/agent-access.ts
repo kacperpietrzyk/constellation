@@ -1,5 +1,7 @@
 import {
   AuditReceiptIdSchema,
+  DELEGABLE_CAPABILITIES,
+  grantScopeDrift,
   CommandOutcomeSchema,
   EventIdSchema,
   OutboxEntryIdSchema,
@@ -17,6 +19,7 @@ import {
   createAgentAccessGrant,
   createAgentCheckpoint,
   grantSpaceAccess,
+  setAgentGrantScope,
   revokeAgentAccessGrant,
   revokeSpaceGrant,
   revokeWorkspaceMember,
@@ -49,6 +52,7 @@ export type AgentAccessCommand = Extract<
       | "agent.grantCreate"
       | "agent.grantRotateCredential"
       | "agent.grantRevoke"
+      | "agent.grantSetScope"
       | "agent.checkpointCreate"
       | "agent.handoffSubmit";
   }
@@ -131,6 +135,7 @@ const commit = (
       | "agent.grant_created"
       | "agent.credential_rotated"
       | "agent.grant_revoked"
+      | "agent.grant_scope_changed"
       | "agent.checkpoint_created"
       | "agent.handoff_submitted";
     readonly projection: Record<string, unknown>;
@@ -219,16 +224,22 @@ export const isAgentAccessCommandAuthorized = (
   if (
     command.commandName === "agent.grantCreate" ||
     command.commandName === "agent.grantRotateCredential" ||
-    command.commandName === "agent.grantRevoke"
+    command.commandName === "agent.grantRevoke" ||
+    command.commandName === "agent.grantSetScope"
   ) {
+    // The policy is consulted first on purpose. agent.manageAccess is
+    // administrative, so no agent grant can carry it; asking the policy before
+    // the cheaper guards is what lets an agent that reaches for one of these
+    // commands be told `authorization.denied` — the true reason — instead of a
+    // precondition it could spend a run trying to satisfy.
     return (
-      context.principalKind === "human" &&
-      canManageWorkspaceAccess(view, context, command.workspaceId) &&
       dependencies.authorization.authorize({
         context,
         capability: "agent.manageAccess",
         workspaceId: command.workspaceId,
-      })
+      }) &&
+      context.principalKind === "human" &&
+      canManageWorkspaceAccess(view, context, command.workspaceId)
     );
   }
   // `payload.runId` is deliberately not checked here. Whether the payload
@@ -266,6 +277,14 @@ export const executeAgentAccessCommand = (
     );
     if (
       uniqueSpaces.size !== command.payload.spaces.length ||
+      // ADR-046 §4: `runtime` and `administrative` capabilities are not
+      // delegable to any agent, on any transport. The Hub enforced this on the
+      // remote path while the kernel accepted whatever the schema parsed, so a
+      // locally minted grant could carry administrative authority the
+      // partition exists to withhold. Both mint paths now read the same set.
+      command.payload.capabilityScope.some(
+        (capability) => !DELEGABLE_CAPABILITIES.includes(capability),
+      ) ||
       (command.payload.expiresAt !== undefined &&
         Date.parse(command.payload.expiresAt) <= Date.parse(occurredAt)) ||
       transaction.getAgentGrant(command.payload.grantId) !== undefined ||
@@ -414,6 +433,74 @@ export const executeAgentAccessCommand = (
           credentialId: rotated.credentialId,
           credentialVersion: rotated.credentialVersion,
           version: rotated.version,
+        },
+      },
+    );
+  }
+
+  if (command.commandName === "agent.grantSetScope") {
+    const current = transaction.getAgentGrant(command.payload.grantId);
+    if (current?.workspaceId !== workspace.id || current.status !== "active")
+      return rejected(command, occurredAt);
+    const expected = {
+      [workspace.id]: workspace.version,
+      [current.id]: current.version,
+    };
+    if (!exactExpected(command, expected))
+      return conflict(command, occurredAt, expected);
+    // The delegation partition (ADR-046) is a property of the capability, not
+    // of the transport, so it is enforced here — the same gate the Hub applies
+    // to a remote grant. Without it this command would be a way to hand an
+    // agent the administrative capabilities that partition exists to withhold.
+    if (
+      command.payload.capabilityScope.some(
+        (capability) => !DELEGABLE_CAPABILITIES.includes(capability),
+      )
+    )
+      return rejected(command, occurredAt);
+    const rescoped = setAgentGrantScope(
+      current,
+      command.payload.preset,
+      command.payload.capabilityScope,
+      occurredAt,
+    );
+    // The policy version moves because the authority of every live context
+    // changed; a reader that pinned the old one has to re-read rather than
+    // keep authorizing against a scope that no longer exists.
+    const updatedWorkspace = bumpWorkspacePolicy(workspace, occurredAt);
+    if (
+      !transaction.updateAgentGrant(rescoped, current.version) ||
+      !transaction.updateWorkspace(updatedWorkspace, workspace.version)
+    )
+      throw new RetryableUnitOfWorkError();
+    return commit(
+      dependencies,
+      transaction,
+      context,
+      command,
+      idempotency,
+      occurredAt,
+      {
+        spaceId: rootSpaceId,
+        aggregateId: rescoped.id,
+        aggregateVersion: rescoped.version,
+        recordVersions: {
+          [updatedWorkspace.id]: updatedWorkspace.version,
+          [rescoped.id]: rescoped.version,
+        },
+        affectedKinds: {
+          [updatedWorkspace.id]: "workspace",
+          [rescoped.id]: "agentGrant",
+        },
+        changedFields: ["preset", "capabilityScope", "policyVersion"],
+        diagnosticCode: "agent.grant_scope_changed",
+        projection: {
+          kind: "agent.grant_scope_changed",
+          grantId: rescoped.id,
+          preset: rescoped.preset,
+          capabilityScope: [...rescoped.capabilityScope],
+          version: rescoped.version,
+          policyVersion: updatedWorkspace.policyVersion,
         },
       },
     );
@@ -670,6 +757,10 @@ export const executeAgentAccessQuery = (
             displayName: grant.displayName,
             preset: grant.preset,
             capabilityScope: grant.capabilityScope,
+            // The desktop is where a human closes this gap, so the desktop has
+            // to be told it exists — an issued grant does not gain what a
+            // release added to its preset.
+            ...grantScopeDrift(grant.preset, grant.capabilityScope),
             membershipId: membership.id,
             membershipVersion: membership.version,
             spaces: grant.spaceScope.map((spaceId) => {
@@ -726,14 +817,21 @@ export const executeAgentAccessQuery = (
   const descriptors = checkpoint.commandIds.map((id) =>
     view.getUndoDescriptor(id),
   );
+  // "empty" outranks every per-command reason because there are no commands to
+  // have a reason about. A checkpoint captures a command only when that
+  // command's envelope names it in `checkpointId`; opening one and then writing
+  // without the field leaves this list empty, and answering `available: true`
+  // would promise a rollback that compensates nothing.
   const unavailableReason =
     checkpoint.status === "reverted"
       ? "already_reverted"
-      : descriptors.some((item) => item === undefined)
-        ? "unsupported"
-        : descriptors.some((item) => item?.consumedByCommandId !== undefined)
-          ? "later_change"
-          : undefined;
+      : checkpoint.commandIds.length === 0
+        ? "empty"
+        : descriptors.some((item) => item === undefined)
+          ? "unsupported"
+          : descriptors.some((item) => item?.consumedByCommandId !== undefined)
+            ? "later_change"
+            : undefined;
   return QueryResultSchema.parse({
     outcome: "success",
     contractVersion: 1,

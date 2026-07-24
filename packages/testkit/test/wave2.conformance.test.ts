@@ -3223,10 +3223,12 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(created.projection.unavailableReason, "unsupported");
 
     // "unsupported" carries one meaning only because an id this workspace never
-    // applied never reaches the projection.
+    // applied never reaches the projection. It is refused as a precondition:
+    // the grant carries command.previewUndo, so nothing about this refusal is
+    // a statement about the grant.
     const unknown = previewUndo(requestId(), "unknown-preview");
     assert.equal(unknown.outcome, "rejected");
-    assert.equal(unknown.diagnosticCode, "authorization.denied");
+    assert.equal(unknown.diagnosticCode, "command.precondition_failed");
 
     const recoveryPreview = harness.kernel.query(context(), {
       contractVersion: 1,
@@ -3663,7 +3665,11 @@ describe("Wave 2 reference semantics", () => {
         },
       }),
     );
-    assert.equal(deniedRelation.diagnosticCode, "authorization.denied");
+    // A precondition, not a denial: the grant carries record.relate, so this
+    // refusal is about a target the caller cannot reach — and it is the same
+    // answer a Project id that names nothing would get, which is what keeps
+    // the hidden Project's existence out of the reply.
+    assert.equal(deniedRelation.diagnosticCode, "command.precondition_failed");
     assert.equal(harness.store.snapshot().relations.length, 0);
   });
 
