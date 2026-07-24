@@ -4726,11 +4726,20 @@ export const executeWave2Command = (
       }
       // ADR-043 §3 — a Task that still has active children is not a leaf.
       // listTasksInSpace already filters to recordState "active", so a child
-      // that was itself removed does not block. Refuse rather than orphan.
+      // that was itself removed does not block. Refuse rather than orphan,
+      // and name the blocker the same way every other removal does, instead
+      // of merging it into command.precondition_failed. Tasks have no
+      // recordType — that field exists because strategicRecord covers
+      // fifteen types.
       const activeChildren = transaction
         .listTasksInSpace(task.workspaceId, task.spaceId)
-        .filter((candidate) => candidate.parentTaskId === task.id).length;
-      if (activeChildren > 0) return precondition(command, occurredAt);
+        .filter((candidate) => candidate.parentTaskId === task.id)
+        .map((candidate) => ({
+          recordId: candidate.id,
+          recordKind: "task" as const,
+        }));
+      if (activeChildren.length > 0)
+        return blocked(command, occurredAt, activeChildren);
       const priorRecordState = task.recordState;
       const updated: Task = {
         ...task,
@@ -7516,18 +7525,28 @@ const descriptorState = (
       // Taking a create back removes the Task, so version equality is not
       // enough: a child does not bump its parent's version, and removing a
       // parent that has one would orphan it (ADR-043 §3, as task.remove).
+      // The version mismatch wins over a reference: it is the older truth and
+      // the one the caller cannot act on, since detaching every child would
+      // still leave the undo unavailable. Edited independently from the
+      // strategic.undo_create and record.undo_create cases above, which
+      // resolve the same precedence the same way.
       const task = view.getTask(descriptor.taskId);
-      const orphans =
-        task === undefined
-          ? false
-          : view
-              .listTasksInSpace(task.workspaceId, task.spaceId)
-              .some((candidate) => candidate.parentTaskId === task.id);
-      return task !== undefined &&
-        task.recordState === "active" &&
-        task.completionState === "open" &&
-        task.version === descriptor.resultingVersion &&
-        !orphans
+      if (
+        task === undefined ||
+        task.recordState !== "active" ||
+        task.completionState !== "open" ||
+        task.version !== descriptor.resultingVersion
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      const children = view
+        .listTasksInSpace(task.workspaceId, task.spaceId)
+        .filter((candidate) => candidate.parentTaskId === task.id);
+      return children.length === 0
         ? {
             available: true,
             recordIds: [task.id],
@@ -7537,7 +7556,7 @@ const descriptorState = (
             available: false,
             recordIds: [],
             versions: {},
-            reason: "later_change",
+            reason: "still_referenced",
           };
     }
     case "task.restore_parent":
