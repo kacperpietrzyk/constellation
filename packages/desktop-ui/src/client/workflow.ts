@@ -753,6 +753,12 @@ export const loadDocumentBacklinks = async (
 const agentCapabilities = (preset: AgentGrantPreset): readonly Capability[] =>
   capabilitiesForAgentGrantPreset(preset);
 
+/** The per-Space access level a preset carries, at creation and at re-scope alike. */
+const spaceAccessForPreset = (
+  preset: AgentGrantPreset,
+): "view" | "comment" | "edit" =>
+  preset === "observe" ? "view" : preset === "propose" ? "comment" : "edit";
+
 export const createAgentGrant = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -796,12 +802,7 @@ export const createAgentGrant = async (
           spaces: input.spaceIds.map((spaceId) => ({
             spaceGrantId: crypto.randomUUID(),
             spaceId,
-            access:
-              input.preset === "observe"
-                ? "view"
-                : input.preset === "propose"
-                  ? "comment"
-                  : "edit",
+            access: spaceAccessForPreset(input.preset),
           })),
           credentialId: credential.credentialId,
           credentialDigest: credential.credentialDigest,
@@ -919,25 +920,38 @@ export const revokeAgentGrant = async (
 };
 
 /**
- * Brings an issued grant up to what its preset carries today. A grant
- * authorizes against the scope frozen when it was issued, so a release that
- * widens a preset never reaches an agent already connected; this is the human
- * act that closes that, and the agent picks it up on its next call without
+ * Re-scopes an issued grant to a chosen preset and a chosen Space set,
+ * replacing both whole. A grant authorizes against the scope frozen when it
+ * was issued, so a release that widens a preset never reaches an agent
+ * already connected, and — before this — the only way to change what a grant
+ * carries was to revoke and re-create it, minting a new credential and
+ * forcing the connected host to be reconfigured. This is the human act that
+ * avoids that: the agent picks the new scope up on its next call without
  * reconnecting or taking a new credential.
  */
 export const updateAgentGrantScope = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
   grant: AgentAccessProjection["grants"][number],
+  target: {
+    readonly preset: AgentGrantPreset;
+    readonly spaceIds: readonly string[];
+  },
 ): Promise<MutationResult<undefined>> => {
   if (snapshot.agentAccess.kind !== "ready")
     return { kind: "unavailable", message: "Dostęp agentów jest niedostępny." };
-  if (grant.preset === "custom")
+  // A grant with no active Space fails authorization outright (the runtime
+  // has no resource left to explain), so send that as a clear refusal rather
+  // than an empty `spaces` array the schema's `min(1)` would reject anyway.
+  if (target.spaceIds.length === 0)
     return {
       kind: "unavailable",
-      message:
-        "Ten dostęp ma ręcznie wybrany zakres — nie ma presetu, do którego można go dociągnąć.",
+      message: "Dostęp agenta musi obejmować co najmniej jedną Przestrzeń.",
     };
+  const existingSpaceGrantIds = new Map<string, string>(
+    grant.spaces.map((space) => [space.spaceId, space.spaceGrantId]),
+  );
+  const access = spaceAccessForPreset(target.preset);
   try {
     const response = await client.executeCommand(
       CommandEnvelopeSchema.parse({
@@ -950,12 +964,28 @@ export const updateAgentGrantScope = async (
           [snapshot.bootstrap.workspace.id]:
             snapshot.agentAccess.data.workspaceVersion,
           [grant.grantId]: grant.version,
+          // The kernel enforces an exact key set on this command: every
+          // active Space grant's version has to be agreed with, or it
+          // answers `conflict` — even for a Space the target list drops.
+          ...Object.fromEntries(
+            grant.spaces.map((space) => [space.spaceGrantId, space.version]),
+          ),
         },
         correlationId: crypto.randomUUID(),
         payload: {
           grantId: grant.grantId,
-          preset: grant.preset,
-          capabilityScope: agentCapabilities(grant.preset),
+          preset: target.preset,
+          capabilityScope: agentCapabilities(target.preset),
+          spaces: target.spaceIds.map((spaceId) => ({
+            // Reuse the Space's existing grant record when the target keeps
+            // it; the kernel looks one up by (workspace, Space, principal)
+            // and ignores this id for a Space the grant does not hold yet,
+            // so minting a fresh one there is correct, not just a filler.
+            spaceGrantId:
+              existingSpaceGrantIds.get(spaceId) ?? crypto.randomUUID(),
+            spaceId,
+            access,
+          })),
         },
       }),
     );
