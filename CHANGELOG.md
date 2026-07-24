@@ -12,12 +12,13 @@ releases begin.
 
 - Removal for every entity an agent or a person can create — organization,
   person, opportunity, offer, relationship fact, decision, area, initiative,
-  project, document and knowledge source (renewals are resolved rather than
-  removed: their create also raises a follow-up Task and an attention signal). Removal is a soft delete
-  that keeps history and audit, refuses while another record still points at
-  the record, and is itself revertable. The creates now record compensation
-  too, so a checkpoint containing one can be reverted; the desktop inspector
-  offers the same removal, naming what blocks it before the click.
+  project, document and knowledge source. Removal is a soft delete that keeps
+  history and audit, refuses while another record still points at the one being
+  removed, and is itself revertable. The creates now record compensation too, so
+  a checkpoint containing one can be reverted; the desktop inspector offers the
+  same removal, naming what blocks it before the click. Renewals are resolved
+  rather than removed: creating one also raises a follow-up Task and an
+  attention signal that a record-level removal would strand.
 
 - `constellation://v1/capabilities` and the operations catalog name the build
   that produced them: the application version plus a contract fingerprint from
