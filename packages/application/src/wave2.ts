@@ -28,6 +28,7 @@ import {
   KnowledgeSourceIdSchema,
   NamedDocumentVersionIdSchema,
   StrategicRecordIdSchema,
+  type BlockingRecord,
   type CommandEnvelope,
   type CommandOutcome,
   type ExecutionContext,
@@ -1244,6 +1245,27 @@ const precondition = (
     diagnosticCode: "command.precondition_failed",
   });
 
+const BLOCKED_BY_LIMIT = 20;
+
+/**
+ * The one refusal that names its cause. Every record here is inside the
+ * target's own Space, and this branch is only reached after an authorization
+ * pass that required that Space, so the caller can already read all of them.
+ * The list is a sample and the count is the real total, because a Space can
+ * hold more dependents than a diagnostic should carry.
+ */
+const blocked = (
+  command: Wave2Command,
+  occurredAt: string,
+  dependents: readonly BlockingRecord[],
+): CommandOutcome =>
+  outcome(command, occurredAt, {
+    outcome: "rejected",
+    diagnosticCode: "record.still_referenced",
+    blockedBy: dependents.slice(0, BLOCKED_BY_LIMIT),
+    blockedByCount: dependents.length,
+  });
+
 /**
  * What still points at a Project, a Document or a Knowledge Source inside its
  * Space. Same rule as every other removal: refuse rather than orphan, and read
@@ -1258,7 +1280,7 @@ const tableRecordDependents = (
     readonly spaceId: SpaceId;
   },
   recordKind: "project" | "document" | "knowledgeSource",
-): readonly string[] => {
+): readonly BlockingRecord[] => {
   const { workspaceId, spaceId, id } = record;
   const strategic = view.listStrategicRecords(workspaceId, spaceId);
   if (recordKind === "project")
@@ -1269,7 +1291,10 @@ const tableRecordDependents = (
           (relation) =>
             relation.projectId === id && relation.state === "active",
         )
-        .map((relation) => relation.id),
+        .map((relation) => ({
+          recordId: relation.id,
+          recordKind: "relation" as const,
+        })),
       ...strategic
         .filter(
           (candidate) =>
@@ -1282,7 +1307,11 @@ const tableRecordDependents = (
             (candidate.kind === "recurrence" &&
               candidate.contextRecordId === id),
         )
-        .map((candidate) => candidate.id),
+        .map((candidate) => ({
+          recordId: candidate.id,
+          recordKind: "strategicRecord" as const,
+          recordType: candidate.kind,
+        })),
     ];
   if (recordKind === "document")
     return [
@@ -1292,7 +1321,11 @@ const tableRecordDependents = (
             candidate.kind === "offer" &&
             candidate.deliverableDocumentId === id,
         )
-        .map((candidate) => candidate.id),
+        .map((candidate) => ({
+          recordId: candidate.id,
+          recordKind: "strategicRecord" as const,
+          recordType: candidate.kind,
+        })),
       ...view
         .listDocuments(workspaceId, spaceId)
         .filter((candidate) =>
@@ -1300,7 +1333,10 @@ const tableRecordDependents = (
             (documentId) => documentId === id,
           ),
         )
-        .map((candidate) => candidate.id),
+        .map((candidate) => ({
+          recordId: candidate.id,
+          recordKind: "document" as const,
+        })),
       // A named version is the frozen record of what was delivered. Voiding it
       // is the deliberate act; until then the document it froze stays.
       ...view
@@ -1308,7 +1344,10 @@ const tableRecordDependents = (
         .filter(
           (version) => version.documentId === id && version.state === "active",
         )
-        .map((version) => version.id),
+        .map((version) => ({
+          recordId: version.id,
+          recordKind: "namedDocumentVersion" as const,
+        })),
     ];
   return [
     ...strategic
@@ -1317,19 +1356,26 @@ const tableRecordDependents = (
           ? candidate.evidenceSourceIds.some((sourceId) => sourceId === id)
           : candidate.kind === "radar_candidate" && candidate.sourceId === id,
       )
-      .map((candidate) => candidate.id),
+      .map((candidate) => ({
+        recordId: candidate.id,
+        recordKind: "strategicRecord" as const,
+        recordType: candidate.kind,
+      })),
     ...view
       .listDocuments(workspaceId, spaceId)
       .filter((candidate) =>
         candidate.evidence?.sourceIds.some((sourceId) => sourceId === id),
       )
-      .map((candidate) => candidate.id),
+      .map((candidate) => ({
+        recordId: candidate.id,
+        recordKind: "document" as const,
+      })),
     ...view
       .listTasksInSpace(workspaceId, spaceId)
       .filter((task) =>
         task.attachmentSourceIds?.some((sourceId) => sourceId === id),
       )
-      .map((task) => task.id),
+      .map((task) => ({ recordId: task.id, recordKind: "task" as const })),
   ];
 };
 
@@ -1419,7 +1465,7 @@ const removedStrategicRecordId = (
 const strategicRecordDependents = (
   view: ApplicationWave2ReadView,
   record: StrategicRecord,
-): readonly StrategicRecordId[] =>
+): readonly BlockingRecord[] =>
   view
     .listStrategicRecords(record.workspaceId, record.spaceId)
     .filter(
@@ -1427,7 +1473,11 @@ const strategicRecordDependents = (
         candidate.id !== record.id &&
         strategicRecordReferences(candidate).includes(record.id),
     )
-    .map((candidate) => candidate.id);
+    .map((candidate) => ({
+      recordId: candidate.id,
+      recordKind: "strategicRecord" as const,
+      recordType: candidate.kind,
+    }));
 
 /**
  * The removal path for the three records that keep their own table. Same
@@ -1462,8 +1512,8 @@ const removeTableRecord = (
     return versionConflict(command, occurredAt, {
       [record.id]: record.version,
     });
-  if (tableRecordDependents(transaction, record, recordKind).length > 0)
-    return precondition(command, occurredAt);
+  const dependents = tableRecordDependents(transaction, record, recordKind);
+  if (dependents.length > 0) return blocked(command, occurredAt, dependents);
   const priorRecordState = recordIsActive(record) ? "active" : "removed";
   const removed = {
     ...record,
@@ -1554,8 +1604,8 @@ const removeStrategicRecord = (
   // ADR-043 §3, as task.remove: refuse rather than orphan. The caller detaches
   // the referring record first, which keeps every removal a decision someone
   // made rather than a cascade nobody saw.
-  if (strategicRecordDependents(transaction, record).length > 0)
-    return precondition(command, occurredAt);
+  const dependents = strategicRecordDependents(transaction, record);
+  if (dependents.length > 0) return blocked(command, occurredAt, dependents);
   const priorRecordState = strategicRecordState(record);
   const removed = setStrategicRecordState(record, "removed", occurredAt);
   if (!transaction.updateStrategicRecord(removed, record.version))

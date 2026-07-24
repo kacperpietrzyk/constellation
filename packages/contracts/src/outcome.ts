@@ -1428,7 +1428,16 @@ export const BlockedOutcomeSchema = OutcomeMetadataSchema.extend({
   // Space can hold many tasks. blockedByCount states the real size.
   blockedBy: z.array(BlockingRecordSchema).min(1).max(20),
   blockedByCount: z.int().positive(),
-}).strict();
+})
+  .strict()
+  // A count below the sample it summarises is self-contradictory, and a
+  // consumer that trusts the count would under-report how much is left to
+  // detach. The producer satisfies this by construction; the schema keeps the
+  // next one honest.
+  .refine((value) => value.blockedByCount >= value.blockedBy.length, {
+    error: "blockedByCount must not be smaller than blockedBy",
+    path: ["blockedByCount"],
+  });
 
 export const UnknownReconcileOutcomeSchema = OutcomeMetadataSchema.extend({
   outcome: z.literal("unknown_reconcile"),
