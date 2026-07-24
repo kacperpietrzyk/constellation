@@ -1,5 +1,6 @@
 .git/
 .playwright-cli/
+.superpowers/
 .ui-craft/
 .workbench/
 .workflows/
