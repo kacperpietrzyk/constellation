@@ -39,6 +39,15 @@ const context = (): ExecutionContext =>
     capabilityScope: [
       "workspace.createLocal",
       "relationship.organizationCreate",
+      "relationship.organizationRemove",
+      "project.remove",
+      "document.remove",
+      "knowledge.sourceRemove",
+      "record.relate",
+      "record.unrelate",
+      "knowledge.documentSetEvidence",
+      "document.backlinks",
+      "relationship.personRemove",
       "relationship.personCreate",
       "opportunity.create",
       "opportunity.offerCreate",
@@ -2317,4 +2326,394 @@ it("corrects meeting work items through the kernel, attributed and undoable", ()
     false,
   );
   assert.deepEqual(item().responsibilityOverride, { name: "Antek" });
+});
+
+it("refuses to remove a record other work still points at, and hides it once removed", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("removal-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Removal",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const organizationId = uuid();
+  const personId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("removal-organization"),
+        commandName: "relationship.organizationCreate",
+        payload: {
+          organizationId,
+          spaceId: ids.space,
+          name: "Orbit",
+          relationshipState: "active",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("removal-person"),
+        commandName: "relationship.personCreate",
+        payload: {
+          personId,
+          spaceId: ids.space,
+          name: "Ada",
+          organizationId,
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  const remove = (key: string, id: string, version: number) =>
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(key, { [id]: version }),
+        commandName:
+          id === organizationId
+            ? "relationship.organizationRemove"
+            : "relationship.personRemove",
+        payload:
+          id === organizationId ? { organizationId: id } : { personId: id },
+      }),
+    );
+
+  // ADR-043 §3, as task.remove: refuse rather than orphan. The person still
+  // names this organization, so the organization stays until they are detached
+  // or removed themselves.
+  const blocked = remove("removal-blocked", organizationId, 1);
+  assert.equal(blocked.outcome, "rejected");
+  assert.equal(blocked.diagnosticCode, "command.precondition_failed");
+
+  assert.equal(remove("removal-person-go", personId, 1).outcome, "success");
+  const removed = remove("removal-organization-go", organizationId, 1);
+  assert.equal(removed.outcome, "success");
+
+  const records = (): readonly string[] => {
+    const result = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "relationship.workspace",
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space },
+    });
+    if (
+      result.kind !== "query_result" ||
+      result.result.outcome !== "success" ||
+      result.result.projection.kind !== "relationship.workspace"
+    )
+      throw new Error("Expected the relationship projection.");
+    return result.result.projection.records.map((record) => record.id);
+  };
+  assert.deepEqual(records(), []);
+  // Search reads the same list, so a removed record leaves both at once
+  // rather than lingering in one surface.
+  const search = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "search.global",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceIds: [ids.space], text: "Orbit" },
+  });
+  if (
+    search.kind !== "query_result" ||
+    search.result.outcome !== "success" ||
+    search.result.projection.kind !== "search.global"
+  )
+    throw new Error("Expected the search projection.");
+  assert.deepEqual(search.result.projection.items, []);
+
+  // Removing twice is a precondition failure, not a second soft delete.
+  assert.equal(
+    remove("removal-organization-again", organizationId, 2).outcome,
+    "rejected",
+  );
+});
+
+it("refuses to remove a Project, Document or Source that live work still cites", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  const execute = (
+    key: string,
+    commandName: string,
+    payload: Record<string, unknown>,
+    expectedVersions: Readonly<Record<string, number>> = {},
+  ) =>
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(key, expectedVersions),
+        commandName,
+        payload,
+      } as never),
+    );
+  assert.equal(
+    execute("table-bootstrap", "workspace.createLocal", {
+      workspaceId: ids.workspace,
+      rootSpaceId: ids.space,
+      ownerPrincipalId: ids.principal,
+      name: "Table removal",
+      timezone: "Europe/Warsaw",
+    }).outcome,
+    "success",
+  );
+
+  // A Project a Task contributes to. The relation is what blocks the removal,
+  // so detaching it is what unblocks it.
+  const created = execute("table-project", "project.create", {
+    spaceId: ids.space,
+    title: "Cited project",
+  });
+  if (
+    created.outcome !== "success" ||
+    created.projection.kind !== "project.created"
+  )
+    throw new Error("Expected a created Project.");
+  const projectId = created.projection.projectId;
+  const taskId = uuid();
+  assert.equal(
+    execute("table-task", "task.create", {
+      taskId,
+      spaceId: ids.space,
+      title: "Contributing task",
+    }).outcome,
+    "success",
+  );
+  const related = execute(
+    "table-relate",
+    "record.relate",
+    { relationType: "task_contributes_to_project", taskId, projectId },
+    { [taskId]: 1, [projectId]: 1 },
+  );
+  if (
+    related.outcome !== "success" ||
+    related.projection.kind !== "relation.created"
+  )
+    throw new Error("Expected a relation.");
+  assert.equal(
+    execute(
+      "table-project-blocked",
+      "project.remove",
+      { projectId },
+      {
+        [projectId]: 1,
+      },
+    ).diagnosticCode,
+    "command.precondition_failed",
+  );
+  assert.equal(
+    execute(
+      "table-unrelate",
+      "record.unrelate",
+      { relationId: related.projection.relationId },
+      { [related.projection.relationId]: 1 },
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    execute(
+      "table-project-go",
+      "project.remove",
+      { projectId },
+      {
+        [projectId]: 1,
+      },
+    ).outcome,
+    "success",
+  );
+
+  // A Source cited as a Document's evidence, and the note Document that
+  // evidence names: both ends are blocked while the citation stands.
+  const sourceId = uuid();
+  const noteId = uuid();
+  const deliverableId = uuid();
+  assert.equal(
+    execute("table-source", "knowledge.sourceCreate", {
+      sourceId,
+      spaceId: ids.space,
+      sourceKind: "url",
+      title: "Cited source",
+      canonicalUrl: "https://example.test/cited",
+      availability: "reference_only",
+      observedAt: "2026-07-24T09:00:00.000Z",
+    }).outcome,
+    "success",
+  );
+  for (const [documentId, role, key] of [
+    [noteId, "note", "table-note"],
+    [deliverableId, "deliverable", "table-deliverable"],
+  ] as const)
+    assert.equal(
+      execute(key, "document.create", {
+        documentId,
+        spaceId: ids.space,
+        title: `Cited ${role}`,
+        role,
+      }).outcome,
+      "success",
+    );
+  assert.equal(
+    execute(
+      "table-evidence",
+      "knowledge.documentSetEvidence",
+      {
+        documentId: deliverableId,
+        sourceIds: [sourceId],
+        noteDocumentIds: [noteId],
+      },
+      { [deliverableId]: 1, [sourceId]: 1, [noteId]: 1 },
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    execute(
+      "table-source-blocked",
+      "knowledge.sourceRemove",
+      { sourceId },
+      {
+        [sourceId]: 1,
+      },
+    ).diagnosticCode,
+    "command.precondition_failed",
+  );
+  assert.equal(
+    execute(
+      "table-note-blocked",
+      "document.remove",
+      { documentId: noteId },
+      {
+        [noteId]: 1,
+      },
+    ).diagnosticCode,
+    "command.precondition_failed",
+  );
+  // The deliverable cites; nothing cites it, so it goes.
+  assert.equal(
+    execute(
+      "table-deliverable-go",
+      "document.remove",
+      { documentId: deliverableId },
+      { [deliverableId]: 2 },
+    ).outcome,
+    "success",
+  );
+  // With the citing Document gone, both cited records are free.
+  assert.equal(
+    execute(
+      "table-source-go",
+      "knowledge.sourceRemove",
+      { sourceId },
+      {
+        [sourceId]: 1,
+      },
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    execute(
+      "table-note-go",
+      "document.remove",
+      { documentId: noteId },
+      {
+        [noteId]: 1,
+      },
+    ).outcome,
+    "success",
+  );
+});
+
+it("degrades reads that resolve a removed record instead of failing them", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  const execute = (
+    key: string,
+    commandName: string,
+    payload: Record<string, unknown>,
+    expectedVersions: Readonly<Record<string, number>> = {},
+  ) =>
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(key, expectedVersions),
+        commandName,
+        payload,
+      } as never),
+    );
+  assert.equal(
+    execute("dangling-bootstrap", "workspace.createLocal", {
+      workspaceId: ids.workspace,
+      rootSpaceId: ids.space,
+      ownerPrincipalId: ids.principal,
+      name: "Dangling reads",
+      timezone: "Europe/Warsaw",
+    }).outcome,
+    "success",
+  );
+  const organizationId = uuid();
+  assert.equal(
+    execute("dangling-organization", "relationship.organizationCreate", {
+      organizationId,
+      spaceId: ids.space,
+      name: "Removed relation",
+      relationshipState: "prospect",
+    }).outcome,
+    "success",
+  );
+  assert.equal(
+    execute(
+      "dangling-remove",
+      "relationship.organizationRemove",
+      { organizationId },
+      { [organizationId]: 1 },
+    ).outcome,
+    "success",
+  );
+
+  // A document link into a removed record resolves to nothing, exactly as a
+  // link into a removed Task does. The read has to answer — a removal that
+  // makes an ordinary query throw would be worse than the gap it closed.
+  const backlinks = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "document.backlinks",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { targetKind: "organization", targetId: organizationId },
+  });
+  assert.equal(backlinks.kind, "query_result");
+  if (backlinks.kind !== "query_result") throw new Error("Expected a result.");
+  assert.equal(backlinks.result.outcome, "rejected");
+  assert.equal(backlinks.result.diagnosticCode, "authorization.denied");
+
+  // And the Space the record left still reads cleanly.
+  const records = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "relationship.workspace",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space },
+  });
+  if (
+    records.kind !== "query_result" ||
+    records.result.outcome !== "success" ||
+    records.result.projection.kind !== "relationship.workspace"
+  )
+    throw new Error("Expected the relationship projection.");
+  assert.deepEqual(records.result.projection.records, []);
 });

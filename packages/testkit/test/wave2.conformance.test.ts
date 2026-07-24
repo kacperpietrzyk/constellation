@@ -3188,7 +3188,23 @@ describe("Wave 2 reference semantics", () => {
 
   it("reports an uncompensated command as unsupported and refuses to preview an unknown one", () => {
     const harness = setup();
-    const { commandId } = createProjectRecord(harness, "Uncompensated project");
+    // A Capture: entity creates record compensation now, so the command with
+    // nothing to return to has to be one that genuinely records none.
+    const captureCommand = {
+      ...metadata("uncompensated-capture"),
+      commandName: "capture.submitText" as const,
+      payload: {
+        spaceId: ids.rootSpace,
+        originalText: "Nothing takes this back.",
+        deviceId: "conformance-device",
+        source: "in_app_quick_capture" as const,
+      },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), captureCommand)).outcome,
+      "success",
+    );
+    const commandId = captureCommand.commandId;
     const previewUndo = (
       targetCommandId: string,
       key: string,

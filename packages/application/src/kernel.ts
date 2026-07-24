@@ -337,26 +337,37 @@ const isCurrentlyAuthorized = (
       );
     }
     case "project.create":
+    case "project.remove":
     case "document.create":
+    case "document.remove":
     case "knowledge.sourceCreate":
+    case "knowledge.sourceRemove":
     case "knowledge.sourceUpdate":
     case "knowledge.documentSetEvidence":
     case "knowledge.namedVersionCreate":
     case "knowledge.namedVersionVoid":
     case "relationship.organizationCreate":
+    case "relationship.organizationRemove":
     case "relationship.personCreate":
+    case "relationship.personRemove":
     case "opportunity.create":
+    case "opportunity.remove":
     case "opportunity.offerCreate":
+    case "opportunity.offerRemove":
     case "opportunity.linkOutcomes":
     case "relationship.renewalCreate":
     case "relationship.renewalResolve":
     case "relationship.factCreate":
+    case "relationship.factRemove":
     case "decision.create":
+    case "decision.remove":
     case "decision.supersede":
     case "decision.resolveImpact":
     case "area.create":
+    case "area.remove":
     case "area.updateResponsibility":
     case "initiative.create":
+    case "initiative.remove":
     case "initiative.updateOutcome":
     case "work.linkCreate":
     case "work.linkRemove":
@@ -814,26 +825,37 @@ export class ApplicationKernel {
           occurredAt,
         );
       case "project.create":
+      case "project.remove":
       case "document.create":
+      case "document.remove":
       case "knowledge.sourceCreate":
+      case "knowledge.sourceRemove":
       case "knowledge.sourceUpdate":
       case "knowledge.documentSetEvidence":
       case "knowledge.namedVersionCreate":
       case "knowledge.namedVersionVoid":
       case "relationship.organizationCreate":
+      case "relationship.organizationRemove":
       case "relationship.personCreate":
+      case "relationship.personRemove":
       case "opportunity.create":
+      case "opportunity.remove":
       case "opportunity.offerCreate":
+      case "opportunity.offerRemove":
       case "opportunity.linkOutcomes":
       case "relationship.renewalCreate":
       case "relationship.renewalResolve":
       case "relationship.factCreate":
+      case "relationship.factRemove":
       case "decision.create":
+      case "decision.remove":
       case "decision.supersede":
       case "decision.resolveImpact":
       case "area.create":
+      case "area.remove":
       case "area.updateResponsibility":
       case "initiative.create":
+      case "initiative.remove":
       case "initiative.updateOutcome":
       case "work.linkCreate":
       case "work.linkRemove":

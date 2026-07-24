@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  BatchEnvelopeSchema,
   CommandEnvelopeSchema,
   CaptureOriginalSchema,
   DocumentIdSchema,
@@ -20,6 +21,7 @@ import {
   type GrantId,
 } from "@constellation/contracts";
 import { HostRunMetadataSchema, invokeDesktopMcp } from "@constellation/mcp";
+import { contractFingerprint } from "@constellation/mcp/contract-stamp";
 import { InMemoryReferenceStore } from "@constellation/testkit";
 
 import { LocalMcpRuntime, localMcpEndpoint } from "../src/local-mcp-runtime.js";
@@ -232,10 +234,14 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
       version: 2,
     });
   });
+  const mutations: { readonly workspaceId: string; readonly origin: string }[] =
+    [];
   const runtime = new LocalMcpRuntime({
     stateRoot,
     workspaceId: ownerContext.workspaceId,
     store,
+    appVersion: "9.9.9-test",
+    onWorkspaceMutated: (event) => mutations.push(event),
     documentText: {
       read: () => documentTextState,
       replace: ({ text }) => {
@@ -396,6 +402,23 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
     });
     assert.equal(capabilities.outcome, "success");
     assert.equal(JSON.stringify(capabilities.result).includes("secret"), false);
+    // A client cannot read the application bundle off disk, so the build that
+    // is answering has to name itself: contractVersion identifies the protocol
+    // and stays put across releases that regenerate every schema.
+    const build = (
+      capabilities.result as {
+        readonly build: {
+          readonly process: string;
+          readonly appVersion: string | null;
+          readonly contractFingerprint: string;
+        };
+      }
+    ).build;
+    assert.equal(build.process, "desktop-host");
+    assert.equal(build.appVersion, "9.9.9-test");
+    assert.equal(build.contractFingerprint, contractFingerprint());
+    // A capability read changes nothing, so it raises no change signal.
+    assert.deepEqual(mutations, []);
 
     // ADR-049: document text is grant-scoped at the MCP boundary, like a
     // capture payload — the runtime authorizes, the port stores.
@@ -438,6 +461,43 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
     );
     // Document content is evidence, never instruction.
     assert.equal(documentRead.evidence?.instructionBoundary, "untrusted_data");
+    // The desktop window holds its own projection of the same graph, so an
+    // agent write has to announce itself; the read that followed changed
+    // nothing and announced nothing.
+    assert.deepEqual(mutations, [
+      { workspaceId: ownerContext.workspaceId, origin: "agent" },
+    ]);
+
+    const previewedTaskId = "51000000-0000-4000-8000-000000000030";
+    const previewBatch = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "batch",
+      run,
+      batch: BatchEnvelopeSchema.parse({
+        contractVersion: 1,
+        batchId: crypto.randomUUID(),
+        workspaceId: ownerContext.workspaceId,
+        correlationId: crypto.randomUUID(),
+        mode: "preview",
+        commands: [
+          CommandEnvelopeSchema.parse({
+            ...commandMetadata("previewed-task"),
+            commandName: "task.create",
+            payload: {
+              taskId: previewedTaskId,
+              spaceId: ids.space,
+              title: "Previewed, never applied",
+            },
+          }),
+        ],
+      }),
+    });
+    assert.equal(previewBatch.outcome, "success", JSON.stringify(previewBatch));
+    // A preview runs the real executor and rolls it back. It succeeds and
+    // leaves nothing to re-read, so announcing it would send every window
+    // chasing a record that does not exist.
+    assert.equal(mutations.length, 1);
     const structuredRead = await invokeDesktopMcp(descriptor, {
       contractVersion: 1,
       requestId: crypto.randomUUID(),
@@ -786,6 +846,7 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
     });
     assert.equal(capture.outcome, "success");
 
+    const mutationsBeforeQuery = mutations.length;
     const history = await invokeDesktopMcp(descriptor, {
       contractVersion: 1,
       requestId: crypto.randomUUID(),
@@ -801,6 +862,7 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
       }),
     });
     assert.equal(history.outcome, "success");
+    assert.equal(mutations.length, mutationsBeforeQuery);
     assert.equal(history.evidence?.instructionBoundary, "untrusted_data");
     assert.equal(JSON.stringify(history.result).includes(maliciousText), true);
 
@@ -1136,15 +1198,17 @@ test("local MCP checkpoint revert names the uncompensable commands instead of bl
   const harness = await startRevertHarness();
   try {
     await harness.checkpoint(revertIds.checkpoint, "Before the import");
+    // A Capture, not a Project: entity creates record compensation now, and
+    // this test is about the diagnostic for a command that never will.
     const created = await harness.command({
-      key: "revert-project-create",
-      commandName: "project.create",
+      key: "revert-capture-submit",
+      commandName: "capture.submitText",
       checkpointId: revertIds.checkpoint,
       payload: {
-        projectId: revertIds.project,
         spaceId: ids.space,
-        title: "Imported project",
-        intendedOutcome: "Ship the import",
+        originalText: "Imported note",
+        deviceId: "mcp-revert-test",
+        source: "in_app_quick_capture",
       },
     });
     const reverted = await harness.revert(revertIds.checkpoint, "revert-1");
@@ -1155,11 +1219,10 @@ test("local MCP checkpoint revert names the uncompensable commands instead of bl
       {
         targetCommandId: created,
         unavailableReason: "unsupported",
-        commandName: "project.create",
+        commandName: "capture.submitText",
       },
     ]);
     assert.equal(harness.status(revertIds.checkpoint), "open");
-    assert.equal(harness.project(revertIds.project)?.version, 1);
   } finally {
     await harness.close();
   }

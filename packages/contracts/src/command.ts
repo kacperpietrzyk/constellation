@@ -479,6 +479,11 @@ export const ProjectCreateCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 
+export const ProjectRemoveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("project.remove"),
+  payload: z.object({ projectId: ProjectIdSchema }).strict(),
+}).strict();
+
 export const DocumentCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("document.create"),
   payload: z
@@ -489,6 +494,11 @@ export const DocumentCreateCommandSchema = CommandMetadataSchema.extend({
       role: z.enum(["note", "document", "deliverable"]).optional(),
     })
     .strict(),
+}).strict();
+
+export const DocumentRemoveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("document.remove"),
+  payload: z.object({ documentId: DocumentIdSchema }).strict(),
 }).strict();
 
 export const KnowledgeSourceCreateCommandSchema = CommandMetadataSchema.extend({
@@ -505,6 +515,11 @@ export const KnowledgeSourceCreateCommandSchema = CommandMetadataSchema.extend({
       observedAt: z.iso.datetime({ offset: true }),
     })
     .strict(),
+}).strict();
+
+export const KnowledgeSourceRemoveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("knowledge.sourceRemove"),
+  payload: z.object({ sourceId: KnowledgeSourceIdSchema }).strict(),
 }).strict();
 
 export const KnowledgeSourceUpdateCommandSchema = CommandMetadataSchema.extend({
@@ -570,6 +585,18 @@ export const RelationshipOrganizationCreateCommandSchema =
       .strict(),
   }).strict();
 
+/**
+ * An agent that wrote the wrong record needs a way back that does not depend on
+ * a checkpoint it may already have left behind (AGENTS.md: agent mutations must
+ * be reversible). Removal refuses while anything still points at the record, so
+ * it cannot orphan the graph, and it is itself compensable.
+ */
+export const RelationshipOrganizationRemoveCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("relationship.organizationRemove"),
+    payload: z.object({ organizationId: StrategicRecordIdSchema }).strict(),
+  }).strict();
+
 export const RelationshipPersonCreateCommandSchema =
   CommandMetadataSchema.extend({
     commandName: z.literal("relationship.personCreate"),
@@ -583,6 +610,12 @@ export const RelationshipPersonCreateCommandSchema =
         email: z.email().max(320).optional(),
       })
       .strict(),
+  }).strict();
+
+export const RelationshipPersonRemoveCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("relationship.personRemove"),
+    payload: z.object({ personId: StrategicRecordIdSchema }).strict(),
   }).strict();
 
 export const OpportunityCreateCommandSchema = CommandMetadataSchema.extend({
@@ -601,6 +634,11 @@ export const OpportunityCreateCommandSchema = CommandMetadataSchema.extend({
       evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100),
     })
     .strict(),
+}).strict();
+
+export const OpportunityRemoveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("opportunity.remove"),
+  payload: z.object({ opportunityId: StrategicRecordIdSchema }).strict(),
 }).strict();
 
 export const OpportunityOfferCreateCommandSchema = CommandMetadataSchema.extend(
@@ -633,6 +671,13 @@ export const OpportunityLinkOutcomesCommandSchema =
       })
       .strict(),
   }).strict();
+
+export const OpportunityOfferRemoveCommandSchema = CommandMetadataSchema.extend(
+  {
+    commandName: z.literal("opportunity.offerRemove"),
+    payload: z.object({ offerId: StrategicRecordIdSchema }).strict(),
+  },
+).strict();
 
 export const RelationshipRenewalCreateCommandSchema =
   CommandMetadataSchema.extend({
@@ -680,6 +725,13 @@ export const RelationshipFactCreateCommandSchema = CommandMetadataSchema.extend(
         staleAfter: z.iso.datetime({ offset: true }),
       })
       .strict(),
+  },
+).strict();
+
+export const RelationshipFactRemoveCommandSchema = CommandMetadataSchema.extend(
+  {
+    commandName: z.literal("relationship.factRemove"),
+    payload: z.object({ factId: StrategicRecordIdSchema }).strict(),
   },
 ).strict();
 
@@ -737,6 +789,11 @@ export const DecisionResolveImpactCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 
+export const DecisionRemoveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("decision.remove"),
+  payload: z.object({ decisionId: StrategicRecordIdSchema }).strict(),
+}).strict();
+
 export const AreaCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("area.create"),
   payload: z
@@ -760,6 +817,11 @@ export const AreaUpdateResponsibilityCommandSchema =
       .strict(),
   }).strict();
 
+export const AreaRemoveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("area.remove"),
+  payload: z.object({ areaId: StrategicRecordIdSchema }).strict(),
+}).strict();
+
 export const InitiativeCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("initiative.create"),
   payload: z
@@ -782,6 +844,11 @@ export const InitiativeUpdateOutcomeCommandSchema =
       })
       .strict(),
   }).strict();
+
+export const InitiativeRemoveCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("initiative.remove"),
+  payload: z.object({ initiativeId: StrategicRecordIdSchema }).strict(),
+}).strict();
 
 export const WorkLinkCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("work.linkCreate"),
@@ -1779,26 +1846,37 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   CaptureSubmitTextCommandSchema,
   CaptureRouteAsTaskCommandSchema,
   ProjectCreateCommandSchema,
+  ProjectRemoveCommandSchema,
   DocumentCreateCommandSchema,
+  DocumentRemoveCommandSchema,
   KnowledgeSourceCreateCommandSchema,
+  KnowledgeSourceRemoveCommandSchema,
   KnowledgeSourceUpdateCommandSchema,
   KnowledgeDocumentSetEvidenceCommandSchema,
   KnowledgeNamedVersionCreateCommandSchema,
   KnowledgeNamedVersionVoidCommandSchema,
   RelationshipOrganizationCreateCommandSchema,
+  RelationshipOrganizationRemoveCommandSchema,
   RelationshipPersonCreateCommandSchema,
+  RelationshipPersonRemoveCommandSchema,
   OpportunityCreateCommandSchema,
+  OpportunityRemoveCommandSchema,
   OpportunityOfferCreateCommandSchema,
+  OpportunityOfferRemoveCommandSchema,
   OpportunityLinkOutcomesCommandSchema,
   RelationshipRenewalCreateCommandSchema,
   RelationshipRenewalResolveCommandSchema,
   RelationshipFactCreateCommandSchema,
+  RelationshipFactRemoveCommandSchema,
   DecisionCreateCommandSchema,
+  DecisionRemoveCommandSchema,
   DecisionSupersedeCommandSchema,
   DecisionResolveImpactCommandSchema,
   AreaCreateCommandSchema,
+  AreaRemoveCommandSchema,
   AreaUpdateResponsibilityCommandSchema,
   InitiativeCreateCommandSchema,
+  InitiativeRemoveCommandSchema,
   InitiativeUpdateOutcomeCommandSchema,
   WorkLinkCreateCommandSchema,
   WorkLinkRemoveCommandSchema,

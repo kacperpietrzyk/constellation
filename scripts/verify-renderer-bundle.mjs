@@ -94,10 +94,15 @@ import path from "node:path";
 // (entry i największy leniwy chunk bez zmian). Total JS rośnie o ok. 5 kB,
 // stylesheet o ok. 0.8 kB względem zmierzonego baseline; oba limity dostają
 // niecały 1 kB zapasu.
+// 2026-07-24 (usuwanie rekordów): dwanaście nowych komend usuwania wchodzi do
+// unii CommandEnvelopeSchema, którą renderer waliduje, więc total JS rośnie o
+// ok. 7 kB względem zmierzonego baseline; sekcja usuwania w inspektorze jedzie
+// w leniwym chunku (entry i największy leniwy chunk bez zmian). Limit total
+// dostaje ok. 1 kB zapasu, pozostałe bez zmian.
 const limits = {
   entryBytes: 560_000,
   entryGzipBytes: 147_500,
-  totalJavaScriptBytes: 1_333_000,
+  totalJavaScriptBytes: 1_341_000,
   largestLazyJavaScriptBytes: 565_000,
   stylesheetBytes: 189_500,
 };

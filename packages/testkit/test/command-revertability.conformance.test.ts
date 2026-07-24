@@ -371,6 +371,167 @@ describe("Command revertability", () => {
     });
     apply("work.linkRemove", { linkId }, versions(linkId));
 
+    // A created record and its removal are the same recordState toggle seen
+    // from two sides, so both arms are exercised for every kind: the create
+    // records the compensation that takes it back, the removal the one that
+    // restores it. Removal is refused while anything still points at the
+    // record, so each kind is removed from the leaves inwards.
+    const organizationId = uuid();
+    apply("relationship.organizationCreate", {
+      organizationId,
+      spaceId: ids.rootSpace,
+      name: "Kept organization",
+      relationshipState: "active",
+    });
+    const personId = uuid();
+    apply("relationship.personCreate", {
+      personId,
+      spaceId: ids.rootSpace,
+      name: "Named contact",
+      organizationId,
+      role: "Sponsor",
+    });
+    const opportunityId = uuid();
+    apply("opportunity.create", {
+      opportunityId,
+      spaceId: ids.rootSpace,
+      title: "Compensation review",
+      organizationId,
+      personIds: [personId],
+      need: "Every agent write can be taken back.",
+      qualification: "The catalog and the handlers agree.",
+      stage: "qualified",
+      nextAction: "Pin the table with this test.",
+      evidenceSourceIds: [sourceId],
+    });
+    const offerId = uuid();
+    apply("opportunity.offerCreate", {
+      offerId,
+      opportunityId,
+      deliverableDocumentId: documentId,
+      title: "Compensation offer",
+      ownerPrincipalId: ids.principal,
+      state: "ready",
+      nextAction: "Send once the table is pinned.",
+    });
+    const factId = uuid();
+    apply("relationship.factCreate", {
+      factId,
+      spaceId: ids.rootSpace,
+      organizationId,
+      factType: "agent_surface",
+      value: "Operates over MCP",
+      evidenceSourceIds: [sourceId],
+      verifiedAt: "2026-07-22T09:00:00.000Z",
+      staleAfter: "2027-01-22T09:00:00.000Z",
+    });
+    const decisionId = uuid();
+    apply("decision.create", {
+      decisionId,
+      spaceId: ids.rootSpace,
+      title: "Removal is a soft delete",
+      rationale: "History and audit outlive the record leaving the graph.",
+      evidenceSourceIds: [sourceId],
+      linkedRecordIds: [taskId],
+    });
+    // Renewals have no removal command — they are resolved, not removed, and
+    // their create also raises a follow-up Task and an attention signal. So the
+    // renewal hangs off an organization this test leaves standing; the removed
+    // one has to end up with nothing pointing at it.
+    const keptOrganizationId = uuid();
+    apply("relationship.organizationCreate", {
+      organizationId: keptOrganizationId,
+      spaceId: ids.rootSpace,
+      name: "Organization the renewal keeps",
+      relationshipState: "active",
+    });
+    const renewalId = uuid();
+    apply("relationship.renewalCreate", {
+      renewalId,
+      followUpTaskId: uuid(),
+      spaceId: ids.rootSpace,
+      organizationId: keptOrganizationId,
+      title: "Support entitlement",
+      scope: "Managed support",
+      expiresAt: "2027-03-31T12:00:00.000Z",
+      leadTimeDays: 30,
+      ownerPrincipalId: ids.principal,
+      evidenceSourceIds: [sourceId],
+      cycleKey: "support:2027-03",
+    });
+
+    apply("decision.remove", { decisionId }, versions(decisionId));
+    apply("relationship.factRemove", { factId }, versions(factId));
+    apply("opportunity.offerRemove", { offerId }, versions(offerId));
+    apply("opportunity.remove", { opportunityId }, versions(opportunityId));
+    apply("relationship.personRemove", { personId }, versions(personId));
+    apply(
+      "relationship.organizationRemove",
+      { organizationId },
+      versions(organizationId),
+    );
+
+    // The three records that keep their own table, each removed from a state
+    // where nothing points at it: the guard is the subject of its own test.
+    const removedProjectId = String(
+      projection(
+        apply("project.create", {
+          spaceId: ids.rootSpace,
+          title: "Project that goes away",
+        }),
+      )["projectId"],
+    );
+    apply(
+      "project.remove",
+      { projectId: removedProjectId },
+      versions(removedProjectId),
+    );
+    const removedDocumentId = uuid();
+    apply("document.create", {
+      documentId: removedDocumentId,
+      spaceId: ids.rootSpace,
+      title: "Document that goes away",
+    });
+    apply(
+      "document.remove",
+      { documentId: removedDocumentId },
+      versions(removedDocumentId),
+    );
+    const removedSourceId = uuid();
+    apply("knowledge.sourceCreate", {
+      sourceId: removedSourceId,
+      spaceId: ids.rootSpace,
+      sourceKind: "url",
+      title: "Source that goes away",
+      canonicalUrl: "https://example.com/removed",
+      availability: "reference_only",
+      observedAt: "2026-07-22T11:00:00.000Z",
+    });
+    apply(
+      "knowledge.sourceRemove",
+      { sourceId: removedSourceId },
+      versions(removedSourceId),
+    );
+
+    const removedAreaId = uuid();
+    apply("area.create", {
+      areaId: removedAreaId,
+      spaceId: ids.rootSpace,
+      title: "Area that goes away",
+    });
+    apply("area.remove", { areaId: removedAreaId }, versions(removedAreaId));
+    const removedInitiativeId = uuid();
+    apply("initiative.create", {
+      initiativeId: removedInitiativeId,
+      spaceId: ids.rootSpace,
+      title: "Initiative that goes away",
+    });
+    apply(
+      "initiative.remove",
+      { initiativeId: removedInitiativeId },
+      versions(removedInitiativeId),
+    );
+
     const savedViewId = uuid();
     apply("savedView.create", {
       savedViewId,

@@ -8,6 +8,34 @@ releases begin.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-24
+
+### Added
+
+- Removal for every entity an agent or a person can create — organization,
+  person, opportunity, offer, relationship fact, decision, area, initiative,
+  project, document and knowledge source. Removal is a soft delete that keeps
+  history and audit, refuses while another record still points at the one being
+  removed, and is itself revertable. The creates now record compensation too, so
+  a checkpoint containing one can be reverted; the desktop inspector offers the
+  same removal, naming what blocks it before the click. Renewals are resolved
+  rather than removed: creating one also raises a follow-up Task and an
+  attention signal that a record-level removal would strand.
+
+- `constellation://v1/capabilities` and the operations catalog name the build
+  that produced them: the application version plus a contract fingerprint from
+  the desktop host and from the MCP server process. When a long-lived MCP
+  server process outlives the application build that generated its schemas, the
+  two disagree and the response says so, instead of leaving a client to
+  correlate process start times against the app bundle.
+
+### Fixed
+
+- The desktop UI re-reads a workspace an external MCP agent has written to,
+  instead of showing the state it opened with until the application is
+  restarted. A correct agent write no longer reads as a missing one, and
+  "check it in the UI" is a valid verification step again.
+
 ## [0.1.1] - 2026-07-23
 
 ### Added

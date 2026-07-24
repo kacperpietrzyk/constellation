@@ -1382,6 +1382,13 @@ const startProductionDesktop = async (): Promise<void> => {
       workspaceId: workspaceRecovery.kernel.identity.workspaceId,
       store: workspaceRecovery.kernel.store,
       isEnabled: () => coordinatedDataHomeProvider === undefined,
+      appVersion: app.getVersion(),
+      onWorkspaceMutated: (event) => {
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (window.isDestroyed()) continue;
+          window.webContents.send(DESKTOP_CHANNELS.workspaceChanged, event);
+        }
+      },
       readCapturePayload: (original) => capturePayloadCustody?.read(original),
       finalizeVoiceAudio,
       documentText: (() => {

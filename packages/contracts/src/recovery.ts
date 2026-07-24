@@ -19,3 +19,44 @@ export const CheckpointRevertUnavailableReasonSchema = z
   .describe(
     'Why the checkpoint cannot be reverted now. "already_reverted": the checkpoint was reverted before. "unsupported": at least one command in it records no compensation. "later_change": at least one compensation was already consumed by a later undo.',
   );
+
+// The compensation a command recorded, named. It was restated in two
+// projections, which is how the two undo surfaces drift; both import it here,
+// and the domain's UndoDescriptor kinds are pinned to it by a conformance test.
+export const CompensationKindSchema = z.enum([
+  "project.restore_outcome",
+  "area.restore_responsibility",
+  "initiative.restore_outcome",
+  "task.restore_state",
+  "task.restore_details",
+  "task.restore_calendar_block",
+  "task.restore_record_state",
+  "task.undo_create",
+  "task.restore_parent",
+  "taskStatus.restore_definition",
+  "workspace.restore_default_status",
+  "fieldDef.restore_definition",
+  "record.restore_field_value",
+  "template.restore_definition",
+  "automation.restore_definition",
+  "project.unapply_template",
+  "meeting.unpromote_work_item",
+  "meeting.restore_routing",
+  "meeting.restore_work_item",
+  "meeting.restore_participant_links",
+  "task.restore_operational_state",
+  "work_link.restore_state",
+  "savedView.restore_definition",
+  "relation.remove",
+  "relation.restore",
+  "capture.undo_route",
+  "capture.undo_knowledge_route",
+  "knowledge.restore_source",
+  "knowledge.restore_evidence",
+  "knowledge.void_named_version",
+  "strategic.undo_create",
+  "strategic.restore_record_state",
+  "record.undo_create",
+  "record.restore_record_state",
+]);
+export type CompensationKind = z.infer<typeof CompensationKindSchema>;

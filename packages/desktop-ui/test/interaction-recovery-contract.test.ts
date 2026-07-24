@@ -54,6 +54,10 @@ const accessStyles = readFileSync(
   "utf8",
 );
 const realApp = readFileSync(path.join(root, "src", "RealApp.tsx"), "utf8");
+const recordRemoval = readFileSync(
+  path.join(root, "src", "components", "RecordRemovalSection.tsx"),
+  "utf8",
+);
 const workSurface = readFileSync(
   path.join(root, "src", "WorkSurface.tsx"),
   "utf8",
@@ -153,6 +157,42 @@ describe("interaction recovery contracts", () => {
       realApp,
       /nextSurface === "documents"[\s\S]*state\.snapshot\.knowledge[\s\S]*documents\.find[\s\S]*documentContext\(id, document\.title\)/,
     );
+  });
+
+  it("offers the same removal an agent has, and explains the block before the click", () => {
+    // The kernel refuses to remove a record other work still points at. The
+    // inspector holds the same projection the guard reads, so it says which
+    // work blocks the removal instead of letting the owner click into a
+    // precondition error.
+    assert.match(realApp, /<RecordRemovalSection/);
+    assert.match(
+      realApp,
+      /dependentLabels=\{strategicDependentLabels\(record, records\)\}/,
+    );
+    assert.match(
+      realApp,
+      /strategicRecordReferences\(candidate\)\.includes\(record\.id\)/,
+    );
+    // A soft delete: the copy never promises permanence, because undo works.
+    assert.match(recordRemoval, /Można je cofnąć/);
+    assert.match(recordRemoval, /Odłącz ją\s*\n?\s*albo usuń najpierw/);
+    assert.doesNotMatch(recordRemoval, /trwale|nieodwracaln/i);
+  });
+
+  it("re-reads the workspace when an external agent writes to it", () => {
+    // An agent and this window are equal operators over one graph, but the
+    // window holds its own projection: without this the human sees the state
+    // the window opened with and reads a correct agent write as a missing one.
+    assert.match(realApp, /client\.onWorkspaceChanged\(\(event\) => \{/);
+    assert.match(
+      realApp,
+      /event\.workspaceId !== workspaceIdRef\.current[\s\S]*return/,
+    );
+    // Laid once per client and reaching the current reload through a ref, so a
+    // burst of agent commands cannot fall between unsubscribe and resubscribe.
+    assert.match(realApp, /void reloadSnapshotRef\.current\(\)/);
+    assert.match(realApp, /AGENT_WRITE_RELOAD_DELAY_MS/);
+    assert.match(realApp, /if \(pending !== undefined\) return;/);
   });
 
   it("gives the inspector separator a 24px pointer target without thickening its seam", () => {

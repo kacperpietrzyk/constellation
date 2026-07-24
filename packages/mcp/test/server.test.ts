@@ -7,6 +7,10 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import { CapabilitySchema } from "@constellation/contracts";
 
+import {
+  CONTRACT_SPLIT_WARNING,
+  contractFingerprint,
+} from "../src/contract-stamp.js";
 import { createConstellationMcpServer } from "../src/server.js";
 import type {
   McpOperatorInvocation,
@@ -427,9 +431,17 @@ test("serves a grant-filtered operation catalog generated from the contract", as
       )?.revertable,
       "always",
     );
+    // Entity creates are compensable; what still is not is a command with no
+    // removal state to return to, and the catalog has to say which is which.
     assert.equal(
       catalog.operations.find(
         (operation) => operation.name === "project.create",
+      )?.revertable,
+      "always",
+    );
+    assert.equal(
+      catalog.operations.find(
+        (operation) => operation.name === "agent.checkpointCreate",
       )?.revertable,
       "never",
     );
@@ -553,4 +565,95 @@ test("publishes a structurally valid schema for every authorized operation", asy
     await client.close();
     await server.close();
   }
+});
+
+/**
+ * External evidence (2026-07-23): an integrator spent hours establishing that
+ * a long-lived MCP server process was serving the previous build's schemas and
+ * guidance over an already-updated kernel — the diagnosis needed `ps` start
+ * times, the app bundle's version string, and a repository checkout, none of
+ * which a client has. Two stamps in one response replace all of it.
+ */
+const stampedServer = (hostBuild: unknown) =>
+  createConstellationMcpServer({
+    invoke: (invocation) =>
+      Promise.resolve({
+        contractVersion: 1,
+        requestId: invocation.requestId,
+        outcome: "success",
+        result: {
+          server: "constellation-local",
+          ...(hostBuild === undefined ? {} : { build: hostBuild }),
+          grant: { capabilityScope: CapabilitySchema.options },
+        },
+      } satisfies McpOperatorResponse),
+  });
+
+const readCapabilities = async (hostBuild: unknown) => {
+  const server = stampedServer(hostBuild);
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "build-stamp-test", version: "1.0.0" });
+  await Promise.all([
+    server.connect(serverTransport),
+    client.connect(clientTransport),
+  ]);
+  try {
+    const read = async (uri: string): Promise<Record<string, unknown>> => {
+      const resource = await client.readResource({ uri });
+      const content = resource.contents[0];
+      const text =
+        content !== undefined && "text" in content ? content.text : undefined;
+      assert.ok(typeof text === "string", uri);
+      return JSON.parse(text) as Record<string, unknown>;
+    };
+    return {
+      capabilities: (
+        (await read("constellation://v1/capabilities")) as {
+          readonly result: { readonly build: Record<string, unknown> };
+        }
+      ).result.build,
+      operations: (await read("constellation://v1/operations")) as {
+        readonly build: Record<string, unknown>;
+      },
+    };
+  } finally {
+    await client.close();
+    await server.close();
+  }
+};
+
+test("names the build behind both processes and flags a contract split", async () => {
+  const coherent = await readCapabilities({
+    process: "desktop-host",
+    appVersion: "0.1.2",
+    contractFingerprint: contractFingerprint(),
+  });
+  assert.equal(coherent.capabilities["appVersion"], "0.1.2");
+  const own = coherent.capabilities["mcpServer"] as Record<string, unknown>;
+  assert.equal(own["contractFingerprint"], contractFingerprint());
+  assert.equal(own["matchesHost"], true);
+  assert.equal(own["warning"], undefined);
+  // The catalog is what goes stale, and it is what an agent reads first.
+  assert.equal(coherent.operations.build["matchesHost"], true);
+
+  const split = await readCapabilities({
+    process: "desktop-host",
+    appVersion: "0.1.1",
+    contractFingerprint: "0".repeat(32),
+  });
+  const stale = split.capabilities["mcpServer"] as Record<string, unknown>;
+  assert.equal(stale["matchesHost"], false);
+  assert.equal(stale["warning"], CONTRACT_SPLIT_WARNING);
+  assert.equal(split.operations.build["warning"], CONTRACT_SPLIT_WARNING);
+
+  // A host old enough to publish no stamp at all is, by that fact, not this
+  // build either — the split has to read as a split, not as unknown.
+  const unstamped = await readCapabilities(undefined);
+  assert.equal(
+    (unstamped.capabilities["mcpServer"] as Record<string, unknown>)[
+      "matchesHost"
+    ],
+    false,
+  );
 });

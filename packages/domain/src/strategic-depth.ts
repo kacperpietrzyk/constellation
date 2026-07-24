@@ -9,6 +9,8 @@ import type {
   TaskId,
 } from "@constellation/contracts";
 
+import { strategicRecordReferences } from "@constellation/contracts";
+
 import type { StrategicRecord } from "./model.js";
 
 type Common = {
@@ -381,3 +383,34 @@ export const createRadarCandidate = (
   relevance: input.relevance,
   state: "pending",
 });
+
+/**
+ * The one recordState transition. The explicit remove commands, the undo of a
+ * create, and the undo of a remove all go through here, so a record can never
+ * be taken out of the graph by one path and put back by a different rule.
+ */
+export const setStrategicRecordState = (
+  record: StrategicRecord,
+  recordState: "active" | "removed",
+  occurredAt: string,
+): StrategicRecord => ({
+  ...record,
+  recordState,
+  version: record.version + 1,
+  updatedAt: occurredAt,
+});
+
+export const strategicRecordState = (
+  record: StrategicRecord,
+): "active" | "removed" => record.recordState ?? "active";
+
+/**
+ * The same reading for the records that keep their own table — Project,
+ * NativeDocument, KnowledgeSource. Absent means active, so nothing written
+ * before removal existed has to be migrated.
+ */
+export const recordIsActive = (record: {
+  readonly recordState?: "active" | "removed";
+}): boolean => (record.recordState ?? "active") === "active";
+
+export { strategicRecordReferences };

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { DESKTOP_CHANNELS, createRendererClient } from "../src/client.js";
+import {
+  DESKTOP_CHANNELS,
+  createRendererClient,
+  isWorkspaceChangedEvent,
+} from "../src/client.js";
 import {
   desktopSurfaceIds,
   desktopSurfaceRegistry,
@@ -74,6 +78,7 @@ test("renderer client exposes only semantic application and recovery routes", ()
     "listRemoteAgentGrants",
     "listWorkspaces",
     "onAttentionActivated",
+    "onWorkspaceChanged",
     "openCollaborativeContent",
     "openDetachedSurface",
     "openDocument",
@@ -122,4 +127,22 @@ test("renderer client exposes only semantic application and recovery routes", ()
     channel: DESKTOP_CHANNELS.copyWorkspaceRecoveryCode,
     payload: { recoveryCode },
   });
+});
+
+test("a workspace change event crossing the bridge is validated, never trusted", () => {
+  const workspaceId = "51000000-0000-4000-8000-000000000001";
+  assert.equal(isWorkspaceChangedEvent({ workspaceId, origin: "agent" }), true);
+  // The renderer reloads its whole projection on this signal, so anything that
+  // is not the shape the main process sends has to stop at the bridge.
+  assert.equal(isWorkspaceChangedEvent({ workspaceId }), false);
+  assert.equal(
+    isWorkspaceChangedEvent({ workspaceId, origin: "desktop" }),
+    false,
+  );
+  assert.equal(
+    isWorkspaceChangedEvent({ workspaceId: "", origin: "agent" }),
+    false,
+  );
+  assert.equal(isWorkspaceChangedEvent(undefined), false);
+  assert.equal(isWorkspaceChangedEvent("agent"), false);
 });

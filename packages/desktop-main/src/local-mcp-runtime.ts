@@ -42,6 +42,7 @@ import {
   type McpOperatorInvocation,
   type McpOperatorResponse,
 } from "@constellation/mcp/protocol";
+import { contractFingerprint } from "@constellation/mcp/contract-stamp";
 import { structuredDocumentEntityReferences } from "@constellation/realtime-documents";
 
 import {
@@ -55,6 +56,22 @@ import {
 
 const MAX_CONNECTIONS = 32;
 const MAX_PORTABLE_UNIX_SOCKET_BYTES = 96;
+
+/**
+ * Invocation kinds that can leave durable state behind. Reads, capability
+ * lookups and payload fetches cannot, so they raise no change signal.
+ */
+const MUTATING_INVOCATION_KINDS: ReadonlySet<McpOperatorInvocation["kind"]> =
+  new Set([
+    "command",
+    "batch",
+    "checkpoint_revert",
+    "document_write",
+    "document_structured_write",
+    "document_structured_restore",
+    "project_structured_write",
+    "project_structured_restore",
+  ]);
 
 type AgentContentAddress = {
   readonly owner: CollaborativeContentOwner;
@@ -143,6 +160,22 @@ export class LocalMcpRuntime {
       readonly workspaceId: WorkspaceId;
       readonly store: ApplicationStore;
       readonly isEnabled?: () => boolean;
+      /**
+       * The running application's version, as the capabilities contract
+       * reports it. Optional so a test runtime need not invent one.
+       */
+      readonly appVersion?: string;
+      /**
+       * Called once per agent invocation that changed workspace state, so a
+       * surface holding its own projection can re-read. An agent and the
+       * desktop UI are equal operators over one graph (AGENTS.md); without
+       * this, the human's window keeps showing the graph as it was when the
+       * window opened and reads a correct agent write as a missing one.
+       */
+      readonly onWorkspaceMutated?: (event: {
+        readonly workspaceId: WorkspaceId;
+        readonly origin: "agent";
+      }) => void;
       readonly readCapturePayload?: (
         original: CaptureOriginal,
       ) => Uint8Array | undefined;
@@ -315,11 +348,38 @@ export class LocalMcpRuntime {
         diagnosticCode: "authorization.denied",
       });
     try {
-      return this.invoke(grant, parsed.invocation);
+      const response = this.invoke(grant, parsed.invocation);
+      this.announceMutation(parsed.invocation, response);
+      return response;
     } catch {
       return contentSafeResponse(parsed.invocation.requestId, "retryable", {
         diagnosticCode: "mcp.runtime_unavailable",
       });
+    }
+  }
+
+  private announceMutation(
+    invocation: McpOperatorInvocation,
+    response: McpOperatorResponse,
+  ): void {
+    if (this.input.onWorkspaceMutated === undefined) return;
+    // "partial" counts: a batch that applied some of its commands changed the
+    // workspace exactly as much as one that applied all of them.
+    if (response.outcome !== "success" && response.outcome !== "partial")
+      return;
+    // A preview runs the real executor inside a rolled-back transaction, so it
+    // is the one write-shaped invocation that leaves nothing to observe.
+    if (!MUTATING_INVOCATION_KINDS.has(invocation.kind)) return;
+    if (invocation.kind === "batch" && invocation.batch.mode !== "apply")
+      return;
+    try {
+      this.input.onWorkspaceMutated({
+        workspaceId: this.input.workspaceId,
+        origin: "agent",
+      });
+    } catch {
+      // Notifying a surface is best effort. A window that cannot be reached
+      // must never turn an applied write into a failed one.
     }
   }
 
@@ -384,6 +444,15 @@ export class LocalMcpRuntime {
       return contentSafeResponse(invocation.requestId, "success", {
         server: "constellation-local",
         contractVersion: MCP_CONTRACT_VERSION,
+        // contractVersion identifies the protocol, not the build: it stayed 1
+        // across a release that regenerated every schema. This names the build
+        // that is answering, so a client can tell which one it is talking to
+        // without reading the application bundle off disk.
+        build: {
+          process: "desktop-host",
+          appVersion: this.input.appVersion ?? null,
+          contractFingerprint: contractFingerprint(),
+        },
         tools: [...MCP_TOOL_NAMES],
         resources: [
           "constellation://v1/operations",

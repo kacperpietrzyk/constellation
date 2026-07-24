@@ -32,7 +32,10 @@ import {
 } from "./ids.js";
 import { CaptureReviewReasonSchema, ContractVersionSchema } from "./command.js";
 import { NeedsReviewSchema } from "./narrative.js";
-import { UndoUnavailableReasonSchema } from "./recovery.js";
+import {
+  CompensationKindSchema,
+  UndoUnavailableReasonSchema,
+} from "./recovery.js";
 
 export const DiagnosticCodeSchema = z.enum([
   "workspace.created",
@@ -63,6 +66,8 @@ export const DiagnosticCodeSchema = z.enum([
   "knowledge.named_version_created",
   "knowledge.named_version_voided",
   "strategic.record_changed",
+  "strategic.record_removed",
+  "record.removed",
   "project.outcome_updated",
   "project.lifecycle_changed",
   "task.created",
@@ -359,27 +364,47 @@ export const KnowledgeNamedVersionMutationProjectionSchema = z
     version: z.int().positive(),
   })
   .strict();
+// Shared rather than restated: the changed and removed projections carry the
+// same three fields, and a copy is how two projections of one record drift
+// apart.
+const StrategicRecordMutationFields = {
+  recordId: StrategicRecordIdSchema,
+  recordType: z.enum([
+    "organization",
+    "person",
+    "opportunity",
+    "offer",
+    "renewal",
+    "relationship_fact",
+    "decision",
+    "impact_review",
+    "area",
+    "initiative",
+    "work_link",
+    "saved_view",
+    "recurrence",
+    "radar_candidate",
+    "meeting",
+  ]),
+  version: z.int().positive(),
+} as const;
 export const StrategicRecordMutationProjectionSchema = z
   .object({
     kind: z.literal("strategic.record_changed"),
-    recordId: StrategicRecordIdSchema,
-    recordType: z.enum([
-      "organization",
-      "person",
-      "opportunity",
-      "offer",
-      "renewal",
-      "relationship_fact",
-      "decision",
-      "impact_review",
-      "area",
-      "initiative",
-      "work_link",
-      "saved_view",
-      "recurrence",
-      "radar_candidate",
-      "meeting",
-    ]),
+    ...StrategicRecordMutationFields,
+  })
+  .strict();
+export const StrategicRecordRemovedProjectionSchema = z
+  .object({
+    kind: z.literal("strategic.record_removed"),
+    ...StrategicRecordMutationFields,
+  })
+  .strict();
+export const RecordRemovedProjectionSchema = z
+  .object({
+    kind: z.literal("record.removed"),
+    recordId: z.uuid(),
+    recordKind: z.enum(["project", "document", "knowledgeSource"]),
     version: z.int().positive(),
   })
   .strict();
@@ -977,6 +1002,19 @@ const StrategicRecordChangedSuccessOutcomeSchema =
     diagnosticCode: z.literal("strategic.record_changed"),
     projection: StrategicRecordMutationProjectionSchema,
   }).strict();
+const StrategicRecordRemovedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("strategic.record_removed"),
+    projection: StrategicRecordRemovedProjectionSchema,
+  }).strict();
+const RecordRemovedSuccessOutcomeSchema = CommittedOutcomeMetadataSchema.extend(
+  {
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("record.removed"),
+    projection: RecordRemovedProjectionSchema,
+  },
+).strict();
 const ProjectOutcomeUpdatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1235,6 +1273,8 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   KnowledgeNamedVersionCreatedSuccessOutcomeSchema,
   KnowledgeNamedVersionVoidedSuccessOutcomeSchema,
   StrategicRecordChangedSuccessOutcomeSchema,
+  StrategicRecordRemovedSuccessOutcomeSchema,
+  RecordRemovedSuccessOutcomeSchema,
   ProjectOutcomeUpdatedSuccessOutcomeSchema,
   ProjectLifecycleChangedSuccessOutcomeSchema,
   TaskCreatedSuccessOutcomeSchema,
@@ -1284,40 +1324,7 @@ export const UndoPreviewOutcomeSchema = OutcomeMetadataSchema.extend({
       kind: z.literal("undo.previewed"),
       targetCommandId: CommandIdSchema,
       available: z.boolean(),
-      compensationKind: z
-        .enum([
-          "project.restore_outcome",
-          "area.restore_responsibility",
-          "initiative.restore_outcome",
-          "task.restore_state",
-          "task.restore_details",
-          "task.restore_calendar_block",
-          "task.restore_record_state",
-          "task.undo_create",
-          "task.restore_parent",
-          "taskStatus.restore_definition",
-          "workspace.restore_default_status",
-          "fieldDef.restore_definition",
-          "record.restore_field_value",
-          "template.restore_definition",
-          "automation.restore_definition",
-          "project.unapply_template",
-          "meeting.unpromote_work_item",
-          "meeting.restore_routing",
-          "meeting.restore_work_item",
-          "meeting.restore_participant_links",
-          "task.restore_operational_state",
-          "work_link.restore_state",
-          "savedView.restore_definition",
-          "relation.remove",
-          "relation.restore",
-          "capture.undo_route",
-          "capture.undo_knowledge_route",
-          "knowledge.restore_source",
-          "knowledge.restore_evidence",
-          "knowledge.void_named_version",
-        ])
-        .optional(),
+      compensationKind: CompensationKindSchema.optional(),
       affectedRecordIds: z.array(z.uuid()),
       requiredVersions: z.record(z.uuid(), z.int().positive()),
       unavailableReason: UndoUnavailableReasonSchema.optional(),
