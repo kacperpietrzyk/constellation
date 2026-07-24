@@ -5,9 +5,9 @@ import { z } from "zod";
 // of that descriptor. Restating this enum per projection is how the two undo
 // surfaces drifted apart, so both import it from here.
 export const UndoUnavailableReasonSchema = z
-  .enum(["unsupported", "already_undone", "later_change"])
+  .enum(["unsupported", "already_undone", "later_change", "still_referenced"])
   .describe(
-    'Why the target command cannot be compensated now. "unsupported": the command applied but its kind records no compensation, so no undo will ever become available — an unknown or mistyped command id is rejected as command.precondition_failed instead of previewed, never as authorization.denied, which states only that the grant lacks the capability. "already_undone": the compensation was consumed by an earlier undo. "later_change": a record moved past the version the compensation requires.',
+    'Why the target command cannot be compensated now. "unsupported": the command applied but its kind records no compensation, so no undo will ever become available — an unknown or mistyped command id is rejected as command.precondition_failed instead of previewed, never as authorization.denied, which states only that the grant lacks the capability. "already_undone": the compensation was consumed by an earlier undo. "later_change": a record moved past the version the compensation requires. "still_referenced": the target command created a record that other work has since attached itself to, so taking it back would orphan that work; detach the records that point at it and the compensation becomes available again.',
   );
 
 // Checkpoint reverts span a set of commands, so the vocabulary differs by one

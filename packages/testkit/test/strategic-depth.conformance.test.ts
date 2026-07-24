@@ -2825,10 +2825,13 @@ it("names the record that blocks removing a project", () => {
   );
   if (refused.diagnosticCode !== "record.still_referenced")
     throw new Error("Expected the blocked outcome.");
-  assert.deepEqual(
-    refused.blockedBy.map((item) => item.recordId),
-    [opportunityId],
-  );
+  assert.deepEqual(refused.blockedBy, [
+    {
+      recordId: opportunityId,
+      recordKind: "strategicRecord",
+      recordType: "opportunity",
+    },
+  ]);
   assert.equal(refused.blockedByCount, 1);
 });
 
@@ -2860,6 +2863,15 @@ it("still answers precondition_failed to a caller outside the Space", () => {
   harness.authorization.register(outsideThisSpace());
   const organizationId = createOrganization(harness, "blocking-foreign");
   createPerson(harness, "blocking-foreign", organizationId);
+  // The control: the same removal, run by a caller who can reach the Space,
+  // still names the reference. Without this, the test above would pass just
+  // as well if the shared creators stopped producing a dependent at all.
+  const inSpace = removeOrganization(
+    harness,
+    "blocking-foreign-control",
+    organizationId,
+  );
+  assert.equal(inSpace.diagnosticCode, "record.still_referenced");
   const refused = removeOrganization(
     harness,
     "blocking-foreign-remove",
@@ -2868,6 +2880,101 @@ it("still answers precondition_failed to a caller outside the Space", () => {
   );
   assert.equal(refused.diagnosticCode, "command.precondition_failed");
   assert.equal("blockedBy" in refused, false);
+});
+
+it("says undoing a create is blocked by a reference, not a later change", () => {
+  const harness = removalHarness("undo-blocked-strategic");
+  const organizationCommand = {
+    ...metadata("undo-blocked-strategic-organization"),
+    commandName: "relationship.organizationCreate" as const,
+    payload: {
+      organizationId: uuid(),
+      spaceId: ids.space,
+      name: "Orbit",
+      relationshipState: "active" as const,
+    },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), organizationCommand)).outcome,
+    "success",
+  );
+  createPerson(
+    harness,
+    "undo-blocked-strategic",
+    organizationCommand.payload.organizationId,
+  );
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("undo-blocked-strategic-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: organizationCommand.commandId },
+    }),
+  );
+  if (
+    preview.outcome !== "preview" ||
+    preview.projection.kind !== "undo.previewed"
+  )
+    throw new Error("Expected an undo preview.");
+  assert.equal(preview.projection.available, false);
+  assert.equal(preview.projection.unavailableReason, "still_referenced");
+});
+
+it("says undoing a table record create is blocked by a reference, not a later change", () => {
+  const harness = removalHarness("undo-blocked-table");
+  const projectCommand = {
+    ...metadata("undo-blocked-table-project"),
+    commandName: "project.create" as const,
+    payload: { spaceId: ids.space, title: "Cited project" },
+  };
+  const created = unwrap(harness.kernel.execute(context(), projectCommand));
+  if (
+    created.outcome !== "success" ||
+    created.projection.kind !== "project.created"
+  )
+    throw new Error("Expected a created Project.");
+  const projectId = created.projection.projectId;
+  const taskId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("undo-blocked-table-task"),
+        commandName: "task.create",
+        payload: { taskId, spaceId: ids.space, title: "Contributing task" },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("undo-blocked-table-relate", {
+          [taskId]: 1,
+          [projectId]: 1,
+        }),
+        commandName: "record.relate",
+        payload: {
+          relationType: "task_contributes_to_project",
+          taskId,
+          projectId,
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("undo-blocked-table-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: projectCommand.commandId },
+    }),
+  );
+  if (
+    preview.outcome !== "preview" ||
+    preview.projection.kind !== "undo.previewed"
+  )
+    throw new Error("Expected an undo preview.");
+  assert.equal(preview.projection.available, false);
+  assert.equal(preview.projection.unavailableReason, "still_referenced");
 });
 
 it("degrades reads that resolve a removed record instead of failing them", () => {

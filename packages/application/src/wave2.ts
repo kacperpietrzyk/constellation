@@ -7253,7 +7253,7 @@ const descriptorState = (
   available: boolean;
   recordIds: string[];
   versions: Record<string, number>;
-  reason?: "already_undone" | "later_change";
+  reason?: "already_undone" | "later_change" | "still_referenced";
 } => {
   if (descriptor.consumedByCommandId !== undefined) {
     return {
@@ -7562,11 +7562,25 @@ const descriptorState = (
       // Taking a create back removes the record, so version equality is not
       // enough: a person, opportunity or link attached afterwards does not
       // bump the record's version, and removing it would orphan them.
+      // The version mismatch wins over a reference: it is the older truth and
+      // the one the caller cannot act on, since detaching every dependent
+      // would still leave the version gap the undo cannot cross. Edited
+      // independently from the record.undo_create case below, which resolves
+      // the same precedence the same way.
       const record = view.getStrategicRecord(descriptor.recordId);
-      return record !== undefined &&
-        strategicRecordState(record) === "active" &&
-        record.version === descriptor.resultingVersion &&
-        strategicRecordDependents(view, record).length === 0
+      if (
+        record === undefined ||
+        strategicRecordState(record) !== "active" ||
+        record.version !== descriptor.resultingVersion
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      const dependents = strategicRecordDependents(view, record);
+      return dependents.length === 0
         ? {
             available: true,
             recordIds: [record.id],
@@ -7576,7 +7590,7 @@ const descriptorState = (
             available: false,
             recordIds: [],
             versions: {},
-            reason: "later_change",
+            reason: "still_referenced",
           };
     }
     case "record.undo_create":
@@ -7591,21 +7605,36 @@ const descriptorState = (
               );
       // Undoing a create removes the record, so it has to re-run the guard the
       // explicit removal runs; restoring one only has to find it unchanged.
+      //
+      // The version mismatch wins over a reference: it is the older truth and
+      // the one the caller cannot act on, since detaching every dependent
+      // would still leave the version gap the undo cannot cross. Edited
+      // independently from the strategic.undo_create case above, which
+      // resolves the same precedence the same way.
+      if (
+        record === undefined ||
+        record.version !== descriptor.resultingVersion
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
       const orphans =
         descriptor.kind === "record.undo_create" &&
-        record !== undefined &&
         tableRecordDependents(view, record, descriptor.recordKind).length > 0;
-      return record?.version === descriptor.resultingVersion && !orphans
+      return orphans
         ? {
-            available: true,
-            recordIds: [record.id],
-            versions: { [record.id]: record.version },
-          }
-        : {
             available: false,
             recordIds: [],
             versions: {},
-            reason: "later_change",
+            reason: "still_referenced",
+          }
+        : {
+            available: true,
+            recordIds: [record.id],
+            versions: { [record.id]: record.version },
           };
     }
     case "strategic.restore_record_state": {
