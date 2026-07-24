@@ -232,6 +232,29 @@ export const AgentGrantSetScopeCommandSchema = CommandMetadataSchema.extend({
         .array(CapabilitySchema)
         .min(1)
         .max(CapabilitySchema.options.length),
+      // The whole target list, never a delta — the same reason
+      // `capabilityScope` is replaced whole: the outcome must not depend on
+      // what the grant happened to hold when the command was sent. Shape
+      // identical to `agent.grantCreate` so the Hub can mirror one shape.
+      //
+      // `min(1)` is a safety rule, not tidiness. A grant with no active Space
+      // fails `authenticate()` outright, and the runtime answers
+      // `authorization.denied` to every call including `capabilities` — the
+      // grant holds the capability, the Spaces are what is gone, and the
+      // resource that would explain it is refused too.
+      spaces: z
+        .array(
+          z
+            .object({
+              spaceGrantId: SpaceGrantIdSchema,
+              spaceId: SpaceIdSchema,
+              access: SpaceAccessLevelSchema,
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(50)
+        .optional(),
     })
     .strict(),
 }).strict();

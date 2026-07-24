@@ -462,6 +462,7 @@ export const executeAgentAccessCommand = (
       current,
       command.payload.preset,
       command.payload.capabilityScope,
+      current.spaceScope,
       occurredAt,
     );
     // The policy version moves because the authority of every live context
