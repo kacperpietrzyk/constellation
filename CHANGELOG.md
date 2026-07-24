@@ -18,16 +18,32 @@ releases begin.
   a Space the grant previously held reactivates its old record instead of
   minting a duplicate.
 
+- The desktop offers this on every local agent grant, not only a drifted one.
+  "Zmień uprawnienia" replaces the drift-only "Zaktualizuj zakres" button: a
+  person picks the level and the Spaces together, sees the difference the save
+  would make before making it, and saves both in one command — without
+  revoking the grant, issuing a new credential or reconfiguring the connected
+  host, and effective on the agent's next call. A grant whose scope was
+  hand-picked rather than taken from a level had no exit before this and now
+  has one.
+
 ### Changed
 
-- A removal or an undo refused because another record still points at the
-  target now answers `record.still_referenced` instead of the same
+- A removal refused because another record still points at the target now
+  answers `record.still_referenced` instead of the same
   `command.precondition_failed` every other refusal uses, and names what is
   blocking it: `blockedBy` carries up to twenty of the blocking records
   (`recordId`, `recordKind`, and `recordType` where the kind has one) plus
   the real count in `blockedByCount`. An integrator can now tell "detach
   these and resend" from "this will never be allowed" without spending a
   write to find out which.
+
+- `command.previewUndo` and `recovery.preview` report the same cause as
+  `unavailableReason: "still_referenced"` where they previously said
+  `later_change`, which claimed a version had moved when nothing had. The undo
+  itself is unchanged: a blocked `command.undo` still answers
+  `undo.not_available` and carries no `blockedBy`, and a checkpoint revert
+  blocked this way still folds into `agent.checkpoint_revert_conflict`.
 
 ## [0.1.3] - 2026-07-24
 

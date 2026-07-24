@@ -168,17 +168,23 @@ test("says nothing about a level nobody has chosen yet", () => {
 /**
  * Stating Spaces makes the kernel demand edit rights on every Space stated,
  * and it refuses the whole command when one of them fails — including the
- * level change that was the entire point. A save that leaves the set alone
- * must therefore state nothing, and the kernel selects that branch on the
- * key's *absence*, not on an undefined value.
+ * level change that was the entire point. A save that would leave every Space
+ * grant exactly as it stands must therefore state nothing, and the kernel
+ * selects that branch on the key's *absence*, not on an undefined value.
+ * Closing drift is that save: the level is restated, so the per-Space access
+ * it derives is the one every held Space already carries.
  */
-test("a save that does not change the Space set states no Spaces at all", () => {
-  const target = rescopeTarget(grant(), "observe", [praca]);
+test("a save that changes no Space and no per-Space level states no Spaces", () => {
+  const target = rescopeTarget(
+    grant({ scopeStatus: "behind_preset", missingFromPreset: ["task.remove"] }),
+    "operate",
+    [praca],
+  );
   assert.equal("spaceIds" in target, false);
-  assert.equal(target.preset, "observe");
+  assert.equal(target.preset, "operate");
 });
 
-test("order alone does not turn a level change into a Space change", () => {
+test("order alone does not turn a save into a Space change", () => {
   const both = grant({
     spaces: [
       {
@@ -198,9 +204,42 @@ test("order alone does not turn a level change into a Space change", () => {
     ],
   });
   assert.equal(
-    "spaceIds" in rescopeTarget(both, "observe", [dom, praca]),
+    "spaceIds" in rescopeTarget(both, "operate", [dom, praca]),
     false,
   );
+});
+
+/**
+ * The level is carried twice — in the grant's capability scope and in each
+ * Space grant's own `access`, which the kernel rewrites only for the Spaces a
+ * command states. Omitting them here because the *set* is unchanged is what a
+ * raise looks like in the dialog, and it would leave the agent holding
+ * `operate` capabilities behind `view` access: every command the person was
+ * just told it may now perform, refused at the Space.
+ */
+test("raising the level states the Spaces even when the set is unchanged", () => {
+  const observing = grant({
+    preset: "observe",
+    spaces: [
+      {
+        spaceGrantId: "70000000-0000-4000-8000-000000000011",
+        spaceId: praca,
+        spaceName: "Praca",
+        access: "view",
+        version: 1,
+      },
+    ],
+  });
+  assert.deepEqual(rescopeTarget(observing, "operate", [praca]).spaceIds, [
+    praca,
+  ]);
+});
+
+/** The same divergence in the other direction, left behind by a narrowing. */
+test("lowering the level states the Spaces even when the set is unchanged", () => {
+  assert.deepEqual(rescopeTarget(grant(), "observe", [praca]).spaceIds, [
+    praca,
+  ]);
 });
 
 test("a changed Space set is stated in full", () => {

@@ -7,10 +7,11 @@ import {
   type ReactNode,
 } from "react";
 
-import type {
-  AccessProjection,
-  AgentAccessProjection,
-  DataSlice,
+import {
+  spaceAccessForPreset,
+  type AccessProjection,
+  type AgentAccessProjection,
+  type DataSlice,
 } from "./client/workflow.js";
 import type { SpaceId } from "@constellation/contracts";
 
@@ -91,9 +92,18 @@ export const rescopeBlockedReason = (
 
 /**
  * What the command should carry. Stating Spaces makes the kernel demand edit
- * rights on every Space stated, so a save that leaves the set alone states
- * none — otherwise a pure level change is refused over a Space this person
- * cannot edit and never meant to touch.
+ * rights on every Space stated, so a save that would leave every Space grant
+ * exactly as it stands states none — otherwise a pure level change is refused
+ * over a Space this person cannot edit and never meant to touch.
+ *
+ * That omission cannot be unconditional, because the level drives two gates,
+ * not one: the grant's capability scope, and each Space grant's own `access`,
+ * which the kernel rewrites only for the Spaces a command states. A level
+ * raised with the Space set left alone would hand the agent `operate`
+ * capabilities behind `view` access, and every command it may now supposedly
+ * perform would still be refused at the Space. So the set being unchanged is
+ * only half the test — the level each held Space already carries has to match
+ * the chosen preset as well.
  */
 export const rescopeTarget = (
   grant: AgentGrant,
@@ -102,13 +112,15 @@ export const rescopeTarget = (
 ): {
   readonly preset: GrantPreset;
   readonly spaceIds?: readonly SpaceId[];
-} =>
-  sameSpaceSet(
+} => {
+  const access = spaceAccessForPreset(preset);
+  return sameSpaceSet(
     grant.spaces.map((space) => space.spaceId),
     spaceIds,
-  )
+  ) && grant.spaces.every((space) => space.access === access)
     ? { preset }
     : { preset, spaceIds };
+};
 
 const SpaceScopeOption = ({
   name,

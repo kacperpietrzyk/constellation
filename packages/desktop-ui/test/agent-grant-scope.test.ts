@@ -21,7 +21,7 @@ const ids = {
   otherSpace: "90000000-0000-4000-8000-000000000007",
 } as const;
 
-const snapshot = (preset: string): never =>
+const snapshot = (preset: string, access = "edit"): never =>
   ({
     bootstrap: { workspace: { id: ids.workspace } },
     agentAccess: {
@@ -50,12 +50,11 @@ const snapshot = (preset: string): never =>
                 spaceGrantId: ids.spaceGrant,
                 spaceId: ids.space,
                 spaceName: "Ops",
-                // Set to something a preset-derived value could never
-                // produce by accident (the fixture's own preset is
-                // "operate", which derives "edit") — so an assertion that
-                // the sent access follows the *target* preset can only pass
-                // by deriving it, not by echoing this fixture value back.
-                access: "edit",
+                // Every caller sets this to something the *target* preset
+                // could never derive — so an assertion that the sent access
+                // follows the target can only pass by deriving it, not by
+                // echoing this fixture value back.
+                access,
                 version: 2,
               },
             ],
@@ -65,9 +64,9 @@ const snapshot = (preset: string): never =>
     },
   }) as never;
 
-const grantOf = (preset: string): never =>
+const grantOf = (preset: string, access = "edit"): never =>
   (
-    snapshot(preset) as unknown as {
+    snapshot(preset, access) as unknown as {
       agentAccess: { data: { grants: never[] } };
     }
   ).agentAccess.data.grants[0] as never;
@@ -165,6 +164,29 @@ test("omitting spaceIds leaves Spaces out of the command entirely", async () => 
     [ids.workspace]: 4,
     [ids.grant]: 3,
   });
+});
+
+/**
+ * The raise is the direction that matters. The per-Space access is the second
+ * gate a level opens — every Wave2 command is checked against the Space grant
+ * before any capability is consulted — so a raise that carried the grant's
+ * current level would widen the capability scope and leave every write it now
+ * allows refused at the Space.
+ */
+test("a raise sends the Space level the target preset carries", async () => {
+  const sent: CommandEnvelope[] = [];
+  await updateAgentGrantScope(
+    recordingClient(sent),
+    snapshot("observe", "view"),
+    grantOf("observe", "view"),
+    { preset: "operate", spaceIds: [ids.space] },
+  );
+  const envelope = sent[0];
+  if (envelope?.commandName !== "agent.grantSetScope")
+    throw new Error("Expected the scope command.");
+  assert.deepEqual(envelope.payload.spaces, [
+    { spaceGrantId: ids.spaceGrant, spaceId: ids.space, access: "edit" },
+  ]);
 });
 
 test("mints an id for a Space the grant does not hold yet", async () => {

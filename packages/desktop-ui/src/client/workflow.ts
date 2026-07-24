@@ -754,7 +754,7 @@ const agentCapabilities = (preset: AgentGrantPreset): readonly Capability[] =>
   capabilitiesForAgentGrantPreset(preset);
 
 /** The per-Space access level a preset carries, at creation and at re-scope alike. */
-const spaceAccessForPreset = (
+export const spaceAccessForPreset = (
   preset: AgentGrantPreset,
 ): "view" | "comment" | "edit" =>
   preset === "observe" ? "view" : preset === "propose" ? "comment" : "edit";
@@ -1212,10 +1212,15 @@ const commandFailure = (response: RendererCommandResponse): MutationFailure => {
       // capability". A refusal because the record is out of reach — another
       // Space, an access level too low, or simply not there — arrives as a
       // precondition, so that copy has to cover reach as well as staleness.
+      // `record.still_referenced` is neither: the record is in reach and its
+      // state has not moved, so the kernel names the one cause and the one
+      // thing that clears it.
       message:
         outcome.diagnosticCode === "authorization.denied"
           ? "Brak uprawnienia do tej zmiany."
-          : "Nie można wykonać tej zmiany: rekord jest poza Twoim dostępem albo jego stan się zmienił.",
+          : outcome.diagnosticCode === "record.still_referenced"
+            ? "Nie można tego usunąć: inny rekord nadal się do tego odwołuje. Odłącz to, co na niego wskazuje, i spróbuj ponownie."
+            : "Nie można wykonać tej zmiany: rekord jest poza Twoim dostępem albo jego stan się zmienił.",
     };
   return {
     kind: "unavailable",

@@ -112,10 +112,18 @@ import path from "node:path";
 // stylesheet bez zmian; entry rośnie o ok. 0.1 kB i ma własny duży zapas).
 // Total JS rośnie o ok. 4.6 kB względem zmierzonego baseline; limit total
 // dostaje ok. 1.3 kB zapasu, pozostałe bez zmian.
+// 2026-07-25 (przegląd całej gałęzi): podniesienie poziomu w oknie „Zmień
+// uprawnienia" musi podawać Space'y, bo poziom siedzi także w dostępie do
+// każdego Space, a odmowa `record.still_referenced` dostaje własne zdanie
+// zamiast ogólnego „poza dostępem albo stan się zmienił". Obie zmiany jadą w
+// leniwych chunkach Dostępu i workflow (największy leniwy chunk i stylesheet
+// bez zmian; entry rośnie o 4 B i ma własny duży zapas). Total JS rośnie o
+// 280 B względem zmierzonego baseline; limit total dostaje ok. 1 kB zapasu,
+// pozostałe bez zmian.
 const limits = {
   entryBytes: 560_000,
   entryGzipBytes: 147_500,
-  totalJavaScriptBytes: 1_348_500,
+  totalJavaScriptBytes: 1_349_500,
   largestLazyJavaScriptBytes: 565_000,
   stylesheetBytes: 189_500,
 };
