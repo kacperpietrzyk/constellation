@@ -348,6 +348,10 @@ export const AccessSurface = ({
   const [rescopeFailure, setRescopeFailure] = useState<string | undefined>(
     undefined,
   );
+  // The surface clears its own busy flag before it reloads the projection, so
+  // between a successful save and the dialog closing on it the button would be
+  // live again — over a grant whose versions that save has already bumped.
+  const [rescopeSaving, setRescopeSaving] = useState(false);
   // Each row owns its own trigger, so the button that opened the dialog is
   // captured on the way in rather than held in a ref per grant.
   const rescopeTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -397,7 +401,7 @@ export const AccessSurface = ({
       .map((held) => ({
         id: held.spaceId,
         name: held.spaceName,
-        note: "Poza Twoim dostępem. Możesz go zostawić albo odebrać.",
+        note: "Poza Twoim dostępem — ma go ten agent.",
       })),
   ];
   const rescopeClosesDrift =
@@ -409,13 +413,15 @@ export const AccessSurface = ({
       : rescopeBlockedReason(rescoping, rescopePreset, rescopeSpaceIds);
   const submitRescope = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (busy || rescoping === undefined) return;
+    if (busy || rescopeSaving || rescoping === undefined) return;
     if (rescopePreset === undefined || rescopeBlocked !== undefined) return;
     setRescopeFailure(undefined);
+    setRescopeSaving(true);
     void onAgentRescope(
       rescoping,
       rescopeTarget(rescoping, rescopePreset, rescopeSpaceIds),
     ).then((failure) => {
+      setRescopeSaving(false);
       // An applied re-scope bumps the version of every Space grant it names,
       // so the versions read here are stale the moment one succeeds. A failure
       // invalidated nothing — keeping the dialog open is what lets the person
@@ -1049,16 +1055,20 @@ export const AccessSurface = ({
                       className="secondary-button"
                       type="button"
                       onClick={closeRescope}
-                      disabled={busy}
+                      disabled={busy || rescopeSaving}
                     >
                       Anuluj
                     </button>
                     <button
                       className="primary-button"
                       type="submit"
-                      disabled={busy || rescopeBlocked !== undefined}
+                      disabled={
+                        busy || rescopeSaving || rescopeBlocked !== undefined
+                      }
                     >
-                      {busy ? "Zapisuję…" : "Zapisz uprawnienia"}
+                      {busy || rescopeSaving
+                        ? "Zapisuję…"
+                        : "Zapisz uprawnienia"}
                     </button>
                   </div>
                   {/* A refused save is answered where the choice was made: the
