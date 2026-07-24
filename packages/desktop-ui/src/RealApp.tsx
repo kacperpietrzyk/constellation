@@ -3846,23 +3846,27 @@ export const RealApp = ({
                       } else showFailure(result);
                     });
                   }}
-                  onAgentRescope={(grant, target) => {
-                    if (!client) return;
+                  onAgentRescope={async (grant, target) => {
+                    if (!client)
+                      return "Brak połączenia z jądrem — spróbuj ponownie.";
                     setAccessBusy(true);
                     setNotice(undefined);
-                    void updateAgentGrantScope(
+                    const result = await updateAgentGrantScope(
                       client,
                       state.snapshot,
                       grant,
                       target,
-                    ).then(async (result) => {
-                      setAccessBusy(false);
-                      if (result.kind === "success")
-                        await refreshAfter(
-                          "Uprawnienia agenta zaktualizowano.",
-                        );
-                      else showFailure(result);
-                    });
+                    );
+                    setAccessBusy(false);
+                    if (result.kind !== "success") {
+                      showFailure(result);
+                      // Returned as well as noticed: the notice sits on a
+                      // surface the open dialog covers, and the person who has
+                      // to act on the refusal is inside the dialog.
+                      return result.message;
+                    }
+                    await refreshAfter("Uprawnienia agenta zaktualizowano.");
+                    return undefined;
                   }}
                   onAgentRevoke={(grant) => {
                     if (!client) return;

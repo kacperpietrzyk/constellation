@@ -39,7 +39,7 @@ test("remote agent access leads with the ledger and reveals grant creation delib
       onRevoke: () => undefined,
       onAgentAdd: () => undefined,
       onAgentRotate: () => undefined,
-      onAgentRescope: () => undefined,
+      onAgentRescope: async () => undefined,
       onAgentRevoke: () => undefined,
     }),
   );
@@ -111,7 +111,7 @@ test("every local grant can be re-scoped, and a Hub grant still cannot", () => {
         onRevoke: () => undefined,
         onAgentAdd: () => undefined,
         onAgentRotate: () => undefined,
-        onAgentRescope: () => undefined,
+        onAgentRescope: async () => undefined,
         onAgentRevoke: () => undefined,
       } as never),
     );

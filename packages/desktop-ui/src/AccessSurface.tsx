@@ -36,6 +36,113 @@ const presetLabel = (preset: AgentGrant["preset"]): string =>
 const sameSpaceSet = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((spaceId) => b.includes(spaceId));
 
+/** The one taxonomy both the issuing and the editing dialog choose from. */
+const GRANT_PRESETS = [
+  ["observe", "Obserwuj", "Tylko odczyt i dowody"],
+  ["propose", "Proponuj", "Odczyt i sugestie w komentarzach"],
+  ["operate", "Działaj", "Typowe zmiany bez administracji"],
+  ["full_access", "Pełny dostęp", "Wszystkie przyznane operacje"],
+] as const satisfies readonly (readonly [GrantPreset, string, string])[];
+
+/**
+ * Polish counts split three ways and the relative pronoun follows the same
+ * split, so the whole sentence is built here — assembled from parts at the
+ * call site, the number and the pronoun could disagree.
+ */
+export const missingCapabilitiesNote = (count: number): string => {
+  if (count === 1)
+    return "Ten poziom niesie dziś 1 uprawnienie, którego ten grant nie ma — zapis je doda.";
+  const teens = count % 100;
+  const last = count % 10;
+  const noun =
+    last >= 2 && last <= 4 && !(teens >= 12 && teens <= 14)
+      ? "uprawnienia"
+      : "uprawnień";
+  return `Ten poziom niesie dziś ${count} ${noun}, których ten grant nie ma — zapis je doda.`;
+};
+
+/**
+ * Why saving is unavailable, or `undefined` when it is not. One string is both
+ * the disabled condition and the sentence shown, so the button and the reason
+ * cannot drift apart.
+ */
+export const rescopeBlockedReason = (
+  grant: AgentGrant,
+  preset: GrantPreset | undefined,
+  spaceIds: readonly string[],
+): string | undefined => {
+  if (preset === undefined) return "Wybierz poziom możliwości, aby zapisać.";
+  if (spaceIds.length === 0)
+    return "Wybierz co najmniej jeden Space, aby zapisać.";
+  // Restating the same level is not a no-op for a grant that predates an
+  // upgrade: the command carries today's capability list for that level,
+  // which is exactly what closes the drift.
+  const closesDrift =
+    grant.scopeStatus === "behind_preset" && preset === grant.preset;
+  return preset !== grant.preset ||
+    !sameSpaceSet(
+      grant.spaces.map((space) => space.spaceId),
+      spaceIds,
+    ) ||
+    closesDrift
+    ? undefined
+    : "Nic się nie zmienia — nie ma czego zapisać.";
+};
+
+/**
+ * What the command should carry. Stating Spaces makes the kernel demand edit
+ * rights on every Space stated, so a save that leaves the set alone states
+ * none — otherwise a pure level change is refused over a Space this person
+ * cannot edit and never meant to touch.
+ */
+export const rescopeTarget = (
+  grant: AgentGrant,
+  preset: GrantPreset,
+  spaceIds: readonly SpaceId[],
+): {
+  readonly preset: GrantPreset;
+  readonly spaceIds?: readonly SpaceId[];
+} =>
+  sameSpaceSet(
+    grant.spaces.map((space) => space.spaceId),
+    spaceIds,
+  )
+    ? { preset }
+    : { preset, spaceIds };
+
+const SpaceScopeOption = ({
+  name,
+  note,
+  checked,
+  disabled,
+  invalid,
+  describedBy,
+  onToggle,
+}: {
+  readonly name: string;
+  readonly note: string;
+  readonly checked: boolean;
+  readonly disabled: boolean;
+  readonly invalid?: boolean | undefined;
+  readonly describedBy?: string | undefined;
+  readonly onToggle: () => void;
+}) => (
+  <label className="agent-option">
+    <input
+      type="checkbox"
+      checked={checked}
+      aria-invalid={invalid}
+      aria-describedby={describedBy}
+      onChange={onToggle}
+      disabled={disabled}
+    />
+    <span>
+      <strong>{name}</strong>
+      <small>{note}</small>
+    </span>
+  </label>
+);
+
 /**
  * The difference a save would make, not the state it would set — a person
  * deciding needs to see what leaves and what arrives. Empty when the choices
@@ -195,13 +302,14 @@ export const AccessSurface = ({
     };
   }) => void;
   readonly onAgentRotate: (grant: AgentGrant) => void;
+  /** Resolves with the failure to show in the dialog, or nothing on success. */
   readonly onAgentRescope: (
     grant: AgentGrant,
     target: {
       readonly preset: GrantPreset;
-      readonly spaceIds: readonly SpaceId[];
+      readonly spaceIds?: readonly SpaceId[];
     },
-  ) => void;
+  ) => Promise<string | undefined>;
   readonly onAgentRevoke: (grant: AgentGrant) => void;
 }) => {
   // One armed destructive/irreversible action at a time: member revoke,
@@ -237,6 +345,9 @@ export const AccessSurface = ({
   const [rescopeSpaceIds, setRescopeSpaceIds] = useState<readonly SpaceId[]>(
     [],
   );
+  const [rescopeFailure, setRescopeFailure] = useState<string | undefined>(
+    undefined,
+  );
   // Each row owns its own trigger, so the button that opened the dialog is
   // captured on the way in rather than held in a ref per grant.
   const rescopeTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -262,48 +373,56 @@ export const AccessSurface = ({
     // what makes the warning inside the dialog true.
     setRescopePreset(grant.preset === "custom" ? undefined : grant.preset);
     setRescopeSpaceIds(grant.spaces.map((space) => space.spaceId));
+    setRescopeFailure(undefined);
   };
   const closeRescope = () => {
     const trigger = rescopeTriggerRef.current;
     setRescoping(undefined);
+    setRescopeFailure(undefined);
     requestAnimationFrame(() => {
       if (trigger?.isConnected === true) trigger.focus();
     });
   };
-  const rescopeHeldSpaceIds =
-    rescoping?.spaces.map((space) => space.spaceId) ?? [];
-  const rescopeChangesLevel =
-    rescopePreset !== undefined && rescopePreset !== rescoping?.preset;
-  const rescopeChangesSpaces = !sameSpaceSet(
-    rescopeHeldSpaceIds,
-    rescopeSpaceIds,
-  );
-  // Restating the same level is not a no-op for a grant that predates an
-  // upgrade: the command carries today's capability list for that level,
-  // which is exactly what closes the drift.
+  // Every Space the grant holds gets a box, including one this person cannot
+  // see in the workspace: a Space nobody was shown must never be restated on
+  // their behalf, and the grant carries the name needed to show it.
+  const rescopeSpaceOptions = [
+    ...spaces.map((space) => ({
+      id: space.id,
+      name: space.name,
+      note: "Relacje nie poszerzą tego zakresu.",
+    })),
+    ...(rescoping?.spaces ?? [])
+      .filter((held) => !spaces.some((space) => space.id === held.spaceId))
+      .map((held) => ({
+        id: held.spaceId,
+        name: held.spaceName,
+        note: "Poza Twoim dostępem. Możesz go zostawić albo odebrać.",
+      })),
+  ];
   const rescopeClosesDrift =
     rescoping?.scopeStatus === "behind_preset" &&
     rescopePreset === rescoping.preset;
   const rescopeBlocked =
-    rescopePreset === undefined
-      ? "Wybierz poziom możliwości, aby zapisać."
-      : rescopeSpaceIds.length === 0
-        ? "Wybierz co najmniej jeden Space, aby zapisać."
-        : rescopeChangesLevel || rescopeChangesSpaces || rescopeClosesDrift
-          ? undefined
-          : "Nic się nie zmienia — nie ma czego zapisać.";
+    rescoping === undefined
+      ? undefined
+      : rescopeBlockedReason(rescoping, rescopePreset, rescopeSpaceIds);
   const submitRescope = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (busy || rescoping === undefined) return;
     if (rescopePreset === undefined || rescopeBlocked !== undefined) return;
-    onAgentRescope(rescoping, {
-      preset: rescopePreset,
-      spaceIds: rescopeSpaceIds,
+    setRescopeFailure(undefined);
+    void onAgentRescope(
+      rescoping,
+      rescopeTarget(rescoping, rescopePreset, rescopeSpaceIds),
+    ).then((failure) => {
+      // An applied re-scope bumps the version of every Space grant it names,
+      // so the versions read here are stale the moment one succeeds. A failure
+      // invalidated nothing — keeping the dialog open is what lets the person
+      // act on the reason instead of rebuilding the same doomed request.
+      if (failure === undefined) closeRescope();
+      else setRescopeFailure(failure);
     });
-    // An applied re-scope bumps the version of every Space grant it names, so
-    // the versions this dialog read are stale the moment it is sent. Closing
-    // makes reopening from the refreshed projection the only retry there is.
-    closeRescope();
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -695,26 +814,7 @@ export const AccessSurface = ({
                   </label>
                   <fieldset>
                     <legend>Poziom możliwości</legend>
-                    {(
-                      [
-                        ["observe", "Obserwuj", "Tylko odczyt i dowody"],
-                        [
-                          "propose",
-                          "Proponuj",
-                          "Odczyt i sugestie w komentarzach",
-                        ],
-                        [
-                          "operate",
-                          "Działaj",
-                          "Typowe zmiany bez administracji",
-                        ],
-                        [
-                          "full_access",
-                          "Pełny dostęp",
-                          "Wszystkie przyznane operacje",
-                        ],
-                      ] as const
-                    ).map(([value, label, description]) => (
+                    {GRANT_PRESETS.map(([value, label, description]) => (
                       <label key={value} className="agent-option">
                         <input
                           type="radio"
@@ -745,29 +845,25 @@ export const AccessSurface = ({
                       </p>
                     ) : (
                       spaces.map((space) => (
-                        <label key={space.id} className="agent-option">
-                          <input
-                            type="checkbox"
-                            checked={agentSpaces.includes(space.id)}
-                            aria-invalid={showSpacesError}
-                            aria-describedby={
-                              showSpacesError ? "agent-spaces-error" : undefined
-                            }
-                            onChange={() => {
-                              setSpacesTouched(true);
-                              setAgentSpaces((current) =>
-                                current.includes(space.id)
-                                  ? current.filter((id) => id !== space.id)
-                                  : [...current, space.id],
-                              );
-                            }}
-                            disabled={busy}
-                          />
-                          <span>
-                            <strong>{space.name}</strong>
-                            <small>Relacje nie poszerzą tego zakresu.</small>
-                          </span>
-                        </label>
+                        <SpaceScopeOption
+                          key={space.id}
+                          name={space.name}
+                          note="Relacje nie poszerzą tego zakresu."
+                          checked={agentSpaces.includes(space.id)}
+                          invalid={showSpacesError}
+                          describedBy={
+                            showSpacesError ? "agent-spaces-error" : undefined
+                          }
+                          disabled={busy}
+                          onToggle={() => {
+                            setSpacesTouched(true);
+                            setAgentSpaces((current) =>
+                              current.includes(space.id)
+                                ? current.filter((id) => id !== space.id)
+                                : [...current, space.id],
+                            );
+                          }}
+                        />
                       ))
                     )}
                   </fieldset>
@@ -886,26 +982,7 @@ export const AccessSurface = ({
                   </div>
                   <fieldset>
                     <legend>Poziom możliwości</legend>
-                    {(
-                      [
-                        ["observe", "Obserwuj", "Tylko odczyt i dowody"],
-                        [
-                          "propose",
-                          "Proponuj",
-                          "Odczyt i sugestie w komentarzach",
-                        ],
-                        [
-                          "operate",
-                          "Działaj",
-                          "Typowe zmiany bez administracji",
-                        ],
-                        [
-                          "full_access",
-                          "Pełny dostęp",
-                          "Wszystkie przyznane operacje",
-                        ],
-                      ] as const
-                    ).map(([value, label, description]) => (
+                    {GRANT_PRESETS.map(([value, label, description]) => (
                       <label key={value} className="agent-option">
                         <input
                           type="radio"
@@ -923,31 +1000,27 @@ export const AccessSurface = ({
                   </fieldset>
                   <fieldset className="agent-space-scope">
                     <legend>Zakres danych</legend>
-                    {spaces.length === 0 ? (
+                    {rescopeSpaceOptions.length === 0 ? (
                       <p className="access-boundary-note">
                         Ten workspace nie ma jeszcze żadnego Space, więc nie da
                         się zmienić zakresu danych.
                       </p>
                     ) : (
-                      spaces.map((space) => (
-                        <label key={space.id} className="agent-option">
-                          <input
-                            type="checkbox"
-                            checked={rescopeSpaceIds.includes(space.id)}
-                            onChange={() =>
-                              setRescopeSpaceIds((current) =>
-                                current.includes(space.id)
-                                  ? current.filter((id) => id !== space.id)
-                                  : [...current, space.id],
-                              )
-                            }
-                            disabled={busy}
-                          />
-                          <span>
-                            <strong>{space.name}</strong>
-                            <small>Relacje nie poszerzą tego zakresu.</small>
-                          </span>
-                        </label>
+                      rescopeSpaceOptions.map((space) => (
+                        <SpaceScopeOption
+                          key={space.id}
+                          name={space.name}
+                          note={space.note}
+                          checked={rescopeSpaceIds.includes(space.id)}
+                          disabled={busy}
+                          onToggle={() =>
+                            setRescopeSpaceIds((current) =>
+                              current.includes(space.id)
+                                ? current.filter((id) => id !== space.id)
+                                : [...current, space.id],
+                            )
+                          }
+                        />
                       ))
                     )}
                   </fieldset>
@@ -959,9 +1032,9 @@ export const AccessSurface = ({
                   )}
                   {rescopeClosesDrift && (
                     <p className="access-dialog-note">
-                      Ten poziom niesie dziś{" "}
-                      {rescoping.missingFromPreset.length} uprawnień, których
-                      ten grant nie ma — zapis je doda.
+                      {missingCapabilitiesNote(
+                        rescoping.missingFromPreset.length,
+                      )}
                     </p>
                   )}
                   {/* The difference is the decision, and it changes with every
@@ -988,6 +1061,14 @@ export const AccessSurface = ({
                       {busy ? "Zapisuję…" : "Zapisz uprawnienia"}
                     </button>
                   </div>
+                  {/* A refused save is answered where the choice was made: the
+                      dialog still holds the versions it read, so the person can
+                      change what was refused instead of rebuilding it. */}
+                  {rescopeFailure !== undefined && (
+                    <p className="field-error" role="alert">
+                      {rescopeFailure}
+                    </p>
+                  )}
                 </form>
               </AccessDialog>
             )}
