@@ -8,6 +8,27 @@ releases begin.
 
 ## [Unreleased]
 
+### Added
+
+- `agent.grantSetScope` can now re-scope which Spaces an issued agent grant
+  reaches, alongside its capability scope, in the same command. A grant
+  issued into the wrong Space, or one that needs a Space added later, no
+  longer needs a revoke and a reissue to fix — no new credential, no host
+  reconfiguration, and the change applies on the agent's next call. Re-adding
+  a Space the grant previously held reactivates its old record instead of
+  minting a duplicate.
+
+### Changed
+
+- A removal or an undo refused because another record still points at the
+  target now answers `record.still_referenced` instead of the same
+  `command.precondition_failed` every other refusal uses, and names what is
+  blocking it: `blockedBy` carries up to twenty of the blocking records
+  (`recordId`, `recordKind`, and `recordType` where the kind has one) plus
+  the real count in `blockedByCount`. An integrator can now tell "detach
+  these and resend" from "this will never be allowed" without spending a
+  write to find out which.
+
 ## [0.1.3] - 2026-07-24
 
 Four defects an external MCP agent reported against 0.1.2, and two the work
