@@ -44,6 +44,8 @@ const ids = {
   memberCredential: "41000000-0000-4000-8000-000000000024",
   memberGrant: "41000000-0000-4000-8000-000000000025",
   memberMembership: "41000000-0000-4000-8000-000000000026",
+  thirdSpace: "41000000-0000-4000-8000-000000000027",
+  ownerThirdSpaceGrant: "41000000-0000-4000-8000-000000000028",
 } as const;
 
 let sequence = 30_000;
@@ -519,8 +521,8 @@ describe("agent grant delegation reaches the product without widening scope", ()
       "success",
     );
     // A re-scope can only reach a Space the delegating human can already edit,
-    // so the cases below need a second Space and the owner's grant on it. No
-    // command mints a Space, so both records are seeded directly.
+    // so the cases below need a second and third Space and the owner's grant
+    // on each. No command mints a Space, so all records are seeded directly.
     harness.store.transact((transaction) => {
       transaction.insertSpace({
         id: SpaceIdSchema.parse(ids.secondSpace),
@@ -533,6 +535,24 @@ describe("agent grant delegation reaches the product without widening scope", ()
         id: SpaceGrantIdSchema.parse(ids.ownerSecondSpaceGrant),
         workspaceId: WorkspaceIdSchema.parse(ids.workspace),
         spaceId: SpaceIdSchema.parse(ids.secondSpace),
+        principalId: PrincipalIdSchema.parse(ids.owner),
+        access: "edit",
+        status: "active",
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+      transaction.insertSpace({
+        id: SpaceIdSchema.parse(ids.thirdSpace),
+        workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+        name: "Third space",
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      transaction.insertSpaceGrant({
+        id: SpaceGrantIdSchema.parse(ids.ownerThirdSpaceGrant),
+        workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+        spaceId: SpaceIdSchema.parse(ids.thirdSpace),
         principalId: PrincipalIdSchema.parse(ids.owner),
         access: "edit",
         status: "active",
@@ -557,8 +577,8 @@ describe("agent grant delegation reaches the product without widening scope", ()
       ...ownerContext(),
       policyVersion: currentPolicyVersion(harness),
       // Space access is only effective inside the context's own scope, so the
-      // owner has to be carrying the second Space to be able to delegate it.
-      spaceScope: [ids.space, ids.secondSpace],
+      // owner has to be carrying the second and third Space to delegate them.
+      spaceScope: [ids.space, ids.secondSpace, ids.thirdSpace],
     });
     harness.authorization.register(owner);
     return owner;
@@ -976,6 +996,105 @@ describe("agent grant delegation reaches the product without widening scope", ()
     );
     assert.equal(refused.outcome, "rejected");
     assert.equal(refused.diagnosticCode, "command.precondition_failed");
+  });
+
+  it("refuses a re-scope naming one Space grant id for two Spaces", () => {
+    const { harness } = grantWithScope([
+      ...capabilitiesForAgentGrantPreset("operate"),
+    ]);
+    const refused = commandOutcome(
+      harness.kernel.execute(ownerNow(harness), {
+        ...metadata("rescope-duplicate-grant-id", scopeVersions(harness)),
+        commandName: "agent.grantSetScope",
+        payload: {
+          grantId: ids.agentGrant,
+          preset: "operate",
+          capabilityScope: [...capabilitiesForAgentGrantPreset("operate")],
+          spaces: [
+            {
+              spaceGrantId: ids.agentSpaceGrant,
+              spaceId: ids.space,
+              access: "edit",
+            },
+            {
+              spaceGrantId: ids.unusedSpaceGrant,
+              spaceId: ids.secondSpace,
+              access: "edit",
+            },
+            {
+              spaceGrantId: ids.unusedSpaceGrant,
+              spaceId: ids.thirdSpace,
+              access: "edit",
+            },
+          ],
+        },
+      }),
+    );
+    assert.equal(refused.outcome, "rejected");
+    assert.equal(refused.diagnosticCode, "command.precondition_failed");
+  });
+
+  it("refuses to mint a grant naming one Space grant id for two Spaces", () => {
+    const { harness } = bootstrap();
+    // grantWithScope mints ids.agentGrant itself; this case needs a fresh
+    // grant, so the second Space is seeded directly, same as grantWithScope
+    // does for the re-scope cases above.
+    harness.store.transact((transaction) => {
+      transaction.insertSpace({
+        id: SpaceIdSchema.parse(ids.secondSpace),
+        workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+        name: "Second space",
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      transaction.insertSpaceGrant({
+        id: SpaceGrantIdSchema.parse(ids.ownerSecondSpaceGrant),
+        workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+        spaceId: SpaceIdSchema.parse(ids.secondSpace),
+        principalId: PrincipalIdSchema.parse(ids.owner),
+        access: "edit",
+        status: "active",
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      });
+    });
+    const refused = commandOutcome(
+      harness.kernel.execute(ownerNow(harness), {
+        ...metadata("grant-duplicate-grant-id", { [ids.workspace]: 1 }),
+        commandName: "agent.grantCreate",
+        payload: {
+          grantId: ids.agentGrant,
+          membershipId: ids.agentMembership,
+          agentPrincipalId: ids.agent,
+          displayName: "Would-be duplicate",
+          preset: "operate",
+          capabilityScope: [...capabilitiesForAgentGrantPreset("operate")],
+          spaces: [
+            {
+              spaceGrantId: ids.agentSpaceGrant,
+              spaceId: ids.space,
+              access: "edit",
+            },
+            {
+              spaceGrantId: ids.agentSpaceGrant,
+              spaceId: ids.secondSpace,
+              access: "edit",
+            },
+          ],
+          credentialId: ids.agentCredential,
+          credentialDigest: "b".repeat(64),
+        },
+      }),
+    );
+    assert.equal(refused.outcome, "rejected");
+    assert.equal(refused.diagnosticCode, "command.precondition_failed");
+    assert.equal(
+      harness.store.read((view) =>
+        view.getAgentGrant(GrantIdSchema.parse(ids.agentGrant)),
+      ),
+      undefined,
+    );
   });
 
   it("demands the version of every active Space grant when spaces are stated", () => {

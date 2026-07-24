@@ -276,8 +276,12 @@ export const executeAgentAccessCommand = (
     const uniqueSpaces = new Set(
       command.payload.spaces.map((item) => item.spaceId),
     );
+    const uniqueSpaceGrantIds = new Set(
+      command.payload.spaces.map((item) => item.spaceGrantId),
+    );
     if (
       uniqueSpaces.size !== command.payload.spaces.length ||
+      uniqueSpaceGrantIds.size !== command.payload.spaces.length ||
       // ADR-046 §4: `runtime` and `administrative` capabilities are not
       // delegable to any agent, on any transport. The Hub enforced this on the
       // remote path while the kernel accepted whatever the schema parsed, so a
@@ -483,8 +487,16 @@ export const executeAgentAccessCommand = (
       return conflict(command, occurredAt, expected);
     if (targetSpaces !== undefined) {
       const uniqueSpaces = new Set(targetSpaces.map((item) => item.spaceId));
+      // Two Spaces naming one id is rejected rather than left to the store:
+      // insertSpaceGrant throws a plain Error, which escapes the kernel and
+      // answers the caller with nothing at all. A command that changes a
+      // security boundary owes a verdict.
+      const uniqueSpaceGrantIds = new Set(
+        targetSpaces.map((item) => item.spaceGrantId),
+      );
       if (
         uniqueSpaces.size !== targetSpaces.length ||
+        uniqueSpaceGrantIds.size !== targetSpaces.length ||
         targetSpaces.some(
           (item) =>
             transaction.getSpace(item.spaceId)?.workspaceId !== workspace.id ||
