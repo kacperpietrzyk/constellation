@@ -192,6 +192,14 @@ Capture History.
   `available: false` with `unavailableReason: "empty"`, and
   `constellation.checkpoint.revert.v1` is `rejected` /
   `agent.checkpoint_revert_empty` and leaves the checkpoint open.
+- Re-read `grant.scopeStatus` at the start of a run. A grant authorizes against
+  the capability scope frozen when it was issued, so a Constellation release
+  that adds a capability to a preset does not reach a grant already in use —
+  and `build.appVersion` reports the new version while the grant is a release
+  behind. When `scopeStatus` is `behind_preset`, `missingFromPreset` names
+  exactly what the grant is missing, and a human closes it in the desktop
+  under Agent access. Nothing is reissued: the credential, the descriptor and
+  the connection stay, and the widened scope applies from your next call.
 - Read a rejection for what it says. `authorization.denied` means one thing:
   the capability the command needs is not in your grant. Compare the
   operation's `requiredCapability` with your `capabilityScope`. Every other

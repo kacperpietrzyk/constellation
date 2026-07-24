@@ -101,6 +101,7 @@ export const AccessSurface = ({
   onRevoke,
   onAgentAdd,
   onAgentRotate,
+  onAgentRescope,
   onAgentRevoke,
 }: {
   readonly access: DataSlice<AccessProjection>;
@@ -130,6 +131,7 @@ export const AccessSurface = ({
     };
   }) => void;
   readonly onAgentRotate: (grant: AgentGrant) => void;
+  readonly onAgentRescope: (grant: AgentGrant) => void;
   readonly onAgentRevoke: (grant: AgentGrant) => void;
 }) => {
   // One armed destructive/irreversible action at a time: member revoke,
@@ -770,6 +772,8 @@ export const AccessSurface = ({
                         {grant.expiresAt
                           ? ` · wygasa ${new Intl.DateTimeFormat("pl", { dateStyle: "medium" }).format(new Date(grant.expiresAt))}`
                           : " · bez terminu"}
+                        {grant.scopeStatus === "behind_preset" &&
+                          ` · zakres sprzed aktualizacji: brakuje ${grant.missingFromPreset.length} uprawnień tego poziomu`}
                       </small>
                     </div>
                     <span className={`access-state ${grant.status}`}>
@@ -804,6 +808,29 @@ export const AccessSurface = ({
                                 Potwierdź rotację
                               </button>
                             </>
+                          ) : confirmAction ===
+                            `agent-rescope-${grant.grantId}` ? (
+                            <>
+                              <button
+                                className="secondary-button"
+                                type="button"
+                                onClick={() => setConfirmAction(undefined)}
+                                disabled={busy}
+                              >
+                                Anuluj
+                              </button>
+                              <button
+                                className="secondary-button"
+                                type="button"
+                                onClick={() => {
+                                  setConfirmAction(undefined);
+                                  onAgentRescope(grant);
+                                }}
+                                disabled={busy}
+                              >
+                                Potwierdź aktualizację zakresu
+                              </button>
+                            </>
                           ) : confirmAction === `agent-${grant.grantId}` ? (
                             <>
                               <button
@@ -828,6 +855,21 @@ export const AccessSurface = ({
                             </>
                           ) : (
                             <>
+                              {grant.scopeStatus === "behind_preset" &&
+                                grant.preset !== "custom" && (
+                                  <button
+                                    className="secondary-button"
+                                    type="button"
+                                    onClick={() =>
+                                      setConfirmAction(
+                                        `agent-rescope-${grant.grantId}`,
+                                      )
+                                    }
+                                    disabled={busy}
+                                  >
+                                    Zaktualizuj zakres
+                                  </button>
+                                )}
                               <button
                                 className="secondary-button"
                                 type="button"

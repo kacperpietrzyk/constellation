@@ -308,6 +308,7 @@ const isCurrentlyAuthorized = (
     case "agent.grantCreate":
     case "agent.grantRotateCredential":
     case "agent.grantRevoke":
+    case "agent.grantSetScope":
     case "agent.checkpointCreate":
     case "agent.handoffSubmit":
       return isAgentAccessCommandAuthorized(
@@ -779,6 +780,7 @@ export class ApplicationKernel {
       case "agent.grantCreate":
       case "agent.grantRotateCredential":
       case "agent.grantRevoke":
+      case "agent.grantSetScope":
       case "agent.checkpointCreate":
       case "agent.handoffSubmit":
         return executeAgentAccessCommand(

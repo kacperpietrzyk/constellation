@@ -8,6 +8,86 @@ releases begin.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-24
+
+Four defects an external MCP agent reported against 0.1.2, and two the work
+uncovered, all of the same shape: one answer standing for several causes, with
+no way to tell them apart.
+
+### Added
+
+- `agent.grantSetScope` re-scopes an issued agent grant in place. A grant
+  authorizes against the capability scope frozen when it was issued, so a
+  release that widened a preset never reached an agent already connected, and
+  there was no lever to change it. A person with access management can now
+  restate the scope — widening or narrowing — with an audit receipt and a
+  version check; the credential, the descriptor and the connection are
+  untouched, and the agent's next call is authorized against the new scope
+  without reconnecting. It is deliberately uncompensated, so reverting a
+  checkpoint cannot widen a scope a person narrowed, and it is administrative
+  and human-only, so no agent can widen itself.
+
+- `constellation://v1/capabilities` reports `grant.scopeStatus`, and names the
+  capabilities in `grant.missingFromPreset` when the grant's preset carries
+  more than the grant does. Every staleness check the previous release added
+  reports "current" in this situation, because the build is current — it is the
+  grant that is a release behind. The desktop shows the same state on the grant
+  row and offers the single action that closes it.
+
+- Every operation in the catalog states the `requiredCapability` a grant must
+  hold for it, which is not always the operation's own name:
+  `capture.writeTranscript` is authorized by `capture.transcriptWrite`, and the
+  two checkpoint operations by `agent.checkpoint.create` and
+  `agent.checkpoint.previewRevert`. The bridge worked and was covered end to
+  end on both transports; nothing published it, so it could only be inferred.
+
+### Changed
+
+- `authorization.denied` now states one thing: the grant does not carry the
+  capability the command needs. A target that does not exist, a target in a
+  Space the caller cannot reach, and a caller with no membership all report
+  `command.precondition_failed` instead. Previously one code covered all four,
+  so a destructive command could not be probed without creating a real record
+  to find out what the error meant. The three non-capability refusals stay
+  deliberately indistinguishable: separating them would reveal whether an id
+  belongs to a record the caller may not see. Queries are unchanged for now and
+  still answer `authorization.denied` for an out-of-scope read. The desktop's
+  copy for a rejected command widened accordingly — a refusal that used to read
+  as a missing permission now also covers a record out of reach.
+
+- An unexpected fault inside the local MCP runtime is reported as `rejected`
+  with `mcp.runtime_fault` and handed to the desktop, instead of being reported
+  as `retryable` with `mcp.runtime_unavailable` and discarded. Every throw was
+  previously indistinguishable from a transient outage, so a defect that
+  reproduces on every call read as something worth waiting out, and the error
+  itself survived nowhere. `mcp.runtime_unavailable` now means what it says: a
+  unit of work that did not commit.
+
+### Fixed
+
+- A checkpoint revert reported success while compensating nothing. A command
+  joins a checkpoint only when its own envelope carries `checkpointId`, but the
+  published guidance never said so, so a slice written after
+  `agent.checkpointCreate` — same run, same grant — stayed outside it. The
+  revert then answered `agent.checkpoint_reverted` with no outcomes and
+  consumed the checkpoint, so the honest recovery path was gone before anyone
+  noticed. `agent.checkpointPreviewRevert` now answers `available: false` with
+  `unavailableReason: "empty"`, the revert is rejected with
+  `agent.checkpoint_revert_empty` and leaves the checkpoint open, and both the
+  catalog guidance and the agent documentation state how a command joins a
+  checkpoint.
+
+- The delegation partition is enforced where grants are minted, not only on the
+  wire. `runtime` and `administrative` capabilities are not delegable to any
+  agent (ADR-046), but only the Hub checked; the local kernel accepted any
+  capability its schema parsed, so a locally minted grant could carry
+  administrative authority. Both mint paths now derive the permitted set from
+  the same partition.
+
+- An exception raised while authenticating a local MCP request escaped into the
+  socket handler instead of being answered, leaving the caller with no response
+  at all.
+
 ## [0.1.2] - 2026-07-24
 
 ### Added

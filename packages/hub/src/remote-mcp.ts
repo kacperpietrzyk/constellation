@@ -25,6 +25,7 @@ import {
   CorrelationIdSchema,
   CredentialIdSchema,
   DELEGABLE_CAPABILITIES,
+  grantScopeDrift,
   ExecutionContextSchema,
   GrantIdSchema,
   MembershipIdSchema,
@@ -262,6 +263,10 @@ const projection = (
     agentPrincipalId: grant.agentPrincipalId,
     preset: grant.preset,
     capabilityScope: grant.capabilityScope,
+    // Same signal the local transport publishes: a grant issued before a
+    // release does not gain what that release added to its preset, and nothing
+    // else in this projection says so.
+    ...grantScopeDrift(grant.preset, grant.capabilityScope),
     spaceScope: grant.spaceScope,
     federationScope: state.federationScopes[grant.id] ?? {
       crossWorkspaceRead: false,

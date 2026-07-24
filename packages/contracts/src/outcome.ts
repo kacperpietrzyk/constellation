@@ -31,6 +31,10 @@ import {
   StrategicRecordIdSchema,
 } from "./ids.js";
 import { CaptureReviewReasonSchema, ContractVersionSchema } from "./command.js";
+import {
+  AgentAccessPresetSchema,
+  CapabilitySchema,
+} from "./execution-context.js";
 import { NeedsReviewSchema } from "./narrative.js";
 import {
   CompensationKindSchema,
@@ -47,6 +51,7 @@ export const DiagnosticCodeSchema = z.enum([
   "agent.grant_created",
   "agent.credential_rotated",
   "agent.grant_revoked",
+  "agent.grant_scope_changed",
   "agent.checkpoint_created",
   "agent.handoff_submitted",
   "capture.stored",
@@ -762,6 +767,16 @@ export const AgentGrantRevokedProjectionSchema = z
     policyVersion: z.int().positive(),
   })
   .strict();
+export const AgentGrantScopeChangedProjectionSchema = z
+  .object({
+    kind: z.literal("agent.grant_scope_changed"),
+    grantId: GrantIdSchema,
+    preset: AgentAccessPresetSchema,
+    capabilityScope: z.array(CapabilitySchema),
+    version: z.int().positive(),
+    policyVersion: z.int().positive(),
+  })
+  .strict();
 export const AgentCheckpointCreatedProjectionSchema = z
   .object({
     kind: z.literal("agent.checkpoint_created"),
@@ -831,6 +846,7 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   AgentGrantCreatedProjectionSchema,
   AgentCredentialRotatedProjectionSchema,
   AgentGrantRevokedProjectionSchema,
+  AgentGrantScopeChangedProjectionSchema,
   AgentCheckpointCreatedProjectionSchema,
   AgentHandoffSubmittedProjectionSchema,
 ]);
@@ -1236,6 +1252,12 @@ const AgentGrantRevokedSuccessOutcomeSchema =
     diagnosticCode: z.literal("agent.grant_revoked"),
     projection: AgentGrantRevokedProjectionSchema,
   }).strict();
+const AgentGrantScopeChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("agent.grant_scope_changed"),
+    projection: AgentGrantScopeChangedProjectionSchema,
+  }).strict();
 const AgentCheckpointCreatedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1312,6 +1334,7 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   AgentGrantCreatedSuccessOutcomeSchema,
   AgentCredentialRotatedSuccessOutcomeSchema,
   AgentGrantRevokedSuccessOutcomeSchema,
+  AgentGrantScopeChangedSuccessOutcomeSchema,
   AgentCheckpointCreatedSuccessOutcomeSchema,
   AgentHandoffSubmittedSuccessOutcomeSchema,
 ]);

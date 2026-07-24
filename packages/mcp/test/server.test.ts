@@ -401,9 +401,8 @@ test("serves a grant-filtered operation catalog generated from the contract", as
       ],
     );
     assert.equal(
-      catalog.operations.find(
-        (operation) => operation.name === "command.batch",
-      )?.requiredCapability,
+      catalog.operations.find((operation) => operation.name === "command.batch")
+        ?.requiredCapability,
       undefined,
       "a batch authorizes each item, so it needs no capability of its own",
     );

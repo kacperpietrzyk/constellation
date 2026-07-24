@@ -71,7 +71,7 @@ const ownerContext = (): ExecutionContext =>
   });
 
 const agentContext = (
-  preset: "observe" | "full_access",
+  preset: "observe" | "operate" | "full_access",
   policyVersion: number,
 ): ExecutionContext =>
   ExecutionContextSchema.parse({
@@ -170,6 +170,45 @@ describe("agent grant delegation reaches the product without widening scope", ()
         }),
       ),
       "success",
+    );
+  });
+
+  it("refuses to mint a grant carrying a capability no grant may carry", () => {
+    const { harness, owner } = bootstrap();
+    // The partition was enforced on the remote transport only, so the local
+    // kernel would mint a grant holding administrative authority. A capability
+    // is delegable or not by its own classification; which transport asked is
+    // not part of that.
+    const refused = commandOutcome(
+      harness.kernel.execute(owner, {
+        ...metadata("delegation-non-delegable", { [ids.workspace]: 1 }),
+        commandName: "agent.grantCreate",
+        payload: {
+          grantId: ids.agentGrant,
+          membershipId: ids.agentMembership,
+          agentPrincipalId: ids.agent,
+          displayName: "Would-be administrator",
+          preset: "custom",
+          capabilityScope: ["task.create", "workspace.manageAccess"],
+          spaces: [
+            {
+              spaceGrantId: ids.agentSpaceGrant,
+              spaceId: ids.space,
+              access: "edit",
+            },
+          ],
+          credentialId: ids.agentCredential,
+          credentialDigest: "b".repeat(64),
+        },
+      }),
+    );
+    assert.equal(refused.outcome, "rejected");
+    assert.equal(refused.diagnosticCode, "command.precondition_failed");
+    assert.equal(
+      harness.store.read((view) =>
+        view.getAgentGrant(GrantIdSchema.parse(ids.agentGrant)),
+      ),
+      undefined,
     );
   });
 
@@ -423,6 +462,226 @@ describe("agent grant delegation reaches the product without widening scope", ()
         ...metadata("handoff-denied"),
         commandName: "agent.handoffSubmit",
         payload: handoff(ids.otherHandoff, ids.hostAgentRun),
+      }),
+    );
+    assert.equal(denied.outcome, "rejected");
+    assert.equal(denied.diagnosticCode, "authorization.denied");
+  });
+
+  /**
+   * The loop an external agent could not close on 0.1.2: a capability an
+   * upgrade added to a preset never reached a grant already in the field,
+   * because the grant authorizes against the scope frozen when it was issued
+   * and nothing could change that scope afterwards.
+   */
+  const grantWithScope = (
+    scope: readonly string[],
+  ): {
+    readonly harness: ReturnType<typeof createReferenceHarness>;
+    readonly owner: ExecutionContext;
+  } => {
+    const { harness, owner } = bootstrap();
+    assert.equal(
+      outcome(
+        harness.kernel.execute(owner, {
+          ...metadata("rescope-grant", { [ids.workspace]: 1 }),
+          commandName: "agent.grantCreate",
+          payload: {
+            grantId: ids.agentGrant,
+            membershipId: ids.agentMembership,
+            agentPrincipalId: ids.agent,
+            displayName: "Operator issued before the upgrade",
+            preset: "operate",
+            capabilityScope: scope,
+            spaces: [
+              {
+                spaceGrantId: ids.agentSpaceGrant,
+                spaceId: ids.space,
+                access: "edit",
+              },
+            ],
+            credentialId: ids.agentCredential,
+            credentialDigest: "b".repeat(64),
+          },
+        }),
+      ),
+      "success",
+    );
+    return { harness, owner };
+  };
+
+  /**
+   * Minting or re-scoping a grant raises the workspace policy version, and a
+   * human context pinned to the old one stops being able to manage access —
+   * so the owner is rebuilt at the current version before each act, exactly as
+   * the desktop rebuilds it per call.
+   */
+  const ownerNow = (
+    harness: ReturnType<typeof createReferenceHarness>,
+  ): ExecutionContext => {
+    const owner = ExecutionContextSchema.parse({
+      ...ownerContext(),
+      policyVersion: currentPolicyVersion(harness),
+    });
+    harness.authorization.register(owner);
+    return owner;
+  };
+
+  const currentVersions = (
+    harness: ReturnType<typeof createReferenceHarness>,
+  ): Readonly<Record<string, number>> => ({
+    [ids.workspace]:
+      harness.store.read((view) =>
+        view.getWorkspace(WorkspaceIdSchema.parse(ids.workspace)),
+      )?.version ?? 0,
+    [ids.agentGrant]:
+      harness.store.read((view) =>
+        view.getAgentGrant(GrantIdSchema.parse(ids.agentGrant)),
+      )?.version ?? 0,
+  });
+
+  /** The context the runtime rebuilds from the stored grant on every call. */
+  const contextFromStoredGrant = (
+    harness: ReturnType<typeof createReferenceHarness>,
+  ): ExecutionContext => {
+    const grant = harness.store.read((view) =>
+      view.getAgentGrant(GrantIdSchema.parse(ids.agentGrant)),
+    );
+    if (grant === undefined) throw new Error("Expected a stored grant.");
+    const agent = ExecutionContextSchema.parse({
+      ...agentContext("operate", currentPolicyVersion(harness)),
+      capabilityScope: [...grant.capabilityScope],
+    });
+    harness.authorization.register(agent);
+    return agent;
+  };
+
+  it("lets a human widen and narrow an issued grant without reissuing it", () => {
+    const withoutRemoval = capabilitiesForAgentGrantPreset("operate").filter(
+      (capability) => capability !== "task.remove",
+    );
+    const { harness } = grantWithScope(withoutRemoval);
+    const before = contextFromStoredGrant(harness);
+    assert.equal(
+      outcome(
+        harness.kernel.execute(before, {
+          ...metadata("rescope-task-create"),
+          commandName: "task.create",
+          payload: {
+            taskId: ids.task,
+            spaceId: ids.space,
+            title: "Written before the re-scope",
+          },
+        }),
+      ),
+      "success",
+    );
+    const denied = commandOutcome(
+      harness.kernel.execute(before, {
+        ...metadata("rescope-remove-denied", { [ids.task]: 1 }),
+        commandName: "task.remove",
+        payload: { taskId: ids.task },
+      }),
+    );
+    assert.equal(denied.diagnosticCode, "authorization.denied");
+
+    const widened = commandOutcome(
+      harness.kernel.execute(ownerNow(harness), {
+        ...metadata("rescope-widen", currentVersions(harness)),
+        commandName: "agent.grantSetScope",
+        payload: {
+          grantId: ids.agentGrant,
+          preset: "operate",
+          capabilityScope: [...capabilitiesForAgentGrantPreset("operate")],
+        },
+      }),
+    );
+    assert.equal(widened.outcome, "success");
+    assert.equal(widened.diagnosticCode, "agent.grant_scope_changed");
+
+    // The credential never changed: the same agent, still connected, may now
+    // do what the upgrade added, from its next call onwards.
+    assert.equal(
+      outcome(
+        harness.kernel.execute(contextFromStoredGrant(harness), {
+          ...metadata("rescope-remove-allowed", { [ids.task]: 1 }),
+          commandName: "task.remove",
+          payload: { taskId: ids.task },
+        }),
+      ),
+      "success",
+    );
+
+    // And it narrows: the lever is not a one-way widening.
+    const narrowed = commandOutcome(
+      harness.kernel.execute(ownerNow(harness), {
+        ...metadata("rescope-narrow", currentVersions(harness)),
+        commandName: "agent.grantSetScope",
+        payload: {
+          grantId: ids.agentGrant,
+          preset: "observe",
+          capabilityScope: [...capabilitiesForAgentGrantPreset("observe")],
+        },
+      }),
+    );
+    assert.equal(narrowed.outcome, "success");
+    const afterNarrowing = commandOutcome(
+      harness.kernel.execute(contextFromStoredGrant(harness), {
+        ...metadata("rescope-create-denied"),
+        commandName: "task.create",
+        payload: {
+          taskId: ids.otherTask,
+          spaceId: ids.space,
+          title: "Must not be written",
+        },
+      }),
+    );
+    assert.equal(afterNarrowing.diagnosticCode, "authorization.denied");
+  });
+
+  it("refuses to re-scope a grant into a capability no grant may carry", () => {
+    const { harness } = grantWithScope([
+      ...capabilitiesForAgentGrantPreset("operate"),
+    ]);
+    // ADR-046 keeps `runtime` and `administrative` capabilities out of every
+    // agent grant. Re-scoping is the newest way to ask for one, so it is
+    // refused at the kernel, not only on the remote transport.
+    const refused = commandOutcome(
+      harness.kernel.execute(ownerNow(harness), {
+        ...metadata("rescope-non-delegable", currentVersions(harness)),
+        commandName: "agent.grantSetScope",
+        payload: {
+          grantId: ids.agentGrant,
+          preset: "custom",
+          capabilityScope: ["task.create", "agent.manageAccess"],
+        },
+      }),
+    );
+    assert.equal(refused.outcome, "rejected");
+    assert.equal(refused.diagnosticCode, "command.precondition_failed");
+    assert.deepEqual(
+      harness.store
+        .read((view) => view.getAgentGrant(GrantIdSchema.parse(ids.agentGrant)))
+        ?.capabilityScope.includes("agent.manageAccess"),
+      false,
+    );
+  });
+
+  it("keeps re-scoping out of an agent's own reach", () => {
+    const { harness } = grantWithScope([
+      ...capabilitiesForAgentGrantPreset("operate"),
+    ]);
+    // agent.manageAccess is administrative, so no grant carries it and no
+    // agent can widen itself — the lever belongs to a human only.
+    const denied = commandOutcome(
+      harness.kernel.execute(contextFromStoredGrant(harness), {
+        ...metadata("rescope-by-agent", currentVersions(harness)),
+        commandName: "agent.grantSetScope",
+        payload: {
+          grantId: ids.agentGrant,
+          preset: "full_access",
+          capabilityScope: [...capabilitiesForAgentGrantPreset("full_access")],
+        },
       }),
     );
     assert.equal(denied.outcome, "rejected");
