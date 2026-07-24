@@ -848,6 +848,28 @@ describe("agent grant delegation reaches the product without widening scope", ()
       }),
     );
     assert.equal(removed.outcome, "success");
+    // The removal has to be observed here, not inferred from the re-add: a
+    // handler that dropped the revocation path entirely still answers success
+    // to all three calls and still ends with one record per Space.
+    assert.deepEqual(
+      agentSpaceGrants(harness).map((grant) => [grant.spaceId, grant.status]),
+      [
+        [ids.space, "active"],
+        [ids.secondSpace, "revoked"],
+      ],
+    );
+    if (removed.diagnosticCode !== "agent.grant_scope_changed")
+      throw new Error(
+        `Expected a re-scope outcome: ${JSON.stringify(removed)}`,
+      );
+    // The revoked grant is part of what this command reports it touched, at the
+    // version it now holds — the desktop re-reads from this, not from the store.
+    assert.deepEqual(
+      removed.affected.find(
+        (record) => record.recordId === ids.secondSpaceGrant,
+      ),
+      { recordId: ids.secondSpaceGrant, recordKind: "spaceGrant", version: 2 },
+    );
 
     // The re-add supplies a *fresh* id on purpose: the removed Space fell out of
     // the projection, so the desktop cannot know the old spaceGrantId. The
