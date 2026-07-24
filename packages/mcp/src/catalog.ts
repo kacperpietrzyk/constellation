@@ -107,6 +107,16 @@ const operations = (): readonly CatalogOperation[] => {
   return allOperations;
 };
 
+/**
+ * Every operation name the generated catalog can carry, grant-independent.
+ * Only the build stamp needs this: a fingerprint that changed with the caller's
+ * grant would identify the grant, not the build.
+ */
+export const completeOperationScope = (): readonly string[] => [
+  ...operations().map((operation) => operation.name),
+  "agent.checkpoint.revert",
+];
+
 const batchEnvelopeSchema = (): Record<string, unknown> => {
   const base = jsonSchema(
     BatchEnvelopeBaseSchema.omit({ commands: true }),

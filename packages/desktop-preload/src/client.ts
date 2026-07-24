@@ -55,6 +55,7 @@ export const DESKTOP_CHANNELS = {
   confirmWorkspaceRestore: "constellation:workspace-backup:confirm-restore",
   cancelWorkspaceRestore: "constellation:workspace-backup:cancel-restore",
   attentionActivated: "constellation:attention:activated",
+  workspaceChanged: "constellation:workspace:changed",
   openDocument: "constellation:document:open",
   persistDocumentUpdate: "constellation:document:persist-update",
   acknowledgeDocumentUpdates: "constellation:document:acknowledge-updates",
@@ -105,6 +106,26 @@ export const DESKTOP_CHANNELS = {
   inspectManagedPayload: "constellation:attachment:inspect",
   restoreManagedPayload: "constellation:attachment:restore",
 } as const;
+
+export interface WorkspaceChangedEvent {
+  readonly workspaceId: WorkspaceId;
+  readonly origin: "agent";
+}
+
+export const isWorkspaceChangedEvent = (
+  value: unknown,
+): value is WorkspaceChangedEvent => {
+  if (typeof value !== "object" || value === null) return false;
+  const event = value as {
+    readonly workspaceId?: unknown;
+    readonly origin?: unknown;
+  };
+  return (
+    typeof event.workspaceId === "string" &&
+    event.workspaceId.length > 0 &&
+    event.origin === "agent"
+  );
+};
 
 export type DesktopShellCommand =
   | { readonly kind: "close-tab" }
@@ -463,6 +484,14 @@ export interface ConstellationRendererClient {
         | { readonly kind: "document"; readonly documentId: DocumentId },
     ) => void,
   ): () => void;
+  /**
+   * Fires when a workspace changed outside this window — today, an external
+   * MCP agent's write. The surface holds its own projection, so without this
+   * it keeps showing the graph as it was when the window opened.
+   */
+  onWorkspaceChanged(
+    listener: (event: WorkspaceChangedEvent) => void,
+  ): () => void;
   cancelWorkspaceRestore(input: { readonly restoreId: string }): Promise<void>;
   copyWorkspaceRecoveryCode(input: {
     readonly recoveryCode: string;
@@ -698,6 +727,7 @@ export const createRendererClient = (
       input,
     ) as Promise<void>,
   onAttentionActivated: () => () => undefined,
+  onWorkspaceChanged: () => () => undefined,
   cancelWorkspaceRestore: (input) =>
     invoke(DESKTOP_CHANNELS.cancelWorkspaceRestore, input) as Promise<void>,
   copyWorkspaceRecoveryCode: (input) =>

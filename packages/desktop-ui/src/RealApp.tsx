@@ -167,6 +167,10 @@ type LoadState =
   | { readonly kind: "unavailable" | "error"; readonly message: string }
   | { readonly kind: "ready"; readonly snapshot: DesktopSnapshot };
 
+// A migration writes in batches: one re-read after the burst settles, rather
+// than one per applied command.
+const AGENT_WRITE_RELOAD_DELAY_MS = 400;
+
 const taskPriorityLabels: Record<string, string> = {
   urgent: "Pilny",
   high: "Wysoki",
@@ -1907,6 +1911,39 @@ export const RealApp = ({
   const reload = async () => {
     await reloadSnapshot();
   };
+
+  // Agent writes land in the same graph this window is showing, but the window
+  // holds its own projection: without a re-read it keeps rendering the state it
+  // opened with, and a correct agent write reads as a missing one. The
+  // subscription is laid once per client and reaches the current reload through
+  // a ref, so a burst of agent commands cannot slip between unsubscribe and
+  // resubscribe. Coalesced, because a migration applies in batches.
+  const reloadSnapshotRef = useRef(reloadSnapshot);
+  const workspaceIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    reloadSnapshotRef.current = reloadSnapshot;
+    workspaceIdRef.current = snapshot?.bootstrap.workspace.id;
+  });
+  useEffect(() => {
+    if (client?.onWorkspaceChanged === undefined) return;
+    let pending: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = client.onWorkspaceChanged((event) => {
+      if (
+        workspaceIdRef.current !== undefined &&
+        event.workspaceId !== workspaceIdRef.current
+      )
+        return;
+      if (pending !== undefined) return;
+      pending = setTimeout(() => {
+        pending = undefined;
+        void reloadSnapshotRef.current();
+      }, AGENT_WRITE_RELOAD_DELAY_MS);
+    });
+    return () => {
+      if (pending !== undefined) clearTimeout(pending);
+      unsubscribe();
+    };
+  }, [client]);
 
   useEffect(() => {
     if (!client) {

@@ -276,6 +276,7 @@ const createTypedClient = () => {
       },
     }),
     onAttentionActivated: () => () => undefined,
+    onWorkspaceChanged: () => () => undefined,
     cancelWorkspaceRestore: async () => undefined,
     copyWorkspaceRecoveryCode: async () => ({ outcome: "success" }),
     confirmWorkspaceRestore: async () => ({

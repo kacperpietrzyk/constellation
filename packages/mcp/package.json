@@ -15,6 +15,10 @@
     "./protocol": {
       "types": "./dist/src/protocol.d.ts",
       "default": "./dist/src/protocol.js"
+    },
+    "./contract-stamp": {
+      "types": "./dist/src/contract-stamp.d.ts",
+      "default": "./dist/src/contract-stamp.js"
     }
   },
   "types": "./dist/src/index.d.ts",

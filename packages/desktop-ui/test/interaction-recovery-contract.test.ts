@@ -155,6 +155,22 @@ describe("interaction recovery contracts", () => {
     );
   });
 
+  it("re-reads the workspace when an external agent writes to it", () => {
+    // An agent and this window are equal operators over one graph, but the
+    // window holds its own projection: without this the human sees the state
+    // the window opened with and reads a correct agent write as a missing one.
+    assert.match(realApp, /client\.onWorkspaceChanged\(\(event\) => \{/);
+    assert.match(
+      realApp,
+      /event\.workspaceId !== workspaceIdRef\.current[\s\S]*return/,
+    );
+    // Laid once per client and reaching the current reload through a ref, so a
+    // burst of agent commands cannot fall between unsubscribe and resubscribe.
+    assert.match(realApp, /void reloadSnapshotRef\.current\(\)/);
+    assert.match(realApp, /AGENT_WRITE_RELOAD_DELAY_MS/);
+    assert.match(realApp, /if \(pending !== undefined\) return;/);
+  });
+
   it("gives the inspector separator a 24px pointer target without thickening its seam", () => {
     assert.match(styles, /\.inspector-resize::before\s*\{[^}]*width:\s*24px/s);
     assert.match(styles, /\.inspector-resize::after\s*\{[^}]*width:\s*1px/s);

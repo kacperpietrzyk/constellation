@@ -31,6 +31,11 @@ import {
   buildOperationIndex,
 } from "./catalog.js";
 import {
+  hostContractFingerprint,
+  serverBuildStamp,
+  withServerBuildStamp,
+} from "./contract-stamp.js";
+import {
   HostRunMetadataSchema,
   MAX_MCP_PAYLOAD_BYTES,
   MAX_MCP_PAYLOAD_CHUNK_BYTES,
@@ -717,9 +722,15 @@ export const createConstellationMcpServer = (
           {
             uri: request.params.uri,
             mimeType: "application/json",
-            text: JSON.stringify(
-              buildOperationIndex(scope.data.result.grant.capabilityScope),
-            ),
+            text: JSON.stringify({
+              ...buildOperationIndex(scope.data.result.grant.capabilityScope),
+              // The catalog is the artifact that goes stale when this process
+              // outlives the application build that generated it, and it is
+              // the first thing an agent reads — so it carries its own stamp.
+              // Read off the raw response: the parse above narrows to the
+              // grant and drops everything else.
+              build: serverBuildStamp(hostContractFingerprint(response.result)),
+            }),
           },
         ],
       };
@@ -772,7 +783,10 @@ export const createConstellationMcpServer = (
         {
           uri: request.params.uri,
           mimeType: "application/json",
-          text: JSON.stringify(response),
+          text: JSON.stringify({
+            ...response,
+            result: withServerBuildStamp(response.result),
+          }),
         },
       ],
     };

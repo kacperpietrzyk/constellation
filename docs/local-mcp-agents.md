@@ -120,6 +120,19 @@ exist.
 The `constellation://v1/capabilities` resource reports the active contract and
 authorized scope without credential material.
 
+It also names the build answering you, under `build`: the application version,
+and a contract fingerprint taken separately by the desktop application and by
+the MCP server process that proxies to it. `contractVersion` identifies the
+protocol and does not move between releases, so it cannot do this. When
+`build.mcpServer.matchesHost` is `false`, the two processes are running
+different builds — an MCP server process that has outlived the application
+build which generated its schemas keeps publishing the old catalog and guidance
+while its answers come from the current kernel. Restart the MCP server process
+(reconnect the server in your host); restarting the Constellation application
+alone does not replace it. The same stamp is on the
+`constellation://v1/operations` index, because the catalog is the artifact that
+goes stale.
+
 Managed file, screenshot, and short voice-note bytes are exposed only through the versioned
 `constellation-capture-payload-v1` resource template. Build its URI from the
 Workspace ID and Capture ID returned by an authorized Capture History query,

@@ -8,6 +8,22 @@ releases begin.
 
 ## [Unreleased]
 
+### Added
+
+- `constellation://v1/capabilities` and the operations catalog name the build
+  that produced them: the application version plus a contract fingerprint from
+  the desktop host and from the MCP server process. When a long-lived MCP
+  server process outlives the application build that generated its schemas, the
+  two disagree and the response says so, instead of leaving a client to
+  correlate process start times against the app bundle.
+
+### Fixed
+
+- The desktop UI re-reads a workspace an external MCP agent has written to,
+  instead of showing the state it opened with until the application is
+  restarted. A correct agent write no longer reads as a missing one, and
+  "check it in the UI" is a valid verification step again.
+
 ## [0.1.1] - 2026-07-23
 
 ### Added
