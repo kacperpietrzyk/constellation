@@ -56,6 +56,14 @@ export const MCP_CHECKPOINT_REVERT_DIAGNOSTICS = {
   unsupported: "agent.checkpoint_revert_unsupported",
   alreadyReverted: "agent.checkpoint_already_reverted",
   previewFailed: "agent.checkpoint_revert_preview_failed",
+  /**
+   * A checkpoint captures a command only when that command's envelope names it
+   * in `checkpointId`; opening one and writing without the field captures
+   * nothing. Reporting that as `reverted` with an empty outcome list is a
+   * failure shaped like success — and it would spend the checkpoint, so the
+   * caller loses the recovery it thought it had just used.
+   */
+  empty: "agent.checkpoint_revert_empty",
 } as const;
 
 export type CheckpointRevertBlock = {

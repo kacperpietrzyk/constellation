@@ -32,6 +32,7 @@ const ids = {
   otherCheckpoint: "41000000-0000-4000-8000-000000000015",
   handoff: "41000000-0000-4000-8000-000000000016",
   otherHandoff: "41000000-0000-4000-8000-000000000017",
+  otherTask: "41000000-0000-4000-8000-000000000018",
 } as const;
 
 let sequence = 30_000;
@@ -426,5 +427,163 @@ describe("agent grant delegation reaches the product without widening scope", ()
     );
     assert.equal(denied.outcome, "rejected");
     assert.equal(denied.diagnosticCode, "authorization.denied");
+  });
+
+  /**
+   * `authorization.denied` is a verdict about the grant, so it may not also
+   * mean "that record is not there". An integrator probing a destructive
+   * command on a made-up id was told its grant lacked the capability it
+   * actually held, and the only way to tell the two apart was to create a real
+   * record first — the very thing the probe existed to avoid.
+   */
+  it("answers a missing target with a precondition and keeps denial for the grant", () => {
+    const { agent, harness } = runningAgent();
+    const absent = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("remove-absent", { [ids.otherTask]: 1 }),
+        commandName: "task.remove",
+        payload: { taskId: ids.otherTask },
+      }),
+    );
+    assert.equal(absent.outcome, "rejected");
+    assert.equal(absent.diagnosticCode, "command.precondition_failed");
+
+    assert.equal(
+      commandOutcome(
+        harness.kernel.execute(agent, {
+          ...metadata("remove-target-create"),
+          commandName: "task.create",
+          payload: {
+            taskId: ids.task,
+            spaceId: ids.space,
+            title: "Removable",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    // Same command, same real target, capability withheld: this is the only
+    // thing the code now reports, so reading it as a capability verdict is
+    // finally correct.
+    const denied = commandOutcome(
+      harness.kernel.execute(withoutCapability(agent, "task.remove"), {
+        ...metadata("remove-denied", { [ids.task]: 1 }),
+        commandName: "task.remove",
+        payload: { taskId: ids.task },
+      }),
+    );
+    assert.equal(denied.outcome, "rejected");
+    assert.equal(denied.diagnosticCode, "authorization.denied");
+
+    const removed = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("remove-allowed", { [ids.task]: 1 }),
+        commandName: "task.remove",
+        payload: { taskId: ids.task },
+      }),
+    );
+    assert.equal(removed.outcome, "success");
+  });
+
+  /**
+   * Checkpoint membership is opt-in per command: the kernel attaches a command
+   * to a checkpoint only when the envelope names it in `checkpointId`. Sharing
+   * a run is not membership. An external agent read the published guidance as
+   * "the checkpoint captures what follows it", wrote a slice without the field,
+   * and was told the revert succeeded — so the boundary is pinned here.
+   */
+  const previewRevert = (
+    harness: ReturnType<typeof createReferenceHarness>,
+    agent: ExecutionContext,
+    checkpointId: string,
+  ) => {
+    const result = harness.kernel.query(agent, {
+      contractVersion: 1,
+      queryName: "agent.checkpointPreviewRevert",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { checkpointId },
+    });
+    if (
+      result.kind !== "query_result" ||
+      result.result.outcome !== "success" ||
+      result.result.projection.kind !== "agent.checkpoint_revert_preview"
+    )
+      throw new Error(`Expected a revert preview: ${JSON.stringify(result)}`);
+    return result.result.projection;
+  };
+
+  const openCheckpoint = () => {
+    const { agent, harness } = runningAgent();
+    assert.equal(
+      commandOutcome(
+        harness.kernel.execute(agent, {
+          ...metadata("membership-checkpoint"),
+          commandName: "agent.checkpointCreate",
+          payload: {
+            checkpointId: ids.checkpoint,
+            runId: ids.hostAgentRun,
+            label: "Before the slice",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    return { agent, harness };
+  };
+
+  it("previews a checkpoint that captured nothing as unavailable and empty", () => {
+    const { agent, harness } = openCheckpoint();
+    const preview = previewRevert(harness, agent, ids.checkpoint);
+    // Reporting `available: true` here is the success-shaped failure: the
+    // caller reads it as "this checkpoint will roll my slice back" when it
+    // holds nothing to roll back.
+    assert.equal(preview.available, false);
+    assert.equal(preview.unavailableReason, "empty");
+    assert.deepEqual(preview.commandIds, []);
+    assert.deepEqual(preview.affectedRecordIds, []);
+  });
+
+  it("captures only the commands whose envelope names the checkpoint", () => {
+    const { agent, harness } = openCheckpoint();
+    const inside = metadata("membership-inside");
+    assert.equal(
+      commandOutcome(
+        harness.kernel.execute(agent, {
+          ...inside,
+          checkpointId: ids.checkpoint,
+          commandName: "task.create",
+          payload: {
+            taskId: ids.task,
+            spaceId: ids.space,
+            title: "Inside the checkpoint",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    // Same agent, same run, applied after the checkpoint was opened, but the
+    // envelope does not name it. It stays outside, and the preview must not
+    // pretend otherwise.
+    assert.equal(
+      commandOutcome(
+        harness.kernel.execute(agent, {
+          ...metadata("membership-outside"),
+          commandName: "task.create",
+          payload: {
+            taskId: ids.otherTask,
+            spaceId: ids.space,
+            title: "Outside the checkpoint",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    const preview = previewRevert(harness, agent, ids.checkpoint);
+    assert.equal(preview.available, true);
+    assert.equal(preview.unavailableReason, undefined);
+    assert.deepEqual(preview.commandIds, [inside.commandId]);
+    assert.deepEqual(preview.affectedRecordIds, [ids.task]);
   });
 });

@@ -924,6 +924,15 @@ export class LocalMcpRuntime {
         diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.alreadyReverted,
         checkpointId: checkpoint.id,
       });
+    // Refuse before the checkpoint is spent: it captured nothing, so applying
+    // it would report success, change nothing, and leave the caller without
+    // the checkpoint it still needs. agent.checkpointPreviewRevert reports the
+    // same state as unavailableReason "empty".
+    if (checkpoint.commandIds.length === 0)
+      return contentSafeResponse(requestId, "rejected", {
+        diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.empty,
+        checkpointId: checkpoint.id,
+      });
     // Compensation runs newest-first, and every preview is taken before any of
     // it is applied, so previews and undos walk one shared reversed sequence:
     // an undo paired with another command's preview would carry the wrong

@@ -1309,5 +1309,36 @@ describe("remote MCP Hub gateway", () => {
       diagnosticCode: "agent.checkpoint_already_reverted",
       checkpointId: revertable,
     });
+
+    // Membership is opt-in per command: this checkpoint is followed by a write
+    // that never names it, so it captured nothing. The remote path must refuse
+    // for the same reason the local one does, or "reverted" means one thing on
+    // stdio and another over the wire.
+    const empty = uuid();
+    await command({
+      key: "remote-checkpoint-3",
+      commandName: "agent.checkpointCreate",
+      payload: {
+        checkpointId: empty,
+        runId: run.agentRunId,
+        label: "Captures nothing",
+      },
+    });
+    await command({
+      key: "remote-uncaptured-create",
+      commandName: "project.create",
+      payload: {
+        projectId: uuid(),
+        spaceId: ids.space,
+        title: "Outside every checkpoint",
+        intendedOutcome: "Never captured",
+      },
+    });
+    const nothing = await revert(empty, "remote-revert-4");
+    assert.equal(nothing.outcome, "rejected", JSON.stringify(nothing.result));
+    assert.deepEqual(nothing.result, {
+      diagnosticCode: "agent.checkpoint_revert_empty",
+      checkpointId: empty,
+    });
   });
 });

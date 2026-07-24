@@ -726,14 +726,21 @@ export const executeAgentAccessQuery = (
   const descriptors = checkpoint.commandIds.map((id) =>
     view.getUndoDescriptor(id),
   );
+  // "empty" outranks every per-command reason because there are no commands to
+  // have a reason about. A checkpoint captures a command only when that
+  // command's envelope names it in `checkpointId`; opening one and then writing
+  // without the field leaves this list empty, and answering `available: true`
+  // would promise a rollback that compensates nothing.
   const unavailableReason =
     checkpoint.status === "reverted"
       ? "already_reverted"
-      : descriptors.some((item) => item === undefined)
-        ? "unsupported"
-        : descriptors.some((item) => item?.consumedByCommandId !== undefined)
-          ? "later_change"
-          : undefined;
+      : checkpoint.commandIds.length === 0
+        ? "empty"
+        : descriptors.some((item) => item === undefined)
+          ? "unsupported"
+          : descriptors.some((item) => item?.consumedByCommandId !== undefined)
+            ? "later_change"
+            : undefined;
   return QueryResultSchema.parse({
     outcome: "success",
     contractVersion: 1,

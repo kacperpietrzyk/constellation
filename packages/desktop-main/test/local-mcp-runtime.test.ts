@@ -619,6 +619,17 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
       ),
       voiceBytes,
     );
+    // The capability and its command are spelled differently on purpose-free
+    // grounds: the grant carries `capture.transcriptWrite`, the command is
+    // `capture.writeTranscript`, and the kernel bridges them. An integrator
+    // reading its own capabilityScope sees no command by that name, so the
+    // bridge is asserted here rather than assumed — the catalog states it as
+    // `requiredCapability`.
+    const heldCapabilities: readonly string[] = agentCapabilities;
+    assert.ok(
+      heldCapabilities.includes("capture.transcriptWrite") &&
+        !heldCapabilities.includes("capture.writeTranscript"),
+    );
     const transcript = await invokeDesktopMcp(descriptor, {
       contractVersion: 1,
       requestId: crypto.randomUUID(),
@@ -1348,6 +1359,42 @@ test("local MCP checkpoint revert reverts every command in reverse order and ref
       (again.result as RevertBody).diagnosticCode,
       "agent.checkpoint_already_reverted",
     );
+  } finally {
+    await harness.close();
+  }
+});
+
+test("local MCP checkpoint revert refuses a checkpoint that captured nothing instead of spending it", async () => {
+  const harness = await startRevertHarness();
+  try {
+    await harness.checkpoint(revertIds.checkpoint, "Before the slice");
+    // The command shares the run and follows the checkpoint, but its envelope
+    // does not name it, so the checkpoint holds nothing. Answering
+    // `agent.checkpoint_reverted` here is the success-shaped failure: the
+    // caller believes its slice was rolled back, and the revert would consume
+    // the checkpoint, destroying the one honest recovery path it had left.
+    await harness.command({
+      key: "empty-project-create",
+      commandName: "project.create",
+      payload: {
+        projectId: revertIds.project,
+        spaceId: ids.space,
+        title: "Never captured",
+        intendedOutcome: "Original outcome",
+      },
+    });
+    const reverted = await harness.revert(revertIds.checkpoint, "revert-6");
+    assert.equal(reverted.outcome, "rejected", JSON.stringify(reverted.result));
+    const body = reverted.result as RevertBody;
+    assert.equal(body.diagnosticCode, "agent.checkpoint_revert_empty");
+    assert.equal(body.checkpointId, revertIds.checkpoint);
+    assert.equal(
+      harness.project(revertIds.project)?.intendedOutcome,
+      "Original outcome",
+    );
+    // Still open: a checkpoint that refused is a checkpoint the caller can
+    // still use once it starts naming it.
+    assert.equal(harness.status(revertIds.checkpoint), "open");
   } finally {
     await harness.close();
   }

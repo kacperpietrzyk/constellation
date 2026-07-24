@@ -314,6 +314,9 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     "agent.checkpoint.previewRevert",
     "agent.checkpoint.revert",
     "capture.audioRead",
+    // Held under a name its own command does not use; the catalog has to say
+    // so rather than leave an integrator to infer the bridge.
+    "capture.transcriptWrite",
   ];
   const server = createConstellationMcpServer({
     invoke: (invocation) =>
@@ -355,6 +358,7 @@ test("serves a grant-filtered operation catalog generated from the contract", as
         readonly tool: string;
         readonly schema: string;
         readonly revertable?: string;
+        readonly requiredCapability?: string;
       }[];
     };
     const names = catalog.operations.map((operation) => operation.name);
@@ -364,6 +368,7 @@ test("serves a grant-filtered operation catalog generated from the contract", as
         "agent.checkpoint.revert",
         "agent.checkpointCreate",
         "agent.checkpointPreviewRevert",
+        "capture.writeTranscript",
         // Unconditional: a batch authorizes each item, so any grant that can
         // run a command can batch it (ADR-048).
         "command.batch",
@@ -376,11 +381,38 @@ test("serves a grant-filtered operation catalog generated from the contract", as
       ],
       "only in-scope operations with envelopes appear; capture.audioRead has no envelope and no entry",
     );
+    // The capability an operation needs is stated, never inferred from the
+    // operation name. Four operations are reachable only under a differently
+    // spelled capability, and an agent comparing this catalog against its own
+    // capabilityScope has no other way to see the bridge.
+    assert.deepEqual(
+      catalog.operations
+        .filter(
+          (operation) =>
+            operation.requiredCapability !== undefined &&
+            operation.requiredCapability !== operation.name,
+        )
+        .map((operation) => [operation.name, operation.requiredCapability])
+        .sort(),
+      [
+        ["agent.checkpointCreate", "agent.checkpoint.create"],
+        ["agent.checkpointPreviewRevert", "agent.checkpoint.previewRevert"],
+        ["capture.writeTranscript", "capture.transcriptWrite"],
+      ],
+    );
+    assert.equal(
+      catalog.operations.find(
+        (operation) => operation.name === "command.batch",
+      )?.requiredCapability,
+      undefined,
+      "a batch authorizes each item, so it needs no capability of its own",
+    );
     const taskCreate = catalog.operations.find(
       (operation) => operation.name === "task.create",
     );
     assert.equal(taskCreate?.kind, "command");
     assert.equal(taskCreate?.tool, "constellation.command.v1");
+    assert.equal(taskCreate?.requiredCapability, "task.create");
     // R14.2 evidence: the whole catalog is 342 KB for an operate grant and a
     // real host truncated it, so the index points at each operation's schema
     // and a host reads only what it needs.

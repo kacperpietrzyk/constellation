@@ -1100,10 +1100,14 @@ const commandFailure = (response: RendererCommandResponse): MutationFailure => {
   if (outcome.outcome === "rejected")
     return {
       kind: "unavailable",
+      // `authorization.denied` now means only "this access does not carry the
+      // capability". A refusal because the record is out of reach — another
+      // Space, an access level too low, or simply not there — arrives as a
+      // precondition, so that copy has to cover reach as well as staleness.
       message:
         outcome.diagnosticCode === "authorization.denied"
           ? "Brak uprawnienia do tej zmiany."
-          : "Warunki polecenia nie są już aktualne.",
+          : "Nie można wykonać tej zmiany: rekord jest poza Twoim dostępem albo jego stan się zmienił.",
     };
   return {
     kind: "unavailable",

@@ -412,8 +412,10 @@ it("refuses area.updateResponsibility against a missing or wrong-kind record", (
   assert.equal(wrongKind.outcome, "rejected");
   assert.equal(wrongKind.diagnosticCode, "command.precondition_failed");
 
-  // A non-existent id resolves no space, so authorization refuses it before the
-  // handler ever runs — the edit is still rejected, one layer earlier.
+  // A non-existent id resolves no space, so the authorization pass refuses it
+  // before the handler ever runs. It reports the same precondition as the
+  // wrong-kind target: the grant carried area.updateResponsibility in both, so
+  // neither refusal is a statement about the grant.
   const missing = unwrap(
     harness.kernel.execute(context(), {
       ...metadata("area-missing"),
@@ -425,7 +427,7 @@ it("refuses area.updateResponsibility against a missing or wrong-kind record", (
     }),
   );
   assert.equal(missing.outcome, "rejected");
-  assert.equal(missing.diagnosticCode, "authorization.denied");
+  assert.equal(missing.diagnosticCode, "command.precondition_failed");
 });
 
 it("refuses initiative.updateOutcome against a missing or wrong-kind record", () => {
@@ -446,6 +448,8 @@ it("refuses initiative.updateOutcome against a missing or wrong-kind record", ()
   assert.equal(wrongKind.outcome, "rejected");
   assert.equal(wrongKind.diagnosticCode, "command.precondition_failed");
 
+  // Same precondition as the wrong-kind target, for the same reason: the grant
+  // carried the capability, so the refusal is not about the grant.
   const missing = unwrap(
     harness.kernel.execute(context(), {
       ...metadata("initiative-missing"),
@@ -457,5 +461,5 @@ it("refuses initiative.updateOutcome against a missing or wrong-kind record", ()
     }),
   );
   assert.equal(missing.outcome, "rejected");
-  assert.equal(missing.diagnosticCode, "authorization.denied");
+  assert.equal(missing.diagnosticCode, "command.precondition_failed");
 });

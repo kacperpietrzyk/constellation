@@ -1468,7 +1468,10 @@ it("projects a meeting into routed, promoted, and identified work-graph records"
     "a cross-Space project would leave a promoted Task unconnected",
   );
 
-  // An unknown Space is refused by authorization before any routing logic.
+  // An unknown Space is refused by the authorization pass before any routing
+  // logic — as a precondition, because the grant carries meeting.route. It is
+  // the same answer a Space the caller may not reach would get, so the
+  // refusal does not say which of the two this id is.
   assert.equal(
     unwrap(
       harness.kernel.execute(context(), {
@@ -1482,7 +1485,7 @@ it("projects a meeting into routed, promoted, and identified work-graph records"
         },
       }),
     ).diagnosticCode,
-    "authorization.denied",
+    "command.precondition_failed",
     "an unknown Space is not a routing destination",
   );
 
