@@ -25,11 +25,15 @@ import {
   YjsRealtimeDocumentAdapter,
   createRichDocumentSeed,
   documentPlainText,
-  documentEntityReferences,
-  documentContentFormat,
+  type documentEntityReferences,
   parseStructuredDocument,
   replaceStructuredDocumentInYjs,
-  structuredDocumentFromYjs,
+  agentContentBaseline,
+  projectAgentContent,
+  storedStateVector,
+  storedStateVectorSha256,
+  type AgentContentSeed,
+  type AgentContentState,
   restoreDocumentFromCheckpoint,
 } from "@constellation/realtime-documents";
 import crossws from "crossws/adapters/node";
@@ -72,6 +76,11 @@ const contentOwnerId = (owner: CollaborativeContentOwner): string =>
 type AuthorizedContentAddress = {
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
+  /**
+   * ADR-070. The Project's own intended outcome, so a body an agent
+   * materialises starts from the same seed a human's first open would produce.
+   */
+  readonly seed?: AgentContentSeed;
 } & (
   | { readonly owner: CollaborativeContentOwner }
   | { readonly documentId: DocumentId }
@@ -598,6 +607,7 @@ export class RealtimeDocumentGateway {
     input: AuthorizedContentAddress,
   ): Promise<
     | {
+        readonly contentState: AgentContentState;
         readonly content: StructuredDocument;
         readonly text: string;
         readonly entityReferences: ReturnType<typeof documentEntityReferences>;
@@ -610,26 +620,15 @@ export class RealtimeDocumentGateway {
       workspaceId: input.workspaceId,
       owner,
     });
-    if (
-      stored === undefined ||
-      stored.spaceId !== input.spaceId ||
-      formatFromState(stored.state) !== "rich-v1"
-    )
+    // A body stored against another Space is the one answer this read still
+    // withholds; absence and plain text are states it reports (ADR-070), and
+    // the shared projection is what keeps that identical to the desktop.
+    if (stored !== undefined && stored.spaceId !== input.spaceId)
       return undefined;
-    const document = new Y.Doc({ gc: true });
-    try {
-      Y.applyUpdate(document, stored.state);
-      return {
-        content: structuredDocumentFromYjs(document),
-        text: documentPlainText(document),
-        entityReferences: documentEntityReferences(document),
-        stateVectorSha256: createHash("sha256")
-          .update(Y.encodeStateVector(document))
-          .digest("hex"),
-      };
-    } finally {
-      document.destroy();
-    }
+    return projectAgentContent({
+      ...(stored === undefined ? {} : { state: stored.state }),
+      ...(input.seed === undefined ? {} : { seed: input.seed }),
+    });
   }
 
   public async replaceStructuredAuthorized(
@@ -647,6 +646,8 @@ export class RealtimeDocumentGateway {
         readonly revisionId: DocumentRevisionId;
         readonly stateVectorSha256: string;
         readonly idempotentReplay: boolean;
+        readonly contentCreated?: boolean;
+        readonly formatUpgraded?: boolean;
       }
     | {
         readonly outcome: "conflict" | "rejected";
@@ -726,20 +727,31 @@ export class RealtimeDocumentGateway {
 
     const stored =
       await this.repository.loadCollaborativeContentState(revisionScope);
-    if (stored === undefined || stored.spaceId !== input.spaceId)
+    // A body stored against another Space is not this owner's body.
+    if (stored !== undefined && stored.spaceId !== input.spaceId)
       return {
         outcome: "rejected",
         diagnosticCode: "document.content_unavailable",
       };
-    if (formatFromState(stored.state) !== "rich-v1")
-      return {
-        outcome: "rejected",
-        diagnosticCode: "document.schema_upgrade_required",
-      };
+    // ADR-070. Absence and plain text are states, not refusals: the write
+    // starts from the body it would create or upgrade, and the compare-and-set
+    // below is what keeps a first write honest.
+    const baseline = agentContentBaseline({
+      ...(stored === undefined ? {} : { state: stored.state }),
+      ...(input.seed === undefined ? {} : { seed: input.seed }),
+      origin: {
+        kind: "agent",
+        principalId: input.principalId,
+        runId: input.runId,
+      },
+    });
+    const baselineUpdate = baseline.adapter.encodeUpdateSince(
+      storedStateVector(stored?.state),
+    );
+    const storedDigest = storedStateVectorSha256(stored?.state);
     // Validate before creating a recovery revision.
-    const validation = new YjsRealtimeDocumentAdapter(stored.state);
     try {
-      validation.replaceStructuredContent(content, {
+      baseline.adapter.replaceStructuredContent(content, {
         kind: "agent",
         principalId: input.principalId,
         runId: input.runId,
@@ -750,7 +762,7 @@ export class RealtimeDocumentGateway {
         diagnosticCode: "document.structured_content_invalid",
       };
     } finally {
-      validation.destroy();
+      baseline.adapter.destroy();
     }
 
     const room = roomName(input.workspaceId, owner);
@@ -767,13 +779,18 @@ export class RealtimeDocumentGateway {
     let priorStateVector: Uint8Array<ArrayBufferLike> = new Uint8Array();
     try {
       await connection.transact((document) => {
-        if (documentContentFormat(document) !== "rich-v1") return;
+        // Captured whatever the format is: an empty or plain-text body is the
+        // state this write starts from, and the recovery revision has to be
+        // able to put it back (ADR-070).
         priorState = Y.encodeStateAsUpdate(document);
         priorStateVector = Y.encodeStateVector(document);
       });
-      const priorDigest = createHash("sha256")
-        .update(priorStateVector)
-        .digest("hex");
+      // The room's own view of what is stored, which is what the caller quoted
+      // when it read: for an owner with no body that is the absent digest.
+      const priorDigest =
+        priorState.byteLength === 0
+          ? storedDigest
+          : createHash("sha256").update(priorStateVector).digest("hex");
       if (pending !== undefined) {
         const current = new YjsRealtimeDocumentAdapter(priorState);
         let currentContentDigest: string;
@@ -852,6 +869,10 @@ export class RealtimeDocumentGateway {
           stale = true;
           return;
         }
+        // Seed or upgrade first, in the same transaction as the content, so a
+        // room never observes a half-made body.
+        if (baselineUpdate.byteLength > 0)
+          Y.applyUpdate(document, baselineUpdate, { kind: "remote" });
         replaceStructuredDocumentInYjs(document, content, {
           kind: "agent",
           principalId: input.principalId,
@@ -888,6 +909,8 @@ export class RealtimeDocumentGateway {
         revisionId,
         stateVectorSha256,
         idempotentReplay: false,
+        contentCreated: baseline.created,
+        formatUpgraded: baseline.upgradedFrom !== undefined,
       };
     } finally {
       await connection.disconnect({ unloadImmediately: true });

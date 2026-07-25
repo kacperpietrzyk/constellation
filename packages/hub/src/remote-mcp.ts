@@ -1187,6 +1187,17 @@ export class HubRemoteMcpService {
       : { documentId, documentVersion: scoped.record.version };
     const diagnostic = (code: string): string =>
       projectInvocation ? code.replace(/^document\./u, "project.") : code;
+    // ADR-070/ADR-056 §3. Same seed the desktop passes, so a body materialised
+    // over either transport starts from the Project's own intended outcome.
+    const seed =
+      projectInvocation && "intendedOutcome" in scoped.record
+        ? scoped.record.intendedOutcome === undefined
+          ? undefined
+          : {
+              text: scoped.record.intendedOutcome,
+              principalId: scoped.record.createdBy,
+            }
+        : undefined;
     if (
       invocation.kind === "document_structured_read" ||
       invocation.kind === "project_structured_read"
@@ -1196,6 +1207,7 @@ export class HubRemoteMcpService {
           workspaceId: grant.workspaceId,
           owner,
           spaceId: scoped.record.spaceId,
+          ...(seed === undefined ? {} : { seed }),
         });
       return result === undefined
         ? response(invocation.requestId, "rejected", {
@@ -1277,6 +1289,7 @@ export class HubRemoteMcpService {
         workspaceId: grant.workspaceId,
         owner,
         spaceId: scoped.record.spaceId,
+        ...(seed === undefined ? {} : { seed }),
         principalId: grant.agentPrincipalId,
         credentialId: grant.credentialId,
         runId: invocation.run.agentRunId,

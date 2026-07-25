@@ -76,6 +76,12 @@ const MUTATING_INVOCATION_KINDS: ReadonlySet<McpOperatorInvocation["kind"]> =
 type AgentContentAddress = {
   readonly owner: CollaborativeContentOwner;
   readonly spaceId: SpaceId;
+  /**
+   * ADR-070. The Project's own intended outcome, carried down so a body
+   * materialised by an agent starts from the same seed a human's first open
+   * would have produced.
+   */
+  readonly seed?: { readonly text: string; readonly principalId: string };
 };
 
 export const localMcpEndpoint = (
@@ -212,6 +218,7 @@ export class LocalMcpRuntime {
           | undefined;
         readStructured?(input: AgentContentAddress):
           | {
+              readonly contentState: "absent" | "plain-v1" | "rich-v1";
               readonly content: unknown;
               readonly text: string;
               readonly entityReferences: readonly unknown[];
@@ -232,6 +239,8 @@ export class LocalMcpRuntime {
               readonly revisionId: string;
               readonly stateVectorSha256: string;
               readonly idempotentReplay: boolean;
+              readonly contentCreated?: boolean;
+              readonly formatUpgraded?: boolean;
             }
           | {
               readonly outcome: "conflict" | "rejected";
@@ -729,6 +738,15 @@ export class LocalMcpRuntime {
           : { documentId: owner.documentId, documentVersion: record.version };
       const diagnostic = (code: string): string =>
         projectInvocation ? code.replace(/^document\./u, "project.") : code;
+      // ADR-070/ADR-056 §3. A Project's body starts from the outcome someone
+      // wrote on the Project, whoever materialises it first — so an agent
+      // writing before any human opened it does not cost the Project its seed.
+      const seed =
+        projectInvocation && "intendedOutcome" in record
+          ? record.intendedOutcome === undefined
+            ? undefined
+            : { text: record.intendedOutcome, principalId: record.createdBy }
+          : undefined;
       if (
         invocation.kind === "document_structured_read" ||
         invocation.kind === "project_structured_read"
@@ -736,6 +754,7 @@ export class LocalMcpRuntime {
         const result = this.input.documentText.readStructured?.({
           owner,
           spaceId: record.spaceId,
+          ...(seed === undefined ? {} : { seed }),
         });
         return result === undefined
           ? contentSafeResponse(invocation.requestId, "rejected", {
@@ -818,6 +837,7 @@ export class LocalMcpRuntime {
       const result = this.input.documentText.replaceStructured?.({
         owner,
         spaceId: record.spaceId,
+        ...(seed === undefined ? {} : { seed }),
         content: invocation.content,
         expectedStateVectorSha256: invocation.expectedStateVectorSha256,
         idempotencyKey: invocation.idempotencyKey,

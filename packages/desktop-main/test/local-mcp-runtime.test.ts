@@ -267,6 +267,7 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
       readStructured: ({ owner }) => {
         structuredOwners.push(owner.kind);
         return {
+          contentState: "rich-v1" as const,
           content: structuredContent,
           text: "Initial",
           entityReferences: [],
