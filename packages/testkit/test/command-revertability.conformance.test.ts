@@ -391,6 +391,19 @@ describe("Command revertability", () => {
       organizationId,
       role: "Sponsor",
     });
+    // A correction to a person or an organization is compensable like every
+    // other field write: without this the only way to fix a misspelled surname
+    // was to destroy the record and re-create it under a new id.
+    apply(
+      "relationship.personUpdate",
+      { personId, name: "Renamed contact", role: null },
+      { [personId]: 1 },
+    );
+    apply(
+      "relationship.organizationUpdate",
+      { organizationId, nextAction: "Confirm the renewal date." },
+      { [organizationId]: 1 },
+    );
     const opportunityId = uuid();
     apply("opportunity.create", {
       opportunityId,

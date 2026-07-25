@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "node:test";
 
 import {
+  isApplicationWave2ReadView,
   isApplicationWave2Transaction,
   type ApplicationCommandResponse,
 } from "@constellation/application";
@@ -50,6 +51,8 @@ const context = (): ExecutionContext =>
       "knowledge.documentSetEvidence",
       "document.backlinks",
       "relationship.personRemove",
+      "relationship.personUpdate",
+      "relationship.organizationUpdate",
       "relationship.personCreate",
       "opportunity.create",
       "opportunity.offerCreate",
@@ -3055,4 +3058,177 @@ it("degrades reads that resolve a removed record instead of failing them", () =>
   )
     throw new Error("Expected the relationship projection.");
   assert.deepEqual(records.result.projection.records, []);
+});
+
+/**
+ * The gap this closes was the one most likely to be met on an ordinary day: a
+ * misspelled surname. Person and Organization were the only entity kinds with
+ * no update, so the only fix was to remove the record and re-create it under a
+ * new id — which lost createdAt and the lineage, dangled every reference to the
+ * old id, and stopped working entirely once anything pointed at the person.
+ */
+it("corrects a person and an organization in place, reversibly", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("update-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Corrections",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const organizationId = uuid();
+  const otherOrganizationId = uuid();
+  const personId = uuid();
+  for (const command of [
+    {
+      ...metadata("update-org"),
+      commandName: "relationship.organizationCreate" as const,
+      payload: {
+        organizationId,
+        spaceId: ids.space,
+        name: "Sofinet",
+        relationshipState: "prospect" as const,
+      },
+    },
+    {
+      ...metadata("update-other-org"),
+      commandName: "relationship.organizationCreate" as const,
+      payload: {
+        organizationId: otherOrganizationId,
+        spaceId: ids.space,
+        name: "Second client",
+        relationshipState: "active" as const,
+      },
+    },
+    {
+      ...metadata("update-person"),
+      commandName: "relationship.personCreate" as const,
+      payload: {
+        personId,
+        spaceId: ids.space,
+        name: "Diana Grab",
+        organizationId,
+        role: "Sponsor",
+        email: "diana@example.test",
+      },
+    },
+  ]) {
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), command)).outcome,
+      "success",
+    );
+  }
+
+  const correction = metadata("update-person-name", { [personId]: 1 });
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...correction,
+        commandName: "relationship.personUpdate",
+        payload: {
+          personId,
+          name: "Daiana Grab",
+          organizationId: otherOrganizationId,
+          role: null,
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const strategic = (id: string) =>
+    harness.store.read((view) =>
+      isApplicationWave2ReadView(view)
+        ? view.getStrategicRecord(StrategicRecordIdSchema.parse(id))
+        : undefined,
+    );
+  const corrected = strategic(personId);
+  assert.equal(corrected?.kind === "person" && corrected.name, "Daiana Grab");
+  // Absent leaves a field alone, null clears it: the email the command never
+  // mentioned survives, the role it cleared is gone.
+  assert.equal(
+    corrected?.kind === "person" && corrected.email,
+    "diana@example.test",
+  );
+  assert.equal(corrected?.kind === "person" && corrected.role, undefined);
+  assert.equal(
+    corrected?.kind === "person" && corrected.organizationId,
+    otherOrganizationId,
+  );
+  // The record is the same record: same id, same createdAt, one version on.
+  assert.equal(corrected?.id, personId);
+  assert.equal(corrected?.version, 2);
+
+  const undone = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("update-person-undo", { [personId]: 2 }),
+      commandName: "command.undo",
+      payload: { targetCommandId: correction.commandId },
+    }),
+  );
+  assert.equal(undone.outcome, "success");
+  const restored = strategic(personId);
+  assert.equal(restored?.kind === "person" && restored.name, "Diana Grab");
+  assert.equal(restored?.kind === "person" && restored.role, "Sponsor");
+  assert.equal(
+    restored?.kind === "person" && restored.organizationId,
+    organizationId,
+  );
+
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("update-org-state", { [organizationId]: 1 }),
+        commandName: "relationship.organizationUpdate",
+        payload: {
+          organizationId,
+          name: "Softinet",
+          relationshipState: "active",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const organization = strategic(organizationId);
+  assert.equal(
+    organization?.kind === "organization" && organization.name,
+    "Softinet",
+  );
+  assert.equal(
+    organization?.kind === "organization" && organization.relationshipState,
+    "active",
+  );
+
+  // A stale version is a conflict, not a silent overwrite.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("update-org-stale", { [organizationId]: 1 }),
+        commandName: "relationship.organizationUpdate",
+        payload: { organizationId, name: "Stale" },
+      }),
+    ).outcome,
+    "conflict",
+  );
+  // A person is not an organization: naming the wrong kind is a precondition
+  // failure rather than a write into the wrong record.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("update-wrong-kind", { [personId]: 3 }),
+        commandName: "relationship.organizationUpdate",
+        payload: { organizationId: personId, name: "Wrong kind" },
+      }),
+    ).outcome,
+    "rejected",
+  );
 });

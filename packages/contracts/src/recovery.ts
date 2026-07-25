@@ -61,6 +61,8 @@ export const CompensationKindSchema = z.enum([
   "knowledge.restore_source",
   "knowledge.restore_evidence",
   "knowledge.void_named_version",
+  "relationship.restore_person",
+  "relationship.restore_organization",
   "strategic.undo_create",
   "strategic.restore_record_state",
   "record.undo_create",

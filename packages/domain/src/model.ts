@@ -781,6 +781,34 @@ export type UndoDescriptor =
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
+      readonly kind: "relationship.restore_person";
+      readonly personId: StrategicRecordId;
+      // The whole prior state, not the fields the update happened to touch:
+      // a compensation that depended on which fields moved would have to be
+      // read together with the command to be understood.
+      readonly priorName: string;
+      readonly priorOrganizationId?: StrategicRecordId;
+      readonly priorRole?: string;
+      readonly priorEmail?: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "relationship.restore_organization";
+      readonly organizationId: StrategicRecordId;
+      readonly priorName: string;
+      readonly priorRelationshipState: "prospect" | "active" | "inactive";
+      readonly priorNextAction?: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
       readonly kind: "project.restore_outcome";
       readonly projectId: ProjectId;
       // Absent restores the record to "never written", which is what an

@@ -410,6 +410,8 @@ const isCurrentlyAuthorized = (
     case "relationship.organizationCreate":
     case "relationship.organizationRemove":
     case "relationship.personCreate":
+    case "relationship.personUpdate":
+    case "relationship.organizationUpdate":
     case "relationship.personRemove":
     case "opportunity.create":
     case "opportunity.remove":
@@ -897,6 +899,8 @@ export class ApplicationKernel {
       case "relationship.organizationCreate":
       case "relationship.organizationRemove":
       case "relationship.personCreate":
+      case "relationship.personUpdate":
+      case "relationship.organizationUpdate":
       case "relationship.personRemove":
       case "opportunity.create":
       case "opportunity.remove":

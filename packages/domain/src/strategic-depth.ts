@@ -63,6 +63,75 @@ export const createPerson = (
   ...(input.email === undefined ? {} : { email: input.email }),
 });
 
+/**
+ * A correction, not a replacement: an absent field is left alone and an
+ * explicit null clears an optional one, so an agent fixing a surname does not
+ * silently drop the role and the organization it never mentioned.
+ */
+export const updatePersonDetails = (
+  person: Extract<StrategicRecord, { kind: "person" }>,
+  changes: {
+    readonly name?: string;
+    readonly organizationId?: StrategicRecordId | null;
+    readonly role?: string | null;
+    readonly email?: string | null;
+  },
+  occurredAt: string,
+): Extract<StrategicRecord, { kind: "person" }> => {
+  const {
+    organizationId: _organizationId,
+    role: _role,
+    email: _email,
+    ...base
+  } = person;
+  void _organizationId;
+  void _role;
+  void _email;
+  const organizationId =
+    changes.organizationId === undefined
+      ? person.organizationId
+      : (changes.organizationId ?? undefined);
+  const role =
+    changes.role === undefined ? person.role : (changes.role ?? undefined);
+  const email =
+    changes.email === undefined ? person.email : (changes.email ?? undefined);
+  return {
+    ...base,
+    name: changes.name ?? person.name,
+    ...(organizationId === undefined ? {} : { organizationId }),
+    ...(role === undefined ? {} : { role }),
+    ...(email === undefined ? {} : { email }),
+    version: person.version + 1,
+    updatedAt: occurredAt,
+  };
+};
+
+export const updateOrganizationDetails = (
+  organization: Extract<StrategicRecord, { kind: "organization" }>,
+  changes: {
+    readonly name?: string;
+    readonly relationshipState?: "prospect" | "active" | "inactive";
+    readonly nextAction?: string | null;
+  },
+  occurredAt: string,
+): Extract<StrategicRecord, { kind: "organization" }> => {
+  const { nextAction: _nextAction, ...base } = organization;
+  void _nextAction;
+  const nextAction =
+    changes.nextAction === undefined
+      ? organization.nextAction
+      : (changes.nextAction ?? undefined);
+  return {
+    ...base,
+    name: changes.name ?? organization.name,
+    relationshipState:
+      changes.relationshipState ?? organization.relationshipState,
+    ...(nextAction === undefined ? {} : { nextAction }),
+    version: organization.version + 1,
+    updatedAt: occurredAt,
+  };
+};
+
 export const createOpportunity = (
   input: Common & {
     readonly title: string;

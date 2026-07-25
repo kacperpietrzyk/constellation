@@ -2469,6 +2469,9 @@ const compensationCopy: Record<string, string> = {
   "task.restore_operational_state":
     "Przywrócenie poprzedniego stanu operacyjnego zadania",
   "work_link.restore_state": "Przywrócenie poprzedniego powiązania pracy",
+  "relationship.restore_person": "Przywrócenie poprzednich danych osoby",
+  "relationship.restore_organization":
+    "Przywrócenie poprzednich danych organizacji",
   "relation.remove": "Usunięcie dodanej relacji",
   "relation.restore": "Przywrócenie usuniętej relacji",
   "capture.undo_route": "Cofnięcie uporządkowania Capture",

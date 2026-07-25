@@ -65,6 +65,8 @@ export const COMMAND_REVERTABILITY: Readonly<
   "relationship.organizationCreate": "always",
   "relationship.organizationRemove": "always",
   "relationship.personCreate": "always",
+  "relationship.personUpdate": "always",
+  "relationship.organizationUpdate": "always",
   "relationship.personRemove": "always",
   "opportunity.create": "always",
   "opportunity.remove": "always",

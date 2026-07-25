@@ -93,6 +93,8 @@ import {
   createDecision,
   createArea,
   updateAreaResponsibility,
+  updateOrganizationDetails,
+  updatePersonDetails,
   createInitiative,
   updateInitiativeOutcome,
   createWorkLink,
@@ -183,6 +185,8 @@ export type Wave2Command = Extract<
       | "relationship.organizationCreate"
       | "relationship.organizationRemove"
       | "relationship.personCreate"
+      | "relationship.personUpdate"
+      | "relationship.organizationUpdate"
       | "relationship.personRemove"
       | "opportunity.create"
       | "opportunity.remove"
@@ -477,6 +481,34 @@ export const isWave2CommandAuthorized = (
         context,
         command,
         space?.workspaceId === command.workspaceId ? space.id : undefined,
+      );
+    }
+    // A partial update names one record it already knows, exactly as a removal
+    // does: the Space it is authorized against is that record's own.
+    case "relationship.personUpdate": {
+      const person = view.getStrategicRecord(command.payload.personId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        person?.workspaceId === command.workspaceId
+          ? person.spaceId
+          : undefined,
+      );
+    }
+    case "relationship.organizationUpdate": {
+      const organization = view.getStrategicRecord(
+        command.payload.organizationId,
+      );
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        organization?.workspaceId === command.workspaceId
+          ? organization.spaceId
+          : undefined,
       );
     }
     // Every removal names one record it already knows, so the Space it is
@@ -3585,6 +3617,132 @@ export const executeWave2Command = (
         },
         strategicCreateUndo(command, record),
         { [record.id]: "strategicRecord" },
+      );
+    }
+    case "relationship.personUpdate": {
+      const current = transaction.getStrategicRecord(command.payload.personId);
+      if (current?.kind !== "person") return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      // Moving a person to another organization is still bounded by the same
+      // rule their creation was: the organization has to exist, be one, and be
+      // in the person's own Space.
+      if (
+        command.payload.organizationId !== undefined &&
+        command.payload.organizationId !== null
+      ) {
+        const organization = transaction.getStrategicRecord(
+          command.payload.organizationId,
+        );
+        if (
+          organization?.kind !== "organization" ||
+          organization.workspaceId !== current.workspaceId ||
+          organization.spaceId !== current.spaceId
+        )
+          return precondition(command, occurredAt);
+      }
+      const record = updatePersonDetails(
+        current,
+        {
+          ...(command.payload.name === undefined
+            ? {}
+            : { name: command.payload.name }),
+          ...(command.payload.organizationId === undefined
+            ? {}
+            : { organizationId: command.payload.organizationId }),
+          ...(command.payload.role === undefined
+            ? {}
+            : { role: command.payload.role }),
+          ...(command.payload.email === undefined
+            ? {}
+            : { email: command.payload.email }),
+        },
+        occurredAt,
+      );
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        // The fields this command actually carried, so the audit receipt says
+        // what changed rather than what could have.
+        Object.keys(command.payload).filter((field) => field !== "personId"),
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: current.workspaceId,
+          spaceId: current.spaceId,
+          kind: "relationship.restore_person",
+          personId: current.id,
+          priorName: current.name,
+          ...(current.organizationId === undefined
+            ? {}
+            : { priorOrganizationId: current.organizationId }),
+          ...(current.role === undefined ? {} : { priorRole: current.role }),
+          ...(current.email === undefined ? {} : { priorEmail: current.email }),
+          resultingVersion: record.version,
+        },
+      );
+    }
+    case "relationship.organizationUpdate": {
+      const current = transaction.getStrategicRecord(
+        command.payload.organizationId,
+      );
+      if (current?.kind !== "organization")
+        return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const record = updateOrganizationDetails(
+        current,
+        {
+          ...(command.payload.name === undefined
+            ? {}
+            : { name: command.payload.name }),
+          ...(command.payload.relationshipState === undefined
+            ? {}
+            : { relationshipState: command.payload.relationshipState }),
+          ...(command.payload.nextAction === undefined
+            ? {}
+            : { nextAction: command.payload.nextAction }),
+        },
+        occurredAt,
+      );
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        Object.keys(command.payload).filter(
+          (field) => field !== "organizationId",
+        ),
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: current.workspaceId,
+          spaceId: current.spaceId,
+          kind: "relationship.restore_organization",
+          organizationId: current.id,
+          priorName: current.name,
+          priorRelationshipState: current.relationshipState,
+          ...(current.nextAction === undefined
+            ? {}
+            : { priorNextAction: current.nextAction }),
+          resultingVersion: record.version,
+        },
       );
     }
     case "opportunity.create": {
@@ -7364,6 +7522,10 @@ export const descriptorRecordIds = (
       return [descriptor.documentId];
     case "knowledge.void_named_version":
       return [descriptor.namedVersionId];
+    case "relationship.restore_person":
+      return [descriptor.personId];
+    case "relationship.restore_organization":
+      return [descriptor.organizationId];
   }
 };
 
@@ -7790,6 +7952,61 @@ const descriptorState = (
             available: true,
             recordIds: [task.id],
             versions: { [task.id]: task.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
+    case "relationship.restore_person": {
+      const person = view.getStrategicRecord(descriptor.personId);
+      if (
+        person?.kind !== "person" ||
+        strategicRecordState(person) !== "active" ||
+        person.version !== descriptor.resultingVersion
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      // The compensation writes an organization id back, so that organization
+      // has to still be there: restoring a person onto a record that has since
+      // been removed would leave a reference pointing at nothing, which is the
+      // state every removal guard in this module exists to prevent.
+      if (descriptor.priorOrganizationId !== undefined) {
+        const organization = view.getStrategicRecord(
+          descriptor.priorOrganizationId,
+        );
+        if (
+          organization?.kind !== "organization" ||
+          strategicRecordState(organization) !== "active"
+        )
+          return {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+      }
+      return {
+        available: true,
+        recordIds: [person.id],
+        versions: { [person.id]: person.version },
+      };
+    }
+    case "relationship.restore_organization": {
+      const organization = view.getStrategicRecord(descriptor.organizationId);
+      return organization?.kind === "organization" &&
+        strategicRecordState(organization) === "active" &&
+        organization.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [organization.id],
+            versions: { [organization.id]: organization.version },
           }
         : {
             available: false,
@@ -8780,6 +8997,39 @@ const compensateDescriptor = (
       compensatedVersions = { [restored.id]: restored.version };
       compensatedKinds = { [restored.id]: "knowledgeSource" };
     }
+  } else if (descriptor.kind === "relationship.restore_person") {
+    const person = transaction.getStrategicRecord(
+      descriptor.personId,
+    ) as Extract<StrategicRecord, { kind: "person" }>;
+    const restored = updatePersonDetails(
+      person,
+      {
+        name: descriptor.priorName,
+        organizationId: descriptor.priorOrganizationId ?? null,
+        role: descriptor.priorRole ?? null,
+        email: descriptor.priorEmail ?? null,
+      },
+      occurredAt,
+    );
+    transaction.updateStrategicRecord(restored, person.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
+  } else if (descriptor.kind === "relationship.restore_organization") {
+    const organization = transaction.getStrategicRecord(
+      descriptor.organizationId,
+    ) as Extract<StrategicRecord, { kind: "organization" }>;
+    const restored = updateOrganizationDetails(
+      organization,
+      {
+        name: descriptor.priorName,
+        relationshipState: descriptor.priorRelationshipState,
+        nextAction: descriptor.priorNextAction ?? null,
+      },
+      occurredAt,
+    );
+    transaction.updateStrategicRecord(restored, organization.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
   } else if (descriptor.kind === "knowledge.restore_evidence") {
     const document = transaction.getDocument(descriptor.documentId)!;
     const restored = setDocumentEvidence(document, {

@@ -679,6 +679,64 @@ export const RelationshipPersonCreateCommandSchema =
       .strict(),
   }).strict();
 
+/**
+ * Person and Organization were the only entity kinds with no update, so fixing
+ * a misspelled surname cost a remove and a re-create under a new id — losing
+ * createdAt, the audit lineage and every reference to the old id, and becoming
+ * impossible outright once an Opportunity pointed at the person. Partial by
+ * field, like task.updateDetails: absent leaves a field alone, null clears an
+ * optional one, and the required name can only be replaced, never cleared.
+ */
+export const RelationshipPersonUpdateCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("relationship.personUpdate"),
+    payload: z
+      .object({
+        personId: StrategicRecordIdSchema,
+        name: z.string().trim().min(1).max(300).optional(),
+        organizationId: StrategicRecordIdSchema.nullable().optional(),
+        role: z.string().trim().min(1).max(300).nullable().optional(),
+        email: z.email().max(320).nullable().optional(),
+      })
+      .strict()
+      .refine(
+        (payload) =>
+          payload.name !== undefined ||
+          payload.organizationId !== undefined ||
+          payload.role !== undefined ||
+          payload.email !== undefined,
+        {
+          error:
+            "personUpdate must change at least one field: name, organizationId, role, or email",
+        },
+      ),
+  }).strict();
+
+export const RelationshipOrganizationUpdateCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("relationship.organizationUpdate"),
+    payload: z
+      .object({
+        organizationId: StrategicRecordIdSchema,
+        name: z.string().trim().min(1).max(300).optional(),
+        relationshipState: z
+          .enum(["prospect", "active", "inactive"])
+          .optional(),
+        nextAction: z.string().trim().min(1).max(1_000).nullable().optional(),
+      })
+      .strict()
+      .refine(
+        (payload) =>
+          payload.name !== undefined ||
+          payload.relationshipState !== undefined ||
+          payload.nextAction !== undefined,
+        {
+          error:
+            "organizationUpdate must change at least one field: name, relationshipState, or nextAction",
+        },
+      ),
+  }).strict();
+
 export const RelationshipPersonRemoveCommandSchema =
   CommandMetadataSchema.extend({
     commandName: z.literal("relationship.personRemove"),
@@ -1927,7 +1985,9 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   RelationshipOrganizationCreateCommandSchema,
   RelationshipOrganizationRemoveCommandSchema,
   RelationshipPersonCreateCommandSchema,
+  RelationshipPersonUpdateCommandSchema,
   RelationshipPersonRemoveCommandSchema,
+  RelationshipOrganizationUpdateCommandSchema,
   OpportunityCreateCommandSchema,
   OpportunityRemoveCommandSchema,
   OpportunityOfferCreateCommandSchema,
