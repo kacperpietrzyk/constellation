@@ -528,7 +528,16 @@ export const WorkSurface = ({
     () =>
       new Map(
         activeLinks
-          .filter((link) => link.linkType !== "task_depends_on_task")
+          // Only the two strategic links this surface can name. A
+          // project_serves_organization link resolves to a client this
+          // projection does not carry, and letting it through would label the
+          // Project with an empty area title — or overwrite the area label it
+          // already had, since both links share the Project as their key.
+          .filter(
+            (link) =>
+              link.linkType === "project_advances_initiative" ||
+              link.linkType === "project_serves_area",
+          )
           .map((link) => [
             link.sourceRecordId,
             link.linkType === "project_advances_initiative"

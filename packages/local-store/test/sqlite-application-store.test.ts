@@ -1564,6 +1564,63 @@ describe("SQLite ApplicationStore", () => {
               task.updatedAt,
             );
         }
+        // A Task related to a Project, written the way every build up to 0.1.4
+        // wrote it: one mandatory far end, in a table that no longer exists.
+        // This is the row a restored 0.1.4 backup brings with it, so the v24
+        // rebuild has to carry it across rather than the fresh-database path
+        // being the only one exercised.
+        const relationId = "00000000-0000-4000-8000-000000000092";
+        const projectId = "00000000-0000-4000-8000-000000000093";
+        if (sourceVersion >= 23) {
+          const project = {
+            id: projectId,
+            workspaceId: ids.workspace,
+            spaceId: ids.rootSpace,
+            title: "Migrated project",
+            lifecycle: "active",
+            createdBy: ids.principal,
+            version: 1,
+            createdAt,
+            updatedAt: createdAt,
+          };
+          historical
+            .prepare(
+              "INSERT INTO projects(id, workspace_id, space_id, updated_at, version, payload_json) VALUES (?, ?, ?, ?, 1, ?)",
+            )
+            .run(
+              projectId,
+              ids.workspace,
+              ids.rootSpace,
+              createdAt,
+              JSON.stringify(project),
+            );
+          const relation = {
+            id: relationId,
+            workspaceId: ids.workspace,
+            spaceId: ids.rootSpace,
+            relationType: "task_contributes_to_project",
+            state: "active",
+            taskId,
+            projectId,
+            createdBy: ids.principal,
+            version: 1,
+            createdAt,
+          };
+          historical
+            .prepare(
+              sourceVersion >= LOCAL_STORE_SCHEMA_VERSION
+                ? "INSERT INTO task_work_relations(id, workspace_id, space_id, task_id, project_id, opportunity_id, state, version, payload_json) VALUES (?, ?, ?, ?, ?, NULL, 'active', 1, ?)"
+                : "INSERT INTO task_project_relations(id, workspace_id, space_id, task_id, project_id, state, version, payload_json) VALUES (?, ?, ?, ?, ?, 'active', 1, ?)",
+            )
+            .run(
+              relationId,
+              ids.workspace,
+              ids.rootSpace,
+              taskId,
+              projectId,
+              JSON.stringify(relation),
+            );
+        }
         historical.close();
 
         const reopened = new DatabaseSync(filename);
@@ -1593,6 +1650,25 @@ describe("SQLite ApplicationStore", () => {
           /voice_note/u,
           `source schema ${sourceVersion}`,
         );
+        if (sourceVersion >= 23) {
+          const relation = store.read((view) =>
+            isApplicationWave2ReadView(view)
+              ? view.getRelation(relationId as never)
+              : undefined,
+          );
+          assert.equal(
+            relation?.relationType,
+            "task_contributes_to_project",
+            `source schema ${sourceVersion}`,
+          );
+          assert.equal(
+            relation !== undefined &&
+              relation.relationType === "task_contributes_to_project" &&
+              relation.projectId,
+            projectId,
+            `source schema ${sourceVersion}`,
+          );
+        }
         reopened.close();
       });
     }

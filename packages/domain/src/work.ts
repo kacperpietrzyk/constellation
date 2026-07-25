@@ -8,12 +8,7 @@ import type {
   WorkspaceId,
 } from "@constellation/contracts";
 
-import type {
-  Project,
-  Task,
-  TaskPriority,
-  TaskWorkRelation,
-} from "./model.js";
+import type { Project, Task, TaskPriority, TaskWorkRelation } from "./model.js";
 
 export interface CreateTaskInput {
   readonly id: TaskId;
