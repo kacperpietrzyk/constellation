@@ -7255,6 +7255,40 @@ export const executeWave2Command = (
   }
 };
 
+/**
+ * One captured command, judged the way the revert will judge it. A checkpoint
+ * preview used to answer from `consumedByCommandId` alone while the revert
+ * asked this module — so a record another command had moved on previewed as
+ * revertable and refused seconds later, spending a checkpoint the caller could
+ * not get back. Both surfaces now come through here.
+ */
+export interface CheckpointCommandRecovery {
+  readonly targetCommandId: string;
+  readonly descriptor?: UndoDescriptor;
+  readonly available: boolean;
+  readonly reason?:
+    "unsupported" | "already_undone" | "later_change" | "still_referenced";
+}
+
+export const checkpointCommandRecovery = (
+  view: ApplicationWave2ReadView,
+  commandIds: readonly string[],
+): readonly CheckpointCommandRecovery[] =>
+  commandIds.map((targetCommandId) => {
+    const descriptor = view.getUndoDescriptor(targetCommandId);
+    // No descriptor means the command applied and its kind records no
+    // compensation — permanent, and fatal for the whole checkpoint.
+    if (descriptor === undefined)
+      return { targetCommandId, available: false, reason: "unsupported" };
+    const state = descriptorState(view, descriptor);
+    return {
+      targetCommandId,
+      descriptor,
+      available: state.available,
+      ...(state.reason === undefined ? {} : { reason: state.reason }),
+    };
+  });
+
 const descriptorState = (
   view: ApplicationWave2ReadView,
   descriptor: UndoDescriptor,

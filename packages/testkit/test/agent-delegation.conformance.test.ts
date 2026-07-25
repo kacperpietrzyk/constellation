@@ -1280,4 +1280,122 @@ describe("agent grant delegation reaches the product without widening scope", ()
     assert.deepEqual(preview.commandIds, [inside.commandId]);
     assert.deepEqual(preview.affectedRecordIds, [ids.task]);
   });
+
+  /**
+   * A preview that answers `available: true` for a revert that then refuses is
+   * the same success-shaped failure as the empty checkpoint above, one layer
+   * in: the caller spends a checkpoint it cannot get back to learn what the
+   * preview already had every fact to say. The single-command preview has
+   * always evaluated the compensation itself; the checkpoint preview evaluated
+   * only whether an earlier undo had consumed it, so a record moved on by work
+   * outside the checkpoint stayed invisible until the revert.
+   */
+  it("previews a captured create as blocked once work outside the checkpoint moved the record", () => {
+    const { agent, harness } = openCheckpoint();
+    const inside = metadata("membership-blocked-create");
+    assert.equal(
+      commandOutcome(
+        harness.kernel.execute(agent, {
+          ...inside,
+          checkpointId: ids.checkpoint,
+          commandName: "task.create",
+          payload: {
+            taskId: ids.task,
+            spaceId: ids.space,
+            title: "Inside the checkpoint",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    // Outside the checkpoint, so its compensation is not part of this revert:
+    // taking the create back would erase a change nothing in this slice can
+    // restore.
+    assert.equal(
+      commandOutcome(
+        harness.kernel.execute(agent, {
+          ...metadata("membership-outside-update", { [ids.task]: 1 }),
+          commandName: "task.updateDetails",
+          payload: { taskId: ids.task, title: "Moved on afterwards" },
+        }),
+      ).outcome,
+      "success",
+    );
+    const preview = previewRevert(harness, agent, ids.checkpoint);
+    assert.equal(preview.available, false);
+    assert.equal(preview.unavailableReason, "later_change");
+    // The revert names the commands that blocked it; the preview must name the
+    // same ones, or the two surfaces tell different stories about one state.
+    assert.deepEqual(preview.blocked, [
+      { targetCommandId: inside.commandId, unavailableReason: "later_change" },
+    ]);
+  });
+
+  /**
+   * The other half of the same question. A checkpoint is a slice, and a slice
+   * that creates a record and then corrects it is ordinary work — the
+   * correction is captured too, so compensating the whole checkpoint newest
+   * first leaves nothing behind. Before this, the create's compensation
+   * required the record to still stand at the version the create produced, so
+   * a slice containing its own correction could never be reverted at all, and
+   * no order of calls repaired it: undoing the correction compensates forward
+   * and moves the record further away.
+   */
+  it("reverts a captured create whose only later change is captured in the same checkpoint", () => {
+    const { agent, harness } = openCheckpoint();
+    const create = metadata("membership-create-then-correct");
+    assert.equal(
+      commandOutcome(
+        harness.kernel.execute(agent, {
+          ...create,
+          checkpointId: ids.checkpoint,
+          commandName: "task.create",
+          payload: {
+            taskId: ids.task,
+            spaceId: ids.space,
+            title: "Created in the slice",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    const correction = metadata("membership-correction", { [ids.task]: 1 });
+    assert.equal(
+      commandOutcome(
+        harness.kernel.execute(agent, {
+          ...correction,
+          checkpointId: ids.checkpoint,
+          commandName: "task.updateDetails",
+          payload: { taskId: ids.task, title: "Corrected in the same slice" },
+        }),
+      ).outcome,
+      "success",
+    );
+    const preview = previewRevert(harness, agent, ids.checkpoint);
+    assert.equal(preview.available, true);
+    assert.equal(preview.unavailableReason, undefined);
+    assert.deepEqual(preview.blocked, []);
+    // A checkpoint revert is a fan of single-command undos applied newest
+    // first; both must apply, or the slice is half taken back.
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("membership-undo-correction", { [ids.task]: 2 }),
+          commandName: "command.undo",
+          payload: { targetCommandId: correction.commandId },
+        }),
+      ),
+      "success",
+    );
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("membership-undo-create", { [ids.task]: 3 }),
+          commandName: "command.undo",
+          payload: { targetCommandId: create.commandId },
+        }),
+      ),
+      "success",
+    );
+  });
 });

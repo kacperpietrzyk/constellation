@@ -511,6 +511,7 @@ describe("application contracts", () => {
           available: false,
           commandIds: [ids.command],
           affectedRecordIds: [],
+          blocked: [],
           ...projection,
         },
       }).success;
@@ -523,22 +524,53 @@ describe("application contracts", () => {
       assert.equal(undoPreview({ unavailableReason }), true);
       assert.equal(recoveryPreview({ unavailableReason }), true);
     }
+    // A checkpoint summarizes the captured command that blocks it, so every
+    // per-command reason has to be sayable here too — the checkpoint
+    // vocabulary is the command one plus the two states only a checkpoint can
+    // be in. Keeping "already_undone" out of it forced the preview to report a
+    // consumed compensation as "later_change", which named the wrong cause.
     for (const unavailableReason of [
       "unsupported",
       "already_reverted",
+      "empty",
       "later_change",
+      "already_undone",
+      "still_referenced",
     ] as const) {
       assert.equal(checkpointPreview({ unavailableReason }), true);
     }
 
+    // The asymmetry that remains: a single command has no revert lifecycle, so
+    // neither checkpoint-only state is sayable about one.
     assert.equal(undoPreview({ unavailableReason: "already_reverted" }), false);
+    assert.equal(undoPreview({ unavailableReason: "empty" }), false);
     assert.equal(
       recoveryPreview({ unavailableReason: "already_reverted" }),
       false,
     );
     assert.equal(checkpointPreview({ unavailableReason: "missing" }), false);
+    // The blocked list is the preview's own refusal, in the revert's shape, so
+    // it carries the per-command vocabulary and nothing else.
     assert.equal(
-      checkpointPreview({ unavailableReason: "already_undone" }),
+      checkpointPreview({
+        blocked: [
+          {
+            targetCommandId: ids.command,
+            unavailableReason: "still_referenced",
+          },
+        ],
+      }),
+      true,
+    );
+    assert.equal(
+      checkpointPreview({
+        blocked: [
+          {
+            targetCommandId: ids.command,
+            unavailableReason: "already_reverted",
+          },
+        ],
+      }),
       false,
     );
   });

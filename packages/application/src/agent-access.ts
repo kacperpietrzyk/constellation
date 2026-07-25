@@ -45,6 +45,7 @@ import {
   isApplicationWave2ReadView,
   RetryableUnitOfWorkError,
 } from "./ports.js";
+import { checkpointCommandRecovery } from "./wave2.js";
 
 export type AgentAccessCommand = Extract<
   CommandEnvelope,
@@ -952,24 +953,39 @@ export const executeAgentAccessQuery = (
     });
   if (!canRead || checkpoint === undefined) return denied(query, kernelTime);
   if (!isApplicationWave2ReadView(view)) return denied(query, kernelTime);
-  const descriptors = checkpoint.commandIds.map((id) =>
-    view.getUndoDescriptor(id),
+  // The same judgement the revert applies, taken before the checkpoint is
+  // spent rather than after: a compensation that no longer applies is named
+  // here, per command, instead of being discovered by a revert that refuses.
+  const recovery = checkpointCommandRecovery(view, checkpoint.commandIds);
+  const descriptors = recovery.map((item) => item.descriptor);
+  const blocked = recovery.flatMap((item) =>
+    item.available
+      ? []
+      : [
+          {
+            targetCommandId: item.targetCommandId,
+            unavailableReason: item.reason ?? "later_change",
+          },
+        ],
   );
   // "empty" outranks every per-command reason because there are no commands to
   // have a reason about. A checkpoint captures a command only when that
   // command's envelope names it in `checkpointId`; opening one and then writing
   // without the field leaves this list empty, and answering `available: true`
   // would promise a rollback that compensates nothing.
+  //
+  // Below that, the precedence is the revert's own: "unsupported" is fatal for
+  // the command kind and no retry will ever clear it, so it is named ahead of
+  // the reasons a person can still act on.
   const unavailableReason =
     checkpoint.status === "reverted"
       ? "already_reverted"
       : checkpoint.commandIds.length === 0
         ? "empty"
-        : descriptors.some((item) => item === undefined)
-          ? "unsupported"
-          : descriptors.some((item) => item?.consumedByCommandId !== undefined)
-            ? "later_change"
-            : undefined;
+        : (
+            blocked.find((item) => item.unavailableReason === "unsupported") ??
+            blocked[0]
+          )?.unavailableReason;
   return QueryResultSchema.parse({
     outcome: "success",
     contractVersion: 1,
@@ -1043,6 +1059,7 @@ export const executeAgentAccessQuery = (
             return [descriptor.namedVersionId];
         }
       }),
+      blocked,
       ...(unavailableReason === undefined ? {} : { unavailableReason }),
     },
   });
