@@ -23,6 +23,7 @@ import {
   type AgentContentState,
   MAX_DOCUMENT_TEXT_LENGTH,
   YjsRealtimeDocumentAdapter,
+  AgentContentUnreadableError,
   agentContentBaseline,
   createRichDocumentSeed,
   storedStateVector,
@@ -798,22 +799,36 @@ export const createAgentDocumentTextPort = (input: {
      */
     readStructured: (
       request: ContentAddress & { readonly seed?: AgentContentSeed },
-    ): {
-      readonly contentState: AgentContentState;
-      readonly content: StructuredDocument;
-      readonly text: string;
-      readonly entityReferences: ReturnType<
-        YjsRealtimeDocumentAdapter["getEntityReferences"]
-      >;
-      readonly stateVectorSha256: string;
-    } => {
+    ):
+      | {
+          readonly contentState: AgentContentState;
+          readonly content: StructuredDocument;
+          readonly text: string;
+          readonly entityReferences: ReturnType<
+            YjsRealtimeDocumentAdapter["getEntityReferences"]
+          >;
+          readonly stateVectorSha256: string;
+        }
+      // Undefined means unreadable, not absent: absence is a state this read
+      // reports with a digest.
+      | undefined => {
       const state = input.store.loadCollaborativeContentState(
         contentScope(request),
       )?.state;
-      return projectAgentContent({
-        ...(state === undefined ? {} : { state }),
-        ...(request.seed === undefined ? {} : { seed: request.seed }),
-      });
+      try {
+        return projectAgentContent({
+          ...(state === undefined ? {} : { state }),
+          ...(request.seed === undefined ? {} : { seed: request.seed }),
+        });
+      } catch (error) {
+        // The one state a total read still cannot answer — a stored body whose
+        // rich projection exceeds the structured bound, or holds nodes outside
+        // the schema. It is named rather than thrown: reaching an agent as an
+        // internal fault is the defect this release closed for plain text, and
+        // it must not come back for another state.
+        if (error instanceof AgentContentUnreadableError) return undefined;
+        throw error;
+      }
     },
     importStructured: (
       request: ContentAddress & {

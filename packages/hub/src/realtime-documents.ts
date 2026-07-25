@@ -28,6 +28,7 @@ import {
   type documentEntityReferences,
   parseStructuredDocument,
   replaceStructuredDocumentInYjs,
+  AgentContentUnreadableError,
   agentContentBaseline,
   projectAgentContent,
   storedStateVector,
@@ -613,6 +614,7 @@ export class RealtimeDocumentGateway {
         readonly entityReferences: ReturnType<typeof documentEntityReferences>;
         readonly stateVectorSha256: string;
       }
+    | "unreadable"
     | undefined
   > {
     const owner = authorizedContentOwner(input);
@@ -625,10 +627,17 @@ export class RealtimeDocumentGateway {
     // the shared projection is what keeps that identical to the desktop.
     if (stored !== undefined && stored.spaceId !== input.spaceId)
       return undefined;
-    return projectAgentContent({
-      ...(stored === undefined ? {} : { state: stored.state }),
-      ...(input.seed === undefined ? {} : { seed: input.seed }),
-    });
+    try {
+      return projectAgentContent({
+        ...(stored === undefined ? {} : { state: stored.state }),
+        ...(input.seed === undefined ? {} : { seed: input.seed }),
+      });
+    } catch (error) {
+      // Named, never thrown at the caller: an unreadable body reaching an
+      // agent as an internal fault is exactly the defect this release closed.
+      if (error instanceof AgentContentUnreadableError) return "unreadable";
+      throw error;
+    }
   }
 
   public async replaceStructuredAuthorized(

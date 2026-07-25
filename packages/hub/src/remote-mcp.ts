@@ -1209,6 +1209,10 @@ export class HubRemoteMcpService {
           spaceId: scoped.record.spaceId,
           ...(seed === undefined ? {} : { seed }),
         });
+      if (result === "unreadable")
+        return response(invocation.requestId, "rejected", {
+          diagnosticCode: diagnostic("document.structured_content_unreadable"),
+        });
       return result === undefined
         ? response(invocation.requestId, "rejected", {
             diagnosticCode: diagnostic("document.content_unavailable"),

@@ -756,9 +756,15 @@ export class LocalMcpRuntime {
           spaceId: record.spaceId,
           ...(seed === undefined ? {} : { seed }),
         });
+        // The read is total for absent and plain-text bodies, so the only
+        // undefined left is a body whose rich projection cannot be produced —
+        // named, rather than escaping as an internal fault the way an
+        // un-upgraded document used to (finding #16).
         return result === undefined
           ? contentSafeResponse(invocation.requestId, "rejected", {
-              diagnosticCode: diagnostic("document.content_unavailable"),
+              diagnosticCode: diagnostic(
+                "document.structured_content_unreadable",
+              ),
             })
           : contentSafeResponse(
               invocation.requestId,

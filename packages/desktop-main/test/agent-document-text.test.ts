@@ -522,6 +522,7 @@ describe("agent document text port", () => {
       documentId: ids.document,
       spaceId: ids.space,
     });
+    assert.ok(read !== undefined);
     assert.equal(read.contentState, "plain-v1");
     assert.equal(read.text, "Written as plain text\nby the agent");
     // Two lines of plain text are two paragraphs once upgraded, and the digest
@@ -550,8 +551,8 @@ describe("agent document text port", () => {
       documentId: ids.document,
       spaceId: ids.space,
     });
-    assert.equal(after.contentState, "rich-v1");
-    assert.equal(after.text, "Rich now");
+    assert.equal(after?.contentState, "rich-v1");
+    assert.equal(after?.text, "Rich now");
   });
 
   /**
@@ -574,6 +575,7 @@ describe("agent document text port", () => {
       spaceId: ids.space,
       seed,
     });
+    assert.ok(before !== undefined);
     assert.equal(before.contentState, "absent");
     assert.equal(before.stateVectorSha256, ABSENT_CONTENT_STATE_VECTOR_SHA256);
     // The read already shows the body the write will start from, seed included.
@@ -632,8 +634,8 @@ describe("agent document text port", () => {
     });
     // rich-v1 from the first byte: the desktop Project surface opens nothing
     // else, so a body left in plain text would be a page a person cannot edit.
-    assert.equal(after.contentState, "rich-v1");
-    assert.equal(after.text, "How this engagement runs");
+    assert.equal(after?.contentState, "rich-v1");
+    assert.equal(after?.text, "How this engagement runs");
     // The pre-write state is restorable, and it names what the write did.
     assert.ok(
       fake.revisions.some((revision) => revision.name.includes("created body")),

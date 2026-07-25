@@ -10621,9 +10621,21 @@ export const executeWave2Query = (
       .sort((left, right) =>
         right.meeting.startedAt.localeCompare(left.meeting.startedAt),
       );
-    const projectIds = new Set(
-      opportunities.flatMap((opportunity) => opportunity.projectIds),
-    );
+    // Two reaches, unioned, exactly as the project.organization condition path
+    // unions them (ADR-071): the delivery linked straight at this client, and
+    // the projects its live opportunities name. Composing only the second is
+    // what made a PoV invisible on the client it was running at.
+    const projectIds = new Set([
+      ...opportunities.flatMap((opportunity) => opportunity.projectIds),
+      ...strategicRecords.flatMap((record) =>
+        record.kind === "work_link" &&
+        record.state === "active" &&
+        record.linkType === "project_serves_organization" &&
+        record.targetRecordId === organization.id
+          ? [ProjectIdSchema.parse(record.sourceRecordId)]
+          : [],
+      ),
+    ]);
     const activeProjects = view
       .listProjects(query.workspaceId, organization.spaceId)
       .filter(
