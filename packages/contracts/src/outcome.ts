@@ -725,10 +725,14 @@ export const AttentionDismissedProjectionSchema = z
   })
   .strict();
 
+// The far end is a Project or an Opportunity, never both: a Task's next action
+// can serve the delivery or the deal, and flattening the second onto the first
+// is what a migration had to do before the relation existed.
 const RelationProjectionFields = {
   relationId: RelationIdSchema,
   taskId: TaskIdSchema,
-  projectId: ProjectIdSchema,
+  projectId: ProjectIdSchema.optional(),
+  opportunityId: StrategicRecordIdSchema.optional(),
   version: z.int().positive(),
 } as const;
 

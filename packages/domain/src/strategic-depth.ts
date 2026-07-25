@@ -137,6 +137,7 @@ export const createOpportunity = (
     readonly title: string;
     readonly organizationId: StrategicRecordId;
     readonly personIds: readonly StrategicRecordId[];
+    readonly ownerPersonId?: StrategicRecordId;
     readonly need: string;
     readonly qualification: string;
     readonly stage: string;
@@ -149,6 +150,9 @@ export const createOpportunity = (
   title: input.title,
   organizationId: input.organizationId,
   personIds: [...new Set(input.personIds)].sort(),
+  ...(input.ownerPersonId === undefined
+    ? {}
+    : { ownerPersonId: input.ownerPersonId }),
   need: input.need,
   qualification: input.qualification,
   stage: input.stage,

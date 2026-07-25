@@ -411,6 +411,9 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     title: z.string(),
     organizationId: StrategicRecordIdSchema,
     personIds: z.array(StrategicRecordIdSchema),
+    // Whose deal this is, as against who is named on it. Absent means the
+    // distinction was never recorded, not that nobody owns it.
+    ownerPersonId: StrategicRecordIdSchema.optional(),
     need: z.string(),
     qualification: z.string(),
     stage: z.string(),

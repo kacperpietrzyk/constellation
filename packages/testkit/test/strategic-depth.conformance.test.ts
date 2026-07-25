@@ -53,6 +53,12 @@ const context = (): ExecutionContext =>
       "relationship.personRemove",
       "relationship.personUpdate",
       "relationship.organizationUpdate",
+      "record.relate",
+      "record.unrelate",
+      "task.create",
+      "project.create",
+      "knowledge.sourceCreate",
+      "opportunity.create",
       "relationship.personCreate",
       "opportunity.create",
       "opportunity.offerCreate",
@@ -3230,5 +3236,215 @@ it("corrects a person and an organization in place, reversibly", () => {
       }),
     ).outcome,
     "rejected",
+  );
+});
+
+/**
+ * The four reaches the first real migration went without. Each one had a
+ * workaround — a client name inside a title, provenance in a paragraph, an
+ * owner restated in prose, a per-client action parked on a reporting project —
+ * and every workaround answers a question the graph should have answered.
+ */
+it("carries provenance, a client, a deal owner and a per-deal action", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("reach-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Engagement",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const sourceId = uuid();
+  const organizationId = uuid();
+  const ownerId = uuid();
+  const contactId = uuid();
+  const projectId = uuid();
+  const opportunityId = uuid();
+  const taskId = uuid();
+  const linkId = uuid();
+  for (const command of [
+    {
+      ...metadata("reach-source"),
+      commandName: "knowledge.sourceCreate" as const,
+      payload: {
+        sourceId,
+        spaceId: ids.space,
+        sourceKind: "excerpt" as const,
+        title: "Eight interviews",
+        excerpt: "The PoV has to start from the sensor rollout.",
+        availability: "available" as const,
+        observedAt: "2026-07-15T10:00:00.000Z",
+      },
+    },
+    {
+      ...metadata("reach-org"),
+      commandName: "relationship.organizationCreate" as const,
+      payload: {
+        organizationId,
+        spaceId: ids.space,
+        name: "Starostwo Powiatowe",
+        relationshipState: "active" as const,
+      },
+    },
+    {
+      ...metadata("reach-owner"),
+      commandName: "relationship.personCreate" as const,
+      payload: { personId: ownerId, spaceId: ids.space, name: "Paweł" },
+    },
+    {
+      ...metadata("reach-contact"),
+      commandName: "relationship.personCreate" as const,
+      payload: {
+        personId: contactId,
+        spaceId: ids.space,
+        name: "Natalia",
+        organizationId,
+      },
+    },
+    {
+      // The Project names the Source it rests on, mechanically rather than in
+      // a paragraph.
+      ...metadata("reach-project"),
+      commandName: "project.create" as const,
+      payload: {
+        projectId,
+        spaceId: ids.space,
+        title: "PoV",
+        intendedOutcome: "Prove the rollout in fourteen days.",
+        evidenceSourceIds: [sourceId],
+      },
+    },
+    {
+      // The Project serves a named client, so the Organization knows a
+      // delivery is running at it.
+      ...metadata("reach-link"),
+      commandName: "work.linkCreate" as const,
+      payload: {
+        linkId,
+        spaceId: ids.space,
+        linkType: "project_serves_organization" as const,
+        sourceRecordId: projectId,
+        targetRecordId: organizationId,
+      },
+    },
+    {
+      ...metadata("reach-opportunity"),
+      commandName: "opportunity.create" as const,
+      payload: {
+        opportunityId,
+        spaceId: ids.space,
+        title: "Licence renewal",
+        organizationId,
+        personIds: [contactId],
+        // Whose deal it is, as against who is named on it.
+        ownerPersonId: ownerId,
+        need: "The licence expires in fourteen days.",
+        qualification: "Budget confirmed.",
+        stage: "qualified",
+        nextAction: "Send the two-variant quote.",
+        evidenceSourceIds: [sourceId],
+      },
+    },
+    {
+      ...metadata("reach-task"),
+      commandName: "task.create" as const,
+      payload: {
+        taskId,
+        spaceId: ids.space,
+        title: "Wyjaśnić rejestrację deala",
+      },
+    },
+  ]) {
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), command)).outcome,
+      "success",
+    );
+  }
+
+  // The action belongs to the deal, not to a reporting project it would
+  // outlive.
+  const related = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("reach-relate", { [taskId]: 1, [opportunityId]: 1 }),
+      commandName: "record.relate",
+      payload: {
+        relationType: "task_contributes_to_opportunity",
+        taskId,
+        opportunityId,
+      },
+    }),
+  );
+  assert.equal(related.outcome, "success", JSON.stringify(related));
+  assert.equal(
+    related.outcome === "success" &&
+      related.projection.kind === "relation.created" &&
+      related.projection.opportunityId,
+    opportunityId,
+  );
+
+  const strategic = (id: string) =>
+    harness.store.read((view) =>
+      isApplicationWave2ReadView(view)
+        ? view.getStrategicRecord(StrategicRecordIdSchema.parse(id))
+        : undefined,
+    );
+  const opportunity = strategic(opportunityId);
+  assert.equal(
+    opportunity?.kind === "opportunity" && opportunity.ownerPersonId,
+    ownerId,
+  );
+  const project = harness.store.read((view) =>
+    isApplicationWave2ReadView(view)
+      ? view.getProject(ProjectIdSchema.parse(projectId))
+      : undefined,
+  );
+  assert.deepEqual(project?.evidenceSourceIds, [sourceId]);
+
+  // Naming the owner is what makes them undeletable while the deal stands: the
+  // guard that stops a graph from being silently orphaned now covers them.
+  const blocked = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("reach-owner-remove", { [ownerId]: 1 }),
+      commandName: "relationship.personRemove",
+      payload: { personId: ownerId },
+    }),
+  );
+  assert.equal(blocked.outcome, "rejected");
+  assert.equal(
+    blocked.outcome === "rejected" && blocked.diagnosticCode,
+    "record.still_referenced",
+  );
+
+  // The query layer's project.organization path resolves through the direct
+  // link, not only through an Opportunity that happens to name both.
+  const filtered = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "task.list",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: {
+      spaceId: ids.space,
+      relationConditions: [
+        {
+          path: "project.organization",
+          predicate: { field: "id", in: [organizationId] },
+        },
+      ],
+    },
+  });
+  assert.equal(
+    filtered.kind === "query_result" && filtered.result.outcome,
+    "success",
   );
 });

@@ -93,7 +93,7 @@ import type {
   SqliteValue,
 } from "./sqlite-driver.js";
 
-export const LOCAL_STORE_SCHEMA_VERSION = 23;
+export const LOCAL_STORE_SCHEMA_VERSION = 24;
 const MAX_CAPTURE_PAYLOAD_BYTES = 25 * 1024 * 1024;
 const FRESHNESS: StoreFreshness = {
   mode: "local_authoritative",
@@ -123,7 +123,7 @@ const COORDINATED_PROJECTION_TABLES = [
   "documents",
   "knowledge_sources",
   "undo_descriptors",
-  "task_project_relations",
+  "task_work_relations",
   "task_assignments",
   "projects",
   "tasks",
@@ -936,6 +936,45 @@ const schemaV23 = `
   END;
 `;
 
+const schemaV24 = `
+  -- A Task can now contribute to an Opportunity as well as to a Project, so
+  -- the relation's far end is one of two columns rather than one mandatory
+  -- one. SQLite cannot drop NOT NULL in place, so the table is rebuilt and
+  -- copied; the CHECK is what keeps "exactly one end" a property of the store
+  -- rather than a convention the kernel remembers.
+  CREATE TABLE task_work_relations (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    space_id TEXT NOT NULL REFERENCES spaces(id),
+    task_id TEXT NOT NULL REFERENCES tasks(id),
+    project_id TEXT REFERENCES projects(id),
+    opportunity_id TEXT REFERENCES strategic_records(id),
+    state TEXT NOT NULL CHECK (state IN ('active', 'removed')),
+    version INTEGER NOT NULL CHECK (version > 0),
+    payload_json TEXT NOT NULL,
+    CHECK ((project_id IS NULL) <> (opportunity_id IS NULL))
+  ) STRICT;
+  INSERT INTO task_work_relations
+    (id, workspace_id, space_id, task_id, project_id, opportunity_id, state, version, payload_json)
+  SELECT id, workspace_id, space_id, task_id, project_id, NULL, state, version, payload_json
+  FROM task_project_relations;
+  DROP TABLE task_project_relations;
+  CREATE INDEX task_work_relations_scope
+    ON task_work_relations(workspace_id, space_id, state, id);
+  CREATE INDEX task_work_relations_task
+    ON task_work_relations(task_id, state);
+  CREATE INDEX task_work_relations_project
+    ON task_work_relations(project_id, task_id, state);
+  CREATE INDEX task_work_relations_opportunity
+    ON task_work_relations(opportunity_id, task_id, state);
+  CREATE UNIQUE INDEX task_work_relations_one_active_project
+    ON task_work_relations(task_id, project_id)
+    WHERE state = 'active' AND project_id IS NOT NULL;
+  CREATE UNIQUE INDEX task_work_relations_one_active_opportunity
+    ON task_work_relations(task_id, opportunity_id)
+    WHERE state = 'active' AND opportunity_id IS NOT NULL;
+`;
+
 const localStoreMigrations = [
   schemaV1,
   schemaV2,
@@ -960,6 +999,7 @@ const localStoreMigrations = [
   schemaV21,
   schemaV22,
   schemaV23,
+  schemaV24,
 ] as const;
 
 export interface LocalCoordinationState {
@@ -1093,6 +1133,23 @@ const nullableStringValue = (
     throw new LocalStoreCorruptionError(`${context}.${key} is not a string.`);
   }
   return value;
+};
+
+/**
+ * The far end a relation row carries. Exactly one of the two columns is set —
+ * the table's own CHECK enforces it — so reading them together is what keeps a
+ * corrupt row from being silently read as a Project relation.
+ */
+const relationFarEnd = (row: unknown): Record<string, string> => {
+  const projectId = nullableStringValue(row, "project_id", "relation");
+  const opportunityId = nullableStringValue(row, "opportunity_id", "relation");
+  if ((projectId === undefined) === (opportunityId === undefined))
+    throw new LocalStoreCorruptionError(
+      "relation must name exactly one of project_id and opportunity_id.",
+    );
+  return projectId === undefined
+    ? { opportunityId: opportunityId as string }
+    : { projectId };
 };
 
 const numberValue = (row: unknown, key: string, context: string): number => {
@@ -2094,7 +2151,7 @@ class SqliteReadView implements ApplicationWave2ReadView {
   public getRelation(id: RelationId): TaskProjectRelation | undefined {
     const row = this.database
       .prepare(
-        "SELECT workspace_id, space_id, task_id, project_id, state, payload_json FROM task_project_relations WHERE id = ?",
+        "SELECT workspace_id, space_id, task_id, project_id, opportunity_id, state, payload_json FROM task_work_relations WHERE id = ?",
       )
       .get(id);
     return row === undefined
@@ -2103,27 +2160,27 @@ class SqliteReadView implements ApplicationWave2ReadView {
           workspaceId: stringValue(row, "workspace_id", "relation"),
           spaceId: stringValue(row, "space_id", "relation"),
           taskId: stringValue(row, "task_id", "relation"),
-          projectId: stringValue(row, "project_id", "relation"),
+          ...relationFarEnd(row),
           state: stringValue(row, "state", "relation"),
         });
   }
 
   public findTaskProjectRelation(
     taskId: TaskId,
-    projectId: ProjectId,
+    targetId: string,
   ): TaskProjectRelation | undefined {
     const row = this.database
       .prepare(
-        "SELECT id, workspace_id, space_id, task_id, project_id, state, payload_json FROM task_project_relations WHERE task_id = ? AND project_id = ? AND state = 'active' ORDER BY id LIMIT 1",
+        "SELECT id, workspace_id, space_id, task_id, project_id, opportunity_id, state, payload_json FROM task_work_relations WHERE task_id = ? AND (project_id = ? OR opportunity_id = ?) AND state = 'active' ORDER BY id LIMIT 1",
       )
-      .get(taskId, projectId);
+      .get(taskId, targetId, targetId);
     if (row === undefined) return undefined;
     const id = stringValue(row, "id", "relation");
     return parsePayload<TaskProjectRelation>(row, "id", id, "relation", {
       workspaceId: stringValue(row, "workspace_id", "relation"),
       spaceId: stringValue(row, "space_id", "relation"),
       taskId,
-      projectId,
+      ...relationFarEnd(row),
       state: "active",
     });
   }
@@ -2134,7 +2191,7 @@ class SqliteReadView implements ApplicationWave2ReadView {
   ): readonly TaskProjectRelation[] {
     return this.database
       .prepare(
-        "SELECT id, task_id, project_id, state, payload_json FROM task_project_relations WHERE workspace_id = ? AND space_id = ? AND state = 'active' ORDER BY id",
+        "SELECT id, task_id, project_id, opportunity_id, state, payload_json FROM task_work_relations WHERE workspace_id = ? AND space_id = ? AND state = 'active' ORDER BY id",
       )
       .all(workspaceId, spaceId)
       .map((row) => {
@@ -2143,7 +2200,7 @@ class SqliteReadView implements ApplicationWave2ReadView {
           workspaceId,
           spaceId,
           taskId: stringValue(row, "task_id", "relation"),
-          projectId: stringValue(row, "project_id", "relation"),
+          ...relationFarEnd(row),
           state: stringValue(row, "state", "relation"),
         });
       });
@@ -3042,13 +3099,14 @@ class SqliteTransaction
   }
   public insertRelation(record: TaskProjectRelation): void {
     this.insert(
-      "task_project_relations",
+      "task_work_relations",
       [
         "id",
         "workspace_id",
         "space_id",
         "task_id",
         "project_id",
+        "opportunity_id",
         "state",
         "version",
         "payload_json",
@@ -3058,7 +3116,12 @@ class SqliteTransaction
         record.workspaceId,
         record.spaceId,
         record.taskId,
-        record.projectId,
+        record.relationType === "task_contributes_to_project"
+          ? record.projectId
+          : null,
+        record.relationType === "task_contributes_to_opportunity"
+          ? record.opportunityId
+          : null,
         record.state,
         record.version,
         payload(record),
@@ -3072,7 +3135,7 @@ class SqliteTransaction
     return changed(
       this.database
         .prepare(
-          "UPDATE task_project_relations SET state = ?, version = ?, payload_json = ? WHERE id = ? AND version = ?",
+          "UPDATE task_work_relations SET state = ?, version = ?, payload_json = ? WHERE id = ? AND version = ?",
         )
         .run(
           record.state,
@@ -4222,7 +4285,7 @@ export class SqliteApplicationStore
         tasks: count("tasks"),
         projects: count("projects"),
         documents: count("documents"),
-        relations: count("task_project_relations"),
+        relations: count("task_work_relations"),
         auditReceipts: count("audit_receipts"),
       },
     };
@@ -4307,7 +4370,7 @@ export class SqliteApplicationStore
         "id",
         "strategic record",
       ),
-      relations: records("task_project_relations", "id", "id", "relation"),
+      relations: records("task_work_relations", "id", "id", "relation"),
       undoDescriptors: records(
         "undo_descriptors",
         "target_command_id",

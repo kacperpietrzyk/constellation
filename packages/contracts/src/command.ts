@@ -542,6 +542,12 @@ export const ProjectCreateCommandSchema = CommandMetadataSchema.extend({
       spaceId: SpaceIdSchema,
       title: z.string().trim().min(1).max(500),
       intendedOutcome: RecordNarrativeSchema.optional(),
+      // The Sources this Project rests on, as an Opportunity, a Decision and a
+      // relationship Fact already record theirs. Without it a migrated Project
+      // could only name its origin inside a paragraph, and "which projects
+      // rest on the note I now doubt" stopped being a question the graph could
+      // answer.
+      evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100).optional(),
     })
     .strict(),
 }).strict();
@@ -752,6 +758,10 @@ export const OpportunityCreateCommandSchema = CommandMetadataSchema.extend({
       title: z.string().trim().min(1).max(500),
       organizationId: StrategicRecordIdSchema,
       personIds: z.array(StrategicRecordIdSchema).max(100),
+      // Whose deal this is, as opposed to who is named on it. The source
+      // workbook separates the two and the distinction decides who is chased;
+      // a flat personIds array could only restate it in prose.
+      ownerPersonId: StrategicRecordIdSchema.optional(),
       need: z.string().trim().min(1).max(4_000),
       qualification: z.string().trim().min(1).max(2_000),
       stage: z.string().trim().min(1).max(120),
@@ -984,6 +994,12 @@ export const WorkLinkCreateCommandSchema = CommandMetadataSchema.extend({
       linkType: z.enum([
         "project_advances_initiative",
         "project_serves_area",
+        // The delivery a Project runs at a named client. ADR-044 §3 left this
+        // edge out deliberately, on the ground that a Project has no single
+        // honest organization; the first migration of a real engagement showed
+        // the cost — the client ends up in the title, and the Organization
+        // does not know a delivery is running at it.
+        "project_serves_organization",
         "task_depends_on_task",
       ]),
       sourceRecordId: z.uuid(),
@@ -1416,6 +1432,8 @@ export const ProjectUpdateOutcomeCommandSchema = CommandMetadataSchema.extend({
     .object({
       projectId: ProjectIdSchema,
       intendedOutcome: RecordNarrativeSchema,
+      // Absent leaves the Project's provenance alone; a list replaces it.
+      evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100).optional(),
     })
     .strict(),
 }).strict();
@@ -1925,13 +1943,25 @@ export const AttentionDismissCommandSchema = CommandMetadataSchema.extend({
 
 export const RecordRelateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("record.relate"),
-  payload: z
-    .object({
-      relationType: z.literal("task_contributes_to_project"),
-      taskId: TaskIdSchema,
-      projectId: ProjectIdSchema,
-    })
-    .strict(),
+  // Two shapes rather than one payload with optional ends: the relation type
+  // decides which record the other end is, and an envelope that accepted both
+  // ids at once would have to reject the combinations afterwards.
+  payload: z.discriminatedUnion("relationType", [
+    z
+      .object({
+        relationType: z.literal("task_contributes_to_project"),
+        taskId: TaskIdSchema,
+        projectId: ProjectIdSchema,
+      })
+      .strict(),
+    z
+      .object({
+        relationType: z.literal("task_contributes_to_opportunity"),
+        taskId: TaskIdSchema,
+        opportunityId: StrategicRecordIdSchema,
+      })
+      .strict(),
+  ]),
 }).strict();
 
 export const RecordUnrelateCommandSchema = CommandMetadataSchema.extend({

@@ -1,5 +1,6 @@
 import type {
   PrincipalId,
+  StrategicRecordId,
   RelationId,
   SpaceId,
   TaskId,
@@ -11,7 +12,7 @@ import type {
   Project,
   Task,
   TaskPriority,
-  TaskProjectRelation,
+  TaskWorkRelation,
 } from "./model.js";
 
 export interface CreateTaskInput {
@@ -283,7 +284,7 @@ export const relateTaskToProject = (input: {
   readonly project: Project;
   readonly createdBy: PrincipalId;
   readonly occurredAt: string;
-}): TaskProjectRelation => {
+}): TaskWorkRelation => {
   if (
     input.task.workspaceId !== input.project.workspaceId ||
     input.task.spaceId !== input.project.spaceId
@@ -306,10 +307,48 @@ export const relateTaskToProject = (input: {
   };
 };
 
+/**
+ * The other far end. An Opportunity's next action belongs to that deal and
+ * dies with it; before this it could only be a Task on some Project, with the
+ * client's name carried in the title.
+ */
+export const relateTaskToOpportunity = (input: {
+  readonly id: RelationId;
+  readonly task: Task;
+  readonly opportunity: {
+    readonly id: StrategicRecordId;
+    readonly workspaceId: WorkspaceId;
+    readonly spaceId: SpaceId;
+  };
+  readonly createdBy: PrincipalId;
+  readonly occurredAt: string;
+}): TaskWorkRelation => {
+  if (
+    input.task.workspaceId !== input.opportunity.workspaceId ||
+    input.task.spaceId !== input.opportunity.spaceId
+  ) {
+    throw new Error(
+      "Task and Opportunity must share an owning Workspace and Space.",
+    );
+  }
+  return {
+    id: input.id,
+    workspaceId: input.task.workspaceId,
+    spaceId: input.task.spaceId,
+    relationType: "task_contributes_to_opportunity",
+    state: "active",
+    taskId: input.task.id,
+    opportunityId: input.opportunity.id,
+    createdBy: input.createdBy,
+    version: 1,
+    createdAt: input.occurredAt,
+  };
+};
+
 export const removeTaskProjectRelation = (
-  relation: TaskProjectRelation,
+  relation: TaskWorkRelation,
   occurredAt: string,
-): TaskProjectRelation => ({
+): TaskWorkRelation => ({
   ...relation,
   state: "removed",
   removedAt: occurredAt,
@@ -317,12 +356,10 @@ export const removeTaskProjectRelation = (
 });
 
 export const restoreTaskProjectRelation = (
-  relation: TaskProjectRelation,
-): TaskProjectRelation => {
-  const withoutRemovedAt: Omit<TaskProjectRelation, "removedAt"> & {
-    removedAt?: string;
-  } = { ...relation };
-  delete withoutRemovedAt.removedAt;
+  relation: TaskWorkRelation,
+): TaskWorkRelation => {
+  const withoutRemovedAt = { ...relation };
+  delete (withoutRemovedAt as { removedAt?: string }).removedAt;
   return {
     ...withoutRemovedAt,
     state: "active",

@@ -12,6 +12,7 @@ export interface StrategicRecordReferenceFields {
   readonly state?: string | undefined;
   readonly organizationId?: string | undefined;
   readonly personIds?: readonly string[] | undefined;
+  readonly ownerPersonId?: string | undefined;
   readonly offerIds?: readonly string[] | undefined;
   readonly opportunityId?: string | undefined;
   readonly supersededById?: string | undefined;
@@ -49,6 +50,9 @@ export const strategicRecordReferences = (
       return [
         ...(record.organizationId === undefined ? [] : [record.organizationId]),
         ...(record.personIds ?? []),
+        // The owner blocks their own removal like any other named person:
+        // removing them would leave the deal owned by nobody, silently.
+        ...(record.ownerPersonId === undefined ? [] : [record.ownerPersonId]),
         ...(record.offerIds ?? []),
       ];
     case "offer":
