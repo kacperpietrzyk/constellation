@@ -69,7 +69,7 @@ export const MCP_CHECKPOINT_REVERT_DIAGNOSTICS = {
 export type CheckpointRevertBlock = {
   readonly targetCommandId: string;
   /**
-   * The first three are the recovery.preview projection's own
+   * The first four are the recovery.preview projection's own
    * `unavailableReason`, reported unfolded so a caller reads the same word the
    * paired preview query gives it; the last two are this layer's, for a
    * preview that could not be taken and for one that reported no reason.
@@ -78,6 +78,7 @@ export type CheckpointRevertBlock = {
     | "unsupported"
     | "already_undone"
     | "later_change"
+    | "still_referenced"
     | "preview_failed"
     | "unknown";
   readonly commandName?: string;
@@ -149,12 +150,14 @@ export const checkpointRevertPreview = (
  * Precedence when several blockers co-occur: never advertise a retry that
  * provably cannot succeed, so every definite reason outranks a preview that
  * failed to run. Among the definite ones, "unsupported" is fatal for the
- * command kind and comes first; "later_change", "already_undone" and an
- * unstated reason are all "a compensation this checkpoint needs no longer
- * applies", which is what the published conflict guidance describes — and what
- * the paired agent.checkpointPreviewRevert query already reports as
- * "later_change" for a consumed descriptor, so folding them together keeps
- * revert and its own preview telling one story.
+ * command kind and comes first; "later_change", "already_undone",
+ * "still_referenced" and an unstated reason are all "a compensation this
+ * checkpoint needs no longer straightforwardly applies" — the caller can act
+ * on "still_referenced" by detaching first, but that is still an intervention
+ * before a retry, not a retry itself, which is what the published conflict
+ * guidance describes — and what the paired agent.checkpointPreviewRevert query
+ * already reports as "later_change" for a consumed descriptor, so folding
+ * them together keeps revert and its own preview telling one story.
  */
 export const checkpointRevertRefusal = (
   checkpointId: string,
@@ -168,6 +171,7 @@ export const checkpointRevertRefusal = (
     ? (["rejected", MCP_CHECKPOINT_REVERT_DIAGNOSTICS.unsupported] as const)
     : reasons.has("later_change") ||
         reasons.has("already_undone") ||
+        reasons.has("still_referenced") ||
         reasons.has("unknown")
       ? (["conflict", MCP_CHECKPOINT_REVERT_DIAGNOSTICS.conflict] as const)
       : ([

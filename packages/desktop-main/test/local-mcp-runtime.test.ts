@@ -15,8 +15,14 @@ import {
   CheckpointIdSchema,
   CorrelationIdSchema,
   ExecutionContextSchema,
+  GrantIdSchema,
+  PrincipalIdSchema,
   QueryEnvelopeSchema,
   ProjectIdSchema,
+  SpaceGrantIdSchema,
+  SpaceIdSchema,
+  WorkspaceIdSchema,
+  capabilitiesForAgentGrantPreset,
   type Capability,
   type GrantId,
 } from "@constellation/contracts";
@@ -51,6 +57,12 @@ const ids = {
   voicePayload: "51000000-0000-4000-8000-000000000021",
   checkpoint2: "51000000-0000-4000-8000-000000000022",
   createdTask: "51000000-0000-4000-8000-000000000023",
+  task: "51000000-0000-4000-8000-000000000024",
+  otherTask: "51000000-0000-4000-8000-000000000025",
+  otherSpace: "51000000-0000-4000-8000-000000000026",
+  otherSpaceGrant: "51000000-0000-4000-8000-000000000027",
+  ownerOtherSpaceGrant: "51000000-0000-4000-8000-000000000028",
+  thirdTask: "51000000-0000-4000-8000-000000000029",
 } as const;
 
 const ownerContext = ExecutionContextSchema.parse({
@@ -1524,5 +1536,247 @@ test("local MCP checkpoint revert reports an unreadable preview as retryable, wi
     assert.equal(harness.status(revertIds.checkpoint), "open");
   } finally {
     await harness.close();
+  }
+});
+
+test("a narrowed scope and a removed Space take effect on the agent's next invocation, with no reconnection", async () => {
+  // This guards a failure mode every other test in this file is blind to: a
+  // store write a cached MCP session never observes. That would still pass a
+  // read-back and a kernel conformance test, and do nothing in the product.
+  // `authenticate()` re-reads the grant from the store on every call and
+  // `contextFor()` rebuilds the execution context from it, so the same
+  // `descriptor` below must see the re-scope on its very next call.
+  const stateRoot = mkdtempSync(
+    path.join(tmpdir(), "constellation-mcp-rescope-"),
+  );
+  const store = new InMemoryReferenceStore();
+  const owner = createRuntimeKernelService({ context: ownerContext, store });
+  successful(
+    owner.execute({
+      ...commandMetadata("rescope-bootstrap"),
+      commandName: "workspace.createLocal",
+      payload: {
+        workspaceId: ids.workspace,
+        rootSpaceId: ids.space,
+        ownerPrincipalId: ids.owner,
+        name: "MCP rescope boundary",
+        timezone: "Europe/Warsaw",
+      },
+    }),
+  );
+  // No command mints a Space, so the second Space and the owner's own reach
+  // into it are seeded directly, exactly as the kernel conformance suite does
+  // for the same re-scope.
+  store.transact((transaction) => {
+    transaction.insertSpace({
+      id: SpaceIdSchema.parse(ids.otherSpace),
+      workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+      name: "Second space",
+      version: 1,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    transaction.insertSpaceGrant({
+      id: SpaceGrantIdSchema.parse(ids.ownerOtherSpaceGrant),
+      workspaceId: WorkspaceIdSchema.parse(ids.workspace),
+      spaceId: SpaceIdSchema.parse(ids.otherSpace),
+      principalId: PrincipalIdSchema.parse(ids.owner),
+      access: "edit",
+      status: "active",
+      version: 1,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+  });
+  const runtime = new LocalMcpRuntime({
+    stateRoot,
+    workspaceId: ownerContext.workspaceId,
+    store,
+  });
+  try {
+    const prepared = runtime.credentialCustody.prepare(ids.grant as GrantId);
+    successful(
+      owner.execute(
+        CommandEnvelopeSchema.parse({
+          ...commandMetadata("rescope-agent-create", { [ids.workspace]: 1 }),
+          commandName: "agent.grantCreate",
+          payload: {
+            grantId: ids.grant,
+            membershipId: ids.membership,
+            agentPrincipalId: ids.agent,
+            displayName: "Codex local",
+            preset: "operate",
+            capabilityScope: [...capabilitiesForAgentGrantPreset("operate")],
+            spaces: [
+              {
+                spaceGrantId: ids.spaceGrant,
+                spaceId: ids.space,
+                access: "edit",
+              },
+            ],
+            credentialId: prepared.credentialId,
+            credentialDigest: prepared.credentialDigest,
+          },
+        }),
+      ),
+    );
+    const endpoint = await runtime.start();
+    const descriptor = runtime.credentialCustody.publish({
+      workspaceId: ownerContext.workspaceId,
+      grantId: ids.grant as GrantId,
+      endpoint,
+      credential: prepared,
+    });
+
+    const before = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "command",
+      run,
+      command: CommandEnvelopeSchema.parse({
+        ...commandMetadata("rescope-task-before"),
+        commandName: "task.create",
+        payload: { taskId: ids.task, spaceId: ids.space, title: "Before" },
+      }),
+    });
+    assert.equal(before.outcome, "success", JSON.stringify(before.result));
+
+    // Re-scope through the kernel, on the same store, with no reconnection and
+    // no new credential — `descriptor` above is never touched again.
+    const workspaceVersion = store.read((view) =>
+      view.getWorkspace(WorkspaceIdSchema.parse(ids.workspace)),
+    )?.version;
+    const grantVersion = store.read((view) =>
+      view.getAgentGrant(GrantIdSchema.parse(ids.grant)),
+    )?.version;
+    const spaceGrantVersion = store.read((view) =>
+      view.getSpaceGrant(SpaceGrantIdSchema.parse(ids.spaceGrant)),
+    )?.version;
+    if (
+      workspaceVersion === undefined ||
+      grantVersion === undefined ||
+      spaceGrantVersion === undefined
+    )
+      throw new Error(
+        "Expected the workspace, the grant, and its Space grant to exist.",
+      );
+    // The delegating human needs `otherSpace` as a candidate to reach it at
+    // all — the owner's static context only carries the root Space, so a
+    // second context widens the candidate list for this one command, the
+    // same way the desktop rebuilds the human context per act.
+    const rescoper = createRuntimeKernelService({
+      context: ExecutionContextSchema.parse({
+        ...ownerContext,
+        spaceScope: [...ownerContext.spaceScope, ids.otherSpace],
+      }),
+      store,
+    });
+    successful(
+      rescoper.execute(
+        CommandEnvelopeSchema.parse({
+          ...commandMetadata("rescope-narrow-and-move-space", {
+            [ids.workspace]: workspaceVersion,
+            [ids.grant]: grantVersion,
+            [ids.spaceGrant]: spaceGrantVersion,
+          }),
+          commandName: "agent.grantSetScope",
+          payload: {
+            grantId: ids.grant,
+            preset: "observe",
+            capabilityScope: [...capabilitiesForAgentGrantPreset("observe")],
+            spaces: [
+              {
+                spaceGrantId: ids.otherSpaceGrant,
+                spaceId: ids.otherSpace,
+                access: "edit",
+              },
+            ],
+          },
+        }),
+      ),
+    );
+
+    // Same credential, same socket, no capabilities re-read in between — just
+    // the next call, split into the two causes on purpose. The kernel keeps
+    // "your grant does not carry this" separate from every other refusal
+    // (kernel.ts's `RecordedAuthorization`): a target Space the caller cannot
+    // reach short-circuits before the capability is ever consulted, so it
+    // reads as `command.precondition_failed`, not `authorization.denied`.
+    // Asserting both by name is what proves each half of the re-scope on its
+    // own, rather than one denial that could be either.
+    const afterInRemovedSpace = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "command",
+      run,
+      command: CommandEnvelopeSchema.parse({
+        ...commandMetadata("rescope-task-after-removed-space"),
+        commandName: "task.create",
+        payload: { taskId: ids.otherTask, spaceId: ids.space, title: "After" },
+      }),
+    });
+    assert.equal(
+      afterInRemovedSpace.outcome,
+      "rejected",
+      JSON.stringify(afterInRemovedSpace.result),
+    );
+    assert.equal(
+      (
+        afterInRemovedSpace.result as {
+          readonly outcome?: { readonly diagnosticCode?: string };
+        }
+      ).outcome?.diagnosticCode,
+      "command.precondition_failed",
+    );
+
+    const afterWithNarrowedCapability = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "command",
+      run,
+      command: CommandEnvelopeSchema.parse({
+        ...commandMetadata("rescope-task-after-narrowed-capability"),
+        commandName: "task.create",
+        payload: {
+          taskId: ids.thirdTask,
+          spaceId: ids.otherSpace,
+          title: "After",
+        },
+      }),
+    });
+    assert.equal(
+      afterWithNarrowedCapability.outcome,
+      "rejected",
+      JSON.stringify(afterWithNarrowedCapability.result),
+    );
+    assert.equal(
+      (
+        afterWithNarrowedCapability.result as {
+          readonly outcome?: { readonly diagnosticCode?: string };
+        }
+      ).outcome?.diagnosticCode,
+      "authorization.denied",
+    );
+
+    const capabilities = await invokeDesktopMcp(descriptor, {
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "capabilities",
+    });
+    assert.equal(capabilities.outcome, "success");
+    const grantBlock = (
+      capabilities.result as {
+        readonly grant: {
+          readonly capabilityScope: readonly string[];
+          readonly spaceScope: readonly string[];
+        };
+      }
+    ).grant;
+    assert.deepEqual(grantBlock.capabilityScope, [
+      ...capabilitiesForAgentGrantPreset("observe"),
+    ]);
+    assert.deepEqual(grantBlock.spaceScope, [ids.otherSpace]);
+  } finally {
+    await runtime.close();
+    rmSync(stateRoot, { recursive: true, force: true });
   }
 });

@@ -753,6 +753,12 @@ export const loadDocumentBacklinks = async (
 const agentCapabilities = (preset: AgentGrantPreset): readonly Capability[] =>
   capabilitiesForAgentGrantPreset(preset);
 
+/** The per-Space access level a preset carries, at creation and at re-scope alike. */
+export const spaceAccessForPreset = (
+  preset: AgentGrantPreset,
+): "view" | "comment" | "edit" =>
+  preset === "observe" ? "view" : preset === "propose" ? "comment" : "edit";
+
 export const createAgentGrant = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
@@ -796,12 +802,7 @@ export const createAgentGrant = async (
           spaces: input.spaceIds.map((spaceId) => ({
             spaceGrantId: crypto.randomUUID(),
             spaceId,
-            access:
-              input.preset === "observe"
-                ? "view"
-                : input.preset === "propose"
-                  ? "comment"
-                  : "edit",
+            access: spaceAccessForPreset(input.preset),
           })),
           credentialId: credential.credentialId,
           credentialDigest: credential.credentialDigest,
@@ -919,25 +920,47 @@ export const revokeAgentGrant = async (
 };
 
 /**
- * Brings an issued grant up to what its preset carries today. A grant
- * authorizes against the scope frozen when it was issued, so a release that
- * widens a preset never reaches an agent already connected; this is the human
- * act that closes that, and the agent picks it up on its next call without
- * reconnecting or taking a new credential.
+ * Re-scopes an issued grant to a chosen preset and, when `spaceIds` is
+ * given, a chosen Space set — both replaced whole. Omitting `spaceIds`
+ * changes only the preset and its capabilities, leaving every Space grant
+ * exactly as it stood; that is what the contract's own `spaces` field being
+ * optional is for; stating it always, even to restate the Spaces a grant
+ * already has, would bump every Space grant's version on every re-scope,
+ * including one that never meant to touch Spaces at all. A grant authorizes
+ * against the scope frozen when it was issued, so a release that widens a
+ * preset never reaches an agent already connected, and — before this — the
+ * only way to change what a grant carries was to revoke and re-create it,
+ * minting a new credential and forcing the connected host to be
+ * reconfigured. This is the human act that avoids that: the agent picks the
+ * new scope up on its next call without reconnecting or taking a new
+ * credential.
  */
 export const updateAgentGrantScope = async (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
   grant: AgentAccessProjection["grants"][number],
+  target: {
+    readonly preset: AgentGrantPreset;
+    readonly spaceIds?: readonly string[];
+  },
 ): Promise<MutationResult<undefined>> => {
   if (snapshot.agentAccess.kind !== "ready")
     return { kind: "unavailable", message: "Dostęp agentów jest niedostępny." };
-  if (grant.preset === "custom")
+  // A stated-but-empty list is a deliberate "zero Spaces", which fails
+  // authorization outright once applied (the runtime has no resource left
+  // to explain) — refuse it here rather than let the schema's `min(1)`
+  // throw inside the `try` and flatten into a generic error. An *omitted*
+  // list is a different thing entirely: "don't touch Spaces", handled below.
+  if (target.spaceIds?.length === 0)
     return {
       kind: "unavailable",
-      message:
-        "Ten dostęp ma ręcznie wybrany zakres — nie ma presetu, do którego można go dociągnąć.",
+      message: "Dostęp agenta musi obejmować co najmniej jedną Przestrzeń.",
     };
+  const spaceIds = target.spaceIds;
+  const access = spaceAccessForPreset(target.preset);
+  const existingSpaceGrantIds = new Map<string, string>(
+    grant.spaces.map((space) => [space.spaceId, space.spaceGrantId]),
+  );
   try {
     const response = await client.executeCommand(
       CommandEnvelopeSchema.parse({
@@ -950,12 +973,40 @@ export const updateAgentGrantScope = async (
           [snapshot.bootstrap.workspace.id]:
             snapshot.agentAccess.data.workspaceVersion,
           [grant.grantId]: grant.version,
+          // The kernel only widens its exact-key rule to every active Space
+          // grant's version when the command actually restates Spaces
+          // (mirrors `targetSpaces === undefined` kernel-side) — leaving
+          // `spaceIds` undefined leaves those versions untouched, so nothing
+          // about them needs to be agreed here either.
+          ...(spaceIds === undefined
+            ? {}
+            : Object.fromEntries(
+                grant.spaces.map((space) => [
+                  space.spaceGrantId,
+                  space.version,
+                ]),
+              )),
         },
         correlationId: crypto.randomUUID(),
         payload: {
           grantId: grant.grantId,
-          preset: grant.preset,
-          capabilityScope: agentCapabilities(grant.preset),
+          preset: target.preset,
+          capabilityScope: agentCapabilities(target.preset),
+          ...(spaceIds === undefined
+            ? {}
+            : {
+                spaces: spaceIds.map((spaceId) => ({
+                  // Reuse the Space's existing grant record when the target
+                  // keeps it; the kernel looks one up by (workspace, Space,
+                  // principal) and ignores this id for a Space the grant
+                  // does not hold yet, so minting a fresh one there is
+                  // correct, not just a filler.
+                  spaceGrantId:
+                    existingSpaceGrantIds.get(spaceId) ?? crypto.randomUUID(),
+                  spaceId,
+                  access,
+                })),
+              }),
         },
       }),
     );
@@ -1161,10 +1212,15 @@ const commandFailure = (response: RendererCommandResponse): MutationFailure => {
       // capability". A refusal because the record is out of reach — another
       // Space, an access level too low, or simply not there — arrives as a
       // precondition, so that copy has to cover reach as well as staleness.
+      // `record.still_referenced` is neither: the record is in reach and its
+      // state has not moved, so the kernel names the one cause and the one
+      // thing that clears it.
       message:
         outcome.diagnosticCode === "authorization.denied"
           ? "Brak uprawnienia do tej zmiany."
-          : "Nie można wykonać tej zmiany: rekord jest poza Twoim dostępem albo jego stan się zmienił.",
+          : outcome.diagnosticCode === "record.still_referenced"
+            ? "Nie można tego usunąć: inny rekord nadal się do tego odwołuje. Odłącz to, co na niego wskazuje, i spróbuj ponownie."
+            : "Nie można wykonać tej zmiany: rekord jest poza Twoim dostępem albo jego stan się zmienił.",
     };
   return {
     kind: "unavailable",

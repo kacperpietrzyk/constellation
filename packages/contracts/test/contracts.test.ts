@@ -389,6 +389,47 @@ describe("application contracts", () => {
     assert.equal(wave2Result.success, false);
   });
 
+  it("names the records that block a removal, up to the cap", () => {
+    const blocked = (
+      blockedBy: readonly Readonly<Record<string, unknown>>[],
+      blockedByCount: number,
+    ): boolean =>
+      CommandOutcomeSchema.safeParse({
+        outcome: "rejected",
+        contractVersion: 1,
+        commandId: ids.command,
+        correlationId: ids.correlation,
+        kernelTime: "2026-07-24T12:00:00.000Z",
+        diagnosticCode: "record.still_referenced",
+        blockedBy,
+        blockedByCount,
+      }).success;
+    const person = {
+      recordId: ids.query,
+      recordKind: "strategicRecord",
+      recordType: "person",
+    };
+    assert.equal(blocked([person], 1), true);
+    // The cap is what keeps the outcome a bounded message; the count carries
+    // the rest.
+    assert.equal(
+      blocked(
+        Array.from({ length: 20 }, () => person),
+        45,
+      ),
+      true,
+    );
+    assert.equal(
+      blocked(
+        Array.from({ length: 21 }, () => person),
+        45,
+      ),
+      false,
+    );
+    // A count below the sample it summarises would under-report the work left.
+    assert.equal(blocked([person, person], 1), false);
+  });
+
   it("accepts exact retryable storage recovery diagnostics", () => {
     for (const diagnosticCode of [
       "storage.unit_of_work_failed",

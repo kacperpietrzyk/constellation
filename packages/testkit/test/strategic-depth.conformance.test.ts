@@ -15,7 +15,7 @@ import {
   type ExecutionContext,
 } from "@constellation/contracts";
 
-import { createReferenceHarness } from "../src/index.js";
+import { createReferenceHarness, type ReferenceHarness } from "../src/index.js";
 
 const ids = {
   workspace: "18000000-0000-4000-8000-000000000001",
@@ -23,6 +23,8 @@ const ids = {
   principal: "18000000-0000-4000-8000-000000000003",
   credential: "18000000-0000-4000-8000-000000000004",
   grant: "18000000-0000-4000-8000-000000000005",
+  foreignSpace: "18000000-0000-4000-8000-000000000006",
+  foreignGrant: "18000000-0000-4000-8000-000000000007",
 } as const;
 let sequence = 100;
 const uuid = (): string =>
@@ -2401,7 +2403,7 @@ it("refuses to remove a record other work still points at, and hides it once rem
   // or removed themselves.
   const blocked = remove("removal-blocked", organizationId, 1);
   assert.equal(blocked.outcome, "rejected");
-  assert.equal(blocked.diagnosticCode, "command.precondition_failed");
+  assert.equal(blocked.diagnosticCode, "record.still_referenced");
 
   assert.equal(remove("removal-person-go", personId, 1).outcome, "success");
   const removed = remove("removal-organization-go", organizationId, 1);
@@ -2518,7 +2520,7 @@ it("refuses to remove a Project, Document or Source that live work still cites",
         [projectId]: 1,
       },
     ).diagnosticCode,
-    "command.precondition_failed",
+    "record.still_referenced",
   );
   assert.equal(
     execute(
@@ -2593,7 +2595,7 @@ it("refuses to remove a Project, Document or Source that live work still cites",
         [sourceId]: 1,
       },
     ).diagnosticCode,
-    "command.precondition_failed",
+    "record.still_referenced",
   );
   assert.equal(
     execute(
@@ -2604,7 +2606,7 @@ it("refuses to remove a Project, Document or Source that live work still cites",
         [noteId]: 1,
       },
     ).diagnosticCode,
-    "command.precondition_failed",
+    "record.still_referenced",
   );
   // The deliverable cites; nothing cites it, so it goes.
   assert.equal(
@@ -2639,6 +2641,340 @@ it("refuses to remove a Project, Document or Source that live work still cites",
     ).outcome,
     "success",
   );
+});
+
+/**
+ * A harness with the workspace already made, because every removal test below
+ * starts from the same two lines and differs only in what it attaches.
+ */
+const removalHarness = (key: string): ReferenceHarness => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(`${key}-bootstrap`),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Blocking records",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  return harness;
+};
+
+const createOrganization = (harness: ReferenceHarness, key: string): string => {
+  const organizationId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(`${key}-organization`),
+        commandName: "relationship.organizationCreate",
+        payload: {
+          organizationId,
+          spaceId: ids.space,
+          name: "Orbit",
+          relationshipState: "active",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  return organizationId;
+};
+
+const createPerson = (
+  harness: ReferenceHarness,
+  key: string,
+  organizationId: string,
+): string => {
+  const personId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(`${key}-person`),
+        commandName: "relationship.personCreate",
+        payload: { personId, spaceId: ids.space, name: "Ada", organizationId },
+      }),
+    ).outcome,
+    "success",
+  );
+  return personId;
+};
+
+const removeOrganization = (
+  harness: ReferenceHarness,
+  key: string,
+  organizationId: string,
+  callerContext: ExecutionContext = context(),
+): CommandOutcome =>
+  unwrap(
+    harness.kernel.execute(callerContext, {
+      ...metadata(key, { [organizationId]: 1 }),
+      commandName: "relationship.organizationRemove",
+      payload: { organizationId },
+    }),
+  );
+
+/**
+ * A grant that carries the removal capability but reaches a different Space.
+ * The no-leak argument rests on the authorization pass, not on the removal
+ * handler, so the caller has to be refused before the handler runs.
+ */
+const outsideThisSpace = (): ExecutionContext =>
+  ExecutionContextSchema.parse({
+    ...context(),
+    grantId: ids.foreignGrant,
+    spaceScope: [ids.foreignSpace],
+  });
+
+it("names the record that blocks removing an organization", () => {
+  const harness = removalHarness("blocking-organization");
+  const organizationId = createOrganization(harness, "blocking-organization");
+  const personId = createPerson(
+    harness,
+    "blocking-organization",
+    organizationId,
+  );
+  const refused = removeOrganization(
+    harness,
+    "blocking-organization-remove",
+    organizationId,
+  );
+  assert.equal(refused.outcome, "rejected");
+  if (refused.diagnosticCode !== "record.still_referenced")
+    throw new Error("Expected the blocked outcome.");
+  assert.deepEqual(refused.blockedBy, [
+    { recordId: personId, recordKind: "strategicRecord", recordType: "person" },
+  ]);
+  assert.equal(refused.blockedByCount, 1);
+});
+
+it("names the record that blocks removing a project", () => {
+  const harness = removalHarness("blocking-project");
+  const organizationId = createOrganization(harness, "blocking-project");
+  const opportunityId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("blocking-project-opportunity"),
+        commandName: "opportunity.create",
+        payload: {
+          opportunityId,
+          spaceId: ids.space,
+          title: "Northstar remediation",
+          organizationId,
+          personIds: [],
+          need: "Choose the first remediation programme.",
+          qualification: "Sponsor and evidence confirmed.",
+          stage: "qualified",
+          nextAction: "Prepare a scoped offer.",
+          evidenceSourceIds: [],
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("blocking-project-project"),
+        commandName: "project.create",
+        payload: {
+          spaceId: ids.space,
+          title: "Deliver the remediation",
+          intendedOutcome: "Northstar accepts a remediation plan.",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const project = harness.store.snapshot().projects[0];
+  assert.ok(project);
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("blocking-project-link", {
+          [opportunityId]: 1,
+          [project.id]: 1,
+        }),
+        commandName: "opportunity.linkOutcomes",
+        payload: {
+          opportunityId,
+          offerIds: [],
+          projectIds: [project.id],
+          state: "pursued",
+          nextAction: "Run the accepted programme.",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const refused = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("blocking-project-remove", { [project.id]: 1 }),
+      commandName: "project.remove",
+      payload: { projectId: project.id },
+    }),
+  );
+  if (refused.diagnosticCode !== "record.still_referenced")
+    throw new Error("Expected the blocked outcome.");
+  assert.deepEqual(refused.blockedBy, [
+    {
+      recordId: opportunityId,
+      recordKind: "strategicRecord",
+      recordType: "opportunity",
+    },
+  ]);
+  assert.equal(refused.blockedByCount, 1);
+});
+
+it("caps the named records and still reports the real total", () => {
+  const harness = removalHarness("blocking-cap");
+  const organizationId = createOrganization(harness, "blocking-cap");
+  const personIds = Array.from({ length: 21 }, (_, index) =>
+    createPerson(harness, `blocking-cap-${index}`, organizationId),
+  );
+  const refused = removeOrganization(
+    harness,
+    "blocking-cap-remove",
+    organizationId,
+  );
+  if (refused.diagnosticCode !== "record.still_referenced")
+    throw new Error("Expected the blocked outcome.");
+  // A sample, not a set: the count is what tells the caller how much detaching
+  // is left once the twenty named ones are done.
+  assert.equal(refused.blockedBy.length, 20);
+  assert.equal(refused.blockedByCount, personIds.length);
+});
+
+it("still answers precondition_failed to a caller outside the Space", () => {
+  // The no-leak argument rests entirely on this: the new code is only
+  // reachable after an authorization pass that required the target's Space, so
+  // it can never tell a caller about records it may not read. A green happy
+  // path does not test that.
+  const harness = removalHarness("blocking-foreign");
+  harness.authorization.register(outsideThisSpace());
+  const organizationId = createOrganization(harness, "blocking-foreign");
+  createPerson(harness, "blocking-foreign", organizationId);
+  // The control: the same removal, run by a caller who can reach the Space,
+  // still names the reference. Without this, the test above would pass just
+  // as well if the shared creators stopped producing a dependent at all.
+  const inSpace = removeOrganization(
+    harness,
+    "blocking-foreign-control",
+    organizationId,
+  );
+  assert.equal(inSpace.diagnosticCode, "record.still_referenced");
+  const refused = removeOrganization(
+    harness,
+    "blocking-foreign-remove",
+    organizationId,
+    outsideThisSpace(),
+  );
+  assert.equal(refused.diagnosticCode, "command.precondition_failed");
+  assert.equal("blockedBy" in refused, false);
+});
+
+it("says undoing a create is blocked by a reference, not a later change", () => {
+  const harness = removalHarness("undo-blocked-strategic");
+  const organizationCommand = {
+    ...metadata("undo-blocked-strategic-organization"),
+    commandName: "relationship.organizationCreate" as const,
+    payload: {
+      organizationId: uuid(),
+      spaceId: ids.space,
+      name: "Orbit",
+      relationshipState: "active" as const,
+    },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), organizationCommand)).outcome,
+    "success",
+  );
+  createPerson(
+    harness,
+    "undo-blocked-strategic",
+    organizationCommand.payload.organizationId,
+  );
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("undo-blocked-strategic-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: organizationCommand.commandId },
+    }),
+  );
+  if (
+    preview.outcome !== "preview" ||
+    preview.projection.kind !== "undo.previewed"
+  )
+    throw new Error("Expected an undo preview.");
+  assert.equal(preview.projection.available, false);
+  assert.equal(preview.projection.unavailableReason, "still_referenced");
+});
+
+it("says undoing a table record create is blocked by a reference, not a later change", () => {
+  const harness = removalHarness("undo-blocked-table");
+  const projectCommand = {
+    ...metadata("undo-blocked-table-project"),
+    commandName: "project.create" as const,
+    payload: { spaceId: ids.space, title: "Cited project" },
+  };
+  const created = unwrap(harness.kernel.execute(context(), projectCommand));
+  if (
+    created.outcome !== "success" ||
+    created.projection.kind !== "project.created"
+  )
+    throw new Error("Expected a created Project.");
+  const projectId = created.projection.projectId;
+  const taskId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("undo-blocked-table-task"),
+        commandName: "task.create",
+        payload: { taskId, spaceId: ids.space, title: "Contributing task" },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("undo-blocked-table-relate", {
+          [taskId]: 1,
+          [projectId]: 1,
+        }),
+        commandName: "record.relate",
+        payload: {
+          relationType: "task_contributes_to_project",
+          taskId,
+          projectId,
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("undo-blocked-table-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: projectCommand.commandId },
+    }),
+  );
+  if (
+    preview.outcome !== "preview" ||
+    preview.projection.kind !== "undo.previewed"
+  )
+    throw new Error("Expected an undo preview.");
+  assert.equal(preview.projection.available, false);
+  assert.equal(preview.projection.unavailableReason, "still_referenced");
 });
 
 it("degrades reads that resolve a removed record instead of failing them", () => {

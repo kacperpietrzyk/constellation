@@ -11,6 +11,10 @@ import {
   CONTRACT_SPLIT_WARNING,
   contractFingerprint,
 } from "../src/contract-stamp.js";
+import {
+  MCP_CHECKPOINT_REVERT_DIAGNOSTICS,
+  checkpointRevertRefusal,
+} from "../src/protocol.js";
 import { createConstellationMcpServer } from "../src/server.js";
 import type {
   McpOperatorInvocation,
@@ -686,5 +690,20 @@ test("names the build behind both processes and flags a contract split", async (
       "matchesHost"
     ],
     false,
+  );
+});
+
+test("folds a still-referenced blocker into the same conflict as a later change", () => {
+  // A record blocking one command in the checkpoint is exactly as fatal to a
+  // blind retry as a version that moved on: the caller has to act (detach,
+  // then resend) before trying again, so it belongs in the same bucket as
+  // later_change and already_undone, not with unsupported or a failed preview.
+  const refusal = checkpointRevertRefusal("checkpoint-1", [
+    { targetCommandId: "command-1", unavailableReason: "still_referenced" },
+  ]);
+  assert.equal(refusal.outcome, "conflict");
+  assert.equal(
+    (refusal.result as { diagnosticCode: string }).diagnosticCode,
+    MCP_CHECKPOINT_REVERT_DIAGNOSTICS.conflict,
   );
 });

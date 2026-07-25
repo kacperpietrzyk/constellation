@@ -3816,7 +3816,7 @@ describe("Wave 2 reference semantics", () => {
         payload: { taskId: parentId },
       }),
     );
-    assert.equal(refused.diagnosticCode, "command.precondition_failed");
+    assert.equal(refused.diagnosticCode, "record.still_referenced");
     assert.equal(
       harness.store.snapshot().tasks.find((t) => t.id === parentId)!
         .recordState,
@@ -3844,6 +3844,39 @@ describe("Wave 2 reference semantics", () => {
       ).diagnosticCode,
       "task.removed",
     );
+  });
+
+  it("names the child that blocks removing a task", () => {
+    const harness = setup();
+    const parentId = createTask(harness, "Parent with a named blocker");
+    const childId = createTask(harness, "Child that blocks removal");
+    const versionOf = (id: TaskId): number =>
+      harness.store.snapshot().tasks.find((t) => t.id === id)!.version;
+
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("name-blocker-adopt", { [childId]: versionOf(childId) }),
+        commandName: "task.setParent",
+        payload: { taskId: childId, parentTaskId: parentId },
+      }),
+    );
+
+    const refused = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("name-blocker-remove", {
+          [parentId]: versionOf(parentId),
+        }),
+        commandName: "task.remove",
+        payload: { taskId: parentId },
+      }),
+    );
+    assert.equal(refused.outcome, "rejected");
+    if (refused.diagnosticCode !== "record.still_referenced")
+      throw new Error("Expected the blocked outcome.");
+    assert.deepEqual(refused.blockedBy, [
+      { recordId: childId, recordKind: "task" },
+    ]);
+    assert.equal(refused.blockedByCount, 1);
   });
 
   it("filters task.list by a relation-path condition, kernel-side", () => {
@@ -4797,7 +4830,7 @@ describe("Wave 2 reference semantics", () => {
         ?.version,
       1,
     );
-    assert.equal(reasonFor(parent.commandId), "later_change");
+    assert.equal(reasonFor(parent.commandId), "still_referenced");
 
     const blocked = unwrap(
       harness.kernel.execute(context(), {
@@ -4812,6 +4845,46 @@ describe("Wave 2 reference semantics", () => {
         ?.recordState,
       "active",
     );
+  });
+
+  it("says an undone task create is blocked by a child, not by a later change", () => {
+    const harness = setup();
+    const taskId = requestId() as TaskId;
+    const createCommand = {
+      ...metadata("undo-blocked-task-create"),
+      commandName: "task.create" as const,
+      payload: { taskId, spaceId: ids.rootSpace, title: "Parent to undo" },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), createCommand)).outcome,
+      "success",
+    );
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("undo-blocked-task-child"),
+          commandName: "task.create",
+          payload: {
+            taskId: requestId(),
+            spaceId: ids.rootSpace,
+            title: "Child that blocks the undo",
+            parentTaskId: taskId,
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+
+    const preview = unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("undo-blocked-task-preview"),
+        commandName: "command.previewUndo",
+        payload: { targetCommandId: createCommand.commandId },
+      }),
+    );
+    if (preview.outcome !== "preview") assert.fail("Expected an undo preview");
+    assert.equal(preview.projection.available, false);
+    assert.equal(preview.projection.unavailableReason, "still_referenced");
   });
 
   it("compensates savedView.create through the definition descriptor it already had", () => {

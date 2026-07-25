@@ -16,9 +16,12 @@ const ids = {
   grant: "90000000-0000-4000-8000-000000000002",
   agent: "90000000-0000-4000-8000-000000000003",
   membership: "90000000-0000-4000-8000-000000000004",
+  space: "90000000-0000-4000-8000-000000000005",
+  spaceGrant: "90000000-0000-4000-8000-000000000006",
+  otherSpace: "90000000-0000-4000-8000-000000000007",
 } as const;
 
-const snapshot = (preset: string): never =>
+const snapshot = (preset: string, access = "edit"): never =>
   ({
     bootstrap: { workspace: { id: ids.workspace } },
     agentAccess: {
@@ -42,28 +45,36 @@ const snapshot = (preset: string): never =>
             version: 3,
             membershipId: ids.membership,
             membershipVersion: 1,
-            spaces: [],
+            spaces: [
+              {
+                spaceGrantId: ids.spaceGrant,
+                spaceId: ids.space,
+                spaceName: "Ops",
+                // Every caller sets this to something the *target* preset
+                // could never derive — so an assertion that the sent access
+                // follows the target can only pass by deriving it, not by
+                // echoing this fixture value back.
+                access,
+                version: 2,
+              },
+            ],
           },
         ],
       },
     },
   }) as never;
 
-const grantOf = (preset: string): never =>
+const grantOf = (preset: string, access = "edit"): never =>
   (
-    snapshot(preset) as unknown as {
+    snapshot(preset, access) as unknown as {
       agentAccess: { data: { grants: never[] } };
     }
   ).agentAccess.data.grants[0] as never;
 
-/**
- * The renderer builds this envelope itself, so a defect here is invisible to
- * the kernel conformance tests that prove the command works — it would show up
- * only as a rejected command in a person's hands.
- */
-test("the desktop asks for exactly the preset's scope, against the versions it read", async () => {
-  const sent: CommandEnvelope[] = [];
-  const client = {
+const recordingClient = (
+  sent: CommandEnvelope[],
+): ConstellationRendererClient =>
+  ({
     executeCommand: async (command: CommandEnvelope) => {
       sent.push(command);
       return {
@@ -88,32 +99,129 @@ test("the desktop asks for exactly the preset's scope, against the versions it r
         },
       };
     },
-  } as unknown as ConstellationRendererClient;
+  }) as unknown as ConstellationRendererClient;
 
+/**
+ * The renderer builds this envelope itself, so a defect here is invisible to
+ * the kernel conformance tests that prove the command works — it would show up
+ * only as a rejected command in a person's hands.
+ */
+test("sends the chosen preset, its capabilities, and the target Spaces", async () => {
+  const sent: CommandEnvelope[] = [];
+  const client = recordingClient(sent);
   const result = await updateAgentGrantScope(
     client,
     snapshot("operate"),
     grantOf("operate"),
+    { preset: "observe", spaceIds: [ids.space] },
   );
   assert.equal(result.kind, "success");
-  const command = sent[0];
-  assert.equal(command?.commandName, "agent.grantSetScope");
-  if (command?.commandName !== "agent.grantSetScope")
+  const envelope = sent[0];
+  assert.equal(envelope?.commandName, "agent.grantSetScope");
+  if (envelope?.commandName !== "agent.grantSetScope")
     throw new Error("Expected the scope command.");
-  assert.deepEqual(command.payload, {
-    grantId: ids.grant,
-    preset: "operate",
-    capabilityScope: [...capabilitiesForAgentGrantPreset("operate")],
+  assert.equal(envelope.payload.preset, "observe");
+  assert.deepEqual(envelope.payload.capabilityScope, [
+    ...capabilitiesForAgentGrantPreset("observe"),
+  ]);
+  // The level per Space follows the target preset, not the fixture's own.
+  assert.deepEqual(envelope.payload.spaces, [
+    { spaceGrantId: ids.spaceGrant, spaceId: ids.space, access: "view" },
+  ]);
+  // The kernel requires these two records exactly plus every active Space
+  // grant, or the exact-key rule answers conflict.
+  assert.deepEqual(envelope.expectedVersions, {
+    [ids.workspace]: 4,
+    [ids.grant]: 3,
+    [ids.spaceGrant]: 2,
   });
-  // The kernel requires these two records exactly; naming a third, or the
-  // wrong version, is a conflict the person would read as a bug.
-  assert.deepEqual(command.expectedVersions, {
+});
+
+/**
+ * `spaces` is optional on the contract precisely so a preset-only change
+ * can leave every Space grant untouched kernel-side (no version bump, no
+ * exact-key demand on Space grants a person never meant to touch). Omitting
+ * the payload key is what selects that branch — `spaces: undefined` would
+ * not, since `"spaces" in payload` is what the kernel's own optional check
+ * inspects — so this pins the key's absence, not just its value.
+ */
+test("omitting spaceIds leaves Spaces out of the command entirely", async () => {
+  const sent: CommandEnvelope[] = [];
+  const result = await updateAgentGrantScope(
+    recordingClient(sent),
+    snapshot("operate"),
+    grantOf("operate"),
+    { preset: "observe" },
+  );
+  assert.equal(result.kind, "success");
+  const envelope = sent[0];
+  if (envelope?.commandName !== "agent.grantSetScope")
+    throw new Error("Expected the scope command.");
+  assert.equal("spaces" in envelope.payload, false);
+  // Only the workspace and the grant — none of the grant's Space grants,
+  // because none of them are being restated.
+  assert.deepEqual(envelope.expectedVersions, {
     [ids.workspace]: 4,
     [ids.grant]: 3,
   });
 });
 
-test("a hand-picked scope is refused before a command is sent", async () => {
+/**
+ * The raise is the direction that matters. The per-Space access is the second
+ * gate a level opens — every Wave2 command is checked against the Space grant
+ * before any capability is consulted — so a raise that carried the grant's
+ * current level would widen the capability scope and leave every write it now
+ * allows refused at the Space.
+ */
+test("a raise sends the Space level the target preset carries", async () => {
+  const sent: CommandEnvelope[] = [];
+  await updateAgentGrantScope(
+    recordingClient(sent),
+    snapshot("observe", "view"),
+    grantOf("observe", "view"),
+    { preset: "operate", spaceIds: [ids.space] },
+  );
+  const envelope = sent[0];
+  if (envelope?.commandName !== "agent.grantSetScope")
+    throw new Error("Expected the scope command.");
+  assert.deepEqual(envelope.payload.spaces, [
+    { spaceGrantId: ids.spaceGrant, spaceId: ids.space, access: "edit" },
+  ]);
+});
+
+test("mints an id for a Space the grant does not hold yet", async () => {
+  const sent: CommandEnvelope[] = [];
+  await updateAgentGrantScope(
+    recordingClient(sent),
+    snapshot("operate"),
+    grantOf("operate"),
+    { preset: "operate", spaceIds: [ids.space, ids.otherSpace] },
+  );
+  const envelope = sent[0];
+  if (envelope?.commandName !== "agent.grantSetScope")
+    throw new Error("Expected the scope command.");
+  const spaces = envelope.payload.spaces;
+  assert.ok(spaces, "expected a spaces list on the payload");
+  const added = spaces.find((space) => space.spaceId === ids.otherSpace);
+  assert.notEqual(added, undefined);
+  assert.match(added?.spaceGrantId ?? "", /^[0-9a-f-]{36}$/);
+  const kept = spaces.find((space) => space.spaceId === ids.space);
+  assert.equal(kept?.spaceGrantId, ids.spaceGrant);
+});
+
+test("no longer refuses a custom grant", async () => {
+  const sent: CommandEnvelope[] = [];
+  const result = await updateAgentGrantScope(
+    recordingClient(sent),
+    snapshot("custom"),
+    grantOf("custom"),
+    { preset: "observe", spaceIds: [ids.space] },
+  );
+  assert.equal(sent.length, 1);
+  assert.equal(result.kind, "success");
+});
+
+test("refuses an empty Space set before a command is sent", async () => {
   let called = false;
   const client = {
     executeCommand: async () => {
@@ -121,12 +229,14 @@ test("a hand-picked scope is refused before a command is sent", async () => {
       throw new Error("must not be called");
     },
   } as unknown as ConstellationRendererClient;
-  // "custom" has no preset to be dragged up to, so there is nothing to ask
-  // for — and asking would silently replace a scope somebody chose by hand.
+  // The schema requires at least one Space, and a grant with none fails
+  // authorization outright — refuse locally with a clear reason instead of
+  // letting a malformed command surface a generic error.
   const result = await updateAgentGrantScope(
     client,
-    snapshot("custom"),
-    grantOf("custom"),
+    snapshot("operate"),
+    grantOf("operate"),
+    { preset: "operate", spaceIds: [] },
   );
   assert.equal(result.kind, "unavailable");
   assert.equal(called, false);

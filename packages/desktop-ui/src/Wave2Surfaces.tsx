@@ -2482,6 +2482,7 @@ const unavailableReasonCopy: Record<string, string> = {
   unsupported: "To polecenie nie obsługuje cofnięcia",
   already_undone: "To polecenie zostało już cofnięte",
   later_change: "Późniejsza zmiana blokuje bezpieczne cofnięcie",
+  still_referenced: "Inny rekord nadal się do tego odwołuje",
 };
 
 export const UndoDialog = ({

@@ -3846,22 +3846,41 @@ export const RealApp = ({
                       } else showFailure(result);
                     });
                   }}
-                  onAgentRescope={(grant) => {
-                    if (!client) return;
+                  onAgentRescope={async (grant, target) => {
+                    if (!client)
+                      return "Brak połączenia z jądrem — spróbuj ponownie.";
                     setAccessBusy(true);
                     setNotice(undefined);
-                    void updateAgentGrantScope(
+                    const result = await updateAgentGrantScope(
                       client,
                       state.snapshot,
                       grant,
-                    ).then(async (result) => {
-                      setAccessBusy(false);
-                      if (result.kind === "success")
-                        await refreshAfter(
-                          "Zakres dostępu zaktualizowano. Agent zobaczy nowe uprawnienia przy następnym wywołaniu — bez ponownego łączenia.",
-                        );
-                      else showFailure(result);
-                    });
+                      target,
+                    );
+                    setAccessBusy(false);
+                    if (result.kind === "conflict") {
+                      // The versions the dialog read are the ones that just
+                      // lost the race, so every retry from it would re-send
+                      // them. Reload instead, and say that plainly — the
+                      // workflow's own "refresh and try again" would be asking
+                      // for something this line has already done.
+                      setNotice({
+                        kind: "conflict",
+                        message:
+                          "Ten dostęp zmienił się w międzyczasie, więc zapis nie przeszedł. Dane odświeżono — otwórz „Zmień uprawnienia” ponownie i sprawdź zakres przed zapisem.",
+                      });
+                      await reloadSnapshot();
+                      return undefined;
+                    }
+                    if (result.kind !== "success") {
+                      showFailure(result);
+                      // Returned as well as noticed: the notice sits on a
+                      // surface the open dialog covers, and the person who has
+                      // to act on the refusal is inside the dialog.
+                      return result.message;
+                    }
+                    await refreshAfter("Uprawnienia agenta zaktualizowano.");
+                    return undefined;
                   }}
                   onAgentRevoke={(grant) => {
                     if (!client) return;

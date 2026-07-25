@@ -60,11 +60,13 @@ export const setAgentGrantScope = (
   grant: AgentAccessGrant,
   preset: AgentAccessPreset,
   capabilityScope: readonly Capability[],
+  spaceScope: readonly SpaceId[],
   occurredAt: string,
 ): AgentAccessGrant => ({
   ...grant,
   preset,
   capabilityScope,
+  spaceScope,
   version: grant.version + 1,
   updatedAt: occurredAt,
 });

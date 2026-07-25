@@ -28,6 +28,7 @@ import {
   KnowledgeSourceIdSchema,
   NamedDocumentVersionIdSchema,
   StrategicRecordIdSchema,
+  type BlockingRecord,
   type CommandEnvelope,
   type CommandOutcome,
   type ExecutionContext,
@@ -1244,6 +1245,27 @@ const precondition = (
     diagnosticCode: "command.precondition_failed",
   });
 
+const BLOCKED_BY_LIMIT = 20;
+
+/**
+ * The one refusal that names its cause. Every record here is inside the
+ * target's own Space, and this branch is only reached after an authorization
+ * pass that required that Space, so the caller can already read all of them.
+ * The list is a sample and the count is the real total, because a Space can
+ * hold more dependents than a diagnostic should carry.
+ */
+const blocked = (
+  command: Wave2Command,
+  occurredAt: string,
+  dependents: readonly BlockingRecord[],
+): CommandOutcome =>
+  outcome(command, occurredAt, {
+    outcome: "rejected",
+    diagnosticCode: "record.still_referenced",
+    blockedBy: dependents.slice(0, BLOCKED_BY_LIMIT),
+    blockedByCount: dependents.length,
+  });
+
 /**
  * What still points at a Project, a Document or a Knowledge Source inside its
  * Space. Same rule as every other removal: refuse rather than orphan, and read
@@ -1258,7 +1280,7 @@ const tableRecordDependents = (
     readonly spaceId: SpaceId;
   },
   recordKind: "project" | "document" | "knowledgeSource",
-): readonly string[] => {
+): readonly BlockingRecord[] => {
   const { workspaceId, spaceId, id } = record;
   const strategic = view.listStrategicRecords(workspaceId, spaceId);
   if (recordKind === "project")
@@ -1269,7 +1291,10 @@ const tableRecordDependents = (
           (relation) =>
             relation.projectId === id && relation.state === "active",
         )
-        .map((relation) => relation.id),
+        .map((relation) => ({
+          recordId: relation.id,
+          recordKind: "relation" as const,
+        })),
       ...strategic
         .filter(
           (candidate) =>
@@ -1282,7 +1307,11 @@ const tableRecordDependents = (
             (candidate.kind === "recurrence" &&
               candidate.contextRecordId === id),
         )
-        .map((candidate) => candidate.id),
+        .map((candidate) => ({
+          recordId: candidate.id,
+          recordKind: "strategicRecord" as const,
+          recordType: candidate.kind,
+        })),
     ];
   if (recordKind === "document")
     return [
@@ -1292,7 +1321,11 @@ const tableRecordDependents = (
             candidate.kind === "offer" &&
             candidate.deliverableDocumentId === id,
         )
-        .map((candidate) => candidate.id),
+        .map((candidate) => ({
+          recordId: candidate.id,
+          recordKind: "strategicRecord" as const,
+          recordType: candidate.kind,
+        })),
       ...view
         .listDocuments(workspaceId, spaceId)
         .filter((candidate) =>
@@ -1300,7 +1333,10 @@ const tableRecordDependents = (
             (documentId) => documentId === id,
           ),
         )
-        .map((candidate) => candidate.id),
+        .map((candidate) => ({
+          recordId: candidate.id,
+          recordKind: "document" as const,
+        })),
       // A named version is the frozen record of what was delivered. Voiding it
       // is the deliberate act; until then the document it froze stays.
       ...view
@@ -1308,7 +1344,10 @@ const tableRecordDependents = (
         .filter(
           (version) => version.documentId === id && version.state === "active",
         )
-        .map((version) => version.id),
+        .map((version) => ({
+          recordId: version.id,
+          recordKind: "namedDocumentVersion" as const,
+        })),
     ];
   return [
     ...strategic
@@ -1317,19 +1356,26 @@ const tableRecordDependents = (
           ? candidate.evidenceSourceIds.some((sourceId) => sourceId === id)
           : candidate.kind === "radar_candidate" && candidate.sourceId === id,
       )
-      .map((candidate) => candidate.id),
+      .map((candidate) => ({
+        recordId: candidate.id,
+        recordKind: "strategicRecord" as const,
+        recordType: candidate.kind,
+      })),
     ...view
       .listDocuments(workspaceId, spaceId)
       .filter((candidate) =>
         candidate.evidence?.sourceIds.some((sourceId) => sourceId === id),
       )
-      .map((candidate) => candidate.id),
+      .map((candidate) => ({
+        recordId: candidate.id,
+        recordKind: "document" as const,
+      })),
     ...view
       .listTasksInSpace(workspaceId, spaceId)
       .filter((task) =>
         task.attachmentSourceIds?.some((sourceId) => sourceId === id),
       )
-      .map((task) => task.id),
+      .map((task) => ({ recordId: task.id, recordKind: "task" as const })),
   ];
 };
 
@@ -1419,7 +1465,7 @@ const removedStrategicRecordId = (
 const strategicRecordDependents = (
   view: ApplicationWave2ReadView,
   record: StrategicRecord,
-): readonly StrategicRecordId[] =>
+): readonly BlockingRecord[] =>
   view
     .listStrategicRecords(record.workspaceId, record.spaceId)
     .filter(
@@ -1427,7 +1473,11 @@ const strategicRecordDependents = (
         candidate.id !== record.id &&
         strategicRecordReferences(candidate).includes(record.id),
     )
-    .map((candidate) => candidate.id);
+    .map((candidate) => ({
+      recordId: candidate.id,
+      recordKind: "strategicRecord" as const,
+      recordType: candidate.kind,
+    }));
 
 /**
  * The removal path for the three records that keep their own table. Same
@@ -1462,8 +1512,8 @@ const removeTableRecord = (
     return versionConflict(command, occurredAt, {
       [record.id]: record.version,
     });
-  if (tableRecordDependents(transaction, record, recordKind).length > 0)
-    return precondition(command, occurredAt);
+  const dependents = tableRecordDependents(transaction, record, recordKind);
+  if (dependents.length > 0) return blocked(command, occurredAt, dependents);
   const priorRecordState = recordIsActive(record) ? "active" : "removed";
   const removed = {
     ...record,
@@ -1554,8 +1604,8 @@ const removeStrategicRecord = (
   // ADR-043 §3, as task.remove: refuse rather than orphan. The caller detaches
   // the referring record first, which keeps every removal a decision someone
   // made rather than a cascade nobody saw.
-  if (strategicRecordDependents(transaction, record).length > 0)
-    return precondition(command, occurredAt);
+  const dependents = strategicRecordDependents(transaction, record);
+  if (dependents.length > 0) return blocked(command, occurredAt, dependents);
   const priorRecordState = strategicRecordState(record);
   const removed = setStrategicRecordState(record, "removed", occurredAt);
   if (!transaction.updateStrategicRecord(removed, record.version))
@@ -4676,11 +4726,20 @@ export const executeWave2Command = (
       }
       // ADR-043 §3 — a Task that still has active children is not a leaf.
       // listTasksInSpace already filters to recordState "active", so a child
-      // that was itself removed does not block. Refuse rather than orphan.
+      // that was itself removed does not block. Refuse rather than orphan,
+      // and name the blocker the same way every other removal does, instead
+      // of merging it into command.precondition_failed. Tasks have no
+      // recordType — that field exists because strategicRecord covers
+      // fifteen types.
       const activeChildren = transaction
         .listTasksInSpace(task.workspaceId, task.spaceId)
-        .filter((candidate) => candidate.parentTaskId === task.id).length;
-      if (activeChildren > 0) return precondition(command, occurredAt);
+        .filter((candidate) => candidate.parentTaskId === task.id)
+        .map((candidate) => ({
+          recordId: candidate.id,
+          recordKind: "task" as const,
+        }));
+      if (activeChildren.length > 0)
+        return blocked(command, occurredAt, activeChildren);
       const priorRecordState = task.recordState;
       const updated: Task = {
         ...task,
@@ -7203,7 +7262,7 @@ const descriptorState = (
   available: boolean;
   recordIds: string[];
   versions: Record<string, number>;
-  reason?: "already_undone" | "later_change";
+  reason?: "already_undone" | "later_change" | "still_referenced";
 } => {
   if (descriptor.consumedByCommandId !== undefined) {
     return {
@@ -7466,18 +7525,28 @@ const descriptorState = (
       // Taking a create back removes the Task, so version equality is not
       // enough: a child does not bump its parent's version, and removing a
       // parent that has one would orphan it (ADR-043 §3, as task.remove).
+      // The version mismatch wins over a reference: it is the older truth and
+      // the one the caller cannot act on, since detaching every child would
+      // still leave the undo unavailable. Edited independently from the
+      // strategic.undo_create and record.undo_create cases above, which
+      // resolve the same precedence the same way.
       const task = view.getTask(descriptor.taskId);
-      const orphans =
-        task === undefined
-          ? false
-          : view
-              .listTasksInSpace(task.workspaceId, task.spaceId)
-              .some((candidate) => candidate.parentTaskId === task.id);
-      return task !== undefined &&
-        task.recordState === "active" &&
-        task.completionState === "open" &&
-        task.version === descriptor.resultingVersion &&
-        !orphans
+      if (
+        task === undefined ||
+        task.recordState !== "active" ||
+        task.completionState !== "open" ||
+        task.version !== descriptor.resultingVersion
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      const children = view
+        .listTasksInSpace(task.workspaceId, task.spaceId)
+        .filter((candidate) => candidate.parentTaskId === task.id);
+      return children.length === 0
         ? {
             available: true,
             recordIds: [task.id],
@@ -7487,7 +7556,7 @@ const descriptorState = (
             available: false,
             recordIds: [],
             versions: {},
-            reason: "later_change",
+            reason: "still_referenced",
           };
     }
     case "task.restore_parent":
@@ -7512,11 +7581,25 @@ const descriptorState = (
       // Taking a create back removes the record, so version equality is not
       // enough: a person, opportunity or link attached afterwards does not
       // bump the record's version, and removing it would orphan them.
+      // The version mismatch wins over a reference: it is the older truth and
+      // the one the caller cannot act on, since detaching every dependent
+      // would still leave the version gap the undo cannot cross. Edited
+      // independently from the record.undo_create case below, which resolves
+      // the same precedence the same way.
       const record = view.getStrategicRecord(descriptor.recordId);
-      return record !== undefined &&
-        strategicRecordState(record) === "active" &&
-        record.version === descriptor.resultingVersion &&
-        strategicRecordDependents(view, record).length === 0
+      if (
+        record === undefined ||
+        strategicRecordState(record) !== "active" ||
+        record.version !== descriptor.resultingVersion
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      const dependents = strategicRecordDependents(view, record);
+      return dependents.length === 0
         ? {
             available: true,
             recordIds: [record.id],
@@ -7526,7 +7609,7 @@ const descriptorState = (
             available: false,
             recordIds: [],
             versions: {},
-            reason: "later_change",
+            reason: "still_referenced",
           };
     }
     case "record.undo_create":
@@ -7541,21 +7624,36 @@ const descriptorState = (
               );
       // Undoing a create removes the record, so it has to re-run the guard the
       // explicit removal runs; restoring one only has to find it unchanged.
+      //
+      // The version mismatch wins over a reference: it is the older truth and
+      // the one the caller cannot act on, since detaching every dependent
+      // would still leave the version gap the undo cannot cross. Edited
+      // independently from the strategic.undo_create case above, which
+      // resolves the same precedence the same way.
+      if (
+        record === undefined ||
+        record.version !== descriptor.resultingVersion
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
       const orphans =
         descriptor.kind === "record.undo_create" &&
-        record !== undefined &&
         tableRecordDependents(view, record, descriptor.recordKind).length > 0;
-      return record?.version === descriptor.resultingVersion && !orphans
+      return orphans
         ? {
-            available: true,
-            recordIds: [record.id],
-            versions: { [record.id]: record.version },
-          }
-        : {
             available: false,
             recordIds: [],
             versions: {},
-            reason: "later_change",
+            reason: "still_referenced",
+          }
+        : {
+            available: true,
+            recordIds: [record.id],
+            versions: { [record.id]: record.version },
           };
     }
     case "strategic.restore_record_state": {
