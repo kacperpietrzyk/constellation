@@ -319,11 +319,49 @@ const connectToBrowser = async (process, browserUserData) => {
   throw new Error(`PACKAGED_ALPHA_CDP_CONNECT_TIMEOUT_${lastObservation}`);
 };
 
+/**
+ * A packaged wait that times out says only which condition never came true,
+ * which is the least useful half of the story: the surface it was watching may
+ * have thrown, rendered an error, or never navigated. This reads the renderer's
+ * own state on the way out — strictly in the failure path, and never allowed to
+ * replace the original diagnostic with a diagnostic-collection failure.
+ */
+const rendererDiagnostics = async (client) => {
+  try {
+    return await client.evaluate(`(() => {
+      const text = (selector) =>
+        document.querySelector(selector)?.textContent?.trim().slice(0, 200) ??
+        null;
+      return JSON.stringify({
+        url: location.href,
+        activeSurface:
+          document.querySelector(".nav-item.active")?.getAttribute("data-surface") ??
+          null,
+        shellTab:
+          document.querySelector(".shell-tab.active [data-shell-tab]")?.getAttribute(
+            "data-shell-tab",
+          ) ?? null,
+        error: text(".error-banner") ?? text("[role=alert]"),
+        status: text(".sync-state") ?? text(".status-line"),
+        documentCanvas: document.querySelector(".document-canvas") !== null,
+        documentShell: document.querySelector(".document-editor-shell") !== null,
+        listItems: document.querySelectorAll("li, .list-row").length,
+        bodyStart: document.body?.innerHTML?.slice(0, 600) ?? null,
+      });
+    })()`);
+  } catch (error) {
+    return `DIAGNOSTICS_UNAVAILABLE:${String(error).slice(0, 200)}`;
+  }
+};
+
 const waitFor = async (client, expression, diagnosticCode) => {
   for (let attempt = 0; attempt < 300; attempt += 1) {
     if (await client.evaluate(expression)) return;
     await delay(100);
   }
+  process.stderr.write(
+    `${diagnosticCode} renderer state: ${await rendererDiagnostics(client)}\n`,
+  );
   throw new Error(diagnosticCode);
 };
 
