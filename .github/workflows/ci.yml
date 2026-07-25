@@ -49,6 +49,11 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: npm run audit:dependencies
 
+      - name: Report build-tooling advisories
+        if: matrix.os == 'ubuntu-latest'
+        continue-on-error: true
+        run: npm run audit:dependencies:report
+
   hub:
     name: Self-hosted Hub and PostgreSQL
     runs-on: ubuntu-24.04

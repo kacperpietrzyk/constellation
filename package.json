@@ -14,7 +14,8 @@
     "packages/*"
   ],
   "scripts": {
-    "audit:dependencies": "npm audit --audit-level=high",
+    "audit:dependencies": "npm audit --omit=dev --audit-level=high",
+    "audit:dependencies:report": "npm audit --audit-level=high",
     "audit:licenses": "node scripts/verify-dependency-licenses.mjs",
     "build": "tsc -b && npm run bundle -w @constellation/mcp && npm run build -w @constellation/desktop-preload && npm run build -w @constellation/desktop-ui",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test",

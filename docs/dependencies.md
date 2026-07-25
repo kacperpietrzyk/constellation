@@ -1,10 +1,20 @@
 # Dependency inventory
 
 Constellation pins direct dependencies and commits the npm lockfile. CI installs
-with `npm ci --ignore-scripts`, runs `npm audit`, and fails the ordinary check
-when any locked package lacks a declared license or uses a license expression
-outside the reviewed allow-list. Workspace links inherit the license from their
-own locked manifest entry rather than bypassing the gate.
+with `npm ci --ignore-scripts` and fails the ordinary check when any locked
+package lacks a declared license or uses a license expression outside the
+reviewed allow-list. Workspace links inherit the license from their own locked
+manifest entry rather than bypassing the gate.
+
+CI also audits the locked graph. The blocking audit is
+`npm audit --omit=dev --audit-level=high`: a high or critical advisory against a
+package that ships in the product stops the build. Development-only advisories
+are reported by a second, non-blocking `npm audit --audit-level=high` step so
+they stay visible in the CI log, but they do not hold a release hostage to a
+build tool with no upstream fix — the desktop packaging
+chain currently carries such advisories at its newest published version, where
+npm's only offered remedy is a downgrade. Those advisories are reviewed on their
+own schedule, not at the merge button.
 
 ## Runtime
 
