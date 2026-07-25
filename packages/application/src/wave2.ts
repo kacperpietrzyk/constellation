@@ -7376,6 +7376,32 @@ export const descriptorRecordIds = (
 type RevertAllowance = ReadonlyMap<string, number>;
 
 /**
+ * What this revert has already done to the graph, as the next descriptor will
+ * find it: where each record now stands, and which records it has taken back
+ * altogether. Both are derived by the kernel from compensations it has itself
+ * judged or applied — a caller contributes nothing to either.
+ */
+interface RevertContext {
+  readonly versions: RevertAllowance;
+  readonly removed: ReadonlySet<string>;
+}
+
+/**
+ * Whether taking this command back leaves its record gone. That is what lets a
+ * revert compensate a create whose only dependent is another create the same
+ * revert removes first — the shape every real migration writes, since records
+ * arrive with the relations that point at them.
+ */
+const compensationRemovesRecord = (descriptor: UndoDescriptor): boolean =>
+  descriptor.kind === "task.undo_create" ||
+  descriptor.kind === "strategic.undo_create" ||
+  descriptor.kind === "record.undo_create" ||
+  ((descriptor.kind === "strategic.restore_record_state" ||
+    descriptor.kind === "record.restore_record_state" ||
+    descriptor.kind === "task.restore_record_state") &&
+    descriptor.priorRecordState === "removed");
+
+/**
  * Only a compensation over a single record can take an allowance. A kind that
  * carries a resulting version per record would need us to decide which of them
  * the allowance belongs to, and a guess is not a guard: those refuse exactly as
@@ -7402,6 +7428,7 @@ export const checkpointCommandRecovery = (
   // Newest first, because that is the order the revert compensates in: a
   // command only makes way for the ones applied before it.
   const allowance = new Map<string, number>();
+  const removed = new Set<string>();
   const judged = [...commandIds].reverse().map((targetCommandId) => {
     const descriptor = view.getUndoDescriptor(targetCommandId);
     // No descriptor means the command applied and its kind records no
@@ -7412,7 +7439,13 @@ export const checkpointCommandRecovery = (
         available: false,
         reason: "unsupported" as const,
       };
-    const state = descriptorState(view, withAllowance(descriptor, allowance));
+    const state = descriptorState(view, withAllowance(descriptor, allowance), {
+      versions: allowance,
+      removed,
+    });
+    if (state.available && compensationRemovesRecord(descriptor))
+      for (const recordId of descriptorRecordIds(descriptor))
+        removed.add(recordId);
     // Where this compensation leaves the record, as the next descriptor will
     // find it. Nothing is predicted: judging read-only, the record does not
     // move, so the version the next check will see is the one it has now — and
@@ -7437,6 +7470,11 @@ export const checkpointCommandRecovery = (
 const descriptorState = (
   view: ApplicationWave2ReadView,
   descriptor: UndoDescriptor,
+  // ADR-069. Set only while a checkpoint revert is being judged: the records
+  // its earlier compensations will already have taken back. A create is
+  // blocked by what still points at it, and inside a revert the thing pointing
+  // at it may be another create this same revert removes first.
+  revert?: RevertContext,
 ): {
   available: boolean;
   recordIds: string[];
@@ -7724,7 +7762,11 @@ const descriptorState = (
         };
       const children = view
         .listTasksInSpace(task.workspaceId, task.spaceId)
-        .filter((candidate) => candidate.parentTaskId === task.id);
+        .filter(
+          (candidate) =>
+            candidate.parentTaskId === task.id &&
+            revert?.removed.has(candidate.id) !== true,
+        );
       return children.length === 0
         ? {
             available: true,
@@ -7777,7 +7819,9 @@ const descriptorState = (
           versions: {},
           reason: "later_change",
         };
-      const dependents = strategicRecordDependents(view, record);
+      const dependents = strategicRecordDependents(view, record).filter(
+        (dependent) => revert?.removed.has(dependent.recordId) !== true,
+      );
       return dependents.length === 0
         ? {
             available: true,
@@ -7821,7 +7865,9 @@ const descriptorState = (
         };
       const orphans =
         descriptor.kind === "record.undo_create" &&
-        tableRecordDependents(view, record, descriptor.recordKind).length > 0;
+        tableRecordDependents(view, record, descriptor.recordKind).filter(
+          (dependent) => revert?.removed.has(dependent.recordId) !== true,
+        ).length > 0;
       return orphans
         ? {
             available: false,

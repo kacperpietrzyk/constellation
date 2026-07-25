@@ -1413,6 +1413,79 @@ describe("agent grant delegation reaches the product without widening scope", ()
   });
 
   /**
+   * The shape a real migration writes: records arrive with the relations that
+   * point at them. Taking back the create of a record something else points at
+   * would orphan that work — unless the thing pointing at it is another create
+   * this same revert removes first, which only the revert can know.
+   */
+  it("reverts a captured create whose only dependent is another create in the same checkpoint", () => {
+    const { agent, harness } = openCheckpoint();
+    const organizationId = "41000000-0000-4000-8000-0000000000a1";
+    const personId = "41000000-0000-4000-8000-0000000000a2";
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("membership-org-create"),
+          checkpointId: ids.checkpoint,
+          commandName: "relationship.organizationCreate",
+          payload: {
+            organizationId,
+            spaceId: ids.space,
+            name: "Migrated client",
+            relationshipState: "active",
+          },
+        }),
+      ),
+      "success",
+    );
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("membership-person-create"),
+          checkpointId: ids.checkpoint,
+          commandName: "relationship.personCreate",
+          payload: {
+            personId,
+            spaceId: ids.space,
+            name: "Migrated contact",
+            organizationId,
+          },
+        }),
+      ),
+      "success",
+    );
+    const preview = previewRevert(harness, agent, ids.checkpoint);
+    assert.deepEqual(preview.blocked, []);
+    assert.equal(preview.available, true);
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("membership-graph-revert"),
+          commandName: "agent.checkpointRevert",
+          payload: { checkpointId: ids.checkpoint, runId: ids.hostAgentRun },
+        }),
+      ),
+      "success",
+    );
+    const search = harness.kernel.query(agent, {
+      contractVersion: 1,
+      queryName: "search.global",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceIds: [ids.space], text: "Migrated" },
+    });
+    assert.deepEqual(
+      search.kind === "query_result" &&
+        search.result.outcome === "success" &&
+        search.result.projection.kind === "search.global" &&
+        search.result.projection.items.map((item) => item.recordId),
+      [],
+      "both records are gone: the slice was taken back whole, in dependency order",
+    );
+  });
+
+  /**
    * The guard the allowance must not widen. A lone undo of a create whose
    * record moved on is exactly what `later_change` is for; only a revert knows
    * that the later change is one it is taking back in the same act.
