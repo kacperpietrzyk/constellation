@@ -120,10 +120,19 @@ import path from "node:path";
 // bez zmian; entry rośnie o 4 B i ma własny duży zapas). Total JS rośnie o
 // 280 B względem zmierzonego baseline; limit total dostaje ok. 1 kB zapasu,
 // pozostałe bez zmian.
+// 2026-07-25 (0.1.5, findings z pierwszej migracji): kontrakt rośnie o dwie
+// komendy korygujące osobę i organizację, o drugi koniec relacji zadania, o
+// dowody na Projekcie i właściciela Opportunity, oraz o opublikowaną prozę,
+// którą agent czyta jako kontrakt (słownik odmów revertu i opis treści). To
+// wszystko jedzie w paczce contracts, więc trafia do entry i do total, choć
+// samo UI zyskuje tylko jeden filtr w WorkSurface. Największy leniwy chunk i
+// stylesheet bez zmian; entry ma własny duży zapas. Total JS rośnie o ok.
+// 2.2 kB względem zmierzonego baseline; limit total dostaje ok. 1.3 kB zapasu,
+// pozostałe bez zmian.
 const limits = {
   entryBytes: 560_000,
   entryGzipBytes: 147_500,
-  totalJavaScriptBytes: 1_349_500,
+  totalJavaScriptBytes: 1_353_000,
   largestLazyJavaScriptBytes: 565_000,
   stylesheetBytes: 189_500,
 };

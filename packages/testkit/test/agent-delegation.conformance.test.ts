@@ -1280,4 +1280,256 @@ describe("agent grant delegation reaches the product without widening scope", ()
     assert.deepEqual(preview.commandIds, [inside.commandId]);
     assert.deepEqual(preview.affectedRecordIds, [ids.task]);
   });
+
+  /**
+   * A preview that answers `available: true` for a revert that then refuses is
+   * the same success-shaped failure as the empty checkpoint above, one layer
+   * in: the caller spends a checkpoint it cannot get back to learn what the
+   * preview already had every fact to say. The single-command preview has
+   * always evaluated the compensation itself; the checkpoint preview evaluated
+   * only whether an earlier undo had consumed it, so a record moved on by work
+   * outside the checkpoint stayed invisible until the revert.
+   */
+  it("previews a captured create as blocked once work outside the checkpoint moved the record", () => {
+    const { agent, harness } = openCheckpoint();
+    const inside = metadata("membership-blocked-create");
+    assert.equal(
+      commandOutcome(
+        harness.kernel.execute(agent, {
+          ...inside,
+          checkpointId: ids.checkpoint,
+          commandName: "task.create",
+          payload: {
+            taskId: ids.task,
+            spaceId: ids.space,
+            title: "Inside the checkpoint",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    // Outside the checkpoint, so its compensation is not part of this revert:
+    // taking the create back would erase a change nothing in this slice can
+    // restore.
+    assert.equal(
+      commandOutcome(
+        harness.kernel.execute(agent, {
+          ...metadata("membership-outside-update", { [ids.task]: 1 }),
+          commandName: "task.updateDetails",
+          payload: { taskId: ids.task, title: "Moved on afterwards" },
+        }),
+      ).outcome,
+      "success",
+    );
+    const preview = previewRevert(harness, agent, ids.checkpoint);
+    assert.equal(preview.available, false);
+    assert.equal(preview.unavailableReason, "later_change");
+    // The revert names the commands that blocked it; the preview must name the
+    // same ones, or the two surfaces tell different stories about one state.
+    assert.deepEqual(preview.blocked, [
+      { targetCommandId: inside.commandId, unavailableReason: "later_change" },
+    ]);
+  });
+
+  /**
+   * The other half of the same question. A checkpoint is a slice, and a slice
+   * that creates a record and then corrects it is ordinary work — the
+   * correction is captured too, so compensating the whole checkpoint newest
+   * first leaves nothing behind. Before this, the create's compensation
+   * required the record to still stand at the version the create produced, so
+   * a slice containing its own correction could never be reverted at all, and
+   * no order of calls repaired it: undoing the correction compensates forward
+   * and moves the record further away.
+   */
+  it("reverts a captured create whose only later change is captured in the same checkpoint", () => {
+    const { agent, harness } = openCheckpoint();
+    const create = metadata("membership-create-then-correct");
+    assert.equal(
+      commandOutcome(
+        harness.kernel.execute(agent, {
+          ...create,
+          checkpointId: ids.checkpoint,
+          commandName: "task.create",
+          payload: {
+            taskId: ids.task,
+            spaceId: ids.space,
+            title: "Created in the slice",
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+    const correction = metadata("membership-correction", { [ids.task]: 1 });
+    assert.equal(
+      commandOutcome(
+        harness.kernel.execute(agent, {
+          ...correction,
+          checkpointId: ids.checkpoint,
+          commandName: "task.updateDetails",
+          payload: { taskId: ids.task, title: "Corrected in the same slice" },
+        }),
+      ).outcome,
+      "success",
+    );
+    const preview = previewRevert(harness, agent, ids.checkpoint);
+    assert.equal(preview.available, true);
+    assert.equal(preview.unavailableReason, undefined);
+    assert.deepEqual(preview.blocked, []);
+    const reverted = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("membership-revert"),
+        commandName: "agent.checkpointRevert",
+        payload: { checkpointId: ids.checkpoint, runId: ids.hostAgentRun },
+      }),
+    );
+    assert.equal(reverted.outcome, "success", JSON.stringify(reverted));
+    assert.equal(
+      reverted.outcome === "success" && reverted.diagnosticCode,
+      "agent.checkpoint_reverted",
+    );
+    // Both captured commands, taken back as one act.
+    assert.deepEqual(
+      reverted.outcome === "success" &&
+        reverted.projection.kind === "agent.checkpoint_reverted" &&
+        [...reverted.projection.compensatedCommandIds].sort(),
+      [create.commandId, correction.commandId].sort(),
+    );
+    const gone = harness.kernel.query(agent, {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space, limit: 50 },
+    });
+    assert.equal(
+      gone.kind === "query_result" &&
+        gone.result.outcome === "success" &&
+        gone.result.projection.kind === "task.list" &&
+        gone.result.projection.items.some((item) => item.id === ids.task),
+      false,
+      "the created Task is gone, so the slice was taken back rather than reported as taken back",
+    );
+  });
+
+  /**
+   * The shape a real migration writes: records arrive with the relations that
+   * point at them. Taking back the create of a record something else points at
+   * would orphan that work — unless the thing pointing at it is another create
+   * this same revert removes first, which only the revert can know.
+   */
+  it("reverts a captured create whose only dependent is another create in the same checkpoint", () => {
+    const { agent, harness } = openCheckpoint();
+    const organizationId = "41000000-0000-4000-8000-0000000000a1";
+    const personId = "41000000-0000-4000-8000-0000000000a2";
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("membership-org-create"),
+          checkpointId: ids.checkpoint,
+          commandName: "relationship.organizationCreate",
+          payload: {
+            organizationId,
+            spaceId: ids.space,
+            name: "Migrated client",
+            relationshipState: "active",
+          },
+        }),
+      ),
+      "success",
+    );
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("membership-person-create"),
+          checkpointId: ids.checkpoint,
+          commandName: "relationship.personCreate",
+          payload: {
+            personId,
+            spaceId: ids.space,
+            name: "Migrated contact",
+            organizationId,
+          },
+        }),
+      ),
+      "success",
+    );
+    const preview = previewRevert(harness, agent, ids.checkpoint);
+    assert.deepEqual(preview.blocked, []);
+    assert.equal(preview.available, true);
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("membership-graph-revert"),
+          commandName: "agent.checkpointRevert",
+          payload: { checkpointId: ids.checkpoint, runId: ids.hostAgentRun },
+        }),
+      ),
+      "success",
+    );
+    const search = harness.kernel.query(agent, {
+      contractVersion: 1,
+      queryName: "search.global",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceIds: [ids.space], text: "Migrated" },
+    });
+    assert.deepEqual(
+      search.kind === "query_result" &&
+        search.result.outcome === "success" &&
+        search.result.projection.kind === "search.global" &&
+        search.result.projection.items.map((item) => item.recordId),
+      [],
+      "both records are gone: the slice was taken back whole, in dependency order",
+    );
+  });
+
+  /**
+   * The guard the allowance must not widen. A lone undo of a create whose
+   * record moved on is exactly what `later_change` is for; only a revert knows
+   * that the later change is one it is taking back in the same act.
+   */
+  it("still refuses a single undo of a create whose record moved on", () => {
+    const { agent, harness } = openCheckpoint();
+    const create = metadata("membership-lone-create");
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...create,
+          checkpointId: ids.checkpoint,
+          commandName: "task.create",
+          payload: {
+            taskId: ids.task,
+            spaceId: ids.space,
+            title: "Created in the slice",
+          },
+        }),
+      ),
+      "success",
+    );
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("membership-lone-correction", { [ids.task]: 1 }),
+          checkpointId: ids.checkpoint,
+          commandName: "task.updateDetails",
+          payload: { taskId: ids.task, title: "Corrected in the same slice" },
+        }),
+      ),
+      "success",
+    );
+    const undone = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("membership-lone-undo", { [ids.task]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: create.commandId },
+      }),
+    );
+    assert.equal(undone.outcome, "conflict");
+    assert.equal(
+      undone.outcome === "conflict" && undone.diagnosticCode,
+      "undo.not_available",
+    );
+  });
 });

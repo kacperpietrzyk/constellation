@@ -24,6 +24,17 @@ import {
   createRichDocumentSeed,
   parseStructuredDocument,
 } from "@constellation/realtime-documents";
+// Host-side only: this module hashes with node:crypto, so it is imported by
+// its own path rather than through the package index the renderer bundles.
+import {
+  AgentContentUnreadableError,
+  agentContentBaseline,
+  projectAgentContent,
+  storedStateVector,
+  storedStateVectorSha256,
+  type AgentContentSeed,
+  type AgentContentState,
+} from "@constellation/realtime-documents/agent-content";
 
 import type { HubConnection } from "./hub-connection-custody.js";
 
@@ -783,10 +794,18 @@ export const createAgentDocumentTextPort = (input: {
         adapter.destroy();
       }
     },
+    /**
+     * ADR-070. Total: an owner with no body, one still in plain text, and one
+     * already rich all answer, because all three are states rather than
+     * failures. The digest describes what is stored — quote it back and a
+     * write refuses if anything moved meanwhile — while the body describes
+     * what that write will start from.
+     */
     readStructured: (
-      request: ContentAddress,
+      request: ContentAddress & { readonly seed?: AgentContentSeed },
     ):
       | {
+          readonly contentState: AgentContentState;
           readonly content: StructuredDocument;
           readonly text: string;
           readonly entityReferences: ReturnType<
@@ -794,24 +813,25 @@ export const createAgentDocumentTextPort = (input: {
           >;
           readonly stateVectorSha256: string;
         }
+      // Undefined means unreadable, not absent: absence is a state this read
+      // reports with a digest.
       | undefined => {
       const state = input.store.loadCollaborativeContentState(
         contentScope(request),
       )?.state;
-      if (state === undefined) return undefined;
-      const adapter = new YjsRealtimeDocumentAdapter(state);
       try {
-        const checkpoint = adapter.checkpoint();
-        return {
-          content: adapter.getStructuredContent(),
-          text: adapter.getText(),
-          entityReferences: adapter.getEntityReferences(),
-          stateVectorSha256: createHash("sha256")
-            .update(checkpoint.stateVector)
-            .digest("hex"),
-        };
-      } finally {
-        adapter.destroy();
+        return projectAgentContent({
+          ...(state === undefined ? {} : { state }),
+          ...(request.seed === undefined ? {} : { seed: request.seed }),
+        });
+      } catch (error) {
+        // The one state a total read still cannot answer — a stored body whose
+        // rich projection exceeds the structured bound, or holds nodes outside
+        // the schema. It is named rather than thrown: reaching an agent as an
+        // internal fault is the defect this release closed for plain text, and
+        // it must not come back for another state.
+        if (error instanceof AgentContentUnreadableError) return undefined;
+        throw error;
       }
     },
     importStructured: (
@@ -988,6 +1008,14 @@ export const createAgentDocumentTextPort = (input: {
         adapter.destroy();
       }
     },
+    /**
+     * ADR-070. A write that can start a body, not only replace one. The digest
+     * check comes first and covers every case: quoting the absent-content
+     * digest says "I expect this owner to have nothing yet", and a body that
+     * appeared meanwhile refuses as an ordinary stale write. What follows is
+     * one attributed transaction that always leaves the owner rich-v1 — the
+     * only format the desktop Project surface can open.
+     */
     replaceStructured: (
       request: ContentAddress & {
         readonly content: unknown;
@@ -996,6 +1024,7 @@ export const createAgentDocumentTextPort = (input: {
         readonly principalId: string;
         readonly runId: string;
         readonly deviceId: DeviceId;
+        readonly seed?: AgentContentSeed;
       },
     ):
       | {
@@ -1003,6 +1032,8 @@ export const createAgentDocumentTextPort = (input: {
           readonly revisionId: DocumentRevisionId;
           readonly stateVectorSha256: string;
           readonly idempotentReplay: boolean;
+          readonly contentCreated: boolean;
+          readonly formatUpgraded: boolean;
         }
       | { readonly outcome: "conflict"; readonly diagnosticCode: string }
       | { readonly outcome: "rejected"; readonly diagnosticCode: string } => {
@@ -1044,6 +1075,10 @@ export const createAgentDocumentTextPort = (input: {
             diagnosticCode: "document.content_unavailable",
           };
         return {
+          // A stored receipt is the whole answer: the original write already
+          // did whatever creating or upgrading was needed.
+          contentCreated: false,
+          formatUpgraded: false,
           outcome: "success",
           revisionId: receipt.restoredFromRevisionId,
           stateVectorSha256: createHash("sha256")
@@ -1072,22 +1107,23 @@ export const createAgentDocumentTextPort = (input: {
         };
       const existing =
         input.store.loadCollaborativeContentState(documentScope)?.state;
-      if (existing === undefined)
-        return {
-          outcome: "rejected",
-          diagnosticCode: "document.content_unavailable",
-        };
-      const adapter = new YjsRealtimeDocumentAdapter(existing);
+      // The compare-and-set runs against what is *stored*, before any of it is
+      // materialised: an owner with no body answers the absent digest, so a
+      // first write is checked exactly like every later one and two agents
+      // racing to create the same body cannot both win.
+      const priorDigest = storedStateVectorSha256(existing);
+      const baseline = agentContentBaseline({
+        ...(existing === undefined ? {} : { state: existing }),
+        ...(request.seed === undefined ? {} : { seed: request.seed }),
+        origin: {
+          kind: "agent",
+          principalId: request.principalId,
+          runId: request.runId,
+        },
+      });
+      const adapter = baseline.adapter;
       try {
-        if (adapter.getFormat() !== "rich-v1")
-          return {
-            outcome: "rejected",
-            diagnosticCode: "document.schema_upgrade_required",
-          };
         const priorCheckpoint = adapter.checkpoint();
-        const priorDigest = createHash("sha256")
-          .update(priorCheckpoint.stateVector)
-          .digest("hex");
         if (pending !== undefined) {
           const currentContentDigest = createHash("sha256")
             .update(JSON.stringify(adapter.getStructuredContent()))
@@ -1117,6 +1153,10 @@ export const createAgentDocumentTextPort = (input: {
                 .update(checkpoint.stateVector)
                 .digest("hex"),
               idempotentReplay: true,
+              // A replay reports the work the original write did, not what a
+              // second one would do: by now the body exists and is rich.
+              contentCreated: baseline.created,
+              formatUpgraded: baseline.upgradedFrom !== undefined,
             };
           }
           const pendingDigest = createHash("sha256")
@@ -1135,10 +1175,6 @@ export const createAgentDocumentTextPort = (input: {
             outcome: "conflict",
             diagnosticCode: "document.state_vector_stale",
           };
-        let update: Uint8Array | undefined;
-        const stop = adapter.onUpdate((value) => {
-          update = value;
-        });
         try {
           adapter.replaceStructuredContent(content, {
             kind: "agent",
@@ -1150,8 +1186,6 @@ export const createAgentDocumentTextPort = (input: {
             outcome: "rejected",
             diagnosticCode: "document.structured_content_invalid",
           };
-        } finally {
-          stop();
         }
         const revisionId =
           pending?.id ?? DocumentRevisionIdSchema.parse(randomUUID());
@@ -1159,7 +1193,10 @@ export const createAgentDocumentTextPort = (input: {
           input.store.storeCollaborativeContentRevision({
             id: revisionId,
             ...documentScope,
-            name: `Before agent structured write (run ${request.runId.slice(0, 8)}) ${receiptSuffix}`,
+            // The markers stay inside the parenthesis: the replay ledger
+            // matches on this prefix and on the receipt suffix, and a name that
+            // broke either would turn an interrupted write into a second one.
+            name: `Before agent structured write (run ${request.runId.slice(0, 8)}${baseline.created ? ", created body" : ""}${baseline.upgradedFrom === undefined ? "" : ", upgraded plain-v1"}) ${receiptSuffix}`,
             ...priorCheckpoint,
             createdBy: request.principalId as never,
             createdByDeviceId: request.deviceId,
@@ -1168,7 +1205,15 @@ export const createAgentDocumentTextPort = (input: {
           });
         const state = adapter.encodeState();
         const updatedAt = now();
-        if (update === undefined || input.connection() === undefined) {
+        // Seeding and the plain-v1 upgrade happen before the observer is
+        // attached, so the update a collaborator receives is computed from the
+        // state that was actually stored rather than from the last transaction
+        // alone — otherwise a coordinated peer would be sent a change that
+        // edits a body it never received.
+        const collaboratorUpdate = adapter.encodeUpdateSince(
+          storedStateVector(existing),
+        );
+        if (input.connection() === undefined) {
           input.store.storeCollaborativeContentState({
             ...documentScope,
             state,
@@ -1179,7 +1224,7 @@ export const createAgentDocumentTextPort = (input: {
             id: randomUUID(),
             ...documentScope,
             state,
-            update,
+            update: collaboratorUpdate,
             createdAt: updatedAt,
           });
         }
@@ -1218,6 +1263,8 @@ export const createAgentDocumentTextPort = (input: {
             .update(resultCheckpoint.stateVector)
             .digest("hex"),
           idempotentReplay: false,
+          contentCreated: baseline.created,
+          formatUpgraded: baseline.upgradedFrom !== undefined,
         };
       } finally {
         adapter.destroy();

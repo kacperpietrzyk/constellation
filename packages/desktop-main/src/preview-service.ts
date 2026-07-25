@@ -53,6 +53,8 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "relationship.organizationCreate",
   "relationship.organizationRemove",
   "relationship.personCreate",
+  "relationship.personUpdate",
+  "relationship.organizationUpdate",
   "relationship.personRemove",
   "opportunity.create",
   "opportunity.remove",

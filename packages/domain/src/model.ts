@@ -477,6 +477,13 @@ export interface Project {
   // Absent means the intent was never written, not that it is empty. See
   // RecordNarrativeSchema; projections coalesce it and raise needsReview.
   readonly intendedOutcome?: string;
+  /**
+   * The Sources this Project rests on, the way an Opportunity, a Decision and
+   * a relationship Fact already carry theirs. Absent means none were recorded;
+   * an empty array and absence are the same statement, so the field is omitted
+   * rather than written empty.
+   */
+  readonly evidenceSourceIds?: readonly KnowledgeSourceId[];
   readonly lifecycle: "active" | "closed";
   readonly closedAt?: string;
   readonly closedBy?: PrincipalId;
@@ -613,6 +620,12 @@ export type StrategicRecord =
       readonly kind: "opportunity";
       readonly title: string;
       readonly organizationId: StrategicRecordId;
+      /**
+       * Whose deal this is, as distinct from who is named on it. The people
+       * who own deals here are not workspace members and never will be, so the
+       * owner is a Person in the graph rather than a principal.
+       */
+      readonly ownerPersonId?: StrategicRecordId;
       readonly personIds: readonly StrategicRecordId[];
       readonly need: string;
       readonly qualification: string;
@@ -696,6 +709,7 @@ export type StrategicRecord =
       readonly linkType:
         | "project_advances_initiative"
         | "project_serves_area"
+        | "project_serves_organization"
         | "task_depends_on_task";
       readonly sourceRecordId: string;
       readonly targetRecordId: string;
@@ -762,21 +776,65 @@ export type StrategicRecord =
       readonly meeting: ImportedMeeting;
     });
 
-export interface TaskProjectRelation {
+/**
+ * A Task's contribution to the work it serves. The far end is a Project or an
+ * Opportunity — never both, and never neither: a per-client next action dies
+ * with the deal it belongs to, and hanging it on a reporting Project was the
+ * flattening the first migration had to accept.
+ */
+export type TaskWorkRelation = {
   readonly id: RelationId;
   readonly workspaceId: WorkspaceId;
   readonly spaceId: SpaceId;
-  readonly relationType: "task_contributes_to_project";
   readonly state: "active" | "removed";
   readonly removedAt?: string;
   readonly taskId: TaskId;
-  readonly projectId: ProjectId;
   readonly createdBy: PrincipalId;
   readonly version: number;
   readonly createdAt: string;
-}
+} & (
+  | {
+      readonly relationType: "task_contributes_to_project";
+      readonly projectId: ProjectId;
+    }
+  | {
+      readonly relationType: "task_contributes_to_opportunity";
+      readonly opportunityId: StrategicRecordId;
+    }
+);
+
+/** @deprecated The name predates the second far end; prefer TaskWorkRelation. */
+export type TaskProjectRelation = TaskWorkRelation;
 
 export type UndoDescriptor =
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "relationship.restore_person";
+      readonly personId: StrategicRecordId;
+      // The whole prior state, not the fields the update happened to touch:
+      // a compensation that depended on which fields moved would have to be
+      // read together with the command to be understood.
+      readonly priorName: string;
+      readonly priorOrganizationId?: StrategicRecordId;
+      readonly priorRole?: string;
+      readonly priorEmail?: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "relationship.restore_organization";
+      readonly organizationId: StrategicRecordId;
+      readonly priorName: string;
+      readonly priorRelationshipState: "prospect" | "active" | "inactive";
+      readonly priorNextAction?: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
   | {
       readonly targetCommandId: CommandId;
       readonly workspaceId: WorkspaceId;
@@ -786,6 +844,10 @@ export type UndoDescriptor =
       // Absent restores the record to "never written", which is what an
       // import that supplied no narrative has to be able to return to.
       readonly priorOutcome?: string;
+      // Carried for the same reason as the outcome: an update that also
+      // rewrote the evidence would otherwise be half compensated, restoring
+      // the narrative while silently keeping the new provenance.
+      readonly priorEvidenceSourceIds?: readonly KnowledgeSourceId[];
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }
@@ -1230,6 +1292,7 @@ export type DomainEvent = { readonly commandId: CommandId } & (
         | "agent.grant_revoked"
         | "agent.grant_scope_changed"
         | "agent.checkpoint_created"
+        | "agent.checkpoint_reverted"
         | "agent.handoff_submitted";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;
@@ -1485,7 +1548,9 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly aggregateId: RelationId;
       readonly aggregateVersion: number;
       readonly taskId: TaskId;
-      readonly projectId: ProjectId;
+      // Exactly one far end, the same one the relation carries.
+      readonly projectId?: ProjectId;
+      readonly opportunityId?: StrategicRecordId;
       readonly occurredAt: string;
     }
   | {

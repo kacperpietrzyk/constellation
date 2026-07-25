@@ -45,6 +45,7 @@ import {
   isApplicationWave2ReadView,
   RetryableUnitOfWorkError,
 } from "./ports.js";
+import { checkpointCommandRecovery, descriptorRecordIds } from "./wave2.js";
 
 export type AgentAccessCommand = Extract<
   CommandEnvelope,
@@ -952,24 +953,39 @@ export const executeAgentAccessQuery = (
     });
   if (!canRead || checkpoint === undefined) return denied(query, kernelTime);
   if (!isApplicationWave2ReadView(view)) return denied(query, kernelTime);
-  const descriptors = checkpoint.commandIds.map((id) =>
-    view.getUndoDescriptor(id),
+  // The same judgement the revert applies, taken before the checkpoint is
+  // spent rather than after: a compensation that no longer applies is named
+  // here, per command, instead of being discovered by a revert that refuses.
+  const recovery = checkpointCommandRecovery(view, checkpoint.commandIds);
+  const descriptors = recovery.map((item) => item.descriptor);
+  const blocked = recovery.flatMap((item) =>
+    item.available
+      ? []
+      : [
+          {
+            targetCommandId: item.targetCommandId,
+            unavailableReason: item.reason ?? "later_change",
+          },
+        ],
   );
   // "empty" outranks every per-command reason because there are no commands to
   // have a reason about. A checkpoint captures a command only when that
   // command's envelope names it in `checkpointId`; opening one and then writing
   // without the field leaves this list empty, and answering `available: true`
   // would promise a rollback that compensates nothing.
+  //
+  // Below that, the precedence is the revert's own: "unsupported" is fatal for
+  // the command kind and no retry will ever clear it, so it is named ahead of
+  // the reasons a person can still act on.
   const unavailableReason =
     checkpoint.status === "reverted"
       ? "already_reverted"
       : checkpoint.commandIds.length === 0
         ? "empty"
-        : descriptors.some((item) => item === undefined)
-          ? "unsupported"
-          : descriptors.some((item) => item?.consumedByCommandId !== undefined)
-            ? "later_change"
-            : undefined;
+        : (
+            blocked.find((item) => item.unavailableReason === "unsupported") ??
+            blocked[0]
+          )?.unavailableReason;
   return QueryResultSchema.parse({
     outcome: "success",
     contractVersion: 1,
@@ -981,68 +997,10 @@ export const executeAgentAccessQuery = (
       checkpointId: checkpoint.id,
       available: unavailableReason === undefined,
       commandIds: checkpoint.commandIds,
-      affectedRecordIds: descriptors.flatMap<string>((descriptor) => {
-        if (descriptor === undefined) return [];
-        switch (descriptor.kind) {
-          case "project.restore_outcome":
-            return [descriptor.projectId];
-          case "area.restore_responsibility":
-            return [descriptor.areaId];
-          case "initiative.restore_outcome":
-            return [descriptor.initiativeId];
-          case "taskStatus.restore_definition":
-            return [descriptor.statusId];
-          case "fieldDef.restore_definition":
-            return [descriptor.fieldId];
-          case "template.restore_definition":
-            return [descriptor.templateId];
-          case "automation.restore_definition":
-            return [descriptor.ruleId];
-          case "project.unapply_template":
-            return [descriptor.projectId, ...descriptor.createdTaskIds];
-          case "meeting.unpromote_work_item":
-            return [descriptor.meetingId, descriptor.createdTaskId];
-          case "meeting.restore_work_item":
-          case "meeting.restore_routing":
-            return [descriptor.meetingId];
-          case "meeting.restore_participant_links":
-            return [descriptor.meetingId, ...descriptor.createdPersonIds];
-          case "record.restore_field_value":
-            return [descriptor.recordId];
-          case "workspace.restore_default_status":
-            return [descriptor.workspaceId];
-          case "task.restore_calendar_block":
-          case "task.restore_record_state":
-          case "task.undo_create":
-          case "task.restore_state":
-          case "task.restore_details":
-          case "task.restore_parent":
-          case "task.restore_operational_state":
-            return [descriptor.taskId];
-          case "strategic.undo_create":
-          case "strategic.restore_record_state":
-          case "record.undo_create":
-          case "record.restore_record_state":
-            return [descriptor.recordId];
-          case "savedView.restore_definition":
-            return [descriptor.savedViewId];
-          case "work_link.restore_state":
-            return [descriptor.linkId];
-          case "relation.remove":
-          case "relation.restore":
-            return [descriptor.relationId];
-          case "capture.undo_route":
-            return [descriptor.captureId, descriptor.taskId];
-          case "capture.undo_knowledge_route":
-            return [descriptor.captureId, descriptor.sourceId];
-          case "knowledge.restore_source":
-            return [descriptor.sourceId];
-          case "knowledge.restore_evidence":
-            return [descriptor.documentId];
-          case "knowledge.void_named_version":
-            return [descriptor.namedVersionId];
-        }
-      }),
+      affectedRecordIds: descriptors.flatMap<string>((descriptor) =>
+        descriptor === undefined ? [] : [...descriptorRecordIds(descriptor)],
+      ),
+      blocked,
       ...(unavailableReason === undefined ? {} : { unavailableReason }),
     },
   });

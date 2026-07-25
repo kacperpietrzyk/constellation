@@ -181,6 +181,93 @@ export const checkpointRevertRefusal = (
   return { outcome, result: { diagnosticCode, checkpointId, blocked } };
 };
 
+/**
+ * ADR-069. The kernel's answer to one revert, in the vocabulary the tool has
+ * always published. Both runtimes narrow through here, so a revert refuses
+ * identically on either transport instead of through two copies of a loop that
+ * had to be kept in step by hand.
+ */
+export const checkpointRevertResponse = (
+  checkpointId: string,
+  response:
+    | {
+        readonly kind: "command_outcome";
+        readonly outcome: Record<string, unknown> & {
+          readonly outcome: string;
+          readonly diagnosticCode: string;
+        };
+      }
+    | { readonly kind: string; readonly diagnosticCode?: string },
+  name: (
+    blocked: readonly CheckpointRevertBlock[],
+  ) => readonly CheckpointRevertBlock[],
+): {
+  readonly outcome: McpOperatorResponse["outcome"];
+  readonly result: unknown;
+} => {
+  if (!("outcome" in response) || response.kind !== "command_outcome")
+    return {
+      outcome: "rejected",
+      result: {
+        diagnosticCode:
+          ("diagnosticCode" in response
+            ? response.diagnosticCode
+            : undefined) ?? "command.precondition_failed",
+        checkpointId,
+      },
+    };
+  const outcome = response.outcome;
+  if (outcome.diagnosticCode === "agent.checkpoint_revert_blocked")
+    return checkpointRevertRefusal(
+      checkpointId,
+      name(
+        (
+          outcome.blocked as readonly {
+            targetCommandId: string;
+            unavailableReason: CheckpointRevertBlock["unavailableReason"];
+          }[]
+        ).map((item) => ({
+          targetCommandId: item.targetCommandId,
+          unavailableReason: item.unavailableReason,
+        })),
+      ),
+    );
+  if (outcome.diagnosticCode === "agent.checkpoint_revert_empty")
+    return {
+      outcome: "rejected",
+      result: {
+        diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.empty,
+        checkpointId,
+      },
+    };
+  if (outcome.diagnosticCode === "agent.checkpoint_already_reverted")
+    return {
+      outcome: "rejected",
+      result: {
+        diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.alreadyReverted,
+        checkpointId,
+      },
+    };
+  if (outcome.outcome !== "success")
+    return {
+      outcome: outcome.outcome === "retryable" ? "retryable" : "rejected",
+      result: { diagnosticCode: outcome.diagnosticCode, checkpointId },
+    };
+  const projection = outcome.projection as {
+    readonly compensatedCommandIds: readonly string[];
+    readonly recordVersions: Readonly<Record<string, number>>;
+  };
+  return {
+    outcome: "success",
+    result: {
+      diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.reverted,
+      checkpointId,
+      compensatedCommandIds: projection.compensatedCommandIds,
+      recordVersions: projection.recordVersions,
+    },
+  };
+};
+
 export const HostRunMetadataSchema = z
   .object({
     agentRunId: AgentRunIdSchema,

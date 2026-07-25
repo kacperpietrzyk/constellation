@@ -6,6 +6,79 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
+## [0.1.5] - 2026-07-25
+
+The first migration of a real client engagement into Constellation, run by an
+external MCP agent, produced two contract defects and five capability gaps.
+This release closes all of them.
+
+### Added
+
+- **An agent can give a Project a working body.** A Project nobody had opened
+  had no body at all, and both content tools refused — so a migration could
+  land an engagement's records but never the operating context they exist for.
+  A body that does not exist yet is now a state a read reports rather than a
+  refusal: it answers with the digest that means "nothing here yet", and
+  quoting that digest back creates the body, seeded from the Project's own
+  intended outcome so the field and the page do not start out disagreeing. A
+  document written as plain text is upgraded to rich blocks by the same write,
+  and both answers say which happened.
+
+- **A person or an organization can be corrected in place.** They were the only
+  entity kinds with no update, so fixing a misspelled surname meant removing the
+  record and re-creating it under a new id — losing its creation date and audit
+  lineage, dangling every reference to the old id, and failing outright once
+  anything pointed at the person. `relationship.personUpdate` and
+  `relationship.organizationUpdate` change named fields only: what you omit is
+  left alone, and both are reversible.
+
+- **Four reaches the graph did not have.** A Project carries the Sources it
+  rests on (`evidenceSourceIds`), so "which projects rest on the note I now
+  doubt" is a query rather than a search through paragraphs. A Task can
+  contribute to an Opportunity, so a per-client next action dies with the deal
+  instead of outliving it on a reporting project. A Project can serve an
+  Organization directly, so a client is no longer only a word in a title. An
+  Opportunity names its owner — the person whose deal it is, as distinct from
+  everyone named on it — and that person cannot be removed while the deal
+  stands.
+
+### Changed
+
+- **A checkpoint revert is one act now, and it knows its own slice.** A
+  checkpoint holding a create and a later correction of the same record could
+  never be reverted at all, and neither could one holding a record and the
+  record created against it — the shape every real migration writes. The revert
+  now compensates newest-first inside one transaction, so a later change it is
+  itself taking back no longer blocks the earlier one, while a change made by
+  anything outside the checkpoint still refuses the whole revert. Nothing is
+  applied until every captured command has been judged, so a refusal leaves the
+  checkpoint open instead of half spent.
+
+- **A checkpoint revert preview answers what the revert will answer.** It used
+  to report only whether an earlier undo had consumed a compensation, so a
+  record other work had moved on previewed as revertable and refused seconds
+  later — spending a checkpoint to learn what the preview already knew. It now
+  carries `blocked`: every captured command whose compensation does not apply,
+  with its own reason.
+
+### Contract changes an external host should read
+
+- `agent.checkpoint_revert_partial` and `agent.checkpoint_revert_preview_failed`
+  are retired. A revert is atomic and has no separate preview call to fail.
+- A successful revert returns `compensatedCommandIds` and `recordVersions`
+  instead of a list of per-undo outcomes.
+- `blocked` is now a required field of the `agent.checkpoint_revert_preview`
+  projection, and the checkpoint vocabulary gained `already_undone` and
+  `still_referenced` so a summary names the real cause.
+- A revert no longer requires the `recovery.preview` capability — only
+  `agent.checkpoint.revert`, the one the tool publishes.
+- Structured content reads return `contentState` (`absent` / `plain-v1` /
+  `rich-v1`) and no longer answer `content_unavailable`,
+  `schema_upgrade_required`, or an internal fault for a body that is merely not
+  rich yet; structured writes return `contentCreated` and `formatUpgraded`.
+- `record.relate` takes `relationType` plus the far end that type names, so a
+  task-to-opportunity relation carries `opportunityId` rather than `projectId`.
+
 ## [0.1.4] - 2026-07-25
 
 ### Added

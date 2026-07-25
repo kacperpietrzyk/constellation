@@ -39,6 +39,9 @@ export const COMMAND_REVERTABILITY: Readonly<
   // widened again by reverting a checkpoint that happened to contain it.
   "agent.grantSetScope": "never",
   "agent.checkpointCreate": "never",
+  // Taking a revert back is re-applying the original intent, which is a new
+  // act with its own reasons — not a compensation this command can record.
+  "agent.checkpointRevert": "never",
   "agent.handoffSubmit": "never",
   "capture.submit": "never",
   "capture.process": "always",
@@ -62,6 +65,8 @@ export const COMMAND_REVERTABILITY: Readonly<
   "relationship.organizationCreate": "always",
   "relationship.organizationRemove": "always",
   "relationship.personCreate": "always",
+  "relationship.personUpdate": "always",
+  "relationship.organizationUpdate": "always",
   "relationship.personRemove": "always",
   "opportunity.create": "always",
   "opportunity.remove": "always",

@@ -30,7 +30,10 @@ import type { ApplicationWave2ReadView } from "./ports.js";
 // project_serves_area / project_advances_initiative link types.
 const projectsReachingWorkLink = (
   strategic: readonly StrategicRecord[],
-  linkType: "project_serves_area" | "project_advances_initiative",
+  linkType:
+    | "project_serves_area"
+    | "project_advances_initiative"
+    | "project_serves_organization",
   terminusIds: ReadonlySet<string>,
 ): ReadonlySet<ProjectId> => {
   const projectIds = new Set<ProjectId>();
@@ -104,7 +107,11 @@ const projectsMatchingCondition = (
       terminusIds,
     );
   }
-  // condition.path === "project.organization" — via the opportunity bridge.
+  // condition.path === "project.organization" — two honest reaches, unioned:
+  // the direct project_serves_organization link (0.1.5), and the Opportunity
+  // bridge that was the only one before it. A Project can genuinely serve one
+  // client directly and appear on another's deal, so neither reach is allowed
+  // to hide the other.
   const predicate = condition.predicate;
   for (const record of strategic) {
     if (record.kind !== "organization") continue;
@@ -115,7 +122,13 @@ const projectsMatchingCondition = (
     )
       terminusIds.add(record.id);
   }
-  const projectIds = new Set<ProjectId>();
+  const projectIds = new Set<ProjectId>(
+    projectsReachingWorkLink(
+      strategic,
+      "project_serves_organization",
+      terminusIds,
+    ),
+  );
   for (const record of strategic) {
     if (record.kind !== "opportunity") continue;
     if (!terminusIds.has(record.organizationId)) continue;
@@ -148,7 +161,10 @@ export const evaluateRelationConditions = (
     );
     const tasksForCondition = new Set<TaskId>();
     for (const relation of relations) {
-      if (matchingProjectIds.has(relation.projectId))
+      if (
+        relation.relationType === "task_contributes_to_project" &&
+        matchingProjectIds.has(relation.projectId)
+      )
         tasksForCondition.add(relation.taskId);
     }
     allowed =

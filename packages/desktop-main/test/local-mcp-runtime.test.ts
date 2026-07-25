@@ -267,6 +267,7 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
       readStructured: ({ owner }) => {
         structuredOwners.push(owner.kind);
         return {
+          contentState: "rich-v1" as const,
           content: structuredContent,
           text: "Initial",
           entityReferences: [],
@@ -1111,11 +1112,8 @@ type RevertBody = {
     readonly unavailableReason: string;
     readonly commandName?: string;
   }[];
-  readonly outcomes?: readonly {
-    readonly outcome?: {
-      readonly projection?: { readonly targetCommandId?: string };
-    };
-  }[];
+  readonly compensatedCommandIds?: readonly string[];
+  readonly recordVersions?: Readonly<Record<string, number>>;
 };
 
 const startRevertHarness = async (
@@ -1243,6 +1241,9 @@ const startRevertHarness = async (
       ?.status;
   const project = (projectId: string) =>
     store.snapshot().projects?.find((item) => item.id === projectId);
+  const captured = (checkpointId: string): readonly string[] =>
+    store.snapshot().agentCheckpoints?.find((item) => item.id === checkpointId)
+      ?.commandIds ?? [];
   const raw = async (invocation: McpOperatorInvocation) =>
     invokeDesktopMcp(descriptor, invocation);
   return {
@@ -1251,6 +1252,7 @@ const startRevertHarness = async (
     revert,
     status,
     project,
+    captured,
     raw,
     close: async () => {
       await runtime.close();
@@ -1390,13 +1392,15 @@ test("local MCP checkpoint revert reverts every command in reverse order and ref
     const reverted = await harness.revert(revertIds.checkpoint, "revert-3");
     assert.equal(reverted.outcome, "success", JSON.stringify(reverted.result));
     const body = reverted.result as RevertBody;
-    // Each undo carries the expectedVersions of the preview taken for its own
-    // command: a mispaired preview would undo with another record's version
-    // and the whole revert would come back partial.
-    assert.equal(
-      body.outcomes?.[0]?.outcome?.projection?.targetCommandId,
-      second,
+    // ADR-069. One act, one receipt: the revert names every captured command
+    // it compensated rather than handing back a fan of undo outcomes. The
+    // records below are what proves the order was right — compensating in the
+    // wrong one would leave a later change standing on an earlier one.
+    assert.deepEqual(
+      [...(body.compensatedCommandIds ?? [])].sort(),
+      [...harness.captured(revertIds.checkpoint)].sort(),
     );
+    assert.ok(body.compensatedCommandIds?.includes(second));
     assert.equal(
       harness.project(revertIds.project)?.intendedOutcome,
       "First outcome",
@@ -1491,7 +1495,13 @@ test("local MCP checkpoint revert refuses a checkpoint that captured nothing ins
   }
 });
 
-test("local MCP checkpoint revert reports an unreadable preview as retryable, with the query's own code", async () => {
+/**
+ * ADR-069. The revert used to assemble itself from recovery.preview queries,
+ * so a grant that held agent.checkpoint.revert but not recovery.preview could
+ * not revert — a second capability the tool never declared. One kernel command
+ * later, the declared capability is the whole requirement.
+ */
+test("local MCP checkpoint revert needs only the capability it publishes", async () => {
   const harness = await startRevertHarness(
     agentCapabilities.filter((capability) => capability !== "recovery.preview"),
   );
@@ -1518,22 +1528,14 @@ test("local MCP checkpoint revert reports an unreadable preview as retryable, wi
       },
     });
     const reverted = await harness.revert(revertIds.checkpoint, "revert-5");
-    assert.equal(
-      reverted.outcome,
-      "retryable",
-      JSON.stringify(reverted.result),
-    );
+    assert.equal(reverted.outcome, "success", JSON.stringify(reverted.result));
     const body = reverted.result as RevertBody;
-    assert.equal(body.diagnosticCode, "agent.checkpoint_revert_preview_failed");
-    assert.deepEqual(body.blocked, [
-      {
-        targetCommandId: edited,
-        unavailableReason: "preview_failed",
-        diagnosticCode: "authorization.denied",
-        commandName: "project.updateOutcome",
-      },
-    ]);
-    assert.equal(harness.status(revertIds.checkpoint), "open");
+    assert.deepEqual(body.compensatedCommandIds, [edited]);
+    assert.equal(
+      harness.project(revertIds.project)?.intendedOutcome,
+      "Original outcome",
+    );
+    assert.equal(harness.status(revertIds.checkpoint), "reverted");
   } finally {
     await harness.close();
   }

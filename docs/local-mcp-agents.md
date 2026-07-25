@@ -84,7 +84,18 @@ The server publishes these versioned tools:
 - `constellation.document.structured.read.v1`;
 - `constellation.document.structured.write.v1`;
 - `constellation.document.structured.restore.v1`;
+- `constellation.project.structured.read.v1`;
+- `constellation.project.structured.write.v1`;
+- `constellation.project.structured.restore.v1`;
 - `constellation.checkpoint.revert.v1`.
+
+A structured read always answers. `contentState` says whether the owner has no
+body yet (`absent`), one written as plain text (`plain-v1`), or one already in
+blocks (`rich-v1`); the digest it returns describes what is stored, and quoting
+that digest back to the structured write is what creates a body that does not
+exist yet or upgrades one that is still plain text. A Project's first body is
+seeded from its own intended outcome, so the field and the page do not start
+out disagreeing.
 
 `constellation.batch.v1` submits up to 100 ordinary commands as one unit.
 Mode `preview` runs every item through the real executor inside one
@@ -171,17 +182,21 @@ Capture History.
 - Create a checkpoint before a related group of mutations, and size it first.
   The operations catalog marks every command `revertable: "always"` or
   `"never"`; one `"never"` command inside a checkpoint makes the whole revert
-  unavailable. A scoped revert previews each compensation before applying any,
-  and a revert that changes nothing lists the commands that blocked it in
-  `blocked`, named, with a reason each. The outcome says what to do next:
-  `rejected` / `agent.checkpoint_revert_unsupported` for a command that records
-  no compensation, where no retry will ever help; `conflict` /
+  unavailable. A revert is one act: it compensates the captured commands
+  newest-first inside a single transaction, so a later change captured in the
+  same checkpoint is taken back too rather than blocking the earlier command it
+  moved — while a change made outside the checkpoint still refuses the whole
+  revert. Nothing is applied unless everything can be, so a refusal leaves the
+  checkpoint open, and a revert that changes nothing lists the commands that
+  blocked it in `blocked`, named, with a reason each. The outcome says what to
+  do next: `rejected` / `agent.checkpoint_revert_unsupported` for a command
+  that records no compensation, where no retry will ever help; `conflict` /
   `agent.checkpoint_revert_conflict` when a compensation no longer applies
   because a record moved on, an earlier undo consumed it, or other work has
   since attached itself to what the compensation would undo; `rejected` /
-  `agent.checkpoint_already_reverted` for a checkpoint reverted before;
-  `retryable` / `agent.checkpoint_revert_preview_failed` when the preview
-  itself could not be read.
+  `agent.checkpoint_already_reverted` for a checkpoint reverted before.
+  `agent.checkpointPreviewRevert` answers the same question without spending
+  the checkpoint, in the same shape.
 - Put each command inside the checkpoint explicitly. A command belongs to a
   checkpoint only when its own envelope carries the top-level `checkpointId`
   field — a sibling of `commandId`, not part of `payload` — or when it rides in

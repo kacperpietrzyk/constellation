@@ -279,7 +279,7 @@ export const createConstellationMcpServer = (
         name: "constellation.document.structured.read.v1",
         title: "Read a structured native document",
         description:
-          "Read the current versioned blocks, marks, typed entity links, body text, and state-vector digest of one authorized rich document. Requires document.readContent and the document's Space.",
+          'Read the current versioned blocks, marks, typed entity links, body text, and state-vector digest of one authorized document. This read always answers: contentState is "absent" for a document with no body yet, "plain-v1" for one written through constellation.document.write.v1, and "rich-v1" once it holds blocks. The digest describes what is stored — quote it back to the structured write — while content and text show the body that write will start from, which for a plain-v1 document is its text split into paragraphs. Requires document.readContent and the document\u2019s Space.',
         inputSchema: objectInput(
           {
             run: runInput,
@@ -295,7 +295,7 @@ export const createConstellationMcpServer = (
         name: "constellation.document.structured.write.v1",
         title: "Replace a structured native document",
         description:
-          "Replace one authorized rich document with bounded versioned blocks and typed entity links. The exact state-vector digest from a prior read is required; stale writes conflict. The prior rich state is saved as an attributed revision. Requires document.replaceContent and the document's Space.",
+          'Replace one authorized document\'s body with bounded versioned blocks and typed entity links. The exact state-vector digest from a prior read is required; stale writes conflict, including the digest a read returns for a document with no body yet — quoting it means "I expect this document to have nothing" and creates one. A plain-v1 document is upgraded to rich in the same write, so the answer carries contentCreated and formatUpgraded and the prior state is saved as an attributed recovery revision. Requires document.replaceContent and the document\u2019s Space.',
         inputSchema: objectInput(
           {
             run: runInput,
@@ -363,7 +363,7 @@ export const createConstellationMcpServer = (
         name: "constellation.project.structured.read.v1",
         title: "Read structured Project content",
         description:
-          "Read the current rich working body, typed entity links, plain text, and state-vector digest of one authorized Project. Requires project.readContent and the Project's Space.",
+          'Read the current working body, typed entity links, plain text, and state-vector digest of one authorized Project. This read always answers: contentState is "absent" for a Project whose body nobody has opened or written yet, and the body shown is the one the next write will start from — seeded from the Project\u2019s intendedOutcome. Quote the digest back to the structured write. Requires project.readContent and the Project\u2019s Space.',
         inputSchema: objectInput(
           {
             run: runInput,
@@ -379,7 +379,7 @@ export const createConstellationMcpServer = (
         name: "constellation.project.structured.write.v1",
         title: "Replace structured Project content",
         description:
-          "Replace one authorized Project working body with bounded rich blocks and typed entity links. Requires the exact state-vector digest, an idempotency key, project.replaceContent, and the Project's Space; the prior state becomes an attributed recovery revision.",
+          "Replace one authorized Project working body with bounded rich blocks and typed entity links. Requires the exact state-vector digest, an idempotency key, project.replaceContent, and the Project\u2019s Space; the prior state becomes an attributed recovery revision. A Project with no body yet is created by quoting the digest its read returns for that state, seeded from the Project\u2019s intendedOutcome so the field and the page do not start out disagreeing; the answer carries contentCreated and formatUpgraded.",
         inputSchema: objectInput(
           {
             run: runInput,

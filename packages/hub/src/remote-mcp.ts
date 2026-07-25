@@ -30,7 +30,6 @@ import {
   GrantIdSchema,
   MembershipIdSchema,
   PrincipalIdSchema,
-  QueryIdSchema,
   RemoteMcpGrantChangeRequestSchema,
   RemoteMcpGrantCreateRequestSchema,
   RemoteMcpGrantListRequestSchema,
@@ -55,8 +54,7 @@ import {
   MCP_PAYLOAD_RESOURCE_TEMPLATE,
   McpOperatorResponseSchema,
   RemoteMcpCredentialSchema,
-  checkpointRevertPreview,
-  checkpointRevertRefusal,
+  checkpointRevertResponse,
   type CheckpointRevertBlock,
   type HostRunMetadata,
   type McpOperatorInvocation,
@@ -1189,6 +1187,17 @@ export class HubRemoteMcpService {
       : { documentId, documentVersion: scoped.record.version };
     const diagnostic = (code: string): string =>
       projectInvocation ? code.replace(/^document\./u, "project.") : code;
+    // ADR-070/ADR-056 §3. Same seed the desktop passes, so a body materialised
+    // over either transport starts from the Project's own intended outcome.
+    const seed =
+      projectInvocation && "intendedOutcome" in scoped.record
+        ? scoped.record.intendedOutcome === undefined
+          ? undefined
+          : {
+              text: scoped.record.intendedOutcome,
+              principalId: scoped.record.createdBy,
+            }
+        : undefined;
     if (
       invocation.kind === "document_structured_read" ||
       invocation.kind === "project_structured_read"
@@ -1198,6 +1207,11 @@ export class HubRemoteMcpService {
           workspaceId: grant.workspaceId,
           owner,
           spaceId: scoped.record.spaceId,
+          ...(seed === undefined ? {} : { seed }),
+        });
+      if (result === "unreadable")
+        return response(invocation.requestId, "rejected", {
+          diagnosticCode: diagnostic("document.structured_content_unreadable"),
         });
       return result === undefined
         ? response(invocation.requestId, "rejected", {
@@ -1279,6 +1293,7 @@ export class HubRemoteMcpService {
         workspaceId: grant.workspaceId,
         owner,
         spaceId: scoped.record.spaceId,
+        ...(seed === undefined ? {} : { seed }),
         principalId: grant.agentPrincipalId,
         credentialId: grant.credentialId,
         runId: invocation.run.agentRunId,
@@ -1368,6 +1383,7 @@ export class HubRemoteMcpService {
       invocation.checkpointId,
       invocation.correlationId,
       invocation.idempotencyKey,
+      invocation.run.agentRunId,
     );
   }
 
@@ -1622,6 +1638,7 @@ export class HubRemoteMcpService {
     checkpointId: string,
     correlationId: string,
     idempotencyKey: string,
+    runId: string,
   ): McpOperatorResponse {
     const checkpoint = store.read((view) =>
       view.getAgentCheckpoint(CheckpointIdSchema.parse(checkpointId)),
@@ -1645,75 +1662,27 @@ export class HubRemoteMcpService {
         checkpointId: checkpoint.id,
       });
     const service = this.kernel(store, context);
-    // Compensation runs newest-first, and every preview is taken before any of
-    // it is applied, so previews and undos walk one shared reversed sequence:
-    // an undo paired with another command's preview would carry the wrong
-    // expectedVersions and half-apply the checkpoint.
-    const targets = [...checkpoint.commandIds].reverse();
-    const previews = targets.map((targetCommandId) =>
-      checkpointRevertPreview(
-        targetCommandId,
-        service.kernel.query(context, {
-          contractVersion: 1,
-          queryName: "recovery.preview",
-          queryId: QueryIdSchema.parse(randomUUID()),
-          workspaceId: checkpoint.workspaceId,
-          consistency: "local_authoritative",
-          parameters: { targetCommandId },
-        }),
-      ),
+    // ADR-069. One command: the kernel compensates newest-first inside one
+    // transaction, so it can tell a later change this checkpoint carries from
+    // one made outside it, and a refusal leaves the checkpoint exactly as it
+    // was rather than half spent.
+    const command = {
+      contractVersion: 1 as const,
+      commandName: "agent.checkpointRevert" as const,
+      commandId: CommandIdSchema.parse(randomUUID()),
+      workspaceId: checkpoint.workspaceId,
+      idempotencyKey,
+      expectedVersions: {},
+      correlationId: CorrelationIdSchema.parse(correlationId),
+      payload: { checkpointId: checkpoint.id, runId },
+    };
+    service.ids.begin(command.commandId);
+    const mapped = checkpointRevertResponse(
+      checkpoint.id,
+      service.kernel.execute(context, command),
+      (blocks) => namedBlocks(store, blocks),
     );
-    const blocked = previews.flatMap((preview) =>
-      preview.ok ? [] : [preview.blocked],
-    );
-    if (blocked.length > 0) {
-      const refusal = checkpointRevertRefusal(
-        checkpoint.id,
-        namedBlocks(store, blocked),
-      );
-      return response(requestId, refusal.outcome, refusal.result);
-    }
-    const outcomes = targets.map((targetCommandId, index) => {
-      const preview = previews[index];
-      const command = {
-        contractVersion: 1 as const,
-        commandName: "command.undo" as const,
-        commandId: CommandIdSchema.parse(randomUUID()),
-        workspaceId: checkpoint.workspaceId,
-        idempotencyKey: `${idempotencyKey}:${index}`,
-        expectedVersions: preview?.ok === true ? preview.requiredVersions : {},
-        correlationId: CorrelationIdSchema.parse(correlationId),
-        payload: { targetCommandId },
-      };
-      service.ids.begin(command.commandId);
-      return service.kernel.execute(context, command);
-    });
-    if (
-      outcomes.some(
-        (item) =>
-          item.kind !== "command_outcome" || item.outcome.outcome !== "success",
-      )
-    )
-      return response(requestId, "partial", {
-        diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.partial,
-        outcomes,
-      });
-    store.transact((transaction) => {
-      const current = transaction.getAgentCheckpoint(checkpoint.id);
-      if (current === undefined) return;
-      const now = this.now();
-      transaction.updateAgentCheckpoint({
-        ...current,
-        status: "reverted",
-        updatedAt: now,
-        revertedAt: now,
-      });
-    });
-    return response(requestId, "success", {
-      diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.reverted,
-      checkpointId: checkpoint.id,
-      outcomes,
-    });
+    return response(requestId, mapped.outcome, mapped.result);
   }
 
   private acquire(grantId: string, cost = 1): boolean {

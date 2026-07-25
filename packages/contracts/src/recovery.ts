@@ -15,9 +15,16 @@ export const UndoUnavailableReasonSchema = z
 // ("already_reverted"), while "already_undone" is a per-descriptor state only a
 // single-command preview can report.
 export const CheckpointRevertUnavailableReasonSchema = z
-  .enum(["already_reverted", "empty", "unsupported", "later_change"])
+  .enum([
+    "already_reverted",
+    "empty",
+    "unsupported",
+    "later_change",
+    "already_undone",
+    "still_referenced",
+  ])
   .describe(
-    'Why the checkpoint cannot be reverted now. "already_reverted": the checkpoint was reverted before. "empty": no command named this checkpoint in its envelope, so it captured nothing and reverting it would change nothing — membership is opt-in per command, never implied by sharing a run. "unsupported": at least one command in it records no compensation. "later_change": at least one compensation was already consumed by a later undo.',
+    'Why the checkpoint cannot be reverted now. The first two are properties of the checkpoint itself: "already_reverted" — it was reverted before; "empty" — no command named this checkpoint in its envelope, so it captured nothing and reverting it would change nothing, membership being opt-in per command and never implied by sharing a run. The rest summarize the captured command that blocks it, in the same vocabulary a single-command preview uses, and `blocked` names which command each belongs to: "unsupported" — a command in it records no compensation, so no retry will ever help, and it outranks every other reason; "later_change" — a record moved past the version a compensation requires, by work this checkpoint does not carry; "already_undone" — an earlier undo consumed a compensation this revert needs; "still_referenced" — a captured create made a record other work has since attached itself to.',
   );
 
 // The compensation a command recorded, named. It was restated in two
@@ -54,6 +61,8 @@ export const CompensationKindSchema = z.enum([
   "knowledge.restore_source",
   "knowledge.restore_evidence",
   "knowledge.void_named_version",
+  "relationship.restore_person",
+  "relationship.restore_organization",
   "strategic.undo_create",
   "strategic.restore_record_state",
   "record.undo_create",

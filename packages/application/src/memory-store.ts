@@ -714,6 +714,7 @@ class ReadView implements ApplicationReadView {
       (relation) =>
         relation.state === "active" &&
         relation.taskId === taskId &&
+        relation.relationType === "task_contributes_to_project" &&
         relation.projectId === projectId,
     );
   }

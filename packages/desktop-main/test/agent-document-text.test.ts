@@ -11,6 +11,7 @@ import {
   MAX_DOCUMENT_TEXT_LENGTH,
   YjsRealtimeDocumentAdapter,
 } from "@constellation/realtime-documents";
+import { ABSENT_CONTENT_STATE_VECTOR_SHA256 } from "@constellation/realtime-documents/agent-content";
 import type { SqliteApplicationStore } from "@constellation/local-store";
 
 import { createAgentDocumentTextPort } from "../src/document-collaboration.js";
@@ -497,5 +498,147 @@ describe("agent document text port", () => {
     assert.equal(read?.text, "Portable rich heading");
     assert.equal(read?.content.content[0]?.type, "heading");
     assert.equal(fake.revisions[0]?.name, "Before structured import");
+  });
+
+  /**
+   * Finding #16. A document written through the agent's plain-text path stays
+   * plain-v1, and the structured read used to throw on it — reaching the agent
+   * as an internal fault, which reads as "this build is broken" rather than
+   * "this body is not rich yet". The read is now total, and what it shows is
+   * exactly what the next write will start from.
+   */
+  it("reads a document the text path wrote instead of faulting on its format", () => {
+    const fake = fakeStore();
+    const subject = port(fake, false);
+    subject.replace({
+      documentId: ids.document,
+      spaceId: ids.space,
+      text: "Written as plain text\nby the agent",
+      principalId: "42000000-0000-4000-8000-000000000004",
+      runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
+    });
+    const read = subject.readStructured({
+      documentId: ids.document,
+      spaceId: ids.space,
+    });
+    assert.ok(read !== undefined);
+    assert.equal(read.contentState, "plain-v1");
+    assert.equal(read.text, "Written as plain text\nby the agent");
+    // Two lines of plain text are two paragraphs once upgraded, and the digest
+    // describes the stored plain-v1 state — so quoting it back is what lets the
+    // very next write upgrade this document.
+    assert.equal(read.content.content.length, 2);
+    const written = subject.replaceStructured({
+      documentId: ids.document,
+      spaceId: ids.space,
+      content: {
+        schemaVersion: 1,
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Rich now" }] },
+        ],
+      },
+      expectedStateVectorSha256: read.stateVectorSha256,
+      idempotencyKey: "upgrade-1",
+      principalId: "42000000-0000-4000-8000-000000000004",
+      runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
+    });
+    assert.equal(written.outcome, "success", JSON.stringify(written));
+    assert.equal(written.outcome === "success" && written.formatUpgraded, true);
+    const after = subject.readStructured({
+      documentId: ids.document,
+      spaceId: ids.space,
+    });
+    assert.equal(after?.contentState, "rich-v1");
+    assert.equal(after?.text, "Rich now");
+  });
+
+  /**
+   * The blocking gap: a Project nobody had opened had no body, and both content
+   * tools refused, so an agent could migrate an engagement's records but never
+   * the operating context they exist for. Absence is a state now — the read
+   * answers with the digest that means "nothing here yet", and quoting it back
+   * creates the body, seeded from the Project's own intended outcome so the
+   * scalar and the page do not start out disagreeing.
+   */
+  it("creates a body for an owner that has none, from the seed a human would have got", () => {
+    const fake = fakeStore();
+    const subject = port(fake, false);
+    const seed = {
+      text: "Sequence the PoV before the enablement deck.",
+      principalId: "42000000-0000-4000-8000-000000000006",
+    };
+    const before = subject.readStructured({
+      documentId: ids.document,
+      spaceId: ids.space,
+      seed,
+    });
+    assert.ok(before !== undefined);
+    assert.equal(before.contentState, "absent");
+    assert.equal(before.stateVectorSha256, ABSENT_CONTENT_STATE_VECTOR_SHA256);
+    // The read already shows the body the write will start from, seed included.
+    assert.equal(before.text, seed.text);
+    const stale = subject.replaceStructured({
+      documentId: ids.document,
+      spaceId: ids.space,
+      seed,
+      content: {
+        schemaVersion: 1,
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "x" }] },
+        ],
+      },
+      expectedStateVectorSha256: "f".repeat(64),
+      idempotencyKey: "create-stale",
+      principalId: "42000000-0000-4000-8000-000000000004",
+      runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
+    });
+    // A first write is an ordinary compare-and-set, so a caller that did not
+    // read first cannot create a body by guessing.
+    assert.equal(stale.outcome, "conflict");
+    assert.equal(
+      stale.outcome === "conflict" && stale.diagnosticCode,
+      "document.state_vector_stale",
+    );
+    const created = subject.replaceStructured({
+      documentId: ids.document,
+      spaceId: ids.space,
+      seed,
+      content: {
+        schemaVersion: 1,
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 2 },
+            content: [{ type: "text", text: "How this engagement runs" }],
+          },
+        ],
+      },
+      expectedStateVectorSha256: before.stateVectorSha256,
+      idempotencyKey: "create-1",
+      principalId: "42000000-0000-4000-8000-000000000004",
+      runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
+    });
+    assert.equal(created.outcome, "success", JSON.stringify(created));
+    assert.equal(created.outcome === "success" && created.contentCreated, true);
+    const after = subject.readStructured({
+      documentId: ids.document,
+      spaceId: ids.space,
+      seed,
+    });
+    // rich-v1 from the first byte: the desktop Project surface opens nothing
+    // else, so a body left in plain text would be a page a person cannot edit.
+    assert.equal(after?.contentState, "rich-v1");
+    assert.equal(after?.text, "How this engagement runs");
+    // The pre-write state is restorable, and it names what the write did.
+    assert.ok(
+      fake.revisions.some((revision) => revision.name.includes("created body")),
+    );
   });
 });

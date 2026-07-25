@@ -411,6 +411,9 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     title: z.string(),
     organizationId: StrategicRecordIdSchema,
     personIds: z.array(StrategicRecordIdSchema),
+    // Whose deal this is, as against who is named on it. Absent means the
+    // distinction was never recorded, not that nobody owns it.
+    ownerPersonId: StrategicRecordIdSchema.optional(),
     need: z.string(),
     qualification: z.string(),
     stage: z.string(),
@@ -809,6 +812,19 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
       commandIds: z.array(CommandIdSchema),
       affectedRecordIds: z.array(z.uuid()),
       unavailableReason: CheckpointRevertUnavailableReasonSchema.optional(),
+      // The refusal a revert would return, before spending the checkpoint to
+      // see it: one entry per captured command whose compensation does not
+      // apply, in the shape the revert itself refuses with. `available: true`
+      // and an empty list are the same statement made twice, on purpose —
+      // a caller that reads only the list still reads the truth.
+      blocked: z.array(
+        z
+          .object({
+            targetCommandId: CommandIdSchema,
+            unavailableReason: UndoUnavailableReasonSchema,
+          })
+          .strict(),
+      ),
     })
     .strict(),
   z

@@ -203,6 +203,10 @@ export const buildExchangeManifest = (input: {
     const projectOfTask = new Map<string, string>();
     for (const relation of relations) {
       if (relation.state !== "active") continue;
+      // The manifest carries Projects and Tasks; an Opportunity relation has
+      // no far end to name there, so it is left out rather than flattened onto
+      // a Project it does not belong to (ADR-050).
+      if (relation.relationType !== "task_contributes_to_project") continue;
       if (!projectOfTask.has(relation.taskId))
         projectOfTask.set(relation.taskId, relation.projectId);
     }

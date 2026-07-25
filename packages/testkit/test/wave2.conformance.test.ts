@@ -2708,7 +2708,9 @@ describe("Wave 2 reference semantics", () => {
     assert.equal(
       afterApply.relations.filter(
         (relation) =>
-          relation.projectId === projectId && relation.state === "active",
+          relation.relationType === "task_contributes_to_project" &&
+          relation.projectId === projectId &&
+          relation.state === "active",
       ).length,
       2,
       "the created starter joins the project through an ordinary relation",

@@ -277,9 +277,13 @@ export interface ApplicationWave2ReadView extends ApplicationReadView {
     spaceId: SpaceId,
   ): readonly StrategicRecord[];
   getRelation(id: RelationId): TaskProjectRelation | undefined;
+  /**
+   * The active relation between a Task and the record it contributes to,
+   * whichever far end that is: a Project or an Opportunity.
+   */
   findTaskProjectRelation(
     taskId: TaskId,
-    projectId: ProjectId,
+    targetId: ProjectId | StrategicRecordId,
   ): TaskProjectRelation | undefined;
   listRelations(
     workspaceId: WorkspaceId,

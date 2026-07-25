@@ -72,6 +72,7 @@ import {
   updateTaskDetails,
   createNativeDocument,
   relateTaskToProject,
+  relateTaskToOpportunity,
   removeTaskProjectRelation,
   reopenTask,
   removeTaskAssignment,
@@ -93,6 +94,8 @@ import {
   createDecision,
   createArea,
   updateAreaResponsibility,
+  updateOrganizationDetails,
+  updatePersonDetails,
   createInitiative,
   updateInitiativeOutcome,
   createWorkLink,
@@ -136,6 +139,7 @@ import {
   type KnowledgeSource,
   type NativeDocument,
   type StrategicRecord,
+  type TaskWorkRelation,
   type DocumentEntityTargetKind,
 } from "@constellation/domain";
 
@@ -183,6 +187,8 @@ export type Wave2Command = Extract<
       | "relationship.organizationCreate"
       | "relationship.organizationRemove"
       | "relationship.personCreate"
+      | "relationship.personUpdate"
+      | "relationship.organizationUpdate"
       | "relationship.personRemove"
       | "opportunity.create"
       | "opportunity.remove"
@@ -266,7 +272,8 @@ export type Wave2Command = Extract<
       | "record.relate"
       | "record.unrelate"
       | "command.previewUndo"
-      | "command.undo";
+      | "command.undo"
+      | "agent.checkpointRevert";
   }
 >;
 
@@ -296,11 +303,18 @@ export type Wave2Query = Extract<
   }
 >;
 
+/**
+ * The capability a command needs is its own name — a compile-time identity
+ * every Wave-2 command keeps, which is why a new command cannot be authorized
+ * by accident. `agent.checkpointRevert` is the one exception and is excluded
+ * here rather than cast away: its capability, `agent.checkpoint.revert`, is
+ * already written into every grant in the field (ADR-069).
+ */
 const authorized = (
   dependencies: Pick<ApplicationKernelDependencies, "authorization">,
   view: ApplicationWave2ReadView,
   context: ExecutionContext,
-  command: Wave2Command,
+  command: Exclude<Wave2Command, { commandName: "agent.checkpointRevert" }>,
   spaceId: SpaceId | undefined,
 ): boolean =>
   spaceId !== undefined &&
@@ -469,6 +483,34 @@ export const isWave2CommandAuthorized = (
         context,
         command,
         space?.workspaceId === command.workspaceId ? space.id : undefined,
+      );
+    }
+    // A partial update names one record it already knows, exactly as a removal
+    // does: the Space it is authorized against is that record's own.
+    case "relationship.personUpdate": {
+      const person = view.getStrategicRecord(command.payload.personId);
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        person?.workspaceId === command.workspaceId
+          ? person.spaceId
+          : undefined,
+      );
+    }
+    case "relationship.organizationUpdate": {
+      const organization = view.getStrategicRecord(
+        command.payload.organizationId,
+      );
+      return authorized(
+        dependencies,
+        view,
+        context,
+        command,
+        organization?.workspaceId === command.workspaceId
+          ? organization.spaceId
+          : undefined,
       );
     }
     // Every removal names one record it already knows, so the Space it is
@@ -866,11 +908,16 @@ export const isWave2CommandAuthorized = (
     }
     case "record.relate": {
       const task = view.getTask(command.payload.taskId);
-      const project = view.getProject(command.payload.projectId);
+      // Both ends have to sit in one Space, whichever end the relation type
+      // names — the Space this command is authorized against is theirs.
+      const target =
+        command.payload.relationType === "task_contributes_to_project"
+          ? view.getProject(command.payload.projectId)
+          : view.getStrategicRecord(command.payload.opportunityId);
       const spaceId =
         task?.workspaceId === command.workspaceId &&
-        project?.workspaceId === command.workspaceId &&
-        task.spaceId === project.spaceId
+        target?.workspaceId === command.workspaceId &&
+        task.spaceId === target.spaceId
           ? task.spaceId
           : undefined;
       return authorized(dependencies, view, context, command, spaceId);
@@ -887,6 +934,16 @@ export const isWave2CommandAuthorized = (
           : undefined,
       );
     }
+    case "agent.checkpointRevert":
+      // Authorized by the kernel against `agent.checkpoint.revert`, the
+      // capability every issued grant already carries. Repeated here because
+      // the Wave-2 authorization switch is exhaustive and a silent `false`
+      // would look like a policy decision rather than a routing detail.
+      return dependencies.authorization.authorize({
+        context,
+        capability: "agent.checkpoint.revert",
+        workspaceId: command.workspaceId,
+      });
     case "command.previewUndo":
     case "command.undo": {
       const receipt = view.getAuditReceiptByCommand(
@@ -1289,7 +1346,9 @@ const tableRecordDependents = (
         .listRelations(workspaceId, spaceId)
         .filter(
           (relation) =>
-            relation.projectId === id && relation.state === "active",
+            relation.relationType === "task_contributes_to_project" &&
+            relation.projectId === id &&
+            relation.state === "active",
         )
         .map((relation) => ({
           recordId: relation.id,
@@ -3129,7 +3188,9 @@ export const executeWave2Command = (
             ((command.payload.linkType === "project_advances_initiative" &&
               targetStrategic.kind === "initiative") ||
               (command.payload.linkType === "project_serves_area" &&
-                targetStrategic.kind === "area"));
+                targetStrategic.kind === "area") ||
+              (command.payload.linkType === "project_serves_organization" &&
+                targetStrategic.kind === "organization"));
       if (!valid) return precondition(command, occurredAt);
       const duplicate = transaction
         .listStrategicRecords(command.workspaceId, command.payload.spaceId)
@@ -3569,6 +3630,132 @@ export const executeWave2Command = (
         { [record.id]: "strategicRecord" },
       );
     }
+    case "relationship.personUpdate": {
+      const current = transaction.getStrategicRecord(command.payload.personId);
+      if (current?.kind !== "person") return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      // Moving a person to another organization is still bounded by the same
+      // rule their creation was: the organization has to exist, be one, and be
+      // in the person's own Space.
+      if (
+        command.payload.organizationId !== undefined &&
+        command.payload.organizationId !== null
+      ) {
+        const organization = transaction.getStrategicRecord(
+          command.payload.organizationId,
+        );
+        if (
+          organization?.kind !== "organization" ||
+          organization.workspaceId !== current.workspaceId ||
+          organization.spaceId !== current.spaceId
+        )
+          return precondition(command, occurredAt);
+      }
+      const record = updatePersonDetails(
+        current,
+        {
+          ...(command.payload.name === undefined
+            ? {}
+            : { name: command.payload.name }),
+          ...(command.payload.organizationId === undefined
+            ? {}
+            : { organizationId: command.payload.organizationId }),
+          ...(command.payload.role === undefined
+            ? {}
+            : { role: command.payload.role }),
+          ...(command.payload.email === undefined
+            ? {}
+            : { email: command.payload.email }),
+        },
+        occurredAt,
+      );
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        // The fields this command actually carried, so the audit receipt says
+        // what changed rather than what could have.
+        Object.keys(command.payload).filter((field) => field !== "personId"),
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: current.workspaceId,
+          spaceId: current.spaceId,
+          kind: "relationship.restore_person",
+          personId: current.id,
+          priorName: current.name,
+          ...(current.organizationId === undefined
+            ? {}
+            : { priorOrganizationId: current.organizationId }),
+          ...(current.role === undefined ? {} : { priorRole: current.role }),
+          ...(current.email === undefined ? {} : { priorEmail: current.email }),
+          resultingVersion: record.version,
+        },
+      );
+    }
+    case "relationship.organizationUpdate": {
+      const current = transaction.getStrategicRecord(
+        command.payload.organizationId,
+      );
+      if (current?.kind !== "organization")
+        return precondition(command, occurredAt);
+      const expected = { [current.id]: current.version };
+      if (!exactExpected(command, expected))
+        return versionConflict(command, occurredAt, expected);
+      const record = updateOrganizationDetails(
+        current,
+        {
+          ...(command.payload.name === undefined
+            ? {}
+            : { name: command.payload.name }),
+          ...(command.payload.relationshipState === undefined
+            ? {}
+            : { relationshipState: command.payload.relationshipState }),
+          ...(command.payload.nextAction === undefined
+            ? {}
+            : { nextAction: command.payload.nextAction }),
+        },
+        occurredAt,
+      );
+      if (!transaction.updateStrategicRecord(record, current.version))
+        return versionConflict(command, occurredAt, expected);
+      return appendStrategicJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        record,
+        Object.keys(command.payload).filter(
+          (field) => field !== "organizationId",
+        ),
+        {},
+        {},
+        {
+          targetCommandId: command.commandId,
+          workspaceId: current.workspaceId,
+          spaceId: current.spaceId,
+          kind: "relationship.restore_organization",
+          organizationId: current.id,
+          priorName: current.name,
+          priorRelationshipState: current.relationshipState,
+          ...(current.nextAction === undefined
+            ? {}
+            : { priorNextAction: current.nextAction }),
+          resultingVersion: record.version,
+        },
+      );
+    }
     case "opportunity.create": {
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       if (transaction.getStrategicRecord(command.payload.opportunityId))
@@ -3576,9 +3763,12 @@ export const executeWave2Command = (
       const organization = transaction.getStrategicRecord(
         command.payload.organizationId,
       );
-      const people = command.payload.personIds.map((id) =>
-        transaction.getStrategicRecord(id),
-      );
+      const people = [
+        ...command.payload.personIds,
+        ...(command.payload.ownerPersonId === undefined
+          ? []
+          : [command.payload.ownerPersonId]),
+      ].map((id) => transaction.getStrategicRecord(id));
       const sources = command.payload.evidenceSourceIds.map((id) =>
         transaction.getKnowledgeSource(id),
       );
@@ -3607,6 +3797,9 @@ export const executeWave2Command = (
         title: command.payload.title,
         organizationId: organization.id,
         personIds: command.payload.personIds,
+        ...(command.payload.ownerPersonId === undefined
+          ? {}
+          : { ownerPersonId: command.payload.ownerPersonId }),
         need: command.payload.need,
         qualification: command.payload.qualification,
         stage: command.payload.stage,
@@ -3826,7 +4019,9 @@ export const executeWave2Command = (
           .listRelations(current.workspaceId, current.spaceId)
           .filter(
             (relation) =>
-              relation.projectId === current.id && relation.state === "active",
+              relation.relationType === "task_contributes_to_project" &&
+              relation.projectId === current.id &&
+              relation.state === "active",
           )
           .map((relation) => relation.taskId),
       );
@@ -4420,6 +4615,21 @@ export const executeWave2Command = (
           currentVersions: { [existing.id]: existing.version },
         });
       }
+      // Provenance is bound at creation, exactly as an Opportunity's is: a
+      // Source in another Space is not this Project's evidence.
+      const evidence = (command.payload.evidenceSourceIds ?? []).map((id) =>
+        transaction.getKnowledgeSource(id),
+      );
+      if (
+        evidence.some(
+          (source) =>
+            source === undefined ||
+            source.workspaceId !== command.workspaceId ||
+            source.spaceId !== command.payload.spaceId ||
+            !recordIsActive(source),
+        )
+      )
+        return precondition(command, occurredAt);
       const project = createProject({
         id: projectId,
         workspaceId: command.workspaceId,
@@ -4428,6 +4638,9 @@ export const executeWave2Command = (
         ...(command.payload.intendedOutcome === undefined
           ? {}
           : { intendedOutcome: command.payload.intendedOutcome }),
+        ...(command.payload.evidenceSourceIds === undefined
+          ? {}
+          : { evidenceSourceIds: command.payload.evidenceSourceIds }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -4448,7 +4661,7 @@ export const executeWave2Command = (
           occurredAt,
         },
         { [project.id]: project.version },
-        ["title", "intendedOutcome", "lifecycle"],
+        ["title", "intendedOutcome", "lifecycle", "evidenceSourceIds"],
         {
           diagnosticCode: "project.created",
           projection: {
@@ -4479,10 +4692,24 @@ export const executeWave2Command = (
           [project.id]: project.version,
         });
       }
+      const updatedEvidence = (command.payload.evidenceSourceIds ?? []).map(
+        (id) => transaction.getKnowledgeSource(id),
+      );
+      if (
+        updatedEvidence.some(
+          (source) =>
+            source === undefined ||
+            source.workspaceId !== project.workspaceId ||
+            source.spaceId !== project.spaceId ||
+            !recordIsActive(source),
+        )
+      )
+        return precondition(command, occurredAt);
       const updated = updateProjectOutcome(
         project,
         command.payload.intendedOutcome,
         occurredAt,
+        command.payload.evidenceSourceIds,
       );
       if (!transaction.updateProject(updated, project.version)) {
         return versionConflict(command, occurredAt, {
@@ -4505,7 +4732,9 @@ export const executeWave2Command = (
           occurredAt,
         },
         { [updated.id]: updated.version },
-        ["intendedOutcome"],
+        command.payload.evidenceSourceIds === undefined
+          ? ["intendedOutcome"]
+          : ["intendedOutcome", "evidenceSourceIds"],
         {
           diagnosticCode: "project.outcome_updated",
           projection: {
@@ -4526,6 +4755,9 @@ export const executeWave2Command = (
           ...(project.intendedOutcome === undefined
             ? {}
             : { priorOutcome: project.intendedOutcome }),
+          ...(project.evidenceSourceIds === undefined
+            ? {}
+            : { priorEvidenceSourceIds: project.evidenceSourceIds }),
           resultingVersion: updated.version,
         },
       );
@@ -5579,7 +5811,9 @@ export const executeWave2Command = (
         relations
           .filter(
             (relation) =>
-              relation.projectId === project.id && relation.state === "active",
+              relation.relationType === "task_contributes_to_project" &&
+              relation.projectId === project.id &&
+              relation.state === "active",
           )
           .map((relation) => transaction.getTask(relation.taskId)?.title ?? ""),
       );
@@ -7112,26 +7346,42 @@ export const executeWave2Command = (
     }
     case "record.relate": {
       const task = transaction.getTask(command.payload.taskId);
-      const project = transaction.getProject(command.payload.projectId);
-      // ADR-043 §5 — a removed Task takes no new relation.
+      const project =
+        command.payload.relationType === "task_contributes_to_project"
+          ? transaction.getProject(command.payload.projectId)
+          : undefined;
+      const opportunity =
+        command.payload.relationType === "task_contributes_to_opportunity"
+          ? transaction.getStrategicRecord(command.payload.opportunityId)
+          : undefined;
+      const target =
+        command.payload.relationType === "task_contributes_to_project"
+          ? project
+          : opportunity?.kind === "opportunity"
+            ? opportunity
+            : undefined;
+      // ADR-043 §5 — a removed Task takes no new relation, and neither does a
+      // removed record at the other end.
       if (
         task === undefined ||
-        project === undefined ||
-        task.recordState !== "active"
+        target === undefined ||
+        task.recordState !== "active" ||
+        (opportunity !== undefined &&
+          strategicRecordState(opportunity) !== "active")
       )
         return precondition(command, occurredAt);
       if (
         !exactExpected(command, {
           [task.id]: task.version,
-          [project.id]: project.version,
+          [target.id]: target.version,
         })
       ) {
         return versionConflict(command, occurredAt, {
           [task.id]: task.version,
-          [project.id]: project.version,
+          [target.id]: target.version,
         });
       }
-      const existing = transaction.findTaskProjectRelation(task.id, project.id);
+      const existing = transaction.findTaskProjectRelation(task.id, target.id);
       if (existing !== undefined) {
         return outcome(command, occurredAt, {
           outcome: "conflict",
@@ -7139,13 +7389,26 @@ export const executeWave2Command = (
           currentVersions: { [existing.id]: existing.version },
         });
       }
-      const relation = relateTaskToProject({
-        id: RelationIdSchema.parse(dependencies.ids.next("relation")),
-        task,
-        project,
-        createdBy: context.principalId,
-        occurredAt,
-      });
+      const relation =
+        project === undefined
+          ? relateTaskToOpportunity({
+              id: RelationIdSchema.parse(dependencies.ids.next("relation")),
+              task,
+              opportunity: {
+                id: StrategicRecordIdSchema.parse(target.id),
+                workspaceId: target.workspaceId,
+                spaceId: target.spaceId,
+              },
+              createdBy: context.principalId,
+              occurredAt,
+            })
+          : relateTaskToProject({
+              id: RelationIdSchema.parse(dependencies.ids.next("relation")),
+              task,
+              project,
+              createdBy: context.principalId,
+              occurredAt,
+            });
       transaction.insertRelation(relation);
       return appendJournal(
         dependencies,
@@ -7161,7 +7424,7 @@ export const executeWave2Command = (
           aggregateId: relation.id,
           aggregateVersion: relation.version,
           taskId: relation.taskId,
-          projectId: relation.projectId,
+          ...relationFarEnd(relation),
           occurredAt,
         },
         { [relation.id]: relation.version },
@@ -7172,7 +7435,7 @@ export const executeWave2Command = (
             kind: "relation.created",
             relationId: relation.id,
             taskId: relation.taskId,
-            projectId: relation.projectId,
+            ...relationFarEnd(relation),
             version: relation.version,
           },
         },
@@ -7216,7 +7479,7 @@ export const executeWave2Command = (
           aggregateId: relation.id,
           aggregateVersion: removed.version,
           taskId: relation.taskId,
-          projectId: relation.projectId,
+          ...relationFarEnd(relation),
           occurredAt,
         },
         { [relation.id]: removed.version },
@@ -7227,7 +7490,7 @@ export const executeWave2Command = (
             kind: "relation.removed",
             relationId: relation.id,
             taskId: relation.taskId,
-            projectId: relation.projectId,
+            ...relationFarEnd(relation),
             version: removed.version,
           },
         },
@@ -7252,12 +7515,227 @@ export const executeWave2Command = (
         idempotency,
         occurredAt,
       );
+    case "agent.checkpointRevert":
+      return revertCheckpoint(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+      );
   }
+};
+
+/**
+ * One captured command, judged the way the revert will judge it. A checkpoint
+ * preview used to answer from `consumedByCommandId` alone while the revert
+ * asked this module — so a record another command had moved on previewed as
+ * revertable and refused seconds later, spending a checkpoint the caller could
+ * not get back. Both surfaces now come through here.
+ */
+export interface CheckpointCommandRecovery {
+  readonly targetCommandId: string;
+  readonly descriptor?: UndoDescriptor;
+  readonly available: boolean;
+  readonly reason?:
+    "unsupported" | "already_undone" | "later_change" | "still_referenced";
+}
+
+/**
+ * The records a compensation would touch, named once. `descriptorState`
+ * reports them only when the compensation is available, and both the
+ * checkpoint preview and the revert need them while it is not — so this is the
+ * one place that knows which field of a descriptor kind holds a record id.
+ */
+export /**
+ * The record at the other end of a Task's contribution, named by the field the
+ * relation type calls for. One helper, so an event and its projection cannot
+ * disagree about which end the relation had.
+ */
+const relationFarEnd = (
+  relation: TaskWorkRelation,
+): { projectId: ProjectId } | { opportunityId: StrategicRecordId } =>
+  relation.relationType === "task_contributes_to_project"
+    ? { projectId: relation.projectId }
+    : { opportunityId: relation.opportunityId };
+
+export const descriptorRecordIds = (
+  descriptor: UndoDescriptor,
+): readonly string[] => {
+  switch (descriptor.kind) {
+    case "project.restore_outcome":
+      return [descriptor.projectId];
+    case "area.restore_responsibility":
+      return [descriptor.areaId];
+    case "initiative.restore_outcome":
+      return [descriptor.initiativeId];
+    case "taskStatus.restore_definition":
+      return [descriptor.statusId];
+    case "fieldDef.restore_definition":
+      return [descriptor.fieldId];
+    case "template.restore_definition":
+      return [descriptor.templateId];
+    case "automation.restore_definition":
+      return [descriptor.ruleId];
+    case "project.unapply_template":
+      return [descriptor.projectId, ...descriptor.createdTaskIds];
+    case "meeting.unpromote_work_item":
+      return [descriptor.meetingId, descriptor.createdTaskId];
+    case "meeting.restore_work_item":
+    case "meeting.restore_routing":
+      return [descriptor.meetingId];
+    case "meeting.restore_participant_links":
+      return [descriptor.meetingId, ...descriptor.createdPersonIds];
+    case "record.restore_field_value":
+      return [descriptor.recordId];
+    case "workspace.restore_default_status":
+      return [descriptor.workspaceId];
+    case "task.restore_calendar_block":
+    case "task.restore_record_state":
+    case "task.undo_create":
+    case "task.restore_state":
+    case "task.restore_details":
+    case "task.restore_parent":
+    case "task.restore_operational_state":
+      return [descriptor.taskId];
+    case "strategic.undo_create":
+    case "strategic.restore_record_state":
+    case "record.undo_create":
+    case "record.restore_record_state":
+      return [descriptor.recordId];
+    case "savedView.restore_definition":
+      return [descriptor.savedViewId];
+    case "work_link.restore_state":
+      return [descriptor.linkId];
+    case "relation.remove":
+    case "relation.restore":
+      return [descriptor.relationId];
+    case "capture.undo_route":
+      return [descriptor.captureId, descriptor.taskId];
+    case "capture.undo_knowledge_route":
+      return [descriptor.captureId, descriptor.sourceId];
+    case "knowledge.restore_source":
+      return [descriptor.sourceId];
+    case "knowledge.restore_evidence":
+      return [descriptor.documentId];
+    case "knowledge.void_named_version":
+      return [descriptor.namedVersionId];
+    case "relationship.restore_person":
+      return [descriptor.personId];
+    case "relationship.restore_organization":
+      return [descriptor.organizationId];
+  }
+};
+
+/**
+ * ADR-069. Where a compensation this revert has already applied left a record.
+ * A descriptor judged afterwards is measured against that version instead of
+ * the one its own command produced — which is the whole difference between a
+ * later change this checkpoint carries and one made by anything else.
+ */
+type RevertAllowance = ReadonlyMap<string, number>;
+
+/**
+ * What this revert has already done to the graph, as the next descriptor will
+ * find it: where each record now stands, and which records it has taken back
+ * altogether. Both are derived by the kernel from compensations it has itself
+ * judged or applied — a caller contributes nothing to either.
+ */
+interface RevertContext {
+  readonly versions: RevertAllowance;
+  readonly removed: ReadonlySet<string>;
+}
+
+/**
+ * Whether taking this command back leaves its record gone. That is what lets a
+ * revert compensate a create whose only dependent is another create the same
+ * revert removes first — the shape every real migration writes, since records
+ * arrive with the relations that point at them.
+ */
+const compensationRemovesRecord = (descriptor: UndoDescriptor): boolean =>
+  descriptor.kind === "task.undo_create" ||
+  descriptor.kind === "strategic.undo_create" ||
+  descriptor.kind === "record.undo_create" ||
+  ((descriptor.kind === "strategic.restore_record_state" ||
+    descriptor.kind === "record.restore_record_state" ||
+    descriptor.kind === "task.restore_record_state") &&
+    descriptor.priorRecordState === "removed");
+
+/**
+ * Only a compensation over a single record can take an allowance. A kind that
+ * carries a resulting version per record would need us to decide which of them
+ * the allowance belongs to, and a guess is not a guard: those refuse exactly as
+ * before.
+ */
+const withAllowance = (
+  descriptor: UndoDescriptor,
+  allowance: RevertAllowance,
+): UndoDescriptor => {
+  if (allowance.size === 0 || !("resultingVersion" in descriptor))
+    return descriptor;
+  const recordIds = descriptorRecordIds(descriptor);
+  if (recordIds.length !== 1) return descriptor;
+  const allowed = allowance.get(recordIds[0] as string);
+  return allowed === undefined
+    ? descriptor
+    : { ...descriptor, resultingVersion: allowed };
+};
+
+export const checkpointCommandRecovery = (
+  view: ApplicationWave2ReadView,
+  commandIds: readonly string[],
+): readonly CheckpointCommandRecovery[] => {
+  // Newest first, because that is the order the revert compensates in: a
+  // command only makes way for the ones applied before it.
+  const allowance = new Map<string, number>();
+  const removed = new Set<string>();
+  const judged = [...commandIds].reverse().map((targetCommandId) => {
+    const descriptor = view.getUndoDescriptor(targetCommandId);
+    // No descriptor means the command applied and its kind records no
+    // compensation — permanent, and fatal for the whole checkpoint.
+    if (descriptor === undefined)
+      return {
+        targetCommandId,
+        available: false,
+        reason: "unsupported" as const,
+      };
+    const state = descriptorState(view, withAllowance(descriptor, allowance), {
+      versions: allowance,
+      removed,
+    });
+    if (state.available && compensationRemovesRecord(descriptor))
+      for (const recordId of descriptorRecordIds(descriptor))
+        removed.add(recordId);
+    // Where this compensation leaves the record, as the next descriptor will
+    // find it. Nothing is predicted: judging read-only, the record does not
+    // move, so the version the next check will see is the one it has now — and
+    // when the revert really runs, it is the version the compensation just
+    // wrote. Same rule, both paths, and no assumption about how much a
+    // compensation bumps a version.
+    if (state.available)
+      for (const [recordId, version] of Object.entries(state.versions))
+        allowance.set(recordId, version);
+    return {
+      targetCommandId,
+      descriptor,
+      available: state.available,
+      ...(state.reason === undefined ? {} : { reason: state.reason }),
+    };
+  });
+  // Handed back in the checkpoint's own order: the caller reads it beside
+  // `commandIds`, not beside the order compensation happens to run in.
+  return judged.reverse();
 };
 
 const descriptorState = (
   view: ApplicationWave2ReadView,
   descriptor: UndoDescriptor,
+  // ADR-069. Set only while a checkpoint revert is being judged: the records
+  // its earlier compensations will already have taken back. A create is
+  // blocked by what still points at it, and inside a revert the thing pointing
+  // at it may be another create this same revert removes first.
+  revert?: RevertContext,
 ): {
   available: boolean;
   recordIds: string[];
@@ -7545,7 +8023,11 @@ const descriptorState = (
         };
       const children = view
         .listTasksInSpace(task.workspaceId, task.spaceId)
-        .filter((candidate) => candidate.parentTaskId === task.id);
+        .filter(
+          (candidate) =>
+            candidate.parentTaskId === task.id &&
+            revert?.removed.has(candidate.id) !== true,
+        );
       return children.length === 0
         ? {
             available: true,
@@ -7577,6 +8059,61 @@ const descriptorState = (
             reason: "later_change",
           };
     }
+    case "relationship.restore_person": {
+      const person = view.getStrategicRecord(descriptor.personId);
+      if (
+        person?.kind !== "person" ||
+        strategicRecordState(person) !== "active" ||
+        person.version !== descriptor.resultingVersion
+      )
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      // The compensation writes an organization id back, so that organization
+      // has to still be there: restoring a person onto a record that has since
+      // been removed would leave a reference pointing at nothing, which is the
+      // state every removal guard in this module exists to prevent.
+      if (descriptor.priorOrganizationId !== undefined) {
+        const organization = view.getStrategicRecord(
+          descriptor.priorOrganizationId,
+        );
+        if (
+          organization?.kind !== "organization" ||
+          strategicRecordState(organization) !== "active"
+        )
+          return {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+      }
+      return {
+        available: true,
+        recordIds: [person.id],
+        versions: { [person.id]: person.version },
+      };
+    }
+    case "relationship.restore_organization": {
+      const organization = view.getStrategicRecord(descriptor.organizationId);
+      return organization?.kind === "organization" &&
+        strategicRecordState(organization) === "active" &&
+        organization.version === descriptor.resultingVersion
+        ? {
+            available: true,
+            recordIds: [organization.id],
+            versions: { [organization.id]: organization.version },
+          }
+        : {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "later_change",
+          };
+    }
     case "strategic.undo_create": {
       // Taking a create back removes the record, so version equality is not
       // enough: a person, opportunity or link attached afterwards does not
@@ -7598,7 +8135,9 @@ const descriptorState = (
           versions: {},
           reason: "later_change",
         };
-      const dependents = strategicRecordDependents(view, record);
+      const dependents = strategicRecordDependents(view, record).filter(
+        (dependent) => revert?.removed.has(dependent.recordId) !== true,
+      );
       return dependents.length === 0
         ? {
             available: true,
@@ -7642,7 +8181,9 @@ const descriptorState = (
         };
       const orphans =
         descriptor.kind === "record.undo_create" &&
-        tableRecordDependents(view, record, descriptor.recordKind).length > 0;
+        tableRecordDependents(view, record, descriptor.recordKind).filter(
+          (dependent) => revert?.removed.has(dependent.recordId) !== true,
+        ).length > 0;
       return orphans
         ? {
             available: false,
@@ -7874,65 +8415,58 @@ const undoPreviewProjection = (
   };
 };
 
-const applyUndo = (
-  dependencies: ApplicationKernelDependencies,
-  transaction: ApplicationTransaction,
+/**
+ * What a compensation touched, by record kind — the same vocabulary the
+ * journal carries, named once because two callers now build it.
+ */
+type CompensatedRecordKinds = Record<
+  string,
+  | "capture"
+  | "task"
+  | "project"
+  | "document"
+  | "knowledgeSource"
+  | "namedDocumentVersion"
+  | "relation"
+  | "strategicRecord"
+  | "taskStatus"
+  | "workspace"
+  | "fieldDefinition"
+  | "projectTemplate"
+  | "automationRule"
+>;
+
+/**
+ * ADR-069. The compensation itself, named apart from the command that asks for
+ * it. A single `command.undo` and a checkpoint revert apply exactly these
+ * writes; a revert that carried its own copy would drift from the undo it is
+ * made of. The refusals kept here are the defensive ones — a record that
+ * vanished between the availability check and the write — and they say only
+ * that nothing was compensated, leaving each caller to name its own refusal.
+ */
+const compensateDescriptor = (
+  transaction: ApplicationWave2Transaction,
   context: ExecutionContext,
-  command: Extract<Wave2Command, { commandName: "command.undo" }>,
-  idempotency: Omit<IdempotencyRecord, "outcome">,
+  descriptor: UndoDescriptor,
   occurredAt: string,
-): CommandOutcome => {
-  if (!isApplicationWave2Transaction(transaction)) {
-    return precondition(command, occurredAt);
-  }
-  const descriptor = transaction.getUndoDescriptor(
-    command.payload.targetCommandId,
-  );
-  if (descriptor === undefined) {
-    return outcome(command, occurredAt, {
-      outcome: "conflict",
-      diagnosticCode: "undo.not_available",
-      currentVersions: {},
-    });
-  }
-  if (descriptor.consumedByCommandId !== undefined) {
-    return outcome(command, occurredAt, {
-      outcome: "conflict",
-      diagnosticCode: "undo.already_applied",
-      currentVersions: {},
-    });
-  }
-  const state = descriptorState(transaction, descriptor);
-  if (!state.available || !exactExpected(command, state.versions)) {
-    return outcome(command, occurredAt, {
-      outcome: "conflict",
-      diagnosticCode: "undo.not_available",
-      currentVersions: state.versions,
-    });
-  }
+):
+  | {
+      readonly ok: true;
+      readonly versions: Record<string, number>;
+      readonly kinds: CompensatedRecordKinds;
+    }
+  | { readonly ok: false } => {
   let compensatedVersions: Record<string, number>;
-  let compensatedKinds: Record<
-    string,
-    | "capture"
-    | "task"
-    | "project"
-    | "document"
-    | "knowledgeSource"
-    | "namedDocumentVersion"
-    | "relation"
-    | "strategicRecord"
-    | "taskStatus"
-    | "workspace"
-    | "fieldDefinition"
-    | "projectTemplate"
-    | "automationRule"
-  >;
+  let compensatedKinds: CompensatedRecordKinds;
   if (descriptor.kind === "project.restore_outcome") {
     const project = transaction.getProject(descriptor.projectId) as Project;
     const restored = updateProjectOutcome(
       project,
       descriptor.priorOutcome,
       occurredAt,
+      // An empty list rather than absent: absent would leave whatever evidence
+      // the update wrote, which is a half-restored record.
+      descriptor.priorEvidenceSourceIds ?? [],
     );
     transaction.updateProject(restored, project.version);
     compensatedVersions = { [restored.id]: restored.version };
@@ -8240,11 +8774,7 @@ const applyUndo = (
         ? transaction.getTask(TaskIdSchema.parse(descriptor.recordId))
         : transaction.getProject(ProjectIdSchema.parse(descriptor.recordId));
     if (record === undefined) {
-      return outcome(command, occurredAt, {
-        outcome: "conflict",
-        diagnosticCode: "undo.not_available",
-        currentVersions: state.versions,
-      });
+      return { ok: false };
     }
     const nextFields = withFieldValue(
       record.fields,
@@ -8416,11 +8946,7 @@ const applyUndo = (
   } else if (descriptor.kind === "work_link.restore_state") {
     const link = transaction.getStrategicRecord(descriptor.linkId);
     if (link?.kind !== "work_link") {
-      return outcome(command, occurredAt, {
-        outcome: "conflict",
-        diagnosticCode: "undo.not_available",
-        currentVersions: state.versions,
-      });
+      return { ok: false };
     }
     const { removedAt: _removedAt, ...withoutRemovedAt } = link;
     void _removedAt;
@@ -8460,11 +8986,7 @@ const applyUndo = (
     const capture = transaction.getCapture(descriptor.captureId);
     const task = transaction.getTask(descriptor.taskId);
     if (capture?.processingState !== "routed_as_task" || task === undefined) {
-      return outcome(command, occurredAt, {
-        outcome: "conflict",
-        diagnosticCode: "undo.not_available",
-        currentVersions: state.versions,
-      });
+      return { ok: false };
     }
     const restored = undoCaptureTaskRoute({ capture, task, occurredAt });
     transaction.updateCapture(restored.capture, capture.version);
@@ -8484,11 +9006,7 @@ const applyUndo = (
       capture?.processingState !== "routed_as_knowledge_source" ||
       source === undefined
     ) {
-      return outcome(command, occurredAt, {
-        outcome: "conflict",
-        diagnosticCode: "undo.not_available",
-        currentVersions: state.versions,
-      });
+      return { ok: false };
     }
     const restored = undoCaptureKnowledgeRoute({
       capture,
@@ -8581,6 +9099,39 @@ const applyUndo = (
       compensatedVersions = { [restored.id]: restored.version };
       compensatedKinds = { [restored.id]: "knowledgeSource" };
     }
+  } else if (descriptor.kind === "relationship.restore_person") {
+    const person = transaction.getStrategicRecord(
+      descriptor.personId,
+    ) as Extract<StrategicRecord, { kind: "person" }>;
+    const restored = updatePersonDetails(
+      person,
+      {
+        name: descriptor.priorName,
+        organizationId: descriptor.priorOrganizationId ?? null,
+        role: descriptor.priorRole ?? null,
+        email: descriptor.priorEmail ?? null,
+      },
+      occurredAt,
+    );
+    transaction.updateStrategicRecord(restored, person.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
+  } else if (descriptor.kind === "relationship.restore_organization") {
+    const organization = transaction.getStrategicRecord(
+      descriptor.organizationId,
+    ) as Extract<StrategicRecord, { kind: "organization" }>;
+    const restored = updateOrganizationDetails(
+      organization,
+      {
+        name: descriptor.priorName,
+        relationshipState: descriptor.priorRelationshipState,
+        nextAction: descriptor.priorNextAction ?? null,
+      },
+      occurredAt,
+    );
+    transaction.updateStrategicRecord(restored, organization.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "strategicRecord" };
   } else if (descriptor.kind === "knowledge.restore_evidence") {
     const document = transaction.getDocument(descriptor.documentId)!;
     const restored = setDocumentEvidence(document, {
@@ -8603,6 +9154,207 @@ const applyUndo = (
     compensatedVersions = { [voided.id]: voided.version };
     compensatedKinds = { [voided.id]: "namedDocumentVersion" };
   }
+  return { ok: true, versions: compensatedVersions, kinds: compensatedKinds };
+};
+
+/**
+ * ADR-069. One revert, one transaction, one receipt.
+ *
+ * Compensation runs newest first, and each one that applies tells the next
+ * where it left the record. That allowance is the only thing this adds to the
+ * guard every single undo already runs: a record may stand where its own
+ * command left it, or where this revert's own earlier compensation put it.
+ * Work from outside the checkpoint contributes no allowance and still refuses
+ * the whole revert, which is what the guard was always for.
+ *
+ * Nothing is applied until every captured command has been judged, so a
+ * refusal leaves the checkpoint exactly as it was rather than half spent —
+ * the state a recovery mechanism must never be able to produce.
+ */
+const revertCheckpoint = (
+  dependencies: ApplicationKernelDependencies,
+  transaction: ApplicationTransaction,
+  context: ExecutionContext,
+  command: Extract<Wave2Command, { commandName: "agent.checkpointRevert" }>,
+  idempotency: Omit<IdempotencyRecord, "outcome">,
+  occurredAt: string,
+): CommandOutcome => {
+  if (!isApplicationWave2Transaction(transaction))
+    return precondition(command, occurredAt);
+  if (!exactExpected(command, {})) return precondition(command, occurredAt);
+  const checkpoint = transaction.getAgentCheckpoint(
+    command.payload.checkpointId,
+  );
+  // `runId` names the run doing the reverting, not the run that opened the
+  // checkpoint: a slice written yesterday is still a slice a later run may take
+  // back. Same precondition as agent.checkpointCreate — a grant can own several
+  // runs, so the payload has to name the one the caller is executing.
+  if (
+    checkpoint === undefined ||
+    checkpoint.workspaceId !== command.workspaceId ||
+    command.payload.runId !== context.hostRun?.agentRunId
+  )
+    return precondition(command, occurredAt);
+  if (checkpoint.status === "reverted")
+    return outcome(command, occurredAt, {
+      outcome: "rejected",
+      diagnosticCode: "agent.checkpoint_already_reverted",
+    });
+  // Refused before the checkpoint is spent: it captured nothing, so reverting
+  // it would report success, change nothing, and leave the caller without the
+  // checkpoint they still need.
+  if (checkpoint.commandIds.length === 0)
+    return outcome(command, occurredAt, {
+      outcome: "rejected",
+      diagnosticCode: "agent.checkpoint_revert_empty",
+    });
+  const judged = checkpointCommandRecovery(transaction, checkpoint.commandIds);
+  const blocked = judged.flatMap((item) =>
+    item.available
+      ? []
+      : [
+          {
+            targetCommandId: item.targetCommandId,
+            unavailableReason: item.reason ?? "later_change",
+          },
+        ],
+  );
+  if (blocked.length > 0)
+    return outcome(command, occurredAt, {
+      // "unsupported" is fatal for the command kind, so it outranks the
+      // reasons a person can still act on: never advertise a retry that
+      // provably cannot succeed.
+      outcome: blocked.some((item) => item.unavailableReason === "unsupported")
+        ? "rejected"
+        : "conflict",
+      diagnosticCode: "agent.checkpoint_revert_blocked",
+      checkpointId: checkpoint.id,
+      blocked,
+    });
+  const allowance = new Map<string, number>();
+  const compensatedVersions: Record<string, number> = {};
+  const compensatedKinds: Record<string, string> = {};
+  for (const targetCommandId of [...checkpoint.commandIds].reverse()) {
+    const descriptor = transaction.getUndoDescriptor(targetCommandId);
+    const state =
+      descriptor === undefined
+        ? undefined
+        : descriptorState(transaction, withAllowance(descriptor, allowance));
+    // The judgement above ran against this same transaction, so disagreeing
+    // here means the predicted and the real compensation differ. Nothing may
+    // be left half applied on that: the sentinel rolls the whole revert back
+    // and the caller is told to retry rather than handed a partial slice.
+    if (descriptor === undefined || state?.available !== true)
+      throw new RetryableUnitOfWorkError("storage.unit_of_work_failed");
+    const compensation = compensateDescriptor(
+      transaction,
+      context,
+      descriptor,
+      occurredAt,
+    );
+    if (!compensation.ok)
+      throw new RetryableUnitOfWorkError("storage.unit_of_work_failed");
+    transaction.updateUndoDescriptor({
+      ...descriptor,
+      consumedByCommandId: command.commandId,
+    });
+    for (const [recordId, version] of Object.entries(compensation.versions)) {
+      allowance.set(recordId, version);
+      compensatedVersions[recordId] = version;
+      compensatedKinds[recordId] = compensation.kinds[recordId] as string;
+    }
+  }
+  transaction.updateAgentCheckpoint({
+    ...checkpoint,
+    status: "reverted",
+    updatedAt: occurredAt,
+    revertedAt: occurredAt,
+  });
+  return appendJournal(
+    dependencies,
+    transaction,
+    context,
+    command,
+    idempotency,
+    occurredAt,
+    {
+      type: "agent.checkpoint_reverted",
+      workspaceId: checkpoint.workspaceId,
+      // A checkpoint has no Space of its own; the work it took back does, and
+      // every captured command is inside the grant's Space scope.
+      spaceId: (judged[0]?.descriptor as UndoDescriptor).spaceId,
+      aggregateId: checkpoint.id,
+      // Checkpoints are not versioned records: they are opened once and
+      // reverted at most once, which is the whole lifecycle.
+      aggregateVersion: 1,
+      occurredAt,
+    },
+    compensatedVersions,
+    ["status", "revertedAt"],
+    {
+      diagnosticCode: "agent.checkpoint_reverted",
+      projection: {
+        kind: "agent.checkpoint_reverted",
+        checkpointId: checkpoint.id,
+        compensatedCommandIds: [...checkpoint.commandIds],
+        recordVersions: compensatedVersions,
+      },
+    },
+    undefined,
+    compensatedKinds as CompensatedRecordKinds,
+  );
+};
+
+const applyUndo = (
+  dependencies: ApplicationKernelDependencies,
+  transaction: ApplicationTransaction,
+  context: ExecutionContext,
+  command: Extract<Wave2Command, { commandName: "command.undo" }>,
+  idempotency: Omit<IdempotencyRecord, "outcome">,
+  occurredAt: string,
+): CommandOutcome => {
+  if (!isApplicationWave2Transaction(transaction)) {
+    return precondition(command, occurredAt);
+  }
+  const descriptor = transaction.getUndoDescriptor(
+    command.payload.targetCommandId,
+  );
+  if (descriptor === undefined) {
+    return outcome(command, occurredAt, {
+      outcome: "conflict",
+      diagnosticCode: "undo.not_available",
+      currentVersions: {},
+    });
+  }
+  if (descriptor.consumedByCommandId !== undefined) {
+    return outcome(command, occurredAt, {
+      outcome: "conflict",
+      diagnosticCode: "undo.already_applied",
+      currentVersions: {},
+    });
+  }
+  const state = descriptorState(transaction, descriptor);
+  if (!state.available || !exactExpected(command, state.versions)) {
+    return outcome(command, occurredAt, {
+      outcome: "conflict",
+      diagnosticCode: "undo.not_available",
+      currentVersions: state.versions,
+    });
+  }
+  const compensation = compensateDescriptor(
+    transaction,
+    context,
+    descriptor,
+    occurredAt,
+  );
+  if (!compensation.ok)
+    return outcome(command, occurredAt, {
+      outcome: "conflict",
+      diagnosticCode: "undo.not_available",
+      currentVersions: state.versions,
+    });
+  const compensatedVersions = compensation.versions;
+  const compensatedKinds = compensation.kinds;
   transaction.updateUndoDescriptor({
     ...descriptor,
     consumedByCommandId: command.commandId,
@@ -9338,6 +10090,7 @@ export const executeWave2Query = (
           lifecycle: project.lifecycle,
           relatedOpenTaskCount: relations.filter(
             (relation) =>
+              relation.relationType === "task_contributes_to_project" &&
               relation.projectId === project.id &&
               relation.state === "active" &&
               openTasks.has(relation.taskId),
@@ -9599,7 +10352,9 @@ export const executeWave2Query = (
         .listRelations(query.workspaceId, project.spaceId)
         .filter(
           (relation) =>
-            relation.projectId === project.id && relation.state === "active",
+            relation.relationType === "task_contributes_to_project" &&
+            relation.projectId === project.id &&
+            relation.state === "active",
         )
         .map((relation) => relation.taskId),
     );
@@ -9866,9 +10621,21 @@ export const executeWave2Query = (
       .sort((left, right) =>
         right.meeting.startedAt.localeCompare(left.meeting.startedAt),
       );
-    const projectIds = new Set(
-      opportunities.flatMap((opportunity) => opportunity.projectIds),
-    );
+    // Two reaches, unioned, exactly as the project.organization condition path
+    // unions them (ADR-071): the delivery linked straight at this client, and
+    // the projects its live opportunities name. Composing only the second is
+    // what made a PoV invisible on the client it was running at.
+    const projectIds = new Set([
+      ...opportunities.flatMap((opportunity) => opportunity.projectIds),
+      ...strategicRecords.flatMap((record) =>
+        record.kind === "work_link" &&
+        record.state === "active" &&
+        record.linkType === "project_serves_organization" &&
+        record.targetRecordId === organization.id
+          ? [ProjectIdSchema.parse(record.sourceRecordId)]
+          : [],
+      ),
+    ]);
     const activeProjects = view
       .listProjects(query.workspaceId, organization.spaceId)
       .filter(
@@ -9890,6 +10657,7 @@ export const executeWave2Query = (
     )) {
       if (
         relation.state !== "active" ||
+        relation.relationType !== "task_contributes_to_project" ||
         !activeProjectIds.has(relation.projectId)
       )
         continue;
@@ -10334,10 +11102,15 @@ export const executeWave2Query = (
       .filter((task) => task.completionState === "open")
       .map((task) => {
         const relation = relations.find(
-          (candidate) => candidate.taskId === task.id,
+          (candidate) =>
+            candidate.taskId === task.id &&
+            candidate.relationType === "task_contributes_to_project",
         );
         const project =
-          relation === undefined ? undefined : projects.get(relation.projectId);
+          relation === undefined ||
+          relation.relationType !== "task_contributes_to_project"
+            ? undefined
+            : projects.get(relation.projectId);
         const reasons: Array<Record<string, unknown>> = [
           { code: "task_open", weight: 100 },
         ];

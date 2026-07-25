@@ -14,7 +14,6 @@ import {
   CheckpointIdSchema,
   CommandIdSchema,
   CorrelationIdSchema,
-  QueryIdSchema,
   grantScopeDrift,
   isCustodiedCaptureOriginal,
   type CaptureOriginal,
@@ -37,8 +36,7 @@ import {
   MCP_CONTRACT_VERSION,
   MCP_TOOL_NAMES,
   McpOperatorResponseSchema,
-  checkpointRevertPreview,
-  checkpointRevertRefusal,
+  checkpointRevertResponse,
   type CheckpointRevertBlock,
   type HostRunMetadata,
   type McpOperatorInvocation,
@@ -78,6 +76,12 @@ const MUTATING_INVOCATION_KINDS: ReadonlySet<McpOperatorInvocation["kind"]> =
 type AgentContentAddress = {
   readonly owner: CollaborativeContentOwner;
   readonly spaceId: SpaceId;
+  /**
+   * ADR-070. The Project's own intended outcome, carried down so a body
+   * materialised by an agent starts from the same seed a human's first open
+   * would have produced.
+   */
+  readonly seed?: { readonly text: string; readonly principalId: string };
 };
 
 export const localMcpEndpoint = (
@@ -214,6 +218,7 @@ export class LocalMcpRuntime {
           | undefined;
         readStructured?(input: AgentContentAddress):
           | {
+              readonly contentState: "absent" | "plain-v1" | "rich-v1";
               readonly content: unknown;
               readonly text: string;
               readonly entityReferences: readonly unknown[];
@@ -234,6 +239,8 @@ export class LocalMcpRuntime {
               readonly revisionId: string;
               readonly stateVectorSha256: string;
               readonly idempotentReplay: boolean;
+              readonly contentCreated?: boolean;
+              readonly formatUpgraded?: boolean;
             }
           | {
               readonly outcome: "conflict" | "rejected";
@@ -731,6 +738,15 @@ export class LocalMcpRuntime {
           : { documentId: owner.documentId, documentVersion: record.version };
       const diagnostic = (code: string): string =>
         projectInvocation ? code.replace(/^document\./u, "project.") : code;
+      // ADR-070/ADR-056 §3. A Project's body starts from the outcome someone
+      // wrote on the Project, whoever materialises it first — so an agent
+      // writing before any human opened it does not cost the Project its seed.
+      const seed =
+        projectInvocation && "intendedOutcome" in record
+          ? record.intendedOutcome === undefined
+            ? undefined
+            : { text: record.intendedOutcome, principalId: record.createdBy }
+          : undefined;
       if (
         invocation.kind === "document_structured_read" ||
         invocation.kind === "project_structured_read"
@@ -738,10 +754,17 @@ export class LocalMcpRuntime {
         const result = this.input.documentText.readStructured?.({
           owner,
           spaceId: record.spaceId,
+          ...(seed === undefined ? {} : { seed }),
         });
+        // The read is total for absent and plain-text bodies, so the only
+        // undefined left is a body whose rich projection cannot be produced —
+        // named, rather than escaping as an internal fault the way an
+        // un-upgraded document used to (finding #16).
         return result === undefined
           ? contentSafeResponse(invocation.requestId, "rejected", {
-              diagnosticCode: diagnostic("document.content_unavailable"),
+              diagnosticCode: diagnostic(
+                "document.structured_content_unreadable",
+              ),
             })
           : contentSafeResponse(
               invocation.requestId,
@@ -820,6 +843,7 @@ export class LocalMcpRuntime {
       const result = this.input.documentText.replaceStructured?.({
         owner,
         spaceId: record.spaceId,
+        ...(seed === undefined ? {} : { seed }),
         content: invocation.content,
         expectedStateVectorSha256: invocation.expectedStateVectorSha256,
         idempotencyKey: invocation.idempotencyKey,
@@ -845,6 +869,7 @@ export class LocalMcpRuntime {
       invocation.checkpointId,
       invocation.correlationId,
       invocation.idempotencyKey,
+      invocation.run.agentRunId,
     );
   }
 
@@ -946,6 +971,7 @@ export class LocalMcpRuntime {
     checkpointId: string,
     correlationId: string,
     idempotencyKey: string,
+    runId: string,
   ): McpOperatorResponse {
     const checkpoint = this.input.store.read((view) =>
       view.getAgentCheckpoint(CheckpointIdSchema.parse(checkpointId)),
@@ -968,73 +994,24 @@ export class LocalMcpRuntime {
         diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.empty,
         checkpointId: checkpoint.id,
       });
-    // Compensation runs newest-first, and every preview is taken before any of
-    // it is applied, so previews and undos walk one shared reversed sequence:
-    // an undo paired with another command's preview would carry the wrong
-    // expectedVersions and half-apply the checkpoint.
-    const targets = [...checkpoint.commandIds].reverse();
-    const previews = targets.map((targetCommandId) =>
-      checkpointRevertPreview(
-        targetCommandId,
-        service.query({
-          contractVersion: 1,
-          queryName: "recovery.preview",
-          queryId: QueryIdSchema.parse(randomUUID()),
-          workspaceId: checkpoint.workspaceId,
-          consistency: "local_authoritative",
-          parameters: { targetCommandId },
-        }),
-      ),
+    // ADR-069. One command: the kernel compensates newest-first inside one
+    // transaction, so it can tell a later change this checkpoint carries from
+    // one made outside it, and a refusal leaves the checkpoint exactly as it
+    // was rather than half spent.
+    const response = service.execute({
+      contractVersion: 1,
+      commandName: "agent.checkpointRevert",
+      commandId: CommandIdSchema.parse(randomUUID()),
+      workspaceId: checkpoint.workspaceId,
+      idempotencyKey,
+      expectedVersions: {},
+      correlationId: CorrelationIdSchema.parse(correlationId),
+      payload: { checkpointId: checkpoint.id, runId },
+    });
+    const mapped = checkpointRevertResponse(checkpoint.id, response, (blocks) =>
+      this.namedBlocks(blocks),
     );
-    const blocked = previews.flatMap((preview) =>
-      preview.ok ? [] : [preview.blocked],
-    );
-    if (blocked.length > 0) {
-      const refusal = checkpointRevertRefusal(
-        checkpoint.id,
-        this.namedBlocks(blocked),
-      );
-      return contentSafeResponse(requestId, refusal.outcome, refusal.result);
-    }
-    const outcomes = targets.map((targetCommandId, index) => {
-      const preview = previews[index];
-      return service.execute({
-        contractVersion: 1,
-        commandName: "command.undo",
-        commandId: CommandIdSchema.parse(randomUUID()),
-        workspaceId: checkpoint.workspaceId,
-        idempotencyKey: `${idempotencyKey}:${index}`,
-        expectedVersions: preview?.ok === true ? preview.requiredVersions : {},
-        correlationId: CorrelationIdSchema.parse(correlationId),
-        payload: { targetCommandId },
-      });
-    });
-    if (
-      outcomes.some(
-        (response) =>
-          response.kind !== "command_outcome" ||
-          response.outcome.outcome !== "success",
-      )
-    )
-      return contentSafeResponse(requestId, "partial", {
-        diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.partial,
-        outcomes,
-      });
-    this.input.store.transact((transaction) => {
-      const current = transaction.getAgentCheckpoint(checkpoint.id);
-      if (current === undefined) return;
-      transaction.updateAgentCheckpoint({
-        ...current,
-        status: "reverted",
-        updatedAt: new Date().toISOString(),
-        revertedAt: new Date().toISOString(),
-      });
-    });
-    return contentSafeResponse(requestId, "success", {
-      diagnosticCode: MCP_CHECKPOINT_REVERT_DIAGNOSTICS.reverted,
-      checkpointId: checkpoint.id,
-      outcomes,
-    });
+    return contentSafeResponse(requestId, mapped.outcome, mapped.result);
   }
 
   /**

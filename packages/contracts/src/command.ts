@@ -273,6 +273,20 @@ export const AgentCheckpointCreateCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 
+/**
+ * ADR-069. The revert is one act, not a fan of undos assembled outside the
+ * kernel: only the kernel can tell a later change made by a command this
+ * checkpoint carries from one made by anything else, and only one transaction
+ * can refuse the whole slice without leaving half of it taken back. The
+ * published surface stays `constellation.checkpoint.revert.v1`.
+ */
+export const AgentCheckpointRevertCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("agent.checkpointRevert"),
+  payload: z
+    .object({ checkpointId: CheckpointIdSchema, runId: AgentRunIdSchema })
+    .strict(),
+}).strict();
+
 export const AgentHandoffSubmitCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("agent.handoffSubmit"),
   payload: z
@@ -528,6 +542,12 @@ export const ProjectCreateCommandSchema = CommandMetadataSchema.extend({
       spaceId: SpaceIdSchema,
       title: z.string().trim().min(1).max(500),
       intendedOutcome: RecordNarrativeSchema.optional(),
+      // The Sources this Project rests on, as an Opportunity, a Decision and a
+      // relationship Fact already record theirs. Without it a migrated Project
+      // could only name its origin inside a paragraph, and "which projects
+      // rest on the note I now doubt" stopped being a question the graph could
+      // answer.
+      evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100).optional(),
     })
     .strict(),
 }).strict();
@@ -665,6 +685,64 @@ export const RelationshipPersonCreateCommandSchema =
       .strict(),
   }).strict();
 
+/**
+ * Person and Organization were the only entity kinds with no update, so fixing
+ * a misspelled surname cost a remove and a re-create under a new id — losing
+ * createdAt, the audit lineage and every reference to the old id, and becoming
+ * impossible outright once an Opportunity pointed at the person. Partial by
+ * field, like task.updateDetails: absent leaves a field alone, null clears an
+ * optional one, and the required name can only be replaced, never cleared.
+ */
+export const RelationshipPersonUpdateCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("relationship.personUpdate"),
+    payload: z
+      .object({
+        personId: StrategicRecordIdSchema,
+        name: z.string().trim().min(1).max(300).optional(),
+        organizationId: StrategicRecordIdSchema.nullable().optional(),
+        role: z.string().trim().min(1).max(300).nullable().optional(),
+        email: z.email().max(320).nullable().optional(),
+      })
+      .strict()
+      .refine(
+        (payload) =>
+          payload.name !== undefined ||
+          payload.organizationId !== undefined ||
+          payload.role !== undefined ||
+          payload.email !== undefined,
+        {
+          error:
+            "personUpdate must change at least one field: name, organizationId, role, or email",
+        },
+      ),
+  }).strict();
+
+export const RelationshipOrganizationUpdateCommandSchema =
+  CommandMetadataSchema.extend({
+    commandName: z.literal("relationship.organizationUpdate"),
+    payload: z
+      .object({
+        organizationId: StrategicRecordIdSchema,
+        name: z.string().trim().min(1).max(300).optional(),
+        relationshipState: z
+          .enum(["prospect", "active", "inactive"])
+          .optional(),
+        nextAction: z.string().trim().min(1).max(1_000).nullable().optional(),
+      })
+      .strict()
+      .refine(
+        (payload) =>
+          payload.name !== undefined ||
+          payload.relationshipState !== undefined ||
+          payload.nextAction !== undefined,
+        {
+          error:
+            "organizationUpdate must change at least one field: name, relationshipState, or nextAction",
+        },
+      ),
+  }).strict();
+
 export const RelationshipPersonRemoveCommandSchema =
   CommandMetadataSchema.extend({
     commandName: z.literal("relationship.personRemove"),
@@ -680,6 +758,10 @@ export const OpportunityCreateCommandSchema = CommandMetadataSchema.extend({
       title: z.string().trim().min(1).max(500),
       organizationId: StrategicRecordIdSchema,
       personIds: z.array(StrategicRecordIdSchema).max(100),
+      // Whose deal this is, as opposed to who is named on it. The source
+      // workbook separates the two and the distinction decides who is chased;
+      // a flat personIds array could only restate it in prose.
+      ownerPersonId: StrategicRecordIdSchema.optional(),
       need: z.string().trim().min(1).max(4_000),
       qualification: z.string().trim().min(1).max(2_000),
       stage: z.string().trim().min(1).max(120),
@@ -912,6 +994,12 @@ export const WorkLinkCreateCommandSchema = CommandMetadataSchema.extend({
       linkType: z.enum([
         "project_advances_initiative",
         "project_serves_area",
+        // The delivery a Project runs at a named client. ADR-044 §3 left this
+        // edge out deliberately, on the ground that a Project has no single
+        // honest organization; the first migration of a real engagement showed
+        // the cost — the client ends up in the title, and the Organization
+        // does not know a delivery is running at it.
+        "project_serves_organization",
         "task_depends_on_task",
       ]),
       sourceRecordId: z.uuid(),
@@ -1344,6 +1432,8 @@ export const ProjectUpdateOutcomeCommandSchema = CommandMetadataSchema.extend({
     .object({
       projectId: ProjectIdSchema,
       intendedOutcome: RecordNarrativeSchema,
+      // Absent leaves the Project's provenance alone; a list replaces it.
+      evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100).optional(),
     })
     .strict(),
 }).strict();
@@ -1853,13 +1943,25 @@ export const AttentionDismissCommandSchema = CommandMetadataSchema.extend({
 
 export const RecordRelateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("record.relate"),
-  payload: z
-    .object({
-      relationType: z.literal("task_contributes_to_project"),
-      taskId: TaskIdSchema,
-      projectId: ProjectIdSchema,
-    })
-    .strict(),
+  // Two shapes rather than one payload with optional ends: the relation type
+  // decides which record the other end is, and an envelope that accepted both
+  // ids at once would have to reject the combinations afterwards.
+  payload: z.discriminatedUnion("relationType", [
+    z
+      .object({
+        relationType: z.literal("task_contributes_to_project"),
+        taskId: TaskIdSchema,
+        projectId: ProjectIdSchema,
+      })
+      .strict(),
+    z
+      .object({
+        relationType: z.literal("task_contributes_to_opportunity"),
+        taskId: TaskIdSchema,
+        opportunityId: StrategicRecordIdSchema,
+      })
+      .strict(),
+  ]),
 }).strict();
 
 export const RecordUnrelateCommandSchema = CommandMetadataSchema.extend({
@@ -1889,6 +1991,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   AgentGrantRevokeCommandSchema,
   AgentGrantSetScopeCommandSchema,
   AgentCheckpointCreateCommandSchema,
+  AgentCheckpointRevertCommandSchema,
   AgentHandoffSubmitCommandSchema,
   CaptureSubmitCommandSchema,
   CaptureProcessCommandSchema,
@@ -1912,7 +2015,9 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   RelationshipOrganizationCreateCommandSchema,
   RelationshipOrganizationRemoveCommandSchema,
   RelationshipPersonCreateCommandSchema,
+  RelationshipPersonUpdateCommandSchema,
   RelationshipPersonRemoveCommandSchema,
+  RelationshipOrganizationUpdateCommandSchema,
   OpportunityCreateCommandSchema,
   OpportunityRemoveCommandSchema,
   OpportunityOfferCreateCommandSchema,
