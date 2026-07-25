@@ -8,10 +8,10 @@ import {
   WorkspaceIdSchema,
 } from "@constellation/contracts";
 import {
-  ABSENT_CONTENT_STATE_VECTOR_SHA256,
   MAX_DOCUMENT_TEXT_LENGTH,
   YjsRealtimeDocumentAdapter,
 } from "@constellation/realtime-documents";
+import { ABSENT_CONTENT_STATE_VECTOR_SHA256 } from "@constellation/realtime-documents/agent-content";
 import type { SqliteApplicationStore } from "@constellation/local-store";
 
 import { createAgentDocumentTextPort } from "../src/document-collaboration.js";

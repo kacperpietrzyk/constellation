@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
+    },
+    "./agent-content": {
+      "types": "./dist/src/agent-content.d.ts",
+      "default": "./dist/src/agent-content.js"
     }
   },
   "types": "./dist/src/index.d.ts",

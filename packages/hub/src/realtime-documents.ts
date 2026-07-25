@@ -28,6 +28,10 @@ import {
   type documentEntityReferences,
   parseStructuredDocument,
   replaceStructuredDocumentInYjs,
+  restoreDocumentFromCheckpoint,
+} from "@constellation/realtime-documents";
+// Host-side only — see the note in the package index.
+import {
   AgentContentUnreadableError,
   agentContentBaseline,
   projectAgentContent,
@@ -35,8 +39,7 @@ import {
   storedStateVectorSha256,
   type AgentContentSeed,
   type AgentContentState,
-  restoreDocumentFromCheckpoint,
-} from "@constellation/realtime-documents";
+} from "@constellation/realtime-documents/agent-content";
 import crossws from "crossws/adapters/node";
 import * as Y from "yjs";
 

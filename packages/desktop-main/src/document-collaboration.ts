@@ -19,18 +19,22 @@ import type { SqliteApplicationStore } from "@constellation/local-store";
 import {
   type DocumentContentFormat,
   type StructuredDocument,
-  type AgentContentSeed,
-  type AgentContentState,
   MAX_DOCUMENT_TEXT_LENGTH,
   YjsRealtimeDocumentAdapter,
+  createRichDocumentSeed,
+  parseStructuredDocument,
+} from "@constellation/realtime-documents";
+// Host-side only: this module hashes with node:crypto, so it is imported by
+// its own path rather than through the package index the renderer bundles.
+import {
   AgentContentUnreadableError,
   agentContentBaseline,
-  createRichDocumentSeed,
-  storedStateVector,
-  parseStructuredDocument,
   projectAgentContent,
+  storedStateVector,
   storedStateVectorSha256,
-} from "@constellation/realtime-documents";
+  type AgentContentSeed,
+  type AgentContentState,
+} from "@constellation/realtime-documents/agent-content";
 
 import type { HubConnection } from "./hub-connection-custody.js";
 
