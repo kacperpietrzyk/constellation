@@ -305,6 +305,18 @@ const isCurrentlyAuthorized = (
       }
       return true;
     }
+    case "agent.checkpointRevert":
+      // ADR-069. The capability is spelled for the act rather than for the
+      // command, because `agent.checkpoint.revert` is already written into
+      // every grant in the field and renaming a capability silently removes it
+      // from all of them (ADR-067 §3). Whether the checkpoint exists and
+      // belongs to this caller is a precondition, not a permission: answering
+      // it here would turn the denial into an existence oracle.
+      return authorization.authorize({
+        context,
+        capability: "agent.checkpoint.revert",
+        workspaceId: command.workspaceId,
+      });
     case "agent.grantCreate":
     case "agent.grantRotateCredential":
     case "agent.grantRevoke":
@@ -969,6 +981,10 @@ export class ApplicationKernel {
       case "record.unrelate":
       case "command.previewUndo":
       case "command.undo":
+      // ADR-069. The revert lives beside the compensation it applies, not
+      // beside the checkpoint commands it names: only this module can judge a
+      // descriptor and write the compensation back.
+      case "agent.checkpointRevert":
         return executeWave2Command(
           this.dependencies,
           transaction,

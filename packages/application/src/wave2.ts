@@ -266,7 +266,8 @@ export type Wave2Command = Extract<
       | "record.relate"
       | "record.unrelate"
       | "command.previewUndo"
-      | "command.undo";
+      | "command.undo"
+      | "agent.checkpointRevert";
   }
 >;
 
@@ -296,11 +297,18 @@ export type Wave2Query = Extract<
   }
 >;
 
+/**
+ * The capability a command needs is its own name — a compile-time identity
+ * every Wave-2 command keeps, which is why a new command cannot be authorized
+ * by accident. `agent.checkpointRevert` is the one exception and is excluded
+ * here rather than cast away: its capability, `agent.checkpoint.revert`, is
+ * already written into every grant in the field (ADR-069).
+ */
 const authorized = (
   dependencies: Pick<ApplicationKernelDependencies, "authorization">,
   view: ApplicationWave2ReadView,
   context: ExecutionContext,
-  command: Wave2Command,
+  command: Exclude<Wave2Command, { commandName: "agent.checkpointRevert" }>,
   spaceId: SpaceId | undefined,
 ): boolean =>
   spaceId !== undefined &&
@@ -887,6 +895,16 @@ export const isWave2CommandAuthorized = (
           : undefined,
       );
     }
+    case "agent.checkpointRevert":
+      // Authorized by the kernel against `agent.checkpoint.revert`, the
+      // capability every issued grant already carries. Repeated here because
+      // the Wave-2 authorization switch is exhaustive and a silent `false`
+      // would look like a policy decision rather than a routing detail.
+      return dependencies.authorization.authorize({
+        context,
+        capability: "agent.checkpoint.revert",
+        workspaceId: command.workspaceId,
+      });
     case "command.previewUndo":
     case "command.undo": {
       const receipt = view.getAuditReceiptByCommand(
@@ -7252,6 +7270,15 @@ export const executeWave2Command = (
         idempotency,
         occurredAt,
       );
+    case "agent.checkpointRevert":
+      return revertCheckpoint(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+      );
   }
 };
 
@@ -7270,17 +7297,131 @@ export interface CheckpointCommandRecovery {
     "unsupported" | "already_undone" | "later_change" | "still_referenced";
 }
 
+/**
+ * The records a compensation would touch, named once. `descriptorState`
+ * reports them only when the compensation is available, and both the
+ * checkpoint preview and the revert need them while it is not — so this is the
+ * one place that knows which field of a descriptor kind holds a record id.
+ */
+export const descriptorRecordIds = (
+  descriptor: UndoDescriptor,
+): readonly string[] => {
+  switch (descriptor.kind) {
+    case "project.restore_outcome":
+      return [descriptor.projectId];
+    case "area.restore_responsibility":
+      return [descriptor.areaId];
+    case "initiative.restore_outcome":
+      return [descriptor.initiativeId];
+    case "taskStatus.restore_definition":
+      return [descriptor.statusId];
+    case "fieldDef.restore_definition":
+      return [descriptor.fieldId];
+    case "template.restore_definition":
+      return [descriptor.templateId];
+    case "automation.restore_definition":
+      return [descriptor.ruleId];
+    case "project.unapply_template":
+      return [descriptor.projectId, ...descriptor.createdTaskIds];
+    case "meeting.unpromote_work_item":
+      return [descriptor.meetingId, descriptor.createdTaskId];
+    case "meeting.restore_work_item":
+    case "meeting.restore_routing":
+      return [descriptor.meetingId];
+    case "meeting.restore_participant_links":
+      return [descriptor.meetingId, ...descriptor.createdPersonIds];
+    case "record.restore_field_value":
+      return [descriptor.recordId];
+    case "workspace.restore_default_status":
+      return [descriptor.workspaceId];
+    case "task.restore_calendar_block":
+    case "task.restore_record_state":
+    case "task.undo_create":
+    case "task.restore_state":
+    case "task.restore_details":
+    case "task.restore_parent":
+    case "task.restore_operational_state":
+      return [descriptor.taskId];
+    case "strategic.undo_create":
+    case "strategic.restore_record_state":
+    case "record.undo_create":
+    case "record.restore_record_state":
+      return [descriptor.recordId];
+    case "savedView.restore_definition":
+      return [descriptor.savedViewId];
+    case "work_link.restore_state":
+      return [descriptor.linkId];
+    case "relation.remove":
+    case "relation.restore":
+      return [descriptor.relationId];
+    case "capture.undo_route":
+      return [descriptor.captureId, descriptor.taskId];
+    case "capture.undo_knowledge_route":
+      return [descriptor.captureId, descriptor.sourceId];
+    case "knowledge.restore_source":
+      return [descriptor.sourceId];
+    case "knowledge.restore_evidence":
+      return [descriptor.documentId];
+    case "knowledge.void_named_version":
+      return [descriptor.namedVersionId];
+  }
+};
+
+/**
+ * ADR-069. Where a compensation this revert has already applied left a record.
+ * A descriptor judged afterwards is measured against that version instead of
+ * the one its own command produced — which is the whole difference between a
+ * later change this checkpoint carries and one made by anything else.
+ */
+type RevertAllowance = ReadonlyMap<string, number>;
+
+/**
+ * Only a compensation over a single record can take an allowance. A kind that
+ * carries a resulting version per record would need us to decide which of them
+ * the allowance belongs to, and a guess is not a guard: those refuse exactly as
+ * before.
+ */
+const withAllowance = (
+  descriptor: UndoDescriptor,
+  allowance: RevertAllowance,
+): UndoDescriptor => {
+  if (allowance.size === 0 || !("resultingVersion" in descriptor))
+    return descriptor;
+  const recordIds = descriptorRecordIds(descriptor);
+  if (recordIds.length !== 1) return descriptor;
+  const allowed = allowance.get(recordIds[0] as string);
+  return allowed === undefined
+    ? descriptor
+    : { ...descriptor, resultingVersion: allowed };
+};
+
 export const checkpointCommandRecovery = (
   view: ApplicationWave2ReadView,
   commandIds: readonly string[],
-): readonly CheckpointCommandRecovery[] =>
-  commandIds.map((targetCommandId) => {
+): readonly CheckpointCommandRecovery[] => {
+  // Newest first, because that is the order the revert compensates in: a
+  // command only makes way for the ones applied before it.
+  const allowance = new Map<string, number>();
+  const judged = [...commandIds].reverse().map((targetCommandId) => {
     const descriptor = view.getUndoDescriptor(targetCommandId);
     // No descriptor means the command applied and its kind records no
     // compensation — permanent, and fatal for the whole checkpoint.
     if (descriptor === undefined)
-      return { targetCommandId, available: false, reason: "unsupported" };
-    const state = descriptorState(view, descriptor);
+      return {
+        targetCommandId,
+        available: false,
+        reason: "unsupported" as const,
+      };
+    const state = descriptorState(view, withAllowance(descriptor, allowance));
+    // Where this compensation leaves the record, as the next descriptor will
+    // find it. Nothing is predicted: judging read-only, the record does not
+    // move, so the version the next check will see is the one it has now — and
+    // when the revert really runs, it is the version the compensation just
+    // wrote. Same rule, both paths, and no assumption about how much a
+    // compensation bumps a version.
+    if (state.available)
+      for (const [recordId, version] of Object.entries(state.versions))
+        allowance.set(recordId, version);
     return {
       targetCommandId,
       descriptor,
@@ -7288,6 +7429,10 @@ export const checkpointCommandRecovery = (
       ...(state.reason === undefined ? {} : { reason: state.reason }),
     };
   });
+  // Handed back in the checkpoint's own order: the caller reads it beside
+  // `commandIds`, not beside the order compensation happens to run in.
+  return judged.reverse();
+};
 
 const descriptorState = (
   view: ApplicationWave2ReadView,
@@ -7908,59 +8053,49 @@ const undoPreviewProjection = (
   };
 };
 
-const applyUndo = (
-  dependencies: ApplicationKernelDependencies,
-  transaction: ApplicationTransaction,
+/**
+ * What a compensation touched, by record kind — the same vocabulary the
+ * journal carries, named once because two callers now build it.
+ */
+type CompensatedRecordKinds = Record<
+  string,
+  | "capture"
+  | "task"
+  | "project"
+  | "document"
+  | "knowledgeSource"
+  | "namedDocumentVersion"
+  | "relation"
+  | "strategicRecord"
+  | "taskStatus"
+  | "workspace"
+  | "fieldDefinition"
+  | "projectTemplate"
+  | "automationRule"
+>;
+
+/**
+ * ADR-069. The compensation itself, named apart from the command that asks for
+ * it. A single `command.undo` and a checkpoint revert apply exactly these
+ * writes; a revert that carried its own copy would drift from the undo it is
+ * made of. The refusals kept here are the defensive ones — a record that
+ * vanished between the availability check and the write — and they say only
+ * that nothing was compensated, leaving each caller to name its own refusal.
+ */
+const compensateDescriptor = (
+  transaction: ApplicationWave2Transaction,
   context: ExecutionContext,
-  command: Extract<Wave2Command, { commandName: "command.undo" }>,
-  idempotency: Omit<IdempotencyRecord, "outcome">,
+  descriptor: UndoDescriptor,
   occurredAt: string,
-): CommandOutcome => {
-  if (!isApplicationWave2Transaction(transaction)) {
-    return precondition(command, occurredAt);
-  }
-  const descriptor = transaction.getUndoDescriptor(
-    command.payload.targetCommandId,
-  );
-  if (descriptor === undefined) {
-    return outcome(command, occurredAt, {
-      outcome: "conflict",
-      diagnosticCode: "undo.not_available",
-      currentVersions: {},
-    });
-  }
-  if (descriptor.consumedByCommandId !== undefined) {
-    return outcome(command, occurredAt, {
-      outcome: "conflict",
-      diagnosticCode: "undo.already_applied",
-      currentVersions: {},
-    });
-  }
-  const state = descriptorState(transaction, descriptor);
-  if (!state.available || !exactExpected(command, state.versions)) {
-    return outcome(command, occurredAt, {
-      outcome: "conflict",
-      diagnosticCode: "undo.not_available",
-      currentVersions: state.versions,
-    });
-  }
+):
+  | {
+      readonly ok: true;
+      readonly versions: Record<string, number>;
+      readonly kinds: CompensatedRecordKinds;
+    }
+  | { readonly ok: false } => {
   let compensatedVersions: Record<string, number>;
-  let compensatedKinds: Record<
-    string,
-    | "capture"
-    | "task"
-    | "project"
-    | "document"
-    | "knowledgeSource"
-    | "namedDocumentVersion"
-    | "relation"
-    | "strategicRecord"
-    | "taskStatus"
-    | "workspace"
-    | "fieldDefinition"
-    | "projectTemplate"
-    | "automationRule"
-  >;
+  let compensatedKinds: CompensatedRecordKinds;
   if (descriptor.kind === "project.restore_outcome") {
     const project = transaction.getProject(descriptor.projectId) as Project;
     const restored = updateProjectOutcome(
@@ -8274,11 +8409,7 @@ const applyUndo = (
         ? transaction.getTask(TaskIdSchema.parse(descriptor.recordId))
         : transaction.getProject(ProjectIdSchema.parse(descriptor.recordId));
     if (record === undefined) {
-      return outcome(command, occurredAt, {
-        outcome: "conflict",
-        diagnosticCode: "undo.not_available",
-        currentVersions: state.versions,
-      });
+      return { ok: false };
     }
     const nextFields = withFieldValue(
       record.fields,
@@ -8450,11 +8581,7 @@ const applyUndo = (
   } else if (descriptor.kind === "work_link.restore_state") {
     const link = transaction.getStrategicRecord(descriptor.linkId);
     if (link?.kind !== "work_link") {
-      return outcome(command, occurredAt, {
-        outcome: "conflict",
-        diagnosticCode: "undo.not_available",
-        currentVersions: state.versions,
-      });
+      return { ok: false };
     }
     const { removedAt: _removedAt, ...withoutRemovedAt } = link;
     void _removedAt;
@@ -8494,11 +8621,7 @@ const applyUndo = (
     const capture = transaction.getCapture(descriptor.captureId);
     const task = transaction.getTask(descriptor.taskId);
     if (capture?.processingState !== "routed_as_task" || task === undefined) {
-      return outcome(command, occurredAt, {
-        outcome: "conflict",
-        diagnosticCode: "undo.not_available",
-        currentVersions: state.versions,
-      });
+      return { ok: false };
     }
     const restored = undoCaptureTaskRoute({ capture, task, occurredAt });
     transaction.updateCapture(restored.capture, capture.version);
@@ -8518,11 +8641,7 @@ const applyUndo = (
       capture?.processingState !== "routed_as_knowledge_source" ||
       source === undefined
     ) {
-      return outcome(command, occurredAt, {
-        outcome: "conflict",
-        diagnosticCode: "undo.not_available",
-        currentVersions: state.versions,
-      });
+      return { ok: false };
     }
     const restored = undoCaptureKnowledgeRoute({
       capture,
@@ -8637,6 +8756,207 @@ const applyUndo = (
     compensatedVersions = { [voided.id]: voided.version };
     compensatedKinds = { [voided.id]: "namedDocumentVersion" };
   }
+  return { ok: true, versions: compensatedVersions, kinds: compensatedKinds };
+};
+
+/**
+ * ADR-069. One revert, one transaction, one receipt.
+ *
+ * Compensation runs newest first, and each one that applies tells the next
+ * where it left the record. That allowance is the only thing this adds to the
+ * guard every single undo already runs: a record may stand where its own
+ * command left it, or where this revert's own earlier compensation put it.
+ * Work from outside the checkpoint contributes no allowance and still refuses
+ * the whole revert, which is what the guard was always for.
+ *
+ * Nothing is applied until every captured command has been judged, so a
+ * refusal leaves the checkpoint exactly as it was rather than half spent —
+ * the state a recovery mechanism must never be able to produce.
+ */
+const revertCheckpoint = (
+  dependencies: ApplicationKernelDependencies,
+  transaction: ApplicationTransaction,
+  context: ExecutionContext,
+  command: Extract<Wave2Command, { commandName: "agent.checkpointRevert" }>,
+  idempotency: Omit<IdempotencyRecord, "outcome">,
+  occurredAt: string,
+): CommandOutcome => {
+  if (!isApplicationWave2Transaction(transaction))
+    return precondition(command, occurredAt);
+  if (!exactExpected(command, {})) return precondition(command, occurredAt);
+  const checkpoint = transaction.getAgentCheckpoint(
+    command.payload.checkpointId,
+  );
+  // `runId` names the run doing the reverting, not the run that opened the
+  // checkpoint: a slice written yesterday is still a slice a later run may take
+  // back. Same precondition as agent.checkpointCreate — a grant can own several
+  // runs, so the payload has to name the one the caller is executing.
+  if (
+    checkpoint === undefined ||
+    checkpoint.workspaceId !== command.workspaceId ||
+    command.payload.runId !== context.hostRun?.agentRunId
+  )
+    return precondition(command, occurredAt);
+  if (checkpoint.status === "reverted")
+    return outcome(command, occurredAt, {
+      outcome: "rejected",
+      diagnosticCode: "agent.checkpoint_already_reverted",
+    });
+  // Refused before the checkpoint is spent: it captured nothing, so reverting
+  // it would report success, change nothing, and leave the caller without the
+  // checkpoint they still need.
+  if (checkpoint.commandIds.length === 0)
+    return outcome(command, occurredAt, {
+      outcome: "rejected",
+      diagnosticCode: "agent.checkpoint_revert_empty",
+    });
+  const judged = checkpointCommandRecovery(transaction, checkpoint.commandIds);
+  const blocked = judged.flatMap((item) =>
+    item.available
+      ? []
+      : [
+          {
+            targetCommandId: item.targetCommandId,
+            unavailableReason: item.reason ?? "later_change",
+          },
+        ],
+  );
+  if (blocked.length > 0)
+    return outcome(command, occurredAt, {
+      // "unsupported" is fatal for the command kind, so it outranks the
+      // reasons a person can still act on: never advertise a retry that
+      // provably cannot succeed.
+      outcome: blocked.some((item) => item.unavailableReason === "unsupported")
+        ? "rejected"
+        : "conflict",
+      diagnosticCode: "agent.checkpoint_revert_blocked",
+      checkpointId: checkpoint.id,
+      blocked,
+    });
+  const allowance = new Map<string, number>();
+  const compensatedVersions: Record<string, number> = {};
+  const compensatedKinds: Record<string, string> = {};
+  for (const targetCommandId of [...checkpoint.commandIds].reverse()) {
+    const descriptor = transaction.getUndoDescriptor(targetCommandId);
+    const state =
+      descriptor === undefined
+        ? undefined
+        : descriptorState(transaction, withAllowance(descriptor, allowance));
+    // The judgement above ran against this same transaction, so disagreeing
+    // here means the predicted and the real compensation differ. Nothing may
+    // be left half applied on that: the sentinel rolls the whole revert back
+    // and the caller is told to retry rather than handed a partial slice.
+    if (descriptor === undefined || state?.available !== true)
+      throw new RetryableUnitOfWorkError("storage.unit_of_work_failed");
+    const compensation = compensateDescriptor(
+      transaction,
+      context,
+      descriptor,
+      occurredAt,
+    );
+    if (!compensation.ok)
+      throw new RetryableUnitOfWorkError("storage.unit_of_work_failed");
+    transaction.updateUndoDescriptor({
+      ...descriptor,
+      consumedByCommandId: command.commandId,
+    });
+    for (const [recordId, version] of Object.entries(compensation.versions)) {
+      allowance.set(recordId, version);
+      compensatedVersions[recordId] = version;
+      compensatedKinds[recordId] = compensation.kinds[recordId] as string;
+    }
+  }
+  transaction.updateAgentCheckpoint({
+    ...checkpoint,
+    status: "reverted",
+    updatedAt: occurredAt,
+    revertedAt: occurredAt,
+  });
+  return appendJournal(
+    dependencies,
+    transaction,
+    context,
+    command,
+    idempotency,
+    occurredAt,
+    {
+      type: "agent.checkpoint_reverted",
+      workspaceId: checkpoint.workspaceId,
+      // A checkpoint has no Space of its own; the work it took back does, and
+      // every captured command is inside the grant's Space scope.
+      spaceId: (judged[0]?.descriptor as UndoDescriptor).spaceId,
+      aggregateId: checkpoint.id,
+      // Checkpoints are not versioned records: they are opened once and
+      // reverted at most once, which is the whole lifecycle.
+      aggregateVersion: 1,
+      occurredAt,
+    },
+    compensatedVersions,
+    ["status", "revertedAt"],
+    {
+      diagnosticCode: "agent.checkpoint_reverted",
+      projection: {
+        kind: "agent.checkpoint_reverted",
+        checkpointId: checkpoint.id,
+        compensatedCommandIds: [...checkpoint.commandIds],
+        recordVersions: compensatedVersions,
+      },
+    },
+    undefined,
+    compensatedKinds as CompensatedRecordKinds,
+  );
+};
+
+const applyUndo = (
+  dependencies: ApplicationKernelDependencies,
+  transaction: ApplicationTransaction,
+  context: ExecutionContext,
+  command: Extract<Wave2Command, { commandName: "command.undo" }>,
+  idempotency: Omit<IdempotencyRecord, "outcome">,
+  occurredAt: string,
+): CommandOutcome => {
+  if (!isApplicationWave2Transaction(transaction)) {
+    return precondition(command, occurredAt);
+  }
+  const descriptor = transaction.getUndoDescriptor(
+    command.payload.targetCommandId,
+  );
+  if (descriptor === undefined) {
+    return outcome(command, occurredAt, {
+      outcome: "conflict",
+      diagnosticCode: "undo.not_available",
+      currentVersions: {},
+    });
+  }
+  if (descriptor.consumedByCommandId !== undefined) {
+    return outcome(command, occurredAt, {
+      outcome: "conflict",
+      diagnosticCode: "undo.already_applied",
+      currentVersions: {},
+    });
+  }
+  const state = descriptorState(transaction, descriptor);
+  if (!state.available || !exactExpected(command, state.versions)) {
+    return outcome(command, occurredAt, {
+      outcome: "conflict",
+      diagnosticCode: "undo.not_available",
+      currentVersions: state.versions,
+    });
+  }
+  const compensation = compensateDescriptor(
+    transaction,
+    context,
+    descriptor,
+    occurredAt,
+  );
+  if (!compensation.ok)
+    return outcome(command, occurredAt, {
+      outcome: "conflict",
+      diagnosticCode: "undo.not_available",
+      currentVersions: state.versions,
+    });
+  const compensatedVersions = compensation.versions;
+  const compensatedKinds = compensation.kinds;
   transaction.updateUndoDescriptor({
     ...descriptor,
     consumedByCommandId: command.commandId,

@@ -1375,14 +1375,62 @@ describe("agent grant delegation reaches the product without widening scope", ()
     assert.equal(preview.available, true);
     assert.equal(preview.unavailableReason, undefined);
     assert.deepEqual(preview.blocked, []);
-    // A checkpoint revert is a fan of single-command undos applied newest
-    // first; both must apply, or the slice is half taken back.
+    const reverted = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("membership-revert"),
+        commandName: "agent.checkpointRevert",
+        payload: { checkpointId: ids.checkpoint, runId: ids.hostAgentRun },
+      }),
+    );
+    assert.equal(reverted.outcome, "success", JSON.stringify(reverted));
+    assert.equal(
+      reverted.outcome === "success" && reverted.diagnosticCode,
+      "agent.checkpoint_reverted",
+    );
+    // Both captured commands, taken back as one act.
+    assert.deepEqual(
+      reverted.outcome === "success" &&
+        reverted.projection.kind === "agent.checkpoint_reverted" &&
+        [...reverted.projection.compensatedCommandIds].sort(),
+      [create.commandId, correction.commandId].sort(),
+    );
+    const gone = harness.kernel.query(agent, {
+      contractVersion: 1,
+      queryName: "task.list",
+      queryId: requestId(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space, limit: 50 },
+    });
+    assert.equal(
+      gone.kind === "query_result" &&
+        gone.result.outcome === "success" &&
+        gone.result.projection.kind === "task.list" &&
+        gone.result.projection.items.some((item) => item.id === ids.task),
+      false,
+      "the created Task is gone, so the slice was taken back rather than reported as taken back",
+    );
+  });
+
+  /**
+   * The guard the allowance must not widen. A lone undo of a create whose
+   * record moved on is exactly what `later_change` is for; only a revert knows
+   * that the later change is one it is taking back in the same act.
+   */
+  it("still refuses a single undo of a create whose record moved on", () => {
+    const { agent, harness } = openCheckpoint();
+    const create = metadata("membership-lone-create");
     assert.equal(
       outcome(
         harness.kernel.execute(agent, {
-          ...metadata("membership-undo-correction", { [ids.task]: 2 }),
-          commandName: "command.undo",
-          payload: { targetCommandId: correction.commandId },
+          ...create,
+          checkpointId: ids.checkpoint,
+          commandName: "task.create",
+          payload: {
+            taskId: ids.task,
+            spaceId: ids.space,
+            title: "Created in the slice",
+          },
         }),
       ),
       "success",
@@ -1390,12 +1438,25 @@ describe("agent grant delegation reaches the product without widening scope", ()
     assert.equal(
       outcome(
         harness.kernel.execute(agent, {
-          ...metadata("membership-undo-create", { [ids.task]: 3 }),
-          commandName: "command.undo",
-          payload: { targetCommandId: create.commandId },
+          ...metadata("membership-lone-correction", { [ids.task]: 1 }),
+          checkpointId: ids.checkpoint,
+          commandName: "task.updateDetails",
+          payload: { taskId: ids.task, title: "Corrected in the same slice" },
         }),
       ),
       "success",
+    );
+    const undone = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("membership-lone-undo", { [ids.task]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: create.commandId },
+      }),
+    );
+    assert.equal(undone.outcome, "conflict");
+    assert.equal(
+      undone.outcome === "conflict" && undone.diagnosticCode,
+      "undo.not_available",
     );
   });
 });

@@ -273,6 +273,20 @@ export const AgentCheckpointCreateCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 
+/**
+ * ADR-069. The revert is one act, not a fan of undos assembled outside the
+ * kernel: only the kernel can tell a later change made by a command this
+ * checkpoint carries from one made by anything else, and only one transaction
+ * can refuse the whole slice without leaving half of it taken back. The
+ * published surface stays `constellation.checkpoint.revert.v1`.
+ */
+export const AgentCheckpointRevertCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("agent.checkpointRevert"),
+  payload: z
+    .object({ checkpointId: CheckpointIdSchema, runId: AgentRunIdSchema })
+    .strict(),
+}).strict();
+
 export const AgentHandoffSubmitCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("agent.handoffSubmit"),
   payload: z
@@ -1889,6 +1903,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   AgentGrantRevokeCommandSchema,
   AgentGrantSetScopeCommandSchema,
   AgentCheckpointCreateCommandSchema,
+  AgentCheckpointRevertCommandSchema,
   AgentHandoffSubmitCommandSchema,
   CaptureSubmitCommandSchema,
   CaptureProcessCommandSchema,

@@ -53,6 +53,10 @@ export const DiagnosticCodeSchema = z.enum([
   "agent.grant_revoked",
   "agent.grant_scope_changed",
   "agent.checkpoint_created",
+  "agent.checkpoint_reverted",
+  "agent.checkpoint_revert_blocked",
+  "agent.checkpoint_revert_empty",
+  "agent.checkpoint_already_reverted",
   "agent.handoff_submitted",
   "capture.stored",
   "capture.routed_as_knowledge_source",
@@ -788,6 +792,20 @@ export const AgentCheckpointCreatedProjectionSchema = z
     runId: AgentRunIdSchema,
   })
   .strict();
+/**
+ * ADR-069. One revert, one receipt: the captured commands it compensated and
+ * the version each affected record now stands at. A caller that wants the
+ * individual acts reads the audit trail — every compensated descriptor names
+ * this command as the one that consumed it.
+ */
+export const AgentCheckpointRevertedProjectionSchema = z
+  .object({
+    kind: z.literal("agent.checkpoint_reverted"),
+    checkpointId: CheckpointIdSchema,
+    compensatedCommandIds: z.array(CommandIdSchema).min(1),
+    recordVersions: z.record(z.uuid(), z.int().positive()),
+  })
+  .strict();
 export const AgentHandoffSubmittedProjectionSchema = z
   .object({
     kind: z.literal("agent.handoff_submitted"),
@@ -852,6 +870,7 @@ export const CommandProjectionSchema = z.discriminatedUnion("kind", [
   AgentGrantRevokedProjectionSchema,
   AgentGrantScopeChangedProjectionSchema,
   AgentCheckpointCreatedProjectionSchema,
+  AgentCheckpointRevertedProjectionSchema,
   AgentHandoffSubmittedProjectionSchema,
 ]);
 export type CommandProjection = z.infer<typeof CommandProjectionSchema>;
@@ -1268,6 +1287,12 @@ const AgentCheckpointCreatedSuccessOutcomeSchema =
     diagnosticCode: z.literal("agent.checkpoint_created"),
     projection: AgentCheckpointCreatedProjectionSchema,
   }).strict();
+const AgentCheckpointRevertedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("agent.checkpoint_reverted"),
+    projection: AgentCheckpointRevertedProjectionSchema,
+  }).strict();
 const AgentHandoffSubmittedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1340,6 +1365,7 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   AgentGrantRevokedSuccessOutcomeSchema,
   AgentGrantScopeChangedSuccessOutcomeSchema,
   AgentCheckpointCreatedSuccessOutcomeSchema,
+  AgentCheckpointRevertedSuccessOutcomeSchema,
   AgentHandoffSubmittedSuccessOutcomeSchema,
 ]);
 
@@ -1398,8 +1424,38 @@ export const RejectedOutcomeSchema = OutcomeMetadataSchema.extend({
     "authorization.denied",
     "command.precondition_failed",
     "capture.payload_unavailable",
+    // ADR-069. Both are states of the checkpoint rather than of any command
+    // inside it, and neither spends it: a revert refused for either reason
+    // leaves the checkpoint exactly as it was.
+    "agent.checkpoint_revert_empty",
+    "agent.checkpoint_already_reverted",
   ]),
 }).strict();
+
+/**
+ * ADR-069. A revert refused before it applied anything, naming every captured
+ * command whose compensation does not apply and why — the same list its own
+ * preview gives, so an integrator never has to spend a checkpoint to learn
+ * what a preview already knew. "rejected" when a captured command records no
+ * compensation, because no retry will ever clear that; "conflict" when the
+ * blockage is something a person can still act on.
+ */
+export const CheckpointRevertBlockedOutcomeSchema =
+  OutcomeMetadataSchema.extend({
+    outcome: z.enum(["rejected", "conflict"]),
+    diagnosticCode: z.literal("agent.checkpoint_revert_blocked"),
+    checkpointId: CheckpointIdSchema,
+    blocked: z
+      .array(
+        z
+          .object({
+            targetCommandId: CommandIdSchema,
+            unavailableReason: UndoUnavailableReasonSchema,
+          })
+          .strict(),
+      )
+      .min(1),
+  }).strict();
 
 export const BlockingRecordSchema = z
   .object({
@@ -1453,6 +1509,7 @@ export const CommandOutcomeSchema = z.union([
   RetryableOutcomeSchema,
   RejectedOutcomeSchema,
   BlockedOutcomeSchema,
+  CheckpointRevertBlockedOutcomeSchema,
   UnknownReconcileOutcomeSchema,
 ]);
 export type CommandOutcome = z.infer<typeof CommandOutcomeSchema>;
