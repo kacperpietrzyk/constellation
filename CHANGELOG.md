@@ -6,6 +6,129 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
+## [0.1.6] - 2026-07-26
+
+0.1.5 added a link type to the domain and to the command that writes it, but to
+neither projection that reads one, and strict parsing turned a single such link
+into two dead surfaces. This release repairs that regression and closes the
+findings the field channel raised against 0.1.5, including a refusal that told a
+caller with no permission whether a record existed. It also finishes what 0.1.5
+started: the evidence and the ownership it made writable can now be read, a
+record imported from a row can carry that row's identity, and the client edge
+can be authored from either end in the desktop.
+
+### Fixed
+
+- **Relacje and Praca came back.** 0.1.5 added the `project_serves_organization`
+  link type to the domain and to the command that writes it, but to neither
+  projection that reads one. Query results are parsed strictly, so a single such
+  link did not degrade a view — it faulted the whole answer, and
+  `relationship.workspace` and `work.overview` both stopped answering. In the
+  desktop that surfaced as "dane niedostępne" on two surfaces with nothing
+  naming the cause; over MCP it was `mcp.runtime_fault`. The link vocabulary is
+  now one shared shape that both readers and the writer use, so the two cannot
+  drift again. Nothing on disk needs repairing — the link simply becomes
+  readable.
+
+- **A Task could contribute to the same Opportunity twice.** The duplicate guard
+  on `record.relate` reads one finder whose two implementations disagreed: the
+  SQL one matched either far end, the in-memory one only a Project, so a second
+  identical relate was refused against a Project and accepted against a deal.
+  The conformance suite runs against the in-memory store, so it was blessing an
+  outcome the shipped store does not have.
+
+- **A withheld capability is now reported as one, whatever the target.** A
+  command whose capability was missing from the grant answered
+  `command.precondition_failed` whenever the target also happened not to exist,
+  because the branch gave up on resolving the target before the policy was ever
+  asked. Two consequences: an agent could not tell a missing permission from a
+  missing record, and the pair of codes leaked whether a record existed to a
+  caller with no capability to touch it — the existence oracle the merged
+  refusal exists to prevent. The policy is now consulted first. A refusal that
+  is genuinely about the Space or the record is still the same merged
+  `command.precondition_failed` it always was. This now covers every branch that
+  refused before asking — the capture family, the workspace and member commands,
+  the comment and attention arms, and the meeting commands, where a first pass
+  had made the leak _wider_ before review caught it.
+
+- **A client links both ways.** `project.operationalOverview` reported no client
+  for a Project linked straight to an Organization, while the Organization
+  already listed that Project — so the question the link was added to answer
+  could only be asked from one end.
+
+### Added
+
+- **The evidence a Project rests on, and the person whose deal it is, can be
+  read.** Both were writable in 0.1.5 and appeared in no projection.
+  `project.operationalOverview` now returns `evidenceSources`, and the
+  opportunities on `organization.operationalOverview` carry `owner` by name.
+
+- **A Person and an Organization can carry the identity of the row they came
+  from.** Nothing refused a duplicate: names are not unique, and the idempotency
+  key only recognises the same command re-sent by the same principal, so a
+  migration re-run that minted fresh ids created a second record nothing
+  objected to. `externalId` is claimed once per Space and kind; a create whose
+  key is taken is refused with the colliding record's id and version, so the
+  caller corrects in place. It can be stamped onto a record that predates the
+  field, but never rewritten.
+
+- **`person.list` and `organization.list`.** `relationship.workspace` was the
+  only set-level read of who is in the graph, and being one answer it was also
+  one failure — a single unprojectable record took the whole set down at exactly
+  the moment a migration needed it. These carry one kind each and filter before
+  the strict parse, so one kind's problem stays its own. Same item shape as the
+  wide read, which still answers when you need more than one kind.
+
+- **A Knowledge Source says what rests on it.** `knowledge.list` returned
+  Sources with no bindings, so a note could be traced from the records citing it
+  but never the other way — "which Projects rest on the note whose currency I
+  doubt?" had no answer from the note. Each Source now carries `referencedBy`:
+  up to twenty Projects, Documents, Tasks and strategic records with their
+  titles, plus `referencedByCount` for the real total. It is the same
+  enumeration the removal guard reads, so an empty `referencedBy` is a Source
+  `knowledge.sourceRemove` will accept.
+
+- **A deal and a delivery can carry the identity of the row they came from.**
+  `externalId` reached only Person and Organization; deal titles collide across
+  clients and across years and project titles repeat, so a re-run still
+  duplicated both. `opportunity.create` and `project.create` now claim a key the
+  same way, once per Space, with the refusal naming what holds it. Neither has
+  an update command that takes the field, so both can only be stamped at import.
+  A Project's key is claimed against deliveries alone, so a Project and a Person
+  may share one string — they come from different source systems.
+  `project.list` carries the key so a re-import recognises what it created.
+
+- **A client can be linked to a Project from the desktop.** The link was
+  readable but only writable over MCP. The Klient card now offers the
+  Organizations in the Project's own Space, and detaches a direct link in two
+  steps. It says plainly when the list could not be loaded, rather than
+  reporting an empty Space.
+
+- **A delivery can be linked to its client from the client's own page.** The
+  Project side gained the authoring row first; from the Organization the edge
+  stayed read-only, so recording who a delivery runs for meant opening every
+  Project in turn. The Aktywna praca card now offers the active Projects in the
+  client's Space and detaches a direct link in two steps, and both ends read one
+  scan of the links so they cannot disagree about what is attached.
+
+### Changed
+
+- **A Knowledge Source a Project rests on can no longer be removed while the
+  Project stands.** The guard that refuses to orphan a record was written before
+  Projects carried evidence and did not cover them. This applies to data already
+  on disk, so a Source that was deletable yesterday may refuse today with
+  `record.still_referenced` naming the Project — detach it there first. No user
+  action caused the change.
+
+- The MCP invocation guidance now names `referencedBy`, the two commands that
+  take a source key but can never be stamped after the fact, and states which
+  query reads a whole set, that
+  `search.global` needs a term and truncates silently without folding Polish
+  diacritics, and that nothing refuses a duplicate person or organization by
+  name — so a re-runnable import has to derive its idempotency keys and record
+  ids from the source row. This moves `contractFingerprint`, which is the signal
+  a connected agent uses to notice the contract changed.
+
 ## [0.1.5] - 2026-07-25
 
 The first migration of a real client engagement into Constellation, run by an

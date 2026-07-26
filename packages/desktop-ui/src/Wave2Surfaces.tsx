@@ -1483,6 +1483,8 @@ export const ProjectsSurface = ({
   activeProjectId,
   overview,
   relation,
+  clientCandidates,
+  linkedClientIds,
   busy,
   onOpenProject,
   onSelectProject,
@@ -1493,6 +1495,8 @@ export const ProjectsSurface = ({
   onSetLifecycle,
   onRelate,
   onUnrelate,
+  onLinkClient,
+  onUnlinkClient,
   onOpenDocument,
   onOpenMeeting,
   onOpenRelationship,
@@ -1510,6 +1514,13 @@ export const ProjectsSurface = ({
         readonly taskId: TaskId;
       }
     | undefined;
+  // Resolved by the caller, not here: which Organizations may be offered and
+  // which are already directly linked are both kernel preconditions, and this
+  // surface stays free of kernel semantics like every other verb on it.
+  readonly clientCandidates:
+    | readonly { readonly id: StrategicRecordId; readonly name: string }[]
+    | undefined;
+  readonly linkedClientIds: ReadonlySet<string>;
   readonly busy: boolean;
   readonly onOpenProject: (id: ProjectId) => void;
   readonly onSelectProject: (id: ProjectId) => void;
@@ -1524,6 +1535,8 @@ export const ProjectsSurface = ({
   readonly onSetLifecycle: (lifecycle: "active" | "closed") => void;
   readonly onRelate: (taskId: TaskId) => void;
   readonly onUnrelate: () => void;
+  readonly onLinkClient: (organizationId: StrategicRecordId) => void;
+  readonly onUnlinkClient: (organizationId: StrategicRecordId) => void;
   readonly onOpenDocument: (id: DocumentId, title: string) => void;
   readonly onOpenMeeting: (id: StrategicRecordId) => void;
   readonly onOpenRelationship: (id: StrategicRecordId) => void;
@@ -1860,6 +1873,11 @@ export const ProjectsSurface = ({
           )}
           <ProjectContextSections
             overview={overview}
+            clientCandidates={clientCandidates}
+            linkedClientIds={linkedClientIds}
+            busy={busy}
+            onLinkClient={onLinkClient}
+            onUnlinkClient={onUnlinkClient}
             onOpenDocument={onOpenDocument}
             onOpenMeeting={onOpenMeeting}
             onOpenRelationship={onOpenRelationship}

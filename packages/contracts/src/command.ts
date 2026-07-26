@@ -31,6 +31,7 @@ import {
   KnowledgeSourceIdSchema,
   NamedDocumentVersionIdSchema,
   DocumentRevisionIdSchema,
+  ExternalIdSchema,
   StrategicRecordIdSchema,
 } from "./ids.js";
 import {
@@ -548,6 +549,7 @@ export const ProjectCreateCommandSchema = CommandMetadataSchema.extend({
       // rest on the note I now doubt" stopped being a question the graph could
       // answer.
       evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100).optional(),
+      externalId: ExternalIdSchema.optional(),
     })
     .strict(),
 }).strict();
@@ -654,6 +656,12 @@ export const RelationshipOrganizationCreateCommandSchema =
         name: z.string().trim().min(1).max(300),
         relationshipState: z.enum(["prospect", "active", "inactive"]),
         nextAction: z.string().trim().min(1).max(1_000).optional(),
+        // The identity of the source row this record was imported from. It is
+        // what refuses a duplicate when a migration re-runs: names are not
+        // unique — two people genuinely can share one — and nothing else in
+        // this payload is compared against what is already in the Space, so
+        // without it a second run mints a second record nothing objects to.
+        externalId: ExternalIdSchema.optional(),
       })
       .strict(),
   }).strict();
@@ -681,6 +689,8 @@ export const RelationshipPersonCreateCommandSchema =
         organizationId: StrategicRecordIdSchema.optional(),
         role: z.string().trim().min(1).max(300).optional(),
         email: z.email().max(320).optional(),
+        // See `relationship.organizationCreate` above — same field, same job.
+        externalId: ExternalIdSchema.optional(),
       })
       .strict(),
   }).strict();
@@ -703,6 +713,13 @@ export const RelationshipPersonUpdateCommandSchema =
         organizationId: StrategicRecordIdSchema.nullable().optional(),
         role: z.string().trim().min(1).max(300).nullable().optional(),
         email: z.email().max(320).nullable().optional(),
+        // Optional but deliberately NOT `.nullable()`, unlike every sibling
+        // above: an update can stamp provenance onto a record that predates the
+        // field, which is how an existing graph gets its source keys, but it
+        // can never clear or rewrite one. A source key that changes silently
+        // re-points a record at a different source row, and provenance that can
+        // be rewritten is not provenance. Naming a different one is refused.
+        externalId: ExternalIdSchema.optional(),
       })
       .strict()
       .refine(
@@ -710,10 +727,11 @@ export const RelationshipPersonUpdateCommandSchema =
           payload.name !== undefined ||
           payload.organizationId !== undefined ||
           payload.role !== undefined ||
-          payload.email !== undefined,
+          payload.email !== undefined ||
+          payload.externalId !== undefined,
         {
           error:
-            "personUpdate must change at least one field: name, organizationId, role, or email",
+            "personUpdate must change at least one field: name, organizationId, role, email, or externalId",
         },
       ),
   }).strict();
@@ -729,16 +747,20 @@ export const RelationshipOrganizationUpdateCommandSchema =
           .enum(["prospect", "active", "inactive"])
           .optional(),
         nextAction: z.string().trim().min(1).max(1_000).nullable().optional(),
+        // See `relationship.personUpdate` above for why this one is not
+        // nullable while its neighbours are.
+        externalId: ExternalIdSchema.optional(),
       })
       .strict()
       .refine(
         (payload) =>
           payload.name !== undefined ||
           payload.relationshipState !== undefined ||
-          payload.nextAction !== undefined,
+          payload.nextAction !== undefined ||
+          payload.externalId !== undefined,
         {
           error:
-            "organizationUpdate must change at least one field: name, relationshipState, or nextAction",
+            "organizationUpdate must change at least one field: name, relationshipState, nextAction, or externalId",
         },
       ),
   }).strict();
@@ -767,6 +789,7 @@ export const OpportunityCreateCommandSchema = CommandMetadataSchema.extend({
       stage: z.string().trim().min(1).max(120),
       nextAction: z.string().trim().min(1).max(1_000),
       evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100),
+      externalId: ExternalIdSchema.optional(),
     })
     .strict(),
 }).strict();
@@ -985,23 +1008,43 @@ export const InitiativeRemoveCommandSchema = CommandMetadataSchema.extend({
   payload: z.object({ initiativeId: StrategicRecordIdSchema }).strict(),
 }).strict();
 
+// The one work-link vocabulary. Every command and every projection that names
+// a link type reuses this schema rather than restating it: 0.1.5 added
+// `project_serves_organization` to the command and to the domain but to
+// neither of the two projections that carry a link, and because query results
+// are parsed strictly, a single such link faulted `relationship.workspace` and
+// `work.overview` outright — the Relacje and Praca surfaces both went to
+// "unavailable" with nothing naming the cause. That is the same failure PR #95
+// fixed for saved-view filters, reached through a widened enum VALUE rather
+// than a new key, which is why the key-set guard in `wave2.ts` did not see it.
+//
+// Because this schema gates both writes and reads, it is ADDITIVE-ONLY, for
+// the same reason `SavedViewFiltersSchema` is: stored payloads are never
+// revalidated on load, so REMOVING a member would make an already-written link
+// fail to project and reproduce that outage exactly. To retire a link type,
+// stop accepting it at the command boundary and leave the projection able to
+// read what is already on disk.
+export const WorkLinkTypeSchema = z.enum([
+  "project_advances_initiative",
+  "project_serves_area",
+  // The delivery a Project runs at a named client. ADR-044 §3 left this
+  // edge out deliberately, on the ground that a Project has no single
+  // honest organization; the first migration of a real engagement showed
+  // the cost — the client ends up in the title, and the Organization
+  // does not know a delivery is running at it.
+  "project_serves_organization",
+  "task_depends_on_task",
+]);
+
+export type WorkLinkType = z.infer<typeof WorkLinkTypeSchema>;
+
 export const WorkLinkCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("work.linkCreate"),
   payload: z
     .object({
       linkId: StrategicRecordIdSchema,
       spaceId: SpaceIdSchema,
-      linkType: z.enum([
-        "project_advances_initiative",
-        "project_serves_area",
-        // The delivery a Project runs at a named client. ADR-044 §3 left this
-        // edge out deliberately, on the ground that a Project has no single
-        // honest organization; the first migration of a real engagement showed
-        // the cost — the client ends up in the title, and the Organization
-        // does not know a delivery is running at it.
-        "project_serves_organization",
-        "task_depends_on_task",
-      ]),
+      linkType: WorkLinkTypeSchema,
       sourceRecordId: z.uuid(),
       targetRecordId: z.uuid(),
     })

@@ -484,6 +484,32 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     assert.ok(catalog.guidance["command"]?.includes("expectedVersions"));
     assert.ok(catalog.guidance["command"]?.includes("idempotency.key_reused"));
     assert.ok(catalog.guidance["query"]?.includes("spaceIds"));
+    // External evidence (2026-07-26): a migration agent looked for a
+    // person.list that does not exist, used search.global as an inventory,
+    // and wrote duplicates it could not then find. The guidance has to name
+    // the set-level read and the two creates that accept any name.
+    assert.ok(catalog.guidance["query"]?.includes("person.list"));
+    assert.ok(catalog.guidance["query"]?.includes("relationship.workspace"));
+    assert.ok(
+      catalog.guidance["command"]?.includes("relationship.personCreate"),
+    );
+    // The field that actually refuses a re-run, and the sentence that stops an
+    // agent reaching for idempotencyKey to do a job it cannot do.
+    assert.ok(catalog.guidance["command"]?.includes("externalId"));
+    assert.ok(catalog.guidance["command"]?.includes("record.already_exists"));
+    assert.ok(catalog.guidance["query"]?.includes("externalId"));
+    // The two kinds that take a source key and can never be stamped after the
+    // fact. Named because the outcome cannot say it: a create that omitted the
+    // field succeeds, and the absence only becomes a problem on the re-run.
+    assert.ok(catalog.guidance["command"]?.includes("opportunity.create"));
+    assert.ok(catalog.guidance["command"]?.includes("project.create"));
+    assert.ok(
+      catalog.guidance["command"]?.includes("stays unstamped for good"),
+    );
+    // The inverse of the removal guard, and the fact that makes it worth
+    // reading: an empty referencedBy is a Source the removal will accept.
+    assert.ok(catalog.guidance["query"]?.includes("referencedBy"));
+    assert.ok(catalog.guidance["query"]?.includes("referencedByCount"));
     // A payload runId that does not name the calling run is a field defect;
     // the guidance has to name the field, because the outcome cannot.
     assert.ok(

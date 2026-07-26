@@ -36,6 +36,7 @@ export const createOrganization = (
     readonly name: string;
     readonly relationshipState: "prospect" | "active" | "inactive";
     readonly nextAction?: string;
+    readonly externalId?: string;
   },
 ): Extract<StrategicRecord, { kind: "organization" }> => ({
   ...base(input),
@@ -43,6 +44,7 @@ export const createOrganization = (
   name: input.name,
   relationshipState: input.relationshipState,
   ...(input.nextAction === undefined ? {} : { nextAction: input.nextAction }),
+  ...(input.externalId === undefined ? {} : { externalId: input.externalId }),
 });
 
 export const createPerson = (
@@ -51,6 +53,7 @@ export const createPerson = (
     readonly organizationId?: StrategicRecordId;
     readonly role?: string;
     readonly email?: string;
+    readonly externalId?: string;
   },
 ): Extract<StrategicRecord, { kind: "person" }> => ({
   ...base(input),
@@ -61,6 +64,7 @@ export const createPerson = (
     : { organizationId: input.organizationId }),
   ...(input.role === undefined ? {} : { role: input.role }),
   ...(input.email === undefined ? {} : { email: input.email }),
+  ...(input.externalId === undefined ? {} : { externalId: input.externalId }),
 });
 
 /**
@@ -75,6 +79,12 @@ export const updatePersonDetails = (
     readonly organizationId?: StrategicRecordId | null;
     readonly role?: string | null;
     readonly email?: string | null;
+    // `| null` here but NOT on the command: no caller may clear provenance —
+    // the kernel refuses a change and there is no way to ask for a clear — but
+    // undoing the update that stamped a key has to put the record back the way
+    // it was, and "the way it was" is unstamped. A compensation is not a
+    // command, so the helper can express what the contract will not.
+    readonly externalId?: string | null;
   },
   occurredAt: string,
 ): Extract<StrategicRecord, { kind: "person" }> => {
@@ -82,11 +92,13 @@ export const updatePersonDetails = (
     organizationId: _organizationId,
     role: _role,
     email: _email,
+    externalId: _externalId,
     ...base
   } = person;
   void _organizationId;
   void _role;
   void _email;
+  void _externalId;
   const organizationId =
     changes.organizationId === undefined
       ? person.organizationId
@@ -95,12 +107,19 @@ export const updatePersonDetails = (
     changes.role === undefined ? person.role : (changes.role ?? undefined);
   const email =
     changes.email === undefined ? person.email : (changes.email ?? undefined);
+  // Absent leaves it alone, an explicit null clears it. Only the compensation
+  // path ever passes null; the command schema cannot express it.
+  const externalId =
+    changes.externalId === undefined
+      ? person.externalId
+      : (changes.externalId ?? undefined);
   return {
     ...base,
     name: changes.name ?? person.name,
     ...(organizationId === undefined ? {} : { organizationId }),
     ...(role === undefined ? {} : { role }),
     ...(email === undefined ? {} : { email }),
+    ...(externalId === undefined ? {} : { externalId }),
     version: person.version + 1,
     updatedAt: occurredAt,
   };
@@ -112,11 +131,22 @@ export const updateOrganizationDetails = (
     readonly name?: string;
     readonly relationshipState?: "prospect" | "active" | "inactive";
     readonly nextAction?: string | null;
+    /** See `updatePersonDetails` — clearable only by a compensation. */
+    readonly externalId?: string | null;
   },
   occurredAt: string,
 ): Extract<StrategicRecord, { kind: "organization" }> => {
-  const { nextAction: _nextAction, ...base } = organization;
+  const {
+    nextAction: _nextAction,
+    externalId: _externalId,
+    ...base
+  } = organization;
   void _nextAction;
+  void _externalId;
+  const externalId =
+    changes.externalId === undefined
+      ? organization.externalId
+      : (changes.externalId ?? undefined);
   const nextAction =
     changes.nextAction === undefined
       ? organization.nextAction
@@ -127,6 +157,7 @@ export const updateOrganizationDetails = (
     relationshipState:
       changes.relationshipState ?? organization.relationshipState,
     ...(nextAction === undefined ? {} : { nextAction }),
+    ...(externalId === undefined ? {} : { externalId }),
     version: organization.version + 1,
     updatedAt: occurredAt,
   };
@@ -143,6 +174,7 @@ export const createOpportunity = (
     readonly stage: string;
     readonly nextAction: string;
     readonly evidenceSourceIds: readonly KnowledgeSourceId[];
+    readonly externalId?: string;
   },
 ): Extract<StrategicRecord, { kind: "opportunity" }> => ({
   ...base(input),
@@ -158,6 +190,7 @@ export const createOpportunity = (
   stage: input.stage,
   nextAction: input.nextAction,
   evidenceSourceIds: [...new Set(input.evidenceSourceIds)].sort(),
+  ...(input.externalId === undefined ? {} : { externalId: input.externalId }),
   offerIds: [],
   projectIds: [],
   state: "open",

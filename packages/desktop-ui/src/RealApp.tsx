@@ -86,6 +86,12 @@ import {
   editComment,
   applyTemplateToProject,
   createProject,
+  directClientLinks,
+  linkableClientOrganizations,
+  linkOrganizationDelivery,
+  linkProjectClient,
+  unlinkOrganizationDelivery,
+  unlinkProjectClient,
   createTask,
   setRecordFieldValue,
   updateTaskDetails,
@@ -1543,6 +1549,10 @@ export const RealApp = ({
   const captureRestoreFocusPendingRef = useRef(false);
   const activeContext = activeShellContext(navigation);
   const surface = activeContext.surface;
+  // Bound to a const so the "an Organization is open" narrowing survives into
+  // the callbacks below: a property access is not narrowed inside a closure,
+  // and the client-link handlers need the id after the check, not before it.
+  const activeOrganizationId = activeContext.organizationId;
   const detachedWindow =
     new URLSearchParams(window.location.search).get("detached") === "1";
   const recentContexts = navigation.history
@@ -3270,7 +3280,7 @@ export const RealApp = ({
           {surface === "relationships" && (
             <LazySurfaceBoundary label="Relacje">
               <Suspense fallback={<SurfaceLoadingState label="Relacje" />}>
-                {activeContext.organizationId === undefined ? (
+                {activeOrganizationId === undefined ? (
                   <StrategicDepthSurface
                     client={client}
                     snapshot={state.snapshot}
@@ -3286,7 +3296,43 @@ export const RealApp = ({
                   <OrganizationContextLoader
                     client={client}
                     snapshot={state.snapshot}
-                    organizationId={activeContext.organizationId}
+                    organizationId={activeOrganizationId}
+                    // The same flag the Project page's client row uses: this is
+                    // the same edge authored from the other end, and the two
+                    // contexts are never open at once.
+                    linkBusy={projectBusy}
+                    onLinkDelivery={(projectId) => {
+                      if (!client) return;
+                      setProjectBusy(true);
+                      void linkOrganizationDelivery(
+                        client,
+                        state.snapshot,
+                        activeOrganizationId,
+                        projectId,
+                      ).then(async (result) => {
+                        setProjectBusy(false);
+                        if (result.kind === "success")
+                          await refreshAfter("Projekt połączono z klientem.");
+                        else showFailure(result);
+                      });
+                    }}
+                    onUnlinkDelivery={(projectId) => {
+                      if (!client) return;
+                      setProjectBusy(true);
+                      void unlinkOrganizationDelivery(
+                        client,
+                        state.snapshot,
+                        activeOrganizationId,
+                        projectId,
+                      ).then(async (result) => {
+                        setProjectBusy(false);
+                        if (result.kind === "success")
+                          await refreshAfter(
+                            "Powiązanie z projektem usunięto.",
+                          );
+                        else showFailure(result);
+                      });
+                    }}
                     onOpenProject={(id, title) =>
                       openContext(projectContext(id, title))
                     }
@@ -3507,6 +3553,24 @@ export const RealApp = ({
               activeProjectId={activeContext.projectId}
               overview={projectOverview}
               relation={sessionRelation}
+              clientCandidates={
+                projectOverview
+                  ? linkableClientOrganizations(
+                      state.snapshot,
+                      projectOverview.project,
+                    )
+                  : []
+              }
+              linkedClientIds={
+                new Set(
+                  projectOverview
+                    ? directClientLinks(
+                        state.snapshot,
+                        projectOverview.project.id,
+                      ).keys()
+                    : [],
+                )
+              }
               busy={projectBusy}
               onOpenProject={(id) => {
                 const project =
@@ -3668,6 +3732,40 @@ export const RealApp = ({
                     });
                     await refreshAfter("Zadanie powiązano z projektem.");
                   } else showFailure(result);
+                });
+              }}
+              onLinkClient={(organizationId) => {
+                if (!client || !projectOverview) return;
+                setProjectBusy(true);
+                void linkProjectClient(
+                  client,
+                  state.snapshot,
+                  projectOverview.project,
+                  organizationId,
+                ).then(async (result) => {
+                  setProjectBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter("Klienta połączono z projektem.");
+                  else showFailure(result);
+                });
+              }}
+              // Detaching reloads the whole snapshot like every other write
+              // here, which is what re-derives both the Klient list and the
+              // candidate set — the link record the command needs lives in that
+              // snapshot, not in session state.
+              onUnlinkClient={(organizationId) => {
+                if (!client || !projectOverview) return;
+                setProjectBusy(true);
+                void unlinkProjectClient(
+                  client,
+                  state.snapshot,
+                  projectOverview.project.id,
+                  organizationId,
+                ).then(async (result) => {
+                  setProjectBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter("Powiązanie z klientem usunięto.");
+                  else showFailure(result);
                 });
               }}
               onUnrelate={() => {

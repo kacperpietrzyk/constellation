@@ -26,8 +26,11 @@ import type { ApplicationWave2ReadView } from "./ports.js";
 // and there is no honest "primary organization" to pick (ADR-044 §3).
 
 // Projects on the source side of an active work link whose target is one of the
-// matched terminus records. Source is always the project for the
-// project_serves_area / project_advances_initiative link types.
+// matched terminus records. The parameter deliberately names the three
+// project-sourced link types rather than reusing WorkLinkType: the source of a
+// task_depends_on_task link is a Task, and the cast below would mis-type it as
+// a ProjectId. Widening this to the shared vocabulary is the wrong kind of
+// tidying — the narrowing is load-bearing.
 const projectsReachingWorkLink = (
   strategic: readonly StrategicRecord[],
   linkType:

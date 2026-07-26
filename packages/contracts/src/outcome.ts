@@ -1461,6 +1461,15 @@ export const CheckpointRevertBlockedOutcomeSchema =
       .min(1),
   }).strict();
 
+/**
+ * How many records a sample of "what points at this one" carries before it is
+ * cut and the real size is stated separately. Exported and shared rather than
+ * written at each site: the refusal that names dependents and the read that
+ * names the same records both bound their array by it, and a strict parse turns
+ * two copies drifting apart into a whole answer that faults.
+ */
+export const DEPENDENT_SAMPLE_LIMIT = 20;
+
 export const BlockingRecordSchema = z
   .object({
     recordId: z.uuid(),
@@ -1486,7 +1495,7 @@ export const BlockedOutcomeSchema = OutcomeMetadataSchema.extend({
   diagnosticCode: z.literal("record.still_referenced"),
   // Capped because a dependent set is bounded by nothing in the domain — a
   // Space can hold many tasks. blockedByCount states the real size.
-  blockedBy: z.array(BlockingRecordSchema).min(1).max(20),
+  blockedBy: z.array(BlockingRecordSchema).min(1).max(DEPENDENT_SAMPLE_LIMIT),
   blockedByCount: z.int().positive(),
 })
   .strict()

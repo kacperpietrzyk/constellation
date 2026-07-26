@@ -254,6 +254,22 @@ const isCurrentlyAuthorized = (
       );
     case "workspace.rename":
     case "workspace.setVoiceAudioRetention": {
+      // Asked before anything is read, for the reason stated at the top of this
+      // file: a branch that refuses before consulting the policy consults
+      // nothing, and a verdict reached over nothing is reported as a
+      // precondition — so the caller is told to fix a payload when the real
+      // answer is that its grant never carried the capability. The literal
+      // stays `workspace.rename`: `setVoiceAudioRetention` deliberately
+      // consults it, and using the command name would newly refuse a scope
+      // that holds one without the other.
+      if (
+        !authorization.authorize({
+          context,
+          capability: "workspace.rename",
+          workspaceId: command.workspaceId,
+        })
+      )
+        return false;
       const workspace = view.getWorkspace(command.workspaceId);
       const membership = view.getMembership(
         command.workspaceId,
@@ -279,15 +295,17 @@ const isCurrentlyAuthorized = (
     case "workspace.memberAdd":
     case "workspace.memberSetAccess":
     case "workspace.memberRevoke": {
-      const workspace = view.getWorkspace(command.workspaceId);
+      // Consulted first, same reason as the arm above. The workspace read that
+      // used to guard this is gone rather than reordered:
+      // `canManageWorkspaceAccess` already re-reads the workspace and answers
+      // false when it is missing, and `workspace.id` was only ever
+      // `command.workspaceId`.
       const canManage =
-        workspace !== undefined &&
-        canManageWorkspaceAccess(view, context, workspace.id) &&
         authorization.authorize({
           context,
           capability: "workspace.manageAccess",
-          workspaceId: workspace.id,
-        });
+          workspaceId: command.workspaceId,
+        }) && canManageWorkspaceAccess(view, context, command.workspaceId);
       if (!canManage) return false;
       if (command.commandName === "workspace.memberAdd")
         return canEditSpace(
@@ -337,16 +355,23 @@ const isCurrentlyAuthorized = (
         command.workspaceId,
         context.principalId,
       );
+      // The widest of these, because the Space here comes from the payload
+      // rather than from a resolved record: before the consult was hoisted, a
+      // caller lacking `capture.submit` read a denial for any real Space in the
+      // workspace and a precondition for a made-up one — including Spaces its
+      // grant cannot reach, since the denial verdict is re-taken without a
+      // Space and answers "not in your grant". Field finding #18's oracle, one
+      // id kind over.
       return (
-        workspace !== undefined &&
-        space?.workspaceId === workspace.id &&
-        membership !== undefined &&
         authorization.authorize({
           context,
           capability: command.commandName,
           workspaceId: command.workspaceId,
           spaceId: command.payload.spaceId,
         }) &&
+        workspace !== undefined &&
+        space?.workspaceId === workspace.id &&
+        membership !== undefined &&
         canEditSpace(
           view,
           context,
@@ -362,6 +387,32 @@ const isCurrentlyAuthorized = (
     case "capture.requestAudioDeletion":
     case "capture.confirmAudioDeletion":
     case "capture.routeAsTask": {
+      // Lifted out of the consult below so the grant can be asked before the
+      // capture is resolved. The space-level question genuinely cannot be asked
+      // first — its Space comes from the capture — but the grant-level one can,
+      // and per this file's ADR-067 restatement it is the only question whose
+      // answer the caller is entitled to. Without it, refusing here consults
+      // nothing and the caller reads a precondition for a capability it never
+      // held. Same shape as `agent.checkpointRevert` below.
+      const capability =
+        command.commandName === "capture.reportException" ||
+        command.commandName === "capture.resolveException"
+          ? "capture.process"
+          : command.commandName === "capture.writeTranscript"
+            ? "capture.transcriptWrite"
+            : command.commandName === "capture.requestAudioDeletion"
+              ? "capture.process"
+              : command.commandName === "capture.confirmAudioDeletion"
+                ? "capture.audioDeleteConfirm"
+                : command.commandName;
+      if (
+        !authorization.authorize({
+          context,
+          capability,
+          workspaceId: command.workspaceId,
+        })
+      )
+        return false;
       if (
         (command.commandName === "capture.requestAudioDeletion" &&
           context.principalKind !== "human") ||
@@ -380,17 +431,7 @@ const isCurrentlyAuthorized = (
         membership !== undefined &&
         authorization.authorize({
           context,
-          capability:
-            command.commandName === "capture.reportException" ||
-            command.commandName === "capture.resolveException"
-              ? "capture.process"
-              : command.commandName === "capture.writeTranscript"
-                ? "capture.transcriptWrite"
-                : command.commandName === "capture.requestAudioDeletion"
-                  ? "capture.process"
-                  : command.commandName === "capture.confirmAudioDeletion"
-                    ? "capture.audioDeleteConfirm"
-                    : command.commandName,
+          capability,
           workspaceId: command.workspaceId,
           spaceId: capture.spaceId,
         }) &&
@@ -2897,6 +2938,8 @@ export class ApplicationKernel {
         case "knowledge.list":
         case "knowledge.documentContext":
         case "relationship.workspace":
+        case "person.list":
+        case "organization.list":
         case "radar.review":
         case "project.operationalOverview":
         case "organization.operationalOverview":

@@ -322,6 +322,87 @@ describe("interaction recovery contracts", () => {
     );
   });
 
+  it("lets a human link and detach a client from the Klient card", () => {
+    // The row has to be WIRED, not merely defined: it hangs off the Klient
+    // section as a footer and is rendered outside the list/empty branch,
+    // because linking the first client is exactly the empty state.
+    assert.match(projectContextSections, /footer: \(\s*<ClientLinkRow/);
+    assert.match(projectContextSections, /\{section\.footer\}/);
+    // A read that did not land and a Space with no organizations are different
+    // facts and must not share a sentence — the whole reason this branch
+    // exists is a surface that said "unavailable" without naming a cause.
+    assert.match(projectContextSections, /candidates === undefined \? \(/);
+    assert.match(projectContextSections, /Nie udało się wczytać organizacji/);
+    assert.match(
+      projectContextSections,
+      /Brak organizacji do połączenia w przestrzeni tego projektu/,
+    );
+    assert.match(projectContextSections, /className="project-context-actions"/);
+    assert.match(projectContextSections, /Wybierz klienta…/);
+    assert.match(projectContextSections, /Połącz klienta/);
+    assert.match(projectContextSections, /Odłącz „\{organization\.name\}”/);
+    // Two steps, in place, like every other destructive verb here.
+    assert.match(projectContextSections, /Potwierdź odłączenie/);
+    assert.match(projectContextSections, /Anuluj/);
+    // The confirm must keep saying that only the direct link goes: a client
+    // also reached through an opportunity or a meeting stays on the list, and
+    // a shorter sentence would make a working detach read as broken.
+    assert.match(
+      projectContextSections,
+      /Odłączenie usuwa tylko bezpośrednie powiązanie/,
+    );
+    // The row shares the accepted in-project action row rather than declaring
+    // a second geometry for the same shape. Three selectors now, since the
+    // Organization page authors the same edge from the other end.
+    assert.match(
+      styles,
+      /\.project-template-row,\s*\.organization-context__actions,\s*\.project-context-actions\s*\{[^}]*display:\s*flex/s,
+    );
+    // RealApp resolves both kernel preconditions; the card stays presentational.
+    assert.match(realApp, /linkableClientOrganizations\(/);
+    assert.match(realApp, /directClientLinks\(/);
+    assert.match(realApp, /Klienta połączono z projektem\./);
+    assert.match(realApp, /Powiązanie z klientem usunięto\./);
+  });
+
+  it("lets a human link and detach a delivery from the client's Aktywna praca card", () => {
+    // The same edge as the Klient card, authored from the other end. The row is
+    // rendered outside the list/empty branch here too, because linking the
+    // first delivery is exactly the empty state.
+    assert.match(strategicSurface, /<DeliveryLinkRow/);
+    assert.match(strategicSurface, /candidates === undefined \? \(/);
+    // Two projections feed this picker, so "did not load" and "there are none"
+    // stay separate sentences — the distinction the Project side draws from one.
+    assert.match(strategicSurface, /Nie udało się wczytać projektów/);
+    assert.match(
+      strategicSurface,
+      /Brak aktywnych projektów do połączenia w przestrzeni tego klienta/,
+    );
+    assert.match(strategicSurface, /className="organization-context__actions"/);
+    assert.match(strategicSurface, /Wybierz projekt…/);
+    assert.match(strategicSurface, /Połącz projekt/);
+    assert.match(strategicSurface, /Odłącz „\{project\.title\}”/);
+    // Two steps, in place, and the confirm says only the direct link goes:
+    // `activeProjects` unions two reaches, so a delivery an opportunity also
+    // names stays listed and a working detach would otherwise read as broken.
+    assert.match(strategicSurface, /Potwierdź odłączenie/);
+    assert.match(
+      strategicSurface,
+      /Odłączenie usuwa tylko bezpośrednie powiązanie/,
+    );
+    // The loader resolves both kernel preconditions; the card stays
+    // presentational, exactly as ProjectContextSections does.
+    assert.match(strategicSurface, /linkableDeliveryProjects\(/);
+    assert.match(strategicSurface, /directDeliveryProjects\(/);
+    assert.match(realApp, /Projekt połączono z klientem\./);
+    assert.match(realApp, /Powiązanie z projektem usunięto\./);
+    // The tasks below the row keep their separation from it.
+    assert.match(
+      organizationStyles,
+      /\.organization-context__actions \+ \.organization-context__rows/,
+    );
+  });
+
   it("opens Organization as one restorable client context with real navigation", () => {
     for (const heading of [
       "Aktywna praca",

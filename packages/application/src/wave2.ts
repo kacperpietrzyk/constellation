@@ -11,6 +11,7 @@ import type { StrategicRecordProjectionSchema } from "@constellation/contracts";
 import {
   AuditReceiptIdSchema,
   CommandOutcomeSchema,
+  DEPENDENT_SAMPLE_LIMIT,
   DocumentIdSchema,
   EventIdSchema,
   OutboxEntryIdSchema,
@@ -288,6 +289,8 @@ export type Wave2Query = Extract<
       | "knowledge.list"
       | "knowledge.documentContext"
       | "relationship.workspace"
+      | "person.list"
+      | "organization.list"
       | "radar.review"
       | "project.operationalOverview"
       | "organization.operationalOverview"
@@ -309,6 +312,22 @@ export type Wave2Query = Extract<
  * by accident. `agent.checkpointRevert` is the one exception and is excluded
  * here rather than cast away: its capability, `agent.checkpoint.revert`, is
  * already written into every grant in the field (ADR-069).
+ *
+ * The policy is consulted before the target is resolved, for the reason
+ * `isAgentAccessCommandAuthorized` already gives: a caller told
+ * `command.precondition_failed` can spend a run trying to satisfy a
+ * precondition when the real answer is that its grant never carried the
+ * capability. Field finding #18 measured this on `relationship.personUpdate` —
+ * a made-up id answered a precondition and a real record answered a denial, so
+ * the diagnostic distinguished records the caller may not name, inside a Space
+ * it can already edit. That is the existence oracle `RecordedAuthorization`
+ * exists to refuse (kernel.ts).
+ *
+ * Only which capability the kernel recorded moves. The verdict is still
+ * `spaceId !== undefined` and `canEditSpace`, and every policy in the tree
+ * reads the ExecutionContext alone, so reordering pure predicates cannot
+ * change the answer — and no second capability table is introduced, because
+ * the capability is the one this helper already used.
  */
 const authorized = (
   dependencies: Pick<ApplicationKernelDependencies, "authorization">,
@@ -317,14 +336,14 @@ const authorized = (
   command: Exclude<Wave2Command, { commandName: "agent.checkpointRevert" }>,
   spaceId: SpaceId | undefined,
 ): boolean =>
-  spaceId !== undefined &&
-  canEditSpace(view, context, command.workspaceId, spaceId) &&
   dependencies.authorization.authorize({
     context,
     capability: command.commandName,
     workspaceId: command.workspaceId,
-    spaceId,
-  });
+    ...(spaceId === undefined ? {} : { spaceId }),
+  }) &&
+  spaceId !== undefined &&
+  canEditSpace(view, context, command.workspaceId, spaceId);
 
 export const isWave2CommandAuthorized = (
   dependencies: Pick<ApplicationKernelDependencies, "authorization">,
@@ -665,7 +684,15 @@ export const isWave2CommandAuthorized = (
     }
     case "meeting.route": {
       const record = view.getStrategicRecord(command.payload.meetingId);
-      if (record?.kind !== "meeting") return false;
+      // A target that is not there still has to ask the policy, or these arms
+      // become the oracle the helper below was changed to close: refusing here
+      // consults nothing, so a caller lacking the capability would read a
+      // precondition for an id that resolves to nothing and a denial for one
+      // that resolves to a meeting — including a meeting in a Space it cannot
+      // reach. Passing no Space asks the grant-level question, which is the
+      // only one whose answer the caller is entitled to.
+      if (record?.kind !== "meeting")
+        return authorized(dependencies, view, context, command, undefined);
       // A Space move must be permitted in both the current and target Space.
       if (
         command.commandName === "meeting.route" &&
@@ -690,7 +717,15 @@ export const isWave2CommandAuthorized = (
     }
     case "meeting.promoteWorkItem": {
       const record = view.getStrategicRecord(command.payload.meetingId);
-      if (record?.kind !== "meeting") return false;
+      // A target that is not there still has to ask the policy, or these arms
+      // become the oracle the helper below was changed to close: refusing here
+      // consults nothing, so a caller lacking the capability would read a
+      // precondition for an id that resolves to nothing and a denial for one
+      // that resolves to a meeting — including a meeting in a Space it cannot
+      // reach. Passing no Space asks the grant-level question, which is the
+      // only one whose answer the caller is entitled to.
+      if (record?.kind !== "meeting")
+        return authorized(dependencies, view, context, command, undefined);
       // ADR-040 §7: promotion inserts a Task directly, so it must not become a
       // privilege path around the Task-creation grant.
       return (
@@ -707,7 +742,15 @@ export const isWave2CommandAuthorized = (
     case "meeting.correctWorkItemResponsibility":
     case "meeting.addWorkItem": {
       const record = view.getStrategicRecord(command.payload.meetingId);
-      if (record?.kind !== "meeting") return false;
+      // A target that is not there still has to ask the policy, or these arms
+      // become the oracle the helper below was changed to close: refusing here
+      // consults nothing, so a caller lacking the capability would read a
+      // precondition for an id that resolves to nothing and a denial for one
+      // that resolves to a meeting — including a meeting in a Space it cannot
+      // reach. Passing no Space asks the grant-level question, which is the
+      // only one whose answer the caller is entitled to.
+      if (record?.kind !== "meeting")
+        return authorized(dependencies, view, context, command, undefined);
       // Correcting a work item is ordinary meeting work: it writes nothing
       // outside the meeting record, so it carries no additional grant the way
       // promotion (task.create) and linking (relationship.personCreate) do.
@@ -715,7 +758,15 @@ export const isWave2CommandAuthorized = (
     }
     case "meeting.linkParticipants": {
       const record = view.getStrategicRecord(command.payload.meetingId);
-      if (record?.kind !== "meeting") return false;
+      // A target that is not there still has to ask the policy, or these arms
+      // become the oracle the helper below was changed to close: refusing here
+      // consults nothing, so a caller lacking the capability would read a
+      // precondition for an id that resolves to nothing and a denial for one
+      // that resolves to a meeting — including a meeting in a Space it cannot
+      // reach. Passing no Space asks the grant-level question, which is the
+      // only one whose answer the caller is entitled to.
+      if (record?.kind !== "meeting")
+        return authorized(dependencies, view, context, command, undefined);
       // Linking can create a Person, so it carries the relationship grant too.
       return (
         authorized(dependencies, view, context, command, record.spaceId) &&
@@ -814,10 +865,22 @@ export const isWave2CommandAuthorized = (
       );
     }
     case "record.setFieldValue": {
-      const record =
-        command.payload.targetKind === "task"
-          ? view.getTask(TaskIdSchema.parse(command.payload.recordId))
-          : view.getProject(ProjectIdSchema.parse(command.payload.recordId));
+      // `safeParse`, not `parse`, and the reason is the blast radius rather
+      // than a live bug: the envelope already validates `recordId` as a uuid
+      // and both id schemas are branded uuids, so nothing that reaches here can
+      // fail today. But `.parse` throws, this runs inside `store.transact`, and
+      // the executor converts only `RetryableUnitOfWorkError` — so the day that
+      // payload field is widened, this arm stops rejecting and starts throwing
+      // out of the kernel. A miss is indistinguishable from a record that is
+      // not there, which is what the caller should have been told anyway.
+      const record = ((): Task | Project | undefined => {
+        if (command.payload.targetKind === "task") {
+          const id = TaskIdSchema.safeParse(command.payload.recordId);
+          return id.success ? view.getTask(id.data) : undefined;
+        }
+        const id = ProjectIdSchema.safeParse(command.payload.recordId);
+        return id.success ? view.getProject(id.data) : undefined;
+      })();
       return authorized(
         dependencies,
         view,
@@ -857,15 +920,22 @@ export const isWave2CommandAuthorized = (
         record?.workspaceId === command.workspaceId
           ? record.spaceId
           : undefined;
+      // The policy goes first here for the same reason it does in the shared
+      // helper above: a branch that refuses before consulting it consults
+      // nothing, and the kernel reads "nothing consulted" as "nothing refused",
+      // so a caller whose grant never carried the capability is told to fix a
+      // target instead. Narrower than the helper's case — these arms resolve
+      // records the caller can already read — so what it buys is the honest
+      // answer, not a closed disclosure. The two arms below follow this one.
       return (
-        spaceId !== undefined &&
-        canCommentInSpace(view, context, command.workspaceId, spaceId) &&
         dependencies.authorization.authorize({
           context,
           capability: command.commandName,
           workspaceId: command.workspaceId,
-          spaceId,
-        })
+          ...(spaceId === undefined ? {} : { spaceId }),
+        }) &&
+        spaceId !== undefined &&
+        canCommentInSpace(view, context, command.workspaceId, spaceId)
       );
     }
     case "comment.edit":
@@ -876,34 +946,43 @@ export const isWave2CommandAuthorized = (
         comment?.workspaceId === command.workspaceId
           ? comment.spaceId
           : undefined;
+      // The existing ternary is moved up as-is, never re-derived from the
+      // command name: `comment.reopen` is itself a capability, and probing for
+      // it would newly refuse a grant that holds `comment.resolve` without it.
+      const capability =
+        command.commandName === "comment.resolve" ||
+        command.commandName === "comment.reopen"
+          ? "comment.resolve"
+          : "comment.edit";
       return (
-        spaceId !== undefined &&
-        canCommentInSpace(view, context, command.workspaceId, spaceId) &&
         dependencies.authorization.authorize({
           context,
-          capability:
-            command.commandName === "comment.resolve" ||
-            command.commandName === "comment.reopen"
-              ? "comment.resolve"
-              : "comment.edit",
+          capability,
           workspaceId: command.workspaceId,
-          spaceId,
-        })
+          ...(spaceId === undefined ? {} : { spaceId }),
+        }) &&
+        spaceId !== undefined &&
+        canCommentInSpace(view, context, command.workspaceId, spaceId)
       );
     }
     case "attention.markRead":
     case "attention.dismiss": {
       const signal = view.getAttentionSignal(command.payload.attentionSignalId);
+      // Same ordering as the comment arms above, and the same reason.
+      const spaceId =
+        signal?.workspaceId === command.workspaceId
+          ? signal.spaceId
+          : undefined;
       return (
-        signal?.workspaceId === command.workspaceId &&
-        signal.targetPrincipalId === context.principalId &&
-        canViewSpace(view, context, command.workspaceId, signal.spaceId) &&
         dependencies.authorization.authorize({
           context,
           capability: command.commandName,
           workspaceId: command.workspaceId,
-          spaceId: signal.spaceId,
-        })
+          ...(spaceId === undefined ? {} : { spaceId }),
+        }) &&
+        signal?.workspaceId === command.workspaceId &&
+        signal.targetPrincipalId === context.principalId &&
+        canViewSpace(view, context, command.workspaceId, signal.spaceId)
       );
     }
     case "record.relate": {
@@ -1302,8 +1381,6 @@ const precondition = (
     diagnosticCode: "command.precondition_failed",
   });
 
-const BLOCKED_BY_LIMIT = 20;
-
 /**
  * The one refusal that names its cause. Every record here is inside the
  * target's own Space, and this branch is only reached after an authorization
@@ -1319,9 +1396,60 @@ const blocked = (
   outcome(command, occurredAt, {
     outcome: "rejected",
     diagnosticCode: "record.still_referenced",
-    blockedBy: dependents.slice(0, BLOCKED_BY_LIMIT),
+    blockedBy: dependents.slice(0, DEPENDENT_SAMPLE_LIMIT),
     blockedByCount: dependents.length,
   });
+
+/**
+ * The source key this record claims, if it is a kind that claims one.
+ *
+ * Named once because the claim is made in three places that must agree: the
+ * create that takes the key, the restore that refuses to take it back if a
+ * re-import got there first, and the preview of that restore. A kind added to
+ * the create and forgotten in the other two would let an undo produce a second
+ * live record holding one key, after which the set-once rule refuses to repair
+ * either — which is the failure the guards exist to prevent, reached through
+ * the guards themselves.
+ */
+const claimedSourceKey = (
+  record: StrategicRecord,
+):
+  | {
+      readonly kind: "person" | "organization" | "opportunity";
+      readonly externalId: string;
+    }
+  | undefined =>
+  (record.kind === "person" ||
+    record.kind === "organization" ||
+    record.kind === "opportunity") &&
+  record.externalId !== undefined
+    ? { kind: record.kind, externalId: record.externalId }
+    : undefined;
+
+/**
+ * A record resting on a Knowledge Source, in the vocabulary the removal guard
+ * refuses in, plus the label a reader needs to act on it. The two travel
+ * together because they are computed together; only the projection carries the
+ * title, since `BlockingRecord` is strict.
+ */
+type SourceReference = {
+  readonly blocking: BlockingRecord;
+  readonly title: string;
+};
+
+/**
+ * What a strategic record is recognised by, for the kinds that can rest on a
+ * Source. A relationship Fact is the one with no title of its own: its type is
+ * what a reader recognises it by, where its value is the claim itself.
+ */
+const strategicRecordTitle = (record: StrategicRecord): string =>
+  "title" in record
+    ? record.title
+    : record.kind === "relationship_fact"
+      ? record.factType
+      : record.kind === "person" || record.kind === "organization"
+        ? record.name
+        : record.kind;
 
 /**
  * What still points at a Project, a Document or a Knowledge Source inside its
@@ -1408,34 +1536,88 @@ const tableRecordDependents = (
           recordKind: "namedDocumentVersion" as const,
         })),
     ];
-  return [
-    ...strategic
-      .filter((candidate) =>
-        "evidenceSourceIds" in candidate
-          ? candidate.evidenceSourceIds.some((sourceId) => sourceId === id)
-          : candidate.kind === "radar_candidate" && candidate.sourceId === id,
+  return (
+    knowledgeSourceReferences(view, workspaceId, spaceId).get(id) ?? []
+  ).map((reference) => reference.blocking);
+};
+
+/**
+ * What rests on each Knowledge Source in a Space, built in one pass.
+ *
+ * The guard above and `knowledge.list`'s `referencedBy` are the same question
+ * asked in two directions, so they read one enumeration. Two copies would let
+ * a Source report that nothing references it and then refuse to be removed —
+ * the reader would have no way to find what it missed — and the reach this
+ * project has already lost once (Projects, when `evidenceSourceIds` moved off
+ * strategic records) is exactly the kind a second copy drops.
+ *
+ * Four reaches, each on its own removal axis, read through the filtered lists
+ * so a reference held by an already-removed record does not count. A frozen
+ * named version is deliberately absent: it carries its own title and version
+ * because it is a snapshot of what was delivered, not a live binding, and
+ * answering "what rests on this note today" with one would be misleading.
+ */
+const knowledgeSourceReferences = (
+  view: ApplicationWave2ReadView,
+  workspaceId: WorkspaceId,
+  spaceId: SpaceId,
+): ReadonlyMap<string, readonly SourceReference[]> => {
+  const references = new Map<string, SourceReference[]>();
+  // One entry per referring record, not per mention: the guard this feeds
+  // counted records, and a Project that happened to list one Source twice must
+  // not read as two things blocking its removal.
+  const add = (sourceId: string, reference: SourceReference) => {
+    const held = references.get(sourceId);
+    if (held === undefined) references.set(sourceId, [reference]);
+    else if (
+      !held.some(
+        (existing) =>
+          existing.blocking.recordId === reference.blocking.recordId,
       )
-      .map((candidate) => ({
-        recordId: candidate.id,
-        recordKind: "strategicRecord" as const,
-        recordType: candidate.kind,
-      })),
-    ...view
-      .listDocuments(workspaceId, spaceId)
-      .filter((candidate) =>
-        candidate.evidence?.sourceIds.some((sourceId) => sourceId === id),
-      )
-      .map((candidate) => ({
-        recordId: candidate.id,
-        recordKind: "document" as const,
-      })),
-    ...view
-      .listTasksInSpace(workspaceId, spaceId)
-      .filter((task) =>
-        task.attachmentSourceIds?.some((sourceId) => sourceId === id),
-      )
-      .map((task) => ({ recordId: task.id, recordKind: "task" as const })),
-  ];
+    )
+      held.push(reference);
+  };
+  for (const candidate of view.listStrategicRecords(workspaceId, spaceId)) {
+    const sourceIds =
+      "evidenceSourceIds" in candidate
+        ? candidate.evidenceSourceIds
+        : candidate.kind === "radar_candidate"
+          ? [candidate.sourceId]
+          : [];
+    for (const sourceId of sourceIds)
+      add(sourceId, {
+        blocking: {
+          recordId: candidate.id,
+          recordKind: "strategicRecord",
+          recordType: candidate.kind,
+        },
+        title: strategicRecordTitle(candidate),
+      });
+  }
+  for (const candidate of view.listDocuments(workspaceId, spaceId))
+    for (const sourceId of candidate.evidence?.sourceIds ?? [])
+      add(sourceId, {
+        blocking: { recordId: candidate.id, recordKind: "document" },
+        title: candidate.title,
+      });
+  for (const task of view.listTasksInSpace(workspaceId, spaceId))
+    for (const sourceId of task.attachmentSourceIds ?? [])
+      add(sourceId, {
+        blocking: { recordId: task.id, recordKind: "task" },
+        title: task.title,
+      });
+  // Projects carry evidence too, since 0.1.5. They were missed when the guard
+  // was written because `evidenceSourceIds` was a strategic-record field then
+  // and a Project is not a strategic record — so a Source a Project rested on
+  // could be removed out from under it, which is the one thing it exists to
+  // prevent.
+  for (const project of view.listProjects(workspaceId, spaceId))
+    for (const sourceId of project.evidenceSourceIds ?? [])
+      add(sourceId, {
+        blocking: { recordId: project.id, recordKind: "project" },
+        title: project.title,
+      });
+  return references;
 };
 
 /**
@@ -2528,6 +2710,28 @@ export const executeWave2Command = (
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       if (transaction.getStrategicRecord(command.payload.organizationId))
         return precondition(command, occurredAt);
+      // A source key is claimed once per Space and kind. Names are not unique,
+      // so this is the only thing that can tell a re-run apart from a genuinely
+      // new record — and the refusal has to be actionable, which is why it
+      // carries the colliding record's id and version rather than a bare
+      // precondition: the caller pivots straight to the update command with
+      // exactly those `expectedVersions` instead of minting a second id.
+      // Checked against the transaction, not a snapshot, so two creates inside
+      // one batch collide with each other too.
+      if (command.payload.externalId !== undefined) {
+        const claimed = transaction.findStrategicRecordByExternalId(
+          command.workspaceId,
+          command.payload.spaceId,
+          "organization",
+          command.payload.externalId,
+        );
+        if (claimed !== undefined)
+          return outcome(command, occurredAt, {
+            outcome: "conflict",
+            diagnosticCode: "record.already_exists",
+            currentVersions: { [claimed.id]: claimed.version },
+          });
+      }
       const record = createOrganization({
         id: StrategicRecordIdSchema.parse(command.payload.organizationId),
         workspaceId: command.workspaceId,
@@ -2537,6 +2741,9 @@ export const executeWave2Command = (
         ...(command.payload.nextAction === undefined
           ? {}
           : { nextAction: command.payload.nextAction }),
+        ...(command.payload.externalId === undefined
+          ? {}
+          : { externalId: command.payload.externalId }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -2557,7 +2764,7 @@ export const executeWave2Command = (
           occurredAt,
         },
         { [record.id]: record.version },
-        ["name", "relationshipState", "nextAction"],
+        ["name", "relationshipState", "nextAction", "externalId"],
         {
           diagnosticCode: "strategic.record_changed",
           projection: {
@@ -3582,6 +3789,22 @@ export const executeWave2Command = (
         organization === undefined
       )
         return precondition(command, occurredAt);
+      // Same source-key claim as `relationship.organizationCreate` above; the
+      // reasoning for the shape of this refusal is stated there.
+      if (command.payload.externalId !== undefined) {
+        const claimed = transaction.findStrategicRecordByExternalId(
+          command.workspaceId,
+          command.payload.spaceId,
+          "person",
+          command.payload.externalId,
+        );
+        if (claimed !== undefined)
+          return outcome(command, occurredAt, {
+            outcome: "conflict",
+            diagnosticCode: "record.already_exists",
+            currentVersions: { [claimed.id]: claimed.version },
+          });
+      }
       const record = createPerson({
         id: StrategicRecordIdSchema.parse(command.payload.personId),
         workspaceId: command.workspaceId,
@@ -3596,6 +3819,9 @@ export const executeWave2Command = (
         ...(command.payload.email === undefined
           ? {}
           : { email: command.payload.email }),
+        ...(command.payload.externalId === undefined
+          ? {}
+          : { externalId: command.payload.externalId }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -3616,7 +3842,7 @@ export const executeWave2Command = (
           occurredAt,
         },
         { [record.id]: record.version },
-        ["name", "organizationId", "role", "email"],
+        ["name", "organizationId", "role", "email", "externalId"],
         {
           diagnosticCode: "strategic.record_changed",
           projection: {
@@ -3653,6 +3879,32 @@ export const executeWave2Command = (
         )
           return precondition(command, occurredAt);
       }
+      // Provenance is stamped once. An update may add a source key to a record
+      // that predates the field — that is how an existing graph gets stamped —
+      // but naming a different one is refused, because a key that can change
+      // silently re-points a record at a different source row and provenance
+      // that can be rewritten is not provenance. Claiming a key another record
+      // in this Space already holds is refused the same way a create is, so the
+      // two paths cannot disagree about who owns a key.
+      if (command.payload.externalId !== undefined) {
+        if (
+          current.externalId !== undefined &&
+          current.externalId !== command.payload.externalId
+        )
+          return precondition(command, occurredAt);
+        const claimed = transaction.findStrategicRecordByExternalId(
+          current.workspaceId,
+          current.spaceId,
+          "person",
+          command.payload.externalId,
+        );
+        if (claimed !== undefined && claimed.id !== current.id)
+          return outcome(command, occurredAt, {
+            outcome: "conflict",
+            diagnosticCode: "record.already_exists",
+            currentVersions: { [claimed.id]: claimed.version },
+          });
+      }
       const record = updatePersonDetails(
         current,
         {
@@ -3668,6 +3920,9 @@ export const executeWave2Command = (
           ...(command.payload.email === undefined
             ? {}
             : { email: command.payload.email }),
+          ...(command.payload.externalId === undefined
+            ? {}
+            : { externalId: command.payload.externalId }),
         },
         occurredAt,
       );
@@ -3698,6 +3953,9 @@ export const executeWave2Command = (
             : { priorOrganizationId: current.organizationId }),
           ...(current.role === undefined ? {} : { priorRole: current.role }),
           ...(current.email === undefined ? {} : { priorEmail: current.email }),
+          ...(current.externalId === undefined
+            ? {}
+            : { priorExternalId: current.externalId }),
           resultingVersion: record.version,
         },
       );
@@ -3711,6 +3969,27 @@ export const executeWave2Command = (
       const expected = { [current.id]: current.version };
       if (!exactExpected(command, expected))
         return versionConflict(command, occurredAt, expected);
+      // See `relationship.personUpdate` above — set once, never rewritten,
+      // never claimed away from another record.
+      if (command.payload.externalId !== undefined) {
+        if (
+          current.externalId !== undefined &&
+          current.externalId !== command.payload.externalId
+        )
+          return precondition(command, occurredAt);
+        const claimed = transaction.findStrategicRecordByExternalId(
+          current.workspaceId,
+          current.spaceId,
+          "organization",
+          command.payload.externalId,
+        );
+        if (claimed !== undefined && claimed.id !== current.id)
+          return outcome(command, occurredAt, {
+            outcome: "conflict",
+            diagnosticCode: "record.already_exists",
+            currentVersions: { [claimed.id]: claimed.version },
+          });
+      }
       const record = updateOrganizationDetails(
         current,
         {
@@ -3723,6 +4002,9 @@ export const executeWave2Command = (
           ...(command.payload.nextAction === undefined
             ? {}
             : { nextAction: command.payload.nextAction }),
+          ...(command.payload.externalId === undefined
+            ? {}
+            : { externalId: command.payload.externalId }),
         },
         occurredAt,
       );
@@ -3752,6 +4034,9 @@ export const executeWave2Command = (
           ...(current.nextAction === undefined
             ? {}
             : { priorNextAction: current.nextAction }),
+          ...(current.externalId === undefined
+            ? {}
+            : { priorExternalId: current.externalId }),
           resultingVersion: record.version,
         },
       );
@@ -3790,6 +4075,25 @@ export const executeWave2Command = (
         )
       )
         return precondition(command, occurredAt);
+      // The same claim the two relationship creates make, on the same terms:
+      // one key per Space and kind, and the refusal names the record holding
+      // it so the caller can act instead of minting a second id. There is no
+      // opportunity update command, so unlike a Person this key can only be
+      // set at import — a deal that arrives unstamped stays unstamped.
+      if (command.payload.externalId !== undefined) {
+        const claimed = transaction.findStrategicRecordByExternalId(
+          command.workspaceId,
+          command.payload.spaceId,
+          "opportunity",
+          command.payload.externalId,
+        );
+        if (claimed !== undefined)
+          return outcome(command, occurredAt, {
+            outcome: "conflict",
+            diagnosticCode: "record.already_exists",
+            currentVersions: { [claimed.id]: claimed.version },
+          });
+      }
       const record = createOpportunity({
         id: StrategicRecordIdSchema.parse(command.payload.opportunityId),
         workspaceId: command.workspaceId,
@@ -3805,6 +4109,9 @@ export const executeWave2Command = (
         stage: command.payload.stage,
         nextAction: command.payload.nextAction,
         evidenceSourceIds: command.payload.evidenceSourceIds,
+        ...(command.payload.externalId === undefined
+          ? {}
+          : { externalId: command.payload.externalId }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -3834,6 +4141,7 @@ export const executeWave2Command = (
           "stage",
           "nextAction",
           "evidenceSourceIds",
+          "externalId",
         ],
         {
           diagnosticCode: "strategic.record_changed",
@@ -4630,6 +4938,23 @@ export const executeWave2Command = (
         )
       )
         return precondition(command, occurredAt);
+      // The same claim the strategic creates make, against the Projects table
+      // rather than the strategic one: one key per Space, and the refusal names
+      // the delivery already holding it. There is no project update command
+      // that takes the field, so a Project can only be stamped at import.
+      if (command.payload.externalId !== undefined) {
+        const claimed = transaction.findProjectByExternalId(
+          command.workspaceId,
+          command.payload.spaceId,
+          command.payload.externalId,
+        );
+        if (claimed !== undefined)
+          return outcome(command, occurredAt, {
+            outcome: "conflict",
+            diagnosticCode: "record.already_exists",
+            currentVersions: { [claimed.id]: claimed.version },
+          });
+      }
       const project = createProject({
         id: projectId,
         workspaceId: command.workspaceId,
@@ -4641,6 +4966,9 @@ export const executeWave2Command = (
         ...(command.payload.evidenceSourceIds === undefined
           ? {}
           : { evidenceSourceIds: command.payload.evidenceSourceIds }),
+        ...(command.payload.externalId === undefined
+          ? {}
+          : { externalId: command.payload.externalId }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -6137,12 +6465,16 @@ export const executeWave2Command = (
     }
     case "record.setFieldValue": {
       const targetKind = command.payload.targetKind;
-      const record =
-        targetKind === "task"
-          ? transaction.getTask(TaskIdSchema.parse(command.payload.recordId))
-          : transaction.getProject(
-              ProjectIdSchema.parse(command.payload.recordId),
-            );
+      // `safeParse` for the reason given on the authorization arm; the miss
+      // falls into the `record === undefined` precondition just below.
+      const record = ((): Task | Project | undefined => {
+        if (targetKind === "task") {
+          const id = TaskIdSchema.safeParse(command.payload.recordId);
+          return id.success ? transaction.getTask(id.data) : undefined;
+        }
+        const id = ProjectIdSchema.safeParse(command.payload.recordId);
+        return id.success ? transaction.getProject(id.data) : undefined;
+      })();
       const definition = transaction.getFieldDefinition(
         command.payload.fieldId,
       );
@@ -8179,6 +8511,31 @@ const descriptorState = (
           versions: {},
           reason: "later_change",
         };
+      // Putting a Project back is infeasible when a re-import claimed its
+      // source key while it was gone, for the reason the strategic restore
+      // gives above: two live records under one key, and a set-once rule that
+      // then refuses to repair either. Only restoring can hit it — undoing a
+      // create removes the record and frees the key rather than taking one.
+      if (
+        descriptor.kind === "record.restore_record_state" &&
+        descriptor.priorRecordState === "active" &&
+        descriptor.recordKind === "project" &&
+        "externalId" in record &&
+        record.externalId !== undefined
+      ) {
+        const claimed = view.findProjectByExternalId(
+          record.workspaceId,
+          record.spaceId,
+          record.externalId,
+        );
+        if (claimed !== undefined && claimed.id !== record.id)
+          return {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "still_referenced",
+          };
+      }
       const orphans =
         descriptor.kind === "record.undo_create" &&
         tableRecordDependents(view, record, descriptor.recordKind).filter(
@@ -8199,18 +8556,46 @@ const descriptorState = (
     }
     case "strategic.restore_record_state": {
       const record = view.getStrategicRecord(descriptor.recordId);
-      return record?.version === descriptor.resultingVersion
-        ? {
-            available: true,
-            recordIds: [record.id],
-            versions: { [record.id]: record.version },
-          }
-        : {
+      if (record?.version !== descriptor.resultingVersion)
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      // The preview has to agree with the revert, which is the lesson of #15:
+      // a preview that reports feasible and then refuses spends a checkpoint to
+      // tell you what it already knew. Restoring a removed record that carries
+      // a source key is infeasible when a re-import has claimed it in the
+      // meantime — see the matching guard in `compensateDescriptor`.
+      // `still_referenced` is the closest member of a vocabulary that is
+      // deliberately small: another record in the caller's own Space stands in
+      // the way, and clearing it makes this available again, which is exactly
+      // what that reason tells a caller to do.
+      const previewKey = claimedSourceKey(record);
+      if (
+        descriptor.priorRecordState === "active" &&
+        previewKey !== undefined
+      ) {
+        const claimed = view.findStrategicRecordByExternalId(
+          record.workspaceId,
+          record.spaceId,
+          previewKey.kind,
+          previewKey.externalId,
+        );
+        if (claimed !== undefined && claimed.id !== record.id)
+          return {
             available: false,
             recordIds: [],
             versions: {},
-            reason: "later_change",
+            reason: "still_referenced",
           };
+      }
+      return {
+        available: true,
+        recordIds: [record.id],
+        versions: { [record.id]: record.version },
+      };
     }
     case "savedView.restore_definition": {
       const record = view.getStrategicRecord(descriptor.savedViewId);
@@ -8914,11 +9299,32 @@ const compensateDescriptor = (
     const record = transaction.getStrategicRecord(
       descriptor.recordId,
     ) as StrategicRecord;
+    const priorRecordState =
+      descriptor.kind === "strategic.undo_create"
+        ? ("removed" as const)
+        : descriptor.priorRecordState;
+    // Removal frees a source key, which is deliberate — a source row whose
+    // record was removed has to be importable again. The consequence is that
+    // bringing the record back can no longer be assumed safe: if a re-import
+    // claimed the key in between, restoring would leave two active records of
+    // one kind in one Space carrying the same key, and the set-once rule then
+    // refuses to re-point either, so the only way out would be deleting one.
+    // Refusing here is the whole point of a compensation that can say no.
+    const restoredKey = claimedSourceKey(record);
+    if (priorRecordState === "active" && restoredKey !== undefined) {
+      const claimed = transaction.findStrategicRecordByExternalId(
+        record.workspaceId,
+        record.spaceId,
+        restoredKey.kind,
+        restoredKey.externalId,
+      );
+      if (claimed !== undefined && claimed.id !== record.id) {
+        return { ok: false };
+      }
+    }
     const restored = setStrategicRecordState(
       record,
-      descriptor.kind === "strategic.undo_create"
-        ? "removed"
-        : descriptor.priorRecordState,
+      priorRecordState,
       occurredAt,
     );
     transaction.updateStrategicRecord(restored, record.version);
@@ -9063,6 +9469,18 @@ const compensateDescriptor = (
       const project = transaction.getProject(
         ProjectIdSchema.parse(descriptor.recordId),
       )!;
+      // The matching refusal to the preview above: a re-import may have taken
+      // the source key while this Project was removed, and putting it back
+      // would leave two live deliveries holding one key.
+      if (recordState === "active" && project.externalId !== undefined) {
+        const claimed = transaction.findProjectByExternalId(
+          project.workspaceId,
+          project.spaceId,
+          project.externalId,
+        );
+        if (claimed !== undefined && claimed.id !== project.id)
+          return { ok: false };
+      }
       const restored: Project = {
         ...project,
         recordState,
@@ -9110,6 +9528,10 @@ const compensateDescriptor = (
         organizationId: descriptor.priorOrganizationId ?? null,
         role: descriptor.priorRole ?? null,
         email: descriptor.priorEmail ?? null,
+        // Explicit null when the descriptor carries none: the record was
+        // unstamped before this update, and an undo that left the key behind
+        // would report success while changing nothing a caller can see.
+        externalId: descriptor.priorExternalId ?? null,
       },
       occurredAt,
     );
@@ -9126,6 +9548,7 @@ const compensateDescriptor = (
         name: descriptor.priorName,
         relationshipState: descriptor.priorRelationshipState,
         nextAction: descriptor.priorNextAction ?? null,
+        externalId: descriptor.priorExternalId ?? null,
       },
       occurredAt,
     );
@@ -10050,6 +10473,28 @@ export const executeWave2Query = (
       freshness,
     });
   }
+  if (
+    query.queryName === "person.list" ||
+    query.queryName === "organization.list"
+  ) {
+    const kind = query.queryName === "person.list" ? "person" : "organization";
+    // Filtered before `querySuccess`, and that ordering is the whole point.
+    // The strict parse inside `querySuccess` is the only place a stored record
+    // can fault a read — the store casts payloads and never revalidates them —
+    // so narrowing to one kind first means a kind this build cannot project can
+    // no longer take the read of people down with it, the way one unreadable
+    // work link took down every record in the Space on 0.1.5. Mapped through
+    // the same `strategicRecordProjection` the wide read uses, so the two
+    // answers to the same question cannot drift apart.
+    return querySuccess(query, kernelTime, freshness, {
+      kind: query.queryName,
+      items: view
+        .listStrategicRecords(query.workspaceId, query.parameters.spaceId)
+        .filter((record) => record.kind === kind)
+        .map(strategicRecordProjection),
+      freshness,
+    });
+  }
   if (query.queryName === "radar.review") {
     const pending = view
       .listStrategicRecords(query.workspaceId, query.parameters.spaceId)
@@ -10087,6 +10532,12 @@ export const executeWave2Query = (
           spaceId: project.spaceId,
           title: project.title,
           ...intendedOutcomeFields(project.intendedOutcome),
+          // The set-level read of deliveries, so it carries the key a re-run
+          // recognises what it already imported by — the same reason
+          // `person.list` and `organization.list` carry theirs.
+          ...(project.externalId === undefined
+            ? {}
+            : { externalId: project.externalId }),
           lifecycle: project.lifecycle,
           relatedOpenTaskCount: relations.filter(
             (relation) =>
@@ -10198,6 +10649,13 @@ export const executeWave2Query = (
       query.workspaceId,
       query.parameters.spaceId,
     );
+    // Once for the Space, not once per Source: this is the only field on this
+    // query whose cost grows with how much the Space holds.
+    const references = knowledgeSourceReferences(
+      view,
+      query.workspaceId,
+      query.parameters.spaceId,
+    );
     const currentVersion = (kind: "source" | "note", recordId: string) =>
       kind === "source"
         ? view.getKnowledgeSource(recordId as never)?.version
@@ -10207,18 +10665,32 @@ export const executeWave2Query = (
       spaceId: query.parameters.spaceId,
       sources: view
         .listKnowledgeSources(query.workspaceId, query.parameters.spaceId)
-        .map((source) => ({
-          id: source.id,
-          sourceKind: source.sourceKind,
-          title: source.title,
-          ...(source.canonicalUrl === undefined
-            ? {}
-            : { canonicalUrl: source.canonicalUrl }),
-          availability: source.availability,
-          observedAt: source.observedAt,
-          version: source.version,
-          updatedAt: source.updatedAt,
-        })),
+        .map((source) => {
+          const held = references.get(source.id) ?? [];
+          return {
+            id: source.id,
+            sourceKind: source.sourceKind,
+            title: source.title,
+            ...(source.canonicalUrl === undefined
+              ? {}
+              : { canonicalUrl: source.canonicalUrl }),
+            availability: source.availability,
+            observedAt: source.observedAt,
+            // Capped at the same 20 the refusal samples, and paired with the
+            // real size for the same reason: nothing in the domain bounds how
+            // many records rest on one Source, and a silently truncated list
+            // reads as the whole answer.
+            referencedBy: held
+              .slice(0, DEPENDENT_SAMPLE_LIMIT)
+              .map((reference) => ({
+                ...reference.blocking,
+                title: reference.title,
+              })),
+            referencedByCount: held.length,
+            version: source.version,
+            updatedAt: source.updatedAt,
+          };
+        }),
       documents: view
         .listDocuments(query.workspaceId, query.parameters.spaceId)
         .map((document) => {
@@ -10388,6 +10860,20 @@ export const executeWave2Query = (
           record.meeting.organizationId !== undefined
         )
           return [record.meeting.organizationId];
+        // The delivery a Project runs at a named client, as its own edge. Until
+        // 0.1.5 a client could be reached only through a deal or a meeting, so
+        // a Project linked straight to an Organization answered `[]` here while
+        // the organization side already listed that same Project under
+        // `activeProjects` — the edge surfaced one way only. `state` is the
+        // per-kind removal axis for a work link (`recordState` is the
+        // record-lifecycle one), so it is what decides whether the link counts.
+        if (
+          record.kind === "work_link" &&
+          record.state === "active" &&
+          record.linkType === "project_serves_organization" &&
+          record.sourceRecordId === project.id
+        )
+          return [record.targetRecordId];
         return [];
       }),
     );
@@ -10518,6 +11004,26 @@ export const executeWave2Query = (
           relationshipState: record.relationshipState,
           version: record.version,
           updatedAt: record.updatedAt,
+        })),
+      // Resolved from the Project's own Space rather than from the id list
+      // alone, so a Source that has been removed, or that never belonged to
+      // this Space, is absent rather than projected as a dead id.
+      evidenceSources: view
+        .listKnowledgeSources(query.workspaceId, project.spaceId)
+        .filter((source) =>
+          project.evidenceSourceIds?.some((sourceId) => sourceId === source.id),
+        )
+        .map((source) => ({
+          id: source.id,
+          sourceKind: source.sourceKind,
+          title: source.title,
+          ...(source.canonicalUrl === undefined
+            ? {}
+            : { canonicalUrl: source.canonicalUrl }),
+          availability: source.availability,
+          observedAt: source.observedAt,
+          version: source.version,
+          updatedAt: source.updatedAt,
         })),
     });
   }
@@ -10729,16 +11235,33 @@ export const executeWave2Query = (
         version: record.version,
         updatedAt: record.updatedAt,
       })),
-      opportunities: opportunities.slice(0, 100).map((record) => ({
-        id: record.id,
-        title: record.title,
-        need: record.need,
-        stage: record.stage,
-        nextAction: record.nextAction,
-        state: record.state,
-        version: record.version,
-        updatedAt: record.updatedAt,
-      })),
+      opportunities: opportunities.slice(0, 100).map((record) => {
+        // Resolved against every Person in the Space, not against this
+        // organization's own `people`: a deal can be owned by a colleague who
+        // is not a contact at the client, and looking the owner up in the
+        // client's contact list would silently drop exactly those.
+        const owner =
+          record.ownerPersonId === undefined
+            ? undefined
+            : strategicRecords.find(
+                (candidate) =>
+                  candidate.kind === "person" &&
+                  candidate.id === record.ownerPersonId,
+              );
+        return {
+          id: record.id,
+          title: record.title,
+          need: record.need,
+          stage: record.stage,
+          nextAction: record.nextAction,
+          ...(owner === undefined || owner.kind !== "person"
+            ? {}
+            : { owner: { id: owner.id, name: owner.name } }),
+          state: record.state,
+          version: record.version,
+          updatedAt: record.updatedAt,
+        };
+      }),
       offers: offers.slice(0, 100).map((record) => ({
         id: record.id,
         title: record.title,

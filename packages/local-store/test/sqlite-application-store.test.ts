@@ -76,9 +76,11 @@ const context = (): ExecutionContext =>
       "capture.routeAsTask",
       "capture.history",
       "project.create",
+      "project.remove",
       "project.updateOutcome",
       "project.list",
       "project.operationalOverview",
+      "task.create",
       "task.setStatus",
       "task.complete",
       "task.reopen",
@@ -593,6 +595,242 @@ describe("SQLite ApplicationStore", () => {
       );
       assert.equal(snapshot.namedDocumentVersions?.[0]?.state, "active");
       reopenedDatabase.close();
+    });
+  });
+
+  it("refuses the same Task-to-Opportunity relation twice through SQLite", () => {
+    // The conformance suite asserts this against the in-memory store, and the
+    // two implementations of the finder behind it had drifted: SQL matched
+    // either far end, memory matched only a Project. Both are now exercised,
+    // because agreeing on the outcome is the whole point of the pair.
+    withDatabase((filename) => {
+      const organizationId = "00000000-0000-4000-8000-000000000160";
+      const opportunityId = "00000000-0000-4000-8000-000000000161";
+      const taskId = "00000000-0000-4000-8000-000000000162";
+      const database = new DatabaseSync(filename);
+      const kernel = createKernel(database);
+      assert.equal(
+        unwrap(kernel.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      for (const command of [
+        wave2Command(
+          "relationship.organizationCreate",
+          {
+            organizationId,
+            spaceId: ids.rootSpace,
+            name: "Client",
+            relationshipState: "active",
+          },
+          "dup-relate-org",
+        ),
+        wave2Command(
+          "opportunity.create",
+          {
+            opportunityId,
+            spaceId: ids.rootSpace,
+            title: "Licence renewal",
+            organizationId,
+            personIds: [],
+            need: "The licence expires in fourteen days.",
+            qualification: "Budget confirmed.",
+            stage: "qualified",
+            nextAction: "Send the quote.",
+            evidenceSourceIds: [],
+          },
+          "dup-relate-opportunity",
+        ),
+        wave2Command(
+          "task.create",
+          { taskId, spaceId: ids.rootSpace, title: "Send the quote" },
+          "dup-relate-task",
+        ),
+      ]) {
+        assert.equal(
+          unwrap(kernel.kernel.execute(context(), command)).outcome,
+          "success",
+        );
+      }
+      const relate = (key: string) =>
+        unwrap(
+          kernel.kernel.execute(
+            context(),
+            wave2Command(
+              "record.relate",
+              {
+                relationType: "task_contributes_to_opportunity",
+                taskId,
+                opportunityId,
+              },
+              key,
+              { [taskId]: 1, [opportunityId]: 1 },
+            ),
+          ),
+        );
+      const first = relate("dup-relate-first");
+      if (
+        first.outcome !== "success" ||
+        first.projection.kind !== "relation.created"
+      )
+        throw new Error("Expected relation creation.");
+      const second = relate("dup-relate-second");
+      assert.equal(second.outcome, "conflict", JSON.stringify(second));
+      if (
+        second.outcome !== "conflict" ||
+        second.diagnosticCode !== "relation.already_exists"
+      )
+        throw new Error("Expected the existing relation to be named.");
+      assert.deepEqual(second.currentVersions, {
+        [first.projection.relationId]: 1,
+      });
+      database.close();
+    });
+  });
+
+  it("claims a delivery's source key against the projects table, and frees it", () => {
+    // A second finder that exists twice, and this one has no twin's behaviour
+    // to borrow: a Project is not a strategic record, so `externalId` here is
+    // its own SQL predicate against its own table rather than a `kind` passed
+    // into the strategic one.
+    withDatabase((filename) => {
+      const firstId = "00000000-0000-4000-8000-000000000170";
+      const secondId = "00000000-0000-4000-8000-000000000171";
+      const organizationId = "00000000-0000-4000-8000-000000000172";
+      const database = new DatabaseSync(filename);
+      const kernel = createKernel(database);
+      assert.equal(
+        unwrap(kernel.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      // The same string on a strategic record, because the two claims are
+      // scoped to different tables and must not see each other.
+      assert.equal(
+        unwrap(
+          kernel.kernel.execute(
+            context(),
+            wave2Command(
+              "relationship.organizationCreate",
+              {
+                organizationId,
+                spaceId: ids.rootSpace,
+                name: "Imported",
+                relationshipState: "active",
+                externalId: "folder:pilot",
+              },
+              "delivery-key-org",
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      const create = (id: string, key: string) =>
+        unwrap(
+          kernel.kernel.execute(
+            context(),
+            wave2Command(
+              "project.create",
+              {
+                projectId: id,
+                spaceId: ids.rootSpace,
+                title: "Pilotaż",
+                externalId: "folder:pilot",
+              },
+              key,
+            ),
+          ),
+        );
+      assert.equal(create(firstId, "delivery-key-first").outcome, "success");
+      assert.equal(create(secondId, "delivery-key-dup").outcome, "conflict");
+
+      // Soft delete again, and the SQL predicate has to honour it with IS NOT
+      // rather than !=, or a row written before recordState existed drops out
+      // of the lookup and a duplicate walks through.
+      assert.equal(
+        unwrap(
+          kernel.kernel.execute(
+            context(),
+            wave2Command(
+              "project.remove",
+              { projectId: firstId },
+              "delivery-key-remove",
+              { [firstId]: 1 },
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      assert.equal(
+        create(secondId, "delivery-key-reimport").outcome,
+        "success",
+      );
+      database.close();
+    });
+  });
+
+  it("claims a source key through SQLite, and frees it when the record goes", () => {
+    // The finder exists twice — once in the in-memory store the conformance
+    // suite runs against, once here in SQL — and the pair it sits beside,
+    // findTaskProjectRelation, drifted between the two until this build. So the
+    // SQL one is exercised directly rather than trusted to behave like its twin.
+    withDatabase((filename) => {
+      const firstId = "00000000-0000-4000-8000-000000000150";
+      const secondId = "00000000-0000-4000-8000-000000000151";
+      const database = new DatabaseSync(filename);
+      const kernel = createKernel(database);
+      assert.equal(
+        unwrap(kernel.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      const create = (id: string, key: string, externalId: string) =>
+        unwrap(
+          kernel.kernel.execute(
+            context(),
+            wave2Command(
+              "relationship.organizationCreate",
+              {
+                organizationId: id,
+                spaceId: ids.rootSpace,
+                name: "Imported",
+                relationshipState: "active",
+                externalId,
+              },
+              key,
+            ),
+          ),
+        );
+      assert.equal(
+        create(firstId, "src-first", "folder:acme").outcome,
+        "success",
+      );
+      assert.equal(
+        create(secondId, "src-dup", "folder:acme").outcome,
+        "conflict",
+      );
+
+      // Removal is a soft delete, and the SQL predicate has to honour it the
+      // way listStrategicRecords does — with IS NOT rather than !=, or a row
+      // written before recordState existed drops out of the lookup and a
+      // duplicate walks through. Freeing the key on removal is the point: a
+      // source row whose record was removed must be importable again.
+      assert.equal(
+        unwrap(
+          kernel.kernel.execute(
+            context(),
+            wave2Command(
+              "relationship.organizationRemove",
+              { organizationId: firstId },
+              "src-remove",
+              { [firstId]: 1 },
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      assert.equal(
+        create(secondId, "src-reimport", "folder:acme").outcome,
+        "success",
+      );
+      database.close();
     });
   });
 

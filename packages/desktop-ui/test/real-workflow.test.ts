@@ -8,6 +8,7 @@ import {
   DataHomeStatusSchema,
   DeviceIdSchema,
   LOCAL_ONLY_PROVIDER_ID,
+  PrincipalIdSchema,
   ProjectIdSchema,
   RelationIdSchema,
   SpaceIdSchema,
@@ -26,6 +27,12 @@ import {
   createProject,
   createSavedWorkView,
   createWorkLink,
+  directClientLinks,
+  directDeliveryProjects,
+  linkOrganizationDelivery,
+  linkProjectClient,
+  linkableClientOrganizations,
+  linkableDeliveryProjects,
   loadDesktopSnapshot,
   loadOrganizationOverview,
   previewUndo,
@@ -35,10 +42,13 @@ import {
   setTaskOperationalState,
   setTaskStatus,
   undoCommand,
+  unlinkOrganizationDelivery,
+  unlinkProjectClient,
   unrelateTask,
   updateAreaResponsibility,
   updateInitiativeOutcome,
   updateProjectOutcome,
+  type DesktopSnapshot,
 } from "../src/client/workflow.js";
 
 const workspaceId = WorkspaceIdSchema.parse(
@@ -65,6 +75,167 @@ const areaId = StrategicRecordIdSchema.parse(
 const initiativeId = StrategicRecordIdSchema.parse(
   "00000000-0000-4000-8000-000000000014",
 );
+const otherSpaceId = SpaceIdSchema.parse(
+  "00000000-0000-4000-8000-000000000015",
+);
+const linkId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-000000000016",
+);
+const detachedOrganizationId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-000000000017",
+);
+
+const strategicBase = {
+  workspaceId,
+  spaceId,
+  createdBy: PrincipalIdSchema.parse("00000000-0000-4000-8000-000000000003"),
+  createdAt: "2026-07-13T10:00:00.000Z",
+  updatedAt: "2026-07-13T10:00:00.000Z",
+} as const;
+
+// One `relationship.workspace` answer holding every case the Klient picker has
+// to get right: a client already linked, a client whose link was detached, an
+// organization in another Space, and two that are genuinely offerable.
+const readyRelationships: DesktopSnapshot["relationships"] = {
+  kind: "ready",
+  data: {
+    kind: "relationship.workspace",
+    records: [
+      {
+        ...strategicBase,
+        id: organizationId,
+        kind: "organization",
+        name: "Alfa",
+        relationshipState: "active",
+        version: 2,
+      },
+      {
+        ...strategicBase,
+        id: detachedOrganizationId,
+        kind: "organization",
+        name: "Dach",
+        relationshipState: "prospect",
+        version: 1,
+      },
+      {
+        ...strategicBase,
+        id: StrategicRecordIdSchema.parse(
+          "00000000-0000-4000-8000-000000000018",
+        ),
+        kind: "organization",
+        name: "Ćma",
+        relationshipState: "prospect",
+        version: 1,
+      },
+      {
+        ...strategicBase,
+        spaceId: otherSpaceId,
+        id: StrategicRecordIdSchema.parse(
+          "00000000-0000-4000-8000-000000000019",
+        ),
+        kind: "organization",
+        name: "Beta",
+        relationshipState: "active",
+        version: 1,
+      },
+      {
+        ...strategicBase,
+        id: linkId,
+        kind: "work_link",
+        linkType: "project_serves_organization",
+        sourceRecordId: projectId,
+        targetRecordId: organizationId,
+        state: "active",
+        version: 4,
+      },
+      {
+        ...strategicBase,
+        id: StrategicRecordIdSchema.parse(
+          "00000000-0000-4000-8000-00000000001a",
+        ),
+        kind: "work_link",
+        linkType: "project_serves_organization",
+        sourceRecordId: projectId,
+        targetRecordId: detachedOrganizationId,
+        state: "removed",
+        removedAt: "2026-07-14T10:00:00.000Z",
+        version: 2,
+      },
+    ],
+    freshness: {
+      mode: "local_authoritative",
+      checkpoint: null,
+      missingCapabilities: [],
+    },
+  },
+};
+
+// The mirror fixture, for the picker on the Organization page: a delivery
+// already linked at this client, a closed one, one in another Space, and two
+// that are genuinely offerable.
+const readyProjects: DesktopSnapshot["projects"] = {
+  kind: "ready",
+  data: {
+    kind: "project.list",
+    items: [
+      {
+        id: projectId,
+        spaceId,
+        title: "Alpha",
+        intendedOutcome: "Działa lokalnie",
+        needsReview: false,
+        lifecycle: "active",
+        relatedOpenTaskCount: 0,
+        version: 2,
+        updatedAt: "2026-07-13T10:00:00.000Z",
+      },
+      {
+        id: ProjectIdSchema.parse("00000000-0000-4000-8000-00000000001b"),
+        spaceId,
+        title: "Ćwierćfinał",
+        intendedOutcome: "Druga oferowalna realizacja",
+        needsReview: false,
+        lifecycle: "active",
+        relatedOpenTaskCount: 0,
+        version: 1,
+        updatedAt: "2026-07-13T10:00:00.000Z",
+      },
+      {
+        id: ProjectIdSchema.parse("00000000-0000-4000-8000-00000000001c"),
+        spaceId,
+        title: "Domknięcie",
+        intendedOutcome: "Pierwsza oferowalna realizacja",
+        needsReview: false,
+        lifecycle: "active",
+        relatedOpenTaskCount: 0,
+        version: 1,
+        updatedAt: "2026-07-13T10:00:00.000Z",
+      },
+      {
+        id: ProjectIdSchema.parse("00000000-0000-4000-8000-00000000001d"),
+        spaceId,
+        title: "Zamknięty",
+        intendedOutcome: "Zakończona realizacja",
+        needsReview: false,
+        lifecycle: "closed",
+        relatedOpenTaskCount: 0,
+        version: 3,
+        updatedAt: "2026-07-13T10:00:00.000Z",
+      },
+      {
+        id: ProjectIdSchema.parse("00000000-0000-4000-8000-00000000001e"),
+        spaceId: otherSpaceId,
+        title: "Obca przestrzeń",
+        intendedOutcome: "Poza przestrzenią klienta",
+        needsReview: false,
+        lifecycle: "active",
+        relatedOpenTaskCount: 0,
+        version: 1,
+        updatedAt: "2026-07-13T10:00:00.000Z",
+      },
+    ],
+  },
+};
 
 const successQuery = (query: QueryEnvelope, projection: object) => ({
   kind: "query_result" as const,
@@ -108,6 +279,7 @@ const commandProjection = (command: CommandEnvelope) => {
     case "initiative.updateOutcome":
     case "savedView.create":
     case "work.linkCreate":
+    case "work.linkRemove":
       return {
         kind: "strategic.record_changed",
         recordId:
@@ -736,6 +908,7 @@ describe("real Wave 2 renderer workflow", () => {
     await createWorkLink(
       client,
       snapshot,
+      spaceId,
       "project_advances_initiative",
       projectId,
       "00000000-0000-4000-8000-000000000020",
@@ -861,5 +1034,225 @@ describe("real Wave 2 renderer workflow", () => {
       ["command.previewUndo", "command.undo"],
     );
     assert.deepEqual(commands.at(-1)?.expectedVersions, { [relationId]: 1 });
+  });
+
+  it("links a client into the Project's own Space with no endpoint versions", async () => {
+    const { client, commands } = createTypedClient();
+    const snapshot = await loadDesktopSnapshot(client);
+    const result = await linkProjectClient(
+      client,
+      snapshot,
+      { id: projectId, spaceId: otherSpaceId },
+      organizationId,
+    );
+    assert.equal(result.kind, "success");
+    const command = commands.at(-1);
+    assert.equal(command?.commandName, "work.linkCreate");
+    // The Space comes from the Project, not from the workspace's first Space:
+    // a Project opened from global search can sit anywhere, and the kernel
+    // answers a mismatched payload Space with an unnamed precondition failure.
+    assert.notEqual(otherSpaceId, snapshot.bootstrap.spaces[0]?.id);
+    if (command?.commandName === "work.linkCreate") {
+      assert.equal(command.payload.spaceId, otherSpaceId);
+      assert.equal(command.payload.linkType, "project_serves_organization");
+      assert.equal(command.payload.sourceRecordId, projectId);
+      assert.equal(command.payload.targetRecordId, organizationId);
+    }
+    // `work.linkCreate` is the one command here whose kernel branch asserts
+    // exactExpected against {}; sending an endpoint version is a rejection.
+    assert.deepEqual(command?.expectedVersions, {});
+  });
+
+  it("detaches a client with the link record's own version, read from the workspace slice", async () => {
+    const { client, commands } = createTypedClient();
+    const loaded = await loadDesktopSnapshot(client);
+    const snapshot = { ...loaded, relationships: readyRelationships };
+    assert.deepEqual(
+      [...directClientLinks(snapshot, projectId).keys()],
+      [organizationId],
+    );
+    const result = await unlinkProjectClient(
+      client,
+      snapshot,
+      projectId,
+      organizationId,
+    );
+    assert.equal(result.kind, "success");
+    const command = commands.at(-1);
+    assert.equal(command?.commandName, "work.linkRemove");
+    if (command?.commandName === "work.linkRemove")
+      assert.deepEqual(command.payload, { linkId });
+    assert.deepEqual(command?.expectedVersions, { [linkId]: 4 });
+  });
+
+  it("refuses to detach a client it cannot name a link for, without sending a command", async () => {
+    const { client, commands } = createTypedClient();
+    const snapshot = await loadDesktopSnapshot(client);
+    // The fixture answers no `relationship.workspace`, so the slice is
+    // unavailable — the same state a human meets before the read lands.
+    assert.equal(snapshot.relationships.kind, "unavailable");
+    const unloaded = await unlinkProjectClient(
+      client,
+      snapshot,
+      projectId,
+      organizationId,
+    );
+    assert.equal(unloaded.kind, "unavailable");
+    if (unloaded.kind === "unavailable")
+      assert.match(unloaded.message, /ponownego wczytania danych/u);
+    const detached = await unlinkProjectClient(
+      client,
+      { ...snapshot, relationships: readyRelationships },
+      projectId,
+      // Already detached: the link record stays in the projection with
+      // `state: "removed"`, so a reader that ignored state would send a
+      // command the kernel refuses.
+      detachedOrganizationId,
+    );
+    assert.equal(detached.kind, "unavailable");
+    assert.deepEqual(commands, []);
+  });
+
+  it("offers only organizations this Project can still be linked to", () => {
+    const snapshot = { relationships: readyRelationships };
+    assert.deepEqual(
+      linkableClientOrganizations(snapshot, {
+        id: projectId,
+        spaceId,
+      })?.map((organization) => organization.name),
+      // Ćma before Dach under Polish collation; the already-linked client and
+      // the one in another Space are both absent, because the kernel would
+      // refuse either without naming a cause.
+      ["Ćma", "Dach"],
+    );
+  });
+
+  it("says nothing about a Space whose organizations never loaded", () => {
+    // The distinction the whole branch is about: an empty list would tell a
+    // human this Space holds no organizations, on the evidence that a read
+    // failed. Absent means "not answered", and the surface says so.
+    assert.equal(
+      linkableClientOrganizations(
+        { relationships: { kind: "unavailable", message: "nie działa" } },
+        { id: projectId, spaceId },
+      ),
+      undefined,
+    );
+  });
+
+  it("links a delivery from the client's side into the client's own Space", async () => {
+    const { client, commands } = createTypedClient();
+    const loaded = await loadDesktopSnapshot(client);
+    const snapshot = { ...loaded, relationships: readyRelationships };
+    const target = ProjectIdSchema.parse(
+      "00000000-0000-4000-8000-00000000001c",
+    );
+    const result = await linkOrganizationDelivery(
+      client,
+      snapshot,
+      organizationId,
+      target,
+    );
+    assert.equal(result.kind, "success");
+    const command = commands.at(-1);
+    assert.equal(command?.commandName, "work.linkCreate");
+    if (command?.commandName === "work.linkCreate") {
+      // The edge is not flipped by being authored from the other end: the
+      // Project stays the source and the Organization the target, because the
+      // kernel enforces a kind at each.
+      assert.equal(command.payload.sourceRecordId, target);
+      assert.equal(command.payload.targetRecordId, organizationId);
+      assert.equal(command.payload.spaceId, spaceId);
+    }
+    assert.deepEqual(command?.expectedVersions, {});
+  });
+
+  it("detaches a delivery with the same link record the Project side would use", async () => {
+    const { client, commands } = createTypedClient();
+    const loaded = await loadDesktopSnapshot(client);
+    const snapshot = { ...loaded, relationships: readyRelationships };
+    // The one map read from the client end names the Project, where the one
+    // read from the Project end names the client — same link record, so the
+    // two pages can never disagree about what is attached.
+    assert.deepEqual(
+      [...directDeliveryProjects(snapshot, organizationId).keys()],
+      [projectId],
+    );
+    const result = await unlinkOrganizationDelivery(
+      client,
+      snapshot,
+      organizationId,
+      projectId,
+    );
+    assert.equal(result.kind, "success");
+    const command = commands.at(-1);
+    assert.equal(command?.commandName, "work.linkRemove");
+    if (command?.commandName === "work.linkRemove")
+      assert.deepEqual(command.payload, { linkId });
+    assert.deepEqual(command?.expectedVersions, { [linkId]: 4 });
+  });
+
+  it("refuses either half of the client-side link it cannot name a record for", async () => {
+    const { client, commands } = createTypedClient();
+    const snapshot = await loadDesktopSnapshot(client);
+    assert.equal(snapshot.relationships.kind, "unavailable");
+    // Linking needs the client record for its Space, detaching needs the link
+    // record for its version. Neither is guessed, and neither sends a command.
+    const link = await linkOrganizationDelivery(
+      client,
+      snapshot,
+      organizationId,
+      projectId,
+    );
+    assert.equal(link.kind, "unavailable");
+    const unlink = await unlinkOrganizationDelivery(
+      client,
+      { ...snapshot, relationships: readyRelationships },
+      organizationId,
+      // Never linked at this client, so there is no record to carry a version.
+      ProjectIdSchema.parse("00000000-0000-4000-8000-00000000001c"),
+    );
+    assert.equal(unlink.kind, "unavailable");
+    if (unlink.kind === "unavailable")
+      assert.match(unlink.message, /ponownego wczytania danych/u);
+    assert.deepEqual(commands, []);
+  });
+
+  it("offers only active, same-Space projects this client is not already running", () => {
+    assert.deepEqual(
+      linkableDeliveryProjects(
+        { relationships: readyRelationships, projects: readyProjects },
+        { id: organizationId, spaceId },
+      )?.map((project) => project.title),
+      // Ćwierćfinał before Domknięcie under Polish collation. Absent: the
+      // delivery already linked, the closed one, and the one in another Space.
+      ["Ćwierćfinał", "Domknięcie"],
+    );
+  });
+
+  it("says nothing about a client's deliveries while either half of the answer is missing", () => {
+    // Two projections feed this picker, not one, so either being absent means
+    // the answer is unknown rather than empty — the same distinction the
+    // Project-side picker draws from a single slice.
+    assert.equal(
+      linkableDeliveryProjects(
+        {
+          relationships: { kind: "unavailable", message: "nie działa" },
+          projects: readyProjects,
+        },
+        { id: organizationId, spaceId },
+      ),
+      undefined,
+    );
+    assert.equal(
+      linkableDeliveryProjects(
+        {
+          relationships: readyRelationships,
+          projects: { kind: "unavailable", message: "nie działa" },
+        },
+        { id: organizationId, spaceId },
+      ),
+      undefined,
+    );
   });
 });

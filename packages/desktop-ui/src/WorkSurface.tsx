@@ -23,6 +23,7 @@ import {
   renameSavedWorkView,
   setSavedWorkViewLayout,
   createWorkLink,
+  firstSpace,
   setTaskOperationalState,
   type DesktopSnapshot,
   type MutationFailure,
@@ -771,6 +772,10 @@ export const WorkSurface = ({
       createWorkLink(
         client,
         snapshot,
+        // This surface reads `work.overview` for the workspace's first Space,
+        // so that is the Space it writes into. Said out loud at the call site
+        // now that `createWorkLink` no longer decides it silently.
+        firstSpace(snapshot),
         kind === "initiative"
           ? "project_advances_initiative"
           : "project_serves_area",
@@ -801,6 +806,7 @@ export const WorkSurface = ({
       createWorkLink(
         client,
         snapshot,
+        firstSpace(snapshot),
         "task_depends_on_task",
         taskId,
         dependencyId,

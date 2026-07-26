@@ -75,7 +75,11 @@
   list-style: none;
 }
 .organization-context__rows + .organization-context__rows,
-.organization-context__rows + .organization-empty {
+.organization-context__rows + .organization-empty,
+/* The authoring row sits between the deliveries and the tasks, so the tasks
+   below it need the same separation the two lists give each other. */
+.organization-context__actions + .organization-context__rows,
+.organization-context__actions + .organization-empty {
   margin-top: var(--space-3);
 }
 .organization-context__rows button,

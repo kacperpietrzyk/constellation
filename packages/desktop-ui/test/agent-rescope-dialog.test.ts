@@ -4,6 +4,7 @@ import test from "node:test";
 import { SpaceIdSchema } from "@constellation/contracts";
 
 import {
+  missingCapabilitiesClause,
   missingCapabilitiesNote,
   rescopeBlockedReason,
   rescopeTarget,
@@ -312,4 +313,19 @@ test("the drift sentence agrees with its own number", () => {
   assert.match(missingCapabilitiesNote(22), /22 uprawnienia, /u);
   assert.match(missingCapabilitiesNote(25), /25 uprawnień, /u);
   assert.match(missingCapabilitiesNote(101), /101 uprawnień, /u);
+});
+
+/**
+ * The grant row states the same count after `brakuje`, which governs the
+ * genitive — a different case with a different split. Only 1 takes the
+ * genitive singular; 2, 3 and 4 take the genitive plural that the nominative
+ * rule above would spell "uprawnienia", so the two sentences cannot share a
+ * helper and the row's noun cannot be a constant.
+ */
+test("the row's count agrees in the case `brakuje` governs", () => {
+  assert.equal(missingCapabilitiesClause(1), "brakuje 1 uprawnienia");
+  assert.equal(missingCapabilitiesClause(2), "brakuje 2 uprawnień");
+  assert.equal(missingCapabilitiesClause(4), "brakuje 4 uprawnień");
+  assert.equal(missingCapabilitiesClause(5), "brakuje 5 uprawnień");
+  assert.equal(missingCapabilitiesClause(22), "brakuje 22 uprawnień");
 });

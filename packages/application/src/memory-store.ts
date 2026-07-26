@@ -535,6 +535,24 @@ class ReadView implements ApplicationReadView {
     return this.state.projects.get(id);
   }
 
+  public findProjectByExternalId(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    externalId: string,
+  ): Project | undefined {
+    // Through the same `recordIsActive` choke point `listProjects` uses, so a
+    // removed Project does not keep its source key reserved — re-importing the
+    // row a removed delivery came from has to work. `getProject` stays
+    // unfiltered; undo has to find what it is putting back.
+    return [...this.state.projects.values()].find(
+      (project) =>
+        project.workspaceId === workspaceId &&
+        project.spaceId === spaceId &&
+        recordIsActive(project) &&
+        project.externalId === externalId,
+    );
+  }
+
   public listProjects(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,
@@ -679,6 +697,26 @@ class ReadView implements ApplicationReadView {
     return this.state.strategicRecords.get(id);
   }
 
+  public findStrategicRecordByExternalId(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    kind: "person" | "organization" | "opportunity",
+    externalId: string,
+  ): StrategicRecord | undefined {
+    // Goes through the same `strategicRecordState` choke point as
+    // `listStrategicRecords`, so a removed record does not keep its source key
+    // reserved — re-importing a row whose record was removed has to work.
+    return [...this.state.strategicRecords.values()].find(
+      (record) =>
+        record.workspaceId === workspaceId &&
+        record.spaceId === spaceId &&
+        record.kind === kind &&
+        strategicRecordState(record) === "active" &&
+        "externalId" in record &&
+        record.externalId === externalId,
+    );
+  }
+
   public listStrategicRecords(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,
@@ -708,14 +746,26 @@ class ReadView implements ApplicationReadView {
 
   public findTaskProjectRelation(
     taskId: TaskId,
-    projectId: ProjectId,
+    targetId: ProjectId | StrategicRecordId,
   ): TaskProjectRelation | undefined {
-    return [...this.state.relations.values()].find(
-      (relation) =>
-        relation.state === "active" &&
-        relation.taskId === taskId &&
-        relation.relationType === "task_contributes_to_project" &&
-        relation.projectId === projectId,
+    // Both far ends, because the port says "whichever far end that is" and the
+    // duplicate guard on `record.relate` is the only caller. Reading only
+    // `projectId` matched nothing on an Opportunity relation — that arm of the
+    // union carries no such field — so the same Task could contribute to the
+    // same deal twice here while SQL refused it.
+    return (
+      [...this.state.relations.values()]
+        .filter(
+          (relation) =>
+            relation.state === "active" &&
+            relation.taskId === taskId &&
+            (relation.relationType === "task_contributes_to_project"
+              ? relation.projectId === targetId
+              : relation.opportunityId === targetId),
+        )
+        // Insertion order is not id order, and the conflict this feeds names the
+        // relation it found. Sorted so both stores name the same one.
+        .sort((left, right) => left.id.localeCompare(right.id))[0]
     );
   }
 

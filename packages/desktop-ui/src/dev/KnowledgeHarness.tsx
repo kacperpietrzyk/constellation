@@ -223,6 +223,8 @@ const snapshot: DesktopSnapshot = {
           title: "Wytyczne audytowe",
           availability: "available",
           observedAt: timestamp,
+          referencedBy: [],
+          referencedByCount: 0,
           version: 2,
           updatedAt: timestamp,
         },

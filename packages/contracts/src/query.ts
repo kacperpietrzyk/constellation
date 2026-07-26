@@ -36,6 +36,7 @@ import {
   SavedViewFiltersSchema,
   SavedViewGroupBySchema,
   SavedViewLayoutSchema,
+  WorkLinkTypeSchema,
 } from "./command.js";
 import {
   GrantScopeStatusSchema,
@@ -43,6 +44,11 @@ import {
 } from "./execution-context.js";
 import { ImportedMeetingSchema } from "./meeting-loop.js";
 import { NeedsReviewSchema } from "./narrative.js";
+import {
+  DEPENDENT_SAMPLE_LIMIT,
+  RecordKindSchema,
+  StrategicRecordTypeSchema,
+} from "./outcome.js";
 import { GlobalSearchRecordKindSchema } from "./record-kind-registry.js";
 import {
   CheckpointRevertUnavailableReasonSchema,
@@ -223,6 +229,26 @@ export const RelationshipWorkspaceQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("relationship.workspace"),
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
 }).strict();
+// One kind each, on purpose. `relationship.workspace` is one answer and
+// therefore one failure: a single record this build cannot project faults the
+// whole set, which is what took Relacje and Praca down on 0.1.5. These read one
+// kind, so a kind that cannot be projected cannot reach them — and their items
+// are the same shape the wide read returns, so a record read from either is
+// written back the same way.
+//
+// Uncapped and uncut on purpose: reconciling people needs the whole set, and a
+// list that truncates without saying so is the trap `search.global` already
+// sets. If a cap is ever added, the field that reports the cut ships with it.
+export const PersonListQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("person.list"),
+  parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
+}).strict();
+
+export const OrganizationListQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("organization.list"),
+  parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
+}).strict();
+
 export const RadarReviewQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("radar.review"),
   parameters: z
@@ -343,6 +369,8 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   KnowledgeListQuerySchema,
   KnowledgeDocumentContextQuerySchema,
   RelationshipWorkspaceQuerySchema,
+  PersonListQuerySchema,
+  OrganizationListQuerySchema,
   RadarReviewQuerySchema,
   ProjectOperationalOverviewQuerySchema,
   OrganizationOperationalOverviewQuerySchema,
@@ -392,20 +420,35 @@ const StrategicRecordBaseSchema = z.object({
 export type StrategicRecordProjection = z.infer<
   typeof StrategicRecordProjectionSchema
 >;
-export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
+// The one shape a person and an organization are projected in. `person.list`
+// and `organization.list` share these with `relationship.workspace` rather than
+// restating them: a second copy is how the work-link vocabulary came to mean
+// different things to a writer and a reader.
+export const OrganizationRecordProjectionSchema =
   StrategicRecordBaseSchema.extend({
     kind: z.literal("organization"),
     name: z.string(),
     relationshipState: z.enum(["prospect", "active", "inactive"]),
     nextAction: z.string().optional(),
-  }).strict(),
-  StrategicRecordBaseSchema.extend({
-    kind: z.literal("person"),
-    name: z.string(),
-    organizationId: StrategicRecordIdSchema.optional(),
-    role: z.string().optional(),
-    email: z.string().optional(),
-  }).strict(),
+    // Deliberately looser than the command's bound, exactly like `role` and
+    // `email` on the person arm: a projection that re-applied the write
+    // constraint would make an already-stored value unreadable the day that
+    // bound is tightened, which is the outage this branch exists to prevent.
+    externalId: z.string().optional(),
+  }).strict();
+
+export const PersonRecordProjectionSchema = StrategicRecordBaseSchema.extend({
+  kind: z.literal("person"),
+  name: z.string(),
+  organizationId: StrategicRecordIdSchema.optional(),
+  role: z.string().optional(),
+  email: z.string().optional(),
+  externalId: z.string().optional(),
+}).strict();
+
+export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
+  OrganizationRecordProjectionSchema,
+  PersonRecordProjectionSchema,
   StrategicRecordBaseSchema.extend({
     kind: z.literal("opportunity"),
     title: z.string(),
@@ -422,6 +465,8 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     offerIds: z.array(StrategicRecordIdSchema),
     projectIds: z.array(ProjectIdSchema),
     state: z.enum(["open", "pursued", "deferred", "rejected", "lost"]),
+    /** See the organization arm: looser than the command's bound, on purpose. */
+    externalId: z.string().optional(),
   }).strict(),
   StrategicRecordBaseSchema.extend({
     kind: z.literal("offer"),
@@ -504,11 +549,7 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
   }).strict(),
   StrategicRecordBaseSchema.extend({
     kind: z.literal("work_link"),
-    linkType: z.enum([
-      "project_advances_initiative",
-      "project_serves_area",
-      "task_depends_on_task",
-    ]),
+    linkType: WorkLinkTypeSchema,
     sourceRecordId: z.uuid(),
     targetRecordId: z.uuid(),
     state: z.enum(["active", "removed"]),
@@ -613,6 +654,41 @@ const ManagedAttachmentProjectionSchema = z
   })
   .strict();
 
+// The one shape a Knowledge Source is projected in. `knowledge.list` and the
+// evidence a Project rests on return the same fields, so they share the schema
+// rather than restating it — a second copy is how the work-link vocabulary came
+// to mean different things to a writer and a reader.
+const KnowledgeSourceProjectionSchema = z
+  .object({
+    id: KnowledgeSourceIdSchema,
+    sourceKind: z.enum(["url", "file", "screenshot", "excerpt"]),
+    title: z.string(),
+    canonicalUrl: z.string().optional(),
+    availability: z.enum(["reference_only", "available", "unavailable"]),
+    observedAt: z.iso.datetime({ offset: true }),
+    version: z.int().positive(),
+    updatedAt: z.iso.datetime({ offset: true }),
+  })
+  .strict();
+
+/**
+ * One record that rests on a Knowledge Source. Deliberately the same vocabulary
+ * as `BlockingRecord`, plus a title: this is the inverse of the guard that
+ * refuses to remove a Source something still points at, and the two must name
+ * the same records. A caller reading "nothing references me" and then meeting
+ * `record.still_referenced` would have no way to find what it missed.
+ */
+const SourceReferenceSchema = z
+  .object({
+    recordId: z.uuid(),
+    recordKind: RecordKindSchema,
+    recordType: StrategicRecordTypeSchema.optional(),
+    // A relationship Fact has no title; its type is what a reader recognises
+    // it by, and its value is the claim rather than the label.
+    title: z.string(),
+  })
+  .strict();
+
 export const QueryProjectionSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -707,11 +783,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
         z
           .object({
             id: StrategicRecordIdSchema,
-            linkType: z.enum([
-              "project_advances_initiative",
-              "project_serves_area",
-              "task_depends_on_task",
-            ]),
+            linkType: WorkLinkTypeSchema,
             sourceRecordId: z.uuid(),
             targetRecordId: z.uuid(),
             state: z.enum(["active", "removed"]),
@@ -747,6 +819,20 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("relationship.workspace"),
       records: z.array(StrategicRecordProjectionSchema),
+      freshness: FreshnessSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("person.list"),
+      items: z.array(PersonRecordProjectionSchema),
+      freshness: FreshnessSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("organization.list"),
+      items: z.array(OrganizationRecordProjectionSchema),
       freshness: FreshnessSchema,
     })
     .strict(),
@@ -1107,23 +1193,18 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("knowledge.list"),
       spaceId: SpaceIdSchema,
+      // Extended here rather than in the shared shape: `referencedBy` is the
+      // one field on a Source that costs a scan of the whole Space, and
+      // `project.operationalOverview` — the other reader of that shape —
+      // already knows the Project it is answering for. Widening the base
+      // schema would make it pay for an answer it does not need.
       sources: z.array(
-        z
-          .object({
-            id: KnowledgeSourceIdSchema,
-            sourceKind: z.enum(["url", "file", "screenshot", "excerpt"]),
-            title: z.string(),
-            canonicalUrl: z.string().optional(),
-            availability: z.enum([
-              "reference_only",
-              "available",
-              "unavailable",
-            ]),
-            observedAt: z.iso.datetime({ offset: true }),
-            version: z.int().positive(),
-            updatedAt: z.iso.datetime({ offset: true }),
-          })
-          .strict(),
+        KnowledgeSourceProjectionSchema.extend({
+          referencedBy: z
+            .array(SourceReferenceSchema)
+            .max(DEPENDENT_SAMPLE_LIMIT),
+          referencedByCount: z.int().nonnegative(),
+        }).strict(),
       ),
       documents: z.array(
         z
@@ -1337,6 +1418,10 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             title: z.string(),
             intendedOutcome: z.string(),
             needsReview: NeedsReviewSchema,
+            // Looser than the command's bound, exactly as on the strategic
+            // arms: a projection that re-applied the write constraint would
+            // make an already-stored value unreadable the day it is tightened.
+            externalId: z.string().optional(),
             lifecycle: z.enum(["active", "closed"]),
             relatedOpenTaskCount: z.int().nonnegative(),
             version: z.int().positive(),
@@ -1485,6 +1570,11 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           })
           .strict(),
       ),
+      // The Sources this Project rests on. `project.create` has accepted
+      // `evidenceSourceIds` since 0.1.5 and nothing projected them, so the
+      // question the field was added to answer — "which Projects rest on the
+      // note whose currency I doubt?" — could not be asked from either end.
+      evidenceSources: z.array(KnowledgeSourceProjectionSchema),
     })
     .strict(),
   z
@@ -1521,6 +1611,15 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             need: z.string(),
             stage: z.string(),
             nextAction: z.string(),
+            // Whose deal this is, as against who is merely named on it. The id
+            // has been writable since 0.1.5 but appeared in no projection a
+            // client is read through, so "show me this person's pipeline" had
+            // no reader. Absent means the distinction was never recorded, or
+            // the owner no longer resolves in this Space — never a dead id.
+            owner: z
+              .object({ id: StrategicRecordIdSchema, name: z.string() })
+              .strict()
+              .optional(),
             state: z.enum(["open", "pursued", "deferred", "rejected", "lost"]),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),

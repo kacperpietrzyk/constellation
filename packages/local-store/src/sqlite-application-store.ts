@@ -1843,6 +1843,31 @@ class SqliteReadView implements ApplicationWave2ReadView {
         });
   }
 
+  public findProjectByExternalId(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    externalId: string,
+  ): Project | undefined {
+    const row = this.database
+      .prepare(
+        // `IS NOT 'removed'`, not `!=`, for the reason spelled out on
+        // `listProjects` below: SQL `!=` against NULL is NULL, so a row written
+        // before removal existed would drop out of this lookup and let a
+        // duplicate through.
+        "SELECT id, payload_json FROM projects WHERE workspace_id = ? AND space_id = ? AND json_extract(payload_json, '$.externalId') = ? AND json_extract(payload_json, '$.recordState') IS NOT 'removed' ORDER BY id LIMIT 1",
+      )
+      .get(workspaceId, spaceId, externalId);
+    return row === undefined
+      ? undefined
+      : parsePayload<Project>(
+          row,
+          "id",
+          stringValue(row, "id", "project"),
+          "project",
+          { workspaceId, spaceId },
+        );
+  }
+
   public listProjects(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,
@@ -2121,6 +2146,33 @@ class SqliteReadView implements ApplicationWave2ReadView {
           workspaceId: stringValue(row, "workspace_id", "strategic record"),
           spaceId: stringValue(row, "space_id", "strategic record"),
         });
+  }
+
+  public findStrategicRecordByExternalId(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    kind: "person" | "organization" | "opportunity",
+    externalId: string,
+  ): StrategicRecord | undefined {
+    const row = this.database
+      .prepare(
+        // `IS NOT 'removed'`, not `!=`, for the reason spelled out on
+        // `listStrategicRecords` below: a row written before removal existed
+        // carries no `recordState`, and SQL `!=` against NULL is NULL, which
+        // would quietly drop every legacy record from this lookup and let a
+        // duplicate through.
+        "SELECT id, payload_json FROM strategic_records WHERE workspace_id = ? AND space_id = ? AND json_extract(payload_json, '$.kind') = ? AND json_extract(payload_json, '$.externalId') = ? AND json_extract(payload_json, '$.recordState') IS NOT 'removed' ORDER BY id LIMIT 1",
+      )
+      .get(workspaceId, spaceId, kind, externalId);
+    return row === undefined
+      ? undefined
+      : parsePayload<StrategicRecord>(
+          row,
+          "id",
+          stringValue(row, "id", "strategic record"),
+          "strategic record",
+          {},
+        );
   }
 
   public listStrategicRecords(

@@ -37,6 +37,7 @@ import type {
   ImportedMeeting,
   MeetingWorkItem,
   RelationCondition,
+  WorkLinkType,
 } from "@constellation/contracts";
 
 export interface Workspace {
@@ -484,6 +485,15 @@ export interface Project {
    * rather than written empty.
    */
   readonly evidenceSourceIds?: readonly KnowledgeSourceId[];
+  /**
+   * The source row this delivery was imported from, on the same terms as a
+   * Person, an Organization and an Opportunity: absent means it was never
+   * imported, and it is unique per Space while present. Scoped to Projects
+   * alone rather than shared with the strategic kinds — a Project lives in its
+   * own table and comes from its own source system, so a Project and a Person
+   * holding one string is two rows from two places, not a collision.
+   */
+  readonly externalId?: string;
   readonly lifecycle: "active" | "closed";
   readonly closedAt?: string;
   readonly closedBy?: PrincipalId;
@@ -608,6 +618,13 @@ export type StrategicRecord =
       readonly name: string;
       readonly relationshipState: "prospect" | "active" | "inactive";
       readonly nextAction?: string;
+      /**
+       * The source row this record was imported from. Absent means it was
+       * never imported — a record a human created in the app has no source and
+       * never will, so this is optional permanently rather than pending a
+       * backfill. Unique per Space and per kind while present.
+       */
+      readonly externalId?: string;
     })
   | (StrategicRecordBase & {
       readonly kind: "person";
@@ -615,6 +632,8 @@ export type StrategicRecord =
       readonly organizationId?: StrategicRecordId;
       readonly role?: string;
       readonly email?: string;
+      /** See the organization arm above. */
+      readonly externalId?: string;
     })
   | (StrategicRecordBase & {
       readonly kind: "opportunity";
@@ -635,6 +654,15 @@ export type StrategicRecord =
       readonly offerIds: readonly StrategicRecordId[];
       readonly projectIds: readonly ProjectId[];
       readonly state: "open" | "pursued" | "deferred" | "rejected" | "lost";
+      /**
+       * See the organization arm above. A deal imported from a pipeline sheet
+       * needs the same re-run protection a Person and an Organization have —
+       * titles collide across clients and across years, so nothing else can
+       * tell a second import apart from a second deal. Unique per Space and
+       * per kind, so a Person and this deal may share a key: they come from
+       * different source systems and the row that produced each is its own.
+       */
+      readonly externalId?: string;
     })
   | (StrategicRecordBase & {
       readonly kind: "offer";
@@ -706,11 +734,7 @@ export type StrategicRecord =
     })
   | (StrategicRecordBase & {
       readonly kind: "work_link";
-      readonly linkType:
-        | "project_advances_initiative"
-        | "project_serves_area"
-        | "project_serves_organization"
-        | "task_depends_on_task";
+      readonly linkType: WorkLinkType;
       readonly sourceRecordId: string;
       readonly targetRecordId: string;
       readonly state: "active" | "removed";
@@ -820,6 +844,12 @@ export type UndoDescriptor =
       readonly priorOrganizationId?: StrategicRecordId;
       readonly priorRole?: string;
       readonly priorEmail?: string;
+      // Absent means the record carried no source key before the update, so
+      // undoing a stamp has to clear it. The command can never clear one —
+      // provenance is set once — but a compensation is not the command, and a
+      // descriptor that omitted this would report success while leaving the
+      // record stamped, which is worse than refusing.
+      readonly priorExternalId?: string;
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }
@@ -832,6 +862,8 @@ export type UndoDescriptor =
       readonly priorName: string;
       readonly priorRelationshipState: "prospect" | "active" | "inactive";
       readonly priorNextAction?: string;
+      /** See `relationship.restore_person` above. */
+      readonly priorExternalId?: string;
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }
