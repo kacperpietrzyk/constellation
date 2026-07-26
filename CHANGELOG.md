@@ -21,6 +21,13 @@ releases begin.
   drift again. Nothing on disk needs repairing — the link simply becomes
   readable.
 
+- **A Task could contribute to the same Opportunity twice.** The duplicate guard
+  on `record.relate` reads one finder whose two implementations disagreed: the
+  SQL one matched either far end, the in-memory one only a Project, so a second
+  identical relate was refused against a Project and accepted against a deal.
+  The conformance suite runs against the in-memory store, so it was blessing an
+  outcome the shipped store does not have.
+
 - **A withheld capability is now reported as one, whatever the target.** A
   command whose capability was missing from the grant answered
   `command.precondition_failed` whenever the target also happened not to exist,
@@ -63,11 +70,37 @@ releases begin.
   the strict parse, so one kind's problem stays its own. Same item shape as the
   wide read, which still answers when you need more than one kind.
 
+- **A Knowledge Source says what rests on it.** `knowledge.list` returned
+  Sources with no bindings, so a note could be traced from the records citing it
+  but never the other way — "which Projects rest on the note whose currency I
+  doubt?" had no answer from the note. Each Source now carries `referencedBy`:
+  up to twenty Projects, Documents, Tasks and strategic records with their
+  titles, plus `referencedByCount` for the real total. It is the same
+  enumeration the removal guard reads, so an empty `referencedBy` is a Source
+  `knowledge.sourceRemove` will accept.
+
+- **A deal and a delivery can carry the identity of the row they came from.**
+  `externalId` reached only Person and Organization; deal titles collide across
+  clients and across years and project titles repeat, so a re-run still
+  duplicated both. `opportunity.create` and `project.create` now claim a key the
+  same way, once per Space, with the refusal naming what holds it. Neither has
+  an update command that takes the field, so both can only be stamped at import.
+  A Project's key is claimed against deliveries alone, so a Project and a Person
+  may share one string — they come from different source systems.
+  `project.list` carries the key so a re-import recognises what it created.
+
 - **A client can be linked to a Project from the desktop.** The link was
   readable but only writable over MCP. The Klient card now offers the
   Organizations in the Project's own Space, and detaches a direct link in two
   steps. It says plainly when the list could not be loaded, rather than
   reporting an empty Space.
+
+- **A delivery can be linked to its client from the client's own page.** The
+  Project side gained the authoring row first; from the Organization the edge
+  stayed read-only, so recording who a delivery runs for meant opening every
+  Project in turn. The Aktywna praca card now offers the active Projects in the
+  client's Space and detaches a direct link in two steps, and both ends read one
+  scan of the links so they cannot disagree about what is attached.
 
 ### Changed
 
@@ -78,7 +111,9 @@ releases begin.
   `record.still_referenced` naming the Project — detach it there first. No user
   action caused the change.
 
-- The MCP invocation guidance now states which query reads a whole set, that
+- The MCP invocation guidance now names `referencedBy`, the two commands that
+  take a source key but can never be stamped after the fact, and states which
+  query reads a whole set, that
   `search.global` needs a term and truncates silently without folding Polish
   diacritics, and that nothing refuses a duplicate person or organization by
   name — so a re-runnable import has to derive its idempotency keys and record
