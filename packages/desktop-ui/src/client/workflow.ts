@@ -1645,17 +1645,21 @@ export const removeWorkLink = (
   );
 
 /**
- * The direct `project_serves_organization` links this Project holds, keyed by
- * the Organization each one points at.
+ * The direct `project_serves_organization` links one end of the edge holds,
+ * keyed by the record at the other end. `from` names the end being asked, so
+ * the two surfaces that author this edge — the Project's Klient card and the
+ * Organization's Aktywna praca card — read it through one filter instead of
+ * two that can disagree about what "still linked" means.
  *
  * `state === "active"` is live filtering, not belt-and-braces: `work.linkRemove`
  * flips the link's own `state` field and leaves `recordState` alone, so a
  * detached link keeps appearing in `relationship.workspace` forever. Reading it
  * as still linked would offer a second detach for a link that is already gone.
  */
-export const directClientLinks = (
+const directDeliveryLinks = (
   snapshot: Pick<DesktopSnapshot, "relationships">,
-  projectId: ProjectId,
+  from: "project" | "organization",
+  recordId: string,
 ): ReadonlyMap<
   string,
   { readonly linkId: StrategicRecordId; readonly version: number }
@@ -1667,18 +1671,32 @@ export const directClientLinks = (
   if (snapshot.relationships.kind !== "ready") return links;
   for (const record of snapshot.relationships.data.records) {
     if (
-      record.kind === "work_link" &&
-      record.state === "active" &&
-      record.linkType === "project_serves_organization" &&
-      record.sourceRecordId === projectId
+      record.kind !== "work_link" ||
+      record.state !== "active" ||
+      record.linkType !== "project_serves_organization"
     )
-      links.set(record.targetRecordId, {
-        linkId: record.id,
-        version: record.version,
-      });
+      continue;
+    const [near, far] =
+      from === "project"
+        ? [record.sourceRecordId, record.targetRecordId]
+        : [record.targetRecordId, record.sourceRecordId];
+    if (near === recordId)
+      links.set(far, { linkId: record.id, version: record.version });
   }
   return links;
 };
+
+/** The clients this Project is directly linked to, keyed by Organization. */
+export const directClientLinks = (
+  snapshot: Pick<DesktopSnapshot, "relationships">,
+  projectId: ProjectId,
+) => directDeliveryLinks(snapshot, "project", projectId);
+
+/** The deliveries directly linked at this client, keyed by Project. */
+export const directDeliveryProjects = (
+  snapshot: Pick<DesktopSnapshot, "relationships">,
+  organizationId: StrategicRecordId,
+) => directDeliveryLinks(snapshot, "organization", organizationId);
 
 /**
  * The Organizations this Project can still be linked to. Both filters exist to
@@ -1754,6 +1772,103 @@ export const unlinkProjectClient = (
       kind: "unavailable",
       message:
         "Powiązanie z klientem wymaga ponownego wczytania danych przed odłączeniem.",
+    });
+  return removeWorkLink(client, snapshot, {
+    id: link.linkId,
+    version: link.version,
+  });
+};
+
+/**
+ * The Projects this client can still be given as a delivery — the same edge as
+ * `linkableClientOrganizations`, authored from the other end.
+ *
+ * Two slices have to be loaded, not one: the Projects come from `project.list`
+ * and the links already made come from `relationship.workspace`. Either being
+ * absent means the answer is unknown rather than empty, for the reason spelled
+ * out on the Project-side helper above.
+ *
+ * Only `active` Projects are offered. A closed one would land a link that shows
+ * nowhere on this page, since `activeProjects` filters on lifecycle — and a
+ * delivery that closes after being linked stays detachable from the Project's
+ * own Klient card, which does not filter, so nothing becomes unreachable.
+ */
+export const linkableDeliveryProjects = (
+  snapshot: Pick<DesktopSnapshot, "relationships" | "projects">,
+  organization: { readonly id: StrategicRecordId; readonly spaceId: SpaceId },
+):
+  readonly { readonly id: ProjectId; readonly title: string }[] | undefined => {
+  if (
+    snapshot.relationships.kind !== "ready" ||
+    snapshot.projects.kind !== "ready"
+  )
+    return undefined;
+  const linked = directDeliveryProjects(snapshot, organization.id);
+  return snapshot.projects.data.items
+    .filter(
+      (project) =>
+        project.lifecycle === "active" &&
+        project.spaceId === organization.spaceId &&
+        !linked.has(project.id),
+    )
+    .map((project) => ({ id: project.id, title: project.title }))
+    .sort((left, right) =>
+      left.title.localeCompare(right.title, "pl", { sensitivity: "base" }),
+    );
+};
+
+/**
+ * The same command as `linkProjectClient`, with the endpoints in the same
+ * order — `project_serves_organization` reads source-to-target and the kernel
+ * enforces the kinds at each end, so authoring from the client does not flip it.
+ *
+ * The Space is resolved here from the client record rather than taken from the
+ * caller, for the reason `createWorkLink` refuses a default: it must equal both
+ * endpoints', and the candidate list this pairs with already filters Projects
+ * to that Space. Answering `unavailable` when the record is not loaded is the
+ * same contract `unlinkOrganizationDelivery` keeps below.
+ */
+export const linkOrganizationDelivery = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  organizationId: StrategicRecordId,
+  projectId: ProjectId,
+) => {
+  const organization =
+    snapshot.relationships.kind === "ready"
+      ? snapshot.relationships.data.records.find(
+          (record) =>
+            record.kind === "organization" && record.id === organizationId,
+        )
+      : undefined;
+  if (organization === undefined || organization.kind !== "organization")
+    return Promise.resolve<MutationResult<never>>({
+      kind: "unavailable",
+      message:
+        "Dane klienta wymagają ponownego wczytania przed połączeniem projektu.",
+    });
+  return createWorkLink(
+    client,
+    snapshot,
+    organization.spaceId,
+    "project_serves_organization",
+    projectId,
+    organization.id,
+  );
+};
+
+export const unlinkOrganizationDelivery = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  organizationId: StrategicRecordId,
+  projectId: ProjectId,
+) => {
+  const link = directDeliveryProjects(snapshot, organizationId).get(projectId);
+  if (link === undefined)
+    return Promise.resolve<MutationResult<never>>({
+      kind: "unavailable",
+      message:
+        "Powiązanie z projektem wymaga ponownego wczytania danych przed odłączeniem.",
     });
   return removeWorkLink(client, snapshot, {
     id: link.linkId,

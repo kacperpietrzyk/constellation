@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
-import type { StrategicRecordId } from "@constellation/contracts";
+import type { ProjectId, StrategicRecordId } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
 import { NarrativeText } from "./components/RecordNarrative.js";
 import { StrategicCreatePanel } from "./StrategicCreatePanel.js";
 
 import {
+  directDeliveryProjects,
   generateRecurrenceOccurrence,
+  linkableDeliveryProjects,
   loadOrganizationOverview,
   resolveDecisionImpact,
   resolveRadarCandidate,
@@ -618,8 +620,132 @@ const EmptyOrganizationSection = ({
   readonly children: string;
 }) => <p className="organization-empty">{children}</p>;
 
+/**
+ * The authoring row under Aktywna praca — the mirror of the Klient card's row
+ * on the Project page, and deliberately the same shape: one edge, two ends, one
+ * pair of verbs. Presentational, for the same reason its twin is: which
+ * Projects may be offered and which are directly linked are both kernel
+ * preconditions, and this file must not learn them.
+ */
+const DeliveryLinkRow = ({
+  candidates,
+  detachable,
+  busy,
+  onLink,
+  onUnlink,
+}: {
+  readonly candidates:
+    readonly { readonly id: ProjectId; readonly title: string }[] | undefined;
+  readonly detachable: readonly {
+    readonly id: ProjectId;
+    readonly title: string;
+  }[];
+  readonly busy: boolean;
+  readonly onLink: (projectId: ProjectId) => void;
+  readonly onUnlink: (projectId: ProjectId) => void;
+}) => {
+  const [selected, setSelected] = useState("");
+  const [confirmingId, setConfirmingId] = useState<string | undefined>(
+    undefined,
+  );
+  return (
+    <div className="organization-context__actions">
+      {candidates === undefined ? (
+        // "The read did not land" and "there are none" are different facts and
+        // the row says which. Two projections feed this one: the Projects and
+        // the links already made.
+        <small>
+          Nie udało się wczytać projektów, więc nie można teraz połączyć
+          realizacji.
+        </small>
+      ) : candidates.length === 0 ? (
+        <small>
+          Brak aktywnych projektów do połączenia w przestrzeni tego klienta.
+        </small>
+      ) : (
+        <>
+          <label className="sr-only" htmlFor="organization-delivery-link">
+            Projekt realizowany u tego klienta
+          </label>
+          <select
+            id="organization-delivery-link"
+            value={selected}
+            disabled={busy}
+            onChange={(event) => setSelected(event.target.value)}
+          >
+            <option value="">Wybierz projekt…</option>
+            {candidates.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.title}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="secondary-button compact"
+            disabled={busy || selected === ""}
+            onClick={() => {
+              onLink(selected as ProjectId);
+              setSelected("");
+            }}
+          >
+            Połącz projekt
+          </button>
+        </>
+      )}
+      {detachable.map((project) =>
+        confirmingId === project.id ? (
+          <Fragment key={project.id}>
+            {/* `activeProjects` unions two reaches, so a project this client's
+                opportunity also names stays on the list after detaching. Said
+                out loud, or the button reads as broken. */}
+            <small>
+              Odłączenie usuwa tylko bezpośrednie powiązanie. Projekt wskazany
+              też przez szansę zostanie na liście.
+            </small>
+            <button
+              type="button"
+              className="status-danger"
+              disabled={busy}
+              onClick={() => {
+                setConfirmingId(undefined);
+                onUnlink(project.id);
+              }}
+            >
+              Potwierdź odłączenie
+            </button>
+            <button
+              type="button"
+              className="secondary-button compact"
+              disabled={busy}
+              onClick={() => setConfirmingId(undefined)}
+            >
+              Anuluj
+            </button>
+          </Fragment>
+        ) : (
+          <button
+            key={project.id}
+            type="button"
+            className="ghost-button"
+            disabled={busy}
+            onClick={() => setConfirmingId(project.id)}
+          >
+            Odłącz „{project.title}”
+          </button>
+        ),
+      )}
+    </div>
+  );
+};
+
 export const OrganizationContextSurface = ({
   overview,
+  deliveryCandidates,
+  linkedProjectIds,
+  linkBusy,
+  onLinkDelivery,
+  onUnlinkDelivery,
   onOpenProject,
   onOpenTask,
   onOpenDocument,
@@ -627,6 +753,13 @@ export const OrganizationContextSurface = ({
   onOpenRelationship,
 }: {
   readonly overview: OrganizationOverviewProjection;
+  // Resolved by the caller, exactly as on the Project side.
+  readonly deliveryCandidates:
+    readonly { readonly id: ProjectId; readonly title: string }[] | undefined;
+  readonly linkedProjectIds: ReadonlySet<string>;
+  readonly linkBusy: boolean;
+  readonly onLinkDelivery: (id: ProjectId) => void;
+  readonly onUnlinkDelivery: (id: ProjectId) => void;
   readonly onOpenProject: (
     id: OrganizationOverviewProjection["activeProjects"][number]["id"],
     title: string,
@@ -734,6 +867,18 @@ export const OrganizationContextSurface = ({
               ))}
             </ul>
           )}
+          <DeliveryLinkRow
+            candidates={deliveryCandidates}
+            // The title comes from the listed record, because the id set the
+            // caller passes carries no label — and only a listed delivery can
+            // be offered a detach at all.
+            detachable={overview.activeProjects.filter((project) =>
+              linkedProjectIds.has(project.id),
+            )}
+            busy={linkBusy}
+            onLink={onLinkDelivery}
+            onUnlink={onUnlinkDelivery}
+          />
           {overview.openTasks.length === 0 ? (
             <EmptyOrganizationSection>
               {emptySectionCopy.tasks}
@@ -987,6 +1132,15 @@ type OrganizationContextNavigation = Pick<
   | "onOpenRelationship"
 >;
 
+// Authoring, as against navigation. Threaded from the app rather than run here
+// because a link changes the whole snapshot — the candidate list and the Klient
+// card on the Project page both re-derive from it — and this loader can only
+// re-run its own query.
+type OrganizationContextAuthoring = Pick<
+  Parameters<typeof OrganizationContextSurface>[0],
+  "linkBusy" | "onLinkDelivery" | "onUnlinkDelivery"
+>;
+
 export const OrganizationContextLoader = ({
   client,
   snapshot,
@@ -996,7 +1150,8 @@ export const OrganizationContextLoader = ({
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
   readonly organizationId: StrategicRecordId;
-} & OrganizationContextNavigation) => {
+} & OrganizationContextNavigation &
+  OrganizationContextAuthoring) => {
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<
     | { readonly kind: "loading" }
@@ -1040,7 +1195,25 @@ export const OrganizationContextLoader = ({
     };
   }, [attempt, client, organizationId, snapshot]);
   if (state.kind === "ready")
-    return <OrganizationContextSurface overview={state.data} {...navigation} />;
+    return (
+      <OrganizationContextSurface
+        overview={state.data}
+        // Derived here rather than in the surface: which Projects the kernel
+        // would accept is a precondition, and the Space comes off the
+        // projection's own organization so the picker cannot offer a Project
+        // from a Space this client is not in.
+        deliveryCandidates={linkableDeliveryProjects(
+          snapshot,
+          state.data.organization,
+        )}
+        linkedProjectIds={
+          new Set(
+            directDeliveryProjects(snapshot, state.data.organization.id).keys(),
+          )
+        }
+        {...navigation}
+      />
+    );
   return (
     <section
       className="surface-load-state"

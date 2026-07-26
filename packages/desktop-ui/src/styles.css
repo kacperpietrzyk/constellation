@@ -5757,10 +5757,13 @@ button.mention-chip:disabled {
   resize: vertical;
 }
 /* The quiet in-project action row: a select plus a compact button, sitting
-   under the thing it acts on. Shared by the template row and the Klient card's
-   link/detach row rather than copied into a second rule — a restated shape is
-   how the same visual contract drifts into two slightly different ones. */
+   under the thing it acts on. Shared by the template row, the Klient card's
+   link/detach row and its mirror on the Organization page rather than copied
+   into a third rule — a restated shape is how the same visual contract drifts
+   into two slightly different ones. Only the inset below differs, because the
+   Organization sections are already flush with their grid. */
 .project-template-row,
+.organization-context__actions,
 .project-context-actions {
   display: flex;
   align-items: center;
@@ -5771,6 +5774,7 @@ button.mention-chip:disabled {
   border-top: 1px solid var(--border-subtle);
 }
 .project-template-row small,
+.organization-context__actions small,
 .project-context-actions small {
   color: var(--text-tertiary);
   font-size: var(--text-xs);
@@ -5785,6 +5789,7 @@ button.mention-chip:disabled {
   padding-left: var(--space-4);
 }
 .project-template-row select,
+.organization-context__actions select,
 .project-context-actions select {
   max-width: 16rem;
   padding: var(--space-1) var(--space-2);

@@ -414,6 +414,18 @@ export const StrategicDepthHarness = () => {
     return (
       <OrganizationContextSurface
         overview={organizationOverview}
+        // One offerable Project and one already-linked delivery, so the harness
+        // shows both halves of the authoring row at once.
+        deliveryCandidates={[
+          {
+            id: "19000000-0000-4000-8000-000000000041" as never,
+            title: "Wdrożenie NDR",
+          },
+        ]}
+        linkedProjectIds={new Set([projectId])}
+        linkBusy={false}
+        onLinkDelivery={() => undefined}
+        onUnlinkDelivery={() => undefined}
         onOpenProject={() => undefined}
         onOpenTask={() => undefined}
         onOpenDocument={() => undefined}
