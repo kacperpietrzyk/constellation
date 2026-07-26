@@ -493,6 +493,11 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     assert.ok(
       catalog.guidance["command"]?.includes("relationship.personCreate"),
     );
+    // The field that actually refuses a re-run, and the sentence that stops an
+    // agent reaching for idempotencyKey to do a job it cannot do.
+    assert.ok(catalog.guidance["command"]?.includes("externalId"));
+    assert.ok(catalog.guidance["command"]?.includes("record.already_exists"));
+    assert.ok(catalog.guidance["query"]?.includes("externalId"));
     // A payload runId that does not name the calling run is a field defect;
     // the guidance has to name the field, because the outcome cannot.
     assert.ok(
