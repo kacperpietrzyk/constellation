@@ -1683,8 +1683,13 @@ test("a narrowed scope and a removed Space take effect on the agent's next invoc
           commandName: "agent.grantSetScope",
           payload: {
             grantId: ids.grant,
-            preset: "observe",
-            capabilityScope: [...capabilitiesForAgentGrantPreset("observe")],
+            // The Space moves first and the capabilities are left alone, so
+            // the next call varies exactly one thing. Narrowing both at once
+            // confounds them: `task.create` would then be missing from the
+            // grant *and* aimed at an unreachable Space, and a single refusal
+            // could not tell you which half of the re-scope took effect.
+            preset: "operate",
+            capabilityScope: [...capabilitiesForAgentGrantPreset("operate")],
             spaces: [
               {
                 spaceGrantId: ids.otherSpaceGrant,
@@ -1698,13 +1703,15 @@ test("a narrowed scope and a removed Space take effect on the agent's next invoc
     );
 
     // Same credential, same socket, no capabilities re-read in between — just
-    // the next call, split into the two causes on purpose. The kernel keeps
-    // "your grant does not carry this" separate from every other refusal
-    // (kernel.ts's `RecordedAuthorization`): a target Space the caller cannot
-    // reach short-circuits before the capability is ever consulted, so it
-    // reads as `command.precondition_failed`, not `authorization.denied`.
-    // Asserting both by name is what proves each half of the re-scope on its
-    // own, rather than one denial that could be either.
+    // the next call. The kernel keeps "your grant does not carry this"
+    // separate from every other refusal (kernel.ts's `RecordedAuthorization`),
+    // and this is the half that proves the separation still holds: the
+    // capability IS held, so the policy is consulted, refuses on the Space,
+    // and `grantRefused` re-asks without a Space — where the capability
+    // answers yes. So the refusal falls through to the merged
+    // `command.precondition_failed`, which is the ADR-067 guarantee that a
+    // Space you cannot reach is indistinguishable from a record that is not
+    // there. A denial here would mean the merge had been broken.
     const afterInRemovedSpace = await invokeDesktopMcp(descriptor, {
       contractVersion: 1,
       requestId: crypto.randomUUID(),
@@ -1730,6 +1737,51 @@ test("a narrowed scope and a removed Space take effect on the agent's next invoc
       "command.precondition_failed",
     );
 
+    // Now narrow the capabilities, leaving the Spaces where the first
+    // re-scope put them, so the second half varies only the other thing.
+    const narrowedGrantVersion = store.read((view) =>
+      view.getAgentGrant(GrantIdSchema.parse(ids.grant)),
+    )?.version;
+    const narrowedSpaceGrantVersion = store.read((view) =>
+      view.getSpaceGrant(SpaceGrantIdSchema.parse(ids.otherSpaceGrant)),
+    )?.version;
+    const narrowedWorkspaceVersion = store.read((view) =>
+      view.getWorkspace(WorkspaceIdSchema.parse(ids.workspace)),
+    )?.version;
+    if (
+      narrowedGrantVersion === undefined ||
+      narrowedSpaceGrantVersion === undefined ||
+      narrowedWorkspaceVersion === undefined
+    )
+      throw new Error("Expected the re-scoped grant and its Space to exist.");
+    successful(
+      rescoper.execute(
+        CommandEnvelopeSchema.parse({
+          ...commandMetadata("rescope-narrow-capability", {
+            [ids.workspace]: narrowedWorkspaceVersion,
+            [ids.grant]: narrowedGrantVersion,
+            [ids.otherSpaceGrant]: narrowedSpaceGrantVersion,
+          }),
+          commandName: "agent.grantSetScope",
+          payload: {
+            grantId: ids.grant,
+            preset: "observe",
+            capabilityScope: [...capabilitiesForAgentGrantPreset("observe")],
+            spaces: [
+              {
+                spaceGrantId: ids.otherSpaceGrant,
+                spaceId: ids.otherSpace,
+                access: "edit",
+              },
+            ],
+          },
+        }),
+      ),
+    );
+
+    // The Space is reachable and the capability is gone, so the policy is
+    // consulted and refuses at workspace level — the one refusal the kernel
+    // states plainly, because it is about the grant and nothing else.
     const afterWithNarrowedCapability = await invokeDesktopMcp(descriptor, {
       contractVersion: 1,
       requestId: crypto.randomUUID(),

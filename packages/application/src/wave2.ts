@@ -309,6 +309,22 @@ export type Wave2Query = Extract<
  * by accident. `agent.checkpointRevert` is the one exception and is excluded
  * here rather than cast away: its capability, `agent.checkpoint.revert`, is
  * already written into every grant in the field (ADR-069).
+ *
+ * The policy is consulted before the target is resolved, for the reason
+ * `isAgentAccessCommandAuthorized` already gives: a caller told
+ * `command.precondition_failed` can spend a run trying to satisfy a
+ * precondition when the real answer is that its grant never carried the
+ * capability. Field finding #18 measured this on `relationship.personUpdate` —
+ * a made-up id answered a precondition and a real record answered a denial, so
+ * the diagnostic distinguished records the caller may not name, inside a Space
+ * it can already edit. That is the existence oracle `RecordedAuthorization`
+ * exists to refuse (kernel.ts).
+ *
+ * Only which capability the kernel recorded moves. The verdict is still
+ * `spaceId !== undefined` and `canEditSpace`, and every policy in the tree
+ * reads the ExecutionContext alone, so reordering pure predicates cannot
+ * change the answer — and no second capability table is introduced, because
+ * the capability is the one this helper already used.
  */
 const authorized = (
   dependencies: Pick<ApplicationKernelDependencies, "authorization">,
@@ -317,14 +333,14 @@ const authorized = (
   command: Exclude<Wave2Command, { commandName: "agent.checkpointRevert" }>,
   spaceId: SpaceId | undefined,
 ): boolean =>
-  spaceId !== undefined &&
-  canEditSpace(view, context, command.workspaceId, spaceId) &&
   dependencies.authorization.authorize({
     context,
     capability: command.commandName,
     workspaceId: command.workspaceId,
-    spaceId,
-  });
+    ...(spaceId === undefined ? {} : { spaceId }),
+  }) &&
+  spaceId !== undefined &&
+  canEditSpace(view, context, command.workspaceId, spaceId);
 
 export const isWave2CommandAuthorized = (
   dependencies: Pick<ApplicationKernelDependencies, "authorization">,

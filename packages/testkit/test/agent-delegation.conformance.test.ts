@@ -46,6 +46,7 @@ const ids = {
   memberMembership: "41000000-0000-4000-8000-000000000026",
   thirdSpace: "41000000-0000-4000-8000-000000000027",
   ownerThirdSpaceGrant: "41000000-0000-4000-8000-000000000028",
+  thirdTask: "41000000-0000-4000-8000-000000000029",
 } as const;
 
 let sequence = 30_000;
@@ -1177,6 +1178,65 @@ describe("agent grant delegation reaches the product without widening scope", ()
       }),
     );
     assert.equal(removed.outcome, "success");
+  });
+
+  /**
+   * The inverse of the case above, and the one field finding #18 measured. A
+   * caller lacking the capability used to be told `command.precondition_failed`
+   * whenever the target also happened not to exist, because the branch
+   * short-circuited on target resolution and the policy was never consulted —
+   * and an unasked question was scored as a passed one. The consequence was not
+   * merely a poor diagnostic: it made the pair of codes an existence oracle,
+   * which is precisely what the merged refusal in ADR-067 exists to prevent.
+   * A caller could learn whether a record existed by reading which refusal it
+   * got, for records it had no capability to touch.
+   *
+   * So the verdict must not depend on the target at all. Both halves are
+   * asserted: without the capability the answer is a denial whether or not the
+   * record is there, and *with* the capability a missing record still answers a
+   * precondition — the second is what proves the oracle was closed rather than
+   * merely inverted.
+   */
+  it("denies a withheld capability whether or not the target exists", () => {
+    const { agent, harness } = runningAgent();
+    const stripped = withoutCapability(agent, "task.remove");
+    for (const [key, taskId] of [
+      ["denied-absent", ids.otherTask],
+      ["denied-present", ids.task],
+    ] as const) {
+      if (taskId === ids.task)
+        assert.equal(
+          commandOutcome(
+            harness.kernel.execute(agent, {
+              ...metadata(`${key}-create`),
+              commandName: "task.create",
+              payload: { taskId, spaceId: ids.space, title: "Present" },
+            }),
+          ).outcome,
+          "success",
+        );
+      const outcome = commandOutcome(
+        harness.kernel.execute(stripped, {
+          ...metadata(key, { [taskId]: 1 }),
+          commandName: "task.remove",
+          payload: { taskId },
+        }),
+      );
+      assert.equal(outcome.outcome, "rejected");
+      assert.equal(outcome.diagnosticCode, "authorization.denied", key);
+    }
+
+    // Holding the capability, a target that is not there is still a
+    // precondition. The merge is intact; only the unasked question is gone.
+    const held = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("held-absent", { [ids.thirdTask]: 1 }),
+        commandName: "task.remove",
+        payload: { taskId: ids.thirdTask },
+      }),
+    );
+    assert.equal(held.outcome, "rejected");
+    assert.equal(held.diagnosticCode, "command.precondition_failed");
   });
 
   /**
