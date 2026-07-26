@@ -6,7 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
-## [Unreleased]
+## [0.1.6] - 2026-07-26
+
+0.1.5 added a link type to the domain and to the command that writes it, but to
+neither projection that reads one, and strict parsing turned a single such link
+into two dead surfaces. This release repairs that regression and closes the
+findings the field channel raised against 0.1.5, including a refusal that told a
+caller with no permission whether a record existed. It also finishes what 0.1.5
+started: the evidence and the ownership it made writable can now be read, a
+record imported from a row can carry that row's identity, and the client edge
+can be authored from either end in the desktop.
 
 ### Fixed
 
