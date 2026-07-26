@@ -3332,6 +3332,11 @@ it("carries provenance, a client, a deal owner and a per-deal action", () => {
     "success",
   );
   const sourceId = uuid();
+  // A second Source, cited by the Project and by nothing else. The first one is
+  // shared with the Opportunity, which is a strategic record and has always
+  // blocked its removal — so asserting against it would pass whether or not
+  // Projects are counted, and prove nothing about the arm being tested.
+  const projectSourceId = uuid();
   const organizationId = uuid();
   const ownerId = uuid();
   const contactId = uuid();
@@ -3351,6 +3356,19 @@ it("carries provenance, a client, a deal owner and a per-deal action", () => {
         excerpt: "The PoV has to start from the sensor rollout.",
         availability: "available" as const,
         observedAt: "2026-07-15T10:00:00.000Z",
+      },
+    },
+    {
+      ...metadata("reach-project-source"),
+      commandName: "knowledge.sourceCreate" as const,
+      payload: {
+        sourceId: projectSourceId,
+        spaceId: ids.space,
+        sourceKind: "excerpt" as const,
+        title: "Rollout note",
+        excerpt: "Sensors go out by GPO, without a restart.",
+        availability: "available" as const,
+        observedAt: "2026-07-16T10:00:00.000Z",
       },
     },
     {
@@ -3388,7 +3406,7 @@ it("carries provenance, a client, a deal owner and a per-deal action", () => {
         spaceId: ids.space,
         title: "PoV",
         intendedOutcome: "Prove the rollout in fourteen days.",
-        evidenceSourceIds: [sourceId],
+        evidenceSourceIds: [sourceId, projectSourceId],
       },
     },
     {
@@ -3475,7 +3493,7 @@ it("carries provenance, a client, a deal owner and a per-deal action", () => {
       ? view.getProject(ProjectIdSchema.parse(projectId))
       : undefined,
   );
-  assert.deepEqual(project?.evidenceSourceIds, [sourceId]);
+  assert.deepEqual(project?.evidenceSourceIds, [sourceId, projectSourceId]);
 
   // Naming the owner is what makes them undeletable while the deal stands: the
   // guard that stops a graph from being silently orphaned now covers them.
@@ -3495,18 +3513,27 @@ it("carries provenance, a client, a deal owner and a per-deal action", () => {
   // A Source a Project rests on is undeletable while the Project stands. The
   // guard was written when `evidenceSourceIds` was a strategic-record field
   // only, so Projects — which are not strategic records — fell through it and
-  // a Project's evidence could be removed out from under it.
+  // a Project's evidence could be removed out from under it. This is asserted
+  // against the Source the Project alone cites, so it fails if that arm is
+  // taken out; the shared one would refuse on the Opportunity either way.
   const blockedSource = unwrap(
     harness.kernel.execute(context(), {
-      ...metadata("reach-source-remove", { [sourceId]: 1 }),
+      ...metadata("reach-source-remove", { [projectSourceId]: 1 }),
       commandName: "knowledge.sourceRemove",
-      payload: { sourceId },
+      payload: { sourceId: projectSourceId },
     }),
   );
   assert.equal(blockedSource.outcome, "rejected");
   assert.equal(
     blockedSource.outcome === "rejected" && blockedSource.diagnosticCode,
     "record.still_referenced",
+  );
+  assert.deepEqual(
+    blockedSource.outcome === "rejected" &&
+      blockedSource.diagnosticCode === "record.still_referenced"
+      ? blockedSource.blockedBy.map((blocker) => blocker.recordId)
+      : [],
+    [projectId],
   );
 
   // The client reads back from the Project side too. Until 0.1.5 this answered
@@ -3554,8 +3581,8 @@ it("carries provenance, a client, a deal owner and a per-deal action", () => {
     return overview.result.projection;
   };
   assert.deepEqual(
-    overviewOf().evidenceSources.map((source) => source.id),
-    [sourceId],
+    [...overviewOf().evidenceSources.map((source) => source.id)].sort(),
+    [sourceId, projectSourceId].sort(),
   );
 
   // The deal owner is projected where a client is actually read, and by name —

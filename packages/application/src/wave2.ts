@@ -681,7 +681,15 @@ export const isWave2CommandAuthorized = (
     }
     case "meeting.route": {
       const record = view.getStrategicRecord(command.payload.meetingId);
-      if (record?.kind !== "meeting") return false;
+      // A target that is not there still has to ask the policy, or these arms
+      // become the oracle the helper below was changed to close: refusing here
+      // consults nothing, so a caller lacking the capability would read a
+      // precondition for an id that resolves to nothing and a denial for one
+      // that resolves to a meeting — including a meeting in a Space it cannot
+      // reach. Passing no Space asks the grant-level question, which is the
+      // only one whose answer the caller is entitled to.
+      if (record?.kind !== "meeting")
+        return authorized(dependencies, view, context, command, undefined);
       // A Space move must be permitted in both the current and target Space.
       if (
         command.commandName === "meeting.route" &&
@@ -706,7 +714,15 @@ export const isWave2CommandAuthorized = (
     }
     case "meeting.promoteWorkItem": {
       const record = view.getStrategicRecord(command.payload.meetingId);
-      if (record?.kind !== "meeting") return false;
+      // A target that is not there still has to ask the policy, or these arms
+      // become the oracle the helper below was changed to close: refusing here
+      // consults nothing, so a caller lacking the capability would read a
+      // precondition for an id that resolves to nothing and a denial for one
+      // that resolves to a meeting — including a meeting in a Space it cannot
+      // reach. Passing no Space asks the grant-level question, which is the
+      // only one whose answer the caller is entitled to.
+      if (record?.kind !== "meeting")
+        return authorized(dependencies, view, context, command, undefined);
       // ADR-040 §7: promotion inserts a Task directly, so it must not become a
       // privilege path around the Task-creation grant.
       return (
@@ -723,7 +739,15 @@ export const isWave2CommandAuthorized = (
     case "meeting.correctWorkItemResponsibility":
     case "meeting.addWorkItem": {
       const record = view.getStrategicRecord(command.payload.meetingId);
-      if (record?.kind !== "meeting") return false;
+      // A target that is not there still has to ask the policy, or these arms
+      // become the oracle the helper below was changed to close: refusing here
+      // consults nothing, so a caller lacking the capability would read a
+      // precondition for an id that resolves to nothing and a denial for one
+      // that resolves to a meeting — including a meeting in a Space it cannot
+      // reach. Passing no Space asks the grant-level question, which is the
+      // only one whose answer the caller is entitled to.
+      if (record?.kind !== "meeting")
+        return authorized(dependencies, view, context, command, undefined);
       // Correcting a work item is ordinary meeting work: it writes nothing
       // outside the meeting record, so it carries no additional grant the way
       // promotion (task.create) and linking (relationship.personCreate) do.
@@ -731,7 +755,15 @@ export const isWave2CommandAuthorized = (
     }
     case "meeting.linkParticipants": {
       const record = view.getStrategicRecord(command.payload.meetingId);
-      if (record?.kind !== "meeting") return false;
+      // A target that is not there still has to ask the policy, or these arms
+      // become the oracle the helper below was changed to close: refusing here
+      // consults nothing, so a caller lacking the capability would read a
+      // precondition for an id that resolves to nothing and a denial for one
+      // that resolves to a meeting — including a meeting in a Space it cannot
+      // reach. Passing no Space asks the grant-level question, which is the
+      // only one whose answer the caller is entitled to.
+      if (record?.kind !== "meeting")
+        return authorized(dependencies, view, context, command, undefined);
       // Linking can create a Person, so it carries the relationship grant too.
       return (
         authorized(dependencies, view, context, command, record.spaceId) &&

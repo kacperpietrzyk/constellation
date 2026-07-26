@@ -1240,6 +1240,53 @@ describe("agent grant delegation reaches the product without widening scope", ()
   });
 
   /**
+   * The same invariant on an arm that resolves its target *before* it reaches
+   * the shared helper. The meeting commands refuse a non-meeting id on the spot,
+   * and refusing without asking the policy is what makes a pair of codes an
+   * oracle — so they have to ask anyway, with no Space, which is the
+   * grant-level question the caller is entitled to have answered. Kept separate
+   * from the task case above because the two reach the policy by different
+   * routes, and only this one is skipped by the helper.
+   */
+  it("denies a withheld capability on a target-resolving arm too", () => {
+    const { agent, harness } = runningAgent();
+    const stripped = withoutCapability(agent, "meeting.editWorkItem");
+    const denied = commandOutcome(
+      harness.kernel.execute(stripped, {
+        ...metadata("meeting-denied-absent"),
+        commandName: "meeting.editWorkItem",
+        payload: {
+          meetingId: ids.otherTask,
+          workItemId: ids.task,
+          expectedWorkItemVersion: 1,
+          title: "Edited",
+          state: "open" as const,
+        },
+      }),
+    );
+    assert.equal(denied.outcome, "rejected");
+    assert.equal(denied.diagnosticCode, "authorization.denied");
+
+    // And holding it, the same absent target is a precondition — so the two
+    // codes still say something about the grant, never about the record.
+    const held = commandOutcome(
+      harness.kernel.execute(agent, {
+        ...metadata("meeting-held-absent"),
+        commandName: "meeting.editWorkItem",
+        payload: {
+          meetingId: ids.otherTask,
+          workItemId: ids.task,
+          expectedWorkItemVersion: 1,
+          title: "Edited",
+          state: "open" as const,
+        },
+      }),
+    );
+    assert.equal(held.outcome, "rejected");
+    assert.equal(held.diagnosticCode, "command.precondition_failed");
+  });
+
+  /**
    * Checkpoint membership is opt-in per command: the kernel attaches a command
    * to a checkpoint only when the envelope names it in `checkpointId`. Sharing
    * a run is not membership. An external agent read the published guidance as
