@@ -985,23 +985,43 @@ export const InitiativeRemoveCommandSchema = CommandMetadataSchema.extend({
   payload: z.object({ initiativeId: StrategicRecordIdSchema }).strict(),
 }).strict();
 
+// The one work-link vocabulary. Every command and every projection that names
+// a link type reuses this schema rather than restating it: 0.1.5 added
+// `project_serves_organization` to the command and to the domain but to
+// neither of the two projections that carry a link, and because query results
+// are parsed strictly, a single such link faulted `relationship.workspace` and
+// `work.overview` outright — the Relacje and Praca surfaces both went to
+// "unavailable" with nothing naming the cause. That is the same failure PR #95
+// fixed for saved-view filters, reached through a widened enum VALUE rather
+// than a new key, which is why the key-set guard in `wave2.ts` did not see it.
+//
+// Because this schema gates both writes and reads, it is ADDITIVE-ONLY, for
+// the same reason `SavedViewFiltersSchema` is: stored payloads are never
+// revalidated on load, so REMOVING a member would make an already-written link
+// fail to project and reproduce that outage exactly. To retire a link type,
+// stop accepting it at the command boundary and leave the projection able to
+// read what is already on disk.
+export const WorkLinkTypeSchema = z.enum([
+  "project_advances_initiative",
+  "project_serves_area",
+  // The delivery a Project runs at a named client. ADR-044 §3 left this
+  // edge out deliberately, on the ground that a Project has no single
+  // honest organization; the first migration of a real engagement showed
+  // the cost — the client ends up in the title, and the Organization
+  // does not know a delivery is running at it.
+  "project_serves_organization",
+  "task_depends_on_task",
+]);
+
+export type WorkLinkType = z.infer<typeof WorkLinkTypeSchema>;
+
 export const WorkLinkCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("work.linkCreate"),
   payload: z
     .object({
       linkId: StrategicRecordIdSchema,
       spaceId: SpaceIdSchema,
-      linkType: z.enum([
-        "project_advances_initiative",
-        "project_serves_area",
-        // The delivery a Project runs at a named client. ADR-044 §3 left this
-        // edge out deliberately, on the ground that a Project has no single
-        // honest organization; the first migration of a real engagement showed
-        // the cost — the client ends up in the title, and the Organization
-        // does not know a delivery is running at it.
-        "project_serves_organization",
-        "task_depends_on_task",
-      ]),
+      linkType: WorkLinkTypeSchema,
       sourceRecordId: z.uuid(),
       targetRecordId: z.uuid(),
     })

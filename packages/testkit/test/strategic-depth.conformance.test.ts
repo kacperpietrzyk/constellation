@@ -151,7 +151,19 @@ it("composes Areas, Initiatives, dependencies, waiting, and saved views", () => 
   const savedViewId = uuid();
   const projectInitiativeLinkId = uuid();
   const projectAreaLinkId = uuid();
+  const workOrganizationId = uuid();
+  const projectOrganizationLinkId = uuid();
   for (const command of [
+    {
+      ...metadata("work-organization"),
+      commandName: "relationship.organizationCreate" as const,
+      payload: {
+        organizationId: workOrganizationId,
+        spaceId: ids.space,
+        name: "Falcon Freight",
+        relationshipState: "active" as const,
+      },
+    },
     {
       ...metadata("work-area"),
       commandName: "area.create" as const,
@@ -258,6 +270,22 @@ it("composes Areas, Initiatives, dependencies, waiting, and saved views", () => 
       },
     },
     {
+      // Every link type the command accepts is created here on purpose. A
+      // widened link vocabulary that reached the command but not the
+      // projections faulted `work.overview` and `relationship.workspace`
+      // outright on 0.1.5, because both parse strictly and one unreadable
+      // link takes the whole answer down. This block is where that is caught.
+      ...metadata("work-project-organization"),
+      commandName: "work.linkCreate" as const,
+      payload: {
+        linkId: projectOrganizationLinkId,
+        spaceId: ids.space,
+        linkType: "project_serves_organization" as const,
+        sourceRecordId: project.id,
+        targetRecordId: workOrganizationId,
+      },
+    },
+    {
       ...metadata("work-task-dependency"),
       commandName: "work.linkCreate" as const,
       payload: {
@@ -315,13 +343,50 @@ it("composes Areas, Initiatives, dependencies, waiting, and saved views", () => 
   assert.equal(result.result.projection.projects.length, 1);
   assert.equal(result.result.projection.tasks.length, 2);
   assert.equal(result.result.projection.tasks[0]?.operationalState, "waiting");
-  assert.equal(result.result.projection.links.length, 3);
+  assert.equal(result.result.projection.links.length, 4);
+  assert.equal(
+    result.result.projection.links.filter(
+      (link) => link.linkType === "project_serves_organization",
+    ).length,
+    1,
+  );
   assert.equal(
     result.result.projection.savedViews[0]?.name,
     "Waiting this week",
   );
 
-  const waitingCommand = commands[3]!;
+  // The other projection that carries a work link, and the one the Relacje
+  // surface loads. It answers over the same records, so it is asserted here
+  // rather than left to a reader to assume.
+  const relationshipResult = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "relationship.workspace",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space },
+  });
+  if (
+    relationshipResult.kind !== "query_result" ||
+    relationshipResult.result.outcome !== "success" ||
+    relationshipResult.result.projection.kind !== "relationship.workspace"
+  )
+    assert.fail("Expected relationship workspace");
+  assert.equal(
+    relationshipResult.result.projection.records.filter(
+      (record) =>
+        record.kind === "work_link" &&
+        record.linkType === "project_serves_organization",
+    ).length,
+    1,
+  );
+
+  // Located by name rather than by index: this block grows a command whenever
+  // the link vocabulary does, and a positional lookup silently retargets the
+  // undo preview at whatever moved into the slot.
+  const waitingCommand = commands.find(
+    (candidate) => candidate.commandName === "task.setOperationalState",
+  )!;
   const preview = unwrap(
     harness.kernel.execute(context(), {
       ...metadata("work-waiting-preview"),

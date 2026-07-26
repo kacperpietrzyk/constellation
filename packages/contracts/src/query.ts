@@ -36,6 +36,7 @@ import {
   SavedViewFiltersSchema,
   SavedViewGroupBySchema,
   SavedViewLayoutSchema,
+  WorkLinkTypeSchema,
 } from "./command.js";
 import {
   GrantScopeStatusSchema,
@@ -504,11 +505,7 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
   }).strict(),
   StrategicRecordBaseSchema.extend({
     kind: z.literal("work_link"),
-    linkType: z.enum([
-      "project_advances_initiative",
-      "project_serves_area",
-      "task_depends_on_task",
-    ]),
+    linkType: WorkLinkTypeSchema,
     sourceRecordId: z.uuid(),
     targetRecordId: z.uuid(),
     state: z.enum(["active", "removed"]),
@@ -707,11 +704,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
         z
           .object({
             id: StrategicRecordIdSchema,
-            linkType: z.enum([
-              "project_advances_initiative",
-              "project_serves_area",
-              "task_depends_on_task",
-            ]),
+            linkType: WorkLinkTypeSchema,
             sourceRecordId: z.uuid(),
             targetRecordId: z.uuid(),
             state: z.enum(["active", "removed"]),
