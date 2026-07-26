@@ -288,6 +288,8 @@ export type Wave2Query = Extract<
       | "knowledge.list"
       | "knowledge.documentContext"
       | "relationship.workspace"
+      | "person.list"
+      | "organization.list"
       | "radar.review"
       | "project.operationalOverview"
       | "organization.operationalOverview"
@@ -10237,6 +10239,28 @@ export const executeWave2Query = (
       kind: "relationship.workspace",
       records: view
         .listStrategicRecords(query.workspaceId, query.parameters.spaceId)
+        .map(strategicRecordProjection),
+      freshness,
+    });
+  }
+  if (
+    query.queryName === "person.list" ||
+    query.queryName === "organization.list"
+  ) {
+    const kind = query.queryName === "person.list" ? "person" : "organization";
+    // Filtered before `querySuccess`, and that ordering is the whole point.
+    // The strict parse inside `querySuccess` is the only place a stored record
+    // can fault a read — the store casts payloads and never revalidates them —
+    // so narrowing to one kind first means a kind this build cannot project can
+    // no longer take the read of people down with it, the way one unreadable
+    // work link took down every record in the Space on 0.1.5. Mapped through
+    // the same `strategicRecordProjection` the wide read uses, so the two
+    // answers to the same question cannot drift apart.
+    return querySuccess(query, kernelTime, freshness, {
+      kind: query.queryName,
+      items: view
+        .listStrategicRecords(query.workspaceId, query.parameters.spaceId)
+        .filter((record) => record.kind === kind)
         .map(strategicRecordProjection),
       freshness,
     });

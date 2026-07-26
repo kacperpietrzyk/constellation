@@ -64,6 +64,8 @@ const context = (): ExecutionContext =>
       "opportunity.offerCreate",
       "opportunity.linkOutcomes",
       "relationship.workspace",
+      "person.list",
+      "organization.list",
       "project.operationalOverview",
       "organization.operationalOverview",
       "relationship.renewalCreate",
@@ -3797,4 +3799,135 @@ it("claims a source row once per Space, and never re-points a claim", () => {
       ),
     ["jamie:p-1"],
   );
+});
+
+/**
+ * The reason these exist as their own queries rather than a filter on the wide
+ * read: `relationship.workspace` is one answer, so it is also one failure. A
+ * single record a build cannot project faults the entire set — which is exactly
+ * what happened on 0.1.5, and it took the enumeration of people with it. These
+ * two carry one kind each, so the failure of another kind cannot reach them.
+ */
+it("enumerates one kind each, and answers the same shape as the wide read", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("list-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Enumeration",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const organizationId = uuid();
+  const personId = uuid();
+  for (const command of [
+    {
+      ...metadata("list-org"),
+      commandName: "relationship.organizationCreate" as const,
+      payload: {
+        organizationId,
+        spaceId: ids.space,
+        name: "CAPTRAIN",
+        relationshipState: "active" as const,
+        externalId: "folder:captrain",
+      },
+    },
+    {
+      ...metadata("list-person"),
+      commandName: "relationship.personCreate" as const,
+      payload: {
+        personId,
+        spaceId: ids.space,
+        name: "Rene Golembewski",
+        organizationId,
+        externalId: "jamie:rene",
+      },
+    },
+  ]) {
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), command)).outcome,
+      "success",
+    );
+  }
+
+  const list = (queryName: "person.list" | "organization.list") => {
+    const result = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName,
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space },
+    });
+    if (
+      result.kind !== "query_result" ||
+      result.result.outcome !== "success" ||
+      result.result.projection.kind !== queryName
+    )
+      assert.fail(`Expected ${queryName}`);
+    return result.result.projection.items;
+  };
+
+  // One kind each: the person list does not carry the organization, and the
+  // organization list does not carry the person.
+  assert.deepEqual(
+    list("person.list").map((item) => item.id),
+    [personId],
+  );
+  assert.deepEqual(
+    list("organization.list").map((item) => item.id),
+    [organizationId],
+  );
+
+  // The source key an import reconciles on reads back here, which is the whole
+  // reason a migration calls this before it writes anyone.
+  assert.equal(list("person.list")[0]?.externalId, "jamie:rene");
+  assert.equal(list("organization.list")[0]?.externalId, "folder:captrain");
+
+  // Same shape as the wide read, field for field — the two are one schema, so a
+  // record read from either is written back the same way.
+  const workspace = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "relationship.workspace",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space },
+  });
+  if (
+    workspace.kind !== "query_result" ||
+    workspace.result.outcome !== "success" ||
+    workspace.result.projection.kind !== "relationship.workspace"
+  )
+    assert.fail("Expected relationship workspace");
+  assert.deepEqual(
+    list("person.list")[0],
+    workspace.result.projection.records.find(
+      (record) => record.id === personId,
+    ),
+  );
+
+  // A removed record leaves both, through the same choke point every other
+  // projection uses.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("list-person-remove", { [personId]: 1 }),
+        commandName: "relationship.personRemove",
+        payload: { personId },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.deepEqual(list("person.list"), []);
+  assert.equal(list("organization.list").length, 1);
 });

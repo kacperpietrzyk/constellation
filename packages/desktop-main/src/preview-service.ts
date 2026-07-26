@@ -62,6 +62,8 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "opportunity.offerRemove",
   "opportunity.linkOutcomes",
   "relationship.workspace",
+  "person.list",
+  "organization.list",
   "relationship.renewalCreate",
   "relationship.renewalResolve",
   "relationship.factCreate",

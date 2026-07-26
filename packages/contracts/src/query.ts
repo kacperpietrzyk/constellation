@@ -224,6 +224,26 @@ export const RelationshipWorkspaceQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("relationship.workspace"),
   parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
 }).strict();
+// One kind each, on purpose. `relationship.workspace` is one answer and
+// therefore one failure: a single record this build cannot project faults the
+// whole set, which is what took Relacje and Praca down on 0.1.5. These read one
+// kind, so a kind that cannot be projected cannot reach them — and their items
+// are the same shape the wide read returns, so a record read from either is
+// written back the same way.
+//
+// Uncapped and uncut on purpose: reconciling people needs the whole set, and a
+// list that truncates without saying so is the trap `search.global` already
+// sets. If a cap is ever added, the field that reports the cut ships with it.
+export const PersonListQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("person.list"),
+  parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
+}).strict();
+
+export const OrganizationListQuerySchema = QueryMetadataSchema.extend({
+  queryName: z.literal("organization.list"),
+  parameters: z.object({ spaceId: SpaceIdSchema }).strict(),
+}).strict();
+
 export const RadarReviewQuerySchema = QueryMetadataSchema.extend({
   queryName: z.literal("radar.review"),
   parameters: z
@@ -344,6 +364,8 @@ export const QueryEnvelopeSchema = z.discriminatedUnion("queryName", [
   KnowledgeListQuerySchema,
   KnowledgeDocumentContextQuerySchema,
   RelationshipWorkspaceQuerySchema,
+  PersonListQuerySchema,
+  OrganizationListQuerySchema,
   RadarReviewQuerySchema,
   ProjectOperationalOverviewQuerySchema,
   OrganizationOperationalOverviewQuerySchema,
@@ -393,7 +415,11 @@ const StrategicRecordBaseSchema = z.object({
 export type StrategicRecordProjection = z.infer<
   typeof StrategicRecordProjectionSchema
 >;
-export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
+// The one shape a person and an organization are projected in. `person.list`
+// and `organization.list` share these with `relationship.workspace` rather than
+// restating them: a second copy is how the work-link vocabulary came to mean
+// different things to a writer and a reader.
+export const OrganizationRecordProjectionSchema =
   StrategicRecordBaseSchema.extend({
     kind: z.literal("organization"),
     name: z.string(),
@@ -404,15 +430,20 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     // constraint would make an already-stored value unreadable the day that
     // bound is tightened, which is the outage this branch exists to prevent.
     externalId: z.string().optional(),
-  }).strict(),
-  StrategicRecordBaseSchema.extend({
-    kind: z.literal("person"),
-    name: z.string(),
-    organizationId: StrategicRecordIdSchema.optional(),
-    role: z.string().optional(),
-    email: z.string().optional(),
-    externalId: z.string().optional(),
-  }).strict(),
+  }).strict();
+
+export const PersonRecordProjectionSchema = StrategicRecordBaseSchema.extend({
+  kind: z.literal("person"),
+  name: z.string(),
+  organizationId: StrategicRecordIdSchema.optional(),
+  role: z.string().optional(),
+  email: z.string().optional(),
+  externalId: z.string().optional(),
+}).strict();
+
+export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
+  OrganizationRecordProjectionSchema,
+  PersonRecordProjectionSchema,
   StrategicRecordBaseSchema.extend({
     kind: z.literal("opportunity"),
     title: z.string(),
@@ -763,6 +794,20 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("relationship.workspace"),
       records: z.array(StrategicRecordProjectionSchema),
+      freshness: FreshnessSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("person.list"),
+      items: z.array(PersonRecordProjectionSchema),
+      freshness: FreshnessSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("organization.list"),
+      items: z.array(OrganizationRecordProjectionSchema),
       freshness: FreshnessSchema,
     })
     .strict(),
