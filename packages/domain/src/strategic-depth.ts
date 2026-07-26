@@ -36,6 +36,7 @@ export const createOrganization = (
     readonly name: string;
     readonly relationshipState: "prospect" | "active" | "inactive";
     readonly nextAction?: string;
+    readonly externalId?: string;
   },
 ): Extract<StrategicRecord, { kind: "organization" }> => ({
   ...base(input),
@@ -43,6 +44,7 @@ export const createOrganization = (
   name: input.name,
   relationshipState: input.relationshipState,
   ...(input.nextAction === undefined ? {} : { nextAction: input.nextAction }),
+  ...(input.externalId === undefined ? {} : { externalId: input.externalId }),
 });
 
 export const createPerson = (
@@ -51,6 +53,7 @@ export const createPerson = (
     readonly organizationId?: StrategicRecordId;
     readonly role?: string;
     readonly email?: string;
+    readonly externalId?: string;
   },
 ): Extract<StrategicRecord, { kind: "person" }> => ({
   ...base(input),
@@ -61,6 +64,7 @@ export const createPerson = (
     : { organizationId: input.organizationId }),
   ...(input.role === undefined ? {} : { role: input.role }),
   ...(input.email === undefined ? {} : { email: input.email }),
+  ...(input.externalId === undefined ? {} : { externalId: input.externalId }),
 });
 
 /**
@@ -75,6 +79,10 @@ export const updatePersonDetails = (
     readonly organizationId?: StrategicRecordId | null;
     readonly role?: string | null;
     readonly email?: string | null;
+    // Never `| null`: provenance can be stamped on a record that predates the
+    // field, but never cleared and never rewritten. The kernel refuses a
+    // change; this helper only ever adds.
+    readonly externalId?: string;
   },
   occurredAt: string,
 ): Extract<StrategicRecord, { kind: "person" }> => {
@@ -101,6 +109,9 @@ export const updatePersonDetails = (
     ...(organizationId === undefined ? {} : { organizationId }),
     ...(role === undefined ? {} : { role }),
     ...(email === undefined ? {} : { email }),
+    ...(person.externalId === undefined && changes.externalId === undefined
+      ? {}
+      : { externalId: person.externalId ?? changes.externalId }),
     version: person.version + 1,
     updatedAt: occurredAt,
   };
@@ -112,6 +123,8 @@ export const updateOrganizationDetails = (
     readonly name?: string;
     readonly relationshipState?: "prospect" | "active" | "inactive";
     readonly nextAction?: string | null;
+    /** See `updatePersonDetails` — set once, never cleared or rewritten. */
+    readonly externalId?: string;
   },
   occurredAt: string,
 ): Extract<StrategicRecord, { kind: "organization" }> => {
@@ -127,6 +140,10 @@ export const updateOrganizationDetails = (
     relationshipState:
       changes.relationshipState ?? organization.relationshipState,
     ...(nextAction === undefined ? {} : { nextAction }),
+    ...(organization.externalId === undefined &&
+    changes.externalId === undefined
+      ? {}
+      : { externalId: organization.externalId ?? changes.externalId }),
     version: organization.version + 1,
     updatedAt: occurredAt,
   };

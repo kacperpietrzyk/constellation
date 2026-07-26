@@ -609,6 +609,13 @@ export type StrategicRecord =
       readonly name: string;
       readonly relationshipState: "prospect" | "active" | "inactive";
       readonly nextAction?: string;
+      /**
+       * The source row this record was imported from. Absent means it was
+       * never imported — a record a human created in the app has no source and
+       * never will, so this is optional permanently rather than pending a
+       * backfill. Unique per Space and per kind while present.
+       */
+      readonly externalId?: string;
     })
   | (StrategicRecordBase & {
       readonly kind: "person";
@@ -616,6 +623,8 @@ export type StrategicRecord =
       readonly organizationId?: StrategicRecordId;
       readonly role?: string;
       readonly email?: string;
+      /** See the organization arm above. */
+      readonly externalId?: string;
     })
   | (StrategicRecordBase & {
       readonly kind: "opportunity";

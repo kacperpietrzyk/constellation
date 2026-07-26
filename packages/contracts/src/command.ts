@@ -31,6 +31,7 @@ import {
   KnowledgeSourceIdSchema,
   NamedDocumentVersionIdSchema,
   DocumentRevisionIdSchema,
+  ExternalIdSchema,
   StrategicRecordIdSchema,
 } from "./ids.js";
 import {
@@ -654,6 +655,12 @@ export const RelationshipOrganizationCreateCommandSchema =
         name: z.string().trim().min(1).max(300),
         relationshipState: z.enum(["prospect", "active", "inactive"]),
         nextAction: z.string().trim().min(1).max(1_000).optional(),
+        // The identity of the source row this record was imported from. It is
+        // what refuses a duplicate when a migration re-runs: names are not
+        // unique — two people genuinely can share one — and nothing else in
+        // this payload is compared against what is already in the Space, so
+        // without it a second run mints a second record nothing objects to.
+        externalId: ExternalIdSchema.optional(),
       })
       .strict(),
   }).strict();
@@ -681,6 +688,8 @@ export const RelationshipPersonCreateCommandSchema =
         organizationId: StrategicRecordIdSchema.optional(),
         role: z.string().trim().min(1).max(300).optional(),
         email: z.email().max(320).optional(),
+        // See `relationship.organizationCreate` above — same field, same job.
+        externalId: ExternalIdSchema.optional(),
       })
       .strict(),
   }).strict();
@@ -703,6 +712,13 @@ export const RelationshipPersonUpdateCommandSchema =
         organizationId: StrategicRecordIdSchema.nullable().optional(),
         role: z.string().trim().min(1).max(300).nullable().optional(),
         email: z.email().max(320).nullable().optional(),
+        // Optional but deliberately NOT `.nullable()`, unlike every sibling
+        // above: an update can stamp provenance onto a record that predates the
+        // field, which is how an existing graph gets its source keys, but it
+        // can never clear or rewrite one. A source key that changes silently
+        // re-points a record at a different source row, and provenance that can
+        // be rewritten is not provenance. Naming a different one is refused.
+        externalId: ExternalIdSchema.optional(),
       })
       .strict()
       .refine(
@@ -710,10 +726,11 @@ export const RelationshipPersonUpdateCommandSchema =
           payload.name !== undefined ||
           payload.organizationId !== undefined ||
           payload.role !== undefined ||
-          payload.email !== undefined,
+          payload.email !== undefined ||
+          payload.externalId !== undefined,
         {
           error:
-            "personUpdate must change at least one field: name, organizationId, role, or email",
+            "personUpdate must change at least one field: name, organizationId, role, email, or externalId",
         },
       ),
   }).strict();
@@ -729,16 +746,20 @@ export const RelationshipOrganizationUpdateCommandSchema =
           .enum(["prospect", "active", "inactive"])
           .optional(),
         nextAction: z.string().trim().min(1).max(1_000).nullable().optional(),
+        // See `relationship.personUpdate` above for why this one is not
+        // nullable while its neighbours are.
+        externalId: ExternalIdSchema.optional(),
       })
       .strict()
       .refine(
         (payload) =>
           payload.name !== undefined ||
           payload.relationshipState !== undefined ||
-          payload.nextAction !== undefined,
+          payload.nextAction !== undefined ||
+          payload.externalId !== undefined,
         {
           error:
-            "organizationUpdate must change at least one field: name, relationshipState, or nextAction",
+            "organizationUpdate must change at least one field: name, relationshipState, nextAction, or externalId",
         },
       ),
   }).strict();

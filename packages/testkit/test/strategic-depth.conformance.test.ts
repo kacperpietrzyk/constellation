@@ -3646,3 +3646,155 @@ it("carries provenance, a client, a deal owner and a per-deal action", () => {
     "success",
   );
 });
+
+/**
+ * A migration re-run is the case this field exists for. Names are not unique —
+ * two people genuinely can share one — so before `externalId` the only thing
+ * standing between a second run and a duplicate record was the caller's own
+ * discipline with idempotency keys, which a fresh command id or a different
+ * principal walks straight past.
+ */
+it("claims a source row once per Space, and never re-points a claim", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("external-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Provenance",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const personId = uuid();
+  const secondPersonId = uuid();
+  const organizationId = uuid();
+  const create = (id: string, key: string, externalId?: string) =>
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(key),
+        commandName: "relationship.personCreate",
+        payload: {
+          personId: id,
+          spaceId: ids.space,
+          name: "Karina Szambelan",
+          ...(externalId === undefined ? {} : { externalId }),
+        },
+      }),
+    );
+
+  assert.equal(create(personId, "ext-first", "jamie:p-1").outcome, "success");
+
+  // The re-run: same source row, a fresh record id, a fresh idempotency key —
+  // everything the old dedup keyed on has changed, which is exactly why it
+  // could not catch this.
+  const rerun = create(secondPersonId, "ext-rerun", "jamie:p-1");
+  assert.equal(rerun.outcome, "conflict");
+  assert.equal(
+    rerun.outcome === "conflict" && rerun.diagnosticCode,
+    "record.already_exists",
+  );
+  // And the refusal is actionable rather than merely correct: it hands back the
+  // record that holds the key and the version an update has to state, so the
+  // caller corrects in place instead of minting a second id.
+  assert.deepEqual(
+    rerun.outcome === "conflict" &&
+      rerun.diagnosticCode === "record.already_exists"
+      ? rerun.currentVersions
+      : {},
+    { [personId]: 1 },
+  );
+
+  // The same name with no source key is still allowed. Two people can share a
+  // name, and refusing that would have made the field a worse version of the
+  // uniqueness rule it deliberately is not.
+  assert.equal(create(secondPersonId, "ext-namesake").outcome, "success");
+
+  // An Organization may hold the identical key: the claim is per kind.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("ext-org"),
+        commandName: "relationship.organizationCreate",
+        payload: {
+          organizationId,
+          spaceId: ids.space,
+          name: "Softinet",
+          relationshipState: "prospect" as const,
+          externalId: "jamie:p-1",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  // Stamping a record that predates the field is the supported path, because it
+  // is how an existing graph acquires provenance at all.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("ext-stamp", { [secondPersonId]: 1 }),
+        commandName: "relationship.personUpdate",
+        payload: { personId: secondPersonId, externalId: "jamie:p-2" },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  // But re-pointing one is refused. Provenance that can be rewritten is not
+  // provenance — a changed key silently re-attributes the record to a
+  // different source row.
+  const repointed = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("ext-repoint", { [secondPersonId]: 2 }),
+      commandName: "relationship.personUpdate",
+      payload: { personId: secondPersonId, externalId: "jamie:p-3" },
+    }),
+  );
+  assert.equal(repointed.outcome, "rejected");
+  assert.equal(
+    repointed.outcome === "rejected" && repointed.diagnosticCode,
+    "command.precondition_failed",
+  );
+
+  // Nor can an update take a key another record already holds.
+  const stolen = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("ext-steal", { [secondPersonId]: 2 }),
+      commandName: "relationship.personUpdate",
+      payload: { personId: secondPersonId, externalId: "jamie:p-1" },
+    }),
+  );
+  assert.equal(stolen.outcome, "rejected");
+
+  // It reads back where an agent reconciles, not only in the store.
+  const workspace = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "relationship.workspace",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space },
+  });
+  if (
+    workspace.kind !== "query_result" ||
+    workspace.result.outcome !== "success" ||
+    workspace.result.projection.kind !== "relationship.workspace"
+  )
+    assert.fail("Expected relationship workspace");
+  assert.deepEqual(
+    workspace.result.projection.records
+      .filter((record) => record.kind === "person" && record.id === personId)
+      .map((record) =>
+        record.kind === "person" ? record.externalId : undefined,
+      ),
+    ["jamie:p-1"],
+  );
+});

@@ -112,5 +112,21 @@ export const DeviceIdSchema = z
   .brand<"DeviceId">();
 export type DeviceId = z.infer<typeof DeviceIdSchema>;
 
+// The identity of a row in a system outside this graph — a Jamie participant, a
+// folder slug, a spreadsheet key. Compared exactly and case-sensitively, never
+// dereferenced here, so it carries no format beyond being a bounded non-empty
+// string: the contract cannot enumerate the systems it will be asked to import
+// from, and refusing a shape it merely did not anticipate is the least
+// repairable refusal an agent can be handed.
+//
+// Unbranded on purpose (unlike DeviceId above): every value comes from a source
+// adapter that has no reason to know about this type, and branding would buy a
+// cast at each of them and nothing else. The bound matches the participant and
+// decision externalIds in `meeting-loop.ts` because it is the same concept —
+// and it lives here, once, so the four relationship commands do not become the
+// next restatement of a shape that then drifts.
+export const ExternalIdSchema = z.string().trim().min(1).max(500);
+export type ExternalId = z.infer<typeof ExternalIdSchema>;
+
 export const RecordIdSchema = z.uuid().brand<"RecordId">();
 export type RecordId = z.infer<typeof RecordIdSchema>;

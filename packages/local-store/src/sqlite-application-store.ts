@@ -2123,6 +2123,33 @@ class SqliteReadView implements ApplicationWave2ReadView {
         });
   }
 
+  public findStrategicRecordByExternalId(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    kind: "person" | "organization",
+    externalId: string,
+  ): StrategicRecord | undefined {
+    const row = this.database
+      .prepare(
+        // `IS NOT 'removed'`, not `!=`, for the reason spelled out on
+        // `listStrategicRecords` below: a row written before removal existed
+        // carries no `recordState`, and SQL `!=` against NULL is NULL, which
+        // would quietly drop every legacy record from this lookup and let a
+        // duplicate through.
+        "SELECT id, payload_json FROM strategic_records WHERE workspace_id = ? AND space_id = ? AND json_extract(payload_json, '$.kind') = ? AND json_extract(payload_json, '$.externalId') = ? AND json_extract(payload_json, '$.recordState') IS NOT 'removed' ORDER BY id LIMIT 1",
+      )
+      .get(workspaceId, spaceId, kind, externalId);
+    return row === undefined
+      ? undefined
+      : parsePayload<StrategicRecord>(
+          row,
+          "id",
+          stringValue(row, "id", "strategic record"),
+          "strategic record",
+          {},
+        );
+  }
+
   public listStrategicRecords(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,

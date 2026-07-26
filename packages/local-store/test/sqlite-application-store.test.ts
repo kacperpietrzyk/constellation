@@ -596,6 +596,73 @@ describe("SQLite ApplicationStore", () => {
     });
   });
 
+  it("claims a source key through SQLite, and frees it when the record goes", () => {
+    // The finder exists twice — once in the in-memory store the conformance
+    // suite runs against, once here in SQL — and the pair it sits beside,
+    // findTaskProjectRelation, has already drifted between the two. So the SQL
+    // one is exercised directly rather than trusted to behave like its twin.
+    withDatabase((filename) => {
+      const firstId = "00000000-0000-4000-8000-000000000150";
+      const secondId = "00000000-0000-4000-8000-000000000151";
+      const database = new DatabaseSync(filename);
+      const kernel = createKernel(database);
+      assert.equal(
+        unwrap(kernel.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      const create = (id: string, key: string, externalId: string) =>
+        unwrap(
+          kernel.kernel.execute(
+            context(),
+            wave2Command(
+              "relationship.organizationCreate",
+              {
+                organizationId: id,
+                spaceId: ids.rootSpace,
+                name: "Imported",
+                relationshipState: "active",
+                externalId,
+              },
+              key,
+            ),
+          ),
+        );
+      assert.equal(
+        create(firstId, "src-first", "folder:acme").outcome,
+        "success",
+      );
+      assert.equal(
+        create(secondId, "src-dup", "folder:acme").outcome,
+        "conflict",
+      );
+
+      // Removal is a soft delete, and the SQL predicate has to honour it the
+      // way listStrategicRecords does — with IS NOT rather than !=, or a row
+      // written before recordState existed drops out of the lookup and a
+      // duplicate walks through. Freeing the key on removal is the point: a
+      // source row whose record was removed must be importable again.
+      assert.equal(
+        unwrap(
+          kernel.kernel.execute(
+            context(),
+            wave2Command(
+              "relationship.organizationRemove",
+              { organizationId: firstId },
+              "src-remove",
+              { [firstId]: 1 },
+            ),
+          ),
+        ).outcome,
+        "success",
+      );
+      assert.equal(
+        create(secondId, "src-reimport", "folder:acme").outcome,
+        "success",
+      );
+      database.close();
+    });
+  });
+
   it("keeps a removed record out of every list after restart, and puts it back on undo", () => {
     withDatabase((filename) => {
       const organizationId = "00000000-0000-4000-8000-000000000140";

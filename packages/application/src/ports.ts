@@ -276,6 +276,21 @@ export interface ApplicationWave2ReadView extends ApplicationReadView {
     workspaceId: WorkspaceId,
     spaceId: SpaceId,
   ): readonly StrategicRecord[];
+  /**
+   * The active record of `kind` that already carries this source key, if the
+   * Space holds one. Uniqueness is enforced here rather than by a SQL
+   * constraint: `strategic_records` stores its payload opaquely, the in-memory
+   * store every conformance test runs against enforces no constraints at all,
+   * and a constraint violation surfaces as a retryable unit-of-work failure —
+   * the wrong outcome class for "this source row is already here", which the
+   * caller has to be able to act on.
+   */
+  findStrategicRecordByExternalId(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    kind: "person" | "organization",
+    externalId: string,
+  ): StrategicRecord | undefined;
   getRelation(id: RelationId): TaskProjectRelation | undefined;
   /**
    * The active relation between a Task and the record it contributes to,
@@ -402,6 +417,7 @@ export const isApplicationWave2ReadView = (
   "listNamedDocumentVersions" in view &&
   "getStrategicRecord" in view &&
   "listStrategicRecords" in view &&
+  "findStrategicRecordByExternalId" in view &&
   "getRelation" in view &&
   "findTaskProjectRelation" in view &&
   "listRelations" in view &&

@@ -399,6 +399,11 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     name: z.string(),
     relationshipState: z.enum(["prospect", "active", "inactive"]),
     nextAction: z.string().optional(),
+    // Deliberately looser than the command's bound, exactly like `role` and
+    // `email` on the person arm: a projection that re-applied the write
+    // constraint would make an already-stored value unreadable the day that
+    // bound is tightened, which is the outage this branch exists to prevent.
+    externalId: z.string().optional(),
   }).strict(),
   StrategicRecordBaseSchema.extend({
     kind: z.literal("person"),
@@ -406,6 +411,7 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     organizationId: StrategicRecordIdSchema.optional(),
     role: z.string().optional(),
     email: z.string().optional(),
+    externalId: z.string().optional(),
   }).strict(),
   StrategicRecordBaseSchema.extend({
     kind: z.literal("opportunity"),

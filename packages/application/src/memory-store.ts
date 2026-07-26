@@ -679,6 +679,26 @@ class ReadView implements ApplicationReadView {
     return this.state.strategicRecords.get(id);
   }
 
+  public findStrategicRecordByExternalId(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    kind: "person" | "organization",
+    externalId: string,
+  ): StrategicRecord | undefined {
+    // Goes through the same `strategicRecordState` choke point as
+    // `listStrategicRecords`, so a removed record does not keep its source key
+    // reserved — re-importing a row whose record was removed has to work.
+    return [...this.state.strategicRecords.values()].find(
+      (record) =>
+        record.workspaceId === workspaceId &&
+        record.spaceId === spaceId &&
+        record.kind === kind &&
+        strategicRecordState(record) === "active" &&
+        "externalId" in record &&
+        record.externalId === externalId,
+    );
+  }
+
   public listStrategicRecords(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,

@@ -2618,6 +2618,28 @@ export const executeWave2Command = (
       if (!exactExpected(command, {})) return precondition(command, occurredAt);
       if (transaction.getStrategicRecord(command.payload.organizationId))
         return precondition(command, occurredAt);
+      // A source key is claimed once per Space and kind. Names are not unique,
+      // so this is the only thing that can tell a re-run apart from a genuinely
+      // new record — and the refusal has to be actionable, which is why it
+      // carries the colliding record's id and version rather than a bare
+      // precondition: the caller pivots straight to the update command with
+      // exactly those `expectedVersions` instead of minting a second id.
+      // Checked against the transaction, not a snapshot, so two creates inside
+      // one batch collide with each other too.
+      if (command.payload.externalId !== undefined) {
+        const claimed = transaction.findStrategicRecordByExternalId(
+          command.workspaceId,
+          command.payload.spaceId,
+          "organization",
+          command.payload.externalId,
+        );
+        if (claimed !== undefined)
+          return outcome(command, occurredAt, {
+            outcome: "conflict",
+            diagnosticCode: "record.already_exists",
+            currentVersions: { [claimed.id]: claimed.version },
+          });
+      }
       const record = createOrganization({
         id: StrategicRecordIdSchema.parse(command.payload.organizationId),
         workspaceId: command.workspaceId,
@@ -2627,6 +2649,9 @@ export const executeWave2Command = (
         ...(command.payload.nextAction === undefined
           ? {}
           : { nextAction: command.payload.nextAction }),
+        ...(command.payload.externalId === undefined
+          ? {}
+          : { externalId: command.payload.externalId }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -2647,7 +2672,7 @@ export const executeWave2Command = (
           occurredAt,
         },
         { [record.id]: record.version },
-        ["name", "relationshipState", "nextAction"],
+        ["name", "relationshipState", "nextAction", "externalId"],
         {
           diagnosticCode: "strategic.record_changed",
           projection: {
@@ -3672,6 +3697,22 @@ export const executeWave2Command = (
         organization === undefined
       )
         return precondition(command, occurredAt);
+      // Same source-key claim as `relationship.organizationCreate` above; the
+      // reasoning for the shape of this refusal is stated there.
+      if (command.payload.externalId !== undefined) {
+        const claimed = transaction.findStrategicRecordByExternalId(
+          command.workspaceId,
+          command.payload.spaceId,
+          "person",
+          command.payload.externalId,
+        );
+        if (claimed !== undefined)
+          return outcome(command, occurredAt, {
+            outcome: "conflict",
+            diagnosticCode: "record.already_exists",
+            currentVersions: { [claimed.id]: claimed.version },
+          });
+      }
       const record = createPerson({
         id: StrategicRecordIdSchema.parse(command.payload.personId),
         workspaceId: command.workspaceId,
@@ -3686,6 +3727,9 @@ export const executeWave2Command = (
         ...(command.payload.email === undefined
           ? {}
           : { email: command.payload.email }),
+        ...(command.payload.externalId === undefined
+          ? {}
+          : { externalId: command.payload.externalId }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -3706,7 +3750,7 @@ export const executeWave2Command = (
           occurredAt,
         },
         { [record.id]: record.version },
-        ["name", "organizationId", "role", "email"],
+        ["name", "organizationId", "role", "email", "externalId"],
         {
           diagnosticCode: "strategic.record_changed",
           projection: {
@@ -3743,6 +3787,32 @@ export const executeWave2Command = (
         )
           return precondition(command, occurredAt);
       }
+      // Provenance is stamped once. An update may add a source key to a record
+      // that predates the field — that is how an existing graph gets stamped —
+      // but naming a different one is refused, because a key that can change
+      // silently re-points a record at a different source row and provenance
+      // that can be rewritten is not provenance. Claiming a key another record
+      // in this Space already holds is refused the same way a create is, so the
+      // two paths cannot disagree about who owns a key.
+      if (command.payload.externalId !== undefined) {
+        if (
+          current.externalId !== undefined &&
+          current.externalId !== command.payload.externalId
+        )
+          return precondition(command, occurredAt);
+        const claimed = transaction.findStrategicRecordByExternalId(
+          current.workspaceId,
+          current.spaceId,
+          "person",
+          command.payload.externalId,
+        );
+        if (claimed !== undefined && claimed.id !== current.id)
+          return outcome(command, occurredAt, {
+            outcome: "conflict",
+            diagnosticCode: "record.already_exists",
+            currentVersions: { [claimed.id]: claimed.version },
+          });
+      }
       const record = updatePersonDetails(
         current,
         {
@@ -3758,6 +3828,9 @@ export const executeWave2Command = (
           ...(command.payload.email === undefined
             ? {}
             : { email: command.payload.email }),
+          ...(command.payload.externalId === undefined
+            ? {}
+            : { externalId: command.payload.externalId }),
         },
         occurredAt,
       );
@@ -3801,6 +3874,27 @@ export const executeWave2Command = (
       const expected = { [current.id]: current.version };
       if (!exactExpected(command, expected))
         return versionConflict(command, occurredAt, expected);
+      // See `relationship.personUpdate` above — set once, never rewritten,
+      // never claimed away from another record.
+      if (command.payload.externalId !== undefined) {
+        if (
+          current.externalId !== undefined &&
+          current.externalId !== command.payload.externalId
+        )
+          return precondition(command, occurredAt);
+        const claimed = transaction.findStrategicRecordByExternalId(
+          current.workspaceId,
+          current.spaceId,
+          "organization",
+          command.payload.externalId,
+        );
+        if (claimed !== undefined && claimed.id !== current.id)
+          return outcome(command, occurredAt, {
+            outcome: "conflict",
+            diagnosticCode: "record.already_exists",
+            currentVersions: { [claimed.id]: claimed.version },
+          });
+      }
       const record = updateOrganizationDetails(
         current,
         {
@@ -3813,6 +3907,9 @@ export const executeWave2Command = (
           ...(command.payload.nextAction === undefined
             ? {}
             : { nextAction: command.payload.nextAction }),
+          ...(command.payload.externalId === undefined
+            ? {}
+            : { externalId: command.payload.externalId }),
         },
         occurredAt,
       );
