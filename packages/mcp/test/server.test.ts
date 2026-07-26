@@ -484,6 +484,15 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     assert.ok(catalog.guidance["command"]?.includes("expectedVersions"));
     assert.ok(catalog.guidance["command"]?.includes("idempotency.key_reused"));
     assert.ok(catalog.guidance["query"]?.includes("spaceIds"));
+    // External evidence (2026-07-26): a migration agent looked for a
+    // person.list that does not exist, used search.global as an inventory,
+    // and wrote duplicates it could not then find. The guidance has to name
+    // the set-level read and the two creates that accept any name.
+    assert.ok(catalog.guidance["query"]?.includes("person.list"));
+    assert.ok(catalog.guidance["query"]?.includes("relationship.workspace"));
+    assert.ok(
+      catalog.guidance["command"]?.includes("relationship.personCreate"),
+    );
     // A payload runId that does not name the calling run is a field defect;
     // the guidance has to name the field, because the outcome cannot.
     assert.ok(

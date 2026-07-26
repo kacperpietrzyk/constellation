@@ -6,6 +6,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
+## [Unreleased]
+
+### Fixed
+
+- **Relacje and Praca came back.** 0.1.5 added the `project_serves_organization`
+  link type to the domain and to the command that writes it, but to neither
+  projection that reads one. Query results are parsed strictly, so a single such
+  link did not degrade a view — it faulted the whole answer, and
+  `relationship.workspace` and `work.overview` both stopped answering. In the
+  desktop that surfaced as "dane niedostępne" on two surfaces with nothing
+  naming the cause; over MCP it was `mcp.runtime_fault`. The link vocabulary is
+  now one shared shape that both readers and the writer use, so the two cannot
+  drift again. Nothing on disk needs repairing — the link simply becomes
+  readable.
+
+- **A withheld capability is now reported as one, whatever the target.** A
+  command whose capability was missing from the grant answered
+  `command.precondition_failed` whenever the target also happened not to exist,
+  because the branch gave up on resolving the target before the policy was ever
+  asked. Two consequences: an agent could not tell a missing permission from a
+  missing record, and the pair of codes leaked whether a record existed to a
+  caller with no capability to touch it — the existence oracle the merged
+  refusal exists to prevent. The policy is now consulted first. A refusal that
+  is genuinely about the Space or the record is still the same merged
+  `command.precondition_failed` it always was.
+
+- **A client links both ways.** `project.operationalOverview` reported no client
+  for a Project linked straight to an Organization, while the Organization
+  already listed that Project — so the question the link was added to answer
+  could only be asked from one end.
+
+### Added
+
+- **The evidence a Project rests on, and the person whose deal it is, can be
+  read.** Both were writable in 0.1.5 and appeared in no projection.
+  `project.operationalOverview` now returns `evidenceSources`, and the
+  opportunities on `organization.operationalOverview` carry `owner` by name.
+
+### Changed
+
+- **A Knowledge Source a Project rests on can no longer be removed while the
+  Project stands.** The guard that refuses to orphan a record was written before
+  Projects carried evidence and did not cover them. This applies to data already
+  on disk, so a Source that was deletable yesterday may refuse today with
+  `record.still_referenced` naming the Project — detach it there first. No user
+  action caused the change.
+
+- The MCP invocation guidance now states which query reads a whole set, that
+  `search.global` needs a term and truncates silently without folding Polish
+  diacritics, and that nothing refuses a duplicate person or organization by
+  name — so a re-runnable import has to derive its idempotency keys and record
+  ids from the source row. This moves `contractFingerprint`, which is the signal
+  a connected agent uses to notice the contract changed.
+
 ## [0.1.5] - 2026-07-25
 
 The first migration of a real client engagement into Constellation, run by an
