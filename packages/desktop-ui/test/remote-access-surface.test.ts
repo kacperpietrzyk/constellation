@@ -162,4 +162,21 @@ test("every local grant can be re-scoped, and a Hub grant still cannot", () => {
   );
   assert.match(hub, /zakres sprzed aktualizacji/u);
   assert.doesNotMatch(hub, /Zmień uprawnienia/u);
+  // `brakuje` governs the genitive, where one missing capability is
+  // "1 uprawnienia" — not the nominative "1 uprawnienie", and not the genitive
+  // plural "1 uprawnień" the row printed for every count.
+  assert.match(hub, /brakuje 1 uprawnienia tego poziomu/u);
+
+  // A revoked grant authorizes nothing, so it has nothing to catch up to. The
+  // clause sat outside the guard that withholds the actions, so the row named
+  // drift on a grant nobody can — or needs to — repair.
+  const revoked = surface(
+    grantRow({
+      status: "revoked",
+      scopeStatus: "behind_preset",
+      missingFromPreset: ["task.remove"],
+    }),
+  );
+  assert.doesNotMatch(revoked, /zakres sprzed aktualizacji/u);
+  assert.match(revoked, /Cofnięty/u);
 });

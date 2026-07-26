@@ -63,6 +63,17 @@ export const missingCapabilitiesNote = (count: number): string => {
 };
 
 /**
+ * The same count in the case `brakuje` governs. The genitive splits two ways,
+ * not the three of {@link missingCapabilitiesNote}: only 1 takes the genitive
+ * singular `uprawnienia`, every other count takes the genitive plural
+ * `uprawnień`. Borrowing the nominative split would print "brakuje 2
+ * uprawnienia", and the single hardcoded noun the grant row carried printed
+ * "brakuje 1 uprawnień".
+ */
+export const missingCapabilitiesClause = (count: number): string =>
+  `brakuje ${count} ${count === 1 ? "uprawnienia" : "uprawnień"}`;
+
+/**
  * Why saving is unavailable, or `undefined` when it is not. One string is both
  * the disabled condition and the sentence shown, so the button and the reason
  * cannot drift apart.
@@ -1141,8 +1152,13 @@ export const AccessSurface = ({
                         {grant.expiresAt
                           ? ` · wygasa ${new Intl.DateTimeFormat("pl", { dateStyle: "medium" }).format(new Date(grant.expiresAt))}`
                           : " · bez terminu"}
-                        {grant.scopeStatus === "behind_preset" &&
-                          ` · zakres sprzed aktualizacji: brakuje ${grant.missingFromPreset.length} uprawnień tego poziomu`}
+                        {/* Drift is a repair, and only an active grant can be
+                            repaired — a revoked or expired grant authorizes
+                            nothing, so naming its stale scope sends a person
+                            to fix a grant that is already closed. */}
+                        {grant.status === "active" &&
+                          grant.scopeStatus === "behind_preset" &&
+                          ` · zakres sprzed aktualizacji: ${missingCapabilitiesClause(grant.missingFromPreset.length)} tego poziomu`}
                       </small>
                     </div>
                     <span className={`access-state ${grant.status}`}>
