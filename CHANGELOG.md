@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
-## [Unreleased]
+## [0.1.7] - 2026-07-26
 
 Every fix in this release is the same shape: the kernel knew the right answer
 and the caller was handed the wrong **kind** of answer. A rule you broke came back
