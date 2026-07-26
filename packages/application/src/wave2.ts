@@ -11,6 +11,7 @@ import type { StrategicRecordProjectionSchema } from "@constellation/contracts";
 import {
   AuditReceiptIdSchema,
   CommandOutcomeSchema,
+  DEPENDENT_SAMPLE_LIMIT,
   DocumentIdSchema,
   EventIdSchema,
   OutboxEntryIdSchema,
@@ -1380,8 +1381,6 @@ const precondition = (
     diagnosticCode: "command.precondition_failed",
   });
 
-const BLOCKED_BY_LIMIT = 20;
-
 /**
  * The one refusal that names its cause. Every record here is inside the
  * target's own Space, and this branch is only reached after an authorization
@@ -1397,7 +1396,7 @@ const blocked = (
   outcome(command, occurredAt, {
     outcome: "rejected",
     diagnosticCode: "record.still_referenced",
-    blockedBy: dependents.slice(0, BLOCKED_BY_LIMIT),
+    blockedBy: dependents.slice(0, DEPENDENT_SAMPLE_LIMIT),
     blockedByCount: dependents.length,
   });
 
@@ -10681,10 +10680,12 @@ export const executeWave2Query = (
             // real size for the same reason: nothing in the domain bounds how
             // many records rest on one Source, and a silently truncated list
             // reads as the whole answer.
-            referencedBy: held.slice(0, BLOCKED_BY_LIMIT).map((reference) => ({
-              ...reference.blocking,
-              title: reference.title,
-            })),
+            referencedBy: held
+              .slice(0, DEPENDENT_SAMPLE_LIMIT)
+              .map((reference) => ({
+                ...reference.blocking,
+                title: reference.title,
+              })),
             referencedByCount: held.length,
             version: source.version,
             updatedAt: source.updatedAt,

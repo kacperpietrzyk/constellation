@@ -44,7 +44,11 @@ import {
 } from "./execution-context.js";
 import { ImportedMeetingSchema } from "./meeting-loop.js";
 import { NeedsReviewSchema } from "./narrative.js";
-import { RecordKindSchema, StrategicRecordTypeSchema } from "./outcome.js";
+import {
+  DEPENDENT_SAMPLE_LIMIT,
+  RecordKindSchema,
+  StrategicRecordTypeSchema,
+} from "./outcome.js";
 import { GlobalSearchRecordKindSchema } from "./record-kind-registry.js";
 import {
   CheckpointRevertUnavailableReasonSchema,
@@ -1196,7 +1200,9 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
       // schema would make it pay for an answer it does not need.
       sources: z.array(
         KnowledgeSourceProjectionSchema.extend({
-          referencedBy: z.array(SourceReferenceSchema).max(20),
+          referencedBy: z
+            .array(SourceReferenceSchema)
+            .max(DEPENDENT_SAMPLE_LIMIT),
           referencedByCount: z.int().nonnegative(),
         }).strict(),
       ),

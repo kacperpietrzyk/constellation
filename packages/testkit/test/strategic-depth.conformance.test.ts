@@ -4709,3 +4709,104 @@ it("claims a source row for a delivery, and refuses to restore one whose key was
     [personId],
   );
 });
+
+/**
+ * The cap is stated twice — once as the array bound in the projection schema,
+ * once as the slice the kernel takes — and `querySuccess` parses strictly on
+ * the way out, so the two drifting apart would fault the whole read rather than
+ * degrade it. That is the shape of the outage this branch opened with, so the
+ * boundary is exercised rather than trusted: this fixture holds one more
+ * reference than the sample carries.
+ */
+it("cuts a Source's references to the sample the refusal uses, and states the real total", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  const sourceId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("cap-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Reference cap",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("cap-source"),
+        commandName: "knowledge.sourceCreate",
+        payload: {
+          sourceId,
+          spaceId: ids.space,
+          sourceKind: "excerpt" as const,
+          title: "Cytowane wszędzie",
+          availability: "available" as const,
+          observedAt: "2026-07-12T09:00:00.000Z",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const total = 21;
+  for (let index = 0; index < total; index += 1)
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(`cap-project-${index}`),
+          commandName: "project.create",
+          payload: {
+            projectId: uuid(),
+            spaceId: ids.space,
+            title: `Projekt ${index}`,
+            evidenceSourceIds: [sourceId],
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+
+  const listed = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "knowledge.list",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space },
+  });
+  if (
+    listed.kind !== "query_result" ||
+    listed.result.outcome !== "success" ||
+    listed.result.projection.kind !== "knowledge.list"
+  )
+    assert.fail("Expected the knowledge list.");
+  const source = listed.result.projection.sources.find(
+    (item) => item.id === sourceId,
+  );
+  assert.equal(source?.referencedBy.length, 20);
+  assert.equal(source?.referencedByCount, total);
+
+  // The refusal cuts to the same number and states the same total, because it
+  // is the same constant and the same enumeration.
+  const refused = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("cap-source-remove", { [sourceId]: 1 }),
+      commandName: "knowledge.sourceRemove",
+      payload: { sourceId },
+    }),
+  );
+  if (
+    refused.outcome !== "rejected" ||
+    refused.diagnosticCode !== "record.still_referenced"
+  )
+    assert.fail("Expected the removal to be refused.");
+  assert.equal(refused.blockedBy.length, source?.referencedBy.length);
+  assert.equal(refused.blockedByCount, total);
+});

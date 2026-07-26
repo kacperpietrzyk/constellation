@@ -498,6 +498,18 @@ test("serves a grant-filtered operation catalog generated from the contract", as
     assert.ok(catalog.guidance["command"]?.includes("externalId"));
     assert.ok(catalog.guidance["command"]?.includes("record.already_exists"));
     assert.ok(catalog.guidance["query"]?.includes("externalId"));
+    // The two kinds that take a source key and can never be stamped after the
+    // fact. Named because the outcome cannot say it: a create that omitted the
+    // field succeeds, and the absence only becomes a problem on the re-run.
+    assert.ok(catalog.guidance["command"]?.includes("opportunity.create"));
+    assert.ok(catalog.guidance["command"]?.includes("project.create"));
+    assert.ok(
+      catalog.guidance["command"]?.includes("stays unstamped for good"),
+    );
+    // The inverse of the removal guard, and the fact that makes it worth
+    // reading: an empty referencedBy is a Source the removal will accept.
+    assert.ok(catalog.guidance["query"]?.includes("referencedBy"));
+    assert.ok(catalog.guidance["query"]?.includes("referencedByCount"));
     // A payload runId that does not name the calling run is a field defect;
     // the guidance has to name the field, because the outcome cannot.
     assert.ok(
