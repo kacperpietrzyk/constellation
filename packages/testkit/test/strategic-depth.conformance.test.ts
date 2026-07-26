@@ -65,6 +65,7 @@ const context = (): ExecutionContext =>
       "opportunity.linkOutcomes",
       "relationship.workspace",
       "project.operationalOverview",
+      "organization.operationalOverview",
       "relationship.renewalCreate",
       "relationship.renewalResolve",
       "relationship.factCreate",
@@ -3532,6 +3533,53 @@ it("carries provenance, a client, a deal owner and a per-deal action", () => {
     );
   };
   assert.deepEqual(clientOf(), [organizationId]);
+
+  // The evidence a Project rests on reads back, so "which Projects rest on the
+  // note whose currency I doubt?" has an answer from the Project's end.
+  const overviewOf = () => {
+    const overview = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "project.operationalOverview",
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { projectId },
+    });
+    if (
+      overview.kind !== "query_result" ||
+      overview.result.outcome !== "success" ||
+      overview.result.projection.kind !== "project.operationalOverview"
+    )
+      assert.fail("Expected Project overview");
+    return overview.result.projection;
+  };
+  assert.deepEqual(
+    overviewOf().evidenceSources.map((source) => source.id),
+    [sourceId],
+  );
+
+  // The deal owner is projected where a client is actually read, and by name —
+  // an id alone would need a second query the caller may not be able to make.
+  const organizationOverview = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "organization.operationalOverview",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space, organizationId },
+  });
+  if (
+    organizationOverview.kind !== "query_result" ||
+    organizationOverview.result.outcome !== "success" ||
+    organizationOverview.result.projection.kind !==
+      "organization.operationalOverview"
+  )
+    assert.fail("Expected Organization overview");
+  const projectedDeal =
+    organizationOverview.result.projection.opportunities.find(
+      (candidate) => candidate.id === opportunityId,
+    );
+  assert.equal(projectedDeal?.owner?.id, ownerId);
 
   // And it lets go. This half is the one that catches a builder reading the
   // link without honouring `state`, which is the axis a work link is removed

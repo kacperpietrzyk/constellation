@@ -610,6 +610,23 @@ const ManagedAttachmentProjectionSchema = z
   })
   .strict();
 
+// The one shape a Knowledge Source is projected in. `knowledge.list` and the
+// evidence a Project rests on return the same fields, so they share the schema
+// rather than restating it — a second copy is how the work-link vocabulary came
+// to mean different things to a writer and a reader.
+const KnowledgeSourceProjectionSchema = z
+  .object({
+    id: KnowledgeSourceIdSchema,
+    sourceKind: z.enum(["url", "file", "screenshot", "excerpt"]),
+    title: z.string(),
+    canonicalUrl: z.string().optional(),
+    availability: z.enum(["reference_only", "available", "unavailable"]),
+    observedAt: z.iso.datetime({ offset: true }),
+    version: z.int().positive(),
+    updatedAt: z.iso.datetime({ offset: true }),
+  })
+  .strict();
+
 export const QueryProjectionSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -1100,24 +1117,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("knowledge.list"),
       spaceId: SpaceIdSchema,
-      sources: z.array(
-        z
-          .object({
-            id: KnowledgeSourceIdSchema,
-            sourceKind: z.enum(["url", "file", "screenshot", "excerpt"]),
-            title: z.string(),
-            canonicalUrl: z.string().optional(),
-            availability: z.enum([
-              "reference_only",
-              "available",
-              "unavailable",
-            ]),
-            observedAt: z.iso.datetime({ offset: true }),
-            version: z.int().positive(),
-            updatedAt: z.iso.datetime({ offset: true }),
-          })
-          .strict(),
-      ),
+      sources: z.array(KnowledgeSourceProjectionSchema),
       documents: z.array(
         z
           .object({
@@ -1478,6 +1478,11 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
           })
           .strict(),
       ),
+      // The Sources this Project rests on. `project.create` has accepted
+      // `evidenceSourceIds` since 0.1.5 and nothing projected them, so the
+      // question the field was added to answer — "which Projects rest on the
+      // note whose currency I doubt?" — could not be asked from either end.
+      evidenceSources: z.array(KnowledgeSourceProjectionSchema),
     })
     .strict(),
   z
@@ -1514,6 +1519,15 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             need: z.string(),
             stage: z.string(),
             nextAction: z.string(),
+            // Whose deal this is, as against who is merely named on it. The id
+            // has been writable since 0.1.5 but appeared in no projection a
+            // client is read through, so "show me this person's pipeline" had
+            // no reader. Absent means the distinction was never recorded, or
+            // the owner no longer resolves in this Space — never a dead id.
+            owner: z
+              .object({ id: StrategicRecordIdSchema, name: z.string() })
+              .strict()
+              .optional(),
             state: z.enum(["open", "pursued", "deferred", "rejected", "lost"]),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),

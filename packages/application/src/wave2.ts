@@ -10547,6 +10547,26 @@ export const executeWave2Query = (
           version: record.version,
           updatedAt: record.updatedAt,
         })),
+      // Resolved from the Project's own Space rather than from the id list
+      // alone, so a Source that has been removed, or that never belonged to
+      // this Space, is absent rather than projected as a dead id.
+      evidenceSources: view
+        .listKnowledgeSources(query.workspaceId, project.spaceId)
+        .filter((source) =>
+          project.evidenceSourceIds?.some((sourceId) => sourceId === source.id),
+        )
+        .map((source) => ({
+          id: source.id,
+          sourceKind: source.sourceKind,
+          title: source.title,
+          ...(source.canonicalUrl === undefined
+            ? {}
+            : { canonicalUrl: source.canonicalUrl }),
+          availability: source.availability,
+          observedAt: source.observedAt,
+          version: source.version,
+          updatedAt: source.updatedAt,
+        })),
     });
   }
   if (query.queryName === "organization.operationalOverview") {
@@ -10757,16 +10777,33 @@ export const executeWave2Query = (
         version: record.version,
         updatedAt: record.updatedAt,
       })),
-      opportunities: opportunities.slice(0, 100).map((record) => ({
-        id: record.id,
-        title: record.title,
-        need: record.need,
-        stage: record.stage,
-        nextAction: record.nextAction,
-        state: record.state,
-        version: record.version,
-        updatedAt: record.updatedAt,
-      })),
+      opportunities: opportunities.slice(0, 100).map((record) => {
+        // Resolved against every Person in the Space, not against this
+        // organization's own `people`: a deal can be owned by a colleague who
+        // is not a contact at the client, and looking the owner up in the
+        // client's contact list would silently drop exactly those.
+        const owner =
+          record.ownerPersonId === undefined
+            ? undefined
+            : strategicRecords.find(
+                (candidate) =>
+                  candidate.kind === "person" &&
+                  candidate.id === record.ownerPersonId,
+              );
+        return {
+          id: record.id,
+          title: record.title,
+          need: record.need,
+          stage: record.stage,
+          nextAction: record.nextAction,
+          ...(owner === undefined || owner.kind !== "person"
+            ? {}
+            : { owner: { id: owner.id, name: owner.name } }),
+          state: record.state,
+          version: record.version,
+          updatedAt: record.updatedAt,
+        };
+      }),
       offers: offers.slice(0, 100).map((record) => ({
         id: record.id,
         title: record.title,

@@ -217,6 +217,7 @@ const client = createScenarioClient({
       relatedDocuments: [],
       relatedDecisions: [],
       clientOrganizations: [],
+      evidenceSources: [],
     }),
     "document.linkCandidates": result({
       kind: "document.linkCandidates",
