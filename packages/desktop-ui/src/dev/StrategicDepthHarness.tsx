@@ -278,6 +278,8 @@ const snapshot: DesktopSnapshot = {
           title: "Warunki umowy",
           availability: "available",
           observedAt: timestamp,
+          referencedBy: [],
+          referencedByCount: 0,
           version: 1,
           updatedAt: timestamp,
         },

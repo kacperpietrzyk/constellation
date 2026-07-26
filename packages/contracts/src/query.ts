@@ -44,6 +44,7 @@ import {
 } from "./execution-context.js";
 import { ImportedMeetingSchema } from "./meeting-loop.js";
 import { NeedsReviewSchema } from "./narrative.js";
+import { RecordKindSchema, StrategicRecordTypeSchema } from "./outcome.js";
 import { GlobalSearchRecordKindSchema } from "./record-kind-registry.js";
 import {
   CheckpointRevertUnavailableReasonSchema,
@@ -664,6 +665,24 @@ const KnowledgeSourceProjectionSchema = z
   })
   .strict();
 
+/**
+ * One record that rests on a Knowledge Source. Deliberately the same vocabulary
+ * as `BlockingRecord`, plus a title: this is the inverse of the guard that
+ * refuses to remove a Source something still points at, and the two must name
+ * the same records. A caller reading "nothing references me" and then meeting
+ * `record.still_referenced` would have no way to find what it missed.
+ */
+const SourceReferenceSchema = z
+  .object({
+    recordId: z.uuid(),
+    recordKind: RecordKindSchema,
+    recordType: StrategicRecordTypeSchema.optional(),
+    // A relationship Fact has no title; its type is what a reader recognises
+    // it by, and its value is the claim rather than the label.
+    title: z.string(),
+  })
+  .strict();
+
 export const QueryProjectionSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -1168,7 +1187,17 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("knowledge.list"),
       spaceId: SpaceIdSchema,
-      sources: z.array(KnowledgeSourceProjectionSchema),
+      // Extended here rather than in the shared shape: `referencedBy` is the
+      // one field on a Source that costs a scan of the whole Space, and
+      // `project.operationalOverview` — the other reader of that shape —
+      // already knows the Project it is answering for. Widening the base
+      // schema would make it pay for an answer it does not need.
+      sources: z.array(
+        KnowledgeSourceProjectionSchema.extend({
+          referencedBy: z.array(SourceReferenceSchema).max(20),
+          referencedByCount: z.int().nonnegative(),
+        }).strict(),
+      ),
       documents: z.array(
         z
           .object({

@@ -1402,6 +1402,31 @@ const blocked = (
   });
 
 /**
+ * A record resting on a Knowledge Source, in the vocabulary the removal guard
+ * refuses in, plus the label a reader needs to act on it. The two travel
+ * together because they are computed together; only the projection carries the
+ * title, since `BlockingRecord` is strict.
+ */
+type SourceReference = {
+  readonly blocking: BlockingRecord;
+  readonly title: string;
+};
+
+/**
+ * What a strategic record is recognised by, for the kinds that can rest on a
+ * Source. A relationship Fact is the one with no title of its own: its type is
+ * what a reader recognises it by, where its value is the claim itself.
+ */
+const strategicRecordTitle = (record: StrategicRecord): string =>
+  "title" in record
+    ? record.title
+    : record.kind === "relationship_fact"
+      ? record.factType
+      : record.kind === "person" || record.kind === "organization"
+        ? record.name
+        : record.kind;
+
+/**
  * What still points at a Project, a Document or a Knowledge Source inside its
  * Space. Same rule as every other removal: refuse rather than orphan, and read
  * the filtered lists, so a reference held by an already-removed record is not
@@ -1486,48 +1511,88 @@ const tableRecordDependents = (
           recordKind: "namedDocumentVersion" as const,
         })),
     ];
-  return [
-    ...strategic
-      .filter((candidate) =>
-        "evidenceSourceIds" in candidate
-          ? candidate.evidenceSourceIds.some((sourceId) => sourceId === id)
-          : candidate.kind === "radar_candidate" && candidate.sourceId === id,
+  return (
+    knowledgeSourceReferences(view, workspaceId, spaceId).get(id) ?? []
+  ).map((reference) => reference.blocking);
+};
+
+/**
+ * What rests on each Knowledge Source in a Space, built in one pass.
+ *
+ * The guard above and `knowledge.list`'s `referencedBy` are the same question
+ * asked in two directions, so they read one enumeration. Two copies would let
+ * a Source report that nothing references it and then refuse to be removed —
+ * the reader would have no way to find what it missed — and the reach this
+ * project has already lost once (Projects, when `evidenceSourceIds` moved off
+ * strategic records) is exactly the kind a second copy drops.
+ *
+ * Four reaches, each on its own removal axis, read through the filtered lists
+ * so a reference held by an already-removed record does not count. A frozen
+ * named version is deliberately absent: it carries its own title and version
+ * because it is a snapshot of what was delivered, not a live binding, and
+ * answering "what rests on this note today" with one would be misleading.
+ */
+const knowledgeSourceReferences = (
+  view: ApplicationWave2ReadView,
+  workspaceId: WorkspaceId,
+  spaceId: SpaceId,
+): ReadonlyMap<string, readonly SourceReference[]> => {
+  const references = new Map<string, SourceReference[]>();
+  // One entry per referring record, not per mention: the guard this feeds
+  // counted records, and a Project that happened to list one Source twice must
+  // not read as two things blocking its removal.
+  const add = (sourceId: string, reference: SourceReference) => {
+    const held = references.get(sourceId);
+    if (held === undefined) references.set(sourceId, [reference]);
+    else if (
+      !held.some(
+        (existing) =>
+          existing.blocking.recordId === reference.blocking.recordId,
       )
-      .map((candidate) => ({
-        recordId: candidate.id,
-        recordKind: "strategicRecord" as const,
-        recordType: candidate.kind,
-      })),
-    ...view
-      .listDocuments(workspaceId, spaceId)
-      .filter((candidate) =>
-        candidate.evidence?.sourceIds.some((sourceId) => sourceId === id),
-      )
-      .map((candidate) => ({
-        recordId: candidate.id,
-        recordKind: "document" as const,
-      })),
-    ...view
-      .listTasksInSpace(workspaceId, spaceId)
-      .filter((task) =>
-        task.attachmentSourceIds?.some((sourceId) => sourceId === id),
-      )
-      .map((task) => ({ recordId: task.id, recordKind: "task" as const })),
-    // Projects carry evidence too, since 0.1.5. They were missed when this
-    // guard was written because `evidenceSourceIds` was a strategic-record
-    // field then and a Project is not a strategic record — so a Source a
-    // Project rested on could be removed out from under it, which is the one
-    // thing this guard exists to prevent.
-    ...view
-      .listProjects(workspaceId, spaceId)
-      .filter((project) =>
-        project.evidenceSourceIds?.some((sourceId) => sourceId === id),
-      )
-      .map((project) => ({
-        recordId: project.id,
-        recordKind: "project" as const,
-      })),
-  ];
+    )
+      held.push(reference);
+  };
+  for (const candidate of view.listStrategicRecords(workspaceId, spaceId)) {
+    const sourceIds =
+      "evidenceSourceIds" in candidate
+        ? candidate.evidenceSourceIds
+        : candidate.kind === "radar_candidate"
+          ? [candidate.sourceId]
+          : [];
+    for (const sourceId of sourceIds)
+      add(sourceId, {
+        blocking: {
+          recordId: candidate.id,
+          recordKind: "strategicRecord",
+          recordType: candidate.kind,
+        },
+        title: strategicRecordTitle(candidate),
+      });
+  }
+  for (const candidate of view.listDocuments(workspaceId, spaceId))
+    for (const sourceId of candidate.evidence?.sourceIds ?? [])
+      add(sourceId, {
+        blocking: { recordId: candidate.id, recordKind: "document" },
+        title: candidate.title,
+      });
+  for (const task of view.listTasksInSpace(workspaceId, spaceId))
+    for (const sourceId of task.attachmentSourceIds ?? [])
+      add(sourceId, {
+        blocking: { recordId: task.id, recordKind: "task" },
+        title: task.title,
+      });
+  // Projects carry evidence too, since 0.1.5. They were missed when the guard
+  // was written because `evidenceSourceIds` was a strategic-record field then
+  // and a Project is not a strategic record — so a Source a Project rested on
+  // could be removed out from under it, which is the one thing it exists to
+  // prevent.
+  for (const project of view.listProjects(workspaceId, spaceId))
+    for (const sourceId of project.evidenceSourceIds ?? [])
+      add(sourceId, {
+        blocking: { recordId: project.id, recordKind: "project" },
+        title: project.title,
+      });
+  return references;
 };
 
 /**
@@ -10476,6 +10541,13 @@ export const executeWave2Query = (
       query.workspaceId,
       query.parameters.spaceId,
     );
+    // Once for the Space, not once per Source: this is the only field on this
+    // query whose cost grows with how much the Space holds.
+    const references = knowledgeSourceReferences(
+      view,
+      query.workspaceId,
+      query.parameters.spaceId,
+    );
     const currentVersion = (kind: "source" | "note", recordId: string) =>
       kind === "source"
         ? view.getKnowledgeSource(recordId as never)?.version
@@ -10485,18 +10557,30 @@ export const executeWave2Query = (
       spaceId: query.parameters.spaceId,
       sources: view
         .listKnowledgeSources(query.workspaceId, query.parameters.spaceId)
-        .map((source) => ({
-          id: source.id,
-          sourceKind: source.sourceKind,
-          title: source.title,
-          ...(source.canonicalUrl === undefined
-            ? {}
-            : { canonicalUrl: source.canonicalUrl }),
-          availability: source.availability,
-          observedAt: source.observedAt,
-          version: source.version,
-          updatedAt: source.updatedAt,
-        })),
+        .map((source) => {
+          const held = references.get(source.id) ?? [];
+          return {
+            id: source.id,
+            sourceKind: source.sourceKind,
+            title: source.title,
+            ...(source.canonicalUrl === undefined
+              ? {}
+              : { canonicalUrl: source.canonicalUrl }),
+            availability: source.availability,
+            observedAt: source.observedAt,
+            // Capped at the same 20 the refusal samples, and paired with the
+            // real size for the same reason: nothing in the domain bounds how
+            // many records rest on one Source, and a silently truncated list
+            // reads as the whole answer.
+            referencedBy: held.slice(0, BLOCKED_BY_LIMIT).map((reference) => ({
+              ...reference.blocking,
+              title: reference.title,
+            })),
+            referencedByCount: held.length,
+            version: source.version,
+            updatedAt: source.updatedAt,
+          };
+        }),
       documents: view
         .listDocuments(query.workspaceId, query.parameters.spaceId)
         .map((document) => {

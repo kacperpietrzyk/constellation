@@ -118,6 +118,9 @@ const context = (): ExecutionContext =>
       "search.global",
       "activity.meaningful",
       "workspace.exportScoped",
+      "knowledge.list",
+      "capture.submit",
+      "capture.process",
     ],
     origin: "desktop",
   });
@@ -4155,4 +4158,253 @@ it("unstamps a record when the update that stamped it is undone", () => {
     ).outcome,
     "success",
   );
+});
+
+it("names every record that rests on a Source, and names the same ones the refusal does", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  const organizationId = uuid();
+  const opportunityId = uuid();
+  const projectId = uuid();
+  const documentId = uuid();
+  const taskId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("refs-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Evidence graph",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  // Routed from a managed Capture rather than declared, because the Task reach
+  // is the one that will not take any other kind: `task.updateDetails` accepts
+  // an attachment only when the Source is backed by a managed file.
+  const submitted = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("refs-capture"),
+      commandName: "capture.submit",
+      payload: {
+        spaceId: ids.space,
+        original: {
+          kind: "managed_file" as const,
+          payload: {
+            payloadId: uuid(),
+            displayName: "protokol.pdf",
+            mediaType: "application/pdf",
+            byteLength: 2048,
+            contentSha256: "cd".repeat(32),
+            custodyState: "available" as const,
+          },
+        },
+        deviceId: "refs-device",
+        source: "in_app_quick_capture" as const,
+      },
+    }),
+  );
+  if (
+    submitted.outcome !== "success" ||
+    submitted.projection.kind !== "capture.stored"
+  )
+    assert.fail("Expected a managed Capture.");
+  const routed = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("refs-route", {
+        [submitted.projection.captureId]: submitted.projection.version,
+      }),
+      commandName: "capture.process",
+      payload: {
+        captureId: submitted.projection.captureId,
+        destination: "knowledge_source",
+      },
+    }),
+  );
+  if (
+    routed.outcome !== "success" ||
+    routed.projection.kind !== "capture.routed_as_knowledge_source"
+  )
+    assert.fail("Expected a file Knowledge Source.");
+  const sourceId = routed.projection.sourceId;
+  for (const command of [
+    {
+      ...metadata("refs-organization"),
+      commandName: "relationship.organizationCreate" as const,
+      payload: {
+        organizationId,
+        spaceId: ids.space,
+        name: "Klient",
+        relationshipState: "active" as const,
+      },
+    },
+    // One reference from each reach the guard reads. All four have to appear,
+    // and the fixture is built so that dropping any single arm changes the
+    // answer — a shared record would let the assertion pass on someone else's
+    // reference.
+    {
+      ...metadata("refs-opportunity"),
+      commandName: "opportunity.create" as const,
+      payload: {
+        opportunityId,
+        spaceId: ids.space,
+        title: "Odnowienie",
+        organizationId,
+        personIds: [],
+        need: "Licencja wygasa.",
+        qualification: "Budżet potwierdzony.",
+        stage: "qualified",
+        nextAction: "Wyślij ofertę.",
+        evidenceSourceIds: [sourceId],
+      },
+    },
+    {
+      ...metadata("refs-project"),
+      commandName: "project.create" as const,
+      payload: {
+        projectId,
+        spaceId: ids.space,
+        title: "Wdrożenie",
+        intendedOutcome: "Działający pilotaż.",
+        evidenceSourceIds: [sourceId],
+      },
+    },
+    {
+      ...metadata("refs-document"),
+      commandName: "document.create" as const,
+      payload: {
+        documentId,
+        spaceId: ids.space,
+        title: "Notatka z ustaleń",
+        role: "note" as const,
+      },
+    },
+    {
+      ...metadata("refs-document-evidence", {
+        [documentId]: 1,
+        [sourceId]: 1,
+      }),
+      commandName: "knowledge.documentSetEvidence" as const,
+      payload: { documentId, sourceIds: [sourceId], noteDocumentIds: [] },
+    },
+    {
+      ...metadata("refs-task"),
+      commandName: "task.create" as const,
+      payload: { taskId, spaceId: ids.space, title: "Sprawdź rozbieżność" },
+    },
+    {
+      ...metadata("refs-task-attachment", { [taskId]: 1, [sourceId]: 1 }),
+      commandName: "task.updateDetails" as const,
+      payload: { taskId, attachmentSourceIds: [sourceId] },
+    },
+  ]) {
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), command)).outcome,
+      "success",
+      command.commandName,
+    );
+  }
+
+  const listed = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "knowledge.list",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space },
+  });
+  if (
+    listed.kind !== "query_result" ||
+    listed.result.outcome !== "success" ||
+    listed.result.projection.kind !== "knowledge.list"
+  )
+    assert.fail("Expected the knowledge list.");
+  const source = listed.result.projection.sources.find(
+    (item) => item.id === sourceId,
+  );
+  assert.equal(source?.referencedByCount, 4);
+  assert.deepEqual(
+    source?.referencedBy.map((reference) => [
+      reference.recordKind,
+      reference.recordId,
+      reference.title,
+    ]),
+    [
+      ["strategicRecord", opportunityId, "Odnowienie"],
+      ["document", documentId, "Notatka z ustaleń"],
+      ["task", taskId, "Sprawdź rozbieżność"],
+      ["project", projectId, "Wdrożenie"],
+    ],
+  );
+  assert.equal(source?.referencedBy[0]?.recordType, "opportunity");
+
+  // The point of the field, and the reason it is not a second enumeration: a
+  // reader told "nothing references me" and then met `record.still_referenced`
+  // would have no way to find what it missed. This assertion holds by
+  // construction while the guard delegates to the same helper — which is what
+  // it is here to pin. The list above is what proves the helper right; this is
+  // what catches someone re-inlining a second, divergent enumeration.
+  const refused = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("refs-source-remove", { [sourceId]: 1 }),
+      commandName: "knowledge.sourceRemove",
+      payload: { sourceId },
+    }),
+  );
+  if (
+    refused.outcome !== "rejected" ||
+    refused.diagnosticCode !== "record.still_referenced"
+  )
+    assert.fail("Expected the removal to be refused.");
+  assert.equal(refused.blockedByCount, source?.referencedByCount);
+  assert.deepEqual(
+    refused.blockedBy.map((blocker) => blocker.recordId),
+    source?.referencedBy.map((reference) => reference.recordId),
+  );
+
+  // A Source nothing rests on says so, rather than omitting the field: absent
+  // and empty would be the same statement, and only one of them is true.
+  const freeSourceId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("refs-free-source"),
+        commandName: "knowledge.sourceCreate",
+        payload: {
+          sourceId: freeSourceId,
+          spaceId: ids.space,
+          sourceKind: "url" as const,
+          title: "Nieużywane",
+          canonicalUrl: "https://example.invalid/nieuzywane",
+          availability: "available" as const,
+          observedAt: "2026-07-12T09:00:00.000Z",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const reread = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "knowledge.list",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space },
+  });
+  if (
+    reread.kind !== "query_result" ||
+    reread.result.outcome !== "success" ||
+    reread.result.projection.kind !== "knowledge.list"
+  )
+    assert.fail("Expected the knowledge list.");
+  const free = reread.result.projection.sources.find(
+    (item) => item.id === freeSourceId,
+  );
+  assert.deepEqual(free?.referencedBy, []);
+  assert.equal(free?.referencedByCount, 0);
 });
