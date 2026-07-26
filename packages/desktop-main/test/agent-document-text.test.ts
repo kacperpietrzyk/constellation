@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 
 import {
@@ -10,6 +11,7 @@ import {
 import {
   MAX_DOCUMENT_TEXT_LENGTH,
   YjsRealtimeDocumentAdapter,
+  createRichDocumentSeed,
 } from "@constellation/realtime-documents";
 import { ABSENT_CONTENT_STATE_VECTOR_SHA256 } from "@constellation/realtime-documents/agent-content";
 import type { SqliteApplicationStore } from "@constellation/local-store";
@@ -663,24 +665,21 @@ describe("agent document text port", () => {
     assert.equal(empty?.contentState, "absent");
     assert.equal(empty?.contentOrigin, "absent");
 
-    // Exactly what a human's first open leaves behind: the seed, materialised,
-    // and nothing else. The body is real and the Project is still untouched.
-    const seeded = subject.replaceStructured({
-      ...address,
-      content: {
-        schemaVersion: 1,
-        type: "doc",
-        content: [
-          { type: "paragraph", content: [{ type: "text", text: seed.text }] },
-        ],
-      },
-      expectedStateVectorSha256: empty!.stateVectorSha256,
-      idempotencyKey: "origin-seed",
-      principalId: "42000000-0000-4000-8000-000000000004",
-      runId: "42000000-0000-4000-8000-000000000005",
-      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
+    // Materialised the way the field case was: not by an agent write, but by
+    // the desktop open path, through the exact call it makes. This is the only
+    // form of the assertion worth having — the signal is a structural
+    // comparison against what the seed alone produces, so it is only correct
+    // while the open path and the agent baseline build the same document. Pin
+    // them together here and a drift in either fails this test rather than
+    // silently reporting somebody's work as safe to overwrite.
+    fake.store.storeCollaborativeContentState({
+      state: createRichDocumentSeed(
+        seed.text,
+        createHash("sha256").update(seed.text).digest("hex"),
+        { kind: "human", principalId: seed.principalId },
+      ),
+      updatedAt: "2026-07-26T09:00:00.000Z",
     });
-    assert.equal(seeded.outcome, "success", JSON.stringify(seeded));
     const afterSeed = subject.readStructured(address);
     // The distinction the old read could not carry: same contentState, and a
     // different answer to the question that decides whether to write.
