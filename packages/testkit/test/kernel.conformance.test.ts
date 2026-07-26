@@ -1722,9 +1722,26 @@ describe("reference kernel conformance", () => {
     const before = routeCounts(harness);
     const missingCaptureId = "00000000-0000-4000-8000-000000000099";
 
+    // This principal needs a grant of its OWN. `context(ids.otherPrincipal)`
+    // keeps the first principal's `credentialId` and `grantId`, and every
+    // authorization policy — the two real ones as well as the testkit's —
+    // refuses a context whose principal does not match the grant it presents,
+    // before it ever looks at a Space. So the case was refused for grant
+    // incoherence rather than for the missing membership its name claims, and
+    // it only read as a precondition because nothing downstream was consulted.
+    // Both production policies derive the trusted context from the credential
+    // the caller presented, so no caller can construct that divergence: the
+    // fixture was testing a state the runtime cannot reach. With a real grant
+    // it tests what it says — a principal the workspace has no membership for.
+    const noMembershipContext = ExecutionContextSchema.parse({
+      ...context(ids.otherPrincipal),
+      credentialId: "00000000-0000-4000-8000-00000000009a",
+      grantId: "00000000-0000-4000-8000-00000000009b",
+    });
+    harness.authorization.register(noMembershipContext);
     const noMembership = unwrapOutcome(
       harness.kernel.execute(
-        context(ids.otherPrincipal),
+        noMembershipContext,
         routeCommand(captureId, "route-no-membership", "Denied Task"),
       ),
     );
@@ -1765,7 +1782,9 @@ describe("reference kernel conformance", () => {
     // has an existence oracle for records outside its scope. They report a
     // precondition rather than a denial because the grant carried the
     // capability in every one of them — `authorization.denied` is reserved for
-    // a refusal the grant itself caused.
+    // a refusal the grant itself caused. That "in every one of them" is the
+    // load-bearing half and it is why each context here holds a coherent grant:
+    // the case below covers the other side, which these four cannot reach.
     for (const outcome of [
       noMembership,
       missing,
@@ -1791,6 +1810,44 @@ describe("reference kernel conformance", () => {
     assert.equal(deniedList.result.outcome, "rejected");
     if (deniedList.result.outcome === "rejected") {
       assert.equal(deniedList.result.diagnosticCode, "authorization.denied");
+    }
+  });
+
+  it("denies a withheld capture capability whether or not the Capture exists", () => {
+    // The mirror of the four-way case above, and the half it structurally
+    // cannot test: there every context HELD the capability, so all four had to
+    // agree on a precondition. Here the capability is withheld, so both have to
+    // agree on a denial — including the one whose target does not exist. The
+    // kernel decides a denial by re-asking the capabilities it actually
+    // consulted, so a branch that refused before consulting any would report a
+    // precondition for the missing target and a denial for the real one, and
+    // the pair would name records the caller cannot see. `capture.*` resolves
+    // its Space from the Capture, so its consult can only ever be the
+    // grant-level one — which is the only question the caller is owed.
+    const harness = bootstrappedHarness();
+    const captureId = submitCaptureAndGetId(
+      harness,
+      "withheld-route-source",
+      "Withheld routing source",
+    );
+    const withheld = ExecutionContextSchema.parse({
+      ...context(),
+      credentialId: "00000000-0000-4000-8000-00000000009c",
+      grantId: "00000000-0000-4000-8000-00000000009d",
+      capabilityScope: context().capabilityScope.filter(
+        (capability) => capability !== "capture.routeAsTask",
+      ),
+    });
+    harness.authorization.register(withheld);
+    for (const [key, target] of [
+      ["withheld-present", captureId],
+      ["withheld-absent", "00000000-0000-4000-8000-00000000009e"],
+    ] as const) {
+      const refused = unwrapOutcome(
+        harness.kernel.execute(withheld, routeCommand(target, key, "Denied")),
+      );
+      assert.equal(refused.outcome, "rejected");
+      assert.equal(refused.diagnosticCode, "authorization.denied", key);
     }
   });
 

@@ -862,10 +862,22 @@ export const isWave2CommandAuthorized = (
       );
     }
     case "record.setFieldValue": {
-      const record =
-        command.payload.targetKind === "task"
-          ? view.getTask(TaskIdSchema.parse(command.payload.recordId))
-          : view.getProject(ProjectIdSchema.parse(command.payload.recordId));
+      // `safeParse`, not `parse`, and the reason is the blast radius rather
+      // than a live bug: the envelope already validates `recordId` as a uuid
+      // and both id schemas are branded uuids, so nothing that reaches here can
+      // fail today. But `.parse` throws, this runs inside `store.transact`, and
+      // the executor converts only `RetryableUnitOfWorkError` — so the day that
+      // payload field is widened, this arm stops rejecting and starts throwing
+      // out of the kernel. A miss is indistinguishable from a record that is
+      // not there, which is what the caller should have been told anyway.
+      const record = ((): Task | Project | undefined => {
+        if (command.payload.targetKind === "task") {
+          const id = TaskIdSchema.safeParse(command.payload.recordId);
+          return id.success ? view.getTask(id.data) : undefined;
+        }
+        const id = ProjectIdSchema.safeParse(command.payload.recordId);
+        return id.success ? view.getProject(id.data) : undefined;
+      })();
       return authorized(
         dependencies,
         view,
@@ -905,15 +917,22 @@ export const isWave2CommandAuthorized = (
         record?.workspaceId === command.workspaceId
           ? record.spaceId
           : undefined;
+      // The policy goes first here for the same reason it does in the shared
+      // helper above: a branch that refuses before consulting it consults
+      // nothing, and the kernel reads "nothing consulted" as "nothing refused",
+      // so a caller whose grant never carried the capability is told to fix a
+      // target instead. Narrower than the helper's case — these arms resolve
+      // records the caller can already read — so what it buys is the honest
+      // answer, not a closed disclosure. The two arms below follow this one.
       return (
-        spaceId !== undefined &&
-        canCommentInSpace(view, context, command.workspaceId, spaceId) &&
         dependencies.authorization.authorize({
           context,
           capability: command.commandName,
           workspaceId: command.workspaceId,
-          spaceId,
-        })
+          ...(spaceId === undefined ? {} : { spaceId }),
+        }) &&
+        spaceId !== undefined &&
+        canCommentInSpace(view, context, command.workspaceId, spaceId)
       );
     }
     case "comment.edit":
@@ -924,34 +943,43 @@ export const isWave2CommandAuthorized = (
         comment?.workspaceId === command.workspaceId
           ? comment.spaceId
           : undefined;
+      // The existing ternary is moved up as-is, never re-derived from the
+      // command name: `comment.reopen` is itself a capability, and probing for
+      // it would newly refuse a grant that holds `comment.resolve` without it.
+      const capability =
+        command.commandName === "comment.resolve" ||
+        command.commandName === "comment.reopen"
+          ? "comment.resolve"
+          : "comment.edit";
       return (
-        spaceId !== undefined &&
-        canCommentInSpace(view, context, command.workspaceId, spaceId) &&
         dependencies.authorization.authorize({
           context,
-          capability:
-            command.commandName === "comment.resolve" ||
-            command.commandName === "comment.reopen"
-              ? "comment.resolve"
-              : "comment.edit",
+          capability,
           workspaceId: command.workspaceId,
-          spaceId,
-        })
+          ...(spaceId === undefined ? {} : { spaceId }),
+        }) &&
+        spaceId !== undefined &&
+        canCommentInSpace(view, context, command.workspaceId, spaceId)
       );
     }
     case "attention.markRead":
     case "attention.dismiss": {
       const signal = view.getAttentionSignal(command.payload.attentionSignalId);
+      // Same ordering as the comment arms above, and the same reason.
+      const spaceId =
+        signal?.workspaceId === command.workspaceId
+          ? signal.spaceId
+          : undefined;
       return (
-        signal?.workspaceId === command.workspaceId &&
-        signal.targetPrincipalId === context.principalId &&
-        canViewSpace(view, context, command.workspaceId, signal.spaceId) &&
         dependencies.authorization.authorize({
           context,
           capability: command.commandName,
           workspaceId: command.workspaceId,
-          spaceId: signal.spaceId,
-        })
+          ...(spaceId === undefined ? {} : { spaceId }),
+        }) &&
+        signal?.workspaceId === command.workspaceId &&
+        signal.targetPrincipalId === context.principalId &&
+        canViewSpace(view, context, command.workspaceId, signal.spaceId)
       );
     }
     case "record.relate": {
@@ -6199,12 +6227,16 @@ export const executeWave2Command = (
     }
     case "record.setFieldValue": {
       const targetKind = command.payload.targetKind;
-      const record =
-        targetKind === "task"
-          ? transaction.getTask(TaskIdSchema.parse(command.payload.recordId))
-          : transaction.getProject(
-              ProjectIdSchema.parse(command.payload.recordId),
-            );
+      // `safeParse` for the reason given on the authorization arm; the miss
+      // falls into the `record === undefined` precondition just below.
+      const record = ((): Task | Project | undefined => {
+        if (targetKind === "task") {
+          const id = TaskIdSchema.safeParse(command.payload.recordId);
+          return id.success ? transaction.getTask(id.data) : undefined;
+        }
+        const id = ProjectIdSchema.safeParse(command.payload.recordId);
+        return id.success ? transaction.getProject(id.data) : undefined;
+      })();
       const definition = transaction.getFieldDefinition(
         command.payload.fieldId,
       );
