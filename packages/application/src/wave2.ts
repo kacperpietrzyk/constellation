@@ -4939,6 +4939,23 @@ export const executeWave2Command = (
         )
       )
         return precondition(command, occurredAt);
+      // The same claim the strategic creates make, against the Projects table
+      // rather than the strategic one: one key per Space, and the refusal names
+      // the delivery already holding it. There is no project update command
+      // that takes the field, so a Project can only be stamped at import.
+      if (command.payload.externalId !== undefined) {
+        const claimed = transaction.findProjectByExternalId(
+          command.workspaceId,
+          command.payload.spaceId,
+          command.payload.externalId,
+        );
+        if (claimed !== undefined)
+          return outcome(command, occurredAt, {
+            outcome: "conflict",
+            diagnosticCode: "record.already_exists",
+            currentVersions: { [claimed.id]: claimed.version },
+          });
+      }
       const project = createProject({
         id: projectId,
         workspaceId: command.workspaceId,
@@ -4950,6 +4967,9 @@ export const executeWave2Command = (
         ...(command.payload.evidenceSourceIds === undefined
           ? {}
           : { evidenceSourceIds: command.payload.evidenceSourceIds }),
+        ...(command.payload.externalId === undefined
+          ? {}
+          : { externalId: command.payload.externalId }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -8492,6 +8512,31 @@ const descriptorState = (
           versions: {},
           reason: "later_change",
         };
+      // Putting a Project back is infeasible when a re-import claimed its
+      // source key while it was gone, for the reason the strategic restore
+      // gives above: two live records under one key, and a set-once rule that
+      // then refuses to repair either. Only restoring can hit it — undoing a
+      // create removes the record and frees the key rather than taking one.
+      if (
+        descriptor.kind === "record.restore_record_state" &&
+        descriptor.priorRecordState === "active" &&
+        descriptor.recordKind === "project" &&
+        "externalId" in record &&
+        record.externalId !== undefined
+      ) {
+        const claimed = view.findProjectByExternalId(
+          record.workspaceId,
+          record.spaceId,
+          record.externalId,
+        );
+        if (claimed !== undefined && claimed.id !== record.id)
+          return {
+            available: false,
+            recordIds: [],
+            versions: {},
+            reason: "still_referenced",
+          };
+      }
       const orphans =
         descriptor.kind === "record.undo_create" &&
         tableRecordDependents(view, record, descriptor.recordKind).filter(
@@ -9425,6 +9470,18 @@ const compensateDescriptor = (
       const project = transaction.getProject(
         ProjectIdSchema.parse(descriptor.recordId),
       )!;
+      // The matching refusal to the preview above: a re-import may have taken
+      // the source key while this Project was removed, and putting it back
+      // would leave two live deliveries holding one key.
+      if (recordState === "active" && project.externalId !== undefined) {
+        const claimed = transaction.findProjectByExternalId(
+          project.workspaceId,
+          project.spaceId,
+          project.externalId,
+        );
+        if (claimed !== undefined && claimed.id !== project.id)
+          return { ok: false };
+      }
       const restored: Project = {
         ...project,
         recordState,
@@ -10476,6 +10533,12 @@ export const executeWave2Query = (
           spaceId: project.spaceId,
           title: project.title,
           ...intendedOutcomeFields(project.intendedOutcome),
+          // The set-level read of deliveries, so it carries the key a re-run
+          // recognises what it already imported by — the same reason
+          // `person.list` and `organization.list` carry theirs.
+          ...(project.externalId === undefined
+            ? {}
+            : { externalId: project.externalId }),
           lifecycle: project.lifecycle,
           relatedOpenTaskCount: relations.filter(
             (relation) =>

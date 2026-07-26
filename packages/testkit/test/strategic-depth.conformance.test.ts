@@ -122,6 +122,7 @@ const context = (): ExecutionContext =>
       "capture.submit",
       "capture.process",
       "opportunity.remove",
+      "project.list",
     ],
     origin: "desktop",
   });
@@ -4556,5 +4557,155 @@ it("claims a source row for a deal, frees it on removal, and refuses to take it 
       .map((record) => record.id)
       .sort(),
     [organizationId, secondId].sort(),
+  );
+});
+
+/**
+ * The same walk for a Project, which is not a strategic record: its own table,
+ * its own finder, and a removal/restore family (`record.restore_record_state`)
+ * that shares no code with the strategic one. Every link of the chain is
+ * exercised because a key whose invariant only the create honours produces two
+ * live records under one key the first time an undo runs.
+ */
+it("claims a source row for a delivery, and refuses to restore one whose key was taken", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  const personId = uuid();
+  for (const command of [
+    {
+      ...metadata("delivery-key-bootstrap"),
+      commandName: "workspace.createLocal" as const,
+      payload: {
+        workspaceId: ids.workspace,
+        rootSpaceId: ids.space,
+        ownerPrincipalId: ids.principal,
+        name: "Delivery keys",
+        timezone: "Europe/Warsaw",
+      },
+    },
+    {
+      // A Person holding the same string, to pin the scope: a Project lives in
+      // its own table and comes from its own source system, so this is two
+      // rows from two places rather than a collision.
+      ...metadata("delivery-key-person"),
+      commandName: "relationship.personCreate" as const,
+      payload: {
+        personId,
+        spaceId: ids.space,
+        name: "Karina",
+        externalId: "folder:wdrozenie-2026",
+      },
+    },
+  ])
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), command)).outcome,
+      "success",
+      command.commandName,
+    );
+
+  const firstId = uuid();
+  const secondId = uuid();
+  const create = (projectId: string, key: string) =>
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(key),
+        commandName: "project.create",
+        payload: {
+          projectId,
+          spaceId: ids.space,
+          title: "Wdrożenie 2026",
+          intendedOutcome: "Działający pilotaż.",
+          externalId: "folder:wdrozenie-2026",
+        },
+      }),
+    );
+  assert.equal(create(firstId, "delivery-key-first").outcome, "success");
+
+  const duplicate = create(secondId, "delivery-key-duplicate");
+  if (
+    duplicate.outcome !== "conflict" ||
+    duplicate.diagnosticCode !== "record.already_exists"
+  )
+    assert.fail("Expected the claimed source row to be named.");
+  assert.deepEqual(duplicate.currentVersions, { [firstId]: 1 });
+
+  const removal = {
+    ...metadata("delivery-key-remove", { [firstId]: 1 }),
+    commandName: "project.remove" as const,
+    payload: { projectId: firstId },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), removal)).outcome,
+    "success",
+  );
+  assert.equal(create(secondId, "delivery-key-reimport").outcome, "success");
+
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("delivery-key-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: removal.commandId },
+    }),
+  );
+  if (
+    preview.outcome !== "preview" ||
+    preview.projection.kind !== "undo.previewed"
+  )
+    assert.fail("Expected an undo preview.");
+  assert.equal(preview.projection.available, false);
+  assert.equal(preview.projection.unavailableReason, "still_referenced");
+  assert.notEqual(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("delivery-key-undo", { [firstId]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: removal.commandId },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  // One active delivery for that key, and the set-level read carries it, so a
+  // migration recognises what it already imported without writing anything.
+  const listed = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "project.list",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space },
+  });
+  if (
+    listed.kind !== "query_result" ||
+    listed.result.outcome !== "success" ||
+    listed.result.projection.kind !== "project.list"
+  )
+    assert.fail("Expected the project list.");
+  assert.deepEqual(
+    listed.result.projection.items
+      .filter((item) => item.externalId === "folder:wdrozenie-2026")
+      .map((item) => item.id),
+    [secondId],
+  );
+  // And the Person keeping the same string is untouched by any of it.
+  const people = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "person.list",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space },
+  });
+  if (
+    people.kind !== "query_result" ||
+    people.result.outcome !== "success" ||
+    people.result.projection.kind !== "person.list"
+  )
+    assert.fail("Expected person.list");
+  assert.deepEqual(
+    people.result.projection.items
+      .filter((item) => item.externalId === "folder:wdrozenie-2026")
+      .map((item) => item.id),
+    [personId],
   );
 });

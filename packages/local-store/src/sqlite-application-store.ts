@@ -1843,6 +1843,31 @@ class SqliteReadView implements ApplicationWave2ReadView {
         });
   }
 
+  public findProjectByExternalId(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    externalId: string,
+  ): Project | undefined {
+    const row = this.database
+      .prepare(
+        // `IS NOT 'removed'`, not `!=`, for the reason spelled out on
+        // `listProjects` below: SQL `!=` against NULL is NULL, so a row written
+        // before removal existed would drop out of this lookup and let a
+        // duplicate through.
+        "SELECT id, payload_json FROM projects WHERE workspace_id = ? AND space_id = ? AND json_extract(payload_json, '$.externalId') = ? AND json_extract(payload_json, '$.recordState') IS NOT 'removed' ORDER BY id LIMIT 1",
+      )
+      .get(workspaceId, spaceId, externalId);
+    return row === undefined
+      ? undefined
+      : parsePayload<Project>(
+          row,
+          "id",
+          stringValue(row, "id", "project"),
+          "project",
+          { workspaceId, spaceId },
+        );
+  }
+
   public listProjects(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,

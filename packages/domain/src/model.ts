@@ -485,6 +485,15 @@ export interface Project {
    * rather than written empty.
    */
   readonly evidenceSourceIds?: readonly KnowledgeSourceId[];
+  /**
+   * The source row this delivery was imported from, on the same terms as a
+   * Person, an Organization and an Opportunity: absent means it was never
+   * imported, and it is unique per Space while present. Scoped to Projects
+   * alone rather than shared with the strategic kinds — a Project lives in its
+   * own table and comes from its own source system, so a Project and a Person
+   * holding one string is two rows from two places, not a collision.
+   */
+  readonly externalId?: string;
   readonly lifecycle: "active" | "closed";
   readonly closedAt?: string;
   readonly closedBy?: PrincipalId;

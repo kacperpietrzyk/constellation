@@ -291,6 +291,17 @@ export interface ApplicationWave2ReadView extends ApplicationReadView {
     kind: "person" | "organization" | "opportunity",
     externalId: string,
   ): StrategicRecord | undefined;
+  /**
+   * The same claim for a Project, which is not a strategic record and lives in
+   * its own table. There is no `kind` to scope by, and none is wanted: the
+   * scope is the Space and the fact that this is a Project, so a Project and a
+   * Person may hold one string without colliding.
+   */
+  findProjectByExternalId(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    externalId: string,
+  ): Project | undefined;
   getRelation(id: RelationId): TaskProjectRelation | undefined;
   /**
    * The active relation between a Task and the record it contributes to,
@@ -418,6 +429,7 @@ export const isApplicationWave2ReadView = (
   "getStrategicRecord" in view &&
   "listStrategicRecords" in view &&
   "findStrategicRecordByExternalId" in view &&
+  "findProjectByExternalId" in view &&
   "getRelation" in view &&
   "findTaskProjectRelation" in view &&
   "listRelations" in view &&

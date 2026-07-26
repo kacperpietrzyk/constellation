@@ -549,6 +549,7 @@ export const ProjectCreateCommandSchema = CommandMetadataSchema.extend({
       // rest on the note I now doubt" stopped being a question the graph could
       // answer.
       evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100).optional(),
+      externalId: ExternalIdSchema.optional(),
     })
     .strict(),
 }).strict();

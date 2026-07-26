@@ -535,6 +535,24 @@ class ReadView implements ApplicationReadView {
     return this.state.projects.get(id);
   }
 
+  public findProjectByExternalId(
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    externalId: string,
+  ): Project | undefined {
+    // Through the same `recordIsActive` choke point `listProjects` uses, so a
+    // removed Project does not keep its source key reserved — re-importing the
+    // row a removed delivery came from has to work. `getProject` stays
+    // unfiltered; undo has to find what it is putting back.
+    return [...this.state.projects.values()].find(
+      (project) =>
+        project.workspaceId === workspaceId &&
+        project.spaceId === spaceId &&
+        recordIsActive(project) &&
+        project.externalId === externalId,
+    );
+  }
+
   public listProjects(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,

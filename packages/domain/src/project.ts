@@ -15,6 +15,7 @@ export const createProject = (input: {
   readonly title: string;
   readonly intendedOutcome?: string;
   readonly evidenceSourceIds?: readonly KnowledgeSourceId[];
+  readonly externalId?: string;
   readonly createdBy: PrincipalId;
   readonly occurredAt: string;
 }): Project => ({
@@ -29,6 +30,7 @@ export const createProject = (input: {
   input.evidenceSourceIds.length === 0
     ? {}
     : { evidenceSourceIds: [...new Set(input.evidenceSourceIds)].sort() }),
+  ...(input.externalId === undefined ? {} : { externalId: input.externalId }),
   lifecycle: "active",
   createdBy: input.createdBy,
   version: 1,

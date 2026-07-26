@@ -1412,6 +1412,10 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             title: z.string(),
             intendedOutcome: z.string(),
             needsReview: NeedsReviewSchema,
+            // Looser than the command's bound, exactly as on the strategic
+            // arms: a projection that re-applied the write constraint would
+            // make an already-stored value unreadable the day it is tightened.
+            externalId: z.string().optional(),
             lifecycle: z.enum(["active", "closed"]),
             relatedOpenTaskCount: z.int().nonnegative(),
             version: z.int().positive(),
