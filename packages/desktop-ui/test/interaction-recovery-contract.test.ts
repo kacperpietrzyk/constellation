@@ -322,6 +322,48 @@ describe("interaction recovery contracts", () => {
     );
   });
 
+  it("lets a human link and detach a client from the Klient card", () => {
+    // The row has to be WIRED, not merely defined: it hangs off the Klient
+    // section as a footer and is rendered outside the list/empty branch,
+    // because linking the first client is exactly the empty state.
+    assert.match(projectContextSections, /footer: \(\s*<ClientLinkRow/);
+    assert.match(projectContextSections, /\{section\.footer\}/);
+    // A read that did not land and a Space with no organizations are different
+    // facts and must not share a sentence — the whole reason this branch
+    // exists is a surface that said "unavailable" without naming a cause.
+    assert.match(projectContextSections, /candidates === undefined \? \(/);
+    assert.match(projectContextSections, /Nie udało się wczytać organizacji/);
+    assert.match(
+      projectContextSections,
+      /Brak organizacji do połączenia w przestrzeni tego projektu/,
+    );
+    assert.match(projectContextSections, /className="project-context-actions"/);
+    assert.match(projectContextSections, /Wybierz klienta…/);
+    assert.match(projectContextSections, /Połącz klienta/);
+    assert.match(projectContextSections, /Odłącz „\{organization\.name\}”/);
+    // Two steps, in place, like every other destructive verb here.
+    assert.match(projectContextSections, /Potwierdź odłączenie/);
+    assert.match(projectContextSections, /Anuluj/);
+    // The confirm must keep saying that only the direct link goes: a client
+    // also reached through an opportunity or a meeting stays on the list, and
+    // a shorter sentence would make a working detach read as broken.
+    assert.match(
+      projectContextSections,
+      /Odłączenie usuwa tylko bezpośrednie powiązanie/,
+    );
+    // The row shares the accepted in-project action row rather than declaring
+    // a second geometry for the same shape.
+    assert.match(
+      styles,
+      /\.project-template-row,\s*\.project-context-actions\s*\{[^}]*display:\s*flex/s,
+    );
+    // RealApp resolves both kernel preconditions; the card stays presentational.
+    assert.match(realApp, /linkableClientOrganizations\(/);
+    assert.match(realApp, /directClientLinks\(/);
+    assert.match(realApp, /Klienta połączono z projektem\./);
+    assert.match(realApp, /Powiązanie z klientem usunięto\./);
+  });
+
   it("opens Organization as one restorable client context with real navigation", () => {
     for (const heading of [
       "Aktywna praca",

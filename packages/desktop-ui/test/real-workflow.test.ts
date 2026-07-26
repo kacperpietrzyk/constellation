@@ -8,6 +8,7 @@ import {
   DataHomeStatusSchema,
   DeviceIdSchema,
   LOCAL_ONLY_PROVIDER_ID,
+  PrincipalIdSchema,
   ProjectIdSchema,
   RelationIdSchema,
   SpaceIdSchema,
@@ -26,6 +27,9 @@ import {
   createProject,
   createSavedWorkView,
   createWorkLink,
+  directClientLinks,
+  linkProjectClient,
+  linkableClientOrganizations,
   loadDesktopSnapshot,
   loadOrganizationOverview,
   previewUndo,
@@ -35,10 +39,12 @@ import {
   setTaskOperationalState,
   setTaskStatus,
   undoCommand,
+  unlinkProjectClient,
   unrelateTask,
   updateAreaResponsibility,
   updateInitiativeOutcome,
   updateProjectOutcome,
+  type DesktopSnapshot,
 } from "../src/client/workflow.js";
 
 const workspaceId = WorkspaceIdSchema.parse(
@@ -65,6 +71,100 @@ const areaId = StrategicRecordIdSchema.parse(
 const initiativeId = StrategicRecordIdSchema.parse(
   "00000000-0000-4000-8000-000000000014",
 );
+const otherSpaceId = SpaceIdSchema.parse(
+  "00000000-0000-4000-8000-000000000015",
+);
+const linkId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-000000000016",
+);
+const detachedOrganizationId = StrategicRecordIdSchema.parse(
+  "00000000-0000-4000-8000-000000000017",
+);
+
+const strategicBase = {
+  workspaceId,
+  spaceId,
+  createdBy: PrincipalIdSchema.parse("00000000-0000-4000-8000-000000000003"),
+  createdAt: "2026-07-13T10:00:00.000Z",
+  updatedAt: "2026-07-13T10:00:00.000Z",
+} as const;
+
+// One `relationship.workspace` answer holding every case the Klient picker has
+// to get right: a client already linked, a client whose link was detached, an
+// organization in another Space, and two that are genuinely offerable.
+const readyRelationships: DesktopSnapshot["relationships"] = {
+  kind: "ready",
+  data: {
+    kind: "relationship.workspace",
+    records: [
+      {
+        ...strategicBase,
+        id: organizationId,
+        kind: "organization",
+        name: "Alfa",
+        relationshipState: "active",
+        version: 2,
+      },
+      {
+        ...strategicBase,
+        id: detachedOrganizationId,
+        kind: "organization",
+        name: "Dach",
+        relationshipState: "prospect",
+        version: 1,
+      },
+      {
+        ...strategicBase,
+        id: StrategicRecordIdSchema.parse(
+          "00000000-0000-4000-8000-000000000018",
+        ),
+        kind: "organization",
+        name: "Ćma",
+        relationshipState: "prospect",
+        version: 1,
+      },
+      {
+        ...strategicBase,
+        spaceId: otherSpaceId,
+        id: StrategicRecordIdSchema.parse(
+          "00000000-0000-4000-8000-000000000019",
+        ),
+        kind: "organization",
+        name: "Beta",
+        relationshipState: "active",
+        version: 1,
+      },
+      {
+        ...strategicBase,
+        id: linkId,
+        kind: "work_link",
+        linkType: "project_serves_organization",
+        sourceRecordId: projectId,
+        targetRecordId: organizationId,
+        state: "active",
+        version: 4,
+      },
+      {
+        ...strategicBase,
+        id: StrategicRecordIdSchema.parse(
+          "00000000-0000-4000-8000-00000000001a",
+        ),
+        kind: "work_link",
+        linkType: "project_serves_organization",
+        sourceRecordId: projectId,
+        targetRecordId: detachedOrganizationId,
+        state: "removed",
+        removedAt: "2026-07-14T10:00:00.000Z",
+        version: 2,
+      },
+    ],
+    freshness: {
+      mode: "local_authoritative",
+      checkpoint: null,
+      missingCapabilities: [],
+    },
+  },
+};
 
 const successQuery = (query: QueryEnvelope, projection: object) => ({
   kind: "query_result" as const,
@@ -108,6 +208,7 @@ const commandProjection = (command: CommandEnvelope) => {
     case "initiative.updateOutcome":
     case "savedView.create":
     case "work.linkCreate":
+    case "work.linkRemove":
       return {
         kind: "strategic.record_changed",
         recordId:
@@ -736,6 +837,7 @@ describe("real Wave 2 renderer workflow", () => {
     await createWorkLink(
       client,
       snapshot,
+      spaceId,
       "project_advances_initiative",
       projectId,
       "00000000-0000-4000-8000-000000000020",
@@ -861,5 +963,109 @@ describe("real Wave 2 renderer workflow", () => {
       ["command.previewUndo", "command.undo"],
     );
     assert.deepEqual(commands.at(-1)?.expectedVersions, { [relationId]: 1 });
+  });
+
+  it("links a client into the Project's own Space with no endpoint versions", async () => {
+    const { client, commands } = createTypedClient();
+    const snapshot = await loadDesktopSnapshot(client);
+    const result = await linkProjectClient(
+      client,
+      snapshot,
+      { id: projectId, spaceId: otherSpaceId },
+      organizationId,
+    );
+    assert.equal(result.kind, "success");
+    const command = commands.at(-1);
+    assert.equal(command?.commandName, "work.linkCreate");
+    // The Space comes from the Project, not from the workspace's first Space:
+    // a Project opened from global search can sit anywhere, and the kernel
+    // answers a mismatched payload Space with an unnamed precondition failure.
+    assert.notEqual(otherSpaceId, snapshot.bootstrap.spaces[0]?.id);
+    if (command?.commandName === "work.linkCreate") {
+      assert.equal(command.payload.spaceId, otherSpaceId);
+      assert.equal(command.payload.linkType, "project_serves_organization");
+      assert.equal(command.payload.sourceRecordId, projectId);
+      assert.equal(command.payload.targetRecordId, organizationId);
+    }
+    // `work.linkCreate` is the one command here whose kernel branch asserts
+    // exactExpected against {}; sending an endpoint version is a rejection.
+    assert.deepEqual(command?.expectedVersions, {});
+  });
+
+  it("detaches a client with the link record's own version, read from the workspace slice", async () => {
+    const { client, commands } = createTypedClient();
+    const loaded = await loadDesktopSnapshot(client);
+    const snapshot = { ...loaded, relationships: readyRelationships };
+    assert.deepEqual(
+      [...directClientLinks(snapshot, projectId).keys()],
+      [organizationId],
+    );
+    const result = await unlinkProjectClient(
+      client,
+      snapshot,
+      projectId,
+      organizationId,
+    );
+    assert.equal(result.kind, "success");
+    const command = commands.at(-1);
+    assert.equal(command?.commandName, "work.linkRemove");
+    if (command?.commandName === "work.linkRemove")
+      assert.deepEqual(command.payload, { linkId });
+    assert.deepEqual(command?.expectedVersions, { [linkId]: 4 });
+  });
+
+  it("refuses to detach a client it cannot name a link for, without sending a command", async () => {
+    const { client, commands } = createTypedClient();
+    const snapshot = await loadDesktopSnapshot(client);
+    // The fixture answers no `relationship.workspace`, so the slice is
+    // unavailable — the same state a human meets before the read lands.
+    assert.equal(snapshot.relationships.kind, "unavailable");
+    const unloaded = await unlinkProjectClient(
+      client,
+      snapshot,
+      projectId,
+      organizationId,
+    );
+    assert.equal(unloaded.kind, "unavailable");
+    if (unloaded.kind === "unavailable")
+      assert.match(unloaded.message, /ponownego wczytania danych/u);
+    const detached = await unlinkProjectClient(
+      client,
+      { ...snapshot, relationships: readyRelationships },
+      projectId,
+      // Already detached: the link record stays in the projection with
+      // `state: "removed"`, so a reader that ignored state would send a
+      // command the kernel refuses.
+      detachedOrganizationId,
+    );
+    assert.equal(detached.kind, "unavailable");
+    assert.deepEqual(commands, []);
+  });
+
+  it("offers only organizations this Project can still be linked to", () => {
+    const snapshot = { relationships: readyRelationships };
+    assert.deepEqual(
+      linkableClientOrganizations(snapshot, {
+        id: projectId,
+        spaceId,
+      })?.map((organization) => organization.name),
+      // Ćma before Dach under Polish collation; the already-linked client and
+      // the one in another Space are both absent, because the kernel would
+      // refuse either without naming a cause.
+      ["Ćma", "Dach"],
+    );
+  });
+
+  it("says nothing about a Space whose organizations never loaded", () => {
+    // The distinction the whole branch is about: an empty list would tell a
+    // human this Space holds no organizations, on the evidence that a read
+    // failed. Absent means "not answered", and the surface says so.
+    assert.equal(
+      linkableClientOrganizations(
+        { relationships: { kind: "unavailable", message: "nie działa" } },
+        { id: projectId, spaceId },
+      ),
+      undefined,
+    );
   });
 });

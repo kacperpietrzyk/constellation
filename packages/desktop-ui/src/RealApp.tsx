@@ -86,6 +86,10 @@ import {
   editComment,
   applyTemplateToProject,
   createProject,
+  directClientLinks,
+  linkableClientOrganizations,
+  linkProjectClient,
+  unlinkProjectClient,
   createTask,
   setRecordFieldValue,
   updateTaskDetails,
@@ -3507,6 +3511,24 @@ export const RealApp = ({
               activeProjectId={activeContext.projectId}
               overview={projectOverview}
               relation={sessionRelation}
+              clientCandidates={
+                projectOverview
+                  ? linkableClientOrganizations(
+                      state.snapshot,
+                      projectOverview.project,
+                    )
+                  : []
+              }
+              linkedClientIds={
+                new Set(
+                  projectOverview
+                    ? directClientLinks(
+                        state.snapshot,
+                        projectOverview.project.id,
+                      ).keys()
+                    : [],
+                )
+              }
               busy={projectBusy}
               onOpenProject={(id) => {
                 const project =
@@ -3668,6 +3690,40 @@ export const RealApp = ({
                     });
                     await refreshAfter("Zadanie powiązano z projektem.");
                   } else showFailure(result);
+                });
+              }}
+              onLinkClient={(organizationId) => {
+                if (!client || !projectOverview) return;
+                setProjectBusy(true);
+                void linkProjectClient(
+                  client,
+                  state.snapshot,
+                  projectOverview.project,
+                  organizationId,
+                ).then(async (result) => {
+                  setProjectBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter("Klienta połączono z projektem.");
+                  else showFailure(result);
+                });
+              }}
+              // Detaching reloads the whole snapshot like every other write
+              // here, which is what re-derives both the Klient list and the
+              // candidate set — the link record the command needs lives in that
+              // snapshot, not in session state.
+              onUnlinkClient={(organizationId) => {
+                if (!client || !projectOverview) return;
+                setProjectBusy(true);
+                void unlinkProjectClient(
+                  client,
+                  state.snapshot,
+                  projectOverview.project.id,
+                  organizationId,
+                ).then(async (result) => {
+                  setProjectBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter("Powiązanie z klientem usunięto.");
+                  else showFailure(result);
                 });
               }}
               onUnrelate={() => {

@@ -5756,7 +5756,12 @@ button.mention-chip:disabled {
   min-height: 7rem;
   resize: vertical;
 }
-.project-template-row {
+/* The quiet in-project action row: a select plus a compact button, sitting
+   under the thing it acts on. Shared by the template row and the Klient card's
+   link/detach row rather than copied into a second rule — a restated shape is
+   how the same visual contract drifts into two slightly different ones. */
+.project-template-row,
+.project-context-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -5765,11 +5770,22 @@ button.mention-chip:disabled {
   padding-top: var(--space-3);
   border-top: 1px solid var(--border-subtle);
 }
-.project-template-row small {
+.project-template-row small,
+.project-context-actions small {
   color: var(--text-tertiary);
   font-size: var(--text-xs);
 }
-.project-template-row select {
+/* The only thing the Klient card's copy of the row needs on its own: the
+   template row sits inside `.overview-intent`, which is already padded, while a
+   context card gives each child its own inset (the record rows and the empty
+   note both carry it). Same tokens, so the two rows stay the same shape. */
+.project-context-actions {
+  padding-right: var(--space-4);
+  padding-bottom: var(--space-4);
+  padding-left: var(--space-4);
+}
+.project-template-row select,
+.project-context-actions select {
   max-width: 16rem;
   padding: var(--space-1) var(--space-2);
   color: var(--input-text);

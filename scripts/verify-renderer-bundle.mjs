@@ -129,10 +129,19 @@ import path from "node:path";
 // stylesheet bez zmian; entry ma własny duży zapas. Total JS rośnie o ok.
 // 2.2 kB względem zmierzonego baseline; limit total dostaje ok. 1.3 kB zapasu,
 // pozostałe bez zmian.
+// 2026-07-26 (0.1.5, powiązanie projektu z klientem): blok Klient na stronie
+// projektu przestaje być samą projekcją — dostaje wybór organizacji z tej samej
+// przestrzeni, dwustopniowe odłączenie bezpośredniego powiązania i dwa czytniki
+// snapshotu, które pilnują obu warunków kernela zamiast wysyłać komendę, którą
+// kernel odrzuci bez nazwania przyczyny. Jedzie w entry (strona projektu nie
+// jest leniwa) i w workflow; największy leniwy chunk bez zmian, stylesheet
+// rośnie o ok. 0.2 kB i ma własny zapas. Total JS rośnie o ok. 3.5 kB względem
+// zmierzonego baseline; limit total dostaje ok. 1.3 kB zapasu, pozostałe bez
+// zmian.
 const limits = {
   entryBytes: 560_000,
   entryGzipBytes: 147_500,
-  totalJavaScriptBytes: 1_353_000,
+  totalJavaScriptBytes: 1_357_000,
   largestLazyJavaScriptBytes: 565_000,
   stylesheetBytes: 189_500,
 };
