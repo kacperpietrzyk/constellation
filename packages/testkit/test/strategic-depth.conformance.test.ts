@@ -121,6 +121,7 @@ const context = (): ExecutionContext =>
       "knowledge.list",
       "capture.submit",
       "capture.process",
+      "opportunity.remove",
     ],
     origin: "desktop",
   });
@@ -4407,4 +4408,153 @@ it("names every record that rests on a Source, and names the same ones the refus
   );
   assert.deepEqual(free?.referencedBy, []);
   assert.equal(free?.referencedByCount, 0);
+});
+
+/**
+ * A deal imported from a pipeline sheet needs the same re-run protection a
+ * Person and an Organization have — titles collide across clients and across
+ * years, so nothing else tells a second import apart from a second deal. The
+ * whole recovery machinery is walked here, not just the create: a key with an
+ * invariant that only the create honours produces two live records holding one
+ * key the first time an undo runs, and the set-once rule then refuses to repair
+ * either.
+ */
+it("claims a source row for a deal, frees it on removal, and refuses to take it back", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  const organizationId = uuid();
+  for (const command of [
+    {
+      ...metadata("deal-key-bootstrap"),
+      commandName: "workspace.createLocal" as const,
+      payload: {
+        workspaceId: ids.workspace,
+        rootSpaceId: ids.space,
+        ownerPrincipalId: ids.principal,
+        name: "Deal keys",
+        timezone: "Europe/Warsaw",
+      },
+    },
+    {
+      ...metadata("deal-key-organization"),
+      commandName: "relationship.organizationCreate" as const,
+      payload: {
+        organizationId,
+        spaceId: ids.space,
+        name: "Klient",
+        relationshipState: "active" as const,
+        // The same key on another kind, to prove the claim is scoped by kind:
+        // a Person and a deal come from different source systems and the row
+        // that produced each is its own.
+        externalId: "sheet:row-7",
+      },
+    },
+  ])
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), command)).outcome,
+      "success",
+      command.commandName,
+    );
+
+  const firstId = uuid();
+  const secondId = uuid();
+  const create = (opportunityId: string, key: string) =>
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(key),
+        commandName: "opportunity.create",
+        payload: {
+          opportunityId,
+          spaceId: ids.space,
+          title: "Odnowienie 2026",
+          organizationId,
+          personIds: [],
+          need: "Licencja wygasa.",
+          qualification: "Budżet potwierdzony.",
+          stage: "qualified",
+          nextAction: "Wyślij ofertę.",
+          evidenceSourceIds: [],
+          externalId: "sheet:row-7",
+        },
+      }),
+    );
+  const first = create(firstId, "deal-key-first");
+  assert.equal(first.outcome, "success", JSON.stringify(first));
+
+  // A second import of the same row under a fresh id is refused, and the
+  // refusal hands back what holds the key so the caller can act on it.
+  const duplicate = create(secondId, "deal-key-duplicate");
+  if (
+    duplicate.outcome !== "conflict" ||
+    duplicate.diagnosticCode !== "record.already_exists"
+  )
+    assert.fail("Expected the claimed source row to be named.");
+  assert.deepEqual(duplicate.currentVersions, { [firstId]: 1 });
+
+  const removal = {
+    ...metadata("deal-key-remove", { [firstId]: 1 }),
+    commandName: "opportunity.remove" as const,
+    payload: { opportunityId: firstId },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), removal)).outcome,
+    "success",
+  );
+  // Removal frees the key, deliberately: a source row whose record was removed
+  // has to be importable again.
+  assert.equal(create(secondId, "deal-key-reimport").outcome, "success");
+
+  // Which makes the undo of that removal infeasible, and the preview has to
+  // say so before the undo is spent rather than after.
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("deal-key-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: removal.commandId },
+    }),
+  );
+  assert.equal(
+    preview.outcome === "preview" &&
+      preview.projection.kind === "undo.previewed" &&
+      preview.projection.available,
+    false,
+  );
+  assert.notEqual(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("deal-key-undo", { [firstId]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: removal.commandId },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  // One active deal for that key, and the Organization that shares the string
+  // is untouched — the invariant the refusals exist to keep.
+  const read = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "relationship.workspace",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space },
+  });
+  if (
+    read.kind !== "query_result" ||
+    read.result.outcome !== "success" ||
+    read.result.projection.kind !== "relationship.workspace"
+  )
+    assert.fail("Expected the workspace read.");
+  assert.deepEqual(
+    read.result.projection.records
+      .filter(
+        (record) =>
+          (record.kind === "opportunity" || record.kind === "organization") &&
+          record.externalId === "sheet:row-7",
+      )
+      .map((record) => record.id)
+      .sort(),
+    [organizationId, secondId].sort(),
+  );
 });

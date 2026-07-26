@@ -174,6 +174,7 @@ export const createOpportunity = (
     readonly stage: string;
     readonly nextAction: string;
     readonly evidenceSourceIds: readonly KnowledgeSourceId[];
+    readonly externalId?: string;
   },
 ): Extract<StrategicRecord, { kind: "opportunity" }> => ({
   ...base(input),
@@ -189,6 +190,7 @@ export const createOpportunity = (
   stage: input.stage,
   nextAction: input.nextAction,
   evidenceSourceIds: [...new Set(input.evidenceSourceIds)].sort(),
+  ...(input.externalId === undefined ? {} : { externalId: input.externalId }),
   offerIds: [],
   projectIds: [],
   state: "open",

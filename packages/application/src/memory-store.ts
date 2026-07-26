@@ -682,7 +682,7 @@ class ReadView implements ApplicationReadView {
   public findStrategicRecordByExternalId(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,
-    kind: "person" | "organization",
+    kind: "person" | "organization" | "opportunity",
     externalId: string,
   ): StrategicRecord | undefined {
     // Goes through the same `strategicRecordState` choke point as

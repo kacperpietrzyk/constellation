@@ -288,7 +288,7 @@ export interface ApplicationWave2ReadView extends ApplicationReadView {
   findStrategicRecordByExternalId(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,
-    kind: "person" | "organization",
+    kind: "person" | "organization" | "opportunity",
     externalId: string,
   ): StrategicRecord | undefined;
   getRelation(id: RelationId): TaskProjectRelation | undefined;

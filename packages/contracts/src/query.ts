@@ -461,6 +461,8 @@ export const StrategicRecordProjectionSchema = z.discriminatedUnion("kind", [
     offerIds: z.array(StrategicRecordIdSchema),
     projectIds: z.array(ProjectIdSchema),
     state: z.enum(["open", "pursued", "deferred", "rejected", "lost"]),
+    /** See the organization arm: looser than the command's bound, on purpose. */
+    externalId: z.string().optional(),
   }).strict(),
   StrategicRecordBaseSchema.extend({
     kind: z.literal("offer"),

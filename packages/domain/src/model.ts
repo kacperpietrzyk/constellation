@@ -645,6 +645,15 @@ export type StrategicRecord =
       readonly offerIds: readonly StrategicRecordId[];
       readonly projectIds: readonly ProjectId[];
       readonly state: "open" | "pursued" | "deferred" | "rejected" | "lost";
+      /**
+       * See the organization arm above. A deal imported from a pipeline sheet
+       * needs the same re-run protection a Person and an Organization have —
+       * titles collide across clients and across years, so nothing else can
+       * tell a second import apart from a second deal. Unique per Space and
+       * per kind, so a Person and this deal may share a key: they come from
+       * different source systems and the row that produced each is its own.
+       */
+      readonly externalId?: string;
     })
   | (StrategicRecordBase & {
       readonly kind: "offer";

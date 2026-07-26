@@ -1402,6 +1402,32 @@ const blocked = (
   });
 
 /**
+ * The source key this record claims, if it is a kind that claims one.
+ *
+ * Named once because the claim is made in three places that must agree: the
+ * create that takes the key, the restore that refuses to take it back if a
+ * re-import got there first, and the preview of that restore. A kind added to
+ * the create and forgotten in the other two would let an undo produce a second
+ * live record holding one key, after which the set-once rule refuses to repair
+ * either — which is the failure the guards exist to prevent, reached through
+ * the guards themselves.
+ */
+const claimedSourceKey = (
+  record: StrategicRecord,
+):
+  | {
+      readonly kind: "person" | "organization" | "opportunity";
+      readonly externalId: string;
+    }
+  | undefined =>
+  (record.kind === "person" ||
+    record.kind === "organization" ||
+    record.kind === "opportunity") &&
+  record.externalId !== undefined
+    ? { kind: record.kind, externalId: record.externalId }
+    : undefined;
+
+/**
  * A record resting on a Knowledge Source, in the vocabulary the removal guard
  * refuses in, plus the label a reader needs to act on it. The two travel
  * together because they are computed together; only the projection carries the
@@ -4050,6 +4076,25 @@ export const executeWave2Command = (
         )
       )
         return precondition(command, occurredAt);
+      // The same claim the two relationship creates make, on the same terms:
+      // one key per Space and kind, and the refusal names the record holding
+      // it so the caller can act instead of minting a second id. There is no
+      // opportunity update command, so unlike a Person this key can only be
+      // set at import — a deal that arrives unstamped stays unstamped.
+      if (command.payload.externalId !== undefined) {
+        const claimed = transaction.findStrategicRecordByExternalId(
+          command.workspaceId,
+          command.payload.spaceId,
+          "opportunity",
+          command.payload.externalId,
+        );
+        if (claimed !== undefined)
+          return outcome(command, occurredAt, {
+            outcome: "conflict",
+            diagnosticCode: "record.already_exists",
+            currentVersions: { [claimed.id]: claimed.version },
+          });
+      }
       const record = createOpportunity({
         id: StrategicRecordIdSchema.parse(command.payload.opportunityId),
         workspaceId: command.workspaceId,
@@ -4065,6 +4110,9 @@ export const executeWave2Command = (
         stage: command.payload.stage,
         nextAction: command.payload.nextAction,
         evidenceSourceIds: command.payload.evidenceSourceIds,
+        ...(command.payload.externalId === undefined
+          ? {}
+          : { externalId: command.payload.externalId }),
         createdBy: context.principalId,
         occurredAt,
       });
@@ -4094,6 +4142,7 @@ export const executeWave2Command = (
           "stage",
           "nextAction",
           "evidenceSourceIds",
+          "externalId",
         ],
         {
           diagnosticCode: "strategic.record_changed",
@@ -8472,23 +8521,23 @@ const descriptorState = (
         };
       // The preview has to agree with the revert, which is the lesson of #15:
       // a preview that reports feasible and then refuses spends a checkpoint to
-      // tell you what it already knew. Restoring a removed Person or
-      // Organization is infeasible when a re-import has claimed its source key
-      // in the meantime — see the matching guard in `compensateDescriptor`.
+      // tell you what it already knew. Restoring a removed record that carries
+      // a source key is infeasible when a re-import has claimed it in the
+      // meantime — see the matching guard in `compensateDescriptor`.
       // `still_referenced` is the closest member of a vocabulary that is
       // deliberately small: another record in the caller's own Space stands in
       // the way, and clearing it makes this available again, which is exactly
       // what that reason tells a caller to do.
+      const previewKey = claimedSourceKey(record);
       if (
         descriptor.priorRecordState === "active" &&
-        (record.kind === "person" || record.kind === "organization") &&
-        record.externalId !== undefined
+        previewKey !== undefined
       ) {
         const claimed = view.findStrategicRecordByExternalId(
           record.workspaceId,
           record.spaceId,
-          record.kind,
-          record.externalId,
+          previewKey.kind,
+          previewKey.externalId,
         );
         if (claimed !== undefined && claimed.id !== record.id)
           return {
@@ -9217,16 +9266,13 @@ const compensateDescriptor = (
     // one kind in one Space carrying the same key, and the set-once rule then
     // refuses to re-point either, so the only way out would be deleting one.
     // Refusing here is the whole point of a compensation that can say no.
-    if (
-      priorRecordState === "active" &&
-      (record.kind === "person" || record.kind === "organization") &&
-      record.externalId !== undefined
-    ) {
+    const restoredKey = claimedSourceKey(record);
+    if (priorRecordState === "active" && restoredKey !== undefined) {
       const claimed = transaction.findStrategicRecordByExternalId(
         record.workspaceId,
         record.spaceId,
-        record.kind,
-        record.externalId,
+        restoredKey.kind,
+        restoredKey.externalId,
       );
       if (claimed !== undefined && claimed.id !== record.id) {
         return { ok: false };

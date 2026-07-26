@@ -2126,7 +2126,7 @@ class SqliteReadView implements ApplicationWave2ReadView {
   public findStrategicRecordByExternalId(
     workspaceId: WorkspaceId,
     spaceId: SpaceId,
-    kind: "person" | "organization",
+    kind: "person" | "organization" | "opportunity",
     externalId: string,
   ): StrategicRecord | undefined {
     const row = this.database

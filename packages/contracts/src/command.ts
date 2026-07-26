@@ -788,6 +788,7 @@ export const OpportunityCreateCommandSchema = CommandMetadataSchema.extend({
       stage: z.string().trim().min(1).max(120),
       nextAction: z.string().trim().min(1).max(1_000),
       evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100),
+      externalId: ExternalIdSchema.optional(),
     })
     .strict(),
 }).strict();
