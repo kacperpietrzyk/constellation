@@ -79,6 +79,7 @@ const context = (): ExecutionContext =>
       "project.updateOutcome",
       "project.list",
       "project.operationalOverview",
+      "task.create",
       "task.setStatus",
       "task.complete",
       "task.reopen",
@@ -596,11 +597,100 @@ describe("SQLite ApplicationStore", () => {
     });
   });
 
+  it("refuses the same Task-to-Opportunity relation twice through SQLite", () => {
+    // The conformance suite asserts this against the in-memory store, and the
+    // two implementations of the finder behind it had drifted: SQL matched
+    // either far end, memory matched only a Project. Both are now exercised,
+    // because agreeing on the outcome is the whole point of the pair.
+    withDatabase((filename) => {
+      const organizationId = "00000000-0000-4000-8000-000000000160";
+      const opportunityId = "00000000-0000-4000-8000-000000000161";
+      const taskId = "00000000-0000-4000-8000-000000000162";
+      const database = new DatabaseSync(filename);
+      const kernel = createKernel(database);
+      assert.equal(
+        unwrap(kernel.kernel.execute(context(), workspaceCommand)).outcome,
+        "success",
+      );
+      for (const command of [
+        wave2Command(
+          "relationship.organizationCreate",
+          {
+            organizationId,
+            spaceId: ids.rootSpace,
+            name: "Client",
+            relationshipState: "active",
+          },
+          "dup-relate-org",
+        ),
+        wave2Command(
+          "opportunity.create",
+          {
+            opportunityId,
+            spaceId: ids.rootSpace,
+            title: "Licence renewal",
+            organizationId,
+            personIds: [],
+            need: "The licence expires in fourteen days.",
+            qualification: "Budget confirmed.",
+            stage: "qualified",
+            nextAction: "Send the quote.",
+            evidenceSourceIds: [],
+          },
+          "dup-relate-opportunity",
+        ),
+        wave2Command(
+          "task.create",
+          { taskId, spaceId: ids.rootSpace, title: "Send the quote" },
+          "dup-relate-task",
+        ),
+      ]) {
+        assert.equal(
+          unwrap(kernel.kernel.execute(context(), command)).outcome,
+          "success",
+        );
+      }
+      const relate = (key: string) =>
+        unwrap(
+          kernel.kernel.execute(
+            context(),
+            wave2Command(
+              "record.relate",
+              {
+                relationType: "task_contributes_to_opportunity",
+                taskId,
+                opportunityId,
+              },
+              key,
+              { [taskId]: 1, [opportunityId]: 1 },
+            ),
+          ),
+        );
+      const first = relate("dup-relate-first");
+      if (
+        first.outcome !== "success" ||
+        first.projection.kind !== "relation.created"
+      )
+        throw new Error("Expected relation creation.");
+      const second = relate("dup-relate-second");
+      assert.equal(second.outcome, "conflict", JSON.stringify(second));
+      if (
+        second.outcome !== "conflict" ||
+        second.diagnosticCode !== "relation.already_exists"
+      )
+        throw new Error("Expected the existing relation to be named.");
+      assert.deepEqual(second.currentVersions, {
+        [first.projection.relationId]: 1,
+      });
+      database.close();
+    });
+  });
+
   it("claims a source key through SQLite, and frees it when the record goes", () => {
     // The finder exists twice — once in the in-memory store the conformance
     // suite runs against, once here in SQL — and the pair it sits beside,
-    // findTaskProjectRelation, has already drifted between the two. So the SQL
-    // one is exercised directly rather than trusted to behave like its twin.
+    // findTaskProjectRelation, drifted between the two until this build. So the
+    // SQL one is exercised directly rather than trusted to behave like its twin.
     withDatabase((filename) => {
       const firstId = "00000000-0000-4000-8000-000000000150";
       const secondId = "00000000-0000-4000-8000-000000000151";

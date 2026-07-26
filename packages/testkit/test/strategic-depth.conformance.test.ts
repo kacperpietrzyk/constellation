@@ -3479,6 +3479,36 @@ it("carries provenance, a client, a deal owner and a per-deal action", () => {
     opportunityId,
   );
 
+  // Relating the same Task to the same Opportunity twice is the same act
+  // twice, and it is refused on the far end that is an Opportunity exactly as
+  // it is on the one that is a Project. The guard reads the relation through a
+  // single finder whose contract is "whichever far end that is", and this is
+  // the only assertion that holds the in-memory implementation of it to that
+  // contract — the SQL one answers on either end and the pair had drifted.
+  const duplicate = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("reach-relate-again", { [taskId]: 1, [opportunityId]: 1 }),
+      commandName: "record.relate",
+      payload: {
+        relationType: "task_contributes_to_opportunity",
+        taskId,
+        opportunityId,
+      },
+    }),
+  );
+  assert.equal(duplicate.outcome, "conflict", JSON.stringify(duplicate));
+  if (
+    duplicate.outcome !== "conflict" ||
+    duplicate.diagnosticCode !== "relation.already_exists"
+  )
+    throw new Error("Expected the existing relation to be named.");
+  assert.deepEqual(duplicate.currentVersions, {
+    [related.outcome === "success" &&
+    related.projection.kind === "relation.created"
+      ? related.projection.relationId
+      : "unreachable"]: 1,
+  });
+
   const strategic = (id: string) =>
     harness.store.read((view) =>
       isApplicationWave2ReadView(view)

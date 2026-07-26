@@ -728,14 +728,26 @@ class ReadView implements ApplicationReadView {
 
   public findTaskProjectRelation(
     taskId: TaskId,
-    projectId: ProjectId,
+    targetId: ProjectId | StrategicRecordId,
   ): TaskProjectRelation | undefined {
-    return [...this.state.relations.values()].find(
-      (relation) =>
-        relation.state === "active" &&
-        relation.taskId === taskId &&
-        relation.relationType === "task_contributes_to_project" &&
-        relation.projectId === projectId,
+    // Both far ends, because the port says "whichever far end that is" and the
+    // duplicate guard on `record.relate` is the only caller. Reading only
+    // `projectId` matched nothing on an Opportunity relation — that arm of the
+    // union carries no such field — so the same Task could contribute to the
+    // same deal twice here while SQL refused it.
+    return (
+      [...this.state.relations.values()]
+        .filter(
+          (relation) =>
+            relation.state === "active" &&
+            relation.taskId === taskId &&
+            (relation.relationType === "task_contributes_to_project"
+              ? relation.projectId === targetId
+              : relation.opportunityId === targetId),
+        )
+        // Insertion order is not id order, and the conflict this feeds names the
+        // relation it found. Sorted so both stores name the same one.
+        .sort((left, right) => left.id.localeCompare(right.id))[0]
     );
   }
 
