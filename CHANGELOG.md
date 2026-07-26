@@ -30,7 +30,10 @@ releases begin.
   caller with no capability to touch it — the existence oracle the merged
   refusal exists to prevent. The policy is now consulted first. A refusal that
   is genuinely about the Space or the record is still the same merged
-  `command.precondition_failed` it always was.
+  `command.precondition_failed` it always was. This now covers every branch that
+  refused before asking — the capture family, the workspace and member commands,
+  the comment and attention arms, and the meeting commands, where a first pass
+  had made the leak _wider_ before review caught it.
 
 - **A client links both ways.** `project.operationalOverview` reported no client
   for a Project linked straight to an Organization, while the Organization
@@ -43,6 +46,28 @@ releases begin.
   read.** Both were writable in 0.1.5 and appeared in no projection.
   `project.operationalOverview` now returns `evidenceSources`, and the
   opportunities on `organization.operationalOverview` carry `owner` by name.
+
+- **A Person and an Organization can carry the identity of the row they came
+  from.** Nothing refused a duplicate: names are not unique, and the idempotency
+  key only recognises the same command re-sent by the same principal, so a
+  migration re-run that minted fresh ids created a second record nothing
+  objected to. `externalId` is claimed once per Space and kind; a create whose
+  key is taken is refused with the colliding record's id and version, so the
+  caller corrects in place. It can be stamped onto a record that predates the
+  field, but never rewritten.
+
+- **`person.list` and `organization.list`.** `relationship.workspace` was the
+  only set-level read of who is in the graph, and being one answer it was also
+  one failure — a single unprojectable record took the whole set down at exactly
+  the moment a migration needed it. These carry one kind each and filter before
+  the strict parse, so one kind's problem stays its own. Same item shape as the
+  wide read, which still answers when you need more than one kind.
+
+- **A client can be linked to a Project from the desktop.** The link was
+  readable but only writable over MCP. The Klient card now offers the
+  Organizations in the Project's own Space, and detaches a direct link in two
+  steps. It says plainly when the list could not be loaded, rather than
+  reporting an empty Space.
 
 ### Changed
 
