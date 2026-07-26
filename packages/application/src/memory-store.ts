@@ -863,6 +863,15 @@ class ReadView implements ApplicationReadView {
     return this.state.agentRuns.get(id);
   }
 
+  public findAgentRunByHostRun(
+    grantId: GrantId,
+    hostRunId: string,
+  ): AgentRun | undefined {
+    return [...this.state.agentRuns.values()].find(
+      (run) => run.grantId === grantId && run.hostRunId === hostRunId,
+    );
+  }
+
   public getAgentCheckpoint(id: CheckpointId): AgentCheckpoint | undefined {
     return this.state.agentCheckpoints.get(id);
   }

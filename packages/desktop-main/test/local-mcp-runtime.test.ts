@@ -27,7 +27,10 @@ import {
   type GrantId,
 } from "@constellation/contracts";
 import { HostRunMetadataSchema, invokeDesktopMcp } from "@constellation/mcp";
-import type { McpOperatorInvocation } from "@constellation/mcp/protocol";
+import type {
+  McpOperatorInvocation,
+  McpOperatorResponse,
+} from "@constellation/mcp/protocol";
 import { contractFingerprint } from "@constellation/mcp/contract-stamp";
 import { InMemoryReferenceStore } from "@constellation/testkit";
 
@@ -268,6 +271,7 @@ test("local MCP enforces credential custody, attribution, evidence labels and im
         structuredOwners.push(owner.kind);
         return {
           contentState: "rich-v1" as const,
+          contentOrigin: "authored" as const,
           content: structuredContent,
           text: "Initial",
           entityReferences: [],
@@ -1832,5 +1836,76 @@ test("a narrowed scope and a removed Space take effect on the agent's next invoc
   } finally {
     await runtime.close();
     rmSync(stateRoot, { recursive: true, force: true });
+  }
+});
+
+test("local MCP names a claimed run identity instead of faulting, and stays recoverable", async () => {
+  const faults: unknown[] = [];
+  const harness = await startRevertHarness(agentCapabilities, {
+    onRuntimeFault: (error) => faults.push(error),
+  });
+  const query = async (agentRunId: string, hostRunId: string) =>
+    harness.raw({
+      contractVersion: 1,
+      requestId: crypto.randomUUID(),
+      kind: "query",
+      run: HostRunMetadataSchema.parse({
+        agentRunId,
+        hostRunId,
+        hostName: "Codex CLI",
+      }),
+      query: QueryEnvelopeSchema.parse({
+        contractVersion: 1,
+        queryName: "project.list",
+        queryId: crypto.randomUUID(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.space },
+      }),
+    });
+  const conflicted = (response: McpOperatorResponse) => {
+    assert.equal(response.outcome, "conflict", JSON.stringify(response.result));
+    assert.equal(
+      (response.result as { readonly diagnosticCode?: string }).diagnosticCode,
+      "mcp.run_identity_conflict",
+    );
+    // The cure is the point of the finding: the code alone would still leave a
+    // caller guessing that a *new run id* is what unsticks it.
+    assert.match(
+      String((response.result as { readonly message?: string }).message),
+      /freshly generated agentRunId and hostRunId/u,
+    );
+  };
+  try {
+    const first = await query(ids.run, "codex-run-100");
+    assert.equal(first.outcome, "success", JSON.stringify(first.result));
+
+    // The host reconnected and minted a new host run while the agent kept its
+    // own run id. This is the shape that burned a real run for a whole session:
+    // it used to throw, and every later call carrying that agentRunId came back
+    // as mcp.runtime_fault — the code for a defect in this build.
+    conflicted(await query(ids.run, "codex-run-101"));
+
+    // The mirror, and the reason the documented cure had to be a *pair*: a
+    // fresh agent run under a host run that already has one collides on the
+    // uniqueness the store declares, which used to surface the same way.
+    conflicted(await query(ids.run2, "codex-run-100"));
+
+    // A fresh pair works, immediately, with no reconnection and nothing to
+    // clean up — and the original run is untouched rather than repaired.
+    const recovered = await query(ids.run2, "codex-run-101");
+    assert.equal(
+      recovered.outcome,
+      "success",
+      JSON.stringify(recovered.result),
+    );
+    const stillFine = await query(ids.run, "codex-run-100");
+    assert.equal(stillFine.outcome, "success");
+
+    // None of this is a fault in the build, so none of it reaches the host as
+    // one. That distinction is what the session gate reads.
+    assert.deepEqual(faults, []);
+  } finally {
+    await harness.close();
   }
 });

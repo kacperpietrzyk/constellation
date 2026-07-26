@@ -298,7 +298,23 @@ test("fails the complete resource when payload integrity changes", async () => {
           "captures/50000000-0000-4000-8000-000000000005/payload" +
           `?agentRunId=${run.agentRunId}&hostRunId=${run.hostRunId}&hostName=${run.hostName}`,
       }),
-      /payload is unavailable/u,
+      (error: unknown) => {
+        // A refusal, reported as one. It used to arrive as a bare internal
+        // error — the code that tells a caller the build is broken and there is
+        // nothing in the request to fix — which is the opposite of true here.
+        assert.equal((error as { readonly code?: number }).code, -32600);
+        assert.equal(
+          (
+            (error as { readonly data?: { readonly diagnosticCode?: string } })
+              .data ?? {}
+          ).diagnosticCode,
+          "mcp.payload_unavailable",
+        );
+        // The merge itself is the contract: the message must not name which of
+        // the four causes produced it.
+        assert.match(String(error), /deliberately indistinguishable/u);
+        return true;
+      },
     );
   } finally {
     await client.close();

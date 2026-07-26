@@ -222,6 +222,16 @@ export interface ApplicationReadView {
   getAgentGrant(id: GrantId): AgentAccessGrant | undefined;
   listAgentGrants(workspaceId: WorkspaceId): readonly AgentAccessGrant[];
   getAgentRun(id: AgentRunId): AgentRun | undefined;
+  /**
+   * The other half of a run's identity. A grant and a host run name at most one
+   * agent run, and a transport registering a run has to be able to say so
+   * *before* it writes — otherwise the store's own uniqueness rule is the thing
+   * that reports it, as an unnamed failure the caller cannot act on.
+   */
+  findAgentRunByHostRun(
+    grantId: GrantId,
+    hostRunId: string,
+  ): AgentRun | undefined;
   getAgentCheckpoint(id: CheckpointId): AgentCheckpoint | undefined;
   listAgentHandoffs(runId: AgentRunId): readonly AgentHandoff[];
 }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 
 import {
@@ -10,6 +11,7 @@ import {
 import {
   MAX_DOCUMENT_TEXT_LENGTH,
   YjsRealtimeDocumentAdapter,
+  createRichDocumentSeed,
 } from "@constellation/realtime-documents";
 import { ABSENT_CONTENT_STATE_VECTOR_SHA256 } from "@constellation/realtime-documents/agent-content";
 import type { SqliteApplicationStore } from "@constellation/local-store";
@@ -640,5 +642,73 @@ describe("agent document text port", () => {
     assert.ok(
       fake.revisions.some((revision) => revision.name.includes("created body")),
     );
+  });
+
+  /**
+   * `contentState` answers a question nobody asked. A person opening a Project
+   * in the app materialises its body from the Project's own intended outcome,
+   * so `rich-v1` means "there is a body", not "somebody wrote one" — and an
+   * agent deciding whether it may write has to tell those apart from the read
+   * alone, because there is nobody to ask mid-run. Measured in the field on
+   * 0.1.6: two of four real Projects held nothing but a word-for-word echo of
+   * their own outcome.
+   */
+  it("says whether a body holds anything the seed did not put there", () => {
+    const fake = fakeStore();
+    const subject = port(fake, false);
+    const seed = {
+      text: "Sequence the PoV before the enablement deck.",
+      principalId: "42000000-0000-4000-8000-000000000006",
+    };
+    const address = { documentId: ids.document, spaceId: ids.space, seed };
+    const empty = subject.readStructured(address);
+    assert.equal(empty?.contentState, "absent");
+    assert.equal(empty?.contentOrigin, "absent");
+
+    // Materialised the way the field case was: not by an agent write, but by
+    // the desktop open path, through the exact call it makes. This is the only
+    // form of the assertion worth having — the signal is a structural
+    // comparison against what the seed alone produces, so it is only correct
+    // while the open path and the agent baseline build the same document. Pin
+    // them together here and a drift in either fails this test rather than
+    // silently reporting somebody's work as safe to overwrite.
+    fake.store.storeCollaborativeContentState({
+      state: createRichDocumentSeed(
+        seed.text,
+        createHash("sha256").update(seed.text).digest("hex"),
+        { kind: "human", principalId: seed.principalId },
+      ),
+      updatedAt: "2026-07-26T09:00:00.000Z",
+    });
+    const afterSeed = subject.readStructured(address);
+    // The distinction the old read could not carry: same contentState, and a
+    // different answer to the question that decides whether to write.
+    assert.equal(afterSeed?.contentState, "rich-v1");
+    assert.equal(afterSeed?.contentOrigin, "seeded");
+
+    // One word, and it is somebody's. Authorship is not the test — content is:
+    // from here on there is something to lose.
+    const authored = subject.replaceStructured({
+      ...address,
+      content: {
+        schemaVersion: 1,
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: `${seed.text} Confirmed.` }],
+          },
+        ],
+      },
+      expectedStateVectorSha256: afterSeed!.stateVectorSha256,
+      idempotencyKey: "origin-authored",
+      principalId: "42000000-0000-4000-8000-000000000004",
+      runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
+    });
+    assert.equal(authored.outcome, "success", JSON.stringify(authored));
+    const afterAuthoring = subject.readStructured(address);
+    assert.equal(afterAuthoring?.contentState, "rich-v1");
+    assert.equal(afterAuthoring?.contentOrigin, "authored");
   });
 });

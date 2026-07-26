@@ -2436,6 +2436,37 @@ class SqliteReadView implements ApplicationWave2ReadView {
         });
   }
 
+  public findAgentRunByHostRun(
+    grantId: GrantId,
+    hostRunId: string,
+  ): AgentRun | undefined {
+    // Reads the pair the table declares UNIQUE, so a transport can refuse a
+    // second agent run under the same host run by name instead of letting the
+    // constraint surface as an unnamed write failure.
+    const row = this.database
+      .prepare(
+        "SELECT id, workspace_id, agent_principal_id, grant_id, payload_json FROM agent_runs WHERE grant_id = ? AND host_run_id = ? LIMIT 1",
+      )
+      .get(grantId, hostRunId);
+    return row === undefined
+      ? undefined
+      : parsePayload<AgentRun>(
+          row,
+          "id",
+          stringValue(row, "id", "agent run"),
+          "agent run",
+          {
+            workspaceId: stringValue(row, "workspace_id", "agent run"),
+            agentPrincipalId: stringValue(
+              row,
+              "agent_principal_id",
+              "agent run",
+            ),
+            grantId: stringValue(row, "grant_id", "agent run"),
+          },
+        );
+  }
+
   public getAgentCheckpoint(id: CheckpointId): AgentCheckpoint | undefined {
     const row = this.database
       .prepare(

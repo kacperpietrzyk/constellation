@@ -12,9 +12,11 @@ import {
   SpaceGrantIdSchema,
   SpaceIdSchema,
   StrategicRecordIdSchema,
+  StrategicRecordProjectionSchema,
   type CommandOutcome,
   type ExecutionContext,
 } from "@constellation/contracts";
+import { strategicRecordIsDeleted } from "@constellation/domain";
 
 import { createReferenceHarness, type ReferenceHarness } from "../src/index.js";
 
@@ -3660,6 +3662,39 @@ it("carries provenance, a client, a deal owner and a per-deal action", () => {
   );
   assert.deepEqual(clientOf(), []);
 
+  // And the *set-level* reads let go of it too, which the narrow reader above
+  // cannot prove. Both queries used to hand the removed link back alongside the
+  // live ones with nothing but `state` to tell them apart, because the store's
+  // list filters `recordState` and a work link is removed onto its own axis. A
+  // consumer that trusted the list read a detached client as an attached one.
+  const workLinkIdsFrom = (
+    queryName: "relationship.workspace" | "work.overview",
+  ): readonly string[] => {
+    const answer = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName,
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space },
+    });
+    if (answer.kind !== "query_result" || answer.result.outcome !== "success")
+      assert.fail(`Expected ${queryName} to answer`);
+    const projection = answer.result.projection;
+    if (projection.kind === "relationship.workspace")
+      return projection.records
+        .filter(
+          (record): record is typeof record & { readonly id: string } =>
+            (record as { readonly kind?: unknown }).kind === "work_link",
+        )
+        .map((record) => record.id);
+    if (projection.kind === "work.overview")
+      return projection.links.map((link) => link.id);
+    return assert.fail(`Unexpected projection for ${queryName}`);
+  };
+  assert.deepEqual(workLinkIdsFrom("relationship.workspace"), []);
+  assert.deepEqual(workLinkIdsFrom("work.overview"), []);
+
   // The query layer's project.organization path resolves through the direct
   // link, not only through an Opportunity that happens to name both.
   const filtered = harness.kernel.query(context(), {
@@ -4809,4 +4844,76 @@ it("cuts a Source's references to the sample the refusal uses, and states the re
     assert.fail("Expected the removal to be refused.");
   assert.equal(refused.blockedBy.length, source?.referencedBy.length);
   assert.equal(refused.blockedByCount, total);
+});
+
+/**
+ * The drift guard behind the filter the two set-level reads now apply.
+ *
+ * Deletion lives on two axes: `recordState`, shared by every strategic record,
+ * and a per-kind `state` for the two kinds that predate it — a work link is
+ * `removed`, a Saved View is `deleted`. The reading that hides a dead record
+ * from a set is written against the *value*, so a kind that later names its
+ * deletion the same way is covered without anyone remembering to.
+ *
+ * What this asserts is the correspondence itself, read out of the projection
+ * schema rather than out of a list kept by hand: every kind whose state
+ * vocabulary contains a deletion word is hidden when it holds it, and every
+ * other state a kind can be in — `archived`, `closed`, `lost`, `superseded` —
+ * leaves the record visible, because those are lifecycles and not deletions.
+ * A kind that invents a *third* word for deletion still needs a person; this
+ * test is what makes that omission fail loudly rather than leak a dead edge.
+ */
+it("hides a strategic record on either deletion axis, and nothing else", () => {
+  const base = {
+    id: ids.workspace,
+    workspaceId: ids.workspace,
+    spaceId: ids.space,
+    createdBy: ids.principal,
+    version: 1,
+    createdAt: "2026-07-26T09:00:00.000Z",
+    updatedAt: "2026-07-26T09:00:00.000Z",
+  } as const;
+  const states = (option: unknown): readonly string[] => {
+    const shape = (option as { readonly shape?: Record<string, unknown> })
+      .shape;
+    const state = shape?.["state"] as
+      { readonly options?: unknown } | undefined;
+    return Array.isArray(state?.options)
+      ? (state.options as readonly string[])
+      : [];
+  };
+  const kindOf = (option: unknown): string =>
+    ((option as { readonly shape: Record<string, { readonly value: string }> })
+      .shape["kind"]?.value ?? "") as string;
+  const deleting = new Set(["removed", "deleted"]);
+  let sawDeletionState = false;
+  let sawLifecycleState = false;
+  for (const option of StrategicRecordProjectionSchema.options) {
+    const kind = kindOf(option);
+    for (const state of states(option)) {
+      const record = { ...base, kind, state } as never;
+      const expected = deleting.has(state);
+      if (expected) sawDeletionState = true;
+      else sawLifecycleState = true;
+      assert.equal(
+        strategicRecordIsDeleted(record),
+        expected,
+        `${kind}.state = ${state}`,
+      );
+    }
+    // The shared axis answers the same way for every kind, whatever its own
+    // state says — a removed Organization is gone even though `state` on the
+    // kinds that have one never says so.
+    const [first] = states(option);
+    const shared = {
+      ...base,
+      kind,
+      ...(first === undefined ? {} : { state: first }),
+      recordState: "removed",
+    } as never;
+    assert.equal(strategicRecordIsDeleted(shared), true, `${kind}.recordState`);
+  }
+  // Both halves have to have been exercised, or the loop above proves nothing.
+  assert.equal(sawDeletionState, true);
+  assert.equal(sawLifecycleState, true);
 });

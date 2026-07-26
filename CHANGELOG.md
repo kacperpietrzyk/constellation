@@ -6,6 +6,66 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
+## [0.1.7] - 2026-07-26
+
+Every fix in this release is the same shape: the kernel knew the right answer
+and the caller was handed the wrong **kind** of answer. A rule you broke came back
+as an internal error, a removed link came back as a live one, and a body nobody
+wrote came back indistinguishable from somebody's work.
+
+### Fixed
+
+- **A claimed run identity is refused by name, not reported as a broken
+  build.** An `agentRunId` is bound on first use to the grant, the agent
+  principal and the `hostRunId` it arrived with, and one host run carries at
+  most one agent run. Both rules were enforced by a raw throw, which the guard
+  for genuine defects turned into `mcp.runtime_fault` — the code that means
+  "this build is broken and there is nothing in your request to fix" — on that
+  call and on every later one carrying the same run, permanently. Because
+  `capabilities` is answered before a run is registered, the session gate kept
+  reporting a healthy build, a current grant and a full capability scope while
+  nothing else worked. It is now a `conflict` with `mcp.run_identity_conflict`
+  and a message naming the repair: generate a fresh `agentRunId` **and** a fresh
+  `hostRunId` and retry. The pair matters — a new agent run under an unchanged
+  host run collided with the store's own uniqueness rule and failed the same
+  unnamed way, which is the second half of this fix. The invariant is unchanged:
+  a run identity is never reassigned, and the refusal stays merged rather than
+  naming which half collided.
+- **The two set-level reads let go of removed work links.**
+  `relationship.workspace` and `work.overview` handed back links whose removal
+  had already been applied, mixed in with the live ones, so a caller reconciling
+  "which client does this delivery serve" attached a client that had been
+  deliberately detached. Deletion is written on two axes — the `recordState`
+  every strategic record shares, and the per-kind `state` that a work link and a
+  Saved View predate it with — and the wide reads honoured only the first, so
+  seven kinds were filtered and the eighth was not inside one answer. Both reads
+  now ask one shared question that covers both axes, applied where a set is
+  built, so tombstones already on disk disappear too. Narrow readers were
+  already correct and are unchanged, and removal stays reversible through the
+  removing command's id.
+- **An unavailable Capture payload is a refusal, and says so.** Reading
+  `constellation://v1/…/payload` for a capture that does not exist, sits outside
+  your Spaces, retains no bytes, or needs a capability your grant lacks answered
+  a bare JSON-RPC internal error with prose and nothing machine-readable. Those
+  four causes stay deliberately indistinguishable — that merge is what stops a
+  refusal from revealing whether a record exists — but the answer now carries an
+  invalid-request code and `mcp.payload_unavailable`, so a caller can tell a
+  refusal from a broken build.
+
+### Added
+
+- **`contentOrigin` on both structured reads, answering whether anyone actually
+  wrote the body.** A person merely opening a Project in the desktop
+  materialises its body from the Project's own intended outcome, so
+  `contentState: "rich-v1"` covered both a page that was looked at once and a
+  page holding somebody's work — and an agent deciding whether it may write had
+  no way to tell them apart. The read now states it: `absent` when there is no
+  body, `seeded` when the body holds nothing beyond what materialising it would
+  have produced, `authored` once anything else is in it. It is a claim about
+  content rather than authorship — one edited word makes a body somebody's,
+  because from then on there is something to lose — and it is computed
+  structurally, so an added block or a link counts too.
+
 ## [0.1.6] - 2026-07-26
 
 0.1.5 added a link type to the domain and to the command that writes it, but to

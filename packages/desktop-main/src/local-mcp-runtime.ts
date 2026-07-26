@@ -34,6 +34,8 @@ import {
   MCP_PAYLOAD_RESOURCE_TEMPLATE,
   MAX_IPC_MESSAGE_BYTES,
   MCP_CONTRACT_VERSION,
+  MCP_RUN_IDENTITY_CONFLICT,
+  MCP_RUN_IDENTITY_CONFLICT_MESSAGE,
   MCP_TOOL_NAMES,
   McpOperatorResponseSchema,
   checkpointRevertResponse,
@@ -219,6 +221,7 @@ export class LocalMcpRuntime {
         readStructured?(input: AgentContentAddress):
           | {
               readonly contentState: "absent" | "plain-v1" | "rich-v1";
+              readonly contentOrigin: "absent" | "seeded" | "authored";
               readonly content: unknown;
               readonly text: string;
               readonly entityReferences: readonly unknown[];
@@ -512,7 +515,11 @@ export class LocalMcpRuntime {
       });
     }
     const context = this.contextFor(grant, invocation.run);
-    this.ensureRun(grant, invocation.run);
+    if (!this.ensureRun(grant, invocation.run))
+      return contentSafeResponse(invocation.requestId, "conflict", {
+        diagnosticCode: MCP_RUN_IDENTITY_CONFLICT,
+        message: MCP_RUN_IDENTITY_CONFLICT_MESSAGE,
+      });
     if (invocation.kind === "payload_read") {
       const capture = this.input.store.read((view) =>
         view.getCapture(invocation.captureId),
@@ -924,18 +931,22 @@ export class LocalMcpRuntime {
     });
   }
 
-  private ensureRun(grant: AgentAccessGrant, run: HostRunMetadata): void {
-    this.input.store.transact((transaction) => {
+  private ensureRun(grant: AgentAccessGrant, run: HostRunMetadata): boolean {
+    return this.input.store.transact((transaction) => {
       const existing = transaction.getAgentRun(run.agentRunId);
-      if (existing !== undefined) {
-        if (
-          existing.grantId !== grant.id ||
-          existing.agentPrincipalId !== grant.agentPrincipalId ||
-          existing.hostRunId !== run.hostRunId
-        )
-          throw new Error("Agent run identity collision.");
-        return;
-      }
+      if (existing !== undefined)
+        return (
+          existing.grantId === grant.id &&
+          existing.agentPrincipalId === grant.agentPrincipalId &&
+          existing.hostRunId === run.hostRunId
+        );
+      // The pair the store declares unique. Checked here so a second agent run
+      // under a host run that already has one is refused by name, rather than
+      // reaching the insert and coming back as an unnamed write failure.
+      if (
+        transaction.findAgentRunByHostRun(grant.id, run.hostRunId) !== undefined
+      )
+        return false;
       const now = new Date().toISOString();
       const record: AgentRun = {
         id: AgentRunIdSchema.parse(run.agentRunId),
@@ -961,6 +972,7 @@ export class LocalMcpRuntime {
         updatedAt: now,
       };
       transaction.insertAgentRun(record);
+      return true;
     });
   }
 

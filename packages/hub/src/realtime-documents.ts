@@ -37,6 +37,7 @@ import {
   projectAgentContent,
   storedStateVector,
   storedStateVectorSha256,
+  type AgentContentOrigin,
   type AgentContentSeed,
   type AgentContentState,
 } from "@constellation/realtime-documents/agent-content";
@@ -612,6 +613,7 @@ export class RealtimeDocumentGateway {
   ): Promise<
     | {
         readonly contentState: AgentContentState;
+        readonly contentOrigin: AgentContentOrigin;
         readonly content: StructuredDocument;
         readonly text: string;
         readonly entityReferences: ReturnType<typeof documentEntityReferences>;

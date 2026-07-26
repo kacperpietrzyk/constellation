@@ -32,6 +32,7 @@ import {
   projectAgentContent,
   storedStateVector,
   storedStateVectorSha256,
+  type AgentContentOrigin,
   type AgentContentSeed,
   type AgentContentState,
 } from "@constellation/realtime-documents/agent-content";
@@ -806,6 +807,7 @@ export const createAgentDocumentTextPort = (input: {
     ):
       | {
           readonly contentState: AgentContentState;
+          readonly contentOrigin: AgentContentOrigin;
           readonly content: StructuredDocument;
           readonly text: string;
           readonly entityReferences: ReturnType<
