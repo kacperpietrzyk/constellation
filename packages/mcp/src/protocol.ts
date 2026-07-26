@@ -45,6 +45,31 @@ export const MCP_PAYLOAD_RESOURCE_TEMPLATE =
   "constellation://v1/workspaces/{workspaceId}/captures/{captureId}/payload{?agentRunId,hostRunId,hostName}";
 
 /**
+ * A run's identity is claimed once and never reassigned: the first invocation
+ * carrying an `agentRunId` binds it to the grant, the agent principal and the
+ * host run that registered it, and a grant plus a host run names at most one
+ * agent run. Both transports enforce it, so both refuse it in one vocabulary.
+ *
+ * This exists because of how the refusal used to be delivered. It was a raw
+ * throw, caught by the same guard that catches a genuine fault in the build,
+ * and it came back as `mcp.runtime_fault` — an internal-error code naming
+ * neither the cause nor the cure — on *every* subsequent call carrying that
+ * run. `capabilities` is answered before a run is registered, so the session
+ * gate kept reporting a healthy build, a current grant and a full capability
+ * scope while nothing else worked. The repair was one fresh pair of ids, and
+ * nothing in the answer said so. Measured cost in the field, 2026-07-26: a run
+ * stopped, wrote a finding and escalated to a human for a one-line fix.
+ *
+ * The refusal is deliberately merged — it does not say *which* part of the
+ * identity collided, because an agent run id is caller-minted and confirming
+ * which of another principal's ids one collides with is not something a
+ * refusal should teach. The cure does not need it: mint a fresh pair.
+ */
+export const MCP_RUN_IDENTITY_CONFLICT = "mcp.run_identity_conflict";
+export const MCP_RUN_IDENTITY_CONFLICT_MESSAGE =
+  "This agentRunId is already registered to a different run identity, or this hostRunId already has an agent run under this grant. A run identity is never reassigned. Retry with a freshly generated agentRunId and hostRunId; the work already applied under the previous run is unaffected, and a checkpoint it opened stays reachable from the new one.";
+
+/**
  * The local runtime and the Hub each own a copy of the checkpoint revert loop,
  * so its diagnostics live here: a code that means "later unrelated work
  * exists" locally and something else remotely is worse than no code at all.

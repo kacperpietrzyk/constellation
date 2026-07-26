@@ -641,4 +641,75 @@ describe("agent document text port", () => {
       fake.revisions.some((revision) => revision.name.includes("created body")),
     );
   });
+
+  /**
+   * `contentState` answers a question nobody asked. A person opening a Project
+   * in the app materialises its body from the Project's own intended outcome,
+   * so `rich-v1` means "there is a body", not "somebody wrote one" — and an
+   * agent deciding whether it may write has to tell those apart from the read
+   * alone, because there is nobody to ask mid-run. Measured in the field on
+   * 0.1.6: two of four real Projects held nothing but a word-for-word echo of
+   * their own outcome.
+   */
+  it("says whether a body holds anything the seed did not put there", () => {
+    const fake = fakeStore();
+    const subject = port(fake, false);
+    const seed = {
+      text: "Sequence the PoV before the enablement deck.",
+      principalId: "42000000-0000-4000-8000-000000000006",
+    };
+    const address = { documentId: ids.document, spaceId: ids.space, seed };
+    const empty = subject.readStructured(address);
+    assert.equal(empty?.contentState, "absent");
+    assert.equal(empty?.contentOrigin, "absent");
+
+    // Exactly what a human's first open leaves behind: the seed, materialised,
+    // and nothing else. The body is real and the Project is still untouched.
+    const seeded = subject.replaceStructured({
+      ...address,
+      content: {
+        schemaVersion: 1,
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: seed.text }] },
+        ],
+      },
+      expectedStateVectorSha256: empty!.stateVectorSha256,
+      idempotencyKey: "origin-seed",
+      principalId: "42000000-0000-4000-8000-000000000004",
+      runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
+    });
+    assert.equal(seeded.outcome, "success", JSON.stringify(seeded));
+    const afterSeed = subject.readStructured(address);
+    // The distinction the old read could not carry: same contentState, and a
+    // different answer to the question that decides whether to write.
+    assert.equal(afterSeed?.contentState, "rich-v1");
+    assert.equal(afterSeed?.contentOrigin, "seeded");
+
+    // One word, and it is somebody's. Authorship is not the test — content is:
+    // from here on there is something to lose.
+    const authored = subject.replaceStructured({
+      ...address,
+      content: {
+        schemaVersion: 1,
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: `${seed.text} Confirmed.` }],
+          },
+        ],
+      },
+      expectedStateVectorSha256: afterSeed!.stateVectorSha256,
+      idempotencyKey: "origin-authored",
+      principalId: "42000000-0000-4000-8000-000000000004",
+      runId: "42000000-0000-4000-8000-000000000005",
+      deviceId: DeviceIdSchema.parse("42000000-0000-4000-8000-000000000007"),
+    });
+    assert.equal(authored.outcome, "success", JSON.stringify(authored));
+    const afterAuthoring = subject.readStructured(address);
+    assert.equal(afterAuthoring?.contentState, "rich-v1");
+    assert.equal(afterAuthoring?.contentOrigin, "authored");
+  });
 });

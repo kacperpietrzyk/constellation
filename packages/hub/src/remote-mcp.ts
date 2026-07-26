@@ -49,6 +49,8 @@ import { structuredDocumentEntityReferences } from "@constellation/realtime-docu
 import {
   MCP_CHECKPOINT_REVERT_DIAGNOSTICS,
   MCP_CONTRACT_VERSION,
+  MCP_RUN_IDENTITY_CONFLICT,
+  MCP_RUN_IDENTITY_CONFLICT_MESSAGE,
   MCP_TOOL_NAMES,
   MAX_MCP_PAYLOAD_CHUNK_BYTES,
   MCP_PAYLOAD_RESOURCE_TEMPLATE,
@@ -812,7 +814,11 @@ export class HubRemoteMcpService {
                 ),
               });
             }
-            this.ensureRun(store, grant, invocation.run);
+            if (!this.ensureRun(store, grant, invocation.run))
+              return response(invocation.requestId, "conflict", {
+                diagnosticCode: MCP_RUN_IDENTITY_CONFLICT,
+                message: MCP_RUN_IDENTITY_CONFLICT_MESSAGE,
+              });
             if (
               invocation.kind === "document_structured_read" ||
               invocation.kind === "document_structured_write" ||
@@ -1047,7 +1053,11 @@ export class HubRemoteMcpService {
         return response(invocation.requestId, "rejected", {
           diagnosticCode: "authorization.denied",
         });
-      this.ensureRun(store, grant, invocation.run);
+      if (!this.ensureRun(store, grant, invocation.run))
+        return response(invocation.requestId, "conflict", {
+          diagnosticCode: MCP_RUN_IDENTITY_CONFLICT,
+          message: MCP_RUN_IDENTITY_CONFLICT_MESSAGE,
+        });
       const output = await this.readPayloadChunk(
         store,
         context,
@@ -1590,18 +1600,22 @@ export class HubRemoteMcpService {
     store: InMemoryReferenceStore,
     grant: AgentAccessGrant,
     run: HostRunMetadata,
-  ): void {
-    store.transact((transaction) => {
+  ): boolean {
+    return store.transact((transaction) => {
       const existing = transaction.getAgentRun(run.agentRunId);
-      if (existing !== undefined) {
-        if (
-          existing.grantId !== grant.id ||
-          existing.agentPrincipalId !== grant.agentPrincipalId ||
-          existing.hostRunId !== run.hostRunId
-        )
-          throw new Error("Agent run identity collision.");
-        return;
-      }
+      if (existing !== undefined)
+        return (
+          existing.grantId === grant.id &&
+          existing.agentPrincipalId === grant.agentPrincipalId &&
+          existing.hostRunId === run.hostRunId
+        );
+      // The same pair the device store declares unique, checked on this
+      // transport too, so one host run never carries two agent runs and the
+      // two transports refuse the same thing for the same reason.
+      if (
+        transaction.findAgentRunByHostRun(grant.id, run.hostRunId) !== undefined
+      )
+        return false;
       const now = this.now();
       const record: AgentRun = {
         id: AgentRunIdSchema.parse(run.agentRunId),
@@ -1627,6 +1641,7 @@ export class HubRemoteMcpService {
         updatedAt: now,
       };
       transaction.insertAgentRun(record);
+      return true;
     });
   }
 

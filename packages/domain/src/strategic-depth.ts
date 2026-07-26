@@ -519,4 +519,32 @@ export const recordIsActive = (record: {
   readonly recordState?: "active" | "removed";
 }): boolean => (record.recordState ?? "active") === "active";
 
+/**
+ * Deletion is written on two different axes, and a read that honours one
+ * without the other hands back a dead record as a live one.
+ *
+ * `recordState` is the axis every strategic record shares, and the axis the
+ * store's list primitives filter. Two kinds predate it and carry their own:
+ * a work link is removed onto `state: "removed"` and a Saved View onto
+ * `state: "deleted"`, because each is restorable on that axis rather than
+ * through the shared one. Everything else's `state` is a domain lifecycle —
+ * `archived`, `closed`, `lost`, `superseded` — and a record in one of those is
+ * emphatically still there.
+ *
+ * So the test is the *value*, not the kind: no other arm of the union names a
+ * state `removed` or `deleted`, and a kind that later does means the same
+ * thing by it. `strategic-depth` asserts that correspondence, so a new kind
+ * cannot quietly acquire a deletion value this reading does not know about.
+ */
+const DELETED_STRATEGIC_STATES: ReadonlySet<string> = new Set([
+  "removed",
+  "deleted",
+]);
+
+export const strategicRecordIsDeleted = (record: StrategicRecord): boolean =>
+  strategicRecordState(record) === "removed" ||
+  ("state" in record &&
+    typeof record.state === "string" &&
+    DELETED_STRATEGIC_STATES.has(record.state));
+
 export { strategicRecordReferences };

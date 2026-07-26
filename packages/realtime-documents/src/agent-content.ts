@@ -138,6 +138,38 @@ export const agentContentBaseline = (input: {
 };
 
 /**
+ * Where the body a read hands back came from — the question `contentState`
+ * looks like it answers and does not.
+ *
+ * A Project's body is materialised the moment a person merely *opens* it, and
+ * the app seeds it with the Project's own `intendedOutcome` (ADR-056 §3). So
+ * `rich-v1` covers both "somebody did real work here" and "a page was looked
+ * at once", and an agent deciding whether it may write has no way to tell the
+ * two apart from the read. Measured in the field on 0.1.6: of four real
+ * Projects, two held nothing but a word-for-word echo of their own outcome.
+ * Skipping those wastes the Project; overwriting the fourth destroys work.
+ *
+ * `seeded` states that the stored body holds nothing the system did not put
+ * there itself — for a Project, the seed; for a document, which has no seed,
+ * an empty body. It is a claim about *content*, not about authorship: a person
+ * who edits one word of the seeded paragraph has authored it, and that is the
+ * correct reading, because from then on there is something to lose.
+ */
+export type AgentContentOrigin = "absent" | "seeded" | "authored";
+
+const seedOnlyContent = (seed?: AgentContentSeed): string => {
+  const baseline = agentContentBaseline({
+    ...(seed === undefined ? {} : { seed }),
+    origin: { kind: "remote" },
+  });
+  try {
+    return JSON.stringify(baseline.adapter.getStructuredContent());
+  } finally {
+    baseline.adapter.destroy();
+  }
+};
+
+/**
  * The total read. The digest and the state describe what is *stored*, so a
  * caller can quote the digest back and have its write refuse if anything moved
  * meanwhile; the body describes what the next write will start from, produced
@@ -149,6 +181,7 @@ export const projectAgentContent = (input: {
   readonly seed?: AgentContentSeed;
 }): {
   readonly contentState: AgentContentState;
+  readonly contentOrigin: AgentContentOrigin;
   readonly content: StructuredDocument;
   readonly text: string;
   readonly entityReferences: ReturnType<
@@ -164,9 +197,20 @@ export const projectAgentContent = (input: {
     origin: { kind: "remote" },
   });
   try {
+    const content = baseline.adapter.getStructuredContent();
     return {
       contentState,
-      content: baseline.adapter.getStructuredContent(),
+      // Compared structurally against what the seed alone produces, rather
+      // than by matching text against `intendedOutcome`: an added block, a
+      // link, or a changed word all make a body somebody's, and only the
+      // structure sees all three.
+      contentOrigin:
+        contentState === "absent"
+          ? "absent"
+          : JSON.stringify(content) === seedOnlyContent(input.seed)
+            ? "seeded"
+            : "authored",
+      content,
       text: baseline.adapter.getText(),
       entityReferences: baseline.adapter.getEntityReferences(),
       stateVectorSha256,

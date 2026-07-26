@@ -108,6 +108,7 @@ import {
   recordIsActive,
   restoreTaskProjectRelation,
   setStrategicRecordState,
+  strategicRecordIsDeleted,
   strategicRecordReferences,
   strategicRecordState,
   setTaskStatus,
@@ -1913,6 +1914,31 @@ const responsibilityFields = (
 
 // The strategic record projection is the domain record itself, so the two
 // kinds carrying a narrative are the only ones the derivation has to reach.
+/**
+ * What a set-level read is allowed to hand back.
+ *
+ * The store's list primitive filters `recordState`, which is the axis seven
+ * kinds are removed on. A work link is removed onto its own `state` and a
+ * Saved View onto its own `state`, so both walked straight through a query
+ * that trusted the store's filter alone — and a caller reading a detached
+ * client edge as an attached one is the whole cost of that. The narrow
+ * readers (`project.operationalOverview` and friends) already honour `state`
+ * per kind; this is the same reading, applied once, where a *set* is built.
+ *
+ * Removal is still reversible: the compensation for `work.linkRemove` restores
+ * the link, and it is reached through the removing command's id
+ * (`recovery.preview` → `command.undo`), never by re-reading a tombstone out of
+ * a list. Nothing needs a dead record to be visible in order to bring it back.
+ */
+const liveStrategicRecords = (
+  view: ApplicationWave2ReadView,
+  workspaceId: WorkspaceId,
+  spaceId: SpaceId,
+): readonly StrategicRecord[] =>
+  view
+    .listStrategicRecords(workspaceId, spaceId)
+    .filter((record) => !strategicRecordIsDeleted(record));
+
 const strategicRecordProjection = (
   record: StrategicRecord,
 ): Record<string, unknown> => {
@@ -10027,7 +10053,7 @@ export const executeWave2Query = (
       })
     )
       return queryRejected(query, kernelTime, "authorization.denied");
-    const records = view.listStrategicRecords(query.workspaceId, space.id);
+    const records = liveStrategicRecords(view, query.workspaceId, space.id);
     const spaceTasks = view.listTasksInSpace(query.workspaceId, space.id);
     const fieldDefinitions = view.listFieldDefinitions(query.workspaceId);
     const subtasksByParent = new Map<
@@ -10467,9 +10493,11 @@ export const executeWave2Query = (
   if (query.queryName === "relationship.workspace") {
     return querySuccess(query, kernelTime, freshness, {
       kind: "relationship.workspace",
-      records: view
-        .listStrategicRecords(query.workspaceId, query.parameters.spaceId)
-        .map(strategicRecordProjection),
+      records: liveStrategicRecords(
+        view,
+        query.workspaceId,
+        query.parameters.spaceId,
+      ).map(strategicRecordProjection),
       freshness,
     });
   }

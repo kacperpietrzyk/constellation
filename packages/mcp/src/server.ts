@@ -3,9 +3,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
+  ErrorCode,
   ListResourceTemplatesRequestSchema,
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  McpError,
   ReadResourceRequestSchema,
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -84,8 +86,28 @@ const runInput: Record<string, unknown> = Object.fromEntries(
   ).filter(([keyword]) => keyword !== "$schema"),
 );
 
+/**
+ * Every way this resource can fail to produce bytes collapses into one answer,
+ * and that merge is deliberate: a caller must not be able to tell a capture
+ * that does not exist from one its grant cannot reach, which is the same rule
+ * `command.precondition_failed` follows on the command side.
+ *
+ * What the merge does not license is looking like a crash. A resource read has
+ * no outcome envelope to carry a diagnostic, so this used to surface as a bare
+ * JSON-RPC internal error with prose and nothing machine-readable — the code a
+ * caller is supposed to read as "a defect in this build, retrying is pointless
+ * and there is nothing in your request to fix". It is a refusal, so it is
+ * reported as one: an invalid-request code, and a `diagnosticCode` in `data`
+ * that names the merged refusal without naming which cause produced it.
+ */
+export const MCP_PAYLOAD_UNAVAILABLE = "mcp.payload_unavailable";
+
 const unavailablePayload = (): never => {
-  throw new Error("Constellation Capture payload is unavailable.");
+  throw new McpError(
+    ErrorCode.InvalidRequest,
+    "Constellation Capture payload is unavailable. The capture may not exist, may sit outside the Spaces your grant reaches, may hold no retained payload, or your grant may not carry the capability that reads it — these are deliberately indistinguishable. Check capture.history and your capabilityScope rather than retrying.",
+    { diagnosticCode: MCP_PAYLOAD_UNAVAILABLE },
+  );
 };
 
 const parsePayloadResource = (uri: string) => {
@@ -279,7 +301,7 @@ export const createConstellationMcpServer = (
         name: "constellation.document.structured.read.v1",
         title: "Read a structured native document",
         description:
-          'Read the current versioned blocks, marks, typed entity links, body text, and state-vector digest of one authorized document. This read always answers: contentState is "absent" for a document with no body yet, "plain-v1" for one written through constellation.document.write.v1, and "rich-v1" once it holds blocks. The digest describes what is stored — quote it back to the structured write — while content and text show the body that write will start from, which for a plain-v1 document is its text split into paragraphs. Requires document.readContent and the document\u2019s Space.',
+          'Read the current versioned blocks, marks, typed entity links, body text, and state-vector digest of one authorized document. This read always answers: contentState is "absent" for a document with no body yet, "plain-v1" for one written through constellation.document.write.v1, and "rich-v1" once it holds blocks. contentOrigin says whether that body holds anything the system did not put there itself: "absent" when there is no body, "seeded" when it holds only what materialising it would have produced, "authored" once anything else is in it. The digest describes what is stored — quote it back to the structured write — while content and text show the body that write will start from, which for a plain-v1 document is its text split into paragraphs. Requires document.readContent and the document\u2019s Space.',
         inputSchema: objectInput(
           {
             run: runInput,
@@ -363,7 +385,7 @@ export const createConstellationMcpServer = (
         name: "constellation.project.structured.read.v1",
         title: "Read structured Project content",
         description:
-          'Read the current working body, typed entity links, plain text, and state-vector digest of one authorized Project. This read always answers: contentState is "absent" for a Project whose body nobody has opened or written yet, and the body shown is the one the next write will start from — seeded from the Project\u2019s intendedOutcome. Quote the digest back to the structured write. Requires project.readContent and the Project\u2019s Space.',
+          'Read the current working body, typed entity links, plain text, and state-vector digest of one authorized Project. This read always answers: contentState is "absent" for a Project whose body nobody has opened or written yet, and the body shown is the one the next write will start from — seeded from the Project\u2019s intendedOutcome. contentState alone cannot tell you whether anyone wrote anything: a person merely opening a Project in the app materialises its body from that same intendedOutcome, so "rich-v1" covers both a page that was looked at once and a page holding somebody\u2019s work. contentOrigin separates them \u2014 "seeded" means the stored body holds nothing beyond that seed and costs nothing to write over, "authored" means something else is in it and overwriting it destroys work, "absent" means there is no body yet. Read contentOrigin, not contentState, before deciding whether to write. Quote the digest back to the structured write. Requires project.readContent and the Project\u2019s Space.',
         inputSchema: objectInput(
           {
             run: runInput,
