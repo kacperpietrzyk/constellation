@@ -3931,3 +3931,198 @@ it("enumerates one kind each, and answers the same shape as the wide read", () =
   assert.deepEqual(list("person.list"), []);
   assert.equal(list("organization.list").length, 1);
 });
+
+/**
+ * Removal frees a source key on purpose — a source row whose record was removed
+ * has to be importable again. The consequence is that putting the record back
+ * is no longer unconditionally safe, and neither the undo nor its preview may
+ * pretend otherwise: restoring on top of a re-import would leave two active
+ * records of one kind in one Space holding one key, and the set-once rule then
+ * refuses to re-point either, so the only way out would be deleting one.
+ */
+it("refuses to restore a record whose source key was claimed while it was gone", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("reclaim-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Reclaim",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const firstId = uuid();
+  const secondId = uuid();
+  const create = (personId: string, key: string) =>
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata(key),
+        commandName: "relationship.personCreate",
+        payload: {
+          personId,
+          spaceId: ids.space,
+          name: "Karina Szambelan",
+          externalId: "jamie:p-1",
+        },
+      }),
+    );
+  assert.equal(create(firstId, "reclaim-first").outcome, "success");
+
+  const removal = {
+    ...metadata("reclaim-remove", { [firstId]: 1 }),
+    commandName: "relationship.personRemove" as const,
+    payload: { personId: firstId },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), removal)).outcome,
+    "success",
+  );
+
+  // The key is free again, which is the behaviour we want.
+  assert.equal(create(secondId, "reclaim-second").outcome, "success");
+
+  // The preview has to say so before the undo is spent, not after.
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("reclaim-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: removal.commandId },
+    }),
+  );
+  assert.equal(preview.outcome, "preview");
+  assert.equal(
+    preview.outcome === "preview" &&
+      preview.projection.kind === "undo.previewed" &&
+      preview.projection.available,
+    false,
+  );
+
+  const undone = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("reclaim-undo", { [firstId]: 2 }),
+      commandName: "command.undo",
+      payload: { targetCommandId: removal.commandId },
+    }),
+  );
+  // Refused as a conflict rather than a rejection: something else now holds
+  // the thing this compensation needs, which is what `conflict` means here.
+  assert.notEqual(undone.outcome, "success");
+
+  // And the Space still holds exactly one active person for that key — the
+  // invariant the refusal exists to keep.
+  const people = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "person.list",
+    queryId: uuid(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.space },
+  });
+  if (
+    people.kind !== "query_result" ||
+    people.result.outcome !== "success" ||
+    people.result.projection.kind !== "person.list"
+  )
+    assert.fail("Expected person.list");
+  assert.deepEqual(
+    people.result.projection.items
+      .filter((item) => item.externalId === "jamie:p-1")
+      .map((item) => item.id),
+    [secondId],
+  );
+});
+
+/**
+ * The other half: undoing the update that stamped a key has to unstamp the
+ * record. No command can clear provenance — that is the set-once rule — but a
+ * compensation that left the key in place would report success while changing
+ * nothing the caller can see, and the record would be permanently attributed to
+ * a source row it was never imported from.
+ */
+it("unstamps a record when the update that stamped it is undone", () => {
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("unstamp-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Unstamp",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const personId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("unstamp-create"),
+        commandName: "relationship.personCreate",
+        payload: { personId, spaceId: ids.space, name: "Antek" },
+      }),
+    ).outcome,
+    "success",
+  );
+  const stamp = {
+    ...metadata("unstamp-stamp", { [personId]: 1 }),
+    commandName: "relationship.personUpdate" as const,
+    payload: { personId, externalId: "folder:antek" },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), stamp)).outcome,
+    "success",
+  );
+
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("unstamp-undo", { [personId]: 2 }),
+        commandName: "command.undo",
+        payload: { targetCommandId: stamp.commandId },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  const record = harness.store.read((view) =>
+    isApplicationWave2ReadView(view)
+      ? view.getStrategicRecord(StrategicRecordIdSchema.parse(personId))
+      : undefined,
+  );
+  assert.equal(
+    record?.kind === "person" ? record.externalId : "still stamped",
+    undefined,
+  );
+
+  // The key is free, so the row can be imported onto a different record.
+  const otherId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("unstamp-reimport"),
+        commandName: "relationship.personCreate",
+        payload: {
+          personId: otherId,
+          spaceId: ids.space,
+          name: "Antek",
+          externalId: "folder:antek",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+});

@@ -3863,6 +3863,9 @@ export const executeWave2Command = (
             : { priorOrganizationId: current.organizationId }),
           ...(current.role === undefined ? {} : { priorRole: current.role }),
           ...(current.email === undefined ? {} : { priorEmail: current.email }),
+          ...(current.externalId === undefined
+            ? {}
+            : { priorExternalId: current.externalId }),
           resultingVersion: record.version,
         },
       );
@@ -3941,6 +3944,9 @@ export const executeWave2Command = (
           ...(current.nextAction === undefined
             ? {}
             : { priorNextAction: current.nextAction }),
+          ...(current.externalId === undefined
+            ? {}
+            : { priorExternalId: current.externalId }),
           resultingVersion: record.version,
         },
       );
@@ -8392,18 +8398,46 @@ const descriptorState = (
     }
     case "strategic.restore_record_state": {
       const record = view.getStrategicRecord(descriptor.recordId);
-      return record?.version === descriptor.resultingVersion
-        ? {
-            available: true,
-            recordIds: [record.id],
-            versions: { [record.id]: record.version },
-          }
-        : {
+      if (record?.version !== descriptor.resultingVersion)
+        return {
+          available: false,
+          recordIds: [],
+          versions: {},
+          reason: "later_change",
+        };
+      // The preview has to agree with the revert, which is the lesson of #15:
+      // a preview that reports feasible and then refuses spends a checkpoint to
+      // tell you what it already knew. Restoring a removed Person or
+      // Organization is infeasible when a re-import has claimed its source key
+      // in the meantime — see the matching guard in `compensateDescriptor`.
+      // `still_referenced` is the closest member of a vocabulary that is
+      // deliberately small: another record in the caller's own Space stands in
+      // the way, and clearing it makes this available again, which is exactly
+      // what that reason tells a caller to do.
+      if (
+        descriptor.priorRecordState === "active" &&
+        (record.kind === "person" || record.kind === "organization") &&
+        record.externalId !== undefined
+      ) {
+        const claimed = view.findStrategicRecordByExternalId(
+          record.workspaceId,
+          record.spaceId,
+          record.kind,
+          record.externalId,
+        );
+        if (claimed !== undefined && claimed.id !== record.id)
+          return {
             available: false,
             recordIds: [],
             versions: {},
-            reason: "later_change",
+            reason: "still_referenced",
           };
+      }
+      return {
+        available: true,
+        recordIds: [record.id],
+        versions: { [record.id]: record.version },
+      };
     }
     case "savedView.restore_definition": {
       const record = view.getStrategicRecord(descriptor.savedViewId);
@@ -9107,11 +9141,35 @@ const compensateDescriptor = (
     const record = transaction.getStrategicRecord(
       descriptor.recordId,
     ) as StrategicRecord;
+    const priorRecordState =
+      descriptor.kind === "strategic.undo_create"
+        ? ("removed" as const)
+        : descriptor.priorRecordState;
+    // Removal frees a source key, which is deliberate — a source row whose
+    // record was removed has to be importable again. The consequence is that
+    // bringing the record back can no longer be assumed safe: if a re-import
+    // claimed the key in between, restoring would leave two active records of
+    // one kind in one Space carrying the same key, and the set-once rule then
+    // refuses to re-point either, so the only way out would be deleting one.
+    // Refusing here is the whole point of a compensation that can say no.
+    if (
+      priorRecordState === "active" &&
+      (record.kind === "person" || record.kind === "organization") &&
+      record.externalId !== undefined
+    ) {
+      const claimed = transaction.findStrategicRecordByExternalId(
+        record.workspaceId,
+        record.spaceId,
+        record.kind,
+        record.externalId,
+      );
+      if (claimed !== undefined && claimed.id !== record.id) {
+        return { ok: false };
+      }
+    }
     const restored = setStrategicRecordState(
       record,
-      descriptor.kind === "strategic.undo_create"
-        ? "removed"
-        : descriptor.priorRecordState,
+      priorRecordState,
       occurredAt,
     );
     transaction.updateStrategicRecord(restored, record.version);
@@ -9303,6 +9361,10 @@ const compensateDescriptor = (
         organizationId: descriptor.priorOrganizationId ?? null,
         role: descriptor.priorRole ?? null,
         email: descriptor.priorEmail ?? null,
+        // Explicit null when the descriptor carries none: the record was
+        // unstamped before this update, and an undo that left the key behind
+        // would report success while changing nothing a caller can see.
+        externalId: descriptor.priorExternalId ?? null,
       },
       occurredAt,
     );
@@ -9319,6 +9381,7 @@ const compensateDescriptor = (
         name: descriptor.priorName,
         relationshipState: descriptor.priorRelationshipState,
         nextAction: descriptor.priorNextAction ?? null,
+        externalId: descriptor.priorExternalId ?? null,
       },
       occurredAt,
     );

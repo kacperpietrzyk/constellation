@@ -79,10 +79,12 @@ export const updatePersonDetails = (
     readonly organizationId?: StrategicRecordId | null;
     readonly role?: string | null;
     readonly email?: string | null;
-    // Never `| null`: provenance can be stamped on a record that predates the
-    // field, but never cleared and never rewritten. The kernel refuses a
-    // change; this helper only ever adds.
-    readonly externalId?: string;
+    // `| null` here but NOT on the command: no caller may clear provenance —
+    // the kernel refuses a change and there is no way to ask for a clear — but
+    // undoing the update that stamped a key has to put the record back the way
+    // it was, and "the way it was" is unstamped. A compensation is not a
+    // command, so the helper can express what the contract will not.
+    readonly externalId?: string | null;
   },
   occurredAt: string,
 ): Extract<StrategicRecord, { kind: "person" }> => {
@@ -90,11 +92,13 @@ export const updatePersonDetails = (
     organizationId: _organizationId,
     role: _role,
     email: _email,
+    externalId: _externalId,
     ...base
   } = person;
   void _organizationId;
   void _role;
   void _email;
+  void _externalId;
   const organizationId =
     changes.organizationId === undefined
       ? person.organizationId
@@ -103,15 +107,19 @@ export const updatePersonDetails = (
     changes.role === undefined ? person.role : (changes.role ?? undefined);
   const email =
     changes.email === undefined ? person.email : (changes.email ?? undefined);
+  // Absent leaves it alone, an explicit null clears it. Only the compensation
+  // path ever passes null; the command schema cannot express it.
+  const externalId =
+    changes.externalId === undefined
+      ? person.externalId
+      : (changes.externalId ?? undefined);
   return {
     ...base,
     name: changes.name ?? person.name,
     ...(organizationId === undefined ? {} : { organizationId }),
     ...(role === undefined ? {} : { role }),
     ...(email === undefined ? {} : { email }),
-    ...(person.externalId === undefined && changes.externalId === undefined
-      ? {}
-      : { externalId: person.externalId ?? changes.externalId }),
+    ...(externalId === undefined ? {} : { externalId }),
     version: person.version + 1,
     updatedAt: occurredAt,
   };
@@ -123,13 +131,22 @@ export const updateOrganizationDetails = (
     readonly name?: string;
     readonly relationshipState?: "prospect" | "active" | "inactive";
     readonly nextAction?: string | null;
-    /** See `updatePersonDetails` — set once, never cleared or rewritten. */
-    readonly externalId?: string;
+    /** See `updatePersonDetails` — clearable only by a compensation. */
+    readonly externalId?: string | null;
   },
   occurredAt: string,
 ): Extract<StrategicRecord, { kind: "organization" }> => {
-  const { nextAction: _nextAction, ...base } = organization;
+  const {
+    nextAction: _nextAction,
+    externalId: _externalId,
+    ...base
+  } = organization;
   void _nextAction;
+  void _externalId;
+  const externalId =
+    changes.externalId === undefined
+      ? organization.externalId
+      : (changes.externalId ?? undefined);
   const nextAction =
     changes.nextAction === undefined
       ? organization.nextAction
@@ -140,10 +157,7 @@ export const updateOrganizationDetails = (
     relationshipState:
       changes.relationshipState ?? organization.relationshipState,
     ...(nextAction === undefined ? {} : { nextAction }),
-    ...(organization.externalId === undefined &&
-    changes.externalId === undefined
-      ? {}
-      : { externalId: organization.externalId ?? changes.externalId }),
+    ...(externalId === undefined ? {} : { externalId }),
     version: organization.version + 1,
     updatedAt: occurredAt,
   };

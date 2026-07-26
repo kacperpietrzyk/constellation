@@ -826,6 +826,12 @@ export type UndoDescriptor =
       readonly priorOrganizationId?: StrategicRecordId;
       readonly priorRole?: string;
       readonly priorEmail?: string;
+      // Absent means the record carried no source key before the update, so
+      // undoing a stamp has to clear it. The command can never clear one —
+      // provenance is set once — but a compensation is not the command, and a
+      // descriptor that omitted this would report success while leaving the
+      // record stamped, which is worse than refusing.
+      readonly priorExternalId?: string;
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }
@@ -838,6 +844,8 @@ export type UndoDescriptor =
       readonly priorName: string;
       readonly priorRelationshipState: "prospect" | "active" | "inactive";
       readonly priorNextAction?: string;
+      /** See `relationship.restore_person` above. */
+      readonly priorExternalId?: string;
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }
