@@ -5,6 +5,7 @@ import {
   CommandOutcomeSchema,
   GlobalSearchRecordKindSchema,
   QueryResultSchema,
+  WorkLinkTypeSchema,
   getHumanRecordKindDescriptor,
   globalSearchRecordKindIds,
   humanRecordKindRegistry,
@@ -574,6 +575,86 @@ describe("application contracts", () => {
       false,
     );
   });
+
+  // 0.1.5 widened the work-link vocabulary at the command and in the domain but
+  // in neither projection that carries a link, and because query results are
+  // parsed strictly, one such link faulted `relationship.workspace` and
+  // `work.overview` outright rather than degrading. The compile-time guard in
+  // `wave2.ts` compares key sets, so a widened VALUE inside an existing key is
+  // invisible to it. This loop is the artifact that closes that gap: it is
+  // driven by the vocabulary itself, so a member added tomorrow is covered
+  // without anyone remembering to add a case. It is also the only check that
+  // reaches the `work.overview` links array, which is an inline anonymous
+  // object no type-level guard can name.
+  for (const linkType of WorkLinkTypeSchema.options) {
+    it(`projects a ${linkType} work link through both readers`, () => {
+      const freshness = {
+        mode: "local_authoritative",
+        checkpoint: null,
+        missingCapabilities: [],
+      } as const;
+      const result = {
+        outcome: "success",
+        contractVersion: 1,
+        queryId: ids.query,
+        kernelTime: "2026-07-22T00:00:00.000Z",
+        freshness,
+      } as const;
+
+      assert.equal(
+        QueryResultSchema.safeParse({
+          ...result,
+          projection: {
+            kind: "relationship.workspace",
+            records: [
+              {
+                id: ids.command,
+                workspaceId: ids.workspace,
+                spaceId: ids.space,
+                createdBy: ids.principal,
+                kind: "work_link",
+                linkType,
+                sourceRecordId: ids.query,
+                targetRecordId: ids.correlation,
+                state: "active",
+                version: 1,
+                createdAt: "2026-07-22T00:00:00.000Z",
+                updatedAt: "2026-07-22T00:00:00.000Z",
+              },
+            ],
+            freshness,
+          },
+        }).success,
+        true,
+      );
+
+      assert.equal(
+        QueryResultSchema.safeParse({
+          ...result,
+          projection: {
+            kind: "work.overview",
+            tasks: [],
+            projects: [],
+            areas: [],
+            initiatives: [],
+            links: [
+              {
+                id: ids.command,
+                linkType,
+                sourceRecordId: ids.query,
+                targetRecordId: ids.correlation,
+                state: "active",
+                version: 1,
+              },
+            ],
+            savedViews: [],
+            freshness,
+          },
+        }).success,
+        true,
+      );
+    });
+  }
 
   it("allows a direct Task projection without fabricated Capture provenance", () => {
     const result = QueryResultSchema.safeParse({

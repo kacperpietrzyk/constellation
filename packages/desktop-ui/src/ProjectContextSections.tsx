@@ -37,7 +37,10 @@ export default function ProjectContextSections({
       key: "client",
       eyebrow: "Kontekst relacji",
       title: "Klient",
-      empty: "Brak klienta połączonego przez szansę lub spotkanie.",
+      // Named the three reaches rather than the two it used to, because since
+      // 0.1.5 a Project can be linked straight to an Organization and this line
+      // was telling the reader to go looking for a deal that need not exist.
+      empty: "Brak klienta połączonego przez szansę, spotkanie lub powiązanie.",
       wide: true,
       items: overview.clientOrganizations.map((organization) => ({
         id: organization.id,

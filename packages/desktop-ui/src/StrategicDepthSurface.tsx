@@ -601,7 +601,10 @@ export const StrategicDepthSurface = ({
 const emptySectionCopy = {
   people: "Nie ma jeszcze osób powiązanych z tą organizacją.",
   opportunities: "Nie ma aktywnych szans powiązanych z tą organizacją.",
-  projects: "Nie ma aktywnych projektów wynikających z tych szans.",
+  // `activeProjects` unions two reaches (ADR-071) — the projects this client's
+  // opportunities name, and deliveries linked straight at the client — so
+  // attributing the emptiness to the shortage of deals alone was misleading.
+  projects: "Nie ma aktywnych projektów powiązanych z tym klientem.",
   tasks: "Nie ma otwartych zadań w aktywnych projektach klienta.",
   renewals: "Nie ma odnowień wymagających śledzenia.",
   facts: "Nie ma jeszcze zweryfikowanych faktów o relacji.",

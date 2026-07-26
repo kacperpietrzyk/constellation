@@ -28,6 +28,7 @@ import {
   type CaptureOriginal,
   type CaptureId,
   type PrincipalId as AgentPrincipalId,
+  type WorkLinkType,
 } from "@constellation/contracts";
 import type {
   ConstellationRendererClient,
@@ -1564,10 +1565,7 @@ export const deleteSavedWorkView = (
 export const createWorkLink = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,
-  linkType:
-    | "project_advances_initiative"
-    | "project_serves_area"
-    | "task_depends_on_task",
+  linkType: WorkLinkType,
   sourceRecordId: string,
   targetRecordId: string,
 ) => {

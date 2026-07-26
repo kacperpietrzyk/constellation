@@ -64,6 +64,7 @@ const context = (): ExecutionContext =>
       "opportunity.offerCreate",
       "opportunity.linkOutcomes",
       "relationship.workspace",
+      "project.operationalOverview",
       "relationship.renewalCreate",
       "relationship.renewalResolve",
       "relationship.factCreate",
@@ -3489,6 +3490,63 @@ it("carries provenance, a client, a deal owner and a per-deal action", () => {
     blocked.outcome === "rejected" && blocked.diagnosticCode,
     "record.still_referenced",
   );
+
+  // A Source a Project rests on is undeletable while the Project stands. The
+  // guard was written when `evidenceSourceIds` was a strategic-record field
+  // only, so Projects — which are not strategic records — fell through it and
+  // a Project's evidence could be removed out from under it.
+  const blockedSource = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("reach-source-remove", { [sourceId]: 1 }),
+      commandName: "knowledge.sourceRemove",
+      payload: { sourceId },
+    }),
+  );
+  assert.equal(blockedSource.outcome, "rejected");
+  assert.equal(
+    blockedSource.outcome === "rejected" && blockedSource.diagnosticCode,
+    "record.still_referenced",
+  );
+
+  // The client reads back from the Project side too. Until 0.1.5 this answered
+  // `[]` for a Project linked straight at an Organization, while the
+  // organization side already listed that same Project — the edge surfaced one
+  // way only.
+  const clientOf = () => {
+    const overview = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "project.operationalOverview",
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { projectId },
+    });
+    if (
+      overview.kind !== "query_result" ||
+      overview.result.outcome !== "success" ||
+      overview.result.projection.kind !== "project.operationalOverview"
+    )
+      assert.fail("Expected Project overview");
+    return overview.result.projection.clientOrganizations.map(
+      (organization) => organization.id,
+    );
+  };
+  assert.deepEqual(clientOf(), [organizationId]);
+
+  // And it lets go. This half is the one that catches a builder reading the
+  // link without honouring `state`, which is the axis a work link is removed
+  // on.
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("reach-link-remove", { [linkId]: 1 }),
+        commandName: "work.linkRemove",
+        payload: { linkId },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.deepEqual(clientOf(), []);
 
   // The query layer's project.organization path resolves through the direct
   // link, not only through an Opportunity that happens to name both.

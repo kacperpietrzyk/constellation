@@ -37,6 +37,7 @@ import type {
   ImportedMeeting,
   MeetingWorkItem,
   RelationCondition,
+  WorkLinkType,
 } from "@constellation/contracts";
 
 export interface Workspace {
@@ -706,11 +707,7 @@ export type StrategicRecord =
     })
   | (StrategicRecordBase & {
       readonly kind: "work_link";
-      readonly linkType:
-        | "project_advances_initiative"
-        | "project_serves_area"
-        | "project_serves_organization"
-        | "task_depends_on_task";
+      readonly linkType: WorkLinkType;
       readonly sourceRecordId: string;
       readonly targetRecordId: string;
       readonly state: "active" | "removed";

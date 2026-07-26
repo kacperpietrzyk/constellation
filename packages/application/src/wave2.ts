@@ -1435,6 +1435,20 @@ const tableRecordDependents = (
         task.attachmentSourceIds?.some((sourceId) => sourceId === id),
       )
       .map((task) => ({ recordId: task.id, recordKind: "task" as const })),
+    // Projects carry evidence too, since 0.1.5. They were missed when this
+    // guard was written because `evidenceSourceIds` was a strategic-record
+    // field then and a Project is not a strategic record — so a Source a
+    // Project rested on could be removed out from under it, which is the one
+    // thing this guard exists to prevent.
+    ...view
+      .listProjects(workspaceId, spaceId)
+      .filter((project) =>
+        project.evidenceSourceIds?.some((sourceId) => sourceId === id),
+      )
+      .map((project) => ({
+        recordId: project.id,
+        recordKind: "project" as const,
+      })),
   ];
 };
 
@@ -10388,6 +10402,20 @@ export const executeWave2Query = (
           record.meeting.organizationId !== undefined
         )
           return [record.meeting.organizationId];
+        // The delivery a Project runs at a named client, as its own edge. Until
+        // 0.1.5 a client could be reached only through a deal or a meeting, so
+        // a Project linked straight to an Organization answered `[]` here while
+        // the organization side already listed that same Project under
+        // `activeProjects` — the edge surfaced one way only. `state` is the
+        // per-kind removal axis for a work link (`recordState` is the
+        // record-lifecycle one), so it is what decides whether the link counts.
+        if (
+          record.kind === "work_link" &&
+          record.state === "active" &&
+          record.linkType === "project_serves_organization" &&
+          record.sourceRecordId === project.id
+        )
+          return [record.targetRecordId];
         return [];
       }),
     );
