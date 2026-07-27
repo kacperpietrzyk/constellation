@@ -16,15 +16,31 @@ import {
 } from "./dev-state.mjs";
 
 test("state roots sit beside each other under Application Support", () => {
+  // Built with path.join rather than a forward-slash literal, the same way
+  // the implementation composes it, so the test pins composition (the
+  // directory names and their order) and runs correctly on every platform's
+  // separator instead of only matching on POSIX.
   const home = "/Users/example";
-  assert.equal(
-    installedStateRoot(home),
-    `/Users/example/Library/Application Support/${INSTALLED_APP_NAME}`,
+  const expectedInstalled = path.join(
+    home,
+    "Library",
+    "Application Support",
+    INSTALLED_APP_NAME,
   );
-  assert.equal(
-    devStateRoot(home),
-    `/Users/example/Library/Application Support/${DEV_STATE_DIRECTORY}`,
+  const expectedDev = path.join(
+    home,
+    "Library",
+    "Application Support",
+    DEV_STATE_DIRECTORY,
   );
+  assert.equal(installedStateRoot(home), expectedInstalled);
+  assert.equal(devStateRoot(home), expectedDev);
+  // Still pins the actual directory names, not merely that the two
+  // functions agree with each other regardless of what they produce.
+  assert.equal(expectedInstalled.includes("Library"), true);
+  assert.equal(expectedInstalled.includes("Application Support"), true);
+  assert.equal(expectedInstalled.includes(INSTALLED_APP_NAME), true);
+  assert.equal(expectedDev.includes(DEV_STATE_DIRECTORY), true);
 });
 
 test("the development socket fits the portable budget the installed one uses", () => {

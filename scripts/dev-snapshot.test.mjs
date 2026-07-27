@@ -115,8 +115,14 @@ test("a copied grant descriptor is repointed at the copy's own socket before the
   const copiedRest = { ...copiedDescriptor };
   delete copiedRest.endpoint;
   assert.deepEqual(copiedRest, seededRest);
-  // The descriptor holds a secret; rewriting it must not loosen who can read it.
-  assert.equal((fs.statSync(copiedPath).mode & 0o777).toString(8), "600");
+  // The descriptor holds a secret; rewriting it must not loosen who can read
+  // it. Windows has no POSIX permission bits - chmod there only toggles a
+  // read-only attribute, so fs.statSync().mode is synthesized (0o666 or
+  // 0o444 for everyone, never a distinct owner-only "600") and this
+  // assertion would not be meaningful there.
+  if (process.platform !== "win32") {
+    assert.equal((fs.statSync(copiedPath).mode & 0o777).toString(8), "600");
+  }
   // The source is untouched by this repointing.
   assert.equal(seeded.endpoint, INSTALLED_ENDPOINT);
 });
@@ -274,72 +280,95 @@ test("a stale copy is replaced rather than merged", (t) => {
   assert.equal(fs.existsSync(path.join(destination, "stale.json")), false);
 });
 
-test("a mid-copy failure leaves neither a destination nor a leftover staging directory", (t) => {
-  const source = seedSource();
-  // "device" is copied whole, ahead of the agent grants in SNAPSHOT_ENTRIES,
-  // so a fault here happens after local-alpha-workspace/key-wrapper.json has
-  // already landed in staging - exactly the partial state the atomicity fix
-  // guards against. A file with its permission bits cleared is unreadable
-  // even to its own owner (verified: this is not a root-only restriction),
-  // which makes cpSync throw EACCES reliably without needing root.
-  const deviceDirectory = path.join(source, "device");
-  fs.mkdirSync(deviceDirectory, { recursive: true });
-  const lockedFile = path.join(deviceDirectory, "locked.txt");
-  fs.writeFileSync(lockedFile, "secret");
-  fs.chmodSync(lockedFile, 0o000);
-  const home = makeHome();
-  const destination = devStateRoot(home);
-  const destinationParent = path.dirname(destination);
-  t.after(() => {
-    fs.chmodSync(lockedFile, 0o644);
-    fs.rmSync(source, { recursive: true, force: true });
-    fs.rmSync(home, { recursive: true, force: true });
-  });
-  assert.throws(() => copySnapshot({ source, destination, home }), /EACCES/u);
-  assert.equal(fs.existsSync(destination), false);
-  assert.deepEqual(fs.readdirSync(destinationParent), []);
-});
+test(
+  "a mid-copy failure leaves neither a destination nor a leftover staging directory",
+  {
+    // chmod 0o000 reliably makes a file unreadable even to its owner on
+    // POSIX (verified: not a root-only restriction), which is what forces
+    // cpSync to throw EACCES. Windows has no POSIX permission bits - chmod
+    // there only toggles a read-only attribute, which still permits reads,
+    // so the fault this test relies on cannot be created there.
+    skip:
+      process.platform === "win32"
+        ? "requires POSIX chmod semantics to force EACCES on read"
+        : false,
+  },
+  (t) => {
+    const source = seedSource();
+    // "device" is copied whole, ahead of the agent grants in
+    // SNAPSHOT_ENTRIES, so a fault here happens after
+    // local-alpha-workspace/key-wrapper.json has already landed in staging -
+    // exactly the partial state the atomicity fix guards against.
+    const deviceDirectory = path.join(source, "device");
+    fs.mkdirSync(deviceDirectory, { recursive: true });
+    const lockedFile = path.join(deviceDirectory, "locked.txt");
+    fs.writeFileSync(lockedFile, "secret");
+    fs.chmodSync(lockedFile, 0o000);
+    const home = makeHome();
+    const destination = devStateRoot(home);
+    const destinationParent = path.dirname(destination);
+    t.after(() => {
+      fs.chmodSync(lockedFile, 0o644);
+      fs.rmSync(source, { recursive: true, force: true });
+      fs.rmSync(home, { recursive: true, force: true });
+    });
+    assert.throws(() => copySnapshot({ source, destination, home }), /EACCES/u);
+    assert.equal(fs.existsSync(destination), false);
+    assert.deepEqual(fs.readdirSync(destinationParent), []);
+  },
+);
 
-test("a swap failure leaves the previous copy in place and no orphan behind", (t) => {
-  // The copy loop above completes cleanly here - the fault is placed in the
-  // swap step, which the mid-copy test above never reaches. macOS's uchg
-  // flag marks a directory immutable to its own owner without root: it can
-  // still be read, but renaming or deleting the entry itself is refused.
-  // Unlike restricting write permission on the parent (which would also
-  // block creating the sibling staging directory the copy loop needs),
-  // flagging only the destination isolates the fault to the rename of the
-  // destination itself - the first of the swap's two renames.
-  const source = seedSource();
-  const home = makeHome();
-  const destination = devStateRoot(home);
-  const destinationParent = path.dirname(destination);
-  fs.mkdirSync(destination, { recursive: true });
-  fs.writeFileSync(path.join(destination, "previous-copy.json"), "{}");
-  const flagged = spawnSync("chflags", ["uchg", destination]);
-  assert.equal(
-    flagged.status,
-    0,
-    "chflags uchg must succeed for this test to exercise anything",
-  );
-  t.after(() => {
-    spawnSync("chflags", ["nouchg", destination]);
-    fs.rmSync(source, { recursive: true, force: true });
-    fs.rmSync(home, { recursive: true, force: true });
-  });
-  assert.throws(
-    () => copySnapshot({ source, destination, home }),
-    /EPERM|operation not permitted/iu,
-  );
-  // The previous copy was never even renamed aside, let alone replaced.
-  assert.equal(
-    fs.existsSync(path.join(destination, "previous-copy.json")),
-    true,
-  );
-  const leftovers = fs
-    .readdirSync(destinationParent)
-    .filter((entry) => entry !== "Constellation Dev");
-  assert.deepEqual(leftovers, []);
-});
+test(
+  "a swap failure leaves the previous copy in place and no orphan behind",
+  {
+    // chflags is a BSD/macOS-only utility - it does not exist on Linux or
+    // Windows, so the fault this test injects cannot be created on either.
+    skip:
+      process.platform === "darwin"
+        ? false
+        : "chflags is darwin-only and has no equivalent on this platform",
+  },
+  (t) => {
+    // The copy loop above completes cleanly here - the fault is placed in the
+    // swap step, which the mid-copy test above never reaches. macOS's uchg
+    // flag marks a directory immutable to its own owner without root: it can
+    // still be read, but renaming or deleting the entry itself is refused.
+    // Unlike restricting write permission on the parent (which would also
+    // block creating the sibling staging directory the copy loop needs),
+    // flagging only the destination isolates the fault to the rename of the
+    // destination itself - the first of the swap's two renames.
+    const source = seedSource();
+    const home = makeHome();
+    const destination = devStateRoot(home);
+    const destinationParent = path.dirname(destination);
+    fs.mkdirSync(destination, { recursive: true });
+    fs.writeFileSync(path.join(destination, "previous-copy.json"), "{}");
+    const flagged = spawnSync("chflags", ["uchg", destination]);
+    assert.equal(
+      flagged.status,
+      0,
+      "chflags uchg must succeed for this test to exercise anything",
+    );
+    t.after(() => {
+      spawnSync("chflags", ["nouchg", destination]);
+      fs.rmSync(source, { recursive: true, force: true });
+      fs.rmSync(home, { recursive: true, force: true });
+    });
+    assert.throws(
+      () => copySnapshot({ source, destination, home }),
+      /EPERM|operation not permitted/iu,
+    );
+    // The previous copy was never even renamed aside, let alone replaced.
+    assert.equal(
+      fs.existsSync(path.join(destination, "previous-copy.json")),
+      true,
+    );
+    const leftovers = fs
+      .readdirSync(destinationParent)
+      .filter((entry) => entry !== "Constellation Dev");
+    assert.deepEqual(leftovers, []);
+  },
+);
 
 test("a running installed application is detected through the probe", () => {
   assert.equal(
@@ -389,7 +418,12 @@ test("the printed server entry runs the working tree's MCP code", () => {
     root: "/repo",
   });
   assert.equal(entry.command, "node");
-  assert.deepEqual(entry.args, ["/repo/packages/mcp/dist/bin/stdio.mjs"]);
+  // Built with path.join rather than a forward-slash literal, the same way
+  // mcpServerEntry composes it, so this pins the composed segments instead
+  // of only matching on POSIX's separator.
+  assert.deepEqual(entry.args, [
+    path.join("/repo", "packages", "mcp", "dist", "bin", "stdio.mjs"),
+  ]);
   assert.equal(
     entry.env.CONSTELLATION_MCP_CREDENTIAL_FILE,
     "/state/mcp/agents/grant.json",
