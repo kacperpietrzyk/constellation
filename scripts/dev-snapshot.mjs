@@ -53,8 +53,41 @@ export const copySnapshot = ({
     rmSync(staging, { recursive: true, force: true });
     throw error;
   }
-  rmSync(destination, { recursive: true, force: true });
-  renameSync(staging, destination);
+  // The swap is two renames, not a delete-then-move: deleting the previous
+  // destination first can itself fail partway (a recursive delete can leave
+  // a half-removed destination), which would silently orphan the
+  // fully-built staging directory. Instead the previous copy is renamed
+  // aside, the new copy is renamed into its place, and only then is the
+  // previous copy discarded. A rename within one parent directory does not
+  // half-complete the way a recursive delete can, so after any failure here
+  // the destination is either the previous complete copy or absent - never
+  // partial - and neither the staging nor the backup directory survives.
+  const backup = `${destination}.backup-${randomUUID()}`;
+  const destinationExisted = existsSync(destination);
+  let renamedAway = false;
+  try {
+    if (destinationExisted) {
+      renameSync(destination, backup);
+      renamedAway = true;
+    }
+    renameSync(staging, destination);
+  } catch (error) {
+    let swapError = error;
+    if (renamedAway) {
+      try {
+        renameSync(backup, destination);
+      } catch (restoreError) {
+        // The previous copy is stranded under `backup` rather than lost:
+        // name the path so a human can recover it by hand.
+        swapError = new Error(
+          `DEV_SNAPSHOT_SWAP_FAILED: the previous copy could not be restored from ${backup}: ${restoreError.message}`,
+        );
+      }
+    }
+    rmSync(staging, { recursive: true, force: true });
+    throw swapError;
+  }
+  rmSync(backup, { recursive: true, force: true });
   return copied;
 };
 

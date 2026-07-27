@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -160,6 +161,46 @@ test("a mid-copy failure leaves neither a destination nor a leftover staging dir
   assert.throws(() => copySnapshot({ source, destination }), /EACCES/u);
   assert.equal(fs.existsSync(destination), false);
   assert.deepEqual(fs.readdirSync(destinationParent), []);
+});
+
+test("a swap failure leaves the previous copy in place and no orphan behind", (t) => {
+  // The copy loop above completes cleanly here - the fault is placed in the
+  // swap step, which the mid-copy test above never reaches. macOS's uchg
+  // flag marks a directory immutable to its own owner without root: it can
+  // still be read, but renaming or deleting the entry itself is refused.
+  // Unlike restricting write permission on the parent (which would also
+  // block creating the sibling staging directory the copy loop needs),
+  // flagging only the destination isolates the fault to the rename of the
+  // destination itself - the first of the swap's two renames.
+  const source = seedSource();
+  const destinationParent = makeDestinationParent();
+  const destination = path.join(destinationParent, "Constellation Dev");
+  fs.mkdirSync(destination, { recursive: true });
+  fs.writeFileSync(path.join(destination, "previous-copy.json"), "{}");
+  const flagged = spawnSync("chflags", ["uchg", destination]);
+  assert.equal(
+    flagged.status,
+    0,
+    "chflags uchg must succeed for this test to exercise anything",
+  );
+  t.after(() => {
+    spawnSync("chflags", ["nouchg", destination]);
+    fs.rmSync(source, { recursive: true, force: true });
+    fs.rmSync(destinationParent, { recursive: true, force: true });
+  });
+  assert.throws(
+    () => copySnapshot({ source, destination }),
+    /EPERM|operation not permitted/iu,
+  );
+  // The previous copy was never even renamed aside, let alone replaced.
+  assert.equal(
+    fs.existsSync(path.join(destination, "previous-copy.json")),
+    true,
+  );
+  const leftovers = fs
+    .readdirSync(destinationParent)
+    .filter((entry) => entry !== "Constellation Dev");
+  assert.deepEqual(leftovers, []);
 });
 
 test("a running installed application is detected through the probe", () => {
