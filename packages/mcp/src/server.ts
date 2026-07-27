@@ -110,6 +110,31 @@ const unavailablePayload = (): never => {
   );
 };
 
+/**
+ * The schema resource merges its causes for the same reason, and it is the
+ * narrower of the pair: an operation this build does not have and one your
+ * grant does not carry read alike, so a caller cannot walk the template to
+ * learn what exists. The code was the part that was wrong — an operation
+ * outside the grant is caller-side and caller-fixable, and the fix is one read
+ * of the grant-filtered index, which the message names.
+ *
+ * The lookup is a single `find` over the authorized catalog, so a third cause
+ * lands here too and the message has to own it: a name that is a *capability*
+ * rather than an operation. `requiredCapability` differs from the operation
+ * name often enough that the catalog states it per operation, which makes this
+ * a plausible mistake rather than a typo — and telling such a caller their
+ * grant is too narrow would send them to fix the one thing that is fine.
+ */
+export const MCP_OPERATION_UNAVAILABLE = "mcp.operation_unavailable";
+
+const unavailableOperation = (): never => {
+  throw new McpError(
+    ErrorCode.InvalidRequest,
+    `Constellation operation is unavailable. The name may not be an operation in this build — a capability is not an operation, and an operation's requiredCapability is often spelled differently — or it may be one your grant does not carry; these are deliberately indistinguishable. Read ${MCP_OPERATIONS_RESOURCE_URI}, which lists every operation your capabilityScope authorizes, rather than retrying.`,
+    { diagnosticCode: MCP_OPERATION_UNAVAILABLE },
+  );
+};
+
 const parsePayloadResource = (uri: string) => {
   let parsed: URL;
   try {
@@ -781,8 +806,7 @@ export const createConstellationMcpServer = (
       // An operation outside the grant reads the same as one that does not
       // exist: a catalog must not confirm the existence of what it will not
       // authorize.
-      if (operation === undefined)
-        throw new Error("Constellation operation is unavailable.");
+      if (operation === undefined) return unavailableOperation();
       return {
         contents: [
           {
