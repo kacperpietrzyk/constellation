@@ -192,6 +192,11 @@ const seedOnlyContent = (seed?: AgentContentSeed): string => {
  * produce, and is that text the text this body was made from? Both halves are
  * needed. The digest alone would let an added empty block pass; the structural
  * match alone would call any single-paragraph body a seed.
+ *
+ * Only ever asked of an owner that *has* a seed. A document has none, and the
+ * import path records a digest of the text it was handed — so a document whose
+ * body an agent wrote would otherwise answer this question with "yes" and report
+ * somebody's work as disposable. The caller's gate is the whole guard.
  */
 const matchesMaterialisationSeed = (
   adapter: YjsRealtimeDocumentAdapter,
@@ -244,11 +249,12 @@ export const projectAgentContent = (input: {
         contentState === "absent"
           ? "absent"
           : JSON.stringify(content) === seedOnlyContent(input.seed) ||
-              matchesMaterialisationSeed(
-                baseline.adapter,
-                content,
-                input.seed?.principalId ?? "",
-              )
+              (input.seed !== undefined &&
+                matchesMaterialisationSeed(
+                  baseline.adapter,
+                  content,
+                  input.seed.principalId,
+                ))
             ? "seeded"
             : "authored",
       content,

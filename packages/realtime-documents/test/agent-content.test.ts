@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
 
 import {
@@ -6,6 +7,7 @@ import {
   projectAgentContent,
   storedStateVectorSha256,
 } from "../src/agent-content.js";
+import { YjsRealtimeDocumentAdapter } from "../src/index.js";
 
 const OUTCOME_BEFORE = "Zamknąć migrację AKMF do końca lipca.";
 const OUTCOME_AFTER = "Zamknąć migrację AKMF i wydać raport powdrożeniowy.";
@@ -120,5 +122,33 @@ describe("a Project body is measured against the seed it was made from", () => {
       baseline.adapter.destroy();
     }
     assert.equal(projectAgentContent({ state }).contentOrigin, "seeded");
+  });
+
+  /**
+   * The trap the seedless side sets. A document has no seed, but the import path
+   * still records a digest — of the text it was handed — so a body an agent
+   * wrote there satisfies "this is what seeding its own text would produce". It
+   * is somebody's work all the same, and only the caller knowing there was never
+   * a seed keeps it reading that way.
+   *
+   * A Project cannot reach this state: its own import path hands `text: ""`, so
+   * the digest it records can only match a body that is empty. Which is why the
+   * guard is the seed's presence and not a second discriminator on the body.
+   */
+  it("reads an agent-written body with no seed behind it as authored", () => {
+    const adapter = new YjsRealtimeDocumentAdapter();
+    let state: Uint8Array;
+    try {
+      const written = "Notatka ze spotkania z 24.07.";
+      adapter.replaceText(written, { kind: "remote" });
+      adapter.migrateToRich(
+        createHash("sha256").update(written).digest("hex"),
+        { kind: "remote" },
+      );
+      state = adapter.encodeState();
+    } finally {
+      adapter.destroy();
+    }
+    assert.equal(projectAgentContent({ state }).contentOrigin, "authored");
   });
 });
