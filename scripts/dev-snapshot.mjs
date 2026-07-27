@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,18 +30,31 @@ export const copySnapshot = ({
   ) {
     throw new Error("DEV_SNAPSHOT_SOURCE_INCOMPLETE");
   }
-  rmSync(destination, { recursive: true, force: true });
-  mkdirSync(destination, { recursive: true });
+  // Copied into a sibling staging directory first and swapped into place only
+  // once every entry has landed. A failure partway through an entry (a
+  // permission error, say) would otherwise leave a destination where
+  // local-alpha-workspace/key-wrapper.json — copied first — already exists
+  // but later entries such as the agent grants do not.
+  const staging = `${destination}.staging-${randomUUID()}`;
+  rmSync(staging, { recursive: true, force: true });
+  mkdirSync(staging, { recursive: true });
   const copied = [];
-  for (const entry of entries) {
-    const from = path.join(source, entry);
-    if (!existsSync(from)) continue;
-    cpSync(from, path.join(destination, entry), {
-      recursive: true,
-      filter: (candidate) => path.basename(candidate) !== "application.sock",
-    });
-    copied.push(entry);
+  try {
+    for (const entry of entries) {
+      const from = path.join(source, entry);
+      if (!existsSync(from)) continue;
+      cpSync(from, path.join(staging, entry), {
+        recursive: true,
+        filter: (candidate) => path.basename(candidate) !== "application.sock",
+      });
+      copied.push(entry);
+    }
+  } catch (error) {
+    rmSync(staging, { recursive: true, force: true });
+    throw error;
   }
+  rmSync(destination, { recursive: true, force: true });
+  renameSync(staging, destination);
   return copied;
 };
 
