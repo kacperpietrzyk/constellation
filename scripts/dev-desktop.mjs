@@ -21,15 +21,43 @@ const build = spawnSync("npm", ["run", "build"], {
 });
 if (build.status !== 0) process.exit(build.status ?? 1);
 
+// Set once teardown has started, so a child that dies as a *consequence* of
+// stop() (killed on purpose) does not report itself as an unexpected failure
+// or re-enter stop().
+let stopping = false;
+
 const children = [];
-const watchProcess = (args) => {
+const watchProcess = (label, args) => {
   const child = spawn("npm", args, { cwd: repositoryRoot, stdio: "inherit" });
   children.push(child);
+  child.once("error", (error) => {
+    if (stopping) return;
+    console.error(`${label} failed to start: ${error.message}`);
+    stop();
+    process.exitCode = 1;
+  });
+  child.once("exit", (code, signal) => {
+    if (stopping) return;
+    console.error(
+      `${label} exited unexpectedly (code ${code ?? "null"}, signal ${
+        signal ?? "null"
+      }) — rebuilds have stopped. Tearing down the dev loop.`,
+    );
+    stop();
+    process.exitCode = 1;
+  });
   return child;
 };
 
-watchProcess(["exec", "--", "tsc", "-b", "--watch", "--preserveWatchOutput"]);
-watchProcess([
+watchProcess("tsc -b --watch (main process)", [
+  "exec",
+  "--",
+  "tsc",
+  "-b",
+  "--watch",
+  "--preserveWatchOutput",
+]);
+watchProcess("desktop-ui build --watch (renderer)", [
   "run",
   "build",
   "-w",
@@ -54,7 +82,11 @@ const entry = path.join(
 );
 
 let electron;
-let restarting = false;
+// Set by the watcher below to mean "the current Electron process is being
+// killed on purpose, start a fresh one once it's gone" — read by the single
+// exit listener attached in startElectron, never by a listener attached
+// per-restart, so at most one listener ever observes a given exit.
+let restartRequested = false;
 const startElectron = () => {
   electron = spawn(electronBinary, [entry], {
     cwd: repositoryRoot,
@@ -62,13 +94,23 @@ const startElectron = () => {
     stdio: "inherit",
   });
   electron.once("exit", (code) => {
-    if (restarting) return;
+    if (stopping) return;
+    if (restartRequested) {
+      restartRequested = false;
+      startElectron();
+      return;
+    }
     stop();
     process.exitCode = code ?? 0;
   });
 };
 
+let pending;
+let mainWatcher;
 const stop = () => {
+  stopping = true;
+  if (pending !== undefined) clearTimeout(pending);
+  mainWatcher?.close();
   for (const child of children) child.kill("SIGTERM");
   electron?.kill("SIGTERM");
 };
@@ -80,21 +122,23 @@ startElectron();
 // A renderer change is picked up by dev-main's own watcher; only main-process
 // output needs the window torn down and rebuilt. Measured: an idle
 // `tsc -b --watch` emits nothing here over 15 seconds, so this does not storm.
-let pending;
-watch(
+//
+// A second rebuild landing while a restart is already in flight collapses
+// into it: requestRestart only ever sets a flag and re-signals whatever
+// `electron` currently points at, and the one exit listener that matters is
+// the single one startElectron attached when that process was spawned — so a
+// repeated debounce firing can re-send SIGTERM but can never attach a second
+// listener to the same exit.
+const requestRestart = () => {
+  restartRequested = true;
+  electron?.kill("SIGTERM");
+};
+mainWatcher = watch(
   path.join(repositoryRoot, "packages", "desktop-main", "dist", "src"),
   { recursive: true },
   (_event, filename) => {
     if (filename !== null && !filename.endsWith(".js")) return;
     if (pending !== undefined) clearTimeout(pending);
-    pending = setTimeout(() => {
-      restarting = true;
-      const previous = electron;
-      previous?.once("exit", () => {
-        restarting = false;
-        startElectron();
-      });
-      previous?.kill("SIGTERM");
-    }, RESTART_DEBOUNCE_MS);
+    pending = setTimeout(requestRestart, RESTART_DEBOUNCE_MS);
   },
 );
