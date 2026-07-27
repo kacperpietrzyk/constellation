@@ -585,6 +585,13 @@ const packagedCalendarHelper =
 if (packagedCalendarHelper !== undefined) {
   copy(calendarHelperBuild, packagedCalendarHelper);
   fs.chmodSync(packagedCalendarHelper, 0o755);
+  // Load-bearing for the ad-hoc tier only. A production-signed release re-signs
+  // every Mach-O in the bundle afterwards, so this signature does not survive
+  // to the artifact users install — the distribution signer carries the
+  // calendars entitlement forward instead (macSigningFileOptions in
+  // scripts/macos-distribution-signing.mjs). Reading this block as the reason a
+  // signed build can ask for Calendar access is exactly the mistake that hid a
+  // dead permission button through several releases.
   const signCalendarHelper = spawnSync(
     "codesign",
     [

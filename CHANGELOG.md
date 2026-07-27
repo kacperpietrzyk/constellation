@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
+## [0.1.9] - 2026-07-27
+
+### Fixed
+
+- **The Apple Calendar permission button could not ask, and could not say so.**
+  Clicking _Przyznaj dostęp_ in a signed release did nothing, every time: no
+  system prompt, no error, no change on the surface. macOS was refusing to
+  raise the prompt at all. Under the hardened runtime tccd will not ask on
+  behalf of a process whose _responsible_ application — the app itself, not the
+  helper it spawns — does not declare
+  `com.apple.security.personal-information.calendars`, and it refuses to the
+  system log only: `requestFullAccessToEvents` returns as an ordinary denial.
+  The distribution signer re-signed every binary in the bundle with
+  `@electron/osx-sign`'s built-in defaults, which do not carry that
+  entitlement, silently discarding the correct signature the packaging step had
+  already applied to the calendar helper. Signing the helper alone was never
+  enough. Both the app and the helper now carry the entitlement, and the signed
+  artifact is checked for it before a release can ship — the proof is read off
+  what was built, not off the options handed to the signer, because it was
+  precisely a correct-looking intermediate signature that hid this.
+- **A permission macOS never asked about no longer reads as a dead button.**
+  The request's result was discarded, so a granted request, a refusal, and a
+  prompt that never appeared all rendered the surface exactly as it was before
+  the click — for up to thirty-five seconds, with the button still live. The
+  button now says it is waiting, and the outcome is named: granted, refused by
+  you with the setting that reverses it, or never asked, which no amount of
+  clicking can fix and which points at System Settings instead.
+
 ## [0.1.8] - 2026-07-27
 
 ### Fixed

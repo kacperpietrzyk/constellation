@@ -5,6 +5,10 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  CALENDAR_ENTITLEMENT,
+  MACOS_APPLICATION_ENTITLEMENTS,
+  MACOS_CALENDAR_HELPER_ENTITLEMENTS,
+  macSigningFileOptions,
   notarizeAndStapleMacArtifact,
   resolveNotarizationOptions,
   signAndNotarizeMacApp,
@@ -100,6 +104,62 @@ test("imports one Developer ID identity before signing and notarizing", async ()
   assert.equal(lifecycle[0][1].platform, "darwin");
   assert.equal(lifecycle[1][0], "notarize");
   assert.equal(lifecycle[1][1].appPath, "/tmp/Constellation.app");
+  assert.equal(typeof lifecycle[0][1].optionsForFile, "function");
+});
+
+test("signs the app and the calendar helper so Calendar access can be asked for", () => {
+  const app = "/tmp/Constellation.app";
+  const optionsForFile = macSigningFileOptions(app);
+
+  // The app is the process TCC holds responsible for the helper it spawns.
+  // Without the calendars entitlement here the hardened runtime refuses to
+  // show the permission prompt at all, and refuses without telling anyone.
+  assert.deepEqual(optionsForFile(app, { platform: "darwin" }), {
+    entitlements: MACOS_APPLICATION_ENTITLEMENTS,
+  });
+  assert.deepEqual(
+    optionsForFile(`${app}/Contents/Resources/constellation-calendar-helper`, {
+      platform: "darwin",
+    }),
+    { entitlements: MACOS_CALENDAR_HELPER_ENTITLEMENTS },
+  );
+
+  // Everything else keeps osx-sign's own per-file defaults. The renderer, GPU
+  // and plugin helpers are deliberately narrower than the app; widening them
+  // here would be a worse regression than the one being fixed.
+  for (const other of [
+    `${app}/Contents/Frameworks/Constellation Helper (Renderer).app`,
+    `${app}/Contents/Frameworks/Constellation Helper (GPU).app`,
+    `${app}/Contents/Frameworks/Electron Framework.framework`,
+    `${app}/Contents/Resources/constellation-mcp.mjs`,
+  ]) {
+    assert.equal(optionsForFile(other, { platform: "darwin" }), null);
+  }
+});
+
+test("both signed entitlement sets declare the calendars service", () => {
+  const application = fs.readFileSync(MACOS_APPLICATION_ENTITLEMENTS, "utf8");
+  const helper = fs.readFileSync(MACOS_CALENDAR_HELPER_ENTITLEMENTS, "utf8");
+
+  assert.ok(application.includes(CALENDAR_ENTITLEMENT));
+  assert.ok(helper.includes(CALENDAR_ENTITLEMENT));
+  // A superset of osx-sign's darwin defaults: dropping allow-jit would break
+  // Electron, so the app entitlements may only ever add to that baseline.
+  for (const inherited of [
+    "com.apple.security.cs.allow-jit",
+    "com.apple.security.device.audio-input",
+    "com.apple.security.device.bluetooth",
+    "com.apple.security.device.camera",
+    "com.apple.security.device.print",
+    "com.apple.security.device.usb",
+    "com.apple.security.personal-information.location",
+    "com.apple.security.personal-information.photos-library",
+  ]) {
+    assert.ok(
+      application.includes(inherited),
+      `application entitlements must keep ${inherited}`,
+    );
+  }
 });
 
 test("notarizes, staples, and Gatekeeper-assesses the final disk image", async () => {

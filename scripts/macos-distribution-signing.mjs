@@ -100,6 +100,53 @@ const writePkcs12 = (cscLink, destination) => {
   fs.writeFileSync(destination, decoded, { mode: 0o600 });
 };
 
+const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
+
+export const MACOS_APPLICATION_ENTITLEMENTS = path.join(
+  scriptDirectory,
+  "desktop",
+  "macos-distribution.entitlements",
+);
+
+export const MACOS_CALENDAR_HELPER_ENTITLEMENTS = path.join(
+  scriptDirectory,
+  "..",
+  "packages",
+  "desktop-main",
+  "native",
+  "macos-calendar",
+  "CalendarHelper.entitlements",
+);
+
+export const CALENDAR_ENTITLEMENT =
+  "com.apple.security.personal-information.calendars";
+
+/**
+ * Per-file signing overrides for @electron/osx-sign.
+ *
+ * Without this every Mach-O in the bundle — including the calendar helper that
+ * package-alpha already signed with its own entitlements — is re-signed with
+ * osx-sign's built-in defaults, which do not declare the calendars service.
+ * That silently disarmed the Calendar permission prompt in every signed
+ * release: tccd refuses to prompt for a hardened-runtime process whose
+ * responsible app cannot declare the service, and reports nothing to the app.
+ *
+ * Only the two files that need the calendars entitlement are overridden.
+ * Returning null everywhere else is deliberate: the renderer, GPU and plugin
+ * helpers each have their own narrower defaults, and flattening the app's
+ * entitlements onto them would be a far worse regression than the one this
+ * fixes.
+ */
+export const macSigningFileOptions = (appPath) => (filePath) => {
+  if (path.resolve(filePath) === path.resolve(appPath)) {
+    return { entitlements: MACOS_APPLICATION_ENTITLEMENTS };
+  }
+  if (path.basename(filePath) === "constellation-calendar-helper") {
+    return { entitlements: MACOS_CALENDAR_HELPER_ENTITLEMENTS };
+  }
+  return null;
+};
+
 const findDeveloperIdIdentity = (stdout) => {
   const identities = [...stdout.matchAll(/^\s*\d+\)\s+[0-9A-F]+\s+"([^"]+)"/gm)]
     .map((match) => match[1])
@@ -208,6 +255,7 @@ export const signAndNotarizeMacApp = async ({
       identity,
       keychain: keychainPath,
       platform: "darwin",
+      optionsForFile: macSigningFileOptions(appPath),
     });
     await notarizer(resolveNotarizationOptions(appPath, env));
   } finally {
