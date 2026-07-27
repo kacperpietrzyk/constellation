@@ -18,8 +18,10 @@ Small documentation fixes do not need advance discussion.
 
 ## Current development status
 
-The project is pre-alpha and does not yet have a runnable desktop application.
-It does have a storage-neutral TypeScript reference kernel and conformance suite.
+The project is pre-alpha. Signed desktop releases are published, and the
+desktop application also runs locally from source — see Development shell
+below. It has a storage-neutral TypeScript reference kernel and
+conformance suite.
 Use the Node.js version in `.nvmrc`, then run:
 
 ```sh
@@ -30,6 +32,47 @@ npm run check
 The gate must pass on Linux, macOS, and Windows. A contribution should not
 introduce a second build system or framework merely to get ahead of a capability
 that is not present yet.
+
+## Development shell
+
+macOS contributors with a running local Alpha install can exercise the desktop
+application unpackaged, against a disposable copy of their own workspace:
+
+```sh
+npm run dev:snapshot   # quit Constellation Local Alpha first
+npm run dev:desktop
+```
+
+`dev:snapshot` copies the installed application's state into a separate
+`Constellation Dev` directory, rewriting each copied grant descriptor to point
+at that copy's own socket before printing an MCP server entry you can
+register alongside your existing one. From the moment the snapshot is taken,
+the installed application's own MCP server is never touched. `dev:desktop`
+builds the main process and renderer in watch mode and launches Electron
+against that copy.
+
+Quitting the application is what the snapshot actually needs; an MCP client
+still connected to it (an agent session registered against
+`constellation-dev`, say) does not have to be disconnected first — the MCP
+stdio helper runs the same binary as Node, and `dev:snapshot` distinguishes
+it from the GUI application itself.
+
+For UI work that does not need the real workspace, `npm run dev:preview` runs
+the renderer against an in-memory kernel instead.
+
+To inspect the development shell's MCP surface — read tool schemas and raw
+refusal payloads — run `npm run dev:mcp-inspector` while `dev:desktop` is
+running. It fetches the
+[MCP Inspector](https://github.com/modelcontextprotocol/inspector) on demand
+via `npx` rather than adding it as a dependency.
+
+This shell has two limits worth knowing before relying on it:
+
+- Packaging-only defects are invisible here. Anything that only breaks in a
+  signed, packaged build — ASAR path resolution, code signing, entitlements —
+  can look healthy in the development shell and fail once packaged.
+- The copy is one-way. Nothing done in the development shell flows back to
+  the installed application's own workspace.
 
 ## Product and architecture guardrails
 

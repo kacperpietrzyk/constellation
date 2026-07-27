@@ -21,6 +21,9 @@
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "clean": "node scripts/clean.mjs",
     "dev:desktop": "node scripts/dev-desktop.mjs",
+    "dev:mcp-inspector": "node scripts/dev-mcp-inspector.mjs",
+    "dev:preview": "node scripts/dev-preview.mjs",
+    "dev:snapshot": "node scripts/dev-snapshot.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "npm run lint:code && npm run lint:md",
@@ -32,7 +35,7 @@
     "test:hub:packaged": "node scripts/run-packaged-hub-smoke.mjs",
     "test:renderer-bundle": "node scripts/verify-renderer-bundle.mjs",
     "test:distribution:packaged": "node scripts/run-distribution-continuity.mjs",
-    "test:scripts": "npm run audit:licenses && node --test scripts/desktop-runtime-notices.test.mjs scripts/desktop/packaged-credential-store-policy.test.mjs scripts/macos-distribution-signing.test.mjs scripts/prepare-github-release.test.mjs scripts/verify-dependency-licenses.test.mjs",
+    "test:scripts": "npm run audit:licenses && node --test scripts/desktop-runtime-notices.test.mjs scripts/desktop/packaged-credential-store-policy.test.mjs scripts/macos-distribution-signing.test.mjs scripts/prepare-github-release.test.mjs scripts/verify-dependency-licenses.test.mjs scripts/dev-state.test.mjs scripts/dev-snapshot.test.mjs scripts/desktop/production-desktop-files.test.mjs",
     "test": "npm run clean && npm run build && npm run test:renderer-bundle && npm run test:scripts && node scripts/run-tests.mjs",
     "typecheck": "tsc -b --pretty false"
   },
