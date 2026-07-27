@@ -154,6 +154,13 @@ export const agentContentBaseline = (input: {
  * an empty body. It is a claim about *content*, not about authorship: a person
  * who edits one word of the seeded paragraph has authored it, and that is the
  * correct reading, because from then on there is something to lose.
+ *
+ * The seed a body is measured against is the one it was *materialised* from, not
+ * only the one the record carries today. Comparing against today's alone made
+ * `project.updateOutcome` enough to report a body nobody had touched as
+ * `authored` — the flag then said "the body no longer equals the current seed",
+ * which is not what a caller reads it as, and it withheld exactly the pages most
+ * worth rewriting.
  */
 export type AgentContentOrigin = "absent" | "seeded" | "authored";
 
@@ -167,6 +174,50 @@ const seedOnlyContent = (seed?: AgentContentSeed): string => {
   } finally {
     baseline.adapter.destroy();
   }
+};
+
+/**
+ * Whether this body is still the seed it was materialised from, after that seed
+ * has been rewritten on the record.
+ *
+ * The comparison against the *current* seed cannot answer it: a
+ * `project.updateOutcome` moves the field out from under a body nobody touched,
+ * and reporting that as authorship tells an agent there is work to lose where
+ * there is none — and tells a person the page they are reading is theirs when it
+ * is a stale copy of a field the record has already corrected.
+ *
+ * Nothing new is stored to answer it. Materialisation already records the sha256
+ * of the text it seeded from, inside the document (`migrateDocumentToRich`), so
+ * the question becomes: is this body exactly what seeding *its own text* would
+ * produce, and is that text the text this body was made from? Both halves are
+ * needed. The digest alone would let an added empty block pass; the structural
+ * match alone would call any single-paragraph body a seed.
+ *
+ * Only ever asked of an owner that *has* a seed, and only of a body that was
+ * *stored* rich. Both gates are load-bearing and neither is obvious.
+ *
+ * A document has no seed, and the import path records a digest of the text it
+ * was handed — so a document whose body an agent wrote would answer this
+ * question with "yes" and have somebody's work reported as disposable.
+ *
+ * A body stored as plain-v1 has no recorded materialisation seed at all: the
+ * baseline mints one *during this very read*, from the body's own text, in order
+ * to upgrade it. Asking then compares the body against itself and is true for
+ * every plain-v1 body ever written — which would report a page a person filled
+ * in as an echo of a seed. `contentState` is the only thing that distinguishes
+ * a digest this document has carried since it was made from one invented a
+ * microsecond ago, so the caller checks it.
+ */
+const matchesMaterialisationSeed = (
+  adapter: YjsRealtimeDocumentAdapter,
+  content: StructuredDocument,
+  principalId: string,
+): boolean => {
+  const digest = adapter.getLegacyDigest();
+  if (digest === undefined) return false;
+  const text = adapter.getText();
+  if (createHash("sha256").update(text).digest("hex") !== digest) return false;
+  return JSON.stringify(content) === seedOnlyContent({ text, principalId });
 };
 
 /**
@@ -207,7 +258,14 @@ export const projectAgentContent = (input: {
       contentOrigin:
         contentState === "absent"
           ? "absent"
-          : JSON.stringify(content) === seedOnlyContent(input.seed)
+          : JSON.stringify(content) === seedOnlyContent(input.seed) ||
+              (input.seed !== undefined &&
+                contentState === "rich-v1" &&
+                matchesMaterialisationSeed(
+                  baseline.adapter,
+                  content,
+                  input.seed.principalId,
+                ))
             ? "seeded"
             : "authored",
       content,

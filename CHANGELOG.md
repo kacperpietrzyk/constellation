@@ -10,6 +10,51 @@ releases begin.
 
 ### Fixed
 
+- **A checkpoint could not take back the graph it had just built.** Every
+  migration writes records first and then the relations that bind them, and on
+  that shape — the only shape a migration has — a checkpoint holding all of it
+  previewed `available: false` with `still_referenced`, naming its whole
+  foundation layer — the Project its tasks contribute to, the Area and the
+  client its Projects serve, and by cascade every Source those Projects rest on.
+  Membership was never the problem; the 126, 35 and 56 commands of three
+  separate migrations were all captured. The revert reasons in reverse order
+  precisely so a create can be taken back once the creates pointing at it have
+  gone first, and it knew which compensations leave a record gone — except for
+  the two that every migration writes. A relation created by `record.relate` and
+  a link created by `work.linkCreate` both disappear when their command is taken
+  back, and neither counted, so the Project those relations pointed at was
+  judged as still carrying somebody's work, and everything that Project in turn
+  stood on was refused with it. Both now count. Records connected only by their
+  own creates — a Person naming an Organization — always reverted whole and are
+  untouched by this. The refusal that matters is unchanged and covered: a
+  relation the checkpoint does _not_ carry is work someone else attached, and
+  taking the Project back would still orphan it. The multi-record compensations
+  stay out deliberately — an un-routed Capture survives while the Task it made
+  does not, and admitting them wholesale would report a live record as gone.
+- **A revert could report a relation taken back and leave it standing.** Taking
+  back a `record.relate` acted on the relation as that command had left it
+  rather than as the revert had, which is the one compensation that read a
+  version from its own past instead of the record's present. A relation an
+  earlier compensation in the same revert had restored no longer stood there, so
+  the removal silently did nothing — while the revert reported the relation
+  compensated and spent the checkpoint, leaving the caller no way back. It fails
+  closed now, like every other compensation. This was reachable before, but the
+  reverse-order cascade above is what makes it ordinary, so the two ship
+  together.
+- **A Project page nobody had written reported itself as somebody's work.**
+  `contentOrigin` compared the stored body against the Project's _current_
+  `intendedOutcome`, so rewriting that field was enough to reclassify an
+  untouched seed echo as authorship — the body byte-identical, the digest
+  unmoved. The cost fell on both sides of the boundary: an agent that honours
+  `authored` refuses to overwrite what it is told is work, so the pages most
+  worth rewriting were exactly the ones it left alone; and a person opening such
+  a Project was shown a stale copy of a field the record had already corrected,
+  with nothing saying the two disagreed. A body is now measured against the seed
+  it was actually materialised from as well as against today's, and the answer
+  needs nothing new to be stored — materialisation has always recorded the
+  digest of the text it seeded from, inside the document itself. `seeded` keeps
+  meaning what it said: there is nothing here to destroy. A body carrying real
+  work still reads `authored`, whichever seed it is read against.
 - **The Apple Calendar permission button could not ask, and could not say so.**
   Clicking _Przyznaj dostęp_ in a signed release did nothing, every time: no
   system prompt, no error, no change on the surface. macOS was refusing to
