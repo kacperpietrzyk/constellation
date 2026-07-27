@@ -1593,6 +1593,253 @@ describe("agent grant delegation reaches the product without widening scope", ()
   });
 
   /**
+   * The same shape one layer down, and the one the case above never reached: a
+   * Project's dependents are counted as *relations*, which are neither strategic
+   * records nor tasks. Every migration writes this — records arrive, then the
+   * relations that bind them — and while `relation.remove` was missing from the
+   * predicate that feeds the revert's `removed` set, a checkpoint holding a
+   * create plus the relate pointing at it previewed `still_referenced` on its
+   * whole foundation layer and the revert refused to run.
+   */
+  it("reverts a captured Project whose only dependent is a relation captured with it", () => {
+    const { agent, harness } = openCheckpoint();
+    const projectId = "41000000-0000-4000-8000-0000000000b1";
+    const taskId = "41000000-0000-4000-8000-0000000000b2";
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("cascade-project-create"),
+          checkpointId: ids.checkpoint,
+          commandName: "project.create",
+          payload: {
+            projectId,
+            spaceId: ids.space,
+            title: "Migrated delivery",
+          },
+        }),
+      ),
+      "success",
+    );
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("cascade-task-create"),
+          checkpointId: ids.checkpoint,
+          commandName: "task.create",
+          payload: {
+            taskId,
+            spaceId: ids.space,
+            title: "Migrated unit of work",
+          },
+        }),
+      ),
+      "success",
+    );
+    // Version-checked on both endpoints, which is what makes the relate a
+    // second command per task rather than a field on the create.
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("cascade-relate", { [taskId]: 1, [projectId]: 1 }),
+          checkpointId: ids.checkpoint,
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_project",
+            taskId,
+            projectId,
+          },
+        }),
+      ),
+      "success",
+    );
+    const preview = previewRevert(harness, agent, ids.checkpoint);
+    assert.deepEqual(
+      preview.blocked,
+      [],
+      "the relation is going in this same revert, so it is not something the Project is still referenced by",
+    );
+    assert.equal(preview.available, true);
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("cascade-revert"),
+          commandName: "agent.checkpointRevert",
+          payload: { checkpointId: ids.checkpoint, runId: ids.hostAgentRun },
+        }),
+      ),
+      "success",
+    );
+    const snapshot = harness.store.snapshot();
+    assert.equal(
+      snapshot.projects.find((project) => project.id === projectId)
+        ?.recordState,
+      "removed",
+    );
+    assert.equal(
+      snapshot.tasks.find((task) => task.id === taskId)?.recordState,
+      "removed",
+    );
+    assert.deepEqual(
+      (snapshot.relations ?? [])
+        .filter((relation) => relation.state === "active")
+        .map((relation) => relation.id),
+      [],
+      "the relation went first, which is the only order in which the Project could follow",
+    );
+  });
+
+  /**
+   * The second edge a migration writes, on its own axis: a work link is a
+   * strategic record, but its create compensates through `work_link.restore_state`
+   * rather than through the create-undo the predicate already knew, so an Area
+   * with a Project linked to it was blocked for a different reason than the
+   * Project above and had to be proved separately.
+   */
+  it("reverts a captured Area whose only dependent is a work link captured with it", () => {
+    const { agent, harness } = openCheckpoint();
+    const areaId = "41000000-0000-4000-8000-0000000000c1";
+    const projectId = "41000000-0000-4000-8000-0000000000c2";
+    const linkId = "41000000-0000-4000-8000-0000000000c3";
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("cascade-area-create"),
+          checkpointId: ids.checkpoint,
+          commandName: "area.create",
+          payload: {
+            areaId,
+            spaceId: ids.space,
+            title: "Migrated area",
+          },
+        }),
+      ),
+      "success",
+    );
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("cascade-linked-project"),
+          checkpointId: ids.checkpoint,
+          commandName: "project.create",
+          payload: {
+            projectId,
+            spaceId: ids.space,
+            title: "Migrated project under the area",
+          },
+        }),
+      ),
+      "success",
+    );
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("cascade-work-link"),
+          checkpointId: ids.checkpoint,
+          commandName: "work.linkCreate",
+          payload: {
+            linkId,
+            spaceId: ids.space,
+            linkType: "project_serves_area",
+            sourceRecordId: projectId,
+            targetRecordId: areaId,
+          },
+        }),
+      ),
+      "success",
+    );
+    const preview = previewRevert(harness, agent, ids.checkpoint);
+    assert.deepEqual(preview.blocked, []);
+    assert.equal(preview.available, true);
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("cascade-area-revert"),
+          commandName: "agent.checkpointRevert",
+          payload: { checkpointId: ids.checkpoint, runId: ids.hostAgentRun },
+        }),
+      ),
+      "success",
+    );
+    const snapshot = harness.store.snapshot();
+    assert.equal(
+      (snapshot.strategicRecords ?? []).find((record) => record.id === areaId)
+        ?.recordState,
+      "removed",
+    );
+    // A work link carries its own state rather than the base `recordState`,
+    // which is exactly why its create compensates through a restore and had to
+    // be admitted to the predicate on its own terms.
+    const link = (snapshot.strategicRecords ?? []).find(
+      (record) => record.id === linkId,
+    );
+    assert.equal(
+      link?.kind === "work_link" ? link.state : undefined,
+      "removed",
+      "the work link went first — the Area could not have followed otherwise",
+    );
+    assert.equal(
+      snapshot.projects.find((project) => project.id === projectId)
+        ?.recordState,
+      "removed",
+    );
+  });
+
+  /**
+   * The guard the widened predicate must not cost. A relation the checkpoint
+   * does *not* carry is work someone else attached, and taking the Project back
+   * would orphan it — `still_referenced` is the right refusal and it has to
+   * survive the two kinds this release admitted.
+   */
+  it("still refuses a captured Project that a relation outside the checkpoint points at", () => {
+    const { agent, harness } = openCheckpoint();
+    const projectId = "41000000-0000-4000-8000-0000000000d1";
+    const taskId = "41000000-0000-4000-8000-0000000000d2";
+    const projectCreate = {
+      ...metadata("outside-project-create"),
+      checkpointId: ids.checkpoint,
+      commandName: "project.create" as const,
+      payload: { projectId, spaceId: ids.space, title: "Captured delivery" },
+    };
+    assert.equal(
+      outcome(harness.kernel.execute(agent, projectCreate)),
+      "success",
+    );
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("outside-task-create"),
+          commandName: "task.create",
+          payload: { taskId, spaceId: ids.space, title: "Work left outside" },
+        }),
+      ),
+      "success",
+    );
+    // No checkpointId: this relate stays outside, so the revert never takes it
+    // back and the Project it points at must not go either.
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("outside-relate", { [taskId]: 1, [projectId]: 1 }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_project",
+            taskId,
+            projectId,
+          },
+        }),
+      ),
+      "success",
+    );
+    const preview = previewRevert(harness, agent, ids.checkpoint);
+    assert.equal(preview.available, false);
+    assert.equal(preview.unavailableReason, "still_referenced");
+    assert.deepEqual(
+      preview.blocked.map((item) => item.targetCommandId),
+      [projectCreate.commandId],
+    );
+  });
+
+  /**
    * The guard the allowance must not widen. A lone undo of a create whose
    * record moved on is exactly what `later_change` is for; only a revert knows
    * that the later change is one it is taking back in the same act.

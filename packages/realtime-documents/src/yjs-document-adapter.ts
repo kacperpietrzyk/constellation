@@ -39,6 +39,7 @@ export interface RealtimeDocumentCheckpoint {
 export interface RealtimeDocumentAdapter {
   readonly engine: "yjs-13";
   getFormat(): DocumentContentFormat;
+  getLegacyDigest(): string | undefined;
   getText(): string;
   getEntityReferences(): readonly DocumentEntityReference[];
   getStructuredContent(): StructuredDocument;
@@ -303,6 +304,23 @@ export class YjsRealtimeDocumentAdapter implements RealtimeDocumentAdapter {
 
   public getFormat(): DocumentContentFormat {
     return formatOf(this.document);
+  }
+
+  /**
+   * The digest recorded when this body was first made rich — for a Project body
+   * that is the sha256 of the text it was seeded from, taken at the moment of
+   * materialisation and carried inside the document ever since (see
+   * `migrateDocumentToRich`, and the restore that copies it forward).
+   *
+   * It is what lets a reader tell a seed echo from somebody's work after the
+   * `intendedOutcome` it echoes has since been rewritten: the current seed no
+   * longer matches, but the seed this body was actually made from still does.
+   */
+  public getLegacyDigest(): string | undefined {
+    const value = this.document
+      .getMap<unknown>(DOCUMENT_FORMAT_METADATA_ROOT)
+      .get("legacyDigest");
+    return typeof value === "string" ? value : undefined;
   }
 
   public getText(): string {

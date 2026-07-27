@@ -154,6 +154,13 @@ export const agentContentBaseline = (input: {
  * an empty body. It is a claim about *content*, not about authorship: a person
  * who edits one word of the seeded paragraph has authored it, and that is the
  * correct reading, because from then on there is something to lose.
+ *
+ * The seed a body is measured against is the one it was *materialised* from, not
+ * only the one the record carries today. Comparing against today's alone made
+ * `project.updateOutcome` enough to report a body nobody had touched as
+ * `authored` — the flag then said "the body no longer equals the current seed",
+ * which is not what a caller reads it as, and it withheld exactly the pages most
+ * worth rewriting.
  */
 export type AgentContentOrigin = "absent" | "seeded" | "authored";
 
@@ -167,6 +174,35 @@ const seedOnlyContent = (seed?: AgentContentSeed): string => {
   } finally {
     baseline.adapter.destroy();
   }
+};
+
+/**
+ * Whether this body is still the seed it was materialised from, after that seed
+ * has been rewritten on the record.
+ *
+ * The comparison against the *current* seed cannot answer it: a
+ * `project.updateOutcome` moves the field out from under a body nobody touched,
+ * and reporting that as authorship tells an agent there is work to lose where
+ * there is none — and tells a person the page they are reading is theirs when it
+ * is a stale copy of a field the record has already corrected.
+ *
+ * Nothing new is stored to answer it. Materialisation already records the sha256
+ * of the text it seeded from, inside the document (`migrateDocumentToRich`), so
+ * the question becomes: is this body exactly what seeding *its own text* would
+ * produce, and is that text the text this body was made from? Both halves are
+ * needed. The digest alone would let an added empty block pass; the structural
+ * match alone would call any single-paragraph body a seed.
+ */
+const matchesMaterialisationSeed = (
+  adapter: YjsRealtimeDocumentAdapter,
+  content: StructuredDocument,
+  principalId: string,
+): boolean => {
+  const digest = adapter.getLegacyDigest();
+  if (digest === undefined) return false;
+  const text = adapter.getText();
+  if (createHash("sha256").update(text).digest("hex") !== digest) return false;
+  return JSON.stringify(content) === seedOnlyContent({ text, principalId });
 };
 
 /**
@@ -207,7 +243,12 @@ export const projectAgentContent = (input: {
       contentOrigin:
         contentState === "absent"
           ? "absent"
-          : JSON.stringify(content) === seedOnlyContent(input.seed)
+          : JSON.stringify(content) === seedOnlyContent(input.seed) ||
+              matchesMaterialisationSeed(
+                baseline.adapter,
+                content,
+                input.seed?.principalId ?? "",
+              )
             ? "seeded"
             : "authored",
       content,

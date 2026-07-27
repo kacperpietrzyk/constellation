@@ -8010,15 +8010,41 @@ interface RevertContext {
  * revert compensate a create whose only dependent is another create the same
  * revert removes first — the shape every real migration writes, since records
  * arrive with the relations that point at them.
+ *
+ * The edges belong here as much as the records do, and leaving them out is what
+ * made this predicate disagree with its own paragraph above. A Project's
+ * dependents are counted as *relations* and *work links* — `tableRecordDependents`
+ * names them by their own id — so a revert that takes back a Project along with
+ * the relations pointing at it has to know those relations are going, or it
+ * refuses to compensate the create it just made way for. Both are single-record
+ * compensations, which is what lets them join: `descriptorRecordIds` answers one
+ * id for each, and marking that id removed says nothing about a second record
+ * that survives.
+ *
+ * That is also why the multi-record kinds stay out. `capture.undo_route`,
+ * `capture.undo_knowledge_route`, `project.unapply_template` and
+ * `meeting.restore_participant_links` each name two or more records of which only
+ * some go away — a Capture that is un-routed survives, the Task it made does not
+ * — so admitting them wholesale would report a live record as removed and let a
+ * revert orphan real work. They need per-id handling before they can join, and
+ * nothing today asks them to.
  */
 const compensationRemovesRecord = (descriptor: UndoDescriptor): boolean =>
   descriptor.kind === "task.undo_create" ||
   descriptor.kind === "strategic.undo_create" ||
   descriptor.kind === "record.undo_create" ||
+  // The compensation `record.relate` records: it removes the relation outright,
+  // exactly as a create's undo removes its record.
+  descriptor.kind === "relation.remove" ||
   ((descriptor.kind === "strategic.restore_record_state" ||
     descriptor.kind === "record.restore_record_state" ||
     descriptor.kind === "task.restore_record_state") &&
-    descriptor.priorRecordState === "removed");
+    descriptor.priorRecordState === "removed") ||
+  // What `work.linkCreate` records, gated on the prior state for the same reason
+  // the three restores above are: a restore only removes the record when that is
+  // where it is putting it back.
+  (descriptor.kind === "work_link.restore_state" &&
+    descriptor.priorState === "removed");
 
 /**
  * Only a compensation over a single record can take an allowance. A kind that
