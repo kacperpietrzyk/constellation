@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
+## [0.1.8] - 2026-07-27
+
+### Fixed
+
+- **An operation schema you may not read is a refusal, and now says so.**
+  Reading `constellation://v1/operations/<name>` for an operation your grant
+  does not carry answered a bare JSON-RPC internal error — the code a caller is
+  meant to read as "this build is broken, there is nothing in your request to
+  fix" — while the true condition was caller-side and caller-fixable. This is
+  the same defect 0.1.7 closed one resource over, on the sibling that serves
+  Capture payloads; the schema resource did not get the same treatment. The
+  merge is unchanged and deliberate: an operation this build does not have and
+  one your grant does not carry still read alike, so walking the template
+  reveals nothing about what exists. The message now also owns the third name
+  that lands there — a _capability_ rather than an operation, which the gap
+  between an operation and its `requiredCapability` makes an easy reach — so a
+  caller whose grant is fine is not sent to widen it. What changed is the
+  answer's kind — an
+  invalid-request code and `mcp.operation_unavailable`, with the repair named,
+  which is one read of `constellation://v1/operations`, already filtered to what
+  your `capabilityScope` authorizes.
+
 ## [0.1.7] - 2026-07-26
 
 Every fix in this release is the same shape: the kernel knew the right answer

@@ -467,6 +467,47 @@ test("serves a grant-filtered operation catalog generated from the contract", as
       client.readResource({
         uri: "constellation://v1/operations/workspace.manageAccess",
       }),
+      (error: unknown) => {
+        // External evidence (2026-07-26): this arrived as a bare internal
+        // error, which tells a caller the build is broken and there is nothing
+        // in the request to fix. The condition is caller-side and
+        // caller-fixable, so it is reported the way the sibling payload
+        // resource already reports its own merged refusal.
+        assert.equal((error as { readonly code?: number }).code, -32600);
+        assert.equal(
+          (
+            (error as { readonly data?: { readonly diagnosticCode?: string } })
+              .data ?? {}
+          ).diagnosticCode,
+          "mcp.operation_unavailable",
+        );
+        // The merge is the contract: the message must not say whether the
+        // operation exists, only what the caller can act on.
+        assert.match(String(error), /deliberately indistinguishable/u);
+        assert.match(String(error), /capabilityScope/u);
+        return true;
+      },
+    );
+    // The lookup is one find over the authorized catalog, so a capability name
+    // lands in the same answer as an operation outside the grant — and
+    // capture.audioRead is in this scope, so the caller reaching for it has a
+    // grant that is fine and a name that is not an operation. The merge has to
+    // cover that too, which is why the message stops short of blaming scope.
+    await assert.rejects(
+      client.readResource({
+        uri: "constellation://v1/operations/capture.audioRead",
+      }),
+      (error: unknown) => {
+        assert.equal((error as { readonly code?: number }).code, -32600);
+        assert.equal(
+          (
+            (error as { readonly data?: { readonly diagnosticCode?: string } })
+              .data ?? {}
+          ).diagnosticCode,
+          "mcp.operation_unavailable",
+        );
+        return true;
+      },
     );
     const taskList = catalog.operations.find(
       (operation) => operation.name === "task.list",
