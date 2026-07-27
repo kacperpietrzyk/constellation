@@ -5,7 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { devStateRoot, localSocketPath } from "./dev-state.mjs";
+import {
+  DEV_STATE_DIRECTORY,
+  devStateRoot,
+  installedStateRoot,
+  localSocketPath,
+} from "./dev-state.mjs";
 import {
   copySnapshot,
   installedApplicationIsRunning,
@@ -170,6 +175,29 @@ test("a source without a key wrapper is refused instead of half-copied", (t) => 
   assert.equal(fs.existsSync(destination), false);
 });
 
+test("a grant descriptor that is not a JSON object is refused rather than silently rewritten", (t) => {
+  const source = seedSource();
+  // A malformed descriptor - an array here, but null or a primitive would
+  // fail the same guard - would otherwise be spread into
+  // `{ ...descriptor, endpoint }`, discarding it silently and leaving a file
+  // that is just `{"endpoint": "…"}`.
+  fs.writeFileSync(
+    path.join(source, "mcp", "agents", "malformed.json"),
+    JSON.stringify(["not", "a", "descriptor"]),
+  );
+  const home = makeHome();
+  const destination = devStateRoot(home);
+  t.after(() => {
+    fs.rmSync(source, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+  assert.throws(
+    () => copySnapshot({ source, destination, home }),
+    /DEV_SNAPSHOT_DESCRIPTOR_MALFORMED/u,
+  );
+  assert.equal(fs.existsSync(destination), false);
+});
+
 test("a source whose active workspace is not at the base root is refused, not silently copied", (t) => {
   const source = seedSource();
   fs.writeFileSync(
@@ -209,6 +237,26 @@ test("a destination that is not the development directory is refused", (t) => {
     () => copySnapshot({ source, destination }),
     /DEV_SNAPSHOT_DESTINATION_REFUSED/u,
   );
+});
+
+test("a Constellation Dev nested inside the installed state root is refused", (t) => {
+  // The basename-only check M1 replaced would have accepted this: it ends in
+  // "Constellation Dev", but it lives under the installed application's own
+  // state root rather than beside it. This is the exact hole M1 named, so
+  // it needs its own assertion rather than relying on the sibling-path test
+  // above (whose basename alone would already have failed the old check).
+  const source = seedSource();
+  const home = makeHome();
+  const destination = path.join(installedStateRoot(home), DEV_STATE_DIRECTORY);
+  t.after(() => {
+    fs.rmSync(source, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+  assert.throws(
+    () => copySnapshot({ source, destination, home }),
+    /DEV_SNAPSHOT_DESTINATION_REFUSED/u,
+  );
+  assert.equal(fs.existsSync(destination), false);
 });
 
 test("a stale copy is replaced rather than merged", (t) => {

@@ -76,17 +76,33 @@ const assertSingleWorkspaceLayout = (source) => {
   }
 };
 
-// The runtime rewrites every active grant's endpoint unconditionally when it
-// binds its socket (LocalMcpRuntime.start), so this is idempotent — it exists
-// only to close the window between "snapshot taken" and "dev shell launched
-// once", during which a copied descriptor would otherwise still name the
-// installed application's socket and be authenticated by it.
+// The runtime rewrites an *active* grant's endpoint when it binds its socket
+// (LocalMcpRuntime.start filters `grant.status === "active"`), so for those
+// grants this is idempotent — it exists only to close the window between
+// "snapshot taken" and "dev shell launched once", during which a copied
+// descriptor would otherwise still name the installed application's socket
+// and be authenticated by it. A descriptor whose grant is not active (e.g.
+// already revoked) is never touched by the runtime at all, so this function
+// is the only place its endpoint is ever corrected.
 const repointAgentDescriptors = (agentsDirectory, endpoint) => {
   if (!existsSync(agentsDirectory)) return;
   for (const entry of readdirSync(agentsDirectory)) {
     if (!entry.endsWith(".json")) continue;
     const filePath = path.join(agentsDirectory, entry);
     const descriptor = JSON.parse(readFileSync(filePath, "utf8"));
+    // A descriptor is expected to be a JSON object; parsing to null, an
+    // array, or a primitive would otherwise be silently rewritten into
+    // `{"endpoint": "…"}` instead of being refused, in a function whose
+    // whole purpose is not to silently write the wrong thing.
+    if (
+      descriptor === null ||
+      typeof descriptor !== "object" ||
+      Array.isArray(descriptor)
+    ) {
+      throw new Error(
+        `DEV_SNAPSHOT_DESCRIPTOR_MALFORMED: ${filePath} is not a JSON object.`,
+      );
+    }
     writeFileSync(
       filePath,
       `${JSON.stringify({ ...descriptor, endpoint })}\n`,
