@@ -1879,6 +1879,104 @@ describe("agent grant delegation reaches the product without widening scope", ()
   });
 
   /**
+   * The two above, in one checkpoint, which is where they used to compound: the
+   * cascade lets the Project's create past the judged gate, and a relate whose
+   * compensation had silently done nothing then left the Project still
+   * referenced when the compensation actually ran — a preview promising a
+   * revert that answers a storage fault, forever, on every retry. The whole
+   * point of judging before spending is that the two passes agree.
+   */
+  it("reverts a Project whose relation was rebuilt inside the same checkpoint", () => {
+    const { agent, harness } = openCheckpoint();
+    const projectId = "41000000-0000-4000-8000-0000000000f1";
+    const taskId = "41000000-0000-4000-8000-0000000000f2";
+    const captured = (key: string, commandName: string, payload: unknown) =>
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata(key),
+          checkpointId: ids.checkpoint,
+          commandName,
+          payload,
+        } as never),
+      );
+    assert.equal(
+      captured("rebuilt-project", "project.create", {
+        projectId,
+        spaceId: ids.space,
+        title: "Delivery whose relation was redone",
+      }),
+      "success",
+    );
+    assert.equal(
+      captured("rebuilt-task", "task.create", {
+        taskId,
+        spaceId: ids.space,
+        title: "Work whose relation was redone",
+      }),
+      "success",
+    );
+    const relate = (key: string) =>
+      assert.equal(
+        outcome(
+          harness.kernel.execute(agent, {
+            ...metadata(key, { [taskId]: 1, [projectId]: 1 }),
+            checkpointId: ids.checkpoint,
+            commandName: "record.relate",
+            payload: {
+              relationType: "task_contributes_to_project",
+              taskId,
+              projectId,
+            },
+          }),
+        ),
+        "success",
+      );
+    relate("rebuilt-relate-first");
+    const firstRelationId = (harness.store.snapshot().relations ?? []).find(
+      (relation) => relation.state === "active",
+    )?.id;
+    assert.ok(firstRelationId !== undefined);
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("rebuilt-unrelate", { [firstRelationId]: 1 }),
+          checkpointId: ids.checkpoint,
+          commandName: "record.unrelate",
+          payload: { relationId: firstRelationId },
+        }),
+      ),
+      "success",
+    );
+    relate("rebuilt-relate-second");
+    const preview = previewRevert(harness, agent, ids.checkpoint);
+    assert.deepEqual(preview.blocked, []);
+    assert.equal(preview.available, true);
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("rebuilt-revert"),
+          commandName: "agent.checkpointRevert",
+          payload: { checkpointId: ids.checkpoint, runId: ids.hostAgentRun },
+        }),
+      ),
+      "success",
+      "the preview promised this would apply, so it has to — not a storage fault",
+    );
+    const snapshot = harness.store.snapshot();
+    assert.equal(
+      snapshot.projects.find((project) => project.id === projectId)
+        ?.recordState,
+      "removed",
+    );
+    assert.deepEqual(
+      (snapshot.relations ?? [])
+        .filter((relation) => relation.state === "active")
+        .map((relation) => relation.id),
+      [],
+    );
+  });
+
+  /**
    * The guard the widened predicate must not cost. A relation the checkpoint
    * does *not* carry is work someone else attached, and taking the Project back
    * would orphan it — `still_referenced` is the right refusal and it has to
