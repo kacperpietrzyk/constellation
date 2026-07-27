@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  CALENDAR_ENTITLEMENT,
   notarizeAndStapleMacArtifact,
   signAndNotarizeMacApp,
 } from "./macos-distribution-signing.mjs";
@@ -188,6 +189,33 @@ if (production && process.platform === "darwin") {
     });
     if (verified.status !== 0)
       throw new Error("MACOS_DISTRIBUTION_PROOF_FAILED");
+  }
+  // Proof read off the signed artifact, not off the signing options. The
+  // calendars entitlement was lost once already, silently, because the signer
+  // re-signed over an earlier correct signature — and nothing downstream
+  // noticed until the permission button stopped being able to ask. Assert on
+  // what shipped: the app is the process TCC holds responsible, the helper is
+  // the process that calls EventKit, and both must declare the service.
+  for (const signedPath of [
+    alphaManifest.appBundle,
+    path.join(
+      alphaManifest.appBundle,
+      "Contents",
+      "Resources",
+      "constellation-calendar-helper",
+    ),
+  ]) {
+    const declared = spawnSync(
+      "codesign",
+      ["-d", "--entitlements", "-", signedPath],
+      { encoding: "utf8", timeout: 120_000 },
+    );
+    if (
+      declared.status !== 0 ||
+      !declared.stdout.includes(CALENDAR_ENTITLEMENT)
+    ) {
+      throw new Error("MACOS_CALENDAR_ENTITLEMENT_MISSING");
+    }
   }
 }
 if (production && process.platform === "win32") {

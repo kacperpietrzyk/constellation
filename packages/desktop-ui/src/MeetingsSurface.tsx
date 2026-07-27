@@ -105,6 +105,23 @@ const capabilityCopy = (surface: MeetingLoopSurface) => {
   }
 };
 
+// What came back from asking macOS for Calendar access, said plainly. The
+// three outcomes are genuinely different — granted, refused by the person, and
+// never asked at all — and only the first one changes what the surface can do.
+export const calendarAccessOutcome = (
+  capability: MeetingLoopSurface["capability"],
+): string => {
+  if (capability.availability === "available")
+    return "Dostęp do Kalendarza przyznany. Nadchodzące wydarzenia są już widoczne.";
+  if (capability.availability === "permission_denied")
+    return "Odmówiono dostępu do Kalendarza. Włącz go w Ustawieniach systemowych → Prywatność i ochrona → Kalendarze.";
+  // macOS declined to raise the prompt at all. The person did nothing wrong
+  // and clicking again cannot help, so say where the switch actually lives.
+  if (capability.detailCode === "permission_prompt_suppressed")
+    return "macOS nie pokazał pytania o dostęp do Kalendarza. Nadaj uprawnienie w Ustawieniach systemowych → Prywatność i ochrona → Kalendarze.";
+  return "Dostęp do Kalendarza nie został przyznany. Żadne wydarzenie nie zostało zmienione.";
+};
+
 export const MeetingsSurface = ({
   client,
   activeMeetingId,
@@ -121,6 +138,7 @@ export const MeetingsSurface = ({
   const [state, setState] = useState<MeetingState>({ kind: "loading" });
   const [preview, setPreview] = useState<CalendarWritePreview>();
   const [notice, setNotice] = useState<string>();
+  const [calendarAccessBusy, setCalendarAccessBusy] = useState(false);
   // One in-flight mutation at a time across the whole inspector. A per-target
   // flag would re-enable a still-pending control as soon as a different one
   // started, allowing a second submission against an already-stale version.
@@ -367,18 +385,39 @@ export const MeetingsSurface = ({
       {surface.capability.availability !== "available" && (
         <button
           className="quiet-button"
+          disabled={calendarAccessBusy}
           onClick={() => {
             if (
-              surface.capability.platform === "macos" &&
-              surface.capability.availability === "permission_required"
+              surface.capability.platform !== "macos" ||
+              surface.capability.availability !== "permission_required"
             ) {
-              void client.requestCalendarAccess().then(load);
-            } else load();
+              load();
+              return;
+            }
+            // The request can sit for half a minute on the system prompt, and
+            // it can come back refused. Both used to be discarded, so a
+            // refusal and a dead button looked identical from here.
+            setCalendarAccessBusy(true);
+            setNotice(undefined);
+            void client
+              .requestCalendarAccess()
+              .then((capability) => {
+                setNotice(calendarAccessOutcome(capability));
+                load();
+              })
+              .catch(() =>
+                setNotice(
+                  "Nie udało się poprosić o dostęp do Kalendarza. Nic nie zostało zmienione.",
+                ),
+              )
+              .finally(() => setCalendarAccessBusy(false));
           }}
         >
           {surface.capability.platform === "macos" &&
           surface.capability.availability === "permission_required"
-            ? "Przyznaj dostęp"
+            ? calendarAccessBusy
+              ? "Pytam macOS…"
+              : "Przyznaj dostęp"
             : "Sprawdź ponownie"}
         </button>
       )}

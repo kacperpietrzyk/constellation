@@ -8,7 +8,7 @@ struct Capability: Encodable {
     let availability: String
     let canRead: Bool
     let canWriteOwnedBlocks: Bool
-    let detailCode: String
+    var detailCode: String
     // Where a block with no event of its own should be written. A meeting
     // block inherits its calendar from the event it prepares; a Task has no
     // event, so without this there is no honest target. Absent when we cannot
@@ -164,7 +164,18 @@ if CommandLine.arguments[1] == "request-access" {
         store.requestAccess(to: .event) { _, _ in semaphore.signal() }
     }
     _ = semaphore.wait(timeout: .now() + 30)
-    emit(ReadResponse(capability: capabilityWithWriteTarget(), events: []))
+    // An authorization still undetermined after an explicit request means macOS
+    // never asked. Under the hardened runtime tccd refuses to raise the prompt
+    // when the app it holds responsible does not declare the calendars
+    // entitlement, and it refuses to the system log only — the request returns
+    // as an ordinary denial. Left unnamed, that is indistinguishable from a
+    // button wired to nothing, which is how it was reported.
+    var outcome = capabilityWithWriteTarget()
+    if outcome.detailCode == "not_determined"
+        || outcome.detailCode == "legacy_not_authorized" {
+        outcome.detailCode = "permission_prompt_suppressed"
+    }
+    emit(ReadResponse(capability: outcome, events: []))
 }
 
 if CommandLine.arguments[1] == "read" {

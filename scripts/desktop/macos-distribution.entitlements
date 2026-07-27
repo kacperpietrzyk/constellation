@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for the top-level signed macOS application.
+
+  This is @electron/osx-sign's own `default.darwin.plist` plus the calendars
+  entitlement, and it must stay a superset of that default: dropping
+  `allow-jit` breaks Electron outright.
+
+  The calendars entitlement is what actually lets the Calendar permission be
+  asked for. Under the hardened runtime tccd refuses to prompt at all when the
+  *responsible* process — this app, not the spawned helper — cannot declare the
+  service, and it refuses silently: `requestFullAccessToEvents` returns denied
+  without ever showing a dialog, so the grant button reads as inert. Signing the
+  helper alone is not enough; TCC attributes the request to the app that
+  launched it.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <key>com.apple.security.device.bluetooth</key>
+    <true/>
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.device.print</key>
+    <true/>
+    <key>com.apple.security.device.usb</key>
+    <true/>
+    <key>com.apple.security.personal-information.calendars</key>
+    <true/>
+    <key>com.apple.security.personal-information.location</key>
+    <true/>
+    <key>com.apple.security.personal-information.photos-library</key>
+    <true/>
+  </dict>
+</plist>
