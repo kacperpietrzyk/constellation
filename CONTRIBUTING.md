@@ -18,8 +18,10 @@ Small documentation fixes do not need advance discussion.
 
 ## Current development status
 
-The project is pre-alpha and does not yet have a runnable desktop application.
-It does have a storage-neutral TypeScript reference kernel and conformance suite.
+The project is pre-alpha. Signed desktop releases are published, and the
+desktop application also runs locally from source — see Development shell
+below. It does have a storage-neutral TypeScript reference kernel and
+conformance suite.
 Use the Node.js version in `.nvmrc`, then run:
 
 ```sh
