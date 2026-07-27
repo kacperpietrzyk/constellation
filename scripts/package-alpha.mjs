@@ -9,6 +9,7 @@ import { listPackage } from "@electron/asar";
 import { packager } from "@electron/packager";
 
 import { writeDesktopLicenseBundle } from "./desktop-runtime-notices.mjs";
+import { PRODUCTION_DESKTOP_FILES } from "./desktop/production-desktop-files.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const stage = path.join(root, "build", "local-alpha-stage");
@@ -256,40 +257,8 @@ const desktopMainSource = path.join(
   "dist",
   "src",
 );
-const productionDesktopFiles = new Set([
-  "attention-notification.js",
-  "calendar-meeting-loop.js",
-  "capture-payload-custody.js",
-  "jamie-integration.js",
-  "better-sqlite3-factory.js",
-  "coordinated-data-home-provider.js",
-  "coordinated-sync-engine.js",
-  "device-identity.js",
-  "document-collaboration.js",
-  "durable-kernel-service.js",
-  "hub-authorization-export.js",
-  "hub-connection-custody.js",
-  "index.js",
-  "local-data-home-provider.js",
-  "local-mcp-credential-custody.js",
-  "local-mcp-runtime.js",
-  "media-permission.js",
-  "production-main.js",
-  "release-service.js",
-  "recovery-code-clipboard.js",
-  "remote-mcp-credential-custody.js",
-  "runtime-kernel-service.js",
-  "security.js",
-  "starter-workspace-export.js",
-  "starter-workspace-import.js",
-  "support-report.js",
-  "workspace-key-custody.js",
-  "workspace-backup-archive.js",
-  "workspace-recovery-service.js",
-  "workspace-registry.js",
-]);
 for (const entry of fs.readdirSync(desktopMainSource)) {
-  if (!productionDesktopFiles.has(entry)) {
+  if (!PRODUCTION_DESKTOP_FILES.has(entry)) {
     fs.rmSync(path.join(desktopMainSource, entry), {
       force: true,
       recursive: true,
@@ -297,7 +266,7 @@ for (const entry of fs.readdirSync(desktopMainSource)) {
   }
 }
 
-for (const entry of productionDesktopFiles) {
+for (const entry of PRODUCTION_DESKTOP_FILES) {
   const sourcePath = path.join(desktopMainSource, entry);
   const source = fs.readFileSync(sourcePath, "utf8");
   const relativeImports = source.matchAll(
