@@ -210,12 +210,42 @@ export const copySnapshot = ({
   return copied;
 };
 
-const pgrepProbe = () =>
-  spawnSync(
+const guiExecutableMarker = (appName) =>
+  `${appName}.app/Contents/MacOS/${appName}`;
+
+// The MCP stdio helper is the SAME binary as the GUI application, run as a
+// Node script under ELECTRON_RUN_AS_NODE — its command line is the GUI
+// executable's path with a script path appended
+// (".../MacOS/<app> .../Resources/constellation-mcp.mjs"). A substring match
+// on the executable path alone matches both, which is exactly the defect
+// this closes: the guard refused every snapshot while an editor's MCP
+// connection to the helper stayed open, even after the GUI application had
+// been quit. Only the GUI process invokes the executable with nothing
+// after it, so "nothing trailing the executable path" - rather than the
+// absence of one particular script name - is what actually distinguishes it;
+// that also covers any future helper, not just this one.
+export const isInstalledGuiCommandLine = (
+  commandLine,
+  appName = INSTALLED_APP_NAME,
+) => {
+  const marker = guiExecutableMarker(appName);
+  const index = commandLine.indexOf(marker);
+  if (index === -1) return false;
+  return commandLine.slice(index + marker.length).trim().length === 0;
+};
+
+const pgrepProbe = () => {
+  const result = spawnSync(
     "pgrep",
-    ["-f", `${INSTALLED_APP_NAME}.app/Contents/MacOS/${INSTALLED_APP_NAME}`],
+    ["-fl", guiExecutableMarker(INSTALLED_APP_NAME)],
     { encoding: "utf8" },
-  ).status === 0;
+  );
+  if (result.status !== 0) return false;
+  return result.stdout
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .some((line) => isInstalledGuiCommandLine(line));
+};
 
 export const installedApplicationIsRunning = (probe = pgrepProbe) => probe();
 

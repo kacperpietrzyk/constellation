@@ -51,6 +51,12 @@ the installed application's own MCP server is never touched. `dev:desktop`
 builds the main process and renderer in watch mode and launches Electron
 against that copy.
 
+Quitting the application is what the snapshot actually needs; an MCP client
+still connected to it (an agent session registered against
+`constellation-dev`, say) does not have to be disconnected first — the MCP
+stdio helper runs the same binary as Node, and `dev:snapshot` distinguishes
+it from the GUI application itself.
+
 For UI work that does not need the real workspace, `npm run dev:preview` runs
 the renderer against an in-memory kernel instead.
 

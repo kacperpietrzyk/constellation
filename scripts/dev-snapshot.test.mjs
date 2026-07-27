@@ -14,6 +14,7 @@ import {
 import {
   copySnapshot,
   installedApplicationIsRunning,
+  isInstalledGuiCommandLine,
   mcpServerEntry,
 } from "./dev-snapshot.mjs";
 
@@ -349,6 +350,37 @@ test("a running installed application is detected through the probe", () => {
     installedApplicationIsRunning(() => false),
     false,
   );
+});
+
+// These two exact command lines were observed on the maintainer's machine:
+// the GUI application (now quit) and the MCP stdio helper Claude Code kept
+// alive from ~/.claude.json (still running, PID 22173) - the same binary,
+// run as Node, with the helper script appended as an argument. The bug this
+// pins: a substring match on the executable path alone matched both, so the
+// snapshot refused on every attempt even after the GUI application was gone.
+const GUI_COMMAND_LINE =
+  "/Applications/Constellation Local Alpha.app/Contents/MacOS/Constellation Local Alpha";
+const MCP_HELPER_COMMAND_LINE =
+  "/Applications/Constellation Local Alpha.app/Contents/MacOS/Constellation Local Alpha /Applications/Constellation Local Alpha.app/Contents/Resources/constellation-mcp.mjs";
+
+test("the GUI application's command line is recognized", () => {
+  assert.equal(isInstalledGuiCommandLine(GUI_COMMAND_LINE), true);
+});
+
+test("the MCP stdio helper's command line is not mistaken for the GUI application", () => {
+  assert.equal(isInstalledGuiCommandLine(MCP_HELPER_COMMAND_LINE), false);
+});
+
+test("a pgrep -fl line's leading PID does not change the classification", () => {
+  assert.equal(
+    isInstalledGuiCommandLine(`22173 ${MCP_HELPER_COMMAND_LINE}`),
+    false,
+  );
+  assert.equal(isInstalledGuiCommandLine(`418 ${GUI_COMMAND_LINE}`), true);
+});
+
+test("a command line that never mentions the installed application is not the GUI application", () => {
+  assert.equal(isInstalledGuiCommandLine("/bin/zsh -l"), false);
 });
 
 test("the printed server entry runs the working tree's MCP code", () => {
