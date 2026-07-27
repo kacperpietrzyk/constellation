@@ -1785,6 +1785,100 @@ describe("agent grant delegation reaches the product without widening scope", ()
   });
 
   /**
+   * The compensation the widened predicate made load-bearing. Taking back a
+   * relate has to act on the relation as the revert has left it, not as the
+   * relate found it — every other compensation reads the record's current
+   * version, and this one alone declared the version its own command produced.
+   * A relation an earlier compensation in the same revert had moved therefore
+   * survived a revert that reported it compensated, and the checkpoint was spent.
+   */
+  it("takes back a relate whose relation an earlier compensation in the same revert moved", () => {
+    const { agent, harness } = openCheckpoint();
+    const projectId = "41000000-0000-4000-8000-0000000000e1";
+    const taskId = "41000000-0000-4000-8000-0000000000e2";
+    // Endpoints outside the checkpoint: this case is about the relation alone.
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("moved-relation-project"),
+          commandName: "project.create",
+          payload: {
+            projectId,
+            spaceId: ids.space,
+            title: "Standing delivery",
+          },
+        }),
+      ),
+      "success",
+    );
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("moved-relation-task"),
+          commandName: "task.create",
+          payload: { taskId, spaceId: ids.space, title: "Standing work" },
+        }),
+      ),
+      "success",
+    );
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("moved-relation-relate", {
+            [taskId]: 1,
+            [projectId]: 1,
+          }),
+          checkpointId: ids.checkpoint,
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_project",
+            taskId,
+            projectId,
+          },
+        }),
+      ),
+      "success",
+    );
+    const relationId = (harness.store.snapshot().relations ?? []).find(
+      (relation) => relation.state === "active",
+    )?.id;
+    assert.ok(relationId !== undefined);
+    // Captured too, so the revert restores it — and the relate's own
+    // compensation then meets a relation two versions past where it left it.
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("moved-relation-unrelate", { [relationId]: 1 }),
+          checkpointId: ids.checkpoint,
+          commandName: "record.unrelate",
+          payload: { relationId },
+        }),
+      ),
+      "success",
+    );
+    const preview = previewRevert(harness, agent, ids.checkpoint);
+    assert.deepEqual(preview.blocked, []);
+    assert.equal(preview.available, true);
+    assert.equal(
+      outcome(
+        harness.kernel.execute(agent, {
+          ...metadata("moved-relation-revert"),
+          commandName: "agent.checkpointRevert",
+          payload: { checkpointId: ids.checkpoint, runId: ids.hostAgentRun },
+        }),
+      ),
+      "success",
+    );
+    assert.equal(
+      (harness.store.snapshot().relations ?? []).find(
+        (relation) => relation.id === relationId,
+      )?.state,
+      "removed",
+      "the revert reported this relation compensated, so it has to be gone",
+    );
+  });
+
+  /**
    * The guard the widened predicate must not cost. A relation the checkpoint
    * does *not* carry is work someone else attached, and taking the Project back
    * would orphan it — `still_referenced` is the right refusal and it has to

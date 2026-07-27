@@ -14,21 +14,33 @@ releases begin.
   migration writes records first and then the relations that bind them, and on
   that shape — the only shape a migration has — a checkpoint holding all of it
   previewed `available: false` with `still_referenced`, naming its whole
-  foundation layer: the Sources a Project rests on, the Organization its People
-  belong to, the Area its Projects serve. Membership was never the problem; the
-  126, 35 and 56 commands of three separate migrations were all captured. The
-  revert reasons in reverse order precisely so a create can be taken back once
-  the creates pointing at it have gone first, and it knew which compensations
-  leave a record gone — except for the two that every migration writes. A
-  relation created by `record.relate` and a link created by `work.linkCreate`
-  both disappear when their command is taken back, and neither counted, so the
-  Project those relations pointed at was judged as still carrying somebody's
-  work and the refusal cascaded to everything underneath it. Both now count.
-  The refusal that matters is unchanged and covered: a relation the checkpoint
-  does _not_ carry is work someone else attached, and taking the Project back
-  would still orphan it. The multi-record compensations stay out deliberately —
-  an un-routed Capture survives while the Task it made does not, and admitting
-  them wholesale would report a live record as gone.
+  foundation layer — the Project its tasks contribute to, the Area and the
+  client its Projects serve, and by cascade every Source those Projects rest on.
+  Membership was never the problem; the 126, 35 and 56 commands of three
+  separate migrations were all captured. The revert reasons in reverse order
+  precisely so a create can be taken back once the creates pointing at it have
+  gone first, and it knew which compensations leave a record gone — except for
+  the two that every migration writes. A relation created by `record.relate` and
+  a link created by `work.linkCreate` both disappear when their command is taken
+  back, and neither counted, so the Project those relations pointed at was
+  judged as still carrying somebody's work, and everything that Project in turn
+  stood on was refused with it. Both now count. Records connected only by their
+  own creates — a Person naming an Organization — always reverted whole and are
+  untouched by this. The refusal that matters is unchanged and covered: a
+  relation the checkpoint does _not_ carry is work someone else attached, and
+  taking the Project back would still orphan it. The multi-record compensations
+  stay out deliberately — an un-routed Capture survives while the Task it made
+  does not, and admitting them wholesale would report a live record as gone.
+- **A revert could report a relation taken back and leave it standing.** Taking
+  back a `record.relate` acted on the relation as that command had left it
+  rather than as the revert had, which is the one compensation that read a
+  version from its own past instead of the record's present. A relation an
+  earlier compensation in the same revert had restored no longer stood there, so
+  the removal silently did nothing — while the revert reported the relation
+  compensated and spent the checkpoint, leaving the caller no way back. It fails
+  closed now, like every other compensation. This was reachable before, but the
+  reverse-order cascade above is what makes it ordinary, so the two ship
+  together.
 - **A Project page nobody had written reported itself as somebody's work.**
   `contentOrigin` compared the stored body against the Project's _current_
   `intendedOutcome`, so rewriting that field was enough to reclassify an

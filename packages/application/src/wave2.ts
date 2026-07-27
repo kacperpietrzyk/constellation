@@ -9421,16 +9421,23 @@ const compensateDescriptor = (
     compensatedVersions = { [restored.id]: restored.version };
     compensatedKinds = { [restored.id]: "strategicRecord" };
   } else if (descriptor.kind === "relation.remove") {
-    const relation = transaction.getRelation(
-      descriptor.relationId,
-    ) as TaskProjectRelation;
-    transaction.updateRelation(
-      removeTaskProjectRelation(relation, occurredAt),
-      descriptor.resultingVersion,
+    // Act on the relation as this revert has left it, not as the relate found
+    // it. Declaring `descriptor.resultingVersion` here was the one arm that
+    // named a version from its own command's past instead of reading the
+    // record's current one: a relation an earlier compensation in the same
+    // revert had restored no longer stood there, the update silently did
+    // nothing, and the revert still reported the relation compensated and spent
+    // the checkpoint. The reverse-order cascade made that arm reachable, so it
+    // now fails closed like every other one.
+    const relation = transaction.getRelation(descriptor.relationId);
+    if (relation === undefined) return { ok: false };
+    const removed = removeTaskProjectRelation(
+      relation as TaskProjectRelation,
+      occurredAt,
     );
-    compensatedVersions = {
-      [descriptor.relationId]: descriptor.resultingVersion + 1,
-    };
+    if (!transaction.updateRelation(removed, relation.version))
+      return { ok: false };
+    compensatedVersions = { [descriptor.relationId]: removed.version };
     compensatedKinds = { [descriptor.relationId]: "relation" };
   } else if (descriptor.kind === "relation.restore") {
     const relation = transaction.getRelation(
