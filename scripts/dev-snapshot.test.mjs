@@ -5,11 +5,25 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { devStateRoot, localSocketPath } from "./dev-state.mjs";
 import {
   copySnapshot,
   installedApplicationIsRunning,
   mcpServerEntry,
 } from "./dev-snapshot.mjs";
+
+// A fixture "home" directory, injected via copySnapshot's `home` parameter,
+// so the destination guard's equality check (destination === devStateRoot
+// (home)) is exercised against a real computed path rather than a caller-
+// supplied answer — the guard would mean nothing if a test could simply
+// assert whatever destination it passed in.
+const makeHome = () =>
+  fs.mkdtempSync(path.join(os.tmpdir(), "dev-snapshot-home-"));
+
+// The endpoint a real copied descriptor carries before it is ever repointed:
+// the installed application's own socket.
+const INSTALLED_ENDPOINT =
+  "/Users/example/Library/Application Support/Constellation Local Alpha/mcp/application.sock";
 
 const seedSource = () => {
   const source = fs.mkdtempSync(path.join(os.tmpdir(), "dev-snapshot-src-"));
@@ -19,31 +33,41 @@ const seedSource = () => {
   fs.writeFileSync(path.join(workspace, "workspace.db"), "db");
   fs.writeFileSync(path.join(source, "workspace-registry.json"), "{}");
   fs.mkdirSync(path.join(source, "mcp", "agents"), { recursive: true });
-  fs.writeFileSync(path.join(source, "mcp", "agents", "grant.json"), "{}");
+  const grantPath = path.join(source, "mcp", "agents", "grant.json");
+  // Shaped like a real LocalCredentialDescriptor (see
+  // local-mcp-credential-custody.ts), not just "{}", so a test can assert
+  // that repointing touches only `endpoint` and leaves every other field —
+  // including the secret — byte-identical.
+  fs.writeFileSync(
+    grantPath,
+    JSON.stringify({
+      descriptorVersion: 1,
+      workspaceId: "22222222-2222-2222-2222-222222222222",
+      grantId: "33333333-3333-3333-3333-333333333333",
+      credentialId: "44444444-4444-4444-4444-444444444444",
+      endpoint: INSTALLED_ENDPOINT,
+      secret: "top-secret-value",
+    }),
+  );
+  fs.chmodSync(grantPath, 0o600);
   fs.writeFileSync(path.join(source, "mcp", "application.sock"), "");
   fs.mkdirSync(path.join(source, "Cache"), { recursive: true });
   fs.writeFileSync(path.join(source, "Cache", "blob"), "junk");
   return source;
 };
 
-// Every test's destination lives inside a freshly minted temp directory so
-// that a leftover staging directory (a sibling of "Constellation Dev") would
-// show up in a directory listing rather than among unrelated fixtures.
-const makeDestinationParent = () =>
-  fs.mkdtempSync(path.join(os.tmpdir(), "dev-snapshot-dst-"));
-
 // t.after runs even when an assertion above it throws, so a failing test
 // still tidies up its own fixtures instead of leaking them into the system
 // temp directory.
 test("the copy carries the key wrapper, the registry and the grants", (t) => {
   const source = seedSource();
-  const destinationParent = makeDestinationParent();
-  const destination = path.join(destinationParent, "Constellation Dev");
+  const home = makeHome();
+  const destination = devStateRoot(home);
   t.after(() => {
     fs.rmSync(source, { recursive: true, force: true });
-    fs.rmSync(destinationParent, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
   });
-  const copied = copySnapshot({ source, destination });
+  const copied = copySnapshot({ source, destination, home });
   assert.equal(
     fs.existsSync(
       path.join(destination, "local-alpha-workspace", "key-wrapper.json"),
@@ -57,15 +81,49 @@ test("the copy carries the key wrapper, the registry and the grants", (t) => {
   assert.equal(copied.includes("workspace-registry.json"), true);
 });
 
-test("the live socket and the browser cache are left behind", (t) => {
+test("a copied grant descriptor is repointed at the copy's own socket before the shell has ever launched", (t) => {
   const source = seedSource();
-  const destinationParent = makeDestinationParent();
-  const destination = path.join(destinationParent, "Constellation Dev");
+  const home = makeHome();
+  const destination = devStateRoot(home);
   t.after(() => {
     fs.rmSync(source, { recursive: true, force: true });
-    fs.rmSync(destinationParent, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
   });
-  copySnapshot({ source, destination });
+  copySnapshot({ source, destination, home });
+  const seededPath = path.join(source, "mcp", "agents", "grant.json");
+  const copiedPath = path.join(destination, "mcp", "agents", "grant.json");
+  const seeded = JSON.parse(fs.readFileSync(seededPath, "utf8"));
+  const copiedDescriptor = JSON.parse(fs.readFileSync(copiedPath, "utf8"));
+  // The one field a reader would use to connect now names the copy's own
+  // socket, not the installed application's — the defect this closes is a
+  // descriptor that would otherwise authenticate against production.
+  assert.equal(copiedDescriptor.endpoint, localSocketPath(destination));
+  assert.equal(
+    copiedDescriptor.endpoint.includes("Constellation Local Alpha"),
+    false,
+  );
+  // Every other field, including the secret, survives untouched — this is
+  // still the same grant, just told where to actually connect.
+  const seededRest = { ...seeded };
+  delete seededRest.endpoint;
+  const copiedRest = { ...copiedDescriptor };
+  delete copiedRest.endpoint;
+  assert.deepEqual(copiedRest, seededRest);
+  // The descriptor holds a secret; rewriting it must not loosen who can read it.
+  assert.equal((fs.statSync(copiedPath).mode & 0o777).toString(8), "600");
+  // The source is untouched by this repointing.
+  assert.equal(seeded.endpoint, INSTALLED_ENDPOINT);
+});
+
+test("the live socket and the browser cache are left behind", (t) => {
+  const source = seedSource();
+  const home = makeHome();
+  const destination = devStateRoot(home);
+  t.after(() => {
+    fs.rmSync(source, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+  copySnapshot({ source, destination, home });
   assert.equal(
     fs.existsSync(path.join(destination, "mcp", "application.sock")),
     false,
@@ -80,13 +138,13 @@ test("a socket nested inside a copied directory is stripped by the filter, not j
   // filter itself can be keeping it out.
   const source = seedSource();
   fs.writeFileSync(path.join(source, "mcp", "agents", "application.sock"), "");
-  const destinationParent = makeDestinationParent();
-  const destination = path.join(destinationParent, "Constellation Dev");
+  const home = makeHome();
+  const destination = devStateRoot(home);
   t.after(() => {
     fs.rmSync(source, { recursive: true, force: true });
-    fs.rmSync(destinationParent, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
   });
-  copySnapshot({ source, destination });
+  copySnapshot({ source, destination, home });
   assert.equal(
     fs.existsSync(path.join(destination, "mcp", "agents", "application.sock")),
     false,
@@ -99,15 +157,44 @@ test("a socket nested inside a copied directory is stripped by the filter, not j
 
 test("a source without a key wrapper is refused instead of half-copied", (t) => {
   const source = fs.mkdtempSync(path.join(os.tmpdir(), "dev-snapshot-src-"));
-  const destinationParent = makeDestinationParent();
-  const destination = path.join(destinationParent, "Constellation Dev");
+  const home = makeHome();
+  const destination = devStateRoot(home);
   t.after(() => {
     fs.rmSync(source, { recursive: true, force: true });
-    fs.rmSync(destinationParent, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
   });
   assert.throws(
-    () => copySnapshot({ source, destination }),
+    () => copySnapshot({ source, destination, home }),
     /DEV_SNAPSHOT_SOURCE_INCOMPLETE/u,
+  );
+  assert.equal(fs.existsSync(destination), false);
+});
+
+test("a source whose active workspace is not at the base root is refused, not silently copied", (t) => {
+  const source = seedSource();
+  fs.writeFileSync(
+    path.join(source, "workspace-registry.json"),
+    JSON.stringify({
+      version: 1,
+      activeWorkspaceId: "11111111-1111-1111-1111-111111111111",
+      workspaces: [
+        {
+          workspaceId: "11111111-1111-1111-1111-111111111111",
+          name: "Second workspace",
+          relativeStateRoot: "workspaces/11111111-1111-1111-1111-111111111111",
+        },
+      ],
+    }),
+  );
+  const home = makeHome();
+  const destination = devStateRoot(home);
+  t.after(() => {
+    fs.rmSync(source, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+  assert.throws(
+    () => copySnapshot({ source, destination, home }),
+    /DEV_SNAPSHOT_MULTI_WORKSPACE_UNSUPPORTED/u,
   );
   assert.equal(fs.existsSync(destination), false);
 });
@@ -126,15 +213,15 @@ test("a destination that is not the development directory is refused", (t) => {
 
 test("a stale copy is replaced rather than merged", (t) => {
   const source = seedSource();
-  const destinationParent = makeDestinationParent();
-  const destination = path.join(destinationParent, "Constellation Dev");
+  const home = makeHome();
+  const destination = devStateRoot(home);
   t.after(() => {
     fs.rmSync(source, { recursive: true, force: true });
-    fs.rmSync(destinationParent, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
   });
   fs.mkdirSync(destination, { recursive: true });
   fs.writeFileSync(path.join(destination, "stale.json"), "{}");
-  copySnapshot({ source, destination });
+  copySnapshot({ source, destination, home });
   assert.equal(fs.existsSync(path.join(destination, "stale.json")), false);
 });
 
@@ -151,14 +238,15 @@ test("a mid-copy failure leaves neither a destination nor a leftover staging dir
   const lockedFile = path.join(deviceDirectory, "locked.txt");
   fs.writeFileSync(lockedFile, "secret");
   fs.chmodSync(lockedFile, 0o000);
-  const destinationParent = makeDestinationParent();
-  const destination = path.join(destinationParent, "Constellation Dev");
+  const home = makeHome();
+  const destination = devStateRoot(home);
+  const destinationParent = path.dirname(destination);
   t.after(() => {
     fs.chmodSync(lockedFile, 0o644);
     fs.rmSync(source, { recursive: true, force: true });
-    fs.rmSync(destinationParent, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
   });
-  assert.throws(() => copySnapshot({ source, destination }), /EACCES/u);
+  assert.throws(() => copySnapshot({ source, destination, home }), /EACCES/u);
   assert.equal(fs.existsSync(destination), false);
   assert.deepEqual(fs.readdirSync(destinationParent), []);
 });
@@ -173,8 +261,9 @@ test("a swap failure leaves the previous copy in place and no orphan behind", (t
   // flagging only the destination isolates the fault to the rename of the
   // destination itself - the first of the swap's two renames.
   const source = seedSource();
-  const destinationParent = makeDestinationParent();
-  const destination = path.join(destinationParent, "Constellation Dev");
+  const home = makeHome();
+  const destination = devStateRoot(home);
+  const destinationParent = path.dirname(destination);
   fs.mkdirSync(destination, { recursive: true });
   fs.writeFileSync(path.join(destination, "previous-copy.json"), "{}");
   const flagged = spawnSync("chflags", ["uchg", destination]);
@@ -186,10 +275,10 @@ test("a swap failure leaves the previous copy in place and no orphan behind", (t
   t.after(() => {
     spawnSync("chflags", ["nouchg", destination]);
     fs.rmSync(source, { recursive: true, force: true });
-    fs.rmSync(destinationParent, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
   });
   assert.throws(
-    () => copySnapshot({ source, destination }),
+    () => copySnapshot({ source, destination, home }),
     /EPERM|operation not permitted/iu,
   );
   // The previous copy was never even renamed aside, let alone replaced.

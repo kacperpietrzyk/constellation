@@ -20,7 +20,7 @@ Small documentation fixes do not need advance discussion.
 
 The project is pre-alpha. Signed desktop releases are published, and the
 desktop application also runs locally from source — see Development shell
-below. It does have a storage-neutral TypeScript reference kernel and
+below. It has a storage-neutral TypeScript reference kernel and
 conformance suite.
 Use the Node.js version in `.nvmrc`, then run:
 
@@ -44,8 +44,9 @@ npm run dev:desktop
 ```
 
 `dev:snapshot` copies the installed application's state into a separate
-`Constellation Dev` directory and prints an MCP server entry you can register
-alongside your existing one — the copy repoints itself at its own socket, so
+`Constellation Dev` directory, rewriting each copied grant descriptor to point
+at that copy's own socket before printing an MCP server entry you can
+register alongside your existing one. From the moment the snapshot is taken,
 the installed application's own MCP server is never touched. `dev:desktop`
 builds the main process and renderer in watch mode and launches Electron
 against that copy.

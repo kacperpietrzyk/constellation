@@ -1,30 +1,115 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  DEV_STATE_DIRECTORY,
   INSTALLED_APP_NAME,
   SNAPSHOT_ENTRIES,
   agentDescriptors,
   devStateRoot,
   installedStateRoot,
+  localSocketPath,
   socketPathFits,
 } from "./dev-state.mjs";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
 
+const MULTI_WORKSPACE_UNSUPPORTED_MESSAGE =
+  'multi-workspace layouts are not supported by the snapshot yet: the active workspace must have relativeStateRoot ".".';
+
+// Mirrors production's fallback deliberately loosely rather than replicating
+// workspace-registry.ts's full schema check. Production (parseRegistry) only
+// ever resolves a non-"." root once the registry is fully valid and
+// versioned, and falls back to treating the base root as the workspace the
+// moment any part of the shape is off — including a missing file. A parser
+// this loose can therefore only diverge from production in one direction: a
+// registry production would still fall back on (an unrecognized `version`,
+// say) makes this refuse anyway. A false refusal is the safe direction for a
+// copy tool.
+const activeRelativeStateRoot = (source) => {
+  const registryPath = path.join(source, "workspace-registry.json");
+  let raw;
+  try {
+    raw = readFileSync(registryPath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return undefined;
+    throw new Error(
+      `DEV_SNAPSHOT_REGISTRY_UNREADABLE: could not read ${registryPath}: ${error.message}`,
+    );
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `DEV_SNAPSHOT_REGISTRY_UNREADABLE: ${registryPath} is not valid JSON: ${error.message}`,
+    );
+  }
+  const workspaces = Array.isArray(parsed?.workspaces) ? parsed.workspaces : [];
+  const active = workspaces.find(
+    (workspace) =>
+      workspace !== null &&
+      typeof workspace === "object" &&
+      workspace.workspaceId === parsed?.activeWorkspaceId,
+  );
+  return active?.relativeStateRoot;
+};
+
+const assertSingleWorkspaceLayout = (source) => {
+  const relativeStateRoot = activeRelativeStateRoot(source);
+  if (relativeStateRoot !== undefined && relativeStateRoot !== ".") {
+    throw new Error(
+      `DEV_SNAPSHOT_MULTI_WORKSPACE_UNSUPPORTED: the active workspace's relativeStateRoot is ${JSON.stringify(relativeStateRoot)}, not "."; ${MULTI_WORKSPACE_UNSUPPORTED_MESSAGE}`,
+    );
+  }
+};
+
+// The runtime rewrites every active grant's endpoint unconditionally when it
+// binds its socket (LocalMcpRuntime.start), so this is idempotent — it exists
+// only to close the window between "snapshot taken" and "dev shell launched
+// once", during which a copied descriptor would otherwise still name the
+// installed application's socket and be authenticated by it.
+const repointAgentDescriptors = (agentsDirectory, endpoint) => {
+  if (!existsSync(agentsDirectory)) return;
+  for (const entry of readdirSync(agentsDirectory)) {
+    if (!entry.endsWith(".json")) continue;
+    const filePath = path.join(agentsDirectory, entry);
+    const descriptor = JSON.parse(readFileSync(filePath, "utf8"));
+    writeFileSync(
+      filePath,
+      `${JSON.stringify({ ...descriptor, endpoint })}\n`,
+      "utf8",
+    );
+  }
+};
+
 export const copySnapshot = ({
   source,
   destination,
   entries = SNAPSHOT_ENTRIES,
+  home = os.homedir(),
 }) => {
-  // A wrong destination would be deleted recursively, so it is checked by name.
-  if (path.basename(destination) !== DEV_STATE_DIRECTORY) {
+  // A wrong destination would be deleted recursively, so it must match the
+  // development state root exactly. A basename-only check ("ends in
+  // Constellation Dev") would also accept a path nested inside the installed
+  // state root; `home` is injected only so tests can point this at a
+  // fixture home directory instead of the real one.
+  if (destination !== devStateRoot(home)) {
     throw new Error("DEV_SNAPSHOT_DESTINATION_REFUSED");
   }
+  assertSingleWorkspaceLayout(source);
   if (
     !existsSync(path.join(source, "local-alpha-workspace", "key-wrapper.json"))
   ) {
@@ -49,6 +134,14 @@ export const copySnapshot = ({
       });
       copied.push(entry);
     }
+    // The endpoint written here must be the one valid at the FINAL
+    // destination, even though the descriptors themselves still live under
+    // the staging path at this point — the runtime resolves grants' sockets
+    // from the destination, never from staging.
+    repointAgentDescriptors(
+      path.join(staging, "mcp", "agents"),
+      localSocketPath(destination),
+    );
   } catch (error) {
     rmSync(staging, { recursive: true, force: true });
     throw error;
@@ -87,7 +180,17 @@ export const copySnapshot = ({
     rmSync(staging, { recursive: true, force: true });
     throw swapError;
   }
-  rmSync(backup, { recursive: true, force: true });
+  try {
+    rmSync(backup, { recursive: true, force: true });
+  } catch (error) {
+    // The swap above already succeeded — the destination is correct — so a
+    // failure to tidy up the backup must not be reported as a fault. Naming
+    // the leftover path here is the only way a maintainer would otherwise
+    // learn it is still there.
+    console.warn(
+      `dev:snapshot: the swap succeeded, but the previous copy could not be removed from ${backup}: ${error.message}`,
+    );
+  }
   return copied;
 };
 
