@@ -193,10 +193,20 @@ const seedOnlyContent = (seed?: AgentContentSeed): string => {
  * needed. The digest alone would let an added empty block pass; the structural
  * match alone would call any single-paragraph body a seed.
  *
- * Only ever asked of an owner that *has* a seed. A document has none, and the
- * import path records a digest of the text it was handed — so a document whose
- * body an agent wrote would otherwise answer this question with "yes" and report
- * somebody's work as disposable. The caller's gate is the whole guard.
+ * Only ever asked of an owner that *has* a seed, and only of a body that was
+ * *stored* rich. Both gates are load-bearing and neither is obvious.
+ *
+ * A document has no seed, and the import path records a digest of the text it
+ * was handed — so a document whose body an agent wrote would answer this
+ * question with "yes" and have somebody's work reported as disposable.
+ *
+ * A body stored as plain-v1 has no recorded materialisation seed at all: the
+ * baseline mints one *during this very read*, from the body's own text, in order
+ * to upgrade it. Asking then compares the body against itself and is true for
+ * every plain-v1 body ever written — which would report a page a person filled
+ * in as an echo of a seed. `contentState` is the only thing that distinguishes
+ * a digest this document has carried since it was made from one invented a
+ * microsecond ago, so the caller checks it.
  */
 const matchesMaterialisationSeed = (
   adapter: YjsRealtimeDocumentAdapter,
@@ -250,6 +260,7 @@ export const projectAgentContent = (input: {
           ? "absent"
           : JSON.stringify(content) === seedOnlyContent(input.seed) ||
               (input.seed !== undefined &&
+                contentState === "rich-v1" &&
                 matchesMaterialisationSeed(
                   baseline.adapter,
                   content,

@@ -151,4 +151,52 @@ describe("a Project body is measured against the seed it was made from", () => {
     }
     assert.equal(projectAgentContent({ state }).contentOrigin, "authored");
   });
+
+  /**
+   * The other half of the same trap, and the one that would have cost real work.
+   * A body stored as plain-v1 carries no materialisation digest — the read mints
+   * one from the body's own text on the way to upgrading it — so asking whether
+   * the body matches "the seed it was made from" compares it against itself and
+   * is true for every plain-v1 body there is. A Project page a person filled in
+   * would have read as a disposable echo.
+   */
+  it("reads a plain-v1 body a person filled in as authored, not as its own seed", () => {
+    const adapter = new YjsRealtimeDocumentAdapter();
+    let state: Uint8Array;
+    try {
+      adapter.replaceText("Cały kontekst wdrożenia, spisany ręcznie.", {
+        kind: "human",
+        principalId: AUTHOR,
+      });
+      state = adapter.encodeState();
+    } finally {
+      adapter.destroy();
+    }
+    const read = projectAgentContent({
+      state,
+      seed: { text: OUTCOME_BEFORE, principalId: AUTHOR },
+    });
+    assert.equal(read.contentState, "plain-v1");
+    assert.equal(read.contentOrigin, "authored");
+    // And the legitimate plain-v1 seeded case still answers through the current
+    // seed, so the gate costs nothing it should not.
+    const seededPlain = new YjsRealtimeDocumentAdapter();
+    let seededState: Uint8Array;
+    try {
+      seededPlain.replaceText(OUTCOME_BEFORE, {
+        kind: "human",
+        principalId: AUTHOR,
+      });
+      seededState = seededPlain.encodeState();
+    } finally {
+      seededPlain.destroy();
+    }
+    assert.equal(
+      projectAgentContent({
+        state: seededState,
+        seed: { text: OUTCOME_BEFORE, principalId: AUTHOR },
+      }).contentOrigin,
+      "seeded",
+    );
+  });
 });
