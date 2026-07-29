@@ -4,13 +4,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  QueryIdSchema,
-  SpaceIdSchema,
-  TaskStatusIdSchema,
-  WorkspaceIdSchema,
-} from "@constellation/contracts";
-import type { RendererQueryResponse } from "@constellation/desktop-preload/client";
-import {
   desktopSurfaceIds,
   desktopSurfaceRegistry,
   type DesktopSurface,
@@ -24,6 +17,7 @@ import {
   serializeShellNavigation,
 } from "../src/client/shell-navigation.js";
 import type { SurfaceId } from "../src/client/wave2-fixtures.js";
+import { shellQueries } from "./shell-fixture.js";
 
 // Ten plik nie czyta ani jednego pliku źródłowego i nie sprawdza ani jednego
 // zdania interfejsu. Destynacje rozpoznaje po identyfikatorach z rejestru, a
@@ -38,70 +32,6 @@ type Equals<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 // której powłoka nie zna. Ta stała jest bramką typów: przy rozjeździe aliasu
 // `Equals` daje `false` i `tsc -b` odmawia zbudowania testu.
 const surfaceIdIsTheRegistryUnion: Equals<SurfaceId, DesktopSurface> = true;
-
-const workspaceId = WorkspaceIdSchema.parse(
-  "00000000-0000-4000-8000-000000000001",
-);
-const spaceId = SpaceIdSchema.parse("00000000-0000-4000-8000-000000000002");
-const statusId = TaskStatusIdSchema.parse(
-  "00000000-0000-4000-8000-000000000003",
-);
-const queryId = QueryIdSchema.parse("00000000-0000-4000-8000-000000000004");
-
-const projectionResponse = (projection: object): RendererQueryResponse =>
-  ({
-    kind: "query_result",
-    result: {
-      contractVersion: 1,
-      queryId,
-      kernelTime: "2026-07-13T12:00:00.000Z",
-      outcome: "success",
-      projection,
-      freshness: {
-        mode: "local_authoritative",
-        checkpoint: null,
-        missingCapabilities: [],
-      },
-    },
-  }) as RendererQueryResponse;
-
-// Tylko trzy projekcje są wymagane do otwarcia snapshotu; reszta degraduje się
-// do stanu „dane niedostępne" i każda powierzchnia musi mimo to coś
-// wyrenderować. Ten wariant jest celowo najuboższy z możliwych — jeśli
-// destynacja umie narysować się tylko przy pełnych danych, to jest defekt
-// powierzchni, nie testu.
-const shellQueries = {
-  "workspace.bootstrapContext": projectionResponse({
-    kind: "workspace.bootstrapContext",
-    workspace: {
-      id: workspaceId,
-      name: "Workspace",
-      timezone: "Europe/Warsaw",
-      defaultTaskStatusId: statusId,
-      version: 1,
-    },
-    spaces: [{ id: spaceId, name: "Space", version: 1 }],
-    taskStatuses: [
-      {
-        id: statusId,
-        label: "status",
-        operationalSemantics: "actionable",
-        position: 0,
-        version: 1,
-      },
-    ],
-  }),
-  "task.list": projectionResponse({
-    kind: "task.list",
-    items: [],
-    nextCursor: null,
-  }),
-  "capture.history": projectionResponse({
-    kind: "capture.history",
-    items: [],
-    nextCursor: null,
-  }),
-};
 
 /**
  * Wnętrze elementu otwartego znacznikiem `tag` od pozycji `from`, domknięte
