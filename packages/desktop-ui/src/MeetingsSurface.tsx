@@ -394,7 +394,14 @@ export const MeetingsSurface = ({
           Meetings are unavailable right now
         </h1>
         <p>{state.message}</p>
-        <button className="primary-button" onClick={load}>
+        {/* Ten sam zaczep, co na granicy leniwej powierzchni w `RealApp`:
+            gwarancją jest „ekran, którego nie da się otworzyć, proponuje
+            ponowienie" — nie to, jakimi słowami i którą klasą to robi. */}
+        <button
+          className="primary-button"
+          data-surface-action="retry"
+          onClick={load}
+        >
           Try again
         </button>
       </section>

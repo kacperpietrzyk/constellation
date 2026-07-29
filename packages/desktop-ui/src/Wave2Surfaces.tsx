@@ -1309,7 +1309,15 @@ export const TasksSurface = ({
                       }}
                       onDoubleClick={() => onOpenTask(task.id)}
                     >
-                      <strong title={task.title}>{task.title}</strong>
+                      {/* `data-row-title`: zaczep na WIDOCZNY tytuł wiersza.
+                          Ten sam tytuł stoi jeszcze w dwóch etykietach
+                          `sr-only` niżej (Status of…, Assignee for…), więc
+                          pomiar po `textContent` całego planu przechodzi nawet
+                          wtedy, gdy widoczny napis został obcięty — sprawdzone
+                          przez zepsucie. Test musi czytać ten węzeł. */}
+                      <strong data-row-title="" title={task.title}>
+                        {task.title}
+                      </strong>
                       <span>
                         {[
                           task.sourceCaptureId
@@ -1907,8 +1915,13 @@ export const ProjectsSurface = ({
               >
                 <Mark kind="project" />
                 <span>
-                  <strong>{project.title}</strong>
-                  <small>
+                  {/* Te same dwa zaczepy, co w wierszu zadania: pomiar musi
+                      trafiać w WIDOCZNY tytuł i w WYRENDEROWANĄ intencję, a nie
+                      w tekst całego planu. Intencja ma tu 1400-3000 znaków i
+                      kilka akapitów — obcięcie jej w renderze jest właśnie tym
+                      defektem, którego bogaty fixture pilnuje. */}
+                  <strong data-row-title="">{project.title}</strong>
+                  <small data-row-outcome="">
                     <NarrativeText
                       kind="project"
                       text={project.intendedOutcome}

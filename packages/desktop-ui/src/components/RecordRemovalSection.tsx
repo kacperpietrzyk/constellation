@@ -17,6 +17,15 @@ import {
 // inspector already knows what points at this one, so it says so up front
 // instead of letting the owner click through to a precondition error. The
 // kernel guard stays the real enforcement; this is the honest UI ahead of it.
+
+// Obietnica cofnięcia stoi na OBU ekranach, na których usunięcie jest w ogóle
+// możliwe — także na ostatnim przed kliknięciem, bo dopiero tam właściciel
+// naprawdę decyduje, a ekran bez tego zdania czyta się jak próg bez odwrotu.
+// Gałąź zablokowana jej nie niesie i nieść nie powinna: dopóki usunięcie jest
+// odmawiane, nie ma czego cofać.
+const undoPromise =
+  "Deleting hides the record and its history. You can undo it.";
+
 export const RecordRemovalSection = ({
   client,
   snapshot,
@@ -41,7 +50,14 @@ export const RecordRemovalSection = ({
 
   if (dependentLabels.length > 0) {
     return (
-      <section className="inspector-section task-removal-block">
+      // Znaczniki `data-*` są tu po to, żeby test interakcji trzymał się stanu
+      // usuwania, a nie klasy CSS ani napisu na przycisku — jedno i drugie
+      // wolno zmienić bez zmiany gwarancji.
+      <section
+        className="inspector-section task-removal-block"
+        data-record-removal=""
+        data-removal-state="blocked"
+      >
         <p className="section-label">Delete record</p>
         <p className="muted-text">
           Other work points at it ({dependentLabels.join(", ")}). Unlink or
@@ -53,48 +69,56 @@ export const RecordRemovalSection = ({
   }
 
   return (
-    <section className="inspector-section task-removal-block">
+    <section
+      className="inspector-section task-removal-block"
+      data-record-removal=""
+      data-removal-state={confirming ? "confirming" : "armable"}
+    >
       <p className="section-label">Delete record</p>
       {confirming ? (
-        <div className="task-removal-actions">
-          <button
-            type="button"
-            className="status-danger"
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              void removeStrategicRecord(client, snapshot, record).then(
-                async (result) => {
-                  setBusy(false);
-                  setConfirming(false);
-                  if (result.kind === "success")
-                    await onRemoved(
-                      "Record deleted. Undo if that was a mistake.",
-                    );
-                  else onFailure(result);
-                },
-              );
-            }}
-          >
-            {busy ? "Deleting…" : "Confirm delete"}
-          </button>
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={busy}
-            onClick={() => setConfirming(false)}
-          >
-            Cancel
-          </button>
-        </div>
+        <>
+          <p className="muted-text">{undoPromise}</p>
+          <div className="task-removal-actions">
+            <button
+              type="button"
+              className="status-danger"
+              data-removal-action="confirm"
+              disabled={busy}
+              onClick={() => {
+                setBusy(true);
+                void removeStrategicRecord(client, snapshot, record).then(
+                  async (result) => {
+                    setBusy(false);
+                    setConfirming(false);
+                    if (result.kind === "success")
+                      await onRemoved(
+                        "Record deleted. Undo if that was a mistake.",
+                      );
+                    else onFailure(result);
+                  },
+                );
+              }}
+            >
+              {busy ? "Deleting…" : "Confirm delete"}
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              data-removal-action="disarm"
+              disabled={busy}
+              onClick={() => setConfirming(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </>
       ) : (
         <>
-          <p className="muted-text">
-            Deleting hides the record and its history. You can undo it.
-          </p>
+          <p className="muted-text">{undoPromise}</p>
           <button
             type="button"
             className="secondary-button"
+            data-removal-action="arm"
             onClick={() => setConfirming(true)}
           >
             Delete record
