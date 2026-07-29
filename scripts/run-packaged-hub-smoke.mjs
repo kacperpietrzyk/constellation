@@ -1545,7 +1545,12 @@ try {
   await replaceEditorText(member.client, offlineCompletedText);
   await waitFor(
     member.client,
-    `document.querySelector(".document-presence")?.textContent.includes("zmian oczekuje") === true`,
+    // Gwarancją jest LICZBA czekających zmian widoczna w trybie offline, a nie
+    // konkretne zdanie: człowiek, któremu urwało połączenie, musi wiedzieć, ile
+    // pracy czeka na wysłanie. Nie ma tu zaczepu strukturalnego na sam licznik,
+    // więc asercja zostaje przy treści — ale wymaga CYFRY, nie brzmienia, więc
+    // przeżyje przeredagowanie i padnie, gdy licznik zniknie.
+    `/\\d+\\s+changes?\\s+waiting/u.test(document.querySelector(".document-presence")?.textContent ?? "")`,
     "PACKAGED_DOCUMENT_OFFLINE_UPDATE_NOT_QUEUED",
   );
   realtimeDocuments = new RealtimeDocumentGateway(service, repository);
