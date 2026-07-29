@@ -1241,17 +1241,36 @@ export const SavedViewFiltersSchema = z
   })
   .strict();
 
+// Grouping keys, on the same additive-only terms as the filter vocabulary
+// above: this union gates both the write and both saved-view projections, so a
+// removed member would make an already-stored view fail to project and take
+// boot down with it, not one screen.
+//
+// "assignee" reads `assigneePrincipalId` off the Work overview task item; a
+// task with none belongs to an explicit unassigned group rather than to no
+// group. "project" reads `projectIds`, which is a LIST — Task↔Project is
+// many-to-many (`record.relate` guards pair-uniqueness only), so a task
+// contributing to two Projects belongs to BOTH groups and is listed twice. An
+// empty list is the "no project" group. Collapsing that to one bucket would be
+// a statement about the data that the data does not make.
 export const SavedViewGroupBySchema = z.union([
   z.literal("status"),
   z.literal("priority"),
+  z.literal("assignee"),
+  z.literal("project"),
   z.object({ fieldId: FieldDefinitionIdSchema }).strict(),
 ]);
 
+// Additive-only for the same reason. "table" is deliberately NOT subject to the
+// board interlock below (a board without grouping has no columns; a table
+// without grouping is the ordinary case), so nothing here may be copied from
+// the `board` branch in the kernel.
 export const SavedViewLayoutSchema = z.enum([
   "list",
   "board",
   "timeline",
   "calendar",
+  "table",
 ]);
 
 export const SavedViewCreateCommandSchema = CommandMetadataSchema.extend({

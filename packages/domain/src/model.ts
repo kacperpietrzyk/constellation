@@ -792,11 +792,19 @@ export type StrategicRecord =
         }[];
       };
       readonly sort: "updated_desc" | "due_asc" | "title_asc";
+      // Restatement of `SavedViewGroupBySchema`; the two must be widened in
+      // lockstep. Widening this one alone typechecks and then throws on read,
+      // because `relationship.workspace` spreads the raw record into an
+      // untyped projection that is parsed strictly — the PR #95 failure.
       readonly groupBy?:
-        "status" | "priority" | { readonly fieldId: FieldDefinitionId };
+        | "status"
+        | "priority"
+        | "assignee"
+        | "project"
+        | { readonly fieldId: FieldDefinitionId };
       // ADR-058. Layout is presentation carried by the Saved View, not a
       // second Task model. Absence is the backwards-compatible list default.
-      readonly layout?: "list" | "board" | "timeline" | "calendar";
+      readonly layout?: "list" | "board" | "timeline" | "calendar" | "table";
       readonly state: "active" | "deleted";
     })
   | (StrategicRecordBase & {
@@ -960,9 +968,18 @@ export type UndoDescriptor =
         { kind: "saved_view" }
       >["filters"];
       readonly priorSort: "updated_desc" | "due_asc" | "title_asc";
+      // Second restatement of the same two unions. The compiler does reach
+      // these: the descriptor literals in wave2.ts assign the record's own
+      // `groupBy`/`layout` here, so widening the record without widening these
+      // fails to build. Verified by widening the record alone.
       readonly priorGroupBy?:
-        "status" | "priority" | { readonly fieldId: FieldDefinitionId };
-      readonly priorLayout?: "list" | "board" | "timeline" | "calendar";
+        | "status"
+        | "priority"
+        | "assignee"
+        | "project"
+        | { readonly fieldId: FieldDefinitionId };
+      readonly priorLayout?:
+        "list" | "board" | "timeline" | "calendar" | "table";
       readonly priorState: "active" | "deleted";
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;

@@ -10124,6 +10124,23 @@ export const executeWave2Query = (
       else siblings.push(candidate);
     }
     const stateOrder = { waiting: 0, blocked: 1, actionable: 2 } as const;
+    // Task→Project is a relation, not a field, so the memberships are gathered
+    // once here rather than per task: the same call and the same filter
+    // `project.list` makes for `relatedOpenTaskCount`. A task may hold several
+    // — `record.relate` guards pair-uniqueness only — and all of them are
+    // projected, because grouping by project lists such a task under each.
+    const projectIdsByTask = new Map<TaskId, ProjectId[]>();
+    for (const relation of view.listRelations(query.workspaceId, space.id)) {
+      if (
+        relation.relationType !== "task_contributes_to_project" ||
+        relation.state !== "active"
+      )
+        continue;
+      const existing = projectIdsByTask.get(relation.taskId);
+      if (existing === undefined)
+        projectIdsByTask.set(relation.taskId, [relation.projectId]);
+      else existing.push(relation.projectId);
+    }
     return querySuccess(query, kernelTime, freshness, {
       kind: "work.overview",
       tasks: view
@@ -10160,6 +10177,7 @@ export const executeWave2Query = (
           ...(task.parentTaskId === undefined
             ? {}
             : { parentTaskId: task.parentTaskId }),
+          projectIds: projectIdsByTask.get(task.id) ?? [],
           ...(() => {
             const fields = taskFieldsWithComputedValues(
               task.fields,

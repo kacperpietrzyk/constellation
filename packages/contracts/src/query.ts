@@ -732,6 +732,16 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             dueAt: z.iso.datetime({ offset: true }).optional(),
             priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
             parentTaskId: TaskIdSchema.optional(),
+            // Every Project this task contributes to, not the first one.
+            // Task→Project is a relation record and `record.relate` guards
+            // pair-uniqueness only, so the list can hold several. Grouping by
+            // project lists such a task under EACH of them; an empty list is
+            // the "no project" group. Required rather than optional on
+            // purpose: `querySuccess` takes `Record<string, unknown>`, so a
+            // mapper that forgets the field raises no type error — required
+            // turns that into a loud parse failure instead of every task
+            // silently landing under "no project".
+            projectIds: z.array(ProjectIdSchema),
             fields: z
               .record(
                 z.string(),
