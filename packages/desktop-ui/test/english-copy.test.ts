@@ -1,7 +1,7 @@
 /// <reference types="node" />
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -84,6 +84,56 @@ test("every user-visible string in the renderer is English", () => {
         "\n",
       )}${offenders.length > 40 ? `\n… and ${offenders.length - 40} more` : ""}`,
   );
+});
+
+// Arkusze stylów też potrafią wypisać tekst na ekran — `content:` na
+// pseudoelemencie renderuje się jak każdy inny napis. Dziś wszystkie siedem
+// deklaracji to znaki („✓", „⌕"), ale PR 6 wprowadza CSS Modules dla nowo
+// pisanych komponentów, a oracle, który nie widzi arkuszy, meldowałby zero
+// także wtedy, gdy nowe pliki przyniosą prawdziwe copy.
+const cssContentValues = (css: string): readonly string[] =>
+  [...css.matchAll(/content:\s*"((?:[^"\\]|\\.)*)"/g)].map(
+    (match) => match[1] ?? "",
+  );
+
+test("every string a stylesheet prints is English too", () => {
+  const sheets = readdirSync(sourceRoot, { recursive: true })
+    .map((entry) => String(entry))
+    .filter((entry) => entry.endsWith(".css"))
+    .map((entry) => path.join(sourceRoot, entry));
+
+  assert.ok(
+    sheets.length > 5,
+    `expected the stylesheet sweep to find sheets, found ${sheets.length} — a scan that finds nothing passes vacuously`,
+  );
+
+  const offenders: string[] = [];
+  for (const sheet of sheets) {
+    for (const value of cssContentValues(readFileSync(sheet, "utf8"))) {
+      if (polishHits(value)) {
+        offenders.push(
+          `${path.relative(sourceRoot, sheet)}  content: "${value}"`,
+        );
+      }
+    }
+  }
+
+  assert.deepEqual(offenders, [], offenders.join("\n"));
+});
+
+test("the stylesheet scanner sees a printed string", () => {
+  // Sprawdzone przez zepsucie: gdyby wyrażenie nie łapało `content:`, ten test
+  // pada. Pusty `content: ""` jest ozdobnikiem i ma zostać niewidzialny.
+  const sample = [
+    '.a::before { content: "✓"; }',
+    '.b::after { content: "Brak wyników"; }',
+    '.c::before { content: ""; }',
+  ].join("\n");
+
+  assert.deepEqual(cssContentValues(sample), ["✓", "Brak wyników", ""]);
+  assert.deepEqual(cssContentValues(sample).filter(polishHits), [
+    "Brak wyników",
+  ]);
 });
 
 test("the scanner sees copy and ignores comments", () => {
