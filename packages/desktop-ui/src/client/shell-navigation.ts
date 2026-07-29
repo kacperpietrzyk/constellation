@@ -106,7 +106,10 @@ export const serializeShellNavigation = (state: ShellNavigationState): string =>
 // tytuł — tam napis to nazwa cudzej pracy, nie etykieta interfejsu.
 const migrateRestoredContext = (value: unknown): unknown => {
   if (typeof value !== "object" || value === null) return value;
-  const context = value as { readonly surface?: unknown; readonly key?: unknown };
+  const context = value as {
+    readonly surface?: unknown;
+    readonly key?: unknown;
+  };
   const resolved = resolveDesktopSurface(context.surface);
   if (resolved === undefined) return value;
   const isDestination =

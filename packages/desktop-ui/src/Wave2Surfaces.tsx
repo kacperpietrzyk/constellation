@@ -904,9 +904,14 @@ export const CockpitSurface = ({
         kicker={
           cockpit.kind === "ready"
             ? weekRangeLabel(cockpit.data.weekStart, cockpit.data.weekEnd)
-            : "Week view"
+            : "Today"
         }
-        title="Week"
+        // Cel nazywa się „Today" i ekran musi się z nim zgadzać — nawigacja
+        // mówiąca jedno, a nagłówek drugie, czyta się jak nietrafiony klik.
+        // Sama TREŚĆ jest wciąż starym widokiem tygodnia; przepisuje ją fala A,
+        // więc zakres tygodnia zostaje w nadtytule, gdzie mówi prawdę o tym, co
+        // widać.
+        title="Today"
         description="Open tasks and active projects in one fixed order."
       />
       {cockpit.kind === "unavailable" ? (
@@ -914,7 +919,7 @@ export const CockpitSurface = ({
           <InlineState
             tone="warning"
             headingLevel="h2"
-            title="Week view is unavailable"
+            title="Today is unavailable"
             detail={cockpit.message}
           />
           {exceptionsBar}

@@ -724,7 +724,9 @@ export const parseTasksCsv = (input: string): TasksCsvResult => {
     }
     const title = cell(row, "title");
     if (title === undefined || title.length > 500) {
-      errors.push(`Row ${rowNumber}: a title is required, up to 500 characters.`);
+      errors.push(
+        `Row ${rowNumber}: a title is required, up to 500 characters.`,
+      );
       return;
     }
     const project = cell(row, "project");
@@ -778,7 +780,9 @@ export const parseTasksCsv = (input: string): TasksCsvResult => {
     }
     const description = cell(row, "description");
     if (description !== undefined && description.length > 8_000) {
-      errors.push(`Row ${rowNumber}: the description is longer than 8000 characters.`);
+      errors.push(
+        `Row ${rowNumber}: the description is longer than 8000 characters.`,
+      );
       return;
     }
     const statusLabel = cell(row, "status");

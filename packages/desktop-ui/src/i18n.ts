@@ -29,11 +29,8 @@ export const plural = (count: number, one: string, many?: string): string =>
   count === 1 ? one : (many ?? `${one}s`);
 
 // "3 tasks" — the count followed by its matching form.
-export const countLabel = (
-  count: number,
-  one: string,
-  many?: string,
-): string => `${count} ${plural(count, one, many)}`;
+export const countLabel = (count: number, one: string, many?: string): string =>
+  `${count} ${plural(count, one, many)}`;
 
 // Display labels for every record kind the product can surface (⌘K results,
 // strategic ledger, impact reviews). Raw contract identifiers must not reach

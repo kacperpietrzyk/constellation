@@ -1382,8 +1382,7 @@ export const SettingsSurface = ({
                     ) {
                       onFailure({
                         kind: "error",
-                        message:
-                          "The completion rule needs a target status.",
+                        message: "The completion rule needs a target status.",
                       });
                       return;
                     }

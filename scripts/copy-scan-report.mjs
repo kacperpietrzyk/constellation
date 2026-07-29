@@ -24,7 +24,8 @@ const rows = [];
 for (const file of collectSourceFiles(root)) {
   if (file.includes(`${path.sep}dev${path.sep}`)) continue;
   const relative = path.relative(root, file);
-  if (filters.length > 0 && !filters.some((f) => relative.includes(f))) continue;
+  if (filters.length > 0 && !filters.some((f) => relative.includes(f)))
+    continue;
   const hits = stripCommentsAndCode(readFileSync(file, "utf8")).filter(
     (line) => PL.test(line.text) || WORDS.test(line.text),
   );
