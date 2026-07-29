@@ -2883,6 +2883,766 @@ export const RealApp = ({
     );
   };
 
+  // Dyspozytor ekranów. Do PR 6 był to płaski łańcuch dwunastu
+  // `{surface === "x" && …}` rozciągnięty na ~600 linii: żeby dołożyć ekran,
+  // trzeba było znaleźć właściwe miejsce w środku pliku, a żeby sprawdzić,
+  // co się renderuje dla danego celu — przeczytać wszystkie dwanaście.
+  //
+  // Mapa jest TOTALNA nad `DesktopSurface`, więc nowy cel w rejestrze wywala
+  // build do czasu podpięcia ekranu — zamiast renderować pusty panel. Wpisy
+  // są funkcjami, nie elementami: inaczej każdy ekran liczyłby swój JSX przy
+  // każdym renderze powłoki, także ten, którego nikt nie ogląda.
+  const surfacePanels: Record<SurfaceId, () => ReactNode> = {
+    today: () => (
+      <CockpitSurface
+        client={client}
+        snapshot={state.snapshot}
+        selectedTaskId={selectedTaskId}
+        selectedProjectId={selectedProjectId}
+        onOpenProject={(id) => {
+          const project =
+            state.snapshot.projects.kind === "ready"
+              ? state.snapshot.projects.data.items.find(
+                  (item) => item.id === id,
+                )
+              : undefined;
+          openContext(projectContext(id, project?.title ?? "Project"));
+        }}
+        onSelectProject={selectProjectInInspector}
+        onOpenTask={(id) => {
+          const task = tasks.find((item) => item.id === id);
+          openContext(taskContext(id, task?.title ?? "Task"));
+        }}
+        onSelectTask={selectTaskInInspector}
+        onOpenAttention={() =>
+          openContext(destinationContext("inbox", "Inbox"))
+        }
+        onCapture={openCapture}
+      />
+    ),
+    meetings: () =>
+      client === undefined ? null : (
+        <LazySurfaceBoundary label="Meetings">
+          <Suspense fallback={<SurfaceLoadingState label="Meetings" />}>
+            <MeetingsSurface
+              client={client}
+              activeMeetingId={selectedMeetingId}
+              inspectorHost={meetingInspectorHost}
+              onInspectorOpen={() => setMeetingInspectorOpen(true)}
+              onMeetingSelected={setSelectedMeetingId}
+            />
+          </Suspense>
+        </LazySurfaceBoundary>
+      ),
+    organizations: () => (
+      <LazySurfaceBoundary label="Organizations">
+        <Suspense fallback={<SurfaceLoadingState label="Organizations" />}>
+          {activeOrganizationId === undefined ? (
+            <StrategicDepthSurface
+              client={client}
+              snapshot={state.snapshot}
+              selectedRecordId={selectedStrategicId}
+              onSelectRecord={selectStrategicInInspector}
+              onOpenOrganization={(id, name) =>
+                openContext(organizationContext(id, name))
+              }
+              onReload={reload}
+              onFailure={showFailure}
+            />
+          ) : (
+            <OrganizationContextLoader
+              client={client}
+              snapshot={state.snapshot}
+              organizationId={activeOrganizationId}
+              // The same flag the Project page's client row uses: this is
+              // the same edge authored from the other end, and the two
+              // contexts are never open at once.
+              linkBusy={projectBusy}
+              onLinkDelivery={(projectId) => {
+                if (!client) return;
+                setProjectBusy(true);
+                void linkOrganizationDelivery(
+                  client,
+                  state.snapshot,
+                  activeOrganizationId,
+                  projectId,
+                ).then(async (result) => {
+                  setProjectBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter("Project linked to the client.");
+                  else showFailure(result);
+                });
+              }}
+              onUnlinkDelivery={(projectId) => {
+                if (!client) return;
+                setProjectBusy(true);
+                void unlinkOrganizationDelivery(
+                  client,
+                  state.snapshot,
+                  activeOrganizationId,
+                  projectId,
+                ).then(async (result) => {
+                  setProjectBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter("Project link removed.");
+                  else showFailure(result);
+                });
+              }}
+              onOpenProject={(id, title) =>
+                openContext(projectContext(id, title))
+              }
+              onOpenTask={(id, title) => openContext(taskContext(id, title))}
+              onOpenDocument={(id, title) =>
+                openContext(documentContext(id, title))
+              }
+              onOpenMeeting={(id) => {
+                setSelectedMeetingId(id);
+                openContext(destinationContext("meetings", "Meetings"));
+              }}
+              onOpenRelationship={(id) => {
+                openContext(
+                  destinationContext("organizations", "Organizations"),
+                );
+                selectStrategicInInspector(id);
+              }}
+            />
+          )}
+        </Suspense>
+      </LazySurfaceBoundary>
+    ),
+    work: () => (
+      <LazySurfaceBoundary label="Saved views">
+        <Suspense fallback={<SurfaceLoadingState label="Saved views" />}>
+          <WorkSurface
+            client={client}
+            snapshot={state.snapshot}
+            selectedTaskId={selectedTaskId}
+            selectedProjectId={selectedProjectId}
+            selectedContextId={selectedWorkContext?.id}
+            onSelectTask={selectTaskInInspector}
+            onOpenTask={(id) => {
+              const task = tasks.find((item) => item.id === id);
+              openContext(taskContext(id, task?.title ?? "Task"));
+            }}
+            onSelectProject={selectProjectInInspector}
+            onSelectContext={selectWorkContextInInspector}
+            onReload={reload}
+            onFailure={showFailure}
+          />
+        </Suspense>
+      </LazySurfaceBoundary>
+    ),
+    settings: () => (
+      <LazySurfaceBoundary label="Settings">
+        <Suspense fallback={<SurfaceLoadingState label="Settings" />}>
+          <SettingsSurface
+            client={client}
+            snapshot={state.snapshot}
+            onReload={reload}
+            onFailure={showFailure}
+            onOpenRecovery={() => setRecoveryOpen(true)}
+            onNavigate={(next, label) =>
+              openContext(destinationContext(next, label))
+            }
+          />
+        </Suspense>
+      </LazySurfaceBoundary>
+    ),
+    tasks: () => (
+      <TasksSurface
+        snapshot={state.snapshot}
+        selectedTaskId={selectedTaskId}
+        busyTaskId={busyTaskId}
+        onOpenTask={(id) => {
+          const task = tasks.find((item) => item.id === id);
+          openContext(taskContext(id, task?.title ?? "Task"));
+        }}
+        onSelectTask={selectTaskInInspector}
+        onCapture={openCapture}
+        onCreateTask={async (title) => {
+          if (!client) return false;
+          const result = await createTask(client, state.snapshot, {
+            title,
+          });
+          if (result.kind === "success") {
+            await refreshAfter("Task created.");
+            selectTaskInInspector(result.data.taskId);
+            return true;
+          }
+          showFailure(result);
+          return false;
+        }}
+        onSetStatus={(id, statusId) => {
+          const task = tasks.find((item) => item.id === id);
+          if (!client || !task) return;
+          setBusyTaskId(id);
+          void setTaskStatus(
+            client,
+            state.snapshot,
+            id,
+            task.version,
+            statusId,
+          ).then(async (result) => {
+            setBusyTaskId(undefined);
+            if (result.kind === "success")
+              await refreshAfter("Task status updated.");
+            else showFailure(result);
+          });
+        }}
+        onSetCompleted={(id, completed) => {
+          const task = tasks.find((item) => item.id === id);
+          if (!client || !task) return;
+          setBusyTaskId(id);
+          void setTaskCompletion(
+            client,
+            state.snapshot,
+            id,
+            task.version,
+            completed,
+          ).then(async (result) => {
+            setBusyTaskId(undefined);
+            if (result.kind === "success")
+              await refreshAfter(
+                completed ? "Task completed." : "Task reopened.",
+              );
+            else showFailure(result);
+          });
+        }}
+        onSetAssignment={(id: TaskId, principalId: PrincipalId | undefined) => {
+          const task = tasks.find((item) => item.id === id);
+          if (!client || !task) return;
+          if (principalId === undefined && task.assignment === undefined)
+            return;
+          setBusyTaskId(id);
+          void setTaskAssignment(
+            client,
+            state.snapshot,
+            task,
+            principalId,
+          ).then(async (result) => {
+            setBusyTaskId(undefined);
+            if (result.kind === "success")
+              await refreshAfter(
+                principalId === undefined
+                  ? "Assignee removed."
+                  : "Assignee set.",
+              );
+            else showFailure(result);
+          });
+        }}
+      />
+    ),
+    library: () => (
+      <LazySurfaceBoundary label="Library">
+        <Suspense fallback={<SurfaceLoadingState label="Library" />}>
+          <DocumentsSurface
+            client={client}
+            snapshot={state.snapshot}
+            activeDocumentId={activeContext.documentId}
+            inspectorHost={documentInspectorHost}
+            onInspectorOpen={(kind) => {
+              setDocumentInspectorKind(kind);
+              setDocumentInspectorOpen(true);
+            }}
+            onEntityActivate={(target) => {
+              if (target.targetKind === "task") {
+                const task = state.snapshot.tasks.find(
+                  (item) => item.id === target.targetId,
+                );
+                openContext(
+                  taskContext(target.targetId as TaskId, task?.title ?? "Task"),
+                );
+                return;
+              }
+              if (target.targetKind === "project") {
+                const project =
+                  state.snapshot.projects.kind === "ready"
+                    ? state.snapshot.projects.data.items.find(
+                        (item) => item.id === target.targetId,
+                      )
+                    : undefined;
+                openContext(
+                  projectContext(
+                    target.targetId as ProjectId,
+                    project?.title ?? "Project",
+                  ),
+                );
+                return;
+              }
+              if (
+                target.targetKind === "person" ||
+                target.targetKind === "organization"
+              ) {
+                setSelectedStrategicId(target.targetId as StrategicRecordId);
+                openContext(
+                  destinationContext("organizations", "Organizations"),
+                );
+                return;
+              }
+              setSelectedMeetingId(target.targetId);
+              openContext(destinationContext("meetings", "Meetings"));
+            }}
+            onReload={reload}
+            onFailure={showFailure}
+          />
+        </Suspense>
+      </LazySurfaceBoundary>
+    ),
+    projects: () => (
+      <ProjectsSurface
+        client={client}
+        snapshot={state.snapshot}
+        selectedProjectId={selectedProjectId}
+        activeProjectId={activeContext.projectId}
+        overview={projectOverview}
+        relation={sessionRelation}
+        clientCandidates={
+          projectOverview
+            ? linkableClientOrganizations(
+                state.snapshot,
+                projectOverview.project,
+              )
+            : []
+        }
+        linkedClientIds={
+          new Set(
+            projectOverview
+              ? directClientLinks(
+                  state.snapshot,
+                  projectOverview.project.id,
+                ).keys()
+              : [],
+          )
+        }
+        busy={projectBusy}
+        onOpenProject={(id) => {
+          const project =
+            state.snapshot.projects.kind === "ready"
+              ? state.snapshot.projects.data.items.find(
+                  (item) => item.id === id,
+                )
+              : undefined;
+          openContext(projectContext(id, project?.title ?? "Project"));
+        }}
+        onSelectProject={selectProjectInInspector}
+        onBackToProjects={() =>
+          openContext(destinationContext("projects", "Projects"))
+        }
+        onOpenDocument={(id, title) => openContext(documentContext(id, title))}
+        onOpenMeeting={(id) => {
+          setSelectedMeetingId(id);
+          openContext(destinationContext("meetings", "Meetings"));
+        }}
+        onOpenRelationship={(id) => {
+          setSelectedStrategicId(id);
+          openContext(destinationContext("organizations", "Organizations"));
+        }}
+        onEntityActivate={(target) => {
+          if (target.targetKind === "task") {
+            setSelectedTaskId(target.targetId as TaskId);
+            openContext(destinationContext("tasks", "Tasks"));
+            return;
+          }
+          if (target.targetKind === "project") {
+            const project =
+              state.snapshot.projects.kind === "ready"
+                ? state.snapshot.projects.data.items.find(
+                    (item) => item.id === target.targetId,
+                  )
+                : undefined;
+            openContext(
+              projectContext(
+                target.targetId as ProjectId,
+                project?.title ?? "Project",
+              ),
+            );
+            return;
+          }
+          if (
+            target.targetKind === "person" ||
+            target.targetKind === "organization"
+          ) {
+            setSelectedStrategicId(target.targetId as StrategicRecordId);
+            openContext(destinationContext("organizations", "Organizations"));
+            return;
+          }
+          setSelectedMeetingId(target.targetId);
+          openContext(destinationContext("meetings", "Meetings"));
+        }}
+        onCreate={async (title, outcome, templateId) => {
+          if (!client) return false;
+          setProjectBusy(true);
+          const result = await createProject(
+            client,
+            state.snapshot,
+            title,
+            outcome,
+          );
+          if (result.kind !== "success") {
+            setProjectBusy(false);
+            showFailure(result);
+            return false;
+          }
+          if (templateId !== undefined) {
+            const applied = await applyTemplateToProject(
+              client,
+              state.snapshot,
+              {
+                projectId: result.data.projectId,
+                projectVersion: 1,
+                templateId,
+              },
+            );
+            if (applied.kind !== "success") showFailure(applied);
+          }
+          setProjectBusy(false);
+          openContext(projectContext(result.data.projectId, title.trim()));
+          await refreshAfter("Project created.");
+          return true;
+        }}
+        onApplyTemplate={(templateId) => {
+          if (!client || !projectOverview) return;
+          setProjectBusy(true);
+          void applyTemplateToProject(client, state.snapshot, {
+            projectId: projectOverview.project.id,
+            projectVersion: projectOverview.project.version,
+            templateId,
+          }).then(async (result) => {
+            setProjectBusy(false);
+            if (result.kind === "success") {
+              await refreshAfter("Template applied.");
+            } else {
+              showFailure(result);
+            }
+          });
+        }}
+        onUpdateOutcome={(outcome) => {
+          if (!client || !projectOverview) return;
+          setProjectBusy(true);
+          void updateProjectOutcome(
+            client,
+            state.snapshot,
+            projectOverview.project,
+            outcome,
+          ).then(async (result) => {
+            setProjectBusy(false);
+            if (result.kind === "success")
+              await refreshAfter("Intended outcome updated.");
+            else showFailure(result);
+          });
+        }}
+        onSetLifecycle={(lifecycle) => {
+          if (!client || !projectOverview) return;
+          setProjectBusy(true);
+          void setProjectLifecycle(
+            client,
+            state.snapshot,
+            projectOverview.project,
+            lifecycle,
+          ).then(async (result) => {
+            setProjectBusy(false);
+            if (result.kind === "success")
+              await refreshAfter(
+                lifecycle === "closed"
+                  ? "Project closed. History and open tasks are unchanged."
+                  : "Project reopened.",
+              );
+            else showFailure(result);
+          });
+        }}
+        onRelate={(taskId) => {
+          const task = tasks.find((item) => item.id === taskId);
+          if (!client || !task || !projectOverview) return;
+          setProjectBusy(true);
+          void relateTask(
+            client,
+            state.snapshot,
+            task.id,
+            task.version,
+            projectOverview.project.id,
+            projectOverview.project.version,
+          ).then(async (result) => {
+            setProjectBusy(false);
+            if (result.kind === "success") {
+              setSessionRelation({
+                id: result.data.relationId,
+                version: result.data.version,
+                taskId,
+              });
+              await refreshAfter("Task linked to the project.");
+            } else showFailure(result);
+          });
+        }}
+        onLinkClient={(organizationId) => {
+          if (!client || !projectOverview) return;
+          setProjectBusy(true);
+          void linkProjectClient(
+            client,
+            state.snapshot,
+            projectOverview.project,
+            organizationId,
+          ).then(async (result) => {
+            setProjectBusy(false);
+            if (result.kind === "success")
+              await refreshAfter("Client linked to the project.");
+            else showFailure(result);
+          });
+        }}
+        // Detaching reloads the whole snapshot like every other write
+        // here, which is what re-derives both the Klient list and the
+        // candidate set — the link record the command needs lives in that
+        // snapshot, not in session state.
+        onUnlinkClient={(organizationId) => {
+          if (!client || !projectOverview) return;
+          setProjectBusy(true);
+          void unlinkProjectClient(
+            client,
+            state.snapshot,
+            projectOverview.project.id,
+            organizationId,
+          ).then(async (result) => {
+            setProjectBusy(false);
+            if (result.kind === "success")
+              await refreshAfter("Client link removed.");
+            else showFailure(result);
+          });
+        }}
+        onUnrelate={() => {
+          if (!client || !sessionRelation) return;
+          setProjectBusy(true);
+          void unrelateTask(
+            client,
+            state.snapshot,
+            sessionRelation.id,
+            sessionRelation.version,
+          ).then(async (result) => {
+            setProjectBusy(false);
+            if (result.kind === "success") {
+              setSessionRelation(undefined);
+              await refreshAfter("Link removed.");
+            } else showFailure(result);
+          });
+        }}
+      />
+    ),
+    history: () => (
+      <HistorySurface
+        snapshot={state.snapshot}
+        selectedCaptureId={selectedCaptureId}
+        onSelectCapture={selectCaptureInInspector}
+      />
+    ),
+    activity: () => (
+      <LazySurfaceBoundary label="Activity">
+        <Suspense fallback={<SurfaceLoadingState label="Activity" />}>
+          <ActivitySurface
+            activity={state.snapshot.activity}
+            timezone={state.snapshot.bootstrap.workspace.timezone}
+            onUndo={(id) => void openUndo(id)}
+            onRetry={() => void reload()}
+          />
+        </Suspense>
+      </LazySurfaceBoundary>
+    ),
+    inbox: () => (
+      <AttentionSurface
+        attention={state.snapshot.attention}
+        selectedItemId={selectedAttentionId}
+        onRetry={() => void reload()}
+        onOpen={openAttentionDestination}
+        onSelect={(item) => selectAttentionInInspector(item.id)}
+      />
+    ),
+    access: () => (
+      <LazySurfaceBoundary label="Access">
+        <Suspense fallback={<SurfaceLoadingState label="Access" />}>
+          <AccessSurface
+            access={state.snapshot.access}
+            agentAccess={state.snapshot.agentAccess}
+            agentTransport={
+              state.snapshot.dataHome?.descriptor.providerKind === "coordinated"
+                ? "remote_hub"
+                : "local"
+            }
+            spaces={state.snapshot.bootstrap.spaces}
+            busy={accessBusy}
+            onAdd={(input) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              void addWorkspaceMember(client, state.snapshot, input).then(
+                async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter("Access created.");
+                  else showFailure(result);
+                },
+              );
+            }}
+            onSetAccess={(member, access) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              void setWorkspaceMemberAccess(
+                client,
+                state.snapshot,
+                member,
+                access,
+              ).then(async (result) => {
+                setAccessBusy(false);
+                if (result.kind === "success")
+                  await refreshAfter("Access scope updated.");
+                else showFailure(result);
+              });
+            }}
+            onRevoke={(member) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              void revokeWorkspaceMember(client, state.snapshot, member).then(
+                async (result) => {
+                  setAccessBusy(false);
+                  if (result.kind === "success")
+                    await refreshAfter(
+                      "Access revoked. Devices drop the projection at the next sync.",
+                    );
+                  else showFailure(result);
+                },
+              );
+            }}
+            onAgentAdd={(input) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              const remote =
+                state.snapshot.dataHome?.descriptor.providerKind ===
+                "coordinated";
+              void (
+                remote
+                  ? createRemoteAgentGrant(client, input)
+                  : createAgentGrant(client, state.snapshot, input)
+              ).then(async (result) => {
+                setAccessBusy(false);
+                if (result.kind === "success") {
+                  await reload();
+                  setAgentGrantDetails(
+                    "endpoint" in result.data
+                      ? {
+                          title: "Remote MCP access created",
+                          descriptorLabel: "Protected configuration file",
+                          descriptorPath: result.data.descriptorPath,
+                          connectionLabel: "Endpoint",
+                          connectionValue: result.data.endpoint,
+                        }
+                      : {
+                          title: "MCP access created",
+                          descriptorLabel: "Access file",
+                          descriptorPath: result.data.descriptorPath,
+                          connectionLabel: "Host adapter",
+                          connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                        },
+                  );
+                } else showFailure(result);
+              });
+            }}
+            onAgentRotate={(grant) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              const remote =
+                state.snapshot.dataHome?.descriptor.providerKind ===
+                "coordinated";
+              void (
+                remote
+                  ? rotateRemoteAgentCredential(client, grant)
+                  : rotateAgentCredential(client, state.snapshot, grant)
+              ).then(async (result) => {
+                setAccessBusy(false);
+                if (result.kind === "success") {
+                  await reload();
+                  setAgentGrantDetails(
+                    "endpoint" in result.data
+                      ? {
+                          title: "Remote credential rotated",
+                          descriptorLabel: "Protected configuration file",
+                          descriptorPath: result.data.descriptorPath,
+                          connectionLabel: "Endpoint",
+                          connectionValue: result.data.endpoint,
+                        }
+                      : {
+                          title: "Credential rotated",
+                          descriptorLabel: "Access file",
+                          descriptorPath: result.data.descriptorPath,
+                          connectionLabel: "Host adapter",
+                          connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
+                        },
+                  );
+                } else showFailure(result);
+              });
+            }}
+            onAgentRescope={async (grant, target) => {
+              if (!client) return "No connection to the kernel. Try again.";
+              setAccessBusy(true);
+              setNotice(undefined);
+              const result = await updateAgentGrantScope(
+                client,
+                state.snapshot,
+                grant,
+                target,
+              );
+              setAccessBusy(false);
+              if (result.kind === "conflict") {
+                // The versions the dialog read are the ones that just
+                // lost the race, so every retry from it would re-send
+                // them. Reload instead, and say that plainly — the
+                // workflow's own "refresh and try again" would be asking
+                // for something this line has already done.
+                setNotice({
+                  kind: "conflict",
+                  message:
+                    "This access changed meanwhile, so the write did not go through. The data is refreshed — open “Change permissions” again and check the scope before saving.",
+                });
+                await reloadSnapshot();
+                return undefined;
+              }
+              if (result.kind !== "success") {
+                showFailure(result);
+                // Returned as well as noticed: the notice sits on a
+                // surface the open dialog covers, and the person who has
+                // to act on the refusal is inside the dialog.
+                return result.message;
+              }
+              await refreshAfter("Agent permissions updated.");
+              return undefined;
+            }}
+            onAgentRevoke={(grant) => {
+              if (!client) return;
+              setAccessBusy(true);
+              setNotice(undefined);
+              const remote =
+                state.snapshot.dataHome?.descriptor.providerKind ===
+                "coordinated";
+              void (
+                remote
+                  ? revokeRemoteAgentGrant(client, grant)
+                  : revokeAgentGrant(client, state.snapshot, grant)
+              ).then(async (result) => {
+                setAccessBusy(false);
+                if (result.kind === "success")
+                  await refreshAfter(
+                    remote
+                      ? "Remote agent access revoked and its configuration file deleted."
+                      : "Agent access revoked and the local credential deleted.",
+                  );
+                else showFailure(result);
+              });
+            }}
+          />
+        </Suspense>
+      </LazySurfaceBoundary>
+    ),
+  };
+
   return (
     <div
       className={`desktop-shell wave2-shell${inspectorDetailOpen ? " inspector-open" : ""}${surface === "meetings" ? " meeting-context-shell" : ""}`}
@@ -3341,777 +4101,7 @@ export const RealApp = ({
               </button>
             </div>
           )}
-          {surface === "today" && (
-            <CockpitSurface
-              client={client}
-              snapshot={state.snapshot}
-              selectedTaskId={selectedTaskId}
-              selectedProjectId={selectedProjectId}
-              onOpenProject={(id) => {
-                const project =
-                  state.snapshot.projects.kind === "ready"
-                    ? state.snapshot.projects.data.items.find(
-                        (item) => item.id === id,
-                      )
-                    : undefined;
-                openContext(projectContext(id, project?.title ?? "Project"));
-              }}
-              onSelectProject={selectProjectInInspector}
-              onOpenTask={(id) => {
-                const task = tasks.find((item) => item.id === id);
-                openContext(taskContext(id, task?.title ?? "Task"));
-              }}
-              onSelectTask={selectTaskInInspector}
-              onOpenAttention={() =>
-                openContext(destinationContext("inbox", "Inbox"))
-              }
-              onCapture={openCapture}
-            />
-          )}
-          {surface === "meetings" && client && (
-            <LazySurfaceBoundary label="Meetings">
-              <Suspense fallback={<SurfaceLoadingState label="Meetings" />}>
-                <MeetingsSurface
-                  client={client}
-                  activeMeetingId={selectedMeetingId}
-                  inspectorHost={meetingInspectorHost}
-                  onInspectorOpen={() => setMeetingInspectorOpen(true)}
-                  onMeetingSelected={setSelectedMeetingId}
-                />
-              </Suspense>
-            </LazySurfaceBoundary>
-          )}
-          {surface === "organizations" && (
-            <LazySurfaceBoundary label="Organizations">
-              <Suspense
-                fallback={<SurfaceLoadingState label="Organizations" />}
-              >
-                {activeOrganizationId === undefined ? (
-                  <StrategicDepthSurface
-                    client={client}
-                    snapshot={state.snapshot}
-                    selectedRecordId={selectedStrategicId}
-                    onSelectRecord={selectStrategicInInspector}
-                    onOpenOrganization={(id, name) =>
-                      openContext(organizationContext(id, name))
-                    }
-                    onReload={reload}
-                    onFailure={showFailure}
-                  />
-                ) : (
-                  <OrganizationContextLoader
-                    client={client}
-                    snapshot={state.snapshot}
-                    organizationId={activeOrganizationId}
-                    // The same flag the Project page's client row uses: this is
-                    // the same edge authored from the other end, and the two
-                    // contexts are never open at once.
-                    linkBusy={projectBusy}
-                    onLinkDelivery={(projectId) => {
-                      if (!client) return;
-                      setProjectBusy(true);
-                      void linkOrganizationDelivery(
-                        client,
-                        state.snapshot,
-                        activeOrganizationId,
-                        projectId,
-                      ).then(async (result) => {
-                        setProjectBusy(false);
-                        if (result.kind === "success")
-                          await refreshAfter("Project linked to the client.");
-                        else showFailure(result);
-                      });
-                    }}
-                    onUnlinkDelivery={(projectId) => {
-                      if (!client) return;
-                      setProjectBusy(true);
-                      void unlinkOrganizationDelivery(
-                        client,
-                        state.snapshot,
-                        activeOrganizationId,
-                        projectId,
-                      ).then(async (result) => {
-                        setProjectBusy(false);
-                        if (result.kind === "success")
-                          await refreshAfter("Project link removed.");
-                        else showFailure(result);
-                      });
-                    }}
-                    onOpenProject={(id, title) =>
-                      openContext(projectContext(id, title))
-                    }
-                    onOpenTask={(id, title) =>
-                      openContext(taskContext(id, title))
-                    }
-                    onOpenDocument={(id, title) =>
-                      openContext(documentContext(id, title))
-                    }
-                    onOpenMeeting={(id) => {
-                      setSelectedMeetingId(id);
-                      openContext(destinationContext("meetings", "Meetings"));
-                    }}
-                    onOpenRelationship={(id) => {
-                      openContext(
-                        destinationContext("organizations", "Organizations"),
-                      );
-                      selectStrategicInInspector(id);
-                    }}
-                  />
-                )}
-              </Suspense>
-            </LazySurfaceBoundary>
-          )}
-          {surface === "work" && (
-            <LazySurfaceBoundary label="Saved views">
-              <Suspense fallback={<SurfaceLoadingState label="Saved views" />}>
-                <WorkSurface
-                  client={client}
-                  snapshot={state.snapshot}
-                  selectedTaskId={selectedTaskId}
-                  selectedProjectId={selectedProjectId}
-                  selectedContextId={selectedWorkContext?.id}
-                  onSelectTask={selectTaskInInspector}
-                  onOpenTask={(id) => {
-                    const task = tasks.find((item) => item.id === id);
-                    openContext(taskContext(id, task?.title ?? "Task"));
-                  }}
-                  onSelectProject={selectProjectInInspector}
-                  onSelectContext={selectWorkContextInInspector}
-                  onReload={reload}
-                  onFailure={showFailure}
-                />
-              </Suspense>
-            </LazySurfaceBoundary>
-          )}
-          {surface === "settings" && (
-            <LazySurfaceBoundary label="Settings">
-              <Suspense fallback={<SurfaceLoadingState label="Settings" />}>
-                <SettingsSurface
-                  client={client}
-                  snapshot={state.snapshot}
-                  onReload={reload}
-                  onFailure={showFailure}
-                  onOpenRecovery={() => setRecoveryOpen(true)}
-                  onNavigate={(next, label) =>
-                    openContext(destinationContext(next, label))
-                  }
-                />
-              </Suspense>
-            </LazySurfaceBoundary>
-          )}
-          {surface === "tasks" && (
-            <TasksSurface
-              snapshot={state.snapshot}
-              selectedTaskId={selectedTaskId}
-              busyTaskId={busyTaskId}
-              onOpenTask={(id) => {
-                const task = tasks.find((item) => item.id === id);
-                openContext(taskContext(id, task?.title ?? "Task"));
-              }}
-              onSelectTask={selectTaskInInspector}
-              onCapture={openCapture}
-              onCreateTask={async (title) => {
-                if (!client) return false;
-                const result = await createTask(client, state.snapshot, {
-                  title,
-                });
-                if (result.kind === "success") {
-                  await refreshAfter("Task created.");
-                  selectTaskInInspector(result.data.taskId);
-                  return true;
-                }
-                showFailure(result);
-                return false;
-              }}
-              onSetStatus={(id, statusId) => {
-                const task = tasks.find((item) => item.id === id);
-                if (!client || !task) return;
-                setBusyTaskId(id);
-                void setTaskStatus(
-                  client,
-                  state.snapshot,
-                  id,
-                  task.version,
-                  statusId,
-                ).then(async (result) => {
-                  setBusyTaskId(undefined);
-                  if (result.kind === "success")
-                    await refreshAfter("Task status updated.");
-                  else showFailure(result);
-                });
-              }}
-              onSetCompleted={(id, completed) => {
-                const task = tasks.find((item) => item.id === id);
-                if (!client || !task) return;
-                setBusyTaskId(id);
-                void setTaskCompletion(
-                  client,
-                  state.snapshot,
-                  id,
-                  task.version,
-                  completed,
-                ).then(async (result) => {
-                  setBusyTaskId(undefined);
-                  if (result.kind === "success")
-                    await refreshAfter(
-                      completed ? "Task completed." : "Task reopened.",
-                    );
-                  else showFailure(result);
-                });
-              }}
-              onSetAssignment={(
-                id: TaskId,
-                principalId: PrincipalId | undefined,
-              ) => {
-                const task = tasks.find((item) => item.id === id);
-                if (!client || !task) return;
-                if (principalId === undefined && task.assignment === undefined)
-                  return;
-                setBusyTaskId(id);
-                void setTaskAssignment(
-                  client,
-                  state.snapshot,
-                  task,
-                  principalId,
-                ).then(async (result) => {
-                  setBusyTaskId(undefined);
-                  if (result.kind === "success")
-                    await refreshAfter(
-                      principalId === undefined
-                        ? "Assignee removed."
-                        : "Assignee set.",
-                    );
-                  else showFailure(result);
-                });
-              }}
-            />
-          )}
-          {surface === "library" && (
-            <LazySurfaceBoundary label="Library">
-              <Suspense fallback={<SurfaceLoadingState label="Library" />}>
-                <DocumentsSurface
-                  client={client}
-                  snapshot={state.snapshot}
-                  activeDocumentId={activeContext.documentId}
-                  inspectorHost={documentInspectorHost}
-                  onInspectorOpen={(kind) => {
-                    setDocumentInspectorKind(kind);
-                    setDocumentInspectorOpen(true);
-                  }}
-                  onEntityActivate={(target) => {
-                    if (target.targetKind === "task") {
-                      const task = state.snapshot.tasks.find(
-                        (item) => item.id === target.targetId,
-                      );
-                      openContext(
-                        taskContext(
-                          target.targetId as TaskId,
-                          task?.title ?? "Task",
-                        ),
-                      );
-                      return;
-                    }
-                    if (target.targetKind === "project") {
-                      const project =
-                        state.snapshot.projects.kind === "ready"
-                          ? state.snapshot.projects.data.items.find(
-                              (item) => item.id === target.targetId,
-                            )
-                          : undefined;
-                      openContext(
-                        projectContext(
-                          target.targetId as ProjectId,
-                          project?.title ?? "Project",
-                        ),
-                      );
-                      return;
-                    }
-                    if (
-                      target.targetKind === "person" ||
-                      target.targetKind === "organization"
-                    ) {
-                      setSelectedStrategicId(
-                        target.targetId as StrategicRecordId,
-                      );
-                      openContext(
-                        destinationContext("organizations", "Organizations"),
-                      );
-                      return;
-                    }
-                    setSelectedMeetingId(target.targetId);
-                    openContext(destinationContext("meetings", "Meetings"));
-                  }}
-                  onReload={reload}
-                  onFailure={showFailure}
-                />
-              </Suspense>
-            </LazySurfaceBoundary>
-          )}
-          {surface === "projects" && (
-            <ProjectsSurface
-              client={client}
-              snapshot={state.snapshot}
-              selectedProjectId={selectedProjectId}
-              activeProjectId={activeContext.projectId}
-              overview={projectOverview}
-              relation={sessionRelation}
-              clientCandidates={
-                projectOverview
-                  ? linkableClientOrganizations(
-                      state.snapshot,
-                      projectOverview.project,
-                    )
-                  : []
-              }
-              linkedClientIds={
-                new Set(
-                  projectOverview
-                    ? directClientLinks(
-                        state.snapshot,
-                        projectOverview.project.id,
-                      ).keys()
-                    : [],
-                )
-              }
-              busy={projectBusy}
-              onOpenProject={(id) => {
-                const project =
-                  state.snapshot.projects.kind === "ready"
-                    ? state.snapshot.projects.data.items.find(
-                        (item) => item.id === id,
-                      )
-                    : undefined;
-                openContext(projectContext(id, project?.title ?? "Project"));
-              }}
-              onSelectProject={selectProjectInInspector}
-              onBackToProjects={() =>
-                openContext(destinationContext("projects", "Projects"))
-              }
-              onOpenDocument={(id, title) =>
-                openContext(documentContext(id, title))
-              }
-              onOpenMeeting={(id) => {
-                setSelectedMeetingId(id);
-                openContext(destinationContext("meetings", "Meetings"));
-              }}
-              onOpenRelationship={(id) => {
-                setSelectedStrategicId(id);
-                openContext(
-                  destinationContext("organizations", "Organizations"),
-                );
-              }}
-              onEntityActivate={(target) => {
-                if (target.targetKind === "task") {
-                  setSelectedTaskId(target.targetId as TaskId);
-                  openContext(destinationContext("tasks", "Tasks"));
-                  return;
-                }
-                if (target.targetKind === "project") {
-                  const project =
-                    state.snapshot.projects.kind === "ready"
-                      ? state.snapshot.projects.data.items.find(
-                          (item) => item.id === target.targetId,
-                        )
-                      : undefined;
-                  openContext(
-                    projectContext(
-                      target.targetId as ProjectId,
-                      project?.title ?? "Project",
-                    ),
-                  );
-                  return;
-                }
-                if (
-                  target.targetKind === "person" ||
-                  target.targetKind === "organization"
-                ) {
-                  setSelectedStrategicId(target.targetId as StrategicRecordId);
-                  openContext(
-                    destinationContext("organizations", "Organizations"),
-                  );
-                  return;
-                }
-                setSelectedMeetingId(target.targetId);
-                openContext(destinationContext("meetings", "Meetings"));
-              }}
-              onCreate={async (title, outcome, templateId) => {
-                if (!client) return false;
-                setProjectBusy(true);
-                const result = await createProject(
-                  client,
-                  state.snapshot,
-                  title,
-                  outcome,
-                );
-                if (result.kind !== "success") {
-                  setProjectBusy(false);
-                  showFailure(result);
-                  return false;
-                }
-                if (templateId !== undefined) {
-                  const applied = await applyTemplateToProject(
-                    client,
-                    state.snapshot,
-                    {
-                      projectId: result.data.projectId,
-                      projectVersion: 1,
-                      templateId,
-                    },
-                  );
-                  if (applied.kind !== "success") showFailure(applied);
-                }
-                setProjectBusy(false);
-                openContext(
-                  projectContext(result.data.projectId, title.trim()),
-                );
-                await refreshAfter("Project created.");
-                return true;
-              }}
-              onApplyTemplate={(templateId) => {
-                if (!client || !projectOverview) return;
-                setProjectBusy(true);
-                void applyTemplateToProject(client, state.snapshot, {
-                  projectId: projectOverview.project.id,
-                  projectVersion: projectOverview.project.version,
-                  templateId,
-                }).then(async (result) => {
-                  setProjectBusy(false);
-                  if (result.kind === "success") {
-                    await refreshAfter("Template applied.");
-                  } else {
-                    showFailure(result);
-                  }
-                });
-              }}
-              onUpdateOutcome={(outcome) => {
-                if (!client || !projectOverview) return;
-                setProjectBusy(true);
-                void updateProjectOutcome(
-                  client,
-                  state.snapshot,
-                  projectOverview.project,
-                  outcome,
-                ).then(async (result) => {
-                  setProjectBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter("Intended outcome updated.");
-                  else showFailure(result);
-                });
-              }}
-              onSetLifecycle={(lifecycle) => {
-                if (!client || !projectOverview) return;
-                setProjectBusy(true);
-                void setProjectLifecycle(
-                  client,
-                  state.snapshot,
-                  projectOverview.project,
-                  lifecycle,
-                ).then(async (result) => {
-                  setProjectBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter(
-                      lifecycle === "closed"
-                        ? "Project closed. History and open tasks are unchanged."
-                        : "Project reopened.",
-                    );
-                  else showFailure(result);
-                });
-              }}
-              onRelate={(taskId) => {
-                const task = tasks.find((item) => item.id === taskId);
-                if (!client || !task || !projectOverview) return;
-                setProjectBusy(true);
-                void relateTask(
-                  client,
-                  state.snapshot,
-                  task.id,
-                  task.version,
-                  projectOverview.project.id,
-                  projectOverview.project.version,
-                ).then(async (result) => {
-                  setProjectBusy(false);
-                  if (result.kind === "success") {
-                    setSessionRelation({
-                      id: result.data.relationId,
-                      version: result.data.version,
-                      taskId,
-                    });
-                    await refreshAfter("Task linked to the project.");
-                  } else showFailure(result);
-                });
-              }}
-              onLinkClient={(organizationId) => {
-                if (!client || !projectOverview) return;
-                setProjectBusy(true);
-                void linkProjectClient(
-                  client,
-                  state.snapshot,
-                  projectOverview.project,
-                  organizationId,
-                ).then(async (result) => {
-                  setProjectBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter("Client linked to the project.");
-                  else showFailure(result);
-                });
-              }}
-              // Detaching reloads the whole snapshot like every other write
-              // here, which is what re-derives both the Klient list and the
-              // candidate set — the link record the command needs lives in that
-              // snapshot, not in session state.
-              onUnlinkClient={(organizationId) => {
-                if (!client || !projectOverview) return;
-                setProjectBusy(true);
-                void unlinkProjectClient(
-                  client,
-                  state.snapshot,
-                  projectOverview.project.id,
-                  organizationId,
-                ).then(async (result) => {
-                  setProjectBusy(false);
-                  if (result.kind === "success")
-                    await refreshAfter("Client link removed.");
-                  else showFailure(result);
-                });
-              }}
-              onUnrelate={() => {
-                if (!client || !sessionRelation) return;
-                setProjectBusy(true);
-                void unrelateTask(
-                  client,
-                  state.snapshot,
-                  sessionRelation.id,
-                  sessionRelation.version,
-                ).then(async (result) => {
-                  setProjectBusy(false);
-                  if (result.kind === "success") {
-                    setSessionRelation(undefined);
-                    await refreshAfter("Link removed.");
-                  } else showFailure(result);
-                });
-              }}
-            />
-          )}
-          {surface === "history" && (
-            <HistorySurface
-              snapshot={state.snapshot}
-              selectedCaptureId={selectedCaptureId}
-              onSelectCapture={selectCaptureInInspector}
-            />
-          )}
-          {surface === "activity" && (
-            <LazySurfaceBoundary label="Activity">
-              <Suspense fallback={<SurfaceLoadingState label="Activity" />}>
-                <ActivitySurface
-                  activity={state.snapshot.activity}
-                  timezone={state.snapshot.bootstrap.workspace.timezone}
-                  onUndo={(id) => void openUndo(id)}
-                  onRetry={() => void reload()}
-                />
-              </Suspense>
-            </LazySurfaceBoundary>
-          )}
-          {surface === "inbox" && (
-            <AttentionSurface
-              attention={state.snapshot.attention}
-              selectedItemId={selectedAttentionId}
-              onRetry={() => void reload()}
-              onOpen={openAttentionDestination}
-              onSelect={(item) => selectAttentionInInspector(item.id)}
-            />
-          )}
-          {surface === "access" && (
-            <LazySurfaceBoundary label="Access">
-              <Suspense fallback={<SurfaceLoadingState label="Access" />}>
-                <AccessSurface
-                  access={state.snapshot.access}
-                  agentAccess={state.snapshot.agentAccess}
-                  agentTransport={
-                    state.snapshot.dataHome?.descriptor.providerKind ===
-                    "coordinated"
-                      ? "remote_hub"
-                      : "local"
-                  }
-                  spaces={state.snapshot.bootstrap.spaces}
-                  busy={accessBusy}
-                  onAdd={(input) => {
-                    if (!client) return;
-                    setAccessBusy(true);
-                    setNotice(undefined);
-                    void addWorkspaceMember(client, state.snapshot, input).then(
-                      async (result) => {
-                        setAccessBusy(false);
-                        if (result.kind === "success")
-                          await refreshAfter("Access created.");
-                        else showFailure(result);
-                      },
-                    );
-                  }}
-                  onSetAccess={(member, access) => {
-                    if (!client) return;
-                    setAccessBusy(true);
-                    setNotice(undefined);
-                    void setWorkspaceMemberAccess(
-                      client,
-                      state.snapshot,
-                      member,
-                      access,
-                    ).then(async (result) => {
-                      setAccessBusy(false);
-                      if (result.kind === "success")
-                        await refreshAfter("Access scope updated.");
-                      else showFailure(result);
-                    });
-                  }}
-                  onRevoke={(member) => {
-                    if (!client) return;
-                    setAccessBusy(true);
-                    setNotice(undefined);
-                    void revokeWorkspaceMember(
-                      client,
-                      state.snapshot,
-                      member,
-                    ).then(async (result) => {
-                      setAccessBusy(false);
-                      if (result.kind === "success")
-                        await refreshAfter(
-                          "Access revoked. Devices drop the projection at the next sync.",
-                        );
-                      else showFailure(result);
-                    });
-                  }}
-                  onAgentAdd={(input) => {
-                    if (!client) return;
-                    setAccessBusy(true);
-                    setNotice(undefined);
-                    const remote =
-                      state.snapshot.dataHome?.descriptor.providerKind ===
-                      "coordinated";
-                    void (
-                      remote
-                        ? createRemoteAgentGrant(client, input)
-                        : createAgentGrant(client, state.snapshot, input)
-                    ).then(async (result) => {
-                      setAccessBusy(false);
-                      if (result.kind === "success") {
-                        await reload();
-                        setAgentGrantDetails(
-                          "endpoint" in result.data
-                            ? {
-                                title: "Remote MCP access created",
-                                descriptorLabel: "Protected configuration file",
-                                descriptorPath: result.data.descriptorPath,
-                                connectionLabel: "Endpoint",
-                                connectionValue: result.data.endpoint,
-                              }
-                            : {
-                                title: "MCP access created",
-                                descriptorLabel: "Access file",
-                                descriptorPath: result.data.descriptorPath,
-                                connectionLabel: "Host adapter",
-                                connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
-                              },
-                        );
-                      } else showFailure(result);
-                    });
-                  }}
-                  onAgentRotate={(grant) => {
-                    if (!client) return;
-                    setAccessBusy(true);
-                    setNotice(undefined);
-                    const remote =
-                      state.snapshot.dataHome?.descriptor.providerKind ===
-                      "coordinated";
-                    void (
-                      remote
-                        ? rotateRemoteAgentCredential(client, grant)
-                        : rotateAgentCredential(client, state.snapshot, grant)
-                    ).then(async (result) => {
-                      setAccessBusy(false);
-                      if (result.kind === "success") {
-                        await reload();
-                        setAgentGrantDetails(
-                          "endpoint" in result.data
-                            ? {
-                                title: "Remote credential rotated",
-                                descriptorLabel: "Protected configuration file",
-                                descriptorPath: result.data.descriptorPath,
-                                connectionLabel: "Endpoint",
-                                connectionValue: result.data.endpoint,
-                              }
-                            : {
-                                title: "Credential rotated",
-                                descriptorLabel: "Access file",
-                                descriptorPath: result.data.descriptorPath,
-                                connectionLabel: "Host adapter",
-                                connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
-                              },
-                        );
-                      } else showFailure(result);
-                    });
-                  }}
-                  onAgentRescope={async (grant, target) => {
-                    if (!client)
-                      return "No connection to the kernel. Try again.";
-                    setAccessBusy(true);
-                    setNotice(undefined);
-                    const result = await updateAgentGrantScope(
-                      client,
-                      state.snapshot,
-                      grant,
-                      target,
-                    );
-                    setAccessBusy(false);
-                    if (result.kind === "conflict") {
-                      // The versions the dialog read are the ones that just
-                      // lost the race, so every retry from it would re-send
-                      // them. Reload instead, and say that plainly — the
-                      // workflow's own "refresh and try again" would be asking
-                      // for something this line has already done.
-                      setNotice({
-                        kind: "conflict",
-                        message:
-                          "This access changed meanwhile, so the write did not go through. The data is refreshed — open “Change permissions” again and check the scope before saving.",
-                      });
-                      await reloadSnapshot();
-                      return undefined;
-                    }
-                    if (result.kind !== "success") {
-                      showFailure(result);
-                      // Returned as well as noticed: the notice sits on a
-                      // surface the open dialog covers, and the person who has
-                      // to act on the refusal is inside the dialog.
-                      return result.message;
-                    }
-                    await refreshAfter("Agent permissions updated.");
-                    return undefined;
-                  }}
-                  onAgentRevoke={(grant) => {
-                    if (!client) return;
-                    setAccessBusy(true);
-                    setNotice(undefined);
-                    const remote =
-                      state.snapshot.dataHome?.descriptor.providerKind ===
-                      "coordinated";
-                    void (
-                      remote
-                        ? revokeRemoteAgentGrant(client, grant)
-                        : revokeAgentGrant(client, state.snapshot, grant)
-                    ).then(async (result) => {
-                      setAccessBusy(false);
-                      if (result.kind === "success")
-                        await refreshAfter(
-                          remote
-                            ? "Remote agent access revoked and its configuration file deleted."
-                            : "Agent access revoked and the local credential deleted.",
-                        );
-                      else showFailure(result);
-                    });
-                  }}
-                />
-              </Suspense>
-            </LazySurfaceBoundary>
-          )}
+          {surfacePanels[surface]?.()}
         </div>
 
         <div className="capture-dock-layer">
