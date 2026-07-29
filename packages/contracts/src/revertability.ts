@@ -108,6 +108,7 @@ export const COMMAND_REVERTABILITY: Readonly<
   "meeting.correctWorkItemResponsibility": "always",
   "meeting.addWorkItem": "always",
   "project.updateOutcome": "always",
+  "project.updateDetails": "always",
   "task.create": "always",
   "task.updateDetails": "always",
   "task.setParent": "always",

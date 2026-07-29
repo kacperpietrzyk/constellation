@@ -61,6 +61,10 @@ describe("operator parity between the desktop session and a full-access grant", 
       "automation.create",
       "recurrence.create",
       "savedView.update",
+      // 0.2.0: przemianowanie Projektu i jego termin. Bez tego wpisu agent
+      // mógłby stracić dostęp do komendy, a jedyną oznaką byłby jej brak
+      // w katalogu — czyli nic, co pada.
+      "project.updateDetails",
     ] as const)
       assert.ok(
         fullAccess.has(capability),

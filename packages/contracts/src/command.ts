@@ -547,13 +547,18 @@ export type CaptureRouteAsTaskCommand = z.infer<
   typeof CaptureRouteAsTaskCommandSchema
 >;
 
+// Jeden kształt tytułu Projektu dla tworzenia i dla przemianowania. Wpisany
+// dwa razy rozjechałby się przy pierwszej zmianie granicy — a wtedy tytuł dałby
+// się utworzyć i nie dałby się poprawić, albo odwrotnie.
+export const ProjectTitleSchema = z.string().trim().min(1).max(500);
+
 export const ProjectCreateCommandSchema = CommandMetadataSchema.extend({
   commandName: z.literal("project.create"),
   payload: z
     .object({
       projectId: ProjectIdSchema.optional(),
       spaceId: SpaceIdSchema,
-      title: z.string().trim().min(1).max(500),
+      title: ProjectTitleSchema,
       intendedOutcome: RecordNarrativeSchema.optional(),
       // The Sources this Project rests on, as an Opportunity, a Decision and a
       // relationship Fact already record theirs. Without it a migrated Project
@@ -562,6 +567,10 @@ export const ProjectCreateCommandSchema = CommandMetadataSchema.extend({
       // answer.
       evidenceSourceIds: z.array(KnowledgeSourceIdSchema).max(100).optional(),
       externalId: ExternalIdSchema.optional(),
+      // Termin Projektu, opcjonalny: brak znaczy „nie ma terminu", a nie
+      // „jeszcze nie wpisano". Bez niego nie istnieje żadna os czasu nad
+      // projektami, bo rekord nie zna ANI JEDNEJ daty poza własnym powstaniem.
+      dueAt: z.iso.datetime({ offset: true }).optional(),
     })
     .strict(),
 }).strict();
@@ -1512,6 +1521,33 @@ export const ProjectUpdateOutcomeCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 
+// OSOBNA komenda, nie poszerzenie `project.updateOutcome`. Tam `intendedOutcome`
+// jest WYMAGANE i brak pola znaczy „wyczyść" — zrobienie go opcjonalnym byłoby
+// zmianą zgodności ładunku w pięciu miejscach naraz i złamałoby wymagane
+// `intendedOutcome` w `project.list`. Do 0.2.0 Projektu NIE DAŁO SIĘ
+// PRZEMIANOWAĆ: tytuł pisał wyłącznie `project.create`.
+//
+// Świadomie NIE przyjmuje `externalId` (stempel dostawy zostaje przy imporcie,
+// tak jak twierdzi katalog MCP) ani `intendedOutcome` (to robota
+// `project.updateOutcome`). `title` nie jest nullowalne, bo rekord go wymaga;
+// `dueAt` jest, bo termin da się zdjąć.
+export const ProjectUpdateDetailsCommandSchema = CommandMetadataSchema.extend({
+  commandName: z.literal("project.updateDetails"),
+  payload: z
+    .object({
+      projectId: ProjectIdSchema,
+      title: ProjectTitleSchema.optional(),
+      dueAt: z.iso.datetime({ offset: true }).nullable().optional(),
+    })
+    .strict()
+    .refine(
+      (payload) => payload.title !== undefined || payload.dueAt !== undefined,
+      {
+        message: "project.updateDetails requires at least one field change.",
+      },
+    ),
+}).strict();
+
 const TaskTitleSchema = z.string().trim().min(1).max(500);
 const TaskDescriptionSchema = z.string().trim().min(1).max(16_000);
 const TaskNextActionSchema = z.string().trim().min(1).max(500);
@@ -2078,6 +2114,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   CaptureSubmitTextCommandSchema,
   CaptureRouteAsTaskCommandSchema,
   ProjectCreateCommandSchema,
+  ProjectUpdateDetailsCommandSchema,
   ProjectRemoveCommandSchema,
   DocumentCreateCommandSchema,
   DocumentRemoveCommandSchema,

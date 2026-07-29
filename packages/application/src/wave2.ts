@@ -116,6 +116,7 @@ import {
   setTaskOperationalState,
   undoCaptureTaskRoute,
   undoCaptureKnowledgeRoute,
+  updateProjectDetails,
   updateProjectOutcome,
   type AuditReceipt,
   type DomainEvent,
@@ -232,6 +233,7 @@ export type Wave2Command = Extract<
       | "meeting.correctWorkItemResponsibility"
       | "meeting.addWorkItem"
       | "project.updateOutcome"
+      | "project.updateDetails"
       | "task.create"
       | "task.updateDetails"
       | "task.setParent"
@@ -780,7 +782,8 @@ export const isWave2CommandAuthorized = (
         })
       );
     }
-    case "project.updateOutcome": {
+    case "project.updateOutcome":
+    case "project.updateDetails": {
       const project = view.getProject(command.payload.projectId);
       return authorized(
         dependencies,
@@ -5025,6 +5028,7 @@ export const executeWave2Command = (
             projectId: project.id,
             title: project.title,
             ...intendedOutcomeFields(project.intendedOutcome),
+            ...(project.dueAt === undefined ? {} : { dueAt: project.dueAt }),
             lifecycle: project.lifecycle,
             version: project.version,
           },
@@ -5114,6 +5118,78 @@ export const executeWave2Command = (
           ...(project.evidenceSourceIds === undefined
             ? {}
             : { priorEvidenceSourceIds: project.evidenceSourceIds }),
+          resultingVersion: updated.version,
+        },
+      );
+    }
+    case "project.updateDetails": {
+      const project = transaction.getProject(command.payload.projectId);
+      if (project === undefined) return precondition(command, occurredAt);
+      if (!exactExpected(command, { [project.id]: project.version })) {
+        return versionConflict(command, occurredAt, {
+          [project.id]: project.version,
+        });
+      }
+      const updated = updateProjectDetails(
+        project,
+        {
+          ...(command.payload.title === undefined
+            ? {}
+            : { title: command.payload.title }),
+          ...(command.payload.dueAt === undefined
+            ? {}
+            : { dueAt: command.payload.dueAt }),
+        },
+        occurredAt,
+      );
+      if (!transaction.updateProject(updated, project.version)) {
+        return versionConflict(command, occurredAt, {
+          [project.id]: project.version,
+        });
+      }
+      return appendJournal(
+        dependencies,
+        transaction,
+        context,
+        command,
+        idempotency,
+        occurredAt,
+        {
+          type: "project.details_updated",
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          aggregateId: project.id,
+          aggregateVersion: updated.version,
+          occurredAt,
+        },
+        { [updated.id]: updated.version },
+        [
+          ...(command.payload.title === undefined ? [] : ["title"]),
+          ...(command.payload.dueAt === undefined ? [] : ["dueAt"]),
+        ],
+        {
+          diagnosticCode: "project.details_updated",
+          projection: {
+            kind: "project.details_updated",
+            projectId: updated.id,
+            title: updated.title,
+            ...intendedOutcomeFields(updated.intendedOutcome),
+            lifecycle: updated.lifecycle,
+            // NIGDY nie przez `intendedOutcomeFields` i nigdy jako `null`:
+            // tamta funkcja skleja brak do "" i przestawia `needsReview`,
+            // a `null` w polu ISO ze `.strict()` wywala odczyt.
+            ...(updated.dueAt === undefined ? {} : { dueAt: updated.dueAt }),
+            version: updated.version,
+          },
+        },
+        {
+          targetCommandId: command.commandId,
+          workspaceId: project.workspaceId,
+          spaceId: project.spaceId,
+          kind: "project.restore_details",
+          projectId: project.id,
+          priorTitle: project.title,
+          ...(project.dueAt === undefined ? {} : { priorDueAt: project.dueAt }),
           resultingVersion: updated.version,
         },
       );
@@ -7935,6 +8011,7 @@ export const descriptorRecordIds = (
 ): readonly string[] => {
   switch (descriptor.kind) {
     case "project.restore_outcome":
+    case "project.restore_details":
       return [descriptor.projectId];
     case "area.restore_responsibility":
       return [descriptor.areaId];
@@ -8147,7 +8224,11 @@ const descriptorState = (
     };
   }
   switch (descriptor.kind) {
+    case "project.restore_details":
     case "project.restore_outcome": {
+      // Ta gałąź jest tym, co chroni rzutowanie `as Project` w zastosowaniu
+      // kompensacji niżej: bez sprawdzenia wersji cofnięcie sięgałoby po rekord,
+      // który mógł się zmienić albo zniknąć.
       const project = view.getProject(descriptor.projectId);
       return project?.version === descriptor.resultingVersion
         ? {
@@ -8907,7 +8988,24 @@ const compensateDescriptor = (
   | { readonly ok: false } => {
   let compensatedVersions: Record<string, number>;
   let compensatedKinds: CompensatedRecordKinds;
-  if (descriptor.kind === "project.restore_outcome") {
+  if (descriptor.kind === "project.restore_details") {
+    const project = transaction.getProject(descriptor.projectId) as Project;
+    const restored = updateProjectDetails(
+      project,
+      {
+        title: descriptor.priorTitle,
+        // `?? null`, nie `?? undefined`: brak terminu w deskryptorze znaczy
+        // „przedtem go nie było", a `undefined` w tej funkcji znaczy „zostaw
+        // w spokoju". Bez tej zamiany cofnięcie komendy, która termin DODAŁA,
+        // zostawiałoby datę na miejscu — czyli cofałoby połowę.
+        dueAt: descriptor.priorDueAt ?? null,
+      },
+      occurredAt,
+    );
+    transaction.updateProject(restored, project.version);
+    compensatedVersions = { [restored.id]: restored.version };
+    compensatedKinds = { [restored.id]: "project" };
+  } else if (descriptor.kind === "project.restore_outcome") {
     const project = transaction.getProject(descriptor.projectId) as Project;
     const restored = updateProjectOutcome(
       project,
@@ -10195,6 +10293,7 @@ export const executeWave2Query = (
           id: project.id,
           title: project.title,
           ...intendedOutcomeFields(project.intendedOutcome),
+          ...(project.dueAt === undefined ? {} : { dueAt: project.dueAt }),
           lifecycle: project.lifecycle,
           version: project.version,
         })),
@@ -10633,6 +10732,7 @@ export const executeWave2Query = (
           spaceId: project.spaceId,
           title: project.title,
           ...intendedOutcomeFields(project.intendedOutcome),
+          ...(project.dueAt === undefined ? {} : { dueAt: project.dueAt }),
           // The set-level read of deliveries, so it carries the key a re-run
           // recognises what it already imported by — the same reason
           // `person.list` and `organization.list` carry theirs.
@@ -10991,6 +11091,7 @@ export const executeWave2Query = (
         spaceId: project.spaceId,
         title: project.title,
         ...intendedOutcomeFields(project.intendedOutcome),
+        ...(project.dueAt === undefined ? {} : { dueAt: project.dueAt }),
         lifecycle: project.lifecycle,
         ...(project.appliedTemplateId === undefined
           ? {}
@@ -11399,6 +11500,7 @@ export const executeWave2Query = (
         id: project.id,
         title: project.title,
         ...intendedOutcomeFields(project.intendedOutcome),
+        ...(project.dueAt === undefined ? {} : { dueAt: project.dueAt }),
         version: project.version,
         updatedAt: project.updatedAt,
       })),
@@ -11820,6 +11922,10 @@ export const executeWave2Query = (
     "capture.transcript_written": "capture_transcript_ready",
     "project.created": "project_created",
     "project.outcome_updated": "project_outcome_changed",
+    // Mapa jest `Partial`, więc brak wpisu KOMPILUJE SIĘ i po prostu na zawsze
+    // ukrywa przemianowanie w Aktywności. Wpis i wartość w enumie zapytania
+    // muszą wejść tą samą zmianą, inaczej `activity.meaningful` rzuca.
+    "project.details_updated": "project_details_changed",
     "task.created": "task_created",
     "task.details_updated": "task_details_updated",
     "task.parent_changed": "task_parent_changed",

@@ -78,6 +78,7 @@ const context = (): ExecutionContext =>
       "project.create",
       "project.remove",
       "project.updateOutcome",
+      "project.updateDetails",
       "project.list",
       "project.operationalOverview",
       "task.create",

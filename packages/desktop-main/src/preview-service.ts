@@ -34,6 +34,7 @@ const ALL_PREVIEW_CAPABILITIES: readonly Capability[] = [
   "document.create",
   "document.remove",
   "project.updateOutcome",
+  "project.updateDetails",
   "project.list",
   "document.list",
   "document.linkCandidates",

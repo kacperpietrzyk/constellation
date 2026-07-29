@@ -2508,6 +2508,42 @@ export const updateProjectOutcome = (
         : undefined,
   );
 
+/**
+ * Przemianowanie Projektu i jego termin. Osobna funkcja od
+ * `updateProjectOutcome` wyżej, bo osobna komenda — i ta różnica jest
+ * merytoryczna: tam brak pola CZYŚCI, tu brak pola ZOSTAWIA W SPOKOJU.
+ * Do ładunku wchodzą tylko klucze zdefiniowane, więc przemianowanie nie
+ * wspomina o terminie i nie może go ruszyć.
+ */
+export const updateProjectDetails = (
+  client: ConstellationRendererClient,
+  snapshot: DesktopSnapshot,
+  project: { readonly id: ProjectId; readonly version: number },
+  draft: {
+    readonly title?: string;
+    readonly dueAt?: string | null;
+  },
+) =>
+  execute(
+    client,
+    {
+      ...commandBase(snapshot.bootstrap.workspace.id, {
+        [project.id]: project.version,
+      }),
+      commandName: "project.updateDetails",
+      payload: {
+        projectId: project.id,
+        ...(draft.title === undefined ? {} : { title: draft.title }),
+        ...(draft.dueAt === undefined ? {} : { dueAt: draft.dueAt }),
+      },
+    },
+    (response) =>
+      response.outcome.outcome === "success" &&
+      response.outcome.projection.kind === "project.details_updated"
+        ? response.outcome.projection
+        : undefined,
+  );
+
 export const createTask = (
   client: ConstellationRendererClient,
   snapshot: DesktopSnapshot,

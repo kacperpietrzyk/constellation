@@ -517,6 +517,13 @@ export interface Project {
    * holding one string is two rows from two places, not a collision.
    */
   readonly externalId?: string;
+  /**
+   * Termin dostawy. Brak znaczy „nie ma terminu", a nie „jeszcze nie wpisano" —
+   * projekt bez daty jest normalnym stanem, nie brakiem do uzupełnienia. Do
+   * 0.2.0 rekord nie znał ANI JEDNEJ daty poza własnym powstaniem, więc os
+   * czasu nad projektami nie istniała.
+   */
+  readonly dueAt?: string;
   readonly lifecycle: "active" | "closed";
   readonly closedAt?: string;
   readonly closedBy?: PrincipalId;
@@ -895,6 +902,23 @@ export type UndoDescriptor =
       readonly priorNextAction?: string;
       /** See `relationship.restore_person` above. */
       readonly priorExternalId?: string;
+      readonly resultingVersion: number;
+      readonly consumedByCommandId?: CommandId;
+    }
+  | {
+      readonly targetCommandId: CommandId;
+      readonly workspaceId: WorkspaceId;
+      readonly spaceId: SpaceId;
+      readonly kind: "project.restore_details";
+      readonly projectId: ProjectId;
+      // WYMAGANY: tytuł jest na rekordzie obowiązkowy, więc nie ma stanu
+      // „nie było tytułu", do którego dałoby się wrócić.
+      readonly priorTitle: string;
+      // Nieobowiązkowy i to jest cała treść cofnięcia: brak znaczy „przedtem
+      // nie było terminu", więc cofnięcie komendy, która termin DODAŁA, musi
+      // go zdjąć. Zapis kompensacji przekazuje tu `?? null`, bo bez tego
+      // cofnięcie zostawiałoby dodaną datę na miejscu.
+      readonly priorDueAt?: string;
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }
@@ -1524,6 +1548,7 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly type:
         | "project.created"
         | "project.outcome_updated"
+        | "project.details_updated"
         | "project.lifecycle_changed";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;

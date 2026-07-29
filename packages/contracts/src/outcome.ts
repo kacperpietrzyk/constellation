@@ -81,6 +81,7 @@ export const DiagnosticCodeSchema = z.enum([
   "strategic.record_removed",
   "record.removed",
   "project.outcome_updated",
+  "project.details_updated",
   "project.lifecycle_changed",
   "task.created",
   "task.details_updated",
@@ -338,6 +339,10 @@ const ProjectProjectionFields = {
   intendedOutcome: z.string(),
   needsReview: NeedsReviewSchema,
   lifecycle: z.enum(["active", "closed"]),
+  // Opcjonalny i NIGDY nienullowalny: `null` w tym miejscu przechodzi zapis
+  // i wywala ODCZYT, bo pole jest `.strict()`-ISO. Brak klucza znaczy „nie ma
+  // terminu"; nullem czyści go komenda, nie projekcja.
+  dueAt: z.iso.datetime({ offset: true }).optional(),
   version: z.int().positive(),
 } as const;
 
@@ -436,6 +441,12 @@ export const RecordRemovedProjectionSchema = z
 export const ProjectOutcomeUpdatedProjectionSchema = z
   .object({
     kind: z.literal("project.outcome_updated"),
+    ...ProjectProjectionFields,
+  })
+  .strict();
+export const ProjectDetailsUpdatedProjectionSchema = z
+  .object({
+    kind: z.literal("project.details_updated"),
     ...ProjectProjectionFields,
   })
   .strict();
@@ -1083,6 +1094,12 @@ const ProjectOutcomeUpdatedSuccessOutcomeSchema =
     diagnosticCode: z.literal("project.outcome_updated"),
     projection: ProjectOutcomeUpdatedProjectionSchema,
   }).strict();
+const ProjectDetailsUpdatedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("project.details_updated"),
+    projection: ProjectDetailsUpdatedProjectionSchema,
+  }).strict();
 const ProjectLifecycleChangedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1351,6 +1368,7 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   StrategicRecordRemovedSuccessOutcomeSchema,
   RecordRemovedSuccessOutcomeSchema,
   ProjectOutcomeUpdatedSuccessOutcomeSchema,
+  ProjectDetailsUpdatedSuccessOutcomeSchema,
   ProjectLifecycleChangedSuccessOutcomeSchema,
   TaskCreatedSuccessOutcomeSchema,
   TaskDetailsUpdatedSuccessOutcomeSchema,
