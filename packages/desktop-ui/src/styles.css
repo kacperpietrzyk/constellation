@@ -1427,6 +1427,15 @@ kbd {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-6);
+  /* Przy skalowaniu tekstu do 200% nagłówek przestaje się mieścić w wierszu
+     i wypycha powierzchnię poza jej własne pudełko — czyli robi poziomy pasek
+     przewijania na ekranie, który go nie ma. Zawijanie nic nie zmienia, dopóki
+     treść się mieści; zaczyna działać dokładnie wtedy, kiedy trzeba. Złapane
+     przez smoke spakowanej apki na Kalendarzu, na trzech systemach naraz. */
+  flex-wrap: wrap;
+}
+.surface-header > * {
+  min-width: 0;
 }
 .surface-header h1 {
   margin: 0.42rem 0 0.3rem;

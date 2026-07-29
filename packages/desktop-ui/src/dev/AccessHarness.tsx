@@ -4,6 +4,7 @@ import type {
   RendererQueryResponse,
 } from "@constellation/desktop-preload/client";
 import {
+  DEFAULT_WORKING_DAY,
   DataHomeStatusSchema,
   RemoteMcpGrantProjectionSchema,
 } from "@constellation/contracts";
@@ -129,6 +130,9 @@ const localClient = createScenarioClient({
         name: "Praca",
         timezone: "Europe/Warsaw",
         defaultTaskStatusId: "00000000-0000-4000-8000-000000000202",
+        // Projekcja NIGDY nie oddaje tego pola puste — harness, który je
+        // pomija, opisuje świat, którego nie ma, i wywala powłokę na starcie.
+        workingDay: DEFAULT_WORKING_DAY,
         version: 4,
       },
       spaces: [{ id: spaceId, name: "Praca", version: 1 }],

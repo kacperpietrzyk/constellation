@@ -244,6 +244,48 @@ test("a deadline warns before the day it falls on, and only when nobody planned 
   );
 });
 
+test("a window with a floor holds only the deadlines inside it", () => {
+  // Bez dolnej granicy „nie dalej niż tyle dni" nie ma dna: ekran pytający
+  // o okno przyszłego tygodnia dostawał wszystko po drodze — czyli listę,
+  // w której terminów z pytanego okna było najmniej.
+  const tasks = [
+    task({ title: "before the window", dueAt: "2026-07-21T21:59:59.999Z" }),
+    task({ title: "first day of it", dueAt: "2026-08-03T21:59:59.999Z" }),
+    task({ title: "last day of it", dueAt: "2026-08-09T21:59:59.999Z" }),
+    task({ title: "past the window", dueAt: "2026-08-10T21:59:59.999Z" }),
+  ];
+
+  const inside = approachingUnplanned(tasks, {
+    dayKey: DAY,
+    withinDays: 13, // 2026-07-27 + 13 = 2026-08-09
+    timeZone: ZONE,
+    notBeforeDayKey: "2026-08-03",
+  }).map((entry) => entry.title);
+  assert.deepEqual(inside, ["first day of it", "last day of it"]);
+
+  // Pominięta granica ZOSTAWIA okno bez dna — świadomie, bo bieżący dzień ma
+  // wciągać zaległości. To jest różnica, nie przypadek.
+  const withoutFloor = approachingUnplanned(tasks, {
+    dayKey: DAY,
+    withinDays: 13,
+    timeZone: ZONE,
+  }).map((entry) => entry.title);
+  assert.deepEqual(withoutFloor, [
+    "before the window",
+    "first day of it",
+    "last day of it",
+  ]);
+
+  // Okno w przeszłości: horyzont ujemny nie może znaczyć „wszystko stare".
+  const behind = approachingUnplanned(tasks, {
+    dayKey: DAY,
+    withinDays: -1, // 2026-07-26
+    timeZone: ZONE,
+    notBeforeDayKey: "2026-07-20",
+  }).map((entry) => entry.title);
+  assert.deepEqual(behind, ["before the window"]);
+});
+
 test("the lead time says how far off the deadline is, in whole days", () => {
   assert.equal(daysUntil("2026-07-31T21:59:59.999Z", DAY, ZONE), 4);
   assert.equal(daysUntil("2026-07-27T21:59:59.999Z", DAY, ZONE), 0);

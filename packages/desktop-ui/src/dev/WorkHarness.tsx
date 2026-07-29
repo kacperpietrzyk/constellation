@@ -1,3 +1,4 @@
+import { DEFAULT_WORKING_DAY } from "@constellation/contracts";
 import { useMemo, useState } from "react";
 
 import type { RendererCommandResponse } from "@constellation/desktop-preload/client";
@@ -48,6 +49,9 @@ export const workHarnessSnapshot = {
       name: "Constellation",
       timezone: "Europe/Warsaw",
       defaultTaskStatusId: ids.status,
+      // Projekcja NIGDY nie oddaje tego pola puste — harness, który je
+      // pomija, opisuje świat, którego nie ma, i wywala powłokę na starcie.
+      workingDay: DEFAULT_WORKING_DAY,
       version: 1,
     },
     spaces: [{ id: ids.space, name: "Personal", version: 1 }],

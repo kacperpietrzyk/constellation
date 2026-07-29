@@ -13,7 +13,7 @@ import {
 } from "../src/surface-registry.js";
 
 test("desktop surface registry is unique, bounded, and derives its vocabulary", () => {
-  assert.equal(desktopSurfaceRegistry.length, 12);
+  assert.equal(desktopSurfaceRegistry.length, 13);
   assert.equal(new Set(desktopSurfaceIds).size, desktopSurfaceRegistry.length);
   assert.equal(
     new Set(desktopSurfaceRegistry.map((surface) => surface.label)).size,
@@ -22,8 +22,24 @@ test("desktop surface registry is unique, bounded, and derives its vocabulary", 
   const shortcuts = desktopSurfaceRegistry.flatMap((surface) =>
     surface.shortcut === null ? [] : [surface.shortcut],
   );
-  assert.deepEqual(shortcuts, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  // Cyfry są PRZYPISANE DO CELÓW, nie rozdawane po kolei: docelowy zbiór ma
+  // jedenaście celów, a klawiatura dziewięć skrótów, więc numeracja jest
+  // zarezerwowana pod kształt docelowy i w trakcie fal zostają w niej dziury
+  // (6 czeka na Pipeline, 8 na People). Asercja o ciągłym [1..9] wymuszałaby
+  // przenumerowanie skrótów przy każdej fali — czyli cyfrę, która zmienia
+  // znaczenie pod ręką. Niezmiennik jest inny: cyfry są unikalne i mieszczą
+  // się w zasięgu klawiatury.
   assert.equal(new Set(shortcuts).size, shortcuts.length);
+  assert.equal(
+    shortcuts.every(
+      (digit) => Number.isInteger(digit) && digit >= 1 && digit <= 9,
+    ),
+    true,
+  );
+  assert.ok(
+    shortcuts.length >= 5,
+    "a registry with no direct routes is a regression",
+  );
   assert.equal(
     desktopSurfaceRegistry.every((surface) => surface.icon.length > 0),
     true,

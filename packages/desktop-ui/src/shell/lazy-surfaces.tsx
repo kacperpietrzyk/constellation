@@ -27,6 +27,13 @@ const loadSettingsSurface = () => import("../SettingsSurface.js");
 export const SettingsSurface = lazy(() =>
   loadSettingsSurface().then((module) => ({ default: module.SettingsSurface })),
 );
+// Arkusz przychodzi z samym komponentem (CSS Module importuje się w nim),
+// więc loader nie musi go dociągać osobno — inaczej niż `access`
+// i `organizations`, które niosą arkusze globalne jako efekt uboczny.
+const loadCalendarSurface = () => import("../CalendarSurface.js");
+export const CalendarSurface = lazy(() =>
+  loadCalendarSurface().then((module) => ({ default: module.CalendarSurface })),
+);
 const loadWorkSurface = () => import("../WorkSurface.js");
 export const WorkSurface = lazy(() =>
   loadWorkSurface().then((module) => ({ default: module.WorkSurface })),
@@ -72,6 +79,7 @@ export const WorkspaceRecovery = lazy(() =>
 // `access` i `relationships` robią `await import("./*.css")`, czego `node --test`
 // nie rozwiąże. Sprawdzaj obecność klucza, nie wynik wywołania.
 export const lazySurfaceLoaders = {
+  calendar: loadCalendarSurface,
   library: loadDocumentsSurface,
   meetings: loadMeetingsSurface,
   activity: loadActivitySurface,

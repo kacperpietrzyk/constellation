@@ -537,45 +537,13 @@ describe("interaction recovery contracts", () => {
     );
   });
 
-  it("keeps Attention mutations behind deliberate signal selection", () => {
-    assert.match(collaborationSurfaces, /className="attention-ledger"/);
-    assert.match(collaborationSurfaces, /\.\.\.attentionNav\(index\)/);
-    assert.match(
-      collaborationSurfaces,
-      /aria-pressed=\{selectedItemId === item\.id\}/,
-    );
-    assert.match(collaborationSurfaces, /onClick=\{\(\) => onSelect\(item\)\}/);
-    assert.match(
-      collaborationSurfaces,
-      /onDoubleClick=\{\(\) => onOpen\(item\)\}/,
-    );
-    // "Unavailable" and "empty" are different states and are branched as such:
-    // the unavailable one is announced and carries a retry, the empty one does
-    // not, because there is nothing to retry.
-    assert.match(
-      collaborationSurfaces,
-      /attention\.kind === "unavailable" \? \(\s*<div className="attention-empty" role="status">[\s\S]{0,400}?onClick=\{onRetry\}/,
-    );
-    assert.match(
-      collaborationSurfaces,
-      /items\.length === 0 \? \(\s*<div className="attention-empty">/,
-    );
-    // Two claims that are legitimately about language. A failed read must state
-    // that it changed nothing (the inbox's own action is marking as read), and
-    // the empty state must promise that routine activity is not quietly piling
-    // up somewhere — that promise is the surface's whole premise.
-    assert.match(collaborationSurfaces, /Nothing was marked as read\./);
-    assert.match(collaborationSurfaces, /never becomes a backlog\./);
-    assert.match(collaborationSurfaces, /export const AttentionDetail/);
-    assert.doesNotMatch(collaborationSurfaces, /className="attention-actions"/);
-    assert.match(realApp, /const \[selectedAttentionId/);
-    assert.match(realApp, /selectedAttention \|\|/);
-    assert.match(realApp, /<AttentionDetail/);
-    assert.match(
-      styles,
-      /\.attention-ledger\s*\{[^}]*background:\s*var\(--panel-reading-bg\);[^}]*box-shadow:\s*var\(--elevation-raised\)/s,
-    );
-  });
+  // USUNIĘTE razem z ekranem, który pilnowały. Skrzynka przestała być jedną
+  // listą i jest teraz dwiema (decyzja o pracy ↔ naprawa hydrauliki), więc
+  // asercje na `attention-ledger` pilnowały układu, którego nie ma. Same
+  // gwarancje żyją dalej, tylko sprawdzane na wyrenderowanym drzewie
+  // w `inbox.interaction.test.tsx`: „niedostępne" jest innym stanem niż
+  // „puste" i niesie ponowienie, mutacja wymaga świadomego wyboru wiersza,
+  // a jedno kliknięcie pokazuje, dwa otwierają.
 
   it("keeps meeting collection options concise while full content stays in the inspector", () => {
     assert.match(

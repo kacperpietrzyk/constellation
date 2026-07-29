@@ -17,8 +17,12 @@ import type {
   DataSlice,
   MentionCandidatesProjection,
 } from "./client/workflow.js";
-import { useListNavigation } from "./hooks/useListNavigation.js";
 import { countLabel, formatDateTime } from "./i18n.js";
+// Pełna taksonomia powodów z kontraktu attention.inbox stoi w JEDNYM miejscu,
+// wspólnym dla obu ekranów, które ją czytają. Kopia trzymana tutaj zdążyła się
+// już rozjechać na wielkości liter — niewidocznie, bo lista pisze powód
+// wersalikami.
+import { inboxReasonLabels as reasonLabels } from "./inbox-triage.js";
 
 type Comment = CommentListProjection["threads"][number];
 type Candidate = MentionCandidatesProjection["candidates"][number];
@@ -594,30 +598,6 @@ export const CommentsPanel = ({
 
 type AttentionItem = AttentionInboxProjection["items"][number];
 
-// Pełna taksonomia powodów z kontraktu attention.inbox. Typ mapowany po unii
-// wymusza kompletność: nowy powód w kontrakcie nie przejdzie typecheck bez
-// polskiej etykiety.
-const reasonLabels: { readonly [reason in AttentionItem["reason"]]: string } = {
-  comment_mention: "Mention",
-  task_assignment: "Responsibility",
-  sync_conflict: "Sync conflict",
-  knowledge_evidence_changed: "Evidence changed",
-  renewal_due: "Renewal due",
-  waiting_review_elapsed: "Waiting review overdue",
-  relationship_fact_stale: "Stale relationship fact",
-  decision_impact_review: "Impact review due",
-  capture_duplicate: "Duplicate Capture",
-  capture_ambiguous: "Unclear destination",
-  capture_unsupported: "Unsupported original",
-  capture_parsing_failure: "Read error",
-  capture_permission_failure: "Missing permission",
-  capture_stale_conflict: "Stale version",
-  capture_missing_target: "Missing target",
-  capture_missing_payload: "Missing original",
-  capture_partial_payload_transfer: "Partial transfer",
-  capture_unknown_reconcile: "Unknown outcome",
-};
-
 export const captureRecoveryActions = (
   reason: AttentionItem["reason"],
 ): readonly ("route" | "retry" | "replace_payload" | "keep_unclassified")[] => {
@@ -648,138 +628,6 @@ export const captureRecoveryActions = (
     actions.push("replace_payload");
   actions.push("keep_unclassified");
   return actions;
-};
-
-export const AttentionSurface = ({
-  attention,
-  selectedItemId,
-  onOpen,
-  onSelect,
-  onRetry,
-}: {
-  readonly attention: DataSlice<AttentionInboxProjection>;
-  readonly selectedItemId: string | undefined;
-  readonly onOpen: (item: AttentionInboxProjection["items"][number]) => void;
-  readonly onSelect: (item: AttentionInboxProjection["items"][number]) => void;
-  /** Ponawia ładowanie skrzynki, gdy warstwa danych była niedostępna. */
-  readonly onRetry?: () => void;
-}) => {
-  // Pilne sygnały prowadzą listę; wewnątrz grup porządek pozostaje
-  // chronologiczny (sortowanie stabilne).
-  const items =
-    attention.kind === "ready"
-      ? [...attention.data.items].sort(
-          (a, b) =>
-            (a.urgency === "urgent" ? 0 : 1) - (b.urgency === "urgent" ? 0 : 1),
-        )
-      : [];
-  const attentionNav = useListNavigation({
-    itemCount: items.length,
-    onOpen: (index) => {
-      const item = items[index];
-      if (item) onOpen(item);
-    },
-    onSelect: (index) => {
-      const item = items[index];
-      if (item) onSelect(item);
-    },
-  });
-  return (
-    <section className="attention-surface" aria-labelledby="surface-title">
-      <header className="surface-header attention-heading">
-        <div>
-          <p className="eyebrow">Signals that need action</p>
-          <h1 id="surface-title" tabIndex={-1}>
-            Inbox
-          </h1>
-          <p>Every entry has a reason and opens its exact context.</p>
-        </div>
-        {attention.kind === "ready" && (
-          <span className="attention-total">
-            {countLabel(attention.data.unreadCount, "unread", "unread")}
-          </span>
-        )}
-      </header>
-      {attention.kind === "unavailable" ? (
-        <div className="attention-empty" role="status">
-          <strong>Inbox is unavailable right now</strong>
-          <span>Nothing was marked as read.</span>
-          {onRetry && (
-            <button
-              type="button"
-              className="secondary-button compact"
-              onClick={onRetry}
-            >
-              Try again
-            </button>
-          )}
-        </div>
-      ) : items.length === 0 ? (
-        <div className="attention-empty">
-          <strong>Nothing needs action</strong>
-          <span>
-            Routine activity stays in history and never becomes a backlog.
-          </span>
-        </div>
-      ) : (
-        <div className="attention-ledger">
-          <div className="attention-ledger-head" aria-hidden="true">
-            <span>Signal</span>
-            <span>Reason</span>
-            <span>Received</span>
-          </div>
-          <ol className="attention-list-real">
-            {items.map((item, index) => (
-              <li
-                key={item.id}
-                className={`${item.state} ${item.urgency === "urgent" ? "urgent" : ""}`}
-              >
-                <button
-                  className="attention-main"
-                  type="button"
-                  aria-pressed={selectedItemId === item.id}
-                  {...attentionNav(index)}
-                  onClick={() => onSelect(item)}
-                  onDoubleClick={() => onOpen(item)}
-                >
-                  <span className="attention-copy">
-                    <strong title={item.title}>
-                      {item.state === "unread" && (
-                        <>
-                          <i
-                            className="attention-unread-dot"
-                            aria-hidden="true"
-                          />
-                          <span className="sr-only">Unread: </span>
-                        </>
-                      )}
-                      {item.title}
-                    </strong>
-                    <span>
-                      {item.reason === "comment_mention"
-                        ? "You were mentioned in a comment."
-                        : item.reason === "task_assignment"
-                          ? "This task is assigned to you."
-                          : item.detail}
-                    </span>
-                  </span>
-                  <span className="attention-reason">
-                    {reasonLabels[item.reason]}
-                    {item.urgency === "urgent" && (
-                      <b className="attention-urgent">Urgent</b>
-                    )}
-                  </span>
-                  <time dateTime={item.occurredAt}>
-                    {formatDateTime(item.occurredAt)}
-                  </time>
-                </button>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-    </section>
-  );
 };
 
 export const AttentionDetail = ({

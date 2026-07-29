@@ -8,9 +8,17 @@
 // „Relationships" opisywało model danych, a nie robotę, więc jest teraz „CRM",
 // a „Work" nazywa się „Work Management", bo leżą tam też zadania bez projektu.
 //
-// CZEGO TU JESZCZE NIE MA, świadomie: `calendar`, `pipeline`, `people`
-// i `renewals`. Każde z nich wchodzi razem ze swoim ekranem, w swojej fali —
-// cel w nawigacji, który prowadzi donikąd, jest gablotą, a nie zapowiedzią.
+// CZEGO TU JESZCZE NIE MA, świadomie: `pipeline`, `people` i `renewals`.
+// Każde z nich wchodzi razem ze swoim ekranem, w swojej fali — cel w nawigacji,
+// który prowadzi donikąd, jest gablotą, a nie zapowiedzią.
+//
+// CYFRY SĄ WYCZERPANE i to jest decyzja, nie awaria. Docelowy zbiór ma
+// jedenaście celów, a klawiatura daje dziewięć skrótów, więc numeracja jest
+// przypisana raz, do KSZTAŁTU DOCELOWEGO (Today 1 · Calendar 2 · Inbox 3 ·
+// Tasks 4 · Projects 5 · Pipeline 6 · Organizations 7 · People 8 · Meetings 9),
+// a nie do tego, co akurat istnieje. Dzięki temu żadna fala nie przenumerowuje
+// skrótów pod ręką — cyfra raz zapamiętana zostaje przy swoim celu. Cele bez
+// cyfry (Library, Renewals i to, co jeszcze nie wsiąkło) osiąga się paletą.
 //
 // `history` też jeszcze stoi osobno, choć docelowo wsiąka w `library`: to jest
 // SCALENIE TREŚCI (dokumenty + źródła + historia wrzutek), a nie przemianowanie,
@@ -31,11 +39,22 @@ export const desktopSurfaceRegistry = [
     loading: "eager",
   },
   {
+    // Ten sam materiał co Today, w powiększeniu tygodniowym. Zakładka
+    // najwyższego poziomu, nie układ w Zadaniach: planowanie tygodnia bez
+    // spotkań nie istnieje, a układ jest soczewką nad JEDNĄ kolekcją.
+    id: "calendar",
+    label: "Calendar",
+    icon: "cockpit",
+    group: null,
+    shortcut: 2,
+    loading: "lazy",
+  },
+  {
     id: "inbox",
     label: "Inbox",
     icon: "attention",
     group: null,
-    shortcut: 2,
+    shortcut: 3,
     loading: "eager",
   },
   {
@@ -43,7 +62,7 @@ export const desktopSurfaceRegistry = [
     label: "Tasks",
     icon: "tasks",
     group: "Work Management",
-    shortcut: 3,
+    shortcut: 4,
     loading: "eager",
   },
   {
@@ -51,7 +70,7 @@ export const desktopSurfaceRegistry = [
     label: "Projects",
     icon: "project",
     group: "Work Management",
-    shortcut: 4,
+    shortcut: 5,
     loading: "eager",
   },
   {
@@ -59,7 +78,7 @@ export const desktopSurfaceRegistry = [
     label: "Saved views",
     icon: "work",
     group: "Work Management",
-    shortcut: 5,
+    shortcut: null,
     loading: "lazy",
   },
   {
@@ -67,7 +86,7 @@ export const desktopSurfaceRegistry = [
     label: "Organizations",
     icon: "relationships",
     group: "CRM",
-    shortcut: 6,
+    shortcut: 7,
     loading: "lazy",
   },
   {
@@ -75,7 +94,7 @@ export const desktopSurfaceRegistry = [
     label: "Meetings",
     icon: "meetings",
     group: "Knowledge",
-    shortcut: 7,
+    shortcut: 9,
     loading: "lazy",
   },
   {
@@ -83,7 +102,7 @@ export const desktopSurfaceRegistry = [
     label: "Library",
     icon: "documents",
     group: "Knowledge",
-    shortcut: 8,
+    shortcut: null,
     loading: "lazy",
   },
   {
@@ -91,7 +110,7 @@ export const desktopSurfaceRegistry = [
     label: "Capture history",
     icon: "history",
     group: "Knowledge",
-    shortcut: 9,
+    shortcut: null,
     loading: "eager",
   },
   {

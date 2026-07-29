@@ -1,4 +1,7 @@
-import type { MeetingLoopSurface } from "@constellation/contracts";
+import {
+  DEFAULT_WORKING_DAY,
+  type MeetingLoopSurface,
+} from "@constellation/contracts";
 import type { RendererQueryResponse } from "@constellation/desktop-preload/client";
 
 import { RealApp } from "../RealApp.js";
@@ -124,6 +127,9 @@ const baseClient = createScenarioClient({
         name: "Praca",
         timezone: "Europe/Warsaw",
         defaultTaskStatusId: statusId,
+        // Projekcja NIGDY nie oddaje tego pola puste — harness, który je
+        // pomija, opisuje świat, którego nie ma, i wywala powłokę na starcie.
+        workingDay: DEFAULT_WORKING_DAY,
         version: 6,
       },
       spaces: [{ id: spaceId, name: "Praca", version: 1 }],

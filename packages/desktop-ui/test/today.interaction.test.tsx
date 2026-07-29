@@ -4,7 +4,10 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { CommandEnvelope } from "@constellation/contracts";
+import type {
+  CommandEnvelope,
+  MeetingLoopSurface,
+} from "@constellation/contracts";
 
 import {
   populatedPlanDayKey,
@@ -50,12 +53,60 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const mountShell = async (): Promise<HTMLElement> => {
+/**
+ * Kalendarz z dokładnie tymi spotkaniami, których żąda przypadek. Scenariuszowy
+ * klient sam ODMAWIA kalendarza, więc bez tego szwu nie da się zmierzyć dnia,
+ * na którym pojemność jest w ogóle policzalna.
+ */
+const meetingLoop = (
+  events: readonly {
+    readonly title: string;
+    readonly startsAt: string;
+    readonly endsAt: string;
+  }[],
+): MeetingLoopSurface =>
+  ({
+    capability: {
+      platform: "macos",
+      provider: "eventkit",
+      availability: "available",
+      canRead: true,
+      canWriteOwnedBlocks: true,
+      defaultWriteCalendarExternalId: "calendar-work",
+      detailCode: "fixture",
+    },
+    upcoming: events.map((event, index) => ({
+      event: {
+        provider: "eventkit",
+        calendarExternalId: "calendar-work",
+        eventExternalId: `event-${index}`,
+        revision: "1",
+        title: event.title,
+        startsAt: event.startsAt,
+        endsAt: event.endsAt,
+        isAllDay: false,
+        attendees: [],
+      },
+      brief: {
+        eventExternalId: `event-${index}`,
+        orientation: [],
+        openLoops: [],
+        relevantSources: [],
+      },
+    })),
+    completed: [],
+    freshness: "current",
+    generatedAt: `${populatedPlanDayKey}T06:00:00.000Z`,
+  }) as unknown as MeetingLoopSurface;
+
+const mountShell = async (
+  meetings?: MeetingLoopSurface,
+): Promise<HTMLElement> => {
   const { RealApp } = await import("../src/RealApp.js");
   const { createScenarioClient } =
     await import("../src/client/scenario-client.js");
   const { loadDesktopSnapshot } = await import("../src/client/workflow.js");
-  const client = createScenarioClient({
+  const scenario = createScenarioClient({
     queries: populatedShellQueries,
     executeCommand: (command) => {
       commands.push(command);
@@ -66,6 +117,10 @@ const mountShell = async (): Promise<HTMLElement> => {
       } as never;
     },
   });
+  const client =
+    meetings === undefined
+      ? scenario
+      : { ...scenario, getMeetingLoop: async () => meetings };
   const snapshot = await loadDesktopSnapshot(client);
   assert.equal(
     snapshot.tasks.length,
@@ -203,15 +258,45 @@ test("Today shows no attention signals — they live in the Inbox", async () => 
 });
 
 test("the day's capacity is on the screen, computed rather than assumed", async () => {
-  const plane = await mountShell();
+  // Kalendarz PRZECZYTANY: spotkanie 9:00–10:00 i zarezerwowany blok 1h30m
+  // z fixture'u schodzą z ośmiogodzinnego dnia roboczego.
+  const plane = await mountShell(
+    meetingLoop([
+      {
+        title: "Przegląd architektury z Northstar",
+        startsAt: `${populatedPlanDayKey}T07:00:00.000Z`,
+        endsAt: `${populatedPlanDayKey}T08:00:00.000Z`,
+      },
+    ]),
+  );
   const capacity = plane.querySelector<HTMLElement>("[data-capacity]");
   assert.ok(capacity, "the day does not state its capacity");
+  assert.equal(capacity.dataset.capacityKnown, "true");
   const text = (capacity.textContent ?? "").trim();
-  // Kalendarz jest w tym środowisku niedostępny, więc spotkań jest zero —
-  // ale zarezerwowany blok z fixture'u wchodzi w rachunek i musi go zmniejszyć.
-  assert.match(text, /free/);
+  assert.match(text, /1 meeting, 1h/);
   assert.match(text, /1h 30m reserved/);
-  assert.match(text, /6h 30m free/);
+  assert.match(text, /5h 30m free/);
+});
+
+test("without the calendar the day states no free time instead of a full one", async () => {
+  // Ten sam defekt co w Kalendarzu, z tego samego miejsca: gdy spotkania nie są
+  // przeczytane, `dayCapacity` liczy z pustej listy — i „6h 30m wolnego" stało
+  // dokładnie NAD paskiem mówiącym, że kalendarza nie ma.
+  const plane = await mountShell();
+  assert.ok(
+    plane.querySelector("[data-calendar-refusal]"),
+    "this case needs a refused calendar to mean anything",
+  );
+  const capacity = plane.querySelector<HTMLElement>("[data-capacity]");
+  assert.ok(capacity, "the day does not state its capacity");
+  assert.equal(capacity.dataset.capacityKnown, "false");
+  const text = (capacity.textContent ?? "").trim();
+  assert.equal(
+    /\d+\s*h\b/u.test(text),
+    false,
+    `the day printed an hour figure it cannot know: “${text}”`,
+  );
+  assert.match(text, /unknown/iu);
 });
 
 test("with no calendar, the day says so instead of showing a meeting-free day", async () => {
