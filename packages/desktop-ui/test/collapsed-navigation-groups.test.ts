@@ -10,15 +10,15 @@ import {
 
 test("collapsed navigation groups are closed, canonical, local, and fail-safe", () => {
   assert.deepEqual(parseCollapsedNavigationGroups(undefined), []);
-  assert.deepEqual(parseCollapsedNavigationGroups("Praca"), []);
+  assert.deepEqual(parseCollapsedNavigationGroups("Work Management"), []);
   assert.deepEqual(
     parseCollapsedNavigationGroups([
-      "Administracja",
+      "CRM",
       "unknown",
-      "Praca",
-      "Administracja",
+      "Work Management",
+      "CRM",
     ]),
-    ["Praca", "Administracja"],
+    ["Work Management", "CRM"],
   );
   assert.equal(
     collapsedNavigationGroupsStorageKey,
@@ -27,10 +27,10 @@ test("collapsed navigation groups are closed, canonical, local, and fail-safe", 
 
   assert.deepEqual(
     readCollapsedNavigationGroups({
-      getItem: () => '["Wiedza","Praca"]',
+      getItem: () => '["Knowledge","Work Management"]',
       setItem() {},
     }),
-    ["Praca", "Wiedza"],
+    ["Work Management", "Knowledge"],
   );
   assert.deepEqual(
     readCollapsedNavigationGroups({
@@ -50,7 +50,7 @@ test("collapsed navigation groups are closed, canonical, local, and fail-safe", 
   );
 
   let written: readonly [string, string] | undefined;
-  persistCollapsedNavigationGroups(["Administracja", "Praca"], {
+  persistCollapsedNavigationGroups(["CRM", "Work Management"], {
     getItem: () => null,
     setItem: (key, value) => {
       written = [key, value];
@@ -58,10 +58,10 @@ test("collapsed navigation groups are closed, canonical, local, and fail-safe", 
   });
   assert.deepEqual(written, [
     "constellation.navigation-groups",
-    '["Praca","Administracja"]',
+    '["Work Management","CRM"]',
   ]);
   assert.doesNotThrow(() =>
-    persistCollapsedNavigationGroups(["Wiedza"], {
+    persistCollapsedNavigationGroups(["Knowledge"], {
       getItem: () => null,
       setItem: () => {
         throw new Error("storage denied");

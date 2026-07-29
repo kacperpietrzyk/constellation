@@ -105,21 +105,56 @@ const capabilityCopy = (surface: MeetingLoopSurface) => {
   }
 };
 
-// What came back from asking macOS for Calendar access, said plainly. The
-// three outcomes are genuinely different — granted, refused by the person, and
-// never asked at all — and only the first one changes what the surface can do.
+// What came back from asking macOS for Calendar access. The four outcomes are
+// genuinely different — granted, refused by the person, never asked at all, and
+// unavailable — and only the first one changes what the surface can do.
+//
+// Ścieżka do przełącznika, którego nie da się nacisnąć z aplikacji. Jedna stała
+// dla obu zablokowanych wyników, bo to jest TO SAMO rozwiązanie tego samego
+// problemu — i dlatego da się o nią asertować bez czytania zdania.
+const CALENDAR_PERMISSION_REMEDY =
+  "Ustawienia systemowe → Prywatność i ochrona → Kalendarze";
+
+export type CalendarAccessOutcome = {
+  // Rozstrzygnięcie, po którym wołający i test rozpoznają wynik. Wcześniej
+  // funkcja oddawała samo zdanie, więc jedyne, co dało się sprawdzić, to jego
+  // treść — a po przepisaniu asercji na „coś wspólnego na końcu" z produktu
+  // dało się USUNĄĆ ścieżkę do ustawień przy zielonym teście.
+  readonly tag: "granted" | "denied" | "suppressed" | "unavailable";
+  readonly message: string;
+  // Obecne dokładnie wtedy, gdy człowiek musi wyjść z aplikacji, żeby to
+  // odblokować. `undefined` znaczy „nie ma czego naprawiać tutaj".
+  readonly remedy?: string;
+};
+
 export const calendarAccessOutcome = (
   capability: MeetingLoopSurface["capability"],
-): string => {
+): CalendarAccessOutcome => {
   if (capability.availability === "available")
-    return "Dostęp do Kalendarza przyznany. Nadchodzące wydarzenia są już widoczne.";
+    return {
+      tag: "granted",
+      message:
+        "Dostęp do Kalendarza przyznany. Nadchodzące wydarzenia są już widoczne.",
+    };
   if (capability.availability === "permission_denied")
-    return "Odmówiono dostępu do Kalendarza. Włącz go w Ustawieniach systemowych → Prywatność i ochrona → Kalendarze.";
+    return {
+      tag: "denied",
+      message: `Odmówiono dostępu do Kalendarza. Włącz go w ${CALENDAR_PERMISSION_REMEDY}.`,
+      remedy: CALENDAR_PERMISSION_REMEDY,
+    };
   // macOS declined to raise the prompt at all. The person did nothing wrong
   // and clicking again cannot help, so say where the switch actually lives.
   if (capability.detailCode === "permission_prompt_suppressed")
-    return "macOS nie pokazał pytania o dostęp do Kalendarza. Nadaj uprawnienie w Ustawieniach systemowych → Prywatność i ochrona → Kalendarze.";
-  return "Dostęp do Kalendarza nie został przyznany. Żadne wydarzenie nie zostało zmienione.";
+    return {
+      tag: "suppressed",
+      message: `macOS nie pokazał pytania o dostęp do Kalendarza. Nadaj uprawnienie w ${CALENDAR_PERMISSION_REMEDY}.`,
+      remedy: CALENDAR_PERMISSION_REMEDY,
+    };
+  return {
+    tag: "unavailable",
+    message:
+      "Dostęp do Kalendarza nie został przyznany. Żadne wydarzenie nie zostało zmienione.",
+  };
 };
 
 export const MeetingsSurface = ({
@@ -402,7 +437,7 @@ export const MeetingsSurface = ({
             void client
               .requestCalendarAccess()
               .then((capability) => {
-                setNotice(calendarAccessOutcome(capability));
+                setNotice(calendarAccessOutcome(capability).message);
                 load();
               })
               .catch(() =>

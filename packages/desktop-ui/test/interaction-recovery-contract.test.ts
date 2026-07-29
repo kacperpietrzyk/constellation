@@ -155,7 +155,7 @@ describe("interaction recovery contracts", () => {
     );
     assert.match(
       realApp,
-      /nextSurface === "documents"[\s\S]*state\.snapshot\.knowledge[\s\S]*documents\.find[\s\S]*documentContext\(id, document\.title\)/,
+      /nextSurface === "library"[\s\S]*state\.snapshot\.knowledge[\s\S]*documents\.find[\s\S]*documentContext\(id, document\.title\)/,
     );
   });
 
@@ -437,7 +437,7 @@ describe("interaction recovery contracts", () => {
     );
     assert.match(
       realApp,
-      /nextSurface === "relationships"[\s\S]*record\?\.kind === "organization"[\s\S]*organizationContext\(record\.id, record\.name\)/,
+      /nextSurface === "organizations"[\s\S]*record\?\.kind === "organization"[\s\S]*organizationContext\(record\.id, record\.name\)/,
     );
     assert.match(realApp, /onOpenProject=\{\(id, title\) =>/);
     assert.match(realApp, /onOpenTask=\{\(id, title\) =>/);

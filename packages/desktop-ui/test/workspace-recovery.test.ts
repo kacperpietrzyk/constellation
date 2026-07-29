@@ -8,7 +8,21 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { WorkspaceRecovery } from "../src/WorkspaceRecovery.js";
 import { createScenarioClient } from "../src/client/scenario-client.js";
 
-test("Data Home explains first Hub enrollment and coordinated recovery states", async () => {
+/**
+ * Co dokładnie oferuje to okno, czytane z zaczepów `data-recovery-action`, a
+ * nie ze zdań na przyciskach. Posortowana tablica, nie zbiór: powtórzony
+ * zaczep na dwóch kontrolkach też jest defektem, bo znaczy, że tę samą akcję
+ * da się uruchomić z dwóch miejsc bez wiedzy testu.
+ */
+const offeredActions = (markup: string): readonly string[] =>
+  [...markup.matchAll(/data-recovery-action="([^"]+)"/gu)]
+    .map((match) => match[1] ?? "")
+    .sort();
+
+const hasHook = (markup: string, attribute: string, value: string): boolean =>
+  markup.includes(`${attribute}="${value}"`);
+
+test("Data Home offers the recovery a state actually has, and only that", async () => {
   const client = createScenarioClient({ queries: {} });
   const local = await client.getDataHomeStatus();
   const render = (initialStatus: typeof local) =>
@@ -22,12 +36,6 @@ test("Data Home explains first Hub enrollment and coordinated recovery states", 
         onRestored: async () => undefined,
       }),
     );
-
-  const localMarkup = render(local);
-  assert.match(localMarkup, /Połącz ten workspace z własnym Hubem/u);
-  assert.match(localMarkup, /Eksportuj plik autoryzacji/u);
-  assert.match(localMarkup, /najpierw.*przywróć przenośny backup/u);
-  assert.match(localMarkup, /Jednorazowy kod z Huba/u);
 
   const coordinated = DataHomeStatusSchema.parse({
     ...local,
@@ -50,12 +58,62 @@ test("Data Home explains first Hub enrollment and coordinated recovery states", 
     detailCode: "sync_unknown_reconcile",
     recoveryActions: ["reconcile_provider", "restore_checkpoint"],
   });
+
+  const localMarkup = render(local);
   const coordinatedMarkup = render(coordinated);
-  assert.match(coordinatedMarkup, /Sprawdzam wynik/u);
-  assert.match(coordinatedMarkup, /Najpierw potwierdzę receipt/u);
-  assert.match(coordinatedMarkup, /Synchronizuj teraz/u);
-  assert.doesNotMatch(
-    coordinatedMarkup,
-    /Połącz ten workspace z własnym Hubem/u,
+
+  // Sedno: każdy stan oferuje swoje wyjście i ŻADNEGO cudzego. Równość
+  // zbiorów niesie obie połowy naraz — brak własnej akcji i pokazanie akcji
+  // drugiego stanu wywracają tę samą asercję.
+  assert.deepEqual(offeredActions(localMarkup), [
+    "backup-export",
+    "hub-authorization-export",
+    "hub-enroll",
+    "restore-prepare",
+  ]);
+  assert.deepEqual(offeredActions(coordinatedMarkup), [
+    "backup-export",
+    "restore-prepare",
+    "sync-now",
+  ]);
+
+  // Dołączenie do Huba to nie sam przycisk: bez pola na jednorazowy kod i bez
+  // akapitu o kolejności na drugim urządzeniu formularz jest nie do przejścia.
+  assert.ok(hasHook(localMarkup, "data-recovery-field", "enrollment-secret"));
+  assert.ok(hasHook(localMarkup, "data-recovery-note", "second-device-order"));
+  assert.notEqual(
+    (
+      /data-recovery-note="second-device-order"[^>]*>([^<]*)</u.exec(
+        localMarkup,
+      )?.[1] ?? ""
+    ).trim(),
+    "",
   );
+  assert.ok(
+    !hasHook(coordinatedMarkup, "data-recovery-field", "enrollment-secret"),
+  );
+  assert.ok(
+    !hasHook(coordinatedMarkup, "data-recovery-note", "second-device-order"),
+  );
+
+  // Stan synchronizacji czytany z dyskryminanty statusu, nie ze zdania: to
+  // ona decyduje, czy „Synchronizuj teraz” w ogóle ma sens.
+  assert.notEqual(local.syncState, coordinated.syncState);
+  assert.ok(hasHook(localMarkup, "data-sync-state", local.syncState));
+  assert.ok(
+    hasHook(coordinatedMarkup, "data-sync-state", coordinated.syncState),
+  );
+
+  // Każdy stan opisuje się własnymi słowami — dowolnymi, ale nie tymi samymi
+  // i nie pustymi.
+  const syncCopy = (markup: string): string => {
+    const block = /<div class="data-home-sync-state[^"]*"[^>]*>(.*?)<\/div>/su
+      .exec(markup)?.[1]
+      ?.replace(/<[^>]*>/gu, " ");
+    assert.ok(block !== undefined);
+    return block.replace(/\s+/gu, " ").trim();
+  };
+  assert.notEqual(syncCopy(localMarkup), "");
+  assert.notEqual(syncCopy(coordinatedMarkup), "");
+  assert.notEqual(syncCopy(localMarkup), syncCopy(coordinatedMarkup));
 });

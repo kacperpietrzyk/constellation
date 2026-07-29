@@ -322,14 +322,20 @@ const WorkspaceRecovery = lazy(() =>
   })),
 );
 
-const lazySurfaceLoaders = {
-  documents: loadDocumentsSurface,
+// Eksportowane wyłącznie po to, żeby test mógł sprawdzić KOMPLETNOŚĆ tej mapy
+// bez czytania pliku źródłowego. Klauzula `satisfies` niżej pilnuje jej dziś na
+// etapie kompilacji, ale pilnuje jej TYLKO TUTAJ — gdyby ktoś ją przy rozbiciu
+// powłoki zgubił, nic by nie padło. Nie wołaj tych loaderów w teście na Node:
+// `access` i `relationships` robią `await import("./*.css")`, czego `node --test`
+// nie rozwiąże. Sprawdzaj obecność klucza, nie wynik wywołania.
+export const lazySurfaceLoaders = {
+  library: loadDocumentsSurface,
   meetings: loadMeetingsSurface,
   activity: loadActivitySurface,
   settings: loadSettingsSurface,
   work: loadWorkSurface,
   access: loadAccessSurface,
-  relationships: loadStrategicDepthSurface,
+  organizations: loadStrategicDepthSurface,
 } satisfies Record<LazyDesktopSurface, () => Promise<unknown>>;
 
 const preloadSurface = (surface: SurfaceId) => {
@@ -350,7 +356,15 @@ class LazySurfaceBoundary extends Component<
   override render() {
     if (this.state.failed) {
       return (
-        <section className="surface-load-state" role="alert">
+        // `data-surface-state` i `data-surface-action`: gwarancją jest „powierzchnia,
+        // której nie da się otworzyć, ZAWSZE proponuje ponowienie" — a nie to, jakimi
+        // słowami to mówi. Smoke sprawdzał to dopasowaniem polskiej treści, więc flip
+        // na angielski wywaliłby test, który pilnuje czegoś prawdziwego.
+        <section
+          className="surface-load-state"
+          data-surface-state="failed"
+          role="alert"
+        >
           <p className="eyebrow">{this.props.label}</p>
           <h1 id="surface-title" tabIndex={-1}>
             Nie udało się otworzyć tej części aplikacji
@@ -360,6 +374,7 @@ class LazySurfaceBoundary extends Component<
           </p>
           <button
             className="secondary-button"
+            data-surface-action="retry"
             onClick={() => window.location.reload()}
           >
             Spróbuj ponownie
@@ -373,7 +388,12 @@ class LazySurfaceBoundary extends Component<
 }
 
 const SurfaceLoadingState = ({ label }: { readonly label: string }) => (
-  <section className="surface-load-state" aria-busy="true" aria-live="polite">
+  <section
+    className="surface-load-state"
+    data-surface-state="loading"
+    aria-busy="true"
+    aria-live="polite"
+  >
     <p className="eyebrow">{label}</p>
     <h1 id="surface-title" tabIndex={-1}>
       Otwieram tę część aplikacji…
@@ -1377,17 +1397,28 @@ const navItems = desktopSurfaceRegistry.map(({ shortcut, ...surface }) => ({
 
 export const RealApp = ({
   client,
+  initialSnapshot,
 }: {
   readonly client: ConstellationRendererClient | undefined;
+  // Szew testowy, ten sam wzorzec co `initialStatus` w `WorkspaceRecovery`:
+  // stan startowy to zawsze „loading", a `renderToStaticMarkup` NIE URUCHAMIA
+  // efektów, więc bez tego każdy cel renderuje się jako ten sam ekran ładowania
+  // i o żadnej powierzchni nie da się orzec niczego. Podanie snapshotu wsadza
+  // powłokę od razu w gałąź „ready". Produkcja nie podaje go nigdy.
+  readonly initialSnapshot?: DesktopSnapshot;
 }) => {
-  const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const [state, setState] = useState<LoadState>(() =>
+    initialSnapshot === undefined
+      ? { kind: "loading" }
+      : { kind: "ready", snapshot: initialSnapshot },
+  );
   const [navigation, setNavigation] = useState(() => {
     const parameters = new URLSearchParams(window.location.search);
     const requested = navItems.find(
       (item) => item.id === parameters.get("destination"),
     );
     const fallback = destinationContext(
-      requested?.id ?? "cockpit",
+      requested?.id ?? "today",
       requested?.label ?? "Tydzień",
     );
     return parameters.get("detached") === "1"
@@ -1407,9 +1438,9 @@ export const RealApp = ({
         ? parsed.filter((item): item is SurfaceId =>
             navItems.some((entry) => entry.id === item),
           )
-        : ["cockpit", "work"];
+        : (["today", "tasks"] satisfies readonly SurfaceId[]);
     } catch {
-      return ["cockpit", "work"];
+      return ["today", "tasks"] satisfies readonly SurfaceId[];
     }
   });
   const [collapsedNavigationGroups, toggleNavigationGroup] =
@@ -1850,13 +1881,13 @@ export const RealApp = ({
 
   useEffect(() => {
     if (surface !== "meetings") setMeetingInspectorOpen(false);
-    if (surface !== "documents") {
+    if (surface !== "library") {
       setDocumentInspectorOpen(false);
       setDocumentInspectorKind("document");
     }
-    if (surface !== "relationships") setSelectedStrategicId(undefined);
+    if (surface !== "organizations") setSelectedStrategicId(undefined);
     if (surface !== "history") setSelectedCaptureId(undefined);
-    if (surface !== "attention") setSelectedAttentionId(undefined);
+    if (surface !== "inbox") setSelectedAttentionId(undefined);
   }, [surface]);
 
   const snapshot = state.kind === "ready" ? state.snapshot : undefined;
@@ -1934,7 +1965,7 @@ export const RealApp = ({
       pruneInaccessibleShellContexts(
         current,
         { taskIds, projectIds, documentIds, organizationIds },
-        destinationContext("cockpit", "Tydzień"),
+        destinationContext("today", "Tydzień"),
       ),
     );
   }, [snapshot]);
@@ -1947,7 +1978,7 @@ export const RealApp = ({
       } else if (destination.kind === "project") {
         openContext(projectContext(destination.projectId, "Projekt"));
       } else {
-        openContext(destinationContext("documents", "Dokumenty"));
+        openContext(destinationContext("library", "Dokumenty"));
       }
     });
   }, [client, openContext]);
@@ -2325,14 +2356,14 @@ export const RealApp = ({
     selectedCapture ||
     selectedAttention ||
     (surface === "meetings" && meetingInspectorOpen) ||
-    (surface === "documents" && documentInspectorOpen),
+    (surface === "library" && documentInspectorOpen),
   );
   const dismissInspector = useCallback(() => {
     if (surface === "meetings") {
       setMeetingInspectorOpen(false);
       return;
     }
-    if (surface === "documents") {
+    if (surface === "library") {
       setDocumentInspectorOpen(false);
       return;
     }
@@ -2489,7 +2520,7 @@ export const RealApp = ({
         projectContext(destination.projectId, project?.title ?? item.title),
       );
     } else if (destination.kind === "document") {
-      openContext(destinationContext("documents", "Dokumenty"));
+      openContext(destinationContext("library", "Dokumenty"));
     } else {
       openContext(destinationContext("history", "Historia Capture"));
     }
@@ -2763,6 +2794,94 @@ export const RealApp = ({
   // Product-owner correction (2026-07-18): the work plane owns the available
   // width until a deliberate record selection opens the inspector. The panel
   // remains the single detail plane, but it never consumes an empty column.
+  // Jedno miejsce, w którym powstaje pozycja nawigacji. Wcześniej ten blok
+  // istniał wyłącznie WEWNĄTRZ pętli po grupach, więc cel bez modułu
+  // (`group: null` — pozycje dnia, Access, Settings) nie renderował się
+  // w ogóle: był w rejestrze, miał skrót i trasę, a w sidebarze go nie było.
+  const navEntry = (item: (typeof navItems)[number]) => {
+    const shortcutHint = surfaceShortcutHint(item);
+    return (
+      <div className="nav-entry" key={item.id}>
+        <button
+          data-surface={item.id}
+          className={`nav-item ${surface === item.id ? "active" : ""}`}
+          tabIndex={surface === item.id ? 0 : -1}
+          aria-label={
+            item.id === "tasks"
+              ? `${item.label} · ${tasks.length}`
+              : item.id === "inbox" &&
+                  state.snapshot.attention.kind === "ready" &&
+                  state.snapshot.attention.data.unreadCount > 0
+                ? `${item.label} · ${state.snapshot.attention.data.unreadCount} nieprzeczytanych`
+                : item.label
+          }
+          aria-current={surface === item.id ? "page" : undefined}
+          title={
+            railMode
+              ? undefined
+              : shortcutHint.kind === "direct"
+                ? `${item.label} · ${shortcutHint.keys}`
+                : `${item.label} · przez paletę ${shortcutHint.keys}`
+          }
+          onFocus={(event) => {
+            setFocusedNavItemId(item.id);
+            preloadSurface(item.id);
+            showRailTip(event.currentTarget, item.label, shortcutHint);
+          }}
+          onBlur={hideRailTip}
+          onMouseEnter={(event) => {
+            preloadSurface(item.id);
+            showRailTip(event.currentTarget, item.label, shortcutHint);
+          }}
+          onMouseLeave={hideRailTip}
+          {...navHandlers(destinationContext(item.id, item.label))}
+        >
+          <Icon name={item.icon} />
+          <span>{item.label}</span>
+          <span className="nav-item-meta" aria-hidden="true">
+            {item.id === "tasks" ? (
+              <span className="nav-count">{tasks.length}</span>
+            ) : item.id === "inbox" &&
+              state.snapshot.attention.kind === "ready" &&
+              state.snapshot.attention.data.unreadCount > 0 ? (
+              <span className="nav-count nav-count--attention">
+                {state.snapshot.attention.data.unreadCount}
+              </span>
+            ) : null}
+            <kbd
+              className={
+                shortcutHint.kind === "palette"
+                  ? "nav-palette-shortcut"
+                  : undefined
+              }
+            >
+              {shortcutHint.keys}
+              {shortcutHint.kind === "palette" ? "…" : ""}
+            </kbd>
+          </span>
+        </button>
+        <button
+          type="button"
+          className="nav-favorite-toggle"
+          tabIndex={
+            focusedNavItemId === item.id || surface === item.id ? 0 : -1
+          }
+          aria-label={`${favorites.includes(item.id) ? "Usuń" : "Dodaj"} ${item.label} ${favorites.includes(item.id) ? "z" : "do"} ulubionych`}
+          aria-pressed={favorites.includes(item.id)}
+          onClick={() =>
+            setFavorites((current) =>
+              current.includes(item.id)
+                ? current.filter((id) => id !== item.id)
+                : [...current, item.id],
+            )
+          }
+        >
+          {favorites.includes(item.id) ? "★" : "☆"}
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div
       className={`desktop-shell wave2-shell${inspectorDetailOpen ? " inspector-open" : ""}${surface === "meetings" ? " meeting-context-shell" : ""}`}
@@ -2882,6 +3001,12 @@ export const RealApp = ({
               })}
             </>
           )}
+          {/* Cele bez modułu (Today, Inbox) stoją NAD modułami i bez nagłówka
+              grupy: to nie są filtry, tylko tryby pracy. Renderują się tą samą
+              funkcją co pozycje w modułach, więc nie mogą się od nich rozjechać. */}
+          {navItems
+            .filter((item) => item.group === null && item.shortcut !== null)
+            .map((item) => navEntry(item))}
           {navigationGroups.map((group) => {
             const groupItems = navItems.filter((item) => item.group === group);
             const activeGroupItem = groupItems.find(
@@ -2922,103 +3047,7 @@ export const RealApp = ({
                   aria-label={group}
                   hidden={!expanded}
                 >
-                  {groupItems.map((item) => {
-                    const shortcutHint = surfaceShortcutHint(item);
-                    return (
-                      <div className="nav-entry" key={item.id}>
-                        <button
-                          data-surface={item.id}
-                          className={`nav-item ${surface === item.id ? "active" : ""}`}
-                          tabIndex={surface === item.id ? 0 : -1}
-                          aria-label={
-                            item.id === "tasks"
-                              ? `${item.label} · ${tasks.length}`
-                              : item.id === "attention" &&
-                                  state.snapshot.attention.kind === "ready" &&
-                                  state.snapshot.attention.data.unreadCount > 0
-                                ? `${item.label} · ${state.snapshot.attention.data.unreadCount} nieprzeczytanych`
-                                : item.label
-                          }
-                          aria-current={
-                            surface === item.id ? "page" : undefined
-                          }
-                          title={
-                            railMode
-                              ? undefined
-                              : shortcutHint.kind === "direct"
-                                ? `${item.label} · ${shortcutHint.keys}`
-                                : `${item.label} · przez paletę ${shortcutHint.keys}`
-                          }
-                          onFocus={(event) => {
-                            setFocusedNavItemId(item.id);
-                            preloadSurface(item.id);
-                            showRailTip(
-                              event.currentTarget,
-                              item.label,
-                              shortcutHint,
-                            );
-                          }}
-                          onBlur={hideRailTip}
-                          onMouseEnter={(event) => {
-                            preloadSurface(item.id);
-                            showRailTip(
-                              event.currentTarget,
-                              item.label,
-                              shortcutHint,
-                            );
-                          }}
-                          onMouseLeave={hideRailTip}
-                          {...navHandlers(
-                            destinationContext(item.id, item.label),
-                          )}
-                        >
-                          <Icon name={item.icon} />
-                          <span>{item.label}</span>
-                          <span className="nav-item-meta" aria-hidden="true">
-                            {item.id === "tasks" ? (
-                              <span className="nav-count">{tasks.length}</span>
-                            ) : item.id === "attention" &&
-                              state.snapshot.attention.kind === "ready" &&
-                              state.snapshot.attention.data.unreadCount > 0 ? (
-                              <span className="nav-count nav-count--attention">
-                                {state.snapshot.attention.data.unreadCount}
-                              </span>
-                            ) : null}
-                            <kbd
-                              className={
-                                shortcutHint.kind === "palette"
-                                  ? "nav-palette-shortcut"
-                                  : undefined
-                              }
-                            >
-                              {shortcutHint.keys}
-                              {shortcutHint.kind === "palette" ? "…" : ""}
-                            </kbd>
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          className="nav-favorite-toggle"
-                          tabIndex={
-                            focusedNavItemId === item.id || surface === item.id
-                              ? 0
-                              : -1
-                          }
-                          aria-label={`${favorites.includes(item.id) ? "Usuń" : "Dodaj"} ${item.label} ${favorites.includes(item.id) ? "z" : "do"} ulubionych`}
-                          aria-pressed={favorites.includes(item.id)}
-                          onClick={() =>
-                            setFavorites((current) =>
-                              current.includes(item.id)
-                                ? current.filter((id) => id !== item.id)
-                                : [...current, item.id],
-                            )
-                          }
-                        >
-                          {favorites.includes(item.id) ? "★" : "☆"}
-                        </button>
-                      </div>
-                    );
-                  })}
+                  {groupItems.map((item) => navEntry(item))}
                 </div>
               </div>
             );
@@ -3067,7 +3096,16 @@ export const RealApp = ({
         </div>
       </aside>
 
-      <main className="work-column" aria-labelledby="surface-title">
+      {/* `data-surface` na planie roboczym: stabilny zaczep, po którym testy
+          i smoke'i spakowanej apki rozpoznają aktywny cel, zamiast dopasowywać
+          nazwę klasy albo widoczny napis. Klasa `work-column` przeniesie się
+          przy rozbiciu powłoki, a napis zmieni się przy flipie na angielski —
+          ten atrybut nie zmienia się przy żadnym z nich. */}
+      <main
+        className="work-column"
+        data-surface={surface}
+        aria-labelledby="surface-title"
+      >
         <div className="shell-tabbar" aria-label="Otwarte konteksty">
           <div
             className="shell-history-controls"
@@ -3075,6 +3113,7 @@ export const RealApp = ({
           >
             <button
               className="icon-button"
+              data-shell-history="back"
               aria-label="Wstecz"
               title="Wstecz · Alt+←"
               disabled={!canMoveShellHistory(navigation, -1)}
@@ -3086,6 +3125,7 @@ export const RealApp = ({
             </button>
             <button
               className="icon-button"
+              data-shell-history="forward"
               aria-label="Dalej"
               title="Dalej · Alt+→"
               disabled={!canMoveShellHistory(navigation, 1)}
@@ -3237,7 +3277,7 @@ export const RealApp = ({
               </button>
             </div>
           )}
-          {surface === "cockpit" && (
+          {surface === "today" && (
             <CockpitSurface
               client={client}
               snapshot={state.snapshot}
@@ -3259,7 +3299,7 @@ export const RealApp = ({
               }}
               onSelectTask={selectTaskInInspector}
               onOpenAttention={() =>
-                openContext(destinationContext("attention", "Do uwagi"))
+                openContext(destinationContext("inbox", "Do uwagi"))
               }
               onCapture={openCapture}
             />
@@ -3277,7 +3317,7 @@ export const RealApp = ({
               </Suspense>
             </LazySurfaceBoundary>
           )}
-          {surface === "relationships" && (
+          {surface === "organizations" && (
             <LazySurfaceBoundary label="Relacje">
               <Suspense fallback={<SurfaceLoadingState label="Relacje" />}>
                 {activeOrganizationId === undefined ? (
@@ -3348,7 +3388,7 @@ export const RealApp = ({
                     }}
                     onOpenRelationship={(id) => {
                       openContext(
-                        destinationContext("relationships", "Relacje"),
+                        destinationContext("organizations", "Relacje"),
                       );
                       selectStrategicInInspector(id);
                     }}
@@ -3484,7 +3524,7 @@ export const RealApp = ({
               }}
             />
           )}
-          {surface === "documents" && (
+          {surface === "library" && (
             <LazySurfaceBoundary label="Dokumenty">
               <Suspense fallback={<SurfaceLoadingState label="Dokumenty" />}>
                 <DocumentsSurface
@@ -3532,7 +3572,7 @@ export const RealApp = ({
                         target.targetId as StrategicRecordId,
                       );
                       openContext(
-                        destinationContext("relationships", "Relacje"),
+                        destinationContext("organizations", "Relacje"),
                       );
                       return;
                     }
@@ -3594,7 +3634,7 @@ export const RealApp = ({
               }}
               onOpenRelationship={(id) => {
                 setSelectedStrategicId(id);
-                openContext(destinationContext("relationships", "Relacje"));
+                openContext(destinationContext("organizations", "Relacje"));
               }}
               onEntityActivate={(target) => {
                 if (target.targetKind === "task") {
@@ -3622,7 +3662,7 @@ export const RealApp = ({
                   target.targetKind === "organization"
                 ) {
                   setSelectedStrategicId(target.targetId as StrategicRecordId);
-                  openContext(destinationContext("relationships", "Relacje"));
+                  openContext(destinationContext("organizations", "Relacje"));
                   return;
                 }
                 setSelectedMeetingId(target.targetId);
@@ -3805,7 +3845,7 @@ export const RealApp = ({
               </Suspense>
             </LazySurfaceBoundary>
           )}
-          {surface === "attention" && (
+          {surface === "inbox" && (
             <AttentionSurface
               attention={state.snapshot.attention}
               selectedItemId={selectedAttentionId}
@@ -4083,7 +4123,7 @@ export const RealApp = ({
                           ? "Sygnał uwagi"
                           : surface === "meetings"
                             ? "Wynik Jamie"
-                            : surface === "documents"
+                            : surface === "library"
                               ? documentInspectorKind === "source"
                                 ? "Źródło"
                                 : "Dokument"
@@ -4103,7 +4143,7 @@ export const RealApp = ({
             className="surface-inspector-host"
             ref={setMeetingInspectorHost}
           />
-        ) : surface === "documents" ? (
+        ) : surface === "library" ? (
           <div
             className="surface-inspector-host"
             ref={setDocumentInspectorHost}
@@ -5196,7 +5236,7 @@ export const RealApp = ({
             </dl>
           </div>
         )}
-        {surface !== "documents" && (
+        {surface !== "library" && (
           <DocumentBacklinks
             client={client}
             snapshot={state.snapshot}
@@ -5265,11 +5305,11 @@ export const RealApp = ({
                 [captureResult.taskId]: result.receipt,
               }));
             } else if (captureResult.kind === "review") {
-              openContext(destinationContext("attention", "Do uwagi"));
+              openContext(destinationContext("inbox", "Do uwagi"));
             } else if (captureResult.kind === "voice_note") {
               openContext(destinationContext("history", "Historia Capture"));
             } else {
-              openContext(destinationContext("documents", "Dokumenty"));
+              openContext(destinationContext("library", "Dokumenty"));
             }
             setCaptureOpen(false);
             pushToast({
@@ -5316,7 +5356,7 @@ export const RealApp = ({
                     )
                   : undefined;
               openContext(projectContext(id, project?.title ?? "Projekt"));
-            } else if (nextSurface === "documents") {
+            } else if (nextSurface === "library") {
               const id = recordId as DocumentId;
               const document =
                 state.snapshot.knowledge.kind === "ready"
@@ -5332,7 +5372,7 @@ export const RealApp = ({
                   destinationContext(nextSurface, item?.label ?? "Dokumenty"),
                 );
               }
-            } else if (nextSurface === "relationships") {
+            } else if (nextSurface === "organizations") {
               const record =
                 state.snapshot.relationships.kind === "ready"
                   ? state.snapshot.relationships.data.records.find(
@@ -5342,7 +5382,7 @@ export const RealApp = ({
               if (record?.kind === "organization") {
                 openContext(organizationContext(record.id, record.name));
               } else {
-                openContext(destinationContext("relationships", "Relacje"));
+                openContext(destinationContext("organizations", "Relacje"));
                 selectStrategicInInspector(recordId);
               }
             } else if (nextSurface === "meetings") {
@@ -5405,7 +5445,7 @@ export const RealApp = ({
             onClose={() => setRecoveryOpen(false)}
             onRestored={async () => {
               await reload();
-              openContext(destinationContext("cockpit", "Tydzień"));
+              openContext(destinationContext("today", "Tydzień"));
               pushToast({
                 message: "Workspace przywrócono i otwarto ponownie.",
               });

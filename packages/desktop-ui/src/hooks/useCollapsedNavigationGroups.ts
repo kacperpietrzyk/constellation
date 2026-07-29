@@ -5,8 +5,14 @@ import {
 } from "@constellation/desktop-preload/surface-registry";
 
 export type NavigationGroup = DesktopNavigationGroup;
+// Pozycje dnia stoją poza modułami, więc rejestr niesie dla nich `group: null`.
+// Zwijać da się wyłącznie moduł, a nie „brak modułu".
 export const navigationGroups: readonly NavigationGroup[] = [
-  ...new Set(desktopSurfaceRegistry.map((surface) => surface.group)),
+  ...new Set(
+    desktopSurfaceRegistry
+      .map((surface) => surface.group)
+      .filter((group): group is NavigationGroup => group !== null),
+  ),
 ];
 
 interface NavigationGroupStorage {

@@ -1,13 +1,18 @@
 import { z } from "zod";
 
+// Powierzchnia, na której rekord tego rodzaju otwiera się do obejrzenia.
+// Wartości są identyfikatorami celów nawigacji z przebudowy 0.2.0 — ta unia
+// musi z nimi zostać zgodna, ale świadomie jej NIE importujemy z paczki
+// desktopowej: kontrakty nie mają zależeć od powłoki, a agent czyta ten katalog
+// bez uruchomionej aplikacji.
 export type HumanRecordInspectorSurface =
   | "work"
   | "tasks"
   | "projects"
   | "history"
-  | "documents"
+  | "library"
   | "meetings"
-  | "relationships";
+  | "organizations";
 
 export type HumanRecordSearchSource =
   "task" | "project" | "capture" | "source" | "document" | "strategic";
@@ -60,98 +65,98 @@ export const humanRecordKindRegistry = [
     label: "Źródło",
     searchable: true,
     searchSource: "source",
-    inspectorSurface: "documents",
+    inspectorSurface: "library",
   },
   {
     id: "note",
     label: "Notatka",
     searchable: true,
     searchSource: "document",
-    inspectorSurface: "documents",
+    inspectorSurface: "library",
   },
   {
     id: "document",
     label: "Dokument",
     searchable: true,
     searchSource: "document",
-    inspectorSurface: "documents",
+    inspectorSurface: "library",
   },
   {
     id: "deliverable",
     label: "Rezultat",
     searchable: true,
     searchSource: "document",
-    inspectorSurface: "documents",
+    inspectorSurface: "library",
   },
   {
     id: "organization",
     label: "Organizacja",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "person",
     label: "Osoba",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "opportunity",
     label: "Szansa",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "offer",
     label: "Oferta",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "renewal",
     label: "Odnowienie",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "relationship_fact",
     label: "Fakt relacji",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "fact",
     label: "Fakt",
     searchable: false,
     searchSource: null,
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "decision",
     label: "Decyzja",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "impact_review",
     label: "Przegląd skutków",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "area",
     label: "Obszar",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "initiative",
@@ -179,14 +184,14 @@ export const humanRecordKindRegistry = [
     label: "Cykl",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "radar_candidate",
     label: "Radar wiedzy",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "meeting",

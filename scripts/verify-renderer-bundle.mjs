@@ -2,212 +2,286 @@ import { gzipSync } from "node:zlib";
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
-// 2026-07-18: totalJavaScript i stylesheet podniesione po fali „enterprise
-// shell polish" (menu natywne, paleta ⌘K z semantyką combobox, ściąga skrótów,
-// popovery, moduł i18n, pełny renderer Markdownu, drawer inspektora). Entry
-// pozostaje na starym budżecie — nowe powierzchnie ładują się jako osobne
-// chunki (Access, Relacje, Onboarding, Recovery dołączyły do split-listy).
-// 2026-07-20: stylesheet podniesiony po R12.1 (kontekst roboczy zadania:
-// edytor w inspektorze i wiersz bezpośredniego tworzenia zadania), a
-// totalJavaScript po dodaniu planowania w czasie (pola dat i priorytetu,
-// konwersja stref czasowych workspace, linia terminu w wierszach zadań).
-// 2026-07-20 (R12.2): oba podniesione po podzadaniach (sekcja inspektora,
-// wiersz dodawania, link do rodzica) i jawnym kierunku/terminie oczekiwania
-// w Work.
-// 2026-07-20 (R12.3): totalJavaScript i entry po bloku zarządzania statusami
-// zadań w Ustawieniach (wiersze definicji, dwustopniowa archiwizacja,
-// wiersz dodawania, wrappery komend taskStatus.*).
-// 2026-07-20 (R13.1): wszystkie trzy po typowanych polach rekordów
-// (zarządzanie definicjami w Ustawieniach, kontrolki wartości per typ w
-// inspektorze, wrappery fieldDef.*/record.setFieldValue).
-// 2026-07-20 (R13.2): entry i totalJavaScript po szablonach projektów
-// (blok zarządzania w Ustawieniach, wybór szablonu przy tworzeniu projektu,
-// rząd zastosowania z prowieniencją, wrappery template.*/project.applyTemplate).
-// 2026-07-20 (R13.3): totalJavaScript po cyklu życia widoków (zmiana nazwy,
-// dwustopniowe usunięcie, warunek pola i grupowanie w popoverze zapisu,
-// nagłówki grup listy zadań, wrappery savedView.rename/update/delete).
-// 2026-07-20 (R13.4): entry i totalJavaScript po ograniczonych
-// automatyzacjach (blok reguł w Ustawieniach z zamkniętym słownikiem
-// przepisów, wrappery automation.*, etykieta nowego powodu Do uwagi).
-// 2026-07-20 (R12.5): totalJavaScript i stylesheet po projekcji spotkania w
-// graf pracy (sekcje kontekstu i uczestnikow w inspektorze, akcja tworzenia
-// zadania z zapisu, wrappery meeting.route/promoteWorkItem/linkParticipants).
-// 2026-07-20 (R12.6): totalJavaScript po stronie odczytu rezerwacji czasu —
-// task.list niesie calendarBlock, doszedl wrapper task.setCalendarBlock, a
-// dialog zgody oddaje rewizje wywolujacemu (Task musi zapisac blok, inaczej
-// nie da sie go pozniej zaktualizowac ani zwolnic).
-// 2026-07-20 (R12.6): sekcja rezerwacji czasu w inspektorze zadania —
-// formularz dnia/godziny/dlugosci, rozstrzyganie celu zapisu z capability
-// kalendarza i osobne komunikaty dla kazdego powodu odmowy.
-// 2026-07-20 (R12.6): kompozycja dnia w kokpicie — zarezerwowany czas na dniu,
-// dla ktorego go zarezerwowano, obok terminow.
-// 2026-07-20 (R12.6): spotkania w kompozycji dnia — device-local meeting-loop
-// w kokpicie plus uczciwa odmowa, gdy kalendarza nie da sie odczytac.
-// 2026-07-20 (R12.7): usuwanie zadania w inspektorze — dwustopniowe
-// potwierdzenie plus wyjasnienie blokady, gdy zadanie ma podzadania.
-// 2026-07-21 (R13.5 slice 2): dwuhopowe warunki relacyjne w kontrakcie
-// task.list (project.area/initiative/organization) rosną wspólny schemat.
-// 2026-07-21 (R14.3 slice 1): entry i totalJavaScript po jednej tabeli
-// delegacji uprawnien w kontraktach (ADR-046) — renderer wysyla zakres
-// presetu przy tworzeniu dostepu agenta, wiec tabela jedzie do bundla;
-// w zamian znika recznie utrzymywana lista, ktora odmawiala „pelnemu
-// dostepowi" nawet task.create.
-// 2026-07-21 (R14.3 slice c): entry po dodaniu koperty batcha do kontraktów
-// (ADR-048) — renderer importuje pakiet kontraktów w całości.
-// 2026-07-21 (R14.5): totalJavaScript po akcji eksportu pakietu wymiany w
-// Ustawieniach (przycisk, komunikaty stanu, wrapper IPC).
-// 2026-07-21 (R15.1): Tiptap/ProseMirror jest wyłącznie w leniwym chunku
-// Dokumentów. Budżet wejścia pozostaje bez zmian; total obejmuje teraz
-// pełny, otwarty edytor rich-text, a osobny limit największego leniwego chunka
-// pilnuje, żeby ten koszt nie rósł bez decyzji.
-// 2026-07-21 (R15.1 Slice 2): wersjonowany kontrakt kandydatów/backlinków
-// powiększa wspólny entry, a izolowany node-view i dostępny picker encji
-// pozostają w leniwym chunku Dokumentów. Limity rosną o zmierzony koszt tej
-// pionowej funkcji, nadal zostawiając mniej niż 2% zapasu.
-// 2026-07-22 (R15.1 attachments): entry i stylesheet po wspólnym kompozerze
-// załączników dla komentarzy oraz relacji w inspektorze zadania. Sam blok
-// zadania pozostaje osobnym leniwym chunkiem; total JavaScript nie wymaga
-// podniesienia, więc limity rosną tylko o zmierzony koszt wspólnego kontraktu.
-// 2026-07-22 (R15.2 Slice B): Project używa tego samego izolowanego stosu
-// Tiptap/Yjs co Dokument, ale wnosi własny mały lazy chunk powierzchni oraz
-// semantyczne IPC właściciela treści. Entry rośnie o routing, total o funkcję,
-// a stylesheet o responsywną powierzchnię edycji i odzyskiwania.
-// 2026-07-22 (R15.3): wspólny entry niesie ścisły schemat jednej projekcji
-// operacyjnej Organizacji i routing przywracalnego kontekstu. Rozbudowany
-// widok klienta oraz jego CSS pozostają w leniwym chunku Relacji; główny
-// arkusz nie rośnie. Entry i total dostają poniżej 1% mierzonego zapasu.
-// 2026-07-22 (R15.4e): zwijane grupy są częścią zawsze dostępnej nawigacji
-// powłoki, więc ich zamknięty lokalny stan i semantyka disclosure muszą zostać
-// w entry. Po odchudzeniu implementacji entry rośnie o 1.1 kB, a gzip o
-// 420 B względem scalonego baseline; oba limity zachowują poniżej 0.3% zapasu.
-// 2026-07-22 (R15.4f): konfiguracja pól, formatowanie wartości i responsywna
-// lista pozostają w leniwym module Pracy. Total JS rośnie o 3.7 kB; entry raw
-// jest bez zmian, a gzip różni się o 5 B. Limit total zachowuje 0.1% zapasu.
-// 2026-07-22 (R16): total JS rośnie o mniej niż 0.2 kB po zastąpieniu
-// przeterminowanego domyślnego bloku 09:00 godziną w przyszłości i walidacją
-// przed zgodą. Błąd wykrył dopiero zapis z zainstalowanej aplikacji do
-// prawdziwego EventKit; limit dostaje 1 kB mierzonego zapasu, pozostałe limity
-// pozostają bez zmian.
-// 2026-07-23 (0.1.1 — narracja opcjonalna): Projekt/Obszar/Inicjatywa mogą
-// powstać bez „intendedOutcome"/„responsibility", więc wspólny komponent
-// needs-review i jego formatowanie jadą do leniwych chunków Pracy/Strategii
-// (entry i największy leniwy chunk bez zmian). Total JS rośnie o ok. 5 kB,
-// stylesheet o ok. 0.8 kB względem zmierzonego baseline; oba limity dostają
-// niecały 1 kB zapasu.
-// 2026-07-24 (usuwanie rekordów): dwanaście nowych komend usuwania wchodzi do
-// unii CommandEnvelopeSchema, którą renderer waliduje, więc total JS rośnie o
-// ok. 7 kB względem zmierzonego baseline; sekcja usuwania w inspektorze jedzie
-// w leniwym chunku (entry i największy leniwy chunk bez zmian). Limit total
-// dostaje ok. 1 kB zapasu, pozostałe bez zmian.
-// 2026-07-24 (przeskopowanie wydanego dostępu): `agent.grantSetScope` wchodzi
-// do unii CommandEnvelopeSchema, którą renderer waliduje, a sygnał
-// „zakres sprzed aktualizacji" i akcja domykająca go jadą w leniwym chunku
-// Dostępu (entry, największy leniwy chunk i stylesheet bez zmian). Total JS
-// rośnie o ok. 1.7 kB względem zmierzonego baseline; limit total dostaje
-// ok. 1.4 kB zapasu, pozostałe bez zmian.
-// 2026-07-24 (dialog „Zmień uprawnienia"): edycja wydanego dostępu dostaje
-// własne okno w leniwym chunku Dostępu — ta sama grupa poziomów i lista Space
-// co przy tworzeniu, podsumowanie różnicy, noty wyjaśniające, bramka zapisu z
-// powodem odmowy i odmowa pokazywana w samym oknie (największy leniwy chunk i
-// stylesheet bez zmian; entry rośnie o ok. 0.1 kB i ma własny duży zapas).
-// Total JS rośnie o ok. 4.6 kB względem zmierzonego baseline; limit total
-// dostaje ok. 1.3 kB zapasu, pozostałe bez zmian.
-// 2026-07-25 (przegląd całej gałęzi): podniesienie poziomu w oknie „Zmień
-// uprawnienia" musi podawać Space'y, bo poziom siedzi także w dostępie do
-// każdego Space, a odmowa `record.still_referenced` dostaje własne zdanie
-// zamiast ogólnego „poza dostępem albo stan się zmienił". Obie zmiany jadą w
-// leniwych chunkach Dostępu i workflow (największy leniwy chunk i stylesheet
-// bez zmian; entry rośnie o 4 B i ma własny duży zapas). Total JS rośnie o
-// 280 B względem zmierzonego baseline; limit total dostaje ok. 1 kB zapasu,
-// pozostałe bez zmian.
-// 2026-07-25 (0.1.5, findings z pierwszej migracji): kontrakt rośnie o dwie
-// komendy korygujące osobę i organizację, o drugi koniec relacji zadania, o
-// dowody na Projekcie i właściciela Opportunity, oraz o opublikowaną prozę,
-// którą agent czyta jako kontrakt (słownik odmów revertu i opis treści). To
-// wszystko jedzie w paczce contracts, więc trafia do entry i do total, choć
-// samo UI zyskuje tylko jeden filtr w WorkSurface. Największy leniwy chunk i
-// stylesheet bez zmian; entry ma własny duży zapas. Total JS rośnie o ok.
-// 2.2 kB względem zmierzonego baseline; limit total dostaje ok. 1.3 kB zapasu,
-// pozostałe bez zmian.
-// 2026-07-26 (0.1.5, powiązanie projektu z klientem): blok Klient na stronie
-// projektu przestaje być samą projekcją — dostaje wybór organizacji z tej samej
-// przestrzeni, dwustopniowe odłączenie bezpośredniego powiązania i dwa czytniki
-// snapshotu, które pilnują obu warunków kernela zamiast wysyłać komendę, którą
-// kernel odrzuci bez nazwania przyczyny. Jedzie w entry (strona projektu nie
-// jest leniwa) i w workflow; największy leniwy chunk bez zmian, stylesheet
-// rośnie o ok. 0.2 kB i ma własny zapas. Total JS rośnie o ok. 3.5 kB względem
-// zmierzonego baseline; limit total dostaje ok. 1.3 kB zapasu, pozostałe bez
-// zmian.
-// 2026-07-26 (0.1.5, powiązanie klienta z projektem od drugiej strony): karta
-// Aktywna praca na stronie organizacji dostaje bliźniaczy wiersz autorski —
-// wybór aktywnego projektu z przestrzeni klienta, dwustopniowe odłączenie i
-// dwa czytniki snapshotu, tym razem czytające DWIE projekcje (projekty i
-// powiązania), więc „nie wczytało się" nadal jest odróżnialne od „nie ma".
-// Sam wiersz jedzie w leniwym chunku Relacji, wrappery w workflow jadą w entry.
-// Stylesheet bez zmian poza trzema selektorami dopisanymi do istniejących
-// reguł. Total JS rośnie o ok. 2.0 kB względem zmierzonego baseline; limit
-// total dostaje ok. 1.4 kB zapasu, pozostałe bez zmian. Zmierzone: 1_359_047 B.
+// 2026-07-28 (przebudowa UI/UX → 0.2.0): bramka przepisana, bo miała dwie role
+// naraz i przy przepisywaniu renderera zostałaby z gorszej z nich.
+//
+// Do tej pory pięć liczb mieszało „nie wciągnij przypadkiem czegoś wielkiego"
+// z „udokumentuj każdy wzrost". Druga rola produkowała datowany komentarz przy
+// każdej funkcji — historia tych podbić jest w gicie i tam zostaje. Przy
+// przebudowie, w której zmienia się każdy ekran, ta rola dawałaby trzydzieści
+// kolejnych wpisów i zagłuszyłaby pierwszą. Dlatego teraz:
+//
+//   ŚCIEŻKA GORĄCA (hotPath*) — wszystkie skrypty wejściowe plus wszystko, co
+//   index.html deklaruje jako `modulepreload`, plus arkusze wpięte w <head>.
+//   To jedyne liczby, które mają związek z tym, jak szybko pokazuje się okno.
+//   Są TWARDE: przesuwa je wyłącznie zmiana z nazwanym, zmierzonym
+//   uzasadnieniem. Wejście biblioteki animacji do powłoki ma tu pęknąć — to
+//   jest decyzja, nie skutek uboczny. (Zmierzone: 129 kB Motion doklejone do
+//   preładowanego chunka powłoki daje 722 640 B i bramka pada, podczas gdy oba
+//   sufity zostają zielone — czyli tę robotę wykonuje wyłącznie ten budżet.)
+//
+//   SUFIT BEZPIECZEŃSTWA (total*) — jedna liczba na resztę, ustawiona RAZ,
+//   z zapasem ok. 30%, i NIEPODNOSZONA przez PR-y ekranowe. Łapie „ktoś wciągnął
+//   moment.js", nie „doszedł ekran". Zapas jest duży świadomie: pojedyncza
+//   przypadkowa zależność poniżej ~400 kB przejdzie tu po cichu. Jeśli sufit
+//   zaczyna przeszkadzać, to jest sygnał do rozmowy o zależnościach, a nie do
+//   podniesienia liczby.
+//
+// Dwie asercje ważniejsze niż którakolwiek z tych liczb, bo pilnują własności,
+// której rozmiar nie widzi:
+//
+//   1. PRZYNALEŻNOŚĆ EDYTORA. Stos tiptap/prosemirror/yjs (dziś ok. 531 kB)
+//      jest poprawnie leniwy. Uzasadnienie tej asercji NIE jest takie, że
+//      przeniesienie całego edytora do entry przeszłoby niezauważone — to było
+//      moje pierwsze zdanie i jest FAŁSZYWE, sprawdzone: 531 kB nie mieści się
+//      w 26 kB zapasu ścieżki gorącej, więc same budżety by pękły (choć suma
+//      bajtów rzeczywiście się nie zmienia, a `largestLazy` wręcz POPRAWIA się
+//      z 531 583 na 36 851 — liczba mająca sygnalizować ciężki leniwy chunk
+//      wygląda lepiej, gdy aplikacja ma się gorzej).
+//      Prawdziwym powodem jest WYCIEK CZĄSTKOWY: przypadkowy import z tiptapa
+//      wciągnięty do komponentu powłoki. Zmierzone: 12 kB fragmentu edytora
+//      doklejone do entry pada wyłącznie na przynależności, a przy pustej
+//      liście markerów przechodzi z każdym budżetem na zielono.
+//
+//   2. CAŁY CSS, nie sam arkusz wejściowy. Poprzednia wersja dopasowywała
+//      PIERWSZY <link> i sumowała wyłącznie pliki `.js`. Poza pomiarem leżało
+//      36 371 B (16% CSS-a) w arkuszach leniwych powierzchni — dokładnie tam,
+//      gdzie trafiają CSS Modules. Sprawdzone na starej wersji wyjętej z gita:
+//      arkusz dołożony obok był dla niej niewidoczny nawet przy 5 MB.
+//
+// Trzy dziury znalezione przez adwersaryjny przegląd 28.07 i tu zamknięte,
+// każda odtworzona zanim ją naprawiono:
+//   - `html.match` zamiast `matchAll` mierzyło TYLKO PIERWSZY tag <script>.
+//     Drugi <script type="module"> wskazujący na chunk edytora dawał wynik
+//     BAJT W BAJT identyczny z bazowym, exit 0 — pół megabajta ładowane
+//     natychmiast, liczone jako zero, a skan markerów w ogóle nie czytał tego
+//     pliku, bo czyta wyłącznie to, co parser już uznał za gorące.
+//   - sumy chodziły po `dist/assets` bez rekurencji i bez sprawdzenia
+//     wiarygodności: przeniesienie plików do `dist/assets/js/` dawało
+//     „JS total 0 B, CSS total 0 B" i exit 0.
+//   - lista markerów zawierała słowa, które NORMALNIE WYSTĘPUJĄ W TEKŚCIE
+//     interfejsu. `i18n-*.js` i `src-*.js` są na liście `modulepreload`
+//     z definicji, więc całe copy aplikacji mieszka na ścieżce gorącej na
+//     stałe; 95 bajtów tekstu pomocy o formacie dokumentów wywalało bramkę
+//     komunikatem, który był nieprawdą. Do tego `yjs` jest podciągiem
+//     zainstalowanego `linkifyjs`, a `"yjs-13"` istnieje jako znacznik
+//     wersji formatu w wysyłanych `.d.ts`. Bramka chodzi wewnątrz `npm test`,
+//     czyli wewnątrz `npm run check` — fałszywy alarm nie wywala jednej liczby,
+//     tylko blokuje cały zestaw testów, zanim ruszy pierwszy. A najtańszą
+//     „naprawą" dla zmęczonego człowieka jest skasowanie słowa z interfejsu
+//     albo markera z listy. Dlatego markery są teraz wąskie i techniczne.
+//
+// Baseline zmierzony przy przepisaniu (build z 2026-07-28, gałąź
+// agent/ui-ux-rebuild): ścieżka gorąca 593 640 B / 159 997 B gzip / CSS
+// 189 089 B; całość 1 360 102 B JS i 225 460 B CSS; największy leniwy chunk
+// 531 583 B (edytor).
 const limits = {
-  entryBytes: 560_000,
-  entryGzipBytes: 147_500,
-  totalJavaScriptBytes: 1_360_500,
-  largestLazyJavaScriptBytes: 565_000,
-  stylesheetBytes: 189_500,
+  // Ścieżka gorąca — twarda. Zapas liczony od baseline'u, nie „na wyrost".
+  hotPathJavaScriptBytes: 620_000,
+  hotPathJavaScriptGzipBytes: 168_000,
+  hotPathStylesheetBytes: 200_000,
+  // Sufit bezpieczeństwa — ustawiony raz, z zapasem. Nie podnosić per PR.
+  totalJavaScriptBytes: 1_770_000,
+  totalStylesheetBytes: 295_000,
+  // Osobny sufit na największy leniwy chunk. Uwaga na uzasadnienie: dla NOWEGO
+  // chunka sufit sumy pada wcześniej (przy +409 899 B), więc ten limit nigdy
+  // nie zadziała pierwszy w tym scenariuszu. Zarabia na siebie przy WZROŚCIE
+  // W MIEJSCU już istniejącego, największego chunka — tam jest o 241 kB
+  // ciaśniejszy niż suma.
+  largestLazyJavaScriptBytes: 700_000,
 };
+
+// Markery muszą być techniczne i wąskie: mają nie występować w prozie
+// interfejsu ani w nazwie chunka. Sprawdzone na buildzie z 2026-07-28 —
+// każdy występuje wyłącznie w chunku edytora i ZERO razy w którymkolwiek
+// z 11 plików ścieżki gorącej (liczby w nawiasach to trafienia w chunku).
+// Świadomie NIE używamy `ProseMirror`, `tiptap`, `yjs` ani `Hocuspocus`:
+// pierwsze dwa pojawią się w tekście pomocy o formacie dokumentów, `yjs` jest
+// podciągiem `linkifyjs`, a nazwa pliku źródłowego typu `TiptapEditor.tsx`
+// wpisuje swój specyfikator do importującego chunka, więc łapałaby się nawet
+// przy poprawnie leniwym edytorze.
+const editorMarkers = [
+  "addProseMirrorPlugins", // 21
+  "ProseMirror-gapcursor", // 4
+  "ProseMirror-selectednode", // 4
+  "data-tiptap-style", // 2
+  "__tiptap__private", // 1
+];
+// Erozja markerów jest cicha: sama zmiana ustawień minifikatora potrafi zetrzeć
+// całe rodziny napisów, a wtedy asercja przynależności przestaje cokolwiek
+// znaczyć, nie zapalając się ani razu. Wymagamy więc, żeby co najmniej dwa
+// markery były wciąż OBECNE GDZIEKOLWIEK w buildzie. Próg dwóch, a nie
+// wszystkich pięciu, żeby podbicie tiptapa kasujące jeden napis nie blokowało
+// CI z powodu, który nie jest regresją.
+const minimumSurvivingMarkers = 2;
 
 const dist = path.join(process.cwd(), "packages", "desktop-ui", "dist");
 const html = await readFile(path.join(dist, "index.html"), "utf8");
-const entryMatch = html.match(/<script[^>]+src="\.\/(assets\/[^"?]+\.js)"/u);
-const stylesheetMatch = html.match(
-  /<link[^>]+href="\.\/(assets\/[^"?]+\.css)"/u,
-);
 
-if (!entryMatch || !stylesheetMatch) {
+const entryPaths = [
+  ...html.matchAll(/<script[^>]+src="\.\/([^"?]+\.js)"/gu),
+].map((match) => match[1]);
+
+const linkTags = [...html.matchAll(/<link\b[^>]*>/gu)].map((match) => match[0]);
+const linkHref = (tag, relation) => {
+  const rel = tag.match(/\brel\s*=\s*["']([^"']+)["']/u)?.[1];
+  if (rel?.trim().toLowerCase() !== relation) return undefined;
+  return tag.match(/\bhref\s*=\s*["']\.\/([^"'?]+)["']/u)?.[1];
+};
+const preloadPaths = linkTags
+  .map((tag) => linkHref(tag, "modulepreload"))
+  .filter((href) => href !== undefined && href.endsWith(".js"));
+const stylesheetPaths = linkTags
+  .map((tag) => linkHref(tag, "stylesheet"))
+  .filter((href) => href !== undefined && href.endsWith(".css"));
+
+// Pusty wynik parsowania to awaria pomiaru, nie wynik. Każdy przypadek dostaje
+// własny komunikat — inaczej nie wiadomo, który przyrząd się zepsuł. Rzucamy
+// PRZED wypisaniem pomiaru, żeby nie było mniejszej-ale-zielonej liczby, którą
+// dałoby się wziąć za przejście.
+if (entryPaths.length === 0) {
   throw new Error(
-    "Nie znaleziono wejściowych plików renderera w dist/index.html.",
+    "dist/index.html nie wskazuje ani jednego skryptu wejściowego renderera.",
+  );
+}
+if (stylesheetPaths.length === 0) {
+  throw new Error(
+    "dist/index.html nie wpina ani jednego arkusza stylów renderera.",
+  );
+}
+if (preloadPaths.length === 0) {
+  throw new Error(
+    "dist/index.html nie deklaruje ani jednego modulepreload — ścieżki gorącej nie da się zmierzyć.",
   );
 }
 
-const entryPath = path.join(dist, entryMatch[1]);
-const stylesheetPath = path.join(dist, stylesheetMatch[1]);
-const entry = await readFile(entryPath);
-const stylesheet = await stat(stylesheetPath);
-const assets = await readdir(path.join(dist, "assets"), {
-  withFileTypes: true,
-});
-let totalJavaScriptBytes = 0;
-let largestLazyJavaScriptBytes = 0;
+const hotPathJavaScript = [...new Set([...entryPaths, ...preloadPaths])];
 
-for (const asset of assets) {
-  if (asset.isFile() && asset.name.endsWith(".js")) {
-    const size = (await stat(path.join(dist, "assets", asset.name))).size;
-    totalJavaScriptBytes += size;
-    if (path.join(dist, "assets", asset.name) !== entryPath) {
-      largestLazyJavaScriptBytes = Math.max(largestLazyJavaScriptBytes, size);
-    }
+// Rekurencyjnie po CAŁYM `dist`, nie po samym `dist/assets`: arkusz albo skrypt
+// położony obok (np. skopiowany z `public/`) uciekał wcześniej obu sumom.
+// Zbieramy PRZED mierzeniem ścieżki gorącej, żeby brakujący plik dał własny
+// komunikat, a nie surowy błąd odczytu z połowy pomiaru. Klucze mapy są
+// POSIX-owe, bo takie są ścieżki w HTML-u: bez tej normalizacji na Windows
+// separator systemowy nie zgadzałby się z żadnym `href` i CAŁA ścieżka gorąca
+// przeklasyfikowałaby się po cichu na leniwą.
+const walked = await readdir(dist, { recursive: true, withFileTypes: true });
+const bundleFiles = new Map();
+for (const entry of walked) {
+  if (!entry.isFile()) continue;
+  if (!entry.name.endsWith(".js") && !entry.name.endsWith(".css")) continue;
+  const absolute = path.join(entry.parentPath ?? dist, entry.name);
+  const relative = path.relative(dist, absolute).split(path.sep).join("/");
+  bundleFiles.set(relative, absolute);
+}
+
+// Wiarygodność sum. Bez tego przeniesienie plików do podkatalogu dawało trzy
+// budżety równe 0 B i zielone przejście — czyli bramka meldowała sukces,
+// nie mierząc niczego.
+const missingFromDisk = hotPathJavaScript
+  .concat(stylesheetPaths)
+  .filter((relative) => !bundleFiles.has(relative));
+if (missingFromDisk.length > 0) {
+  throw new Error(
+    `index.html wskazuje pliki, których nie ma w zebranym buildzie: ${missingFromDisk.join(", ")}.`,
+  );
+}
+
+let hotPathJavaScriptBytes = 0;
+let hotPathJavaScriptGzipBytes = 0;
+let totalJavaScriptBytes = 0;
+let totalStylesheetBytes = 0;
+let largestLazyJavaScriptBytes = 0;
+const editorOnHotPath = [];
+const survivingMarkers = new Set();
+
+for (const [relative, absolute] of bundleFiles) {
+  if (relative.endsWith(".css")) {
+    totalStylesheetBytes += (await stat(absolute)).size;
+    continue;
+  }
+
+  const contents = await readFile(absolute);
+  const hot = hotPathJavaScript.includes(relative);
+  totalJavaScriptBytes += contents.byteLength;
+  if (hot) {
+    hotPathJavaScriptBytes += contents.byteLength;
+    hotPathJavaScriptGzipBytes += gzipSync(contents).byteLength;
+  } else {
+    largestLazyJavaScriptBytes = Math.max(
+      largestLazyJavaScriptBytes,
+      contents.byteLength,
+    );
+  }
+
+  // Markery liczymy w KAŻDYM chunku, nie tylko w leniwych. Gdyby strażnik
+  // erozji patrzył wyłącznie na leniwe, to przeniesienie edytora na ścieżkę
+  // gorącą — czyli dokładnie ta regresja, dla której istnieje ta bramka —
+  // opróżniałoby zbiór markerów i bramka meldowałaby „markery przestały
+  // cokolwiek rozpoznawać" zamiast powiedzieć, co się naprawdę stało.
+  const text = contents.toString("utf8");
+  const found = editorMarkers.filter((marker) => text.includes(marker));
+  for (const marker of found) survivingMarkers.add(marker);
+  if (hot && found.length > 0) {
+    editorOnHotPath.push({ file: relative, markers: found });
   }
 }
 
+let hotPathStylesheetBytes = 0;
+for (const relative of stylesheetPaths) {
+  hotPathStylesheetBytes += (await stat(bundleFiles.get(relative))).size;
+}
+
+if (totalJavaScriptBytes < hotPathJavaScriptBytes) {
+  throw new Error(
+    `Suma JavaScriptu (${totalJavaScriptBytes} B) jest mniejsza niż sama ścieżka gorąca (${hotPathJavaScriptBytes} B) — pomiar zebrał nie te pliki.`,
+  );
+}
+if (totalStylesheetBytes < hotPathStylesheetBytes) {
+  throw new Error(
+    `Suma CSS-a (${totalStylesheetBytes} B) jest mniejsza niż sam arkusz wejściowy (${hotPathStylesheetBytes} B) — pomiar zebrał nie te pliki.`,
+  );
+}
+if (survivingMarkers.size < minimumSurvivingMarkers) {
+  throw new Error(
+    `Tylko ${survivingMarkers.size} z ${editorMarkers.length} markerów edytora występuje jeszcze w buildzie — ` +
+      "asercja przynależności przestała cokolwiek rozpoznawać. Wybierz nowe markery, nie kasuj sprawdzenia.",
+  );
+}
+
 const measurements = {
-  entryBytes: entry.byteLength,
-  entryGzipBytes: gzipSync(entry).byteLength,
+  hotPathJavaScriptBytes,
+  hotPathJavaScriptGzipBytes,
+  hotPathStylesheetBytes,
   totalJavaScriptBytes,
+  totalStylesheetBytes,
   largestLazyJavaScriptBytes,
-  stylesheetBytes: stylesheet.size,
 };
 const failures = Object.entries(limits).filter(
   ([key, limit]) => measurements[key] > limit,
 );
 
 console.log(
-  `Renderer bundle: entry ${measurements.entryBytes} B (${measurements.entryGzipBytes} B gzip), JS total ${measurements.totalJavaScriptBytes} B, largest lazy JS ${measurements.largestLazyJavaScriptBytes} B, CSS ${measurements.stylesheetBytes} B.`,
+  `Renderer bundle: hot path ${measurements.hotPathJavaScriptBytes} B ` +
+    `(${measurements.hotPathJavaScriptGzipBytes} B gzip) across ${hotPathJavaScript.length} chunks, ` +
+    `hot path CSS ${measurements.hotPathStylesheetBytes} B, ` +
+    `JS total ${measurements.totalJavaScriptBytes} B, CSS total ${measurements.totalStylesheetBytes} B, ` +
+    `largest lazy JS ${measurements.largestLazyJavaScriptBytes} B.`,
 );
 
-if (failures.length > 0) {
-  for (const [key, limit] of failures) {
-    console.error(
-      `Budżet ${key} przekroczony: ${measurements[key]} B > ${limit} B.`,
-    );
-  }
+for (const { file, markers } of editorOnHotPath) {
+  console.error(
+    `Edytor rich-text wszedł na ścieżkę gorącą: ${file} zawiera ${markers.join(", ")}. ` +
+      `Stos tiptap/prosemirror/yjs ma zostać w leniwym chunku — inaczej okno wstaje wolniej, ` +
+      `a żaden budżet rozmiaru tego nie pokaże, dopóki wyciek jest cząstkowy.`,
+  );
+}
+
+for (const [key, limit] of failures) {
+  console.error(
+    `Budżet ${key} przekroczony: ${measurements[key]} B > ${limit} B.`,
+  );
+}
+
+if (failures.length > 0 || editorOnHotPath.length > 0) {
   process.exitCode = 1;
 }

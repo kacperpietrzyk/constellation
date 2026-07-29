@@ -407,6 +407,9 @@ export const WorkspaceRecovery = ({
                 return (
                   <div
                     className={`data-home-sync-state data-home-sync-state--${dataHome.status.syncState}`}
+                    // Stan synchronizacji jako dyskryminanta, nie jako zdanie:
+                    // testy i diagnostyka pytają o `syncState`, a nie o copy.
+                    data-sync-state={dataHome.status.syncState}
                   >
                     <span aria-hidden="true" />
                     <div>
@@ -417,6 +420,7 @@ export const WorkspaceRecovery = ({
                       "coordinated" && (
                       <button
                         className="secondary-button compact"
+                        data-recovery-action="sync-now"
                         onClick={syncNow}
                       >
                         Synchronizuj teraz
@@ -467,7 +471,11 @@ export const WorkspaceRecovery = ({
                     <div>
                       <p className="eyebrow">Własny Data Home</p>
                       <h4>Połącz ten workspace z własnym Hubem</h4>
-                      <p>
+                      {/* Kolejność dla drugiego urządzenia: najpierw restore,
+                          potem dołączenie. Zaczepienie na atrybucie, bo tego
+                          akapitu nie da się rozpoznać po treści po zmianie
+                          języka. */}
+                      <p data-recovery-note="second-device-order">
                         Przy pierwszej instalacji wyeksportuj plik autoryzacji
                         dla operatora Huba. Na drugim urządzeniu najpierw
                         przywróć przenośny backup. Każde urządzenie używa nowego
@@ -478,6 +486,7 @@ export const WorkspaceRecovery = ({
                       <button
                         className="ghost-button"
                         type="button"
+                        data-recovery-action="hub-authorization-export"
                         disabled={hubAuthorizationExport.kind === "exporting"}
                         onClick={() => void exportHubAuthorization()}
                       >
@@ -538,6 +547,7 @@ export const WorkspaceRecovery = ({
                         type="password"
                         required
                         minLength={32}
+                        data-recovery-field="enrollment-secret"
                         autoComplete="off"
                         spellCheck={false}
                         disabled={hubEnrollment.kind === "connecting"}
@@ -572,6 +582,7 @@ export const WorkspaceRecovery = ({
                     <button
                       className="secondary-button"
                       type="submit"
+                      data-recovery-action="hub-enroll"
                       disabled={hubEnrollment.kind === "connecting"}
                     >
                       {hubEnrollment.kind === "connecting"
@@ -629,7 +640,11 @@ export const WorkspaceRecovery = ({
                       pokaże osobny kod odzyskiwania.
                     </p>
                   </div>
-                  <button className="secondary-button" onClick={exportBackup}>
+                  <button
+                    className="secondary-button"
+                    data-recovery-action="backup-export"
+                    onClick={exportBackup}
+                  >
                     Eksportuj backup
                   </button>
                 </section>
@@ -672,6 +687,7 @@ export const WorkspaceRecovery = ({
                     <button
                       className="primary-button"
                       type="submit"
+                      data-recovery-action="restore-prepare"
                       disabled={!recoveryCode.trim()}
                     >
                       Wybierz i sprawdź backup

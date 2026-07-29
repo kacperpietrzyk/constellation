@@ -28,7 +28,7 @@ test("desktop surface registry is unique, bounded, and derives its vocabulary", 
     desktopSurfaceRegistry.every((surface) => surface.icon.length > 0),
     true,
   );
-  assert.equal(isDesktopSurface("documents"), true);
+  assert.equal(isDesktopSurface("library"), true);
   assert.equal(isDesktopSurface("chat"), false);
 });
 

@@ -7,6 +7,7 @@ import type {
 
 import {
   desktopSurfaceIds,
+  resolveDesktopSurface,
   type DesktopSurface as SurfaceId,
 } from "@constellation/desktop-preload/surface-registry";
 
@@ -82,8 +83,26 @@ const isRestorableShellContext = (value: unknown): value is ShellContext => {
   return true;
 };
 
+// Wersja 3 przyszła z przebudową 0.2.0: osiem identyfikatorów powierzchni
+// zmieniło nazwę. Zapis idzie już w nowej wersji, ODCZYT przyjmuje obie —
+// stan zapisany przez 0.1.9 ma się otworzyć, a nie wyparować.
+const NAVIGATION_STATE_VERSION = 3;
+
 export const serializeShellNavigation = (state: ShellNavigationState): string =>
-  JSON.stringify({ version: 2, state });
+  JSON.stringify({ version: NAVIGATION_STATE_VERSION, state });
+
+// Kontekst zapisany pod starym identyfikatorem celu, przeniesiony na nowy.
+// Zwraca `undefined` dla celu, którego nie da się umiejscowić — wtedy zakładka
+// jest odrzucana pojedynczo, zamiast unieważniać całą zapisaną sesję.
+const migrateRestoredContext = (value: unknown): unknown => {
+  if (typeof value !== "object" || value === null) return value;
+  const context = value as { readonly surface?: unknown };
+  const resolved = resolveDesktopSurface(context.surface);
+  if (resolved === undefined) return value;
+  return resolved === context.surface
+    ? value
+    : { ...context, surface: resolved };
+};
 
 export const restoreShellNavigation = (
   value: string | null,
@@ -97,7 +116,7 @@ export const restoreShellNavigation = (
     };
     const state = parsed.state;
     if (
-      parsed.version !== 2 ||
+      (parsed.version !== 2 && parsed.version !== NAVIGATION_STATE_VERSION) ||
       state === undefined ||
       !Array.isArray(state.tabs) ||
       state.tabs.length === 0 ||
@@ -107,12 +126,16 @@ export const restoreShellNavigation = (
       typeof state.historyIndex !== "number"
     )
       return createShellNavigation(fallback);
-    const tabs = state.tabs.filter(isRestorableShellContext);
+    const tabs = state.tabs
+      .map(migrateRestoredContext)
+      .filter(isRestorableShellContext);
     if (tabs.length !== state.tabs.length)
       return createShellNavigation(fallback);
     if (!tabs.some((tab) => tab.key === state.activeKey))
       return createShellNavigation(fallback);
-    const history = state.history.filter(isRestorableShellContext);
+    const history = state.history
+      .map(migrateRestoredContext)
+      .filter(isRestorableShellContext);
     if (history.length !== state.history.length || history.length === 0)
       return createShellNavigation(fallback);
     // Indeks klamrowany PO przycięciu historii i skorygowany o wpisy odcięte
@@ -205,7 +228,7 @@ export const documentContext = (
 ): ShellContext => ({
   key: `document:${documentId}`,
   label,
-  surface: "documents",
+  surface: "library",
   documentId,
 });
 
@@ -215,7 +238,7 @@ export const organizationContext = (
 ): ShellContext => ({
   key: `organization:${organizationId}`,
   label,
-  surface: "relationships",
+  surface: "organizations",
   organizationId,
 });
 
