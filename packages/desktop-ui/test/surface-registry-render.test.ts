@@ -357,3 +357,33 @@ test("no ARIA relationship in the shell points at an element that is not there",
   );
   assert.deepEqual(dangling, []);
 });
+
+test("the work plane keeps the anchors the packaged smoke finds it by", async () => {
+  // Dwa przeloty paczkowanego smoke'a (skalowanie tekstu 200%, nazwy kontrolek)
+  // szukają aktywnego ekranu, żeby go zmierzyć. Szukały go po KLASIE
+  // `.work-surface` — a tę samą klasę nosi wewnętrzny kontener ekranu Zadań,
+  // więc selektor był o jedno przestawienie od mierzenia nie tego elementu.
+  // Gorzej: kiedy nie trafia, przelot nie pada. Melduje `surfacePresent: false`
+  // i świeci na zielono.
+  //
+  // Teraz smoke szuka po `id="main-content"` i `role="tabpanel"`. Oba przeżywają
+  // rozbicie pliku, bo żadne nie jest szczegółem stylu: na `#main-content`
+  // wskazuje skip-link, a rola jest kontraktem dostępności. Ten test pilnuje,
+  // żeby PR 6 nie zabrał żadnego z nich po cichu.
+  const { render } = await shell();
+
+  for (const destination of desktopSurfaceIds) {
+    const markup = render(destination);
+    const plane =
+      /<[a-z]+[^>]*\sid="main-content"[^>]*>/.exec(markup)?.[0] ?? "";
+    assert.ok(
+      plane.length > 0,
+      `${destination}: the work plane must keep id="main-content" — the packaged smoke and the skip link both find it by that`,
+    );
+    assert.match(
+      plane,
+      /role="tabpanel"/,
+      `${destination}: the work plane must keep role="tabpanel"`,
+    );
+  }
+});

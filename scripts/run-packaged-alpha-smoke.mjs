@@ -716,7 +716,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
               );
             while (
               (!destination.classList.contains("active") ||
-                document.querySelector('.work-surface [aria-busy="true"]') ||
+                document.querySelector('#main-content[role="tabpanel"] [aria-busy="true"]') ||
                 hasMissingAriaReference()) &&
               performance.now() < readyDeadline
             ) {
@@ -725,7 +725,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             await new Promise((resolve) =>
               requestAnimationFrame(() => requestAnimationFrame(resolve))
             );
-            const work = document.querySelector(".work-surface");
+            const work = document.querySelector('#main-content[role="tabpanel"]');
             const surface = [...(work?.children ?? [])].find(
               (element) => element.getClientRects().length > 0
             );
@@ -784,7 +784,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         )`);
         const narrowShell = await client.evaluate(`(() => {
           const shell = document.querySelector(".desktop-shell");
-          const work = document.querySelector(".work-surface");
+          const work = document.querySelector('#main-content[role="tabpanel"]');
           const dock = document.querySelector(".capture-dock");
           const dockLabel = document.querySelector(".capture-dock-label");
           const detach = document.querySelector(".shell-detach");
@@ -885,7 +885,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
               );
             while (
               (!destination.classList.contains("active") ||
-                document.querySelector('.work-surface [aria-busy="true"]') ||
+                document.querySelector('#main-content[role="tabpanel"] [aria-busy="true"]') ||
                 hasMissingAriaReference()) &&
               performance.now() < readyDeadline
             ) {
@@ -894,7 +894,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
             await new Promise((resolve) =>
               requestAnimationFrame(() => requestAnimationFrame(resolve))
             );
-            const work = document.querySelector(".work-surface");
+            const work = document.querySelector('#main-content[role="tabpanel"]');
             const surface = [...(work?.children ?? [])].find(
               (element) =>
                 element.getClientRects().length > 0 &&
