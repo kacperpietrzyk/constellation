@@ -132,7 +132,11 @@ const sliceBetween = (
 
 // Source comments discuss the rules the copy has to obey ("the copy never says
 // permanently"), so a claim ABOUT the copy has to be checked against the copy —
-// otherwise a comment quoting the forbidden word fails an honest file.
+// otherwise a comment quoting the forbidden word fails an honest file. Only
+// whole-line comments are stripped, deliberately: a `//` anywhere on a line
+// would also swallow the rest of a line of real copy (a protocol-relative
+// `//docs…/` href is enough), and a forbidden word after it would go unseen.
+// Stripping less keeps the claim about the copy honest.
 const withoutComments = (source: string): string =>
   source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
@@ -151,7 +155,7 @@ describe("interaction recovery contracts", () => {
     // inside that alert.
     assert.match(
       searchOverlay,
-      /state\.kind === "error" \? \(\s*<div className="search-empty" role="alert">[\s\S]*?className="search-empty-actions"/,
+      /state\.kind === "error" \? \(\s*<div className="search-empty" role="alert">[\s\S]{0,600}?className="search-empty-actions"/,
     );
     assert.match(surfaces, /ref=\{searchInputRef\}/);
     // Retry: focus returns to the input and the attempt counter moves. The
@@ -381,7 +385,7 @@ describe("interaction recovery contracts", () => {
     // empty state's action clears the filters that produced it.
     assert.match(
       surfaces,
-      /filteredTasks\.length === 0 \? \(\s*<InlineState[\s\S]*?onClick=\{resetFilters\}/,
+      /filteredTasks\.length === 0 \? \(\s*<InlineState[\s\S]{0,400}?onClick=\{resetFilters\}/,
     );
     assert.match(surfaces, /else onSelectTask\(task\.id\)/);
     assert.match(surfaces, /onDoubleClick=\{\(\) => onOpenTask\(task\.id\)\}/);
@@ -456,7 +460,7 @@ describe("interaction recovery contracts", () => {
     // control disarms without acting.
     assert.match(
       projectContextSections,
-      /className="ghost-button"[\s\S]*?onClick=\{\(\) => setConfirmingId\(organization\.id\)\}/,
+      /className="ghost-button"[\s\S]{0,200}?onClick=\{\(\) => setConfirmingId\(organization\.id\)\}/,
     );
     assert.match(
       projectContextSections,
@@ -464,7 +468,7 @@ describe("interaction recovery contracts", () => {
     );
     assert.match(
       projectContextSections,
-      /className="status-danger"[\s\S]*?onUnlink\(organization\.id\)/,
+      /className="status-danger"[\s\S]{0,300}?onUnlink\(organization\.id\)/,
     );
     assert.match(
       projectContextSections,
@@ -487,15 +491,22 @@ describe("interaction recovery contracts", () => {
     assert.match(realApp, /linkableClientOrganizations\(/);
     assert.match(realApp, /directClientLinks\(/);
     // Both verbs are wired to a kernel command, and neither outcome is silent:
-    // success re-reads the workspace, failure is surfaced.
-    assert.match(
-      realApp,
-      /void linkProjectClient\([\s\S]*?result\.kind === "success"[\s\S]*?refreshAfter\([\s\S]*?else showFailure\(result\)/,
-    );
-    assert.match(
-      realApp,
-      /void unlinkProjectClient\([\s\S]*?result\.kind === "success"[\s\S]*?refreshAfter\([\s\S]*?else showFailure\(result\)/,
-    );
+    // success re-reads the workspace, failure is surfaced. Sliced per handler,
+    // so the next handler's error path cannot stand in for this one's.
+    for (const [command, until] of [
+      ["void linkProjectClient(", "onUnlinkClient={"],
+      ["void unlinkProjectClient(", "onUnrelate={"],
+    ] as const) {
+      const handler = sliceBetween(realApp, command, until, command);
+      // One ordered chain, bounded: success re-reads the workspace and the
+      // failure branch hangs off THAT test, so a file where showFailure drifted
+      // away from the success check no longer passes on proximity alone.
+      assert.match(
+        handler,
+        /result\.kind === "success"[\s\S]{0,200}?refreshAfter\([\s\S]{0,200}?else showFailure\(result\)/,
+      );
+      assert.match(handler, /else showFailure\(result\)/);
+    }
   });
 
   it("lets a human link and detach a delivery from the client's Aktywna praca card", () => {
@@ -520,12 +531,12 @@ describe("interaction recovery contracts", () => {
     // card, asserted on the wiring rather than on the verbs.
     assert.match(
       strategicSurface,
-      /className="ghost-button"[\s\S]*?onClick=\{\(\) => setConfirmingId\(project\.id\)\}/,
+      /className="ghost-button"[\s\S]{0,200}?onClick=\{\(\) => setConfirmingId\(project\.id\)\}/,
     );
     assert.match(strategicSurface, /confirmingId === project\.id \? \(/);
     assert.match(
       strategicSurface,
-      /className="status-danger"[\s\S]*?onUnlink\(project\.id\)/,
+      /className="status-danger"[\s\S]{0,300}?onUnlink\(project\.id\)/,
     );
     // Copy again, for the same reason as its twin: `activeProjects` unions two
     // reaches, so a delivery an opportunity also names stays listed and a
@@ -535,14 +546,19 @@ describe("interaction recovery contracts", () => {
     // presentational, exactly as ProjectContextSections does.
     assert.match(strategicSurface, /linkableDeliveryProjects\(/);
     assert.match(strategicSurface, /directDeliveryProjects\(/);
-    assert.match(
-      realApp,
-      /void linkOrganizationDelivery\([\s\S]*?result\.kind === "success"[\s\S]*?refreshAfter\([\s\S]*?else showFailure\(result\)/,
-    );
-    assert.match(
-      realApp,
-      /void unlinkOrganizationDelivery\([\s\S]*?result\.kind === "success"[\s\S]*?refreshAfter\([\s\S]*?else showFailure\(result\)/,
-    );
+    for (const [command, until] of [
+      ["void linkOrganizationDelivery(", "onUnlinkDelivery={"],
+      ["void unlinkOrganizationDelivery(", "onOpenProject={"],
+    ] as const) {
+      const handler = sliceBetween(realApp, command, until, command);
+      // Same ordered chain as its twin on the Klient card, and bounded for the
+      // same reason.
+      assert.match(
+        handler,
+        /result\.kind === "success"[\s\S]{0,200}?refreshAfter\([\s\S]{0,200}?else showFailure\(result\)/,
+      );
+      assert.match(handler, /else showFailure\(result\)/);
+    }
     // The tasks below the row keep their separation from it.
     assert.match(
       organizationStyles,
@@ -592,7 +608,7 @@ describe("interaction recovery contracts", () => {
     // load (the attempt counter is what the loader effect watches).
     assert.match(
       strategicSurface,
-      /state\.kind === "unavailable" && \([\s\S]*?setAttempt\(\(value\) => value \+ 1\)/,
+      /state\.kind === "unavailable" && \([\s\S]{0,400}?setAttempt\(\(value\) => value \+ 1\)/,
     );
     assert.match(
       surfaces,
@@ -633,7 +649,7 @@ describe("interaction recovery contracts", () => {
     // not, because there is nothing to retry.
     assert.match(
       collaborationSurfaces,
-      /attention\.kind === "unavailable" \? \(\s*<div className="attention-empty" role="status">[\s\S]*?onClick=\{onRetry\}/,
+      /attention\.kind === "unavailable" \? \(\s*<div className="attention-empty" role="status">[\s\S]{0,400}?onClick=\{onRetry\}/,
     );
     assert.match(
       collaborationSurfaces,
@@ -703,27 +719,48 @@ describe("interaction recovery contracts", () => {
     // The guarantee is that neither transient state leaves the main landmark
     // without a focusable, named h1 — not what that h1 says. RealApp already
     // carries state anchors, so they are what the heading is asserted against.
-    assert.match(
+    // Sliced per state region, so a heading belonging to the OTHER state
+    // cannot satisfy the assertion for this one.
+    const failedState = sliceBetween(
       realApp,
-      /data-surface-state="failed"[\s\S]*?<h1 id="surface-title" tabIndex=\{-1\}>\s*\S/,
+      'data-surface-state="failed"',
+      "</section>",
+      "failed surface state",
     );
+    // The two slices must stay disjoint, or the loading heading could stand in
+    // for the failed one and the pair would prove nothing.
+    assert.doesNotMatch(failedState, /data-surface-state="loading"/);
     assert.match(
-      realApp,
-      /data-surface-state="failed"[\s\S]*?data-surface-action="retry"/,
+      failedState,
+      /<h1 id="surface-title" tabIndex=\{-1\}>\s*[^<\s]/,
     );
-    assert.match(
+    assert.match(failedState, /data-surface-action="retry"/);
+    const loadingState = sliceBetween(
       realApp,
-      /data-surface-state="loading"[\s\S]*?<h1 id="surface-title" tabIndex=\{-1\}>\s*\S/,
+      'data-surface-state="loading"',
+      "</section>",
+      "loading surface state",
+    );
+    assert.doesNotMatch(loadingState, /data-surface-state="failed"/);
+    assert.match(
+      loadingState,
+      /<h1 id="surface-title" tabIndex=\{-1\}>\s*[^<\s]/,
     );
     // Meetings has no data-surface-state anchor yet, so its state classes are
     // the closest stable anchor available from a test.
     assert.match(
       meetings,
-      /className="meeting-surface meeting-skeleton" aria-busy="true">\s*<h1 id="surface-title" className="sr-only" tabIndex=\{-1\}>\s*\S/,
+      /className="meeting-surface meeting-skeleton" aria-busy="true">\s*<h1 id="surface-title" className="sr-only" tabIndex=\{-1\}>\s*[^<\s]/,
+    );
+    const meetingsError = sliceBetween(
+      meetings,
+      'className="meeting-surface state-panel state-panel--error"',
+      "</section>",
+      "meetings error state",
     );
     assert.match(
-      meetings,
-      /className="meeting-surface state-panel state-panel--error"[\s\S]*?<h1 id="surface-title" tabIndex=\{-1\}>\s*\S/,
+      meetingsError,
+      /<h1 id="surface-title" tabIndex=\{-1\}>\s*[^<\s]/,
     );
   });
 
@@ -800,12 +837,12 @@ describe("interaction recovery contracts", () => {
     // Groups are labelled regions, so a dense list stays navigable.
     assert.match(
       activitySurface,
-      /className="activity-group"[\s\S]*?aria-labelledby=\{`activity-group-\$\{group\.key\}`\}[\s\S]*?<h3 id=\{`activity-group-\$\{group\.key\}`\}>/,
+      /className="activity-group"[\s\S]{0,200}?aria-labelledby=\{`activity-group-\$\{group\.key\}`\}[\s\S]{0,200}?<h3 id=\{`activity-group-\$\{group\.key\}`\}>/,
     );
     // Filtering to nothing is a state with a way out of it.
     assert.match(
       activitySurface,
-      /filteredItems\.length === 0 \? \(\s*<ActivityInlineState[\s\S]*?onClick=\{resetFilters\}/,
+      /filteredItems\.length === 0 \? \(\s*<ActivityInlineState[\s\S]{0,400}?onClick=\{resetFilters\}/,
     );
     assert.match(
       activityStyles,
@@ -909,7 +946,7 @@ describe("interaction recovery contracts", () => {
     // a word on a button.
     assert.match(
       workSurface,
-      /aria-pressed=\{activeLayout === "timeline"\}[\s\S]*?changeLayout\("timeline"\)/,
+      /aria-pressed=\{activeLayout === "timeline"\}[\s\S]{0,300}?changeLayout\("timeline"\)/,
     );
     assert.match(
       workSurface,
@@ -935,7 +972,7 @@ describe("interaction recovery contracts", () => {
   it("renders every Saved View Task once in a navigable month calendar without invoking calendar writes", () => {
     assert.match(
       workSurface,
-      /aria-pressed=\{activeLayout === "calendar"\}[\s\S]*?changeLayout\("calendar"\)/,
+      /aria-pressed=\{activeLayout === "calendar"\}[\s\S]{0,300}?changeLayout\("calendar"\)/,
     );
     assert.match(workSurface, /<nav aria-label="Month navigation">/);
     assert.match(workSurface, /aria-label="Previous month"/);
@@ -950,7 +987,7 @@ describe("interaction recovery contracts", () => {
     assert.match(workSurface, /calendarAfterTasks\.push\(task\)/);
     assert.match(
       workSurface,
-      /const calendarOverflowGroups = \[[\s\S]*?tasks: calendarBeforeTasks[\s\S]*?tasks: calendarAfterTasks[\s\S]*?tasks: calendarUndatedTasks/,
+      /const calendarOverflowGroups = \[[\s\S]{0,200}?tasks: calendarBeforeTasks[\s\S]{0,200}?tasks: calendarAfterTasks[\s\S]{0,200}?tasks: calendarUndatedTasks/,
     );
     assert.match(workSurface, /calendarOverflowGroups\.map\(/);
     assert.match(workSurface, /setCalendarMonthKey/);
@@ -979,11 +1016,11 @@ describe("interaction recovery contracts", () => {
     );
     assert.match(
       workSurface,
-      /aria-pressed=\{density === "comfortable"\}[\s\S]*?setDensity\("comfortable"\)/,
+      /aria-pressed=\{density === "comfortable"\}[\s\S]{0,200}?setDensity\("comfortable"\)/,
     );
     assert.match(
       workSurface,
-      /aria-pressed=\{density === "compact"\}[\s\S]*?setDensity\("compact"\)/,
+      /aria-pressed=\{density === "compact"\}[\s\S]{0,200}?setDensity\("compact"\)/,
     );
     assert.match(
       workDensityStyles,
@@ -1094,7 +1131,7 @@ describe("interaction recovery contracts", () => {
     // that gating is the guarantee, not the label on the button.
     assert.match(
       surfaces,
-      /\{fullView && \([\s\S]*?onClick=\{onBackToProjects\}/,
+      /\{fullView && \([\s\S]{0,300}?onClick=\{onBackToProjects\}/,
     );
     assert.match(
       surfaces,
@@ -1169,7 +1206,7 @@ describe("interaction recovery contracts", () => {
     // offers a control that re-fetches it into custody.
     assert.match(
       documentsSurface,
-      /custodyState === "unavailable" && \(\s*<button[\s\S]*?restoreManagedPayload\?\.\(/,
+      /custodyState === "unavailable" && \(\s*<button[\s\S]{0,400}?restoreManagedPayload\?\.\(/,
     );
     // "Explicit": detaching removes exactly this source from the evidence set
     // rather than deleting anything.
@@ -1195,7 +1232,7 @@ describe("interaction recovery contracts", () => {
     // when the payload is gone, detach offered always.
     assert.match(
       taskAttachments,
-      /custody\[attachment\.sourceId\] === "unavailable" && \(\s*<button[\s\S]*?onRestore\(attachment\)/,
+      /custody\[attachment\.sourceId\] === "unavailable" && \(\s*<button[\s\S]{0,400}?onRestore\(attachment\)/,
     );
     assert.match(taskAttachments, /onClick=\{\(\) => unlink\(attachment\)\}/);
     assert.match(collaborationSurfaces, /aria-label="Comment attachments"/);
@@ -1242,7 +1279,7 @@ describe("interaction recovery contracts", () => {
     assert.match(accessSurface, /<legend>Capability level<\/legend>/);
     assert.match(
       accessSurface,
-      /className="agent-space-scope"[\s\S]*?<legend>Data scope<\/legend>/,
+      /className="agent-space-scope"[\s\S]{0,300}?<legend>Data scope<\/legend>/,
     );
     assert.match(
       accessSurface,
