@@ -8,6 +8,13 @@ import { assertPackagedCredentialStoreTestAllowed } from "./desktop/packaged-cre
 // wersja sprawdzała `length === 12`, a nowa nawigacja też ma dwanaście pozycji —
 // czyli ta asercja przeszłaby przez CAŁKOWITĄ wymianę zbioru celów.
 import { desktopSurfaceIds } from "../packages/desktop-preload/dist/src/surface-registry.js";
+// Etykieta rodzaju też idzie z rejestru, nie z napisu wpisanego tutaj. Poprzednia
+// wersja porównywała z „Projekt" i przeżyła flip na angielski jako czerwień na
+// trzech systemach — a jest to dokładnie ten sam niezmiennik co wyżej: kontrakt
+// wyprowadzamy ze źródła prawdy, nie przepisujemy go ręcznie.
+import { getHumanRecordKindDescriptor } from "../packages/contracts/dist/src/record-kind-registry.js";
+
+const projectKindLabel = getHumanRecordKindDescriptor("project").label;
 
 assertPackagedCredentialStoreTestAllowed();
 
@@ -1307,7 +1314,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       })()`);
       await waitFor(
         client,
-        `document.querySelector('.inspector-header small')?.textContent === 'Projekt' && document.querySelector('.inspector-body h2')?.textContent === ${JSON.stringify(projectTitle)} && document.querySelector('.provenance-block blockquote')?.textContent === ${JSON.stringify(projectOutcome)}`,
+        `document.querySelector('.inspector-header small')?.textContent === ${JSON.stringify(projectKindLabel)} && document.querySelector('.inspector-body h2')?.textContent === ${JSON.stringify(projectTitle)} && document.querySelector('.provenance-block blockquote')?.textContent === ${JSON.stringify(projectOutcome)}`,
         "PACKAGED_ALPHA_PROJECT_CONTEXT_MISSING",
       );
       await client.evaluate(`(() => {
