@@ -2979,7 +2979,17 @@ export const RealApp = ({
             );
             const expanded =
               railMode || !collapsedNavigationGroups.includes(group);
-            const groupId = `primary-navigation-${group.toLocaleLowerCase("pl")}`;
+            // `aria-controls` rozdziela wartość po BIAŁYCH ZNAKACH, więc nazwa
+            // modułu ze spacją („Work Management") rozpadała się na dwa tokeny
+            // — `primary-navigation-work` i `management` — z których żaden nie
+            // istniał. Przycisk rozwijania wskazywał w nicość, a asystujące
+            // technologie nie miały jak powiedzieć, co on właściwie otwiera.
+            // Poprzednie nazwy grup („Praca", „Wiedza") były jednowyrazowe,
+            // więc defekt czekał na pierwszą nazwę ze spacją.
+            const groupId = `primary-navigation-${group
+              .toLocaleLowerCase("en")
+              .replace(/[^a-z0-9]+/gu, "-")
+              .replace(/^-|-$/gu, "")}`;
             return (
               <div className="nav-group" key={group}>
                 {!railMode && (

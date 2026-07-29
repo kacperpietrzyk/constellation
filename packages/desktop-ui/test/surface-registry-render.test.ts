@@ -377,3 +377,42 @@ test("every destination survives a shell navigation round trip, and an unknown o
   );
   assert.equal(activeShellContext(stranger).surface, "today");
 });
+
+test("no ARIA relationship in the shell points at an element that is not there", async () => {
+  // `aria-controls`, `aria-labelledby` i `aria-describedby` rozdzielają wartość
+  // po BIAŁYCH ZNAKACH. Nazwa modułu ze spacją („Work Management") wpisana
+  // wprost do identyfikatora rozpadła się więc na dwa tokeny, z których żaden
+  // nie istniał — przycisk rozwijania grupy wskazywał w nicość.
+  //
+  // Kosztowało to piętnaście minut na TRZECH systemach naraz: paczkowany smoke
+  // czeka, aż powłoka przestanie mieć wiszące odwołania, więc każda z dwunastu
+  // powierzchni odczekiwała pełne trzy sekundy i całe wywołanie CDP padało na
+  // timeout — komunikatem, który nie miał nic wspólnego z przyczyną. Ten test
+  // jest po to, żeby następnym razem padło tutaj.
+  const { render } = await shell();
+  const markup = render("today");
+
+  const declaredIds = new Set(
+    [...markup.matchAll(/\sid="([^"]+)"/gu)].map((match) => match[1] ?? ""),
+  );
+  const dangling: string[] = [];
+  for (const attribute of [
+    "aria-controls",
+    "aria-labelledby",
+    "aria-describedby",
+  ]) {
+    for (const match of markup.matchAll(
+      new RegExp(`\\s${attribute}="([^"]*)"`, "gu"),
+    )) {
+      for (const id of (match[1] ?? "").split(/\s+/u).filter(Boolean)) {
+        if (!declaredIds.has(id)) dangling.push(`${attribute} -> ${id}`);
+      }
+    }
+  }
+
+  assert.ok(
+    declaredIds.size > 5,
+    `expected the shell markup to declare ids, found ${declaredIds.size} — a scan that finds nothing passes vacuously`,
+  );
+  assert.deepEqual(dangling, []);
+});
