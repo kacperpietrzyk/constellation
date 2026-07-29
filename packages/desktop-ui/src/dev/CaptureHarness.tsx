@@ -6,7 +6,7 @@ import {
 } from "@constellation/contracts";
 import type { ConstellationRendererClient } from "@constellation/desktop-preload/client";
 
-import { CaptureDialog } from "../RealApp.js";
+import { CaptureDialog } from "../CaptureDialog.js";
 
 export const CaptureHarness = () => {
   const [open, setOpen] = useState(true);
