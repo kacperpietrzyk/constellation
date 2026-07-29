@@ -1029,6 +1029,95 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           );
         }
 
+        // Ustawienia są TRYBEM (#31), więc nie ma ich w zamiataniu wyżej —
+        // wchodzi się do nich kołem zębatym, nie pozycją `data-surface`.
+        // Gwarancja jest jedna i przeżywa każdą zmianę układu: ŻADNA KATEGORIA
+        // NIE STAJE SIĘ NIEOSIĄGALNA. Poniżej 58rem sticky nawigator się zwija,
+        // a rolę przejmuje kontrolka natywna — to jest dokładnie ten przypadek,
+        // którego happy-dom nie zmierzy, bo nie liczy układu. Asercja o
+        // szerokości w środowisku bez układu wyglądałaby na pomiar, nie będąc
+        // nim; tutaj okno naprawdę ma 320 px.
+        const settingsReach = await client.evaluate(`(async () => {
+          const frame = () => new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve))
+          );
+          const visible = (element) =>
+            element !== null &&
+            element !== undefined &&
+            element.getClientRects().length > 0;
+          const entry = document.querySelector("[data-settings-entry]");
+          if (!visible(entry)) return { entered: false, unreachable: [], categories: [] };
+          entry.click();
+          await frame();
+          const deadline = performance.now() + 3000;
+          while (
+            document.querySelector("[data-settings-category]") === null &&
+            performance.now() < deadline
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, 25));
+          }
+          await frame();
+          const categories = [...document.querySelectorAll("[data-settings-category]")]
+            .map((element) => element.dataset.settingsCategory);
+          const current = () => {
+            const marked = document.querySelector(
+              '.settings-navigator [aria-current="location"]'
+            );
+            return marked?.getAttribute("aria-controls") ?? null;
+          };
+          const unreachable = [];
+          for (const id of categories) {
+            const sectionId = "settings-category-" + id;
+            const navButton = [...document.querySelectorAll(
+              ".settings-navigator button[aria-controls]"
+            )].find((button) => button.getAttribute("aria-controls") === sectionId);
+            const picker = document.getElementById("settings-category-select");
+            let reached = false;
+            if (visible(navButton)) {
+              navButton.click();
+              await frame();
+              reached = current() === sectionId;
+            } else if (visible(picker)) {
+              // Kontrolka natywna musi NAPRAWDĘ przestawiać bieżącą kategorię,
+              // nie tylko zawierać opcję. Sama obecność wpisu w liście to nie
+              // osiągalność — to obietnica osiągalności.
+              picker.value = id;
+              picker.dispatchEvent(new Event("change", { bubbles: true }));
+              await frame();
+              reached = current() === sectionId;
+            }
+            if (!reached) {
+              unreachable.push({
+                id,
+                navButtonVisible: visible(navButton),
+                pickerVisible: visible(picker),
+                current: current()
+              });
+            }
+          }
+          const back = document.querySelector("[data-settings-back]");
+          if (back !== null) {
+            back.click();
+            await frame();
+          }
+          return {
+            entered: true,
+            categories,
+            unreachable,
+            leftTheMode: document.querySelector("[data-settings-back]") === null
+          };
+        })()`);
+        if (
+          !settingsReach.entered ||
+          settingsReach.categories.length < 3 ||
+          settingsReach.unreachable.length > 0 ||
+          !settingsReach.leftTheMode
+        ) {
+          throw new Error(
+            `PACKAGED_ALPHA_NARROW_SETTINGS_UNREACHABLE:${JSON.stringify(settingsReach)}`,
+          );
+        }
+
         const resetTabCount = await client.evaluate(`(async () => {
           document.querySelector('.nav-item[data-surface="today"]').click();
           await new Promise((resolve) =>
