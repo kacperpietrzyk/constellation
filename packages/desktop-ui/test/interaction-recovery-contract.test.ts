@@ -54,10 +54,6 @@ const accessStyles = readFileSync(
   "utf8",
 );
 const realApp = readFileSync(path.join(root, "src", "RealApp.tsx"), "utf8");
-const recordRemoval = readFileSync(
-  path.join(root, "src", "components", "RecordRemovalSection.tsx"),
-  "utf8",
-);
 const workSurface = readFileSync(
   path.join(root, "src", "WorkSurface.tsx"),
   "utf8",
@@ -133,13 +129,6 @@ const sliceBetween = (
 // Source comments discuss the rules the copy has to obey ("the copy never says
 // permanently"), so a claim ABOUT the copy has to be checked against the copy —
 // otherwise a comment quoting the forbidden word fails an honest file. Only
-// whole-line comments are stripped, deliberately: a `//` anywhere on a line
-// would also swallow the rest of a line of real copy (a protocol-relative
-// `//docs…/` href is enough), and a forbidden word after it would go unseen.
-// Stripping less keeps the claim about the copy honest.
-const withoutComments = (source: string): string =>
-  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-
 const assertSearchOverlaySliced = () =>
   assert.ok(
     searchOverlay.length > 0 &&
@@ -191,50 +180,15 @@ describe("interaction recovery contracts", () => {
     );
   });
 
-  it("offers the same removal an agent has, and explains the block before the click", () => {
-    // The kernel refuses to remove a record other work still points at. The
-    // inspector holds the same projection the guard reads, so it says which
-    // work blocks the removal instead of letting the owner click into a
-    // precondition error.
-    assert.match(realApp, /<RecordRemovalSection/);
-    assert.match(
-      realApp,
-      /dependentLabels=\{strategicDependentLabels\(record, records\)\}/,
-    );
-    assert.match(
-      realApp,
-      /strategicRecordReferences\(candidate\)\.includes\(record\.id\)/,
-    );
-    // The blocked branch names what points at the record AND offers no delete
-    // control at all — that absence is the guarantee ("explains the block
-    // before the click"), and it is structural, not a sentence.
-    const blockedBranch = sliceBetween(
-      recordRemoval,
-      "if (dependentLabels.length > 0) {",
-      "{confirming ? (",
-      "blocked-removal branch",
-    );
-    assert.match(blockedBranch, /dependentLabels\.join\(", "\)/);
-    // Positive counterpart: the file does render delete controls, so their
-    // absence from the blocked branch is a fact rather than a vacuous pass.
-    assert.match(recordRemoval, /<button/);
-    assert.doesNotMatch(
-      blockedBranch,
-      /<button/,
-      "A blocked removal must not offer a control that can only end in a precondition error.",
-    );
-    // This one is legitimately about words: a soft delete must never promise
-    // permanence, because undo restores the record. The positive assertions
-    // come first so the negative below cannot pass on a file that lost the
-    // undo promise entirely.
-    assert.match(recordRemoval, /You can undo it\./);
-    assert.match(recordRemoval, /Undo if that was a mistake\./);
-    assert.doesNotMatch(
-      withoutComments(recordRemoval),
-      /permanent|irreversib|cannot be undone|forever/i,
-    );
-  });
-
+  // Sekcja „offers the same removal an agent has, and explains the block before
+  // the click" przeniesiona do `record-removal.interaction.test.tsx`, który
+  // MONTUJE inspektor i klika w usuwanie. Powód nie jest porządkowy: trzy z jej
+  // asercji celowały w `<RecordRemovalSection` i w `strategicDependentLabels`
+  // WEWNĄTRZ `StrategicRecordInspector`, czyli w kod, który PR 6 wyprowadza do
+  // własnego pliku — czysta przeprowadzka bez zmiany zachowania zapaliłaby je na
+  // czerwono. Zakaz obiecywania trwałości pojechał tam razem z nimi, dalej jako
+  // asercja nad plikiem: to gwarancja o ZAWARTOŚCI komponentu, nie o układzie,
+  // a komunikat po usunięciu nie renderuje się w sekcji w ogóle.
   it("re-reads the workspace when an external agent writes to it", () => {
     // An agent and this window are equal operators over one graph, but the
     // window holds its own projection: without this the human sees the state
@@ -685,55 +639,15 @@ describe("interaction recovery contracts", () => {
     assert.match(meetings, /selected && inspectorHost/);
   });
 
-  it("keeps the shell main landmark named while surfaces load or fail", () => {
-    // The guarantee is that neither transient state leaves the main landmark
-    // without a focusable, named h1 — not what that h1 says. RealApp already
-    // carries state anchors, so they are what the heading is asserted against.
-    // Sliced per state region, so a heading belonging to the OTHER state
-    // cannot satisfy the assertion for this one.
-    const failedState = sliceBetween(
-      realApp,
-      'data-surface-state="failed"',
-      "</section>",
-      "failed surface state",
-    );
-    // The two slices must stay disjoint, or the loading heading could stand in
-    // for the failed one and the pair would prove nothing.
-    assert.doesNotMatch(failedState, /data-surface-state="loading"/);
-    assert.match(
-      failedState,
-      /<h1 id="surface-title" tabIndex=\{-1\}>\s*[^<\s]/,
-    );
-    assert.match(failedState, /data-surface-action="retry"/);
-    const loadingState = sliceBetween(
-      realApp,
-      'data-surface-state="loading"',
-      "</section>",
-      "loading surface state",
-    );
-    assert.doesNotMatch(loadingState, /data-surface-state="failed"/);
-    assert.match(
-      loadingState,
-      /<h1 id="surface-title" tabIndex=\{-1\}>\s*[^<\s]/,
-    );
-    // Meetings has no data-surface-state anchor yet, so its state classes are
-    // the closest stable anchor available from a test.
-    assert.match(
-      meetings,
-      /className="meeting-surface meeting-skeleton" aria-busy="true">\s*<h1 id="surface-title" className="sr-only" tabIndex=\{-1\}>\s*[^<\s]/,
-    );
-    const meetingsError = sliceBetween(
-      meetings,
-      'className="meeting-surface state-panel state-panel--error"',
-      "</section>",
-      "meetings error state",
-    );
-    assert.match(
-      meetingsError,
-      /<h1 id="surface-title" tabIndex=\{-1\}>\s*[^<\s]/,
-    );
-  });
-
+  // Sekcja „keeps the shell main landmark named while surfaces load or fail"
+  // przeniesiona do `surface-lifecycle.interaction.test.tsx`, który wstrzymuje
+  // i odrzuca PRAWDZIWY import leniwej powierzchni. Powód jest ten sam i
+  // najdobitniejszy w całym pliku: obie kotwice (`data-surface-state="loading"`
+  // i `"failed"`) leżą w `SurfaceLoadingState` i `LazySurfaceBoundary`, które
+  // PR 6 wyprowadza z `RealApp.tsx`. `sliceBetween` nie przestałby wtedy pasować
+  // — RZUCA na brakującej kotwicy, więc sama przeprowadzka wywala zestaw. A
+  // w drugą stronę: nagłówek skrócony do jednej kropki spełniał `[^<\s]` i
+  // przechodził. Nowy test wymaga nazwy, która niesie litery.
   it("makes Relations one raised work plane with a quieter review rail", () => {
     assert.match(strategicSurface, /<div className="strategic-work-plane">/);
     assert.doesNotMatch(

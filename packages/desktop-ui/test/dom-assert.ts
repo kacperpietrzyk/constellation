@@ -50,6 +50,30 @@ export const assertSameNode = (
   );
 };
 
+/**
+ * Węzła NIE MA. `assert.equal(container.querySelector("…"), null, …)` wygląda
+ * niewinnie i jest tą samą pułapką co wyżej: przy niezgodności — czyli
+ * dokładnie wtedy, gdy gwarancja jest złamana — do błędu trafia znaleziony
+ * węzeł i przebieg ginie zamiast zaczerwienić się z komunikatem. Zmierzone:
+ * worker pada po ~105 s, a podsumowanie melduje „1 passed" z czterech testów.
+ */
+export const assertNoNode = (found: unknown, message: string): void => {
+  if (found === null || found === undefined) return;
+  throw new Error(`${message} — found ${describeNode(found)}`);
+};
+
+/**
+ * Nazwa, która coś znaczy. Sam warunek „tekst niepusty" przechodzi na
+ * nagłówku o treści `.` — sprawdzone przez zepsucie: skrócenie wszystkich
+ * nagłówków punktu orientacyjnego do kropki zostawiło komplet zieleni. Punkt
+ * orientacyjny nazwany kropką nie jest nazwany.
+ */
+export const assertNamed = (node: Element | null, message: string): void => {
+  const text = (node?.textContent ?? "").trim();
+  if (/\p{L}{2,}/u.test(text)) return;
+  throw new Error(`${message} — its name reads ${JSON.stringify(text)}`);
+};
+
 /** Odwrotność powyższego: dwa RÓŻNE węzły. */
 export const assertDifferentNode = (
   actual: unknown,
