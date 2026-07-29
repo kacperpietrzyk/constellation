@@ -1,3 +1,4 @@
+import { DEFAULT_WORKING_DAY } from "@constellation/contracts";
 import type {
   RendererCommandResponse,
   RendererQueryResponse,
@@ -74,6 +75,9 @@ const client = createScenarioClient({
         name: "Praca",
         timezone: "Europe/Warsaw",
         defaultTaskStatusId: statusId,
+        // Projekcja NIGDY nie oddaje tego pola puste — harness, który je
+        // pomija, opisuje świat, którego nie ma, i wywala powłokę na starcie.
+        workingDay: DEFAULT_WORKING_DAY,
         version: 4,
       },
       spaces: [{ id: spaceId, name: "Praca", version: 1 }],
