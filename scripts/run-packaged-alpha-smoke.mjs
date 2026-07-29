@@ -697,9 +697,28 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         const results = [];
         document.documentElement.style.fontSize = "200%";
         try {
-          for (const destination of document.querySelectorAll(
+          // Powłoka potrafi PODMIENIĆ lewą kolumnę: w trybie Ustawień nawigacja
+          // po pracy nie jest renderowana wcale. Iterowanie po zebranym raz
+          // zbiorze węzłów oznaczałoby klikanie w elementy odpięte od dokumentu,
+          // które nigdy nie staną się aktywne — każdy dobiłby do pełnego limitu
+          // 3 s i całe wywołanie CDP padłoby na timeout, komunikatem bez związku
+          // z przyczyną. Chodzimy więc po IDENTYFIKATORACH i za każdym razem
+          // szukamy pozycji od nowa, wracając z trybu, jeśli w nim jesteśmy.
+          const destinations = [...document.querySelectorAll(
             ".nav-item[data-surface]"
-          )) {
+          )].map((item) => item.dataset.surface);
+          for (const surfaceId of destinations) {
+            const leaveMode = document.querySelector("[data-settings-back]");
+            if (leaveMode !== null) {
+              leaveMode.click();
+              await new Promise((resolve) =>
+                requestAnimationFrame(() => requestAnimationFrame(resolve))
+              );
+            }
+            const destination = document.querySelector(
+              '.nav-item[data-surface="' + surfaceId + '"]'
+            );
+            if (destination === null) continue;
             destination.click();
             const readyDeadline = performance.now() + 3000;
             const hasMissingAriaReference = () =>
@@ -754,6 +773,10 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           }
         } finally {
           document.documentElement.style.fontSize = "";
+          // Wyjście z trybu Ustawień PRZED powrotem na Today: w trybie pozycji
+          // "today" nie ma w dokumencie, więc samo kliknięcie byłoby no-opem
+          // i petla zostawilaby aplikacje w Ustawieniach.
+          document.querySelector("[data-settings-back]")?.click();
           document.querySelector('.nav-item[data-surface="today"]')?.click();
           await new Promise((resolve) =>
             requestAnimationFrame(() => requestAnimationFrame(resolve))
@@ -866,9 +889,28 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
               element.labels?.length ||
               element.textContent?.trim()
             );
-          for (const destination of document.querySelectorAll(
+          // Powłoka potrafi PODMIENIĆ lewą kolumnę: w trybie Ustawień nawigacja
+          // po pracy nie jest renderowana wcale. Iterowanie po zebranym raz
+          // zbiorze węzłów oznaczałoby klikanie w elementy odpięte od dokumentu,
+          // które nigdy nie staną się aktywne — każdy dobiłby do pełnego limitu
+          // 3 s i całe wywołanie CDP padłoby na timeout, komunikatem bez związku
+          // z przyczyną. Chodzimy więc po IDENTYFIKATORACH i za każdym razem
+          // szukamy pozycji od nowa, wracając z trybu, jeśli w nim jesteśmy.
+          const destinations = [...document.querySelectorAll(
             ".nav-item[data-surface]"
-          )) {
+          )].map((item) => item.dataset.surface);
+          for (const surfaceId of destinations) {
+            const leaveMode = document.querySelector("[data-settings-back]");
+            if (leaveMode !== null) {
+              leaveMode.click();
+              await new Promise((resolve) =>
+                requestAnimationFrame(() => requestAnimationFrame(resolve))
+              );
+            }
+            const destination = document.querySelector(
+              '.nav-item[data-surface="' + surfaceId + '"]'
+            );
+            if (destination === null) continue;
             destination.click();
             const readyDeadline = performance.now() + 3000;
             const hasMissingAriaReference = () =>
