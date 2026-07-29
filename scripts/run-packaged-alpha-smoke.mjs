@@ -612,7 +612,12 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         };
       })()`);
       if (
-        shellAccessibility.language !== "pl" ||
+        // Interfejs jest po angielsku od przebudowy 0.2.0, więc `lang` musi to
+        // mówić — czytnik ekranu wymawia treść według tego atrybutu, a angielskie
+        // zdanie czytane polską fonetyką jest niezrozumiałe. To jedyne miejsce
+        // w smoke'ach, gdzie język był wpisany na sztywno, i wyszło dopiero na
+        // paczkowanym buildzie: grep po polskich znakach go nie łapie.
+        shellAccessibility.language !== "en" ||
         shellAccessibility.mainCount !== 1 ||
         !shellAccessibility.mainIsWorkColumn ||
         shellAccessibility.sidebarInsideMain ||

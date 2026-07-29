@@ -86,6 +86,19 @@ test("every user-visible string in the renderer is English", () => {
   );
 });
 
+test("the document declares the language it is actually written in", () => {
+  // `lang` nie jest kosmetyką: czytnik ekranu wymawia treść według tego
+  // atrybutu, więc angielskie zdania czytane polską fonetyką są niezrozumiałe.
+  // Ten atrybut był JEDYNĄ rzeczą, której nie złapał ani skan po polskich
+  // znakach, ani `npm run check` — wyszedł dopiero na paczkowanym buildzie,
+  // gdzie smoke porównywał go z „pl". Lokalny strażnik, żeby następnym razem
+  // padło tu, a nie po piętnastu minutach na trzech systemach.
+  const html = readFileSync(path.join(packageRoot, "index.html"), "utf8");
+  const declared = /<html[^>]*\slang="([^"]*)"/u.exec(html);
+  assert.ok(declared, "index.html must declare a document language");
+  assert.equal(declared[1], "en");
+});
+
 // Arkusze stylów też potrafią wypisać tekst na ekran — `content:` na
 // pseudoelemencie renderuje się jak każdy inny napis. Dziś wszystkie siedem
 // deklaracji to znaki („✓", „⌕"), ale PR 6 wprowadza CSS Modules dla nowo
