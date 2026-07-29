@@ -390,29 +390,40 @@ test("no ARIA relationship in the shell points at an element that is not there",
   // timeout — komunikatem, który nie miał nic wspólnego z przyczyną. Ten test
   // jest po to, żeby następnym razem padło tutaj.
   const { render } = await shell();
-  const markup = render("today");
-
-  const declaredIds = new Set(
-    [...markup.matchAll(/\sid="([^"]+)"/gu)].map((match) => match[1] ?? ""),
-  );
+  // Sprawdzane na KAŻDEJ destynacji, nie na jednej: sidebar rysuje się wszędzie,
+  // więc ten konkretny defekt złapałaby i jedna, ale wiszące odwołanie dodane
+  // na Ustawieniach albo Zadaniach byłoby poza zasięgiem. Kontrakt wyprowadzamy
+  // z rejestru, nie z listy pisanej ręcznie — ręczna lista raz już dała komplet
+  // zieleni przy nieruszonych ekranach.
   const dangling: string[] = [];
-  for (const attribute of [
-    "aria-controls",
-    "aria-labelledby",
-    "aria-describedby",
-  ]) {
-    for (const match of markup.matchAll(
-      new RegExp(`\\s${attribute}="([^"]*)"`, "gu"),
-    )) {
-      for (const id of (match[1] ?? "").split(/\s+/u).filter(Boolean)) {
-        if (!declaredIds.has(id)) dangling.push(`${attribute} -> ${id}`);
+  let smallestIdCount = Number.POSITIVE_INFINITY;
+
+  for (const destination of desktopSurfaceIds) {
+    const markup = render(destination);
+    const declaredIds = new Set(
+      [...markup.matchAll(/\sid="([^"]+)"/gu)].map((match) => match[1] ?? ""),
+    );
+    smallestIdCount = Math.min(smallestIdCount, declaredIds.size);
+    for (const attribute of [
+      "aria-controls",
+      "aria-labelledby",
+      "aria-describedby",
+    ]) {
+      for (const match of markup.matchAll(
+        new RegExp(`\\s${attribute}="([^"]*)"`, "gu"),
+      )) {
+        for (const id of (match[1] ?? "").split(/\s+/u).filter(Boolean)) {
+          if (!declaredIds.has(id)) {
+            dangling.push(`${destination}: ${attribute} -> ${id}`);
+          }
+        }
       }
     }
   }
 
   assert.ok(
-    declaredIds.size > 5,
-    `expected the shell markup to declare ids, found ${declaredIds.size} — a scan that finds nothing passes vacuously`,
+    smallestIdCount > 5,
+    `every destination must render a shell that declares ids; the thinnest declared ${smallestIdCount} — a scan that finds nothing passes vacuously`,
   );
   assert.deepEqual(dangling, []);
 });
