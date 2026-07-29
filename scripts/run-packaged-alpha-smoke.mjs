@@ -591,7 +591,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       const shellAccessibility = await client.evaluate(`(() => {
         const main = document.querySelector("main");
         const attention = document.querySelector(
-          '.nav-item[data-surface="attention"]'
+          '.nav-item[data-surface="inbox"]'
         );
         const attentionCount = attention?.querySelector(".nav-count")?.textContent?.trim();
         const ids = [...document.querySelectorAll("[id]")].map(
@@ -742,7 +742,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           }
         } finally {
           document.documentElement.style.fontSize = "";
-          document.querySelector('.nav-item[data-surface="cockpit"]')?.click();
+          document.querySelector('.nav-item[data-surface="today"]')?.click();
           await new Promise((resolve) =>
             requestAnimationFrame(() => requestAnimationFrame(resolve))
           );
@@ -976,7 +976,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         }
 
         const resetTabCount = await client.evaluate(`(async () => {
-          document.querySelector('.nav-item[data-surface="cockpit"]').click();
+          document.querySelector('.nav-item[data-surface="today"]').click();
           await new Promise((resolve) =>
             requestAnimationFrame(() => requestAnimationFrame(resolve))
           );

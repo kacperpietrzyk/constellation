@@ -1363,7 +1363,7 @@ try {
     "OWNER_ATTENTION_RELOAD_FAILED",
   );
   await first.client.evaluate(
-    `(() => { document.querySelector('.nav-item[data-surface="attention"]').click(); return true; })()`,
+    `(() => { document.querySelector('.nav-item[data-surface="inbox"]').click(); return true; })()`,
   );
   await waitFor(
     first.client,
@@ -1460,7 +1460,7 @@ try {
     "packaged-hub: converge native document, restore revision, and enforce downgrade\n",
   );
   await member.client.evaluate(`(() => {
-    document.querySelector('.nav-item[data-surface="documents"]').click();
+    document.querySelector('.nav-item[data-surface="library"]').click();
     return true;
   })()`);
   await waitFor(
@@ -1781,7 +1781,7 @@ try {
   )
     throw new Error("PACKAGED_DOCUMENT_BODY_SEARCH_NOT_DURABLE");
   await member.client.evaluate(`(() => {
-    document.querySelector('.nav-item[data-surface="documents"]').click();
+    document.querySelector('.nav-item[data-surface="library"]').click();
     return true;
   })()`);
   await waitFor(
