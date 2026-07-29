@@ -4725,6 +4725,7 @@ export const executeWave2Command = (
         ...(item.dueAt === undefined ? {} : { dueAt: item.dueAt }),
         statusId: workspace.defaultTaskStatusId,
         createdBy: context.principalId,
+        createdByKind: context.principalKind,
         occurredAt,
       });
       transaction.insertTask(task);
@@ -5165,6 +5166,7 @@ export const executeWave2Command = (
           : { parentTaskId: command.payload.parentTaskId }),
         statusId: workspace.defaultTaskStatusId,
         createdBy: context.principalId,
+        createdByKind: context.principalKind,
         occurredAt,
       });
       transaction.insertTask(task);
@@ -5425,7 +5427,11 @@ export const executeWave2Command = (
       if (!isTaskTimingValid(taskTimingAfterUpdate(task, detailsUpdate))) {
         return precondition(command, occurredAt);
       }
-      const updated = updateTaskDetails(task, detailsUpdate, occurredAt);
+      const updated = updateTaskDetails(task, detailsUpdate, occurredAt, {
+        kind: "acting",
+        principalId: context.principalId,
+        principalKind: context.principalKind,
+      });
       if (!transaction.updateTask(updated, task.version)) {
         return versionConflict(command, occurredAt, {
           [task.id]: task.version,
@@ -5495,6 +5501,9 @@ export const executeWave2Command = (
             ? {}
             : { priorNextAction: task.nextAction }),
           ...(task.startAt === undefined ? {} : { priorStartAt: task.startAt }),
+          ...(task.plannedBy === undefined
+            ? {}
+            : { priorPlannedBy: task.plannedBy }),
           ...(task.dueAt === undefined ? {} : { priorDueAt: task.dueAt }),
           ...(task.priority === undefined
             ? {}
@@ -5724,6 +5733,7 @@ export const executeWave2Command = (
             dueAt: record.nextDueAt,
             statusId: workspace.defaultTaskStatusId,
             createdBy: context.principalId,
+            createdByKind: context.principalKind,
             occurredAt,
           });
           transaction.insertTask(task);
@@ -6188,6 +6198,7 @@ export const executeWave2Command = (
           title,
           statusId: workspace.defaultTaskStatusId,
           createdBy: context.principalId,
+          createdByKind: context.principalKind,
           occurredAt,
         });
         transaction.insertTask(task);
@@ -9328,6 +9339,13 @@ const compensateDescriptor = (
         attachmentSourceIds: descriptor.priorAttachmentSourceIds ?? [],
       },
       occurredAt,
+      // Cofnięcie przywraca podpis sprzed zmiany, nie podpisuje cofającego.
+      {
+        kind: "restore",
+        ...(descriptor.priorPlannedBy === undefined
+          ? {}
+          : { plannedBy: descriptor.priorPlannedBy }),
+      },
     );
     transaction.updateTask(restored, task.version);
     compensatedVersions = { [restored.id]: restored.version };
@@ -10133,6 +10151,9 @@ export const executeWave2Query = (
             : { waitingOn: task.waitingOn }),
           completionState: task.completionState,
           ...(task.startAt === undefined ? {} : { startAt: task.startAt }),
+          ...(task.plannedBy === undefined
+            ? {}
+            : { plannedBy: task.plannedBy }),
           ...(task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
           ...(task.priority === undefined ? {} : { priority: task.priority }),
           ...(task.parentTaskId === undefined
@@ -11742,6 +11763,9 @@ export const executeWave2Query = (
             0,
           ),
           ...(task.startAt === undefined ? {} : { startAt: task.startAt }),
+          ...(task.plannedBy === undefined
+            ? {}
+            : { plannedBy: task.plannedBy }),
           ...(task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
           ...(task.priority === undefined ? {} : { priority: task.priority }),
           ...(task.calendarBlock === undefined

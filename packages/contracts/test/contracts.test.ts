@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   CommandOutcomeSchema,
   GlobalSearchRecordKindSchema,
+  QueryProjectionSchema,
   QueryResultSchema,
   WorkLinkTypeSchema,
   getHumanRecordKindDescriptor,
@@ -690,5 +691,84 @@ describe("application contracts", () => {
       },
     });
     assert.equal(result.success, true);
+  });
+});
+
+// Kontrakt wyprowadzony z REJESTRU projekcji, nie z listy pisanej ręcznie —
+// lekcja z fali prototypu: ręczna lista dała 41/41 na zielono przy czterech
+// nieruszonych ekranach. Tutaj chodzi o `Task`, a `Task` NIE MA strażnika
+// `UnprojectableKeys` (jedyny taki strażnik w repo pilnuje `StrategicRecord`),
+// więc pole dodane na modelu i w komendzie skompiluje się i po prostu nigdy nie
+// dojdzie do UI. Ten test jest tym, czego kompilator nie zrobi.
+describe("task schedule projections", () => {
+  // Kształt rozpoznajemy po OBU końcach terminu: `startAt` razem z `dueAt` to
+  // własny harmonogram zadania. Sam `startAt` nosi też powód „starts_this_week"
+  // w cocpicie — tam jest dowodem, nie planem, i autorstwa nie potrzebuje.
+  const scheduleShapes = (): ReadonlyArray<{
+    readonly path: string;
+    readonly keys: readonly string[];
+  }> => {
+    const visited = new Set<unknown>();
+    const found: { path: string; keys: readonly string[] }[] = [];
+    const walk = (schema: unknown, path: string): void => {
+      if (schema === null || typeof schema !== "object") return;
+      const inner = (schema as { _zod?: { def?: Record<string, unknown> } })
+        ._zod;
+      if (inner?.def === undefined || visited.has(schema)) return;
+      visited.add(schema);
+      const def = inner.def;
+      if (def["type"] === "object") {
+        const shape = def["shape"] as Record<string, unknown>;
+        const keys = Object.keys(shape);
+        if (keys.includes("startAt") && keys.includes("dueAt")) {
+          found.push({ path, keys });
+        }
+        for (const key of keys) walk(shape[key], `${path}.${key}`);
+        return;
+      }
+      if (Array.isArray(def["options"])) {
+        (def["options"] as unknown[]).forEach((option, index) => {
+          walk(option, `${path}|${index}`);
+        });
+        return;
+      }
+      for (const [key, suffix] of [
+        ["element", "[]"],
+        ["innerType", ""],
+        ["valueType", "{}"],
+      ] as const) {
+        if (def[key] !== undefined) {
+          walk(def[key], `${path}${suffix}`);
+          return;
+        }
+      }
+      if (Array.isArray(def["items"])) {
+        (def["items"] as unknown[]).forEach((item, index) => {
+          walk(item, `${path}#${index}`);
+        });
+      }
+    };
+    walk(QueryProjectionSchema, "projection");
+    return found;
+  };
+
+  it("finds the task schedules at all", () => {
+    // Pusty wynik pomiaru to awaria pomiaru, nie wynik: gdyby chodzenie po
+    // schemacie przestało działać, poniższy test przeszedłby na zero kształtach.
+    assert.ok(
+      scheduleShapes().length >= 3,
+      `spodziewane co najmniej trzy projekcje harmonogramu, znaleziono ${scheduleShapes().length}`,
+    );
+  });
+
+  it("every projected task schedule says who planned it", () => {
+    const missing = scheduleShapes()
+      .filter((shape) => !shape.keys.includes("plannedBy"))
+      .map((shape) => shape.path);
+    assert.deepEqual(
+      missing,
+      [],
+      `projekcje niosą startAt bez autorstwa planu: ${missing.join(", ")}`,
+    );
   });
 });

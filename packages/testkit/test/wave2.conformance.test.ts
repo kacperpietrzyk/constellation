@@ -242,6 +242,150 @@ const createProjectRecord = (
   };
 };
 
+/** Ten sam principal i ten sam workspace, INNY RODZAJ principala — dokładnie
+ *  tak jak w przypadku obserwatora niżej w tym pliku. Osobne `grantId`, bo
+ *  rejestracja pod tym samym nadpisałaby grant, na którym stoi reszta. */
+const agentContext = (): ExecutionContext =>
+  ExecutionContextSchema.parse({
+    ...context(),
+    principalKind: "agent",
+    credentialId: "10000000-0000-4000-8000-0000000000b2",
+    grantId: "10000000-0000-4000-8000-0000000000b1",
+  });
+
+const listedTask = (
+  harness: ReferenceHarness,
+  taskId: TaskId,
+): {
+  startAt?: string | undefined;
+  plannedBy?: { principalKind: string; at: string } | undefined;
+} => {
+  const response = harness.kernel.query(context(), {
+    contractVersion: 1,
+    queryName: "task.list",
+    queryId: requestId(),
+    workspaceId: ids.workspace,
+    consistency: "local_authoritative",
+    parameters: { spaceId: ids.rootSpace },
+  });
+  assert.equal(response.kind, "query_result");
+  if (
+    response.kind !== "query_result" ||
+    response.result.outcome !== "success" ||
+    response.result.projection.kind !== "task.list"
+  )
+    assert.fail("Expected a task list.");
+  const item = response.result.projection.items.find(
+    (candidate) => candidate.id === taskId,
+  );
+  if (item === undefined) assert.fail("Expected the task in its own list.");
+  return item;
+};
+
+describe("task plan authorship", () => {
+  // Ekran dnia ma powiedzieć, KTO położył pozycję na dniu. Do 0.2.0 nikt tego
+  // nie zapisywał, a `Task` nie ma strażnika `UnprojectableKeys`, więc pole
+  // dodane tylko na modelu przeszłoby build i nigdy nie doszło do UI. Poniższe
+  // asercje idą przez PRAWDZIWĄ ścieżkę zapytania, nie przez model.
+  it("names whoever set the start, and lets undo give the name back", () => {
+    const harness = setup();
+    harness.authorization.register(agentContext());
+    const taskId = createTask(harness, "Plan authorship evidence");
+    const listedBefore = listedTask(harness, taskId);
+    assert.equal(
+      listedBefore.plannedBy,
+      undefined,
+      "zadanie bez daty nie ma czego podpisać",
+    );
+
+    const humanPlan = {
+      ...metadata("plan-human", { [taskId]: 1 }),
+      commandName: "task.updateDetails",
+      payload: { taskId, startAt: "2026-08-03T08:00:00.000Z" },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(context(), humanPlan)).outcome,
+      "success",
+    );
+    const afterHuman = listedTask(harness, taskId);
+    assert.equal(afterHuman.startAt, "2026-08-03T08:00:00.000Z");
+    assert.equal(afterHuman.plannedBy?.principalKind, "human");
+
+    // Sama zmiana tytułu NIE czyni zmieniającego autorem cudzego planu.
+    const retitle = unwrap(
+      harness.kernel.execute(agentContext(), {
+        ...metadata("retitle-agent", { [taskId]: 2 }),
+        commandName: "task.updateDetails",
+        payload: { taskId, title: "Plan authorship evidence, renamed" },
+      }),
+    );
+    assert.equal(retitle.outcome, "success");
+    assert.equal(listedTask(harness, taskId).plannedBy?.principalKind, "human");
+
+    const agentPlan = {
+      ...metadata("plan-agent", { [taskId]: 3 }),
+      commandName: "task.updateDetails",
+      payload: { taskId, startAt: "2026-08-05T08:00:00.000Z" },
+    };
+    assert.equal(
+      unwrap(harness.kernel.execute(agentContext(), agentPlan)).outcome,
+      "success",
+    );
+    const afterAgent = listedTask(harness, taskId);
+    assert.equal(afterAgent.startAt, "2026-08-05T08:00:00.000Z");
+    assert.equal(afterAgent.plannedBy?.principalKind, "agent");
+
+    // Cofnięcie przeplanowania przywraca datę RAZEM z podpisem. Data stara przy
+    // podpisie nowym byłaby zdaniem, którego nikt nie powiedział.
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("undo-plan-agent", { [taskId]: 4 }),
+          commandName: "command.undo",
+          payload: { targetCommandId: agentPlan.commandId },
+        }),
+      ).diagnosticCode,
+      "command.undone",
+    );
+    const afterUndo = listedTask(harness, taskId);
+    assert.equal(afterUndo.startAt, "2026-08-03T08:00:00.000Z");
+    assert.equal(afterUndo.plannedBy?.principalKind, "human");
+  });
+
+  it("drops the signature when the plan itself is dropped", () => {
+    const harness = setup();
+    const taskId = createTask(harness, "Unplanned again");
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("plan-then-clear", { [taskId]: 1 }),
+          commandName: "task.updateDetails",
+          payload: { taskId, startAt: "2026-08-10T08:00:00.000Z" },
+        }),
+      ).outcome,
+      "success",
+    );
+    assert.equal(listedTask(harness, taskId).plannedBy?.principalKind, "human");
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("clear-plan", { [taskId]: 2 }),
+          commandName: "task.updateDetails",
+          payload: { taskId, startAt: null },
+        }),
+      ).outcome,
+      "success",
+    );
+    const cleared = listedTask(harness, taskId);
+    assert.equal(cleared.startAt, undefined);
+    assert.equal(
+      cleared.plannedBy,
+      undefined,
+      "podpis bez planu to autor czegoś, czego nie ma",
+    );
+  });
+});
+
 describe("Wave 2 reference semantics", () => {
   it("projects one managed Capture safely through document, Task, and comment attachments", () => {
     const harness = setup();

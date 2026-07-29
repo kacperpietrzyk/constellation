@@ -14,6 +14,7 @@ import type {
   MembershipId,
   OutboxEntryId,
   PrincipalId,
+  PrincipalKind,
   ProjectId,
   RelationId,
   RequestOrigin,
@@ -332,6 +333,19 @@ export interface AutomationRule {
 
 export type TaskPriority = "urgent" | "high" | "normal" | "low";
 
+/**
+ * Kto położył zadanie na dniu i kiedy. Istnieje DOKŁADNIE wtedy, gdy istnieje
+ * `startAt` — plan bez autora i autor bez planu to ten sam błąd widziany z dwóch
+ * stron. Ekran dnia ma powiedzieć „Hermes zaplanował to na wtorek", a nie tylko
+ * „to jest na wtorek"; bez tego pola nie ma jak odróżnić własnej decyzji od
+ * cudzej propozycji.
+ */
+export interface TaskPlanAuthorship {
+  readonly principalId: PrincipalId;
+  readonly principalKind: PrincipalKind;
+  readonly at: string;
+}
+
 export interface Task {
   readonly id: TaskId;
   readonly workspaceId: WorkspaceId;
@@ -340,6 +354,7 @@ export interface Task {
   readonly description?: string;
   readonly nextAction?: string;
   readonly startAt?: string;
+  readonly plannedBy?: TaskPlanAuthorship;
   readonly dueAt?: string;
   readonly priority?: TaskPriority;
   readonly parentTaskId?: TaskId;
@@ -1214,6 +1229,10 @@ export type UndoDescriptor =
       readonly priorDescription?: string;
       readonly priorNextAction?: string;
       readonly priorStartAt?: string;
+      // Cofnięcie przywraca PLAN SPRZED zmiany razem z jego autorem. Bez tego
+      // cofnięcie przeplanowania zostawiłoby datę starą, a podpis nowy — czyli
+      // zdanie, którego nikt nigdy nie powiedział.
+      readonly priorPlannedBy?: TaskPlanAuthorship;
       readonly priorDueAt?: string;
       readonly priorPriority?: TaskPriority;
       readonly priorAttachmentSourceIds?: readonly KnowledgeSourceId[];
