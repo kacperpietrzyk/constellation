@@ -1367,12 +1367,12 @@ try {
   );
   await waitFor(
     first.client,
-    `[...document.querySelectorAll(".attention-main strong")].some((node) => node.textContent.includes(${JSON.stringify(sharedTask.title)}))`,
+    `[...document.querySelectorAll("[data-inbox-row] [data-row-title]")].some((node) => node.textContent.includes(${JSON.stringify(sharedTask.title)}))`,
     "OWNER_ATTENTION_NOT_RENDERED",
   );
   await first.client.evaluate(`(() => {
-    const item = [...document.querySelectorAll(".attention-main")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
-    item.click();
+    const row = [...document.querySelectorAll("[data-inbox-row]")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
+    row.querySelector("button").click();
     return true;
   })()`);
   await waitFor(
@@ -1382,17 +1382,20 @@ try {
   );
   const attentionSelectionWasMutationFree = await first.client.evaluate(
     `(() => {
-      const item = [...document.querySelectorAll(".attention-main")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
+      const row = [...document.querySelectorAll("[data-inbox-row]")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
       const exactCommentIsOpen = [...document.querySelectorAll(".comment-entry p")].some((node) => node.textContent === ${JSON.stringify(packagedCommentBody)});
-      return item?.closest("li")?.classList.contains("unread") === true && !exactCommentIsOpen;
+      // Stan czytamy z atrybutu danych, nie z nazwy klasy: klasa jest teraz
+      // lokalna dla modułu CSS i zmienia się przy każdym buildzie.
+      return row?.dataset.inboxState === "unread" && !exactCommentIsOpen;
     })()`,
   );
   if (!attentionSelectionWasMutationFree)
     throw new Error("ATTENTION_SELECTION_MUTATED_OR_NAVIGATED");
   await first.client.evaluate(`(() => {
-    const item = [...document.querySelectorAll(".attention-main")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
-    item.focus();
-    item.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
+    const row = [...document.querySelectorAll("[data-inbox-row]")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
+    const control = row.querySelector("button");
+    control.focus();
+    control.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
     return true;
   })()`);
   await waitFor(

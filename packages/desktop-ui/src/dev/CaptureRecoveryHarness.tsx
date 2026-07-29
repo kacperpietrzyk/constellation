@@ -2,7 +2,9 @@ import { useState } from "react";
 
 import { QueryProjectionSchema } from "@constellation/contracts";
 
-import { AttentionDetail, AttentionSurface } from "../CollaborationSurfaces.js";
+import { AttentionDetail } from "../CollaborationSurfaces.js";
+import { InboxSurface } from "../InboxSurface.js";
+import type { InboxSignal } from "../inbox-triage.js";
 import type { AttentionInboxProjection } from "../client/workflow.js";
 
 const attention = QueryProjectionSchema.parse({
@@ -52,14 +54,32 @@ export const CaptureRecoveryHarness = () => {
   return (
     <main className="app-shell" data-testid="capture-recovery-harness">
       <div className="surface-scroll">
-        <AttentionSurface
+        <InboxSurface
           attention={{
             kind: "ready",
             data: attentionProjection,
           }}
           selectedItemId={selectedId}
+          busy={false}
+          onSelect={(item: InboxSignal) => setSelectedId(item.id)}
           onOpen={() => setStatus("Otworzono zachowany Capture.")}
-          onSelect={(item) => setSelectedId(item.id)}
+          onMarkRead={() => setStatus("Oznaczono jako przeczytane.")}
+          onDismiss={() => setStatus("Sygnał usunięto bez zmiany oryginału.")}
+          onRouteCapture={(_: InboxSignal, destination: string) =>
+            setStatus(
+              destination === "task"
+                ? "Wybrano zadanie."
+                : "Wybrano źródło wiedzy.",
+            )
+          }
+          onRetryCapture={() => setStatus("Ponowienie jest gotowe.")}
+          onKeepCapture={() =>
+            setStatus("Oryginał zachowano bez klasyfikacji.")
+          }
+          onReplaceCapturePayload={() =>
+            setStatus("Wybrano bezpieczną wymianę oryginału.")
+          }
+          onRetryLoad={() => setStatus("Ponowiono wczytanie skrzynki.")}
         />
         {selected && (
           <AttentionDetail
