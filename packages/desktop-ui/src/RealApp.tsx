@@ -159,6 +159,7 @@ import {
   taskContext,
   type ShellContext,
 } from "./client/shell-navigation.js";
+import { subscribeToAgentWrites } from "./client/agent-write-reload.js";
 import {
   conditionCopy,
   type PreviewCondition,
@@ -176,10 +177,6 @@ type LoadState =
   | { readonly kind: "recovery"; readonly build: DesktopBuildInfo }
   | { readonly kind: "unavailable" | "error"; readonly message: string }
   | { readonly kind: "ready"; readonly snapshot: DesktopSnapshot };
-
-// A migration writes in batches: one re-read after the burst settles, rather
-// than one per applied command.
-const AGENT_WRITE_RELOAD_DELAY_MS = 400;
 
 const taskPriorityLabels: Record<string, string> = {
   urgent: "Urgent",
@@ -1975,7 +1972,12 @@ export const RealApp = ({
   // opened with, and a correct agent write reads as a missing one. The
   // subscription is laid once per client and reaches the current reload through
   // a ref, so a burst of agent commands cannot slip between unsubscribe and
-  // resubscribe. Coalesced, because a migration applies in batches.
+  // resubscribe.
+  //
+  // Samo sklejanie mieszka w `client/agent-write-reload.ts`. Tu zostaje tylko
+  // spięcie go z Reactem, bo w domknięciu `useEffect` ta logika była
+  // NIESPRAWDZALNA: jedynym jej pokryciem była asercja, że stała opóźnienia
+  // występuje w tekście tego pliku — zielona przy dowolnie zepsutym sklejaniu.
   const reloadSnapshotRef = useRef(reloadSnapshot);
   const workspaceIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -1983,24 +1985,15 @@ export const RealApp = ({
     workspaceIdRef.current = snapshot?.bootstrap.workspace.id;
   });
   useEffect(() => {
-    if (client?.onWorkspaceChanged === undefined) return;
-    let pending: ReturnType<typeof setTimeout> | undefined;
-    const unsubscribe = client.onWorkspaceChanged((event) => {
-      if (
-        workspaceIdRef.current !== undefined &&
-        event.workspaceId !== workspaceIdRef.current
-      )
-        return;
-      if (pending !== undefined) return;
-      pending = setTimeout(() => {
-        pending = undefined;
+    const onWorkspaceChanged = client?.onWorkspaceChanged;
+    if (onWorkspaceChanged === undefined) return;
+    return subscribeToAgentWrites({
+      subscribe: (listener) => onWorkspaceChanged(listener),
+      currentWorkspaceId: () => workspaceIdRef.current,
+      reload: () => {
         void reloadSnapshotRef.current();
-      }, AGENT_WRITE_RELOAD_DELAY_MS);
+      },
     });
-    return () => {
-      if (pending !== undefined) clearTimeout(pending);
-      unsubscribe();
-    };
   }, [client]);
 
   useEffect(() => {
