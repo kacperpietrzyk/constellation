@@ -56,27 +56,35 @@ export const projectionResponse = (projection: object): RendererQueryResponse =>
 // wyrenderować. Ten wariant jest celowo najuboższy z możliwych — jeśli
 // destynacja umie narysować się tylko przy pełnych danych, to jest defekt
 // powierzchni, nie testu.
-export const shellQueries = {
-  "workspace.bootstrapContext": projectionResponse({
-    kind: "workspace.bootstrapContext",
-    workspace: {
-      id: workspaceId,
-      name: "Workspace",
-      timezone: "Europe/Warsaw",
-      defaultTaskStatusId: statusId,
+// Otypowany kontraktem, mimo że jest to wariant ubogi: nieotypowany literał
+// przeszedł przez rzutowanie w `projectionResponse` bez `workingDay`, a ekran
+// dnia dostał `undefined` tam, gdzie projekcja NIGDY nie daje `undefined` —
+// czyli fixture opisywał świat, który nie istnieje. Typ łapie to przy buildzie.
+const emptyBootstrap: Projection<"workspace.bootstrapContext"> = {
+  kind: "workspace.bootstrapContext",
+  workspace: {
+    id: workspaceId,
+    name: "Workspace",
+    timezone: "Europe/Warsaw",
+    defaultTaskStatusId: statusId,
+    voiceAudioRetentionPolicy: "delete_after_transcript",
+    workingDay: DEFAULT_WORKING_DAY,
+    version: 1,
+  },
+  spaces: [{ id: spaceId, name: "Space", version: 1 }],
+  taskStatuses: [
+    {
+      id: statusId,
+      label: "status",
+      operationalSemantics: "actionable",
+      position: 0,
       version: 1,
     },
-    spaces: [{ id: spaceId, name: "Space", version: 1 }],
-    taskStatuses: [
-      {
-        id: statusId,
-        label: "status",
-        operationalSemantics: "actionable",
-        position: 0,
-        version: 1,
-      },
-    ],
-  }),
+  ],
+};
+
+export const shellQueries = {
+  "workspace.bootstrapContext": projectionResponse(emptyBootstrap),
   "task.list": projectionResponse({
     kind: "task.list",
     items: [],
@@ -117,6 +125,10 @@ export const inProgressStatusId = TaskStatusIdSchema.parse(
 export const waitingStatusId = TaskStatusIdSchema.parse(
   "00000000-0000-4000-8000-000000000012",
 );
+/** Principal agenta — plan położony przez asystenta, nie przez człowieka. */
+export const agentPrincipalId = PrincipalIdSchema.parse(
+  "00000000-0000-4000-8000-000000000013",
+);
 
 /** Organizacja, na którą WSKAZUJĄ inne rekordy — kandydat na „nie da się usunąć". */
 export const referencedOrganizationId = StrategicRecordIdSchema.parse(
@@ -152,6 +164,14 @@ export const waitingTaskId = TaskIdSchema.parse(
 export const doneTaskId = TaskIdSchema.parse(
   "00000000-0000-4000-8000-000000000042",
 );
+export const agentPlannedTaskId = TaskIdSchema.parse(
+  "00000000-0000-4000-8000-000000000043",
+);
+export const unplannedDeadlineTaskId = TaskIdSchema.parse(
+  "00000000-0000-4000-8000-000000000044",
+);
+/** Dzień, na który wskazuje `startAt` w tym fixture — punkt odniesienia testów. */
+export const populatedPlanDayKey = "2026-08-03";
 
 // Realny `intendedOutcome` w tym workspace ma 1400-3000 znaków i kilka akapitów.
 // Fixture z jednozdaniowym polem już raz ukrył całą klasę defektów układu
@@ -370,6 +390,62 @@ export const populatedTaskList: Projection<"task.list"> = {
       createdAt: "2026-07-15T08:00:00.000Z",
       updatedAt: "2026-07-17T16:40:00.000Z",
       version: 5,
+    },
+    // Plan położony przez AGENTA i z zarezerwowanym czasem. Bez tego wariantu
+    // nie da się odróżnić „ekran umie pokazać autora planu" od „ekran pokazuje
+    // zawsze Ciebie": obie wersje wyglądałyby tak samo na fixture, w którym
+    // wszystko zaplanował człowiek.
+    {
+      id: agentPlannedTaskId,
+      spaceId,
+      title: "Napisz scenariusze detekcyjne do warsztatu",
+      dueAt: "2026-08-14T15:00:00.000Z",
+      priority: "normal",
+      plannedBy: {
+        principalId: agentPrincipalId,
+        principalKind: "agent",
+        at: "2026-08-03T05:02:00.000Z",
+      },
+      startAt: "2026-08-03T07:00:00.000Z",
+      calendarBlock: {
+        ownedBlockExternalId: "task-block:agent-planned",
+        calendarExternalId: "calendar-work",
+        revision: "1",
+        // 13:00–14:30 czasu warszawskiego.
+        startsAt: "2026-08-03T11:00:00.000Z",
+        endsAt: "2026-08-03T12:30:00.000Z",
+      },
+      status: {
+        id: statusId,
+        label: "Do zrobienia",
+        operationalSemantics: "actionable",
+        state: "active",
+      },
+      completionState: "open",
+      attachments: [],
+      createdAt: "2026-07-30T10:00:00.000Z",
+      updatedAt: "2026-08-03T05:02:00.000Z",
+      version: 2,
+    },
+    // Termin w zasięgu wzroku, którego NIKT nie zaplanował — jedyny przypadek,
+    // w którym `dueAt` ma prawo głosu na ekranie dnia.
+    {
+      id: unplannedDeadlineTaskId,
+      spaceId,
+      title: "Zamów licencje na 12 000 EPS",
+      dueAt: "2026-08-06T15:00:00.000Z",
+      priority: "high",
+      status: {
+        id: statusId,
+        label: "Do zrobienia",
+        operationalSemantics: "actionable",
+        state: "active",
+      },
+      completionState: "open",
+      attachments: [],
+      createdAt: "2026-07-28T09:00:00.000Z",
+      updatedAt: "2026-07-28T09:00:00.000Z",
+      version: 1,
     },
   ],
   nextCursor: null,

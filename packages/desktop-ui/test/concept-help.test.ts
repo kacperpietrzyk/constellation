@@ -11,7 +11,14 @@ describe("contextual concept help contract", () => {
   it("defines every enterprise term once in user language", () => {
     assert.deepEqual(
       conceptHelpTopics.map((topic) => topic.id),
-      ["data-home", "hub", "mcp", "agent-access", "recovery"],
+      [
+        "data-home",
+        "hub",
+        "mcp",
+        "agent-access",
+        "calendar-meetings",
+        "recovery",
+      ],
     );
     const count = conceptHelpTopics.length;
     assert.equal(

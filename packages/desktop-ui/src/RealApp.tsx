@@ -82,9 +82,9 @@ import {
   recordKindLabels,
 } from "./i18n.js";
 
+import { TodaySurface } from "./TodaySurface.js";
 import {
   CaptureHistoryDetail,
-  CockpitSurface,
   HistorySurface,
   ProjectsSurface,
   SearchOverlay,
@@ -1703,30 +1703,39 @@ export const RealApp = ({
   // każdym renderze powłoki, także ten, którego nikt nie ogląda.
   const surfacePanels: Record<SurfaceId, () => ReactNode> = {
     today: () => (
-      <CockpitSurface
+      <TodaySurface
         client={client}
         snapshot={state.snapshot}
         selectedTaskId={selectedTaskId}
-        selectedProjectId={selectedProjectId}
-        onOpenProject={(id) => {
-          const project =
-            state.snapshot.projects.kind === "ready"
-              ? state.snapshot.projects.data.items.find(
-                  (item) => item.id === id,
-                )
-              : undefined;
-          openContext(projectContext(id, project?.title ?? "Project"));
-        }}
-        onSelectProject={selectProjectInInspector}
+        planBusyTaskId={busyTaskId}
         onOpenTask={(id) => {
           const task = tasks.find((item) => item.id === id);
           openContext(taskContext(id, task?.title ?? "Task"));
         }}
         onSelectTask={selectTaskInInspector}
-        onOpenAttention={() =>
-          openContext(destinationContext("inbox", "Inbox"))
-        }
-        onCapture={openCapture}
+        onPlanForToday={(id) => {
+          const task = tasks.find((item) => item.id === id);
+          if (!client || !task) return;
+          const planTimeZone = state.snapshot.bootstrap.workspace.timezone;
+          const startAt = instantForZonedDate(
+            dateKeyInZone(new Date(), planTimeZone),
+            planTimeZone,
+            "start",
+          );
+          if (startAt === undefined) return;
+          setBusyTaskId(id);
+          // Planowanie ustawia `startAt` i NIE rusza terminu. Różnica między
+          // „zajmę się tym w środę" a „obiecuję to na środę" jest cała
+          // w danych — na ekranie wygląda identycznie.
+          void updateTaskDetails(client, state.snapshot, id, task.version, {
+            startAt,
+          }).then(async (result) => {
+            setBusyTaskId(undefined);
+            if (result.kind === "success")
+              await refreshAfter("Planned for today.");
+            else showFailure(result);
+          });
+        }}
       />
     ),
     meetings: () =>

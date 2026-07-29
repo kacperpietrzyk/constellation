@@ -1,0 +1,188 @@
+/* Pierwszy CSS Module w tym repo. Stare arkusze zostają globalne aż do
+   przepisania — żadnej migracji 9 657 linii. Zasady nazewnicze, bo ta kolizja
+   trafiła prototyp dwa razy: modyfikator z prefiksem bloku, stan powierzchni
+   jako rzeczownik, i żadnych gołych przymiotników jako nazw. Tutaj nazwa jest
+   lokalna z definicji, więc kolizja jest niemożliwa — ale konwencja zostaje ta
+   sama, żeby czytało się jak reszta. */
+
+.today {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+/* Jedyna liczba na tym ekranie, która naprawdę coś znaczy: ile miejsca
+   zostało. Stoi w nagłówku, bo decyduje o wszystkim poniżej. */
+.capacity {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.capacity strong {
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-weight: 590;
+}
+
+.separator {
+  color: var(--text-quaternary);
+}
+
+.section {
+  max-width: var(--surface-measure, 58rem);
+  width: 100%;
+  margin-inline: auto;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.sectionHead h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 560;
+  letter-spacing: var(--tracking-tight);
+}
+
+.count {
+  color: var(--text-quaternary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.rows,
+.meetings {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row,
+.meeting {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, auto) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+}
+
+.row {
+  cursor: default;
+}
+
+.row:hover {
+  background: var(--surface-raised, var(--surface-content));
+}
+
+.row[aria-selected="true"] {
+  background: var(--surface-raised, var(--surface-content));
+  box-shadow: inset 0 0 0 1px var(--border-default);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--text-primary));
+  outline-offset: -2px;
+}
+
+/* Godzina jest kotwicą wzroku, więc cyfry nie mogą tańczyć między wierszami. */
+.when {
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Pozycja bez zarezerwowanej godziny jest umówiona z dniem, nie z zegarem —
+   i ma tak wyglądać, bez udawania precyzji, której nie ma. */
+.loose {
+  color: var(--text-quaternary);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.main [data-row-title] {
+  color: var(--text-primary);
+  /* Realny tytuł zadania bywa dłuższy niż sto znaków — łamiemy, nie ucinamy:
+     ucięty tytuł zmusza do otwarcia rekordu, żeby wiedzieć, co to jest. */
+  overflow-wrap: anywhere;
+}
+
+/* Kto położył pozycję na dniu i kiedy. */
+.by {
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+}
+
+.state {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.locked {
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.warn .when {
+  color: var(--text-secondary);
+}
+
+.quiet {
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-sm);
+}
+
+/* Pustka jest tu informacją, nie brakiem: gdy plan trzyma, ta sekcja milczy. */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-5);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.emptyState p {
+  margin: 0;
+}
+
+.emptyState strong {
+  color: var(--text-primary);
+}
+
+@media (max-width: 50rem) {
+  .row,
+  .meeting {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+}

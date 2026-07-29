@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -46,10 +46,26 @@ if (tests.length < FEWEST_PLAUSIBLE_TEST_FILES) {
   );
 }
 
-const result = spawnSync(process.execPath, ["--test", ...tests], {
-  cwd: root,
-  stdio: "inherit",
-});
+// Komponenty pisane od 0.2.0 przynoszą własny arkusz jako CSS Module, a Today
+// jest powierzchnią startową, więc nie da się jej ukryć za leniwym importem.
+// Bez tego haka test renderujący powłokę przewraca się na rozszerzeniu `.css`,
+// zanim wykona jedną asercję.
+//
+// `--import` przyjmuje URL, nie ścieżkę systemową: na Windowsie `D:\…` jest
+// czytane jako schemat `d:` i Node odmawia zanim uruchomi jeden test. Złapane
+// przez CI, więc konwersja jest tutaj, a nie w komentarzu.
+const cssHook = pathToFileURL(
+  path.join(root, "scripts", "css-module-register.mjs"),
+).href;
+
+const result = spawnSync(
+  process.execPath,
+  ["--import", cssHook, "--test", ...tests],
+  {
+    cwd: root,
+    stdio: "inherit",
+  },
+);
 
 if (result.error !== undefined) throw result.error;
 process.exitCode = result.status ?? 1;

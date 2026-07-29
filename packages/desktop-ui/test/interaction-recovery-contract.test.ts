@@ -244,31 +244,12 @@ describe("interaction recovery contracts", () => {
     assert.match(realApp, /setDocumentInspectorOpen\(false\)/);
   });
 
-  it("keeps Cockpit actions and intended outcomes in one responsive decision ledger", () => {
-    assert.match(
-      surfaces,
-      /<div className="cockpit-grid">[\s\S]*className="active-work reading-panel"[\s\S]*\{outcomeRail\}[\s\S]*<\/div>/,
-    );
-    // The rail is a labelled region: the section points at the heading that
-    // names it. The pairing is the guarantee; the wording is not.
-    assert.match(
-      surfaces,
-      /className="outcome-rail reading-panel"\s+aria-labelledby="outcomes-title"/,
-    );
-    assert.match(surfaces, /<h2 id="outcomes-title">/);
-    assert.match(
-      surfaces,
-      /else onSelectTask\(task\.taskId\)[\s\S]*onDoubleClick=\{\(\) => onOpenTask\(task\.taskId\)\}/,
-    );
-    assert.match(
-      styles,
-      /\.cockpit-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1\.2fr\) minmax\(17rem, 0\.8fr\)/s,
-    );
-    assert.match(
-      styles,
-      /@media \(max-width: 84rem\)[\s\S]*?\.cockpit-grid,[\s\S]*?grid-template-columns:\s*1fr/s,
-    );
-  });
+  // USUNIĘTE razem z ekranem, który pilnowały: dwukolumnowy „cockpit-grid"
+  // z szyną intencji przestał istnieć, gdy Today stanął na planie dnia zamiast
+  // na tygodniowym rankingu. Sama gwarancja NIE zniknęła — „jedno kliknięcie
+  // pokazuje, dwa otwierają" jest teraz sprawdzana na wyrenderowanym drzewie
+  // w `today.interaction.test.tsx`, czyli w miejscu, gdzie jest zachowaniem,
+  // a nie kształtem tekstu w pliku.
 
   it("keeps Capture History as a compact ledger until deliberate activation", () => {
     assert.match(surfaces, /className="history-ledger"/);
