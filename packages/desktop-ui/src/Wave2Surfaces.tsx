@@ -2165,6 +2165,13 @@ export const SearchOverlay = ({
         ? activeElement
         : null;
     dialog?.showModal();
+    // Ognisko przenosimy TUTAJ, a nie atrybutem `autoFocus` na polu. React
+    // stosuje `autoFocus` w commicie, czyli ZANIM ruszy ten efekt — więc linia
+    // wyżej odczytywała jako „kto otworzył" już własne pole nakładki, a przy
+    // zamknięciu oddawała ognisko elementowi, który sama właśnie usuwała.
+    // Ognisko lądowało na `<body>`. `UndoDialog` w tym samym pliku robi to
+    // od początku imperatywnie (`cancelRef.current?.focus()`) i dlatego działa.
+    searchInputRef.current?.focus();
     return () => {
       dialog?.close();
       const returnTarget = returnTargetRef.current;
@@ -2264,7 +2271,6 @@ export const SearchOverlay = ({
           <input
             ref={searchInputRef}
             id="global-search"
-            autoFocus
             role="combobox"
             aria-expanded={listboxVisible}
             aria-controls={listboxVisible ? "search-listbox" : undefined}

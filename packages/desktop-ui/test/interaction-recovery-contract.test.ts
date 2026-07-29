@@ -148,60 +148,30 @@ const assertSearchOverlaySliced = () =>
   );
 
 describe("interaction recovery contracts", () => {
-  it("keeps global-search failure content-safe and explicitly recoverable", () => {
-    assertSearchOverlaySliced();
-    // The guarantee is the recovery shape, not the words on the buttons: a
-    // failed search announces itself as an alert and offers two ways forward
-    // inside that alert.
-    assert.match(
-      searchOverlay,
-      /state\.kind === "error" \? \(\s*<div className="search-empty" role="alert">[\s\S]{0,600}?className="search-empty-actions"/,
-    );
-    assert.match(surfaces, /ref=\{searchInputRef\}/);
-    // Retry: focus returns to the input and the attempt counter moves. The
-    // counter is an effect dependency, so bumping it genuinely re-runs the
-    // query — that chain is what "recoverable" means here.
-    assert.match(
-      searchOverlay,
-      /searchInputRef\.current\?\.focus\(\);\s*setSearchAttempt\(\(attempt\) => attempt \+ 1\);/,
-    );
-    assert.match(surfaces, /\[client, query, searchAttempt, snapshot\]/);
-    // Clear: focus returns to the input and the query is emptied.
-    assert.match(
-      searchOverlay,
-      /searchInputRef\.current\?\.focus\(\);\s*setQuery\(""\);/,
-    );
-    // Positive counterpart for the negative below: a rejected search IS caught
-    // and turned into a state, so the doesNotMatch cannot pass on a file that
-    // simply stopped handling errors.
-    assert.match(
-      searchOverlay,
-      /\.catch\(\(\) => active && setState\(\{ kind: "error" \}\)\)/,
-    );
+  // Dwie sekcje, które stały tutaj — „keeps global-search failure content-safe
+  // and explicitly recoverable" i „returns focus from global search to the exact
+  // invoking control" — przeniesione do `search-recovery.interaction.test.tsx`,
+  // który MONTUJE nakładkę i w nią klika. Powód nie jest porządkowy: obie
+  // świeciły na zielono nad oddawaniem ogniska, które nie działało. Regexy
+  // dalej pasowały do `useRef<HTMLElement | null>`, do odczytu
+  // `document.activeElement` i do `focus({ preventScroll: true })`, bo cały ten
+  // kod stał na miejscu — tyle że `autoFocus` na polu wykonywał się przed nim,
+  // więc nakładka zapamiętywała jako „kto otworzył" samą siebie. Zamiana na
+  // test montujący złapała to od razu.
+  //
+  // Zostaje jedna asercja z tamtej pary: zakaz pokazania surowego błędu.
+  // Jest to gwarancja o KSZTAŁCIE ZAWARTOŚCI pliku, nie o układzie JSX-a —
+  // nie pęka przy przestawieniu ani przy przeniesieniu komponentu, a
+  // odpowiednik przez montowanie musiałby wyrenderować każdą awarię każdego
+  // komponentu w tym pliku, żeby powiedzieć to samo. Dodatni odpowiednik
+  // (nakładka NAPRAWDĘ pokazuje alert zamiast treści błędu) jest w teście
+  // montującym; bez niego ten zakaz przechodziłby także na pliku, który
+  // przestał obsługiwać błędy w ogóle.
+  it("never renders a raw failure message from a Wave 2 surface", () => {
     assert.doesNotMatch(
       surfaces,
       /error instanceof Error\s*\?\s*error\.message/,
       "Renderer errors can contain paths or provider details and must not be shown verbatim.",
-    );
-  });
-
-  it("returns focus from global search to the exact invoking control", () => {
-    assertSearchOverlaySliced();
-    assert.match(
-      searchOverlay,
-      /const returnTargetRef = useRef<HTMLElement \| null>/,
-    );
-    assert.match(
-      searchOverlay,
-      /const activeElement = document\.activeElement/,
-    );
-    assert.match(
-      searchOverlay,
-      /returnTarget\?\.isConnected && !returnTarget\.hasAttribute\("disabled"\)/,
-    );
-    assert.match(
-      searchOverlay,
-      /returnTarget\.focus\(\{ preventScroll: true \}\)/,
     );
   });
 
