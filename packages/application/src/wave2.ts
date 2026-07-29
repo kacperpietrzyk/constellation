@@ -45,6 +45,7 @@ import {
   isGlobalSearchRecordKind,
 } from "@constellation/contracts";
 import {
+  effectiveWorkingDay,
   completeTask,
   assignTask,
   createProject,
@@ -11686,6 +11687,12 @@ export const executeWave2Query = (
     });
   }
   if (query.queryName === "cockpit.week") {
+    // Dzień roboczy jest ustawieniem WORKSPACE'U, więc tydzień musi go mieć w
+    // ręku. Brak workspace'u to nie jest przypadek do wypełnienia domyślną
+    // wartością — to pytanie o coś, czego pytający nie widzi.
+    const workspace = view.getWorkspace(query.workspaceId);
+    if (workspace === undefined)
+      return queryRejected(query, kernelTime, "authorization.denied");
     const weekStart = new Date(`${query.parameters.weekStart}T00:00:00.000Z`);
     const weekEndDate = new Date(weekStart);
     weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6);
@@ -11786,6 +11793,7 @@ export const executeWave2Query = (
       kind: "cockpit.week",
       weekStart: query.parameters.weekStart,
       weekEnd,
+      workingDay: effectiveWorkingDay(workspace),
       focus,
     });
   }

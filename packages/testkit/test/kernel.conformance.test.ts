@@ -12,6 +12,7 @@ import {
   type CaptureReviewReason,
   type CommandOutcome,
   type ExecutionContext,
+  DEFAULT_WORKING_DAY,
 } from "@constellation/contracts";
 
 import {
@@ -351,6 +352,79 @@ describe("reference kernel conformance", () => {
       "retain",
     );
     assert.equal(response.result.projection.workspace.version, 2);
+  });
+
+  it("answers with a working day even before anyone sets one", () => {
+    // Do 0.2.0 osiem godzin było wpisane w ekran dnia, więc „3h wolnego"
+    // znaczyło co innego dla każdego, kto nie pracuje 9-17. Odczyt niesie
+    // wartość SKUTECZNĄ — ekran nie ma gdzie przepisać domyślnej.
+    const harness = bootstrappedHarness();
+    assert.equal(harness.store.snapshot().workspaces[0]?.workingDay, undefined);
+    const readWorkingDay = (): {
+      startMinute: number;
+      endMinute: number;
+      weekdays: readonly number[];
+    } => {
+      const response = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "workspace.bootstrapContext",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: {},
+      });
+      if (
+        response.kind !== "query_result" ||
+        response.result.outcome !== "success" ||
+        response.result.projection.kind !== "workspace.bootstrapContext"
+      )
+        throw new Error("Expected workspace bootstrap context.");
+      return response.result.projection.workspace.workingDay;
+    };
+    assert.deepEqual(readWorkingDay(), DEFAULT_WORKING_DAY);
+
+    const changed = unwrapOutcome(
+      harness.kernel.execute(context(), {
+        ...commandMetadata("workspace-working-day"),
+        commandName: "workspace.setWorkingDay",
+        expectedVersions: { [ids.workspace]: 1 },
+        payload: {
+          workingDay: {
+            startMinute: 7 * 60 + 30,
+            endMinute: 15 * 60 + 30,
+            weekdays: [1, 2, 3, 4, 5, 6],
+          },
+        },
+      }),
+    );
+    assert.equal(changed.diagnosticCode, "workspace.working_day_changed");
+    assert.deepEqual(readWorkingDay(), {
+      startMinute: 450,
+      endMinute: 930,
+      weekdays: [1, 2, 3, 4, 5, 6],
+    });
+  });
+
+  it("refuses a working day that ends before it starts", () => {
+    // Pojemność liczona z takiego dnia to liczba ujemna podana ekranowi jako
+    // fakt — odmowa należy do kontraktu, nie do ekranu.
+    const harness = bootstrappedHarness();
+    const rejected = harness.kernel.execute(context(), {
+      ...commandMetadata("workspace-working-day-inverted"),
+      commandName: "workspace.setWorkingDay",
+      expectedVersions: { [ids.workspace]: 1 },
+      payload: {
+        workingDay: { startMinute: 17 * 60, endMinute: 9 * 60, weekdays: [1] },
+      },
+    });
+    // Odmowa pada na SCHEMACIE koperty, nie w handlerze — granica dnia jest
+    // częścią kontraktu, więc taka komenda nie dociera nawet do kernela.
+    assert.equal(rejected.kind, "contract_rejected");
+    assert.equal(
+      harness.store.snapshot().workspaces[0]?.workingDay,
+      undefined,
+      "odrzucona komenda nie zostawia po sobie ustawienia",
+    );
   });
 
   it("deduplicates managed payloads by exact bytes instead of staging identity", () => {

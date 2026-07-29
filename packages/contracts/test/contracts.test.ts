@@ -761,6 +761,64 @@ describe("task schedule projections", () => {
     );
   });
 
+  it("hands the reader an effective working day, never a default to guess", () => {
+    // Kontrakt: gdziekolwiek projekcja niesie dzień roboczy, niesie go jako
+    // pole WYMAGANE. Opcjonalne pole zmusiłoby każdy ekran do przepisania u
+    // siebie ośmiu godzin, czyli dokładnie tego, co ta pozycja usuwa.
+    const optional: string[] = [];
+    const present: string[] = [];
+    const seen = new Set<unknown>();
+    const walk = (schema: unknown, path: string): void => {
+      if (schema === null || typeof schema !== "object") return;
+      const inner = (schema as { _zod?: { def?: Record<string, unknown> } })
+        ._zod;
+      if (inner?.def === undefined || seen.has(schema)) return;
+      seen.add(schema);
+      const def = inner.def;
+      if (def["type"] === "object") {
+        const shape = def["shape"] as Record<string, unknown>;
+        for (const [key, value] of Object.entries(shape)) {
+          if (key === "workingDay") {
+            present.push(`${path}.${key}`);
+            const kind = (value as { _zod: { def: { type: string } } })._zod.def
+              .type;
+            if (kind === "optional") optional.push(`${path}.${key}`);
+          }
+          walk(value, `${path}.${key}`);
+        }
+        return;
+      }
+      if (Array.isArray(def["options"])) {
+        (def["options"] as unknown[]).forEach((option, index) => {
+          walk(option, `${path}|${index}`);
+        });
+        return;
+      }
+      for (const [key, suffix] of [
+        ["element", "[]"],
+        ["innerType", ""],
+        ["valueType", "{}"],
+      ] as const) {
+        if (def[key] !== undefined) {
+          walk(def[key], `${path}${suffix}`);
+          return;
+        }
+      }
+    };
+    walk(QueryProjectionSchema, "projection");
+    // Pusty wynik pomiaru to awaria pomiaru: bez tego zdania test przechodzi
+    // także wtedy, gdy dzień roboczy zniknął z projekcji w całości.
+    assert.ok(
+      present.length >= 2,
+      `spodziewane ustawienia workspace'u ORAZ tydzień, znaleziono ${present.length}`,
+    );
+    assert.deepEqual(
+      optional,
+      [],
+      `dzień roboczy podany jako opcjonalny: ${optional.join(", ")}`,
+    );
+  });
+
   it("every projected task schedule says who planned it", () => {
     const missing = scheduleShapes()
       .filter((shape) => !shape.keys.includes("plannedBy"))
