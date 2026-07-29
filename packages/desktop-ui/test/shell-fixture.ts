@@ -1,6 +1,8 @@
 /// <reference types="node" />
 
 import {
+  AttentionSignalIdSchema,
+  CaptureIdSchema,
   DEFAULT_WORKING_DAY,
   PrincipalIdSchema,
   ProjectIdSchema,
@@ -169,6 +171,9 @@ export const agentPlannedTaskId = TaskIdSchema.parse(
 );
 export const unplannedDeadlineTaskId = TaskIdSchema.parse(
   "00000000-0000-4000-8000-000000000044",
+);
+export const ambiguousCaptureId = CaptureIdSchema.parse(
+  "00000000-0000-4000-8000-000000000045",
 );
 /** Dzień, na który wskazuje `startAt` w tym fixture — punkt odniesienia testów. */
 export const populatedPlanDayKey = "2026-08-03";
@@ -485,6 +490,51 @@ export const populatedProjectList: Projection<"project.list"> = {
   ],
 };
 
+// `attention.inbox` — query.ts:1371-1425. Dwie skrzynki naraz, bo cały sens
+// tego ekranu jest w podziale: sygnał o PRACY (decyzja) obok awarii wrzutki
+// (hydraulika). Jeden sygnał jest już przeczytany, a mimo to dalej czeka —
+// bez niego nie da się odróżnić „ile czeka" od „ile nieprzeczytanych", a to
+// jest dokładnie DECYZJA #22.
+export const populatedAttentionInbox: Projection<"attention.inbox"> = {
+  kind: "attention.inbox",
+  unreadCount: 2,
+  items: [
+    {
+      id: AttentionSignalIdSchema.parse("00000000-0000-4000-8000-000000000060"),
+      reason: "comment_mention",
+      destination: { kind: "task", taskId: longTaskId },
+      title: "Marta wspomniała Cię w komentarzu",
+      detail: "A comment mentions you and waits for an answer.",
+      urgency: "in_app",
+      state: "unread",
+      version: 1,
+      occurredAt: "2026-08-03T06:10:00.000Z",
+    },
+    {
+      id: AttentionSignalIdSchema.parse("00000000-0000-4000-8000-000000000061"),
+      reason: "waiting_review_elapsed",
+      destination: { kind: "task", taskId: waitingTaskId },
+      title: "Poczekaj na potwierdzenie sali od Northstar",
+      detail: "The date you were waiting for has passed.",
+      urgency: "urgent",
+      state: "read",
+      version: 2,
+      occurredAt: "2026-08-02T11:00:00.000Z",
+    },
+    {
+      id: AttentionSignalIdSchema.parse("00000000-0000-4000-8000-000000000062"),
+      reason: "capture_ambiguous",
+      destination: { kind: "capture", captureId: ambiguousCaptureId },
+      title: "https://example.org/eps-licensing-tiers",
+      detail: "The capture could be a task or a source, so it was not routed.",
+      urgency: "in_app",
+      state: "unread",
+      version: 1,
+      occurredAt: "2026-08-03T05:40:00.000Z",
+    },
+  ],
+};
+
 /**
  * The same shell contract as `shellQueries`, with records in it. Use this when
  * the guarantee under test only exists on a screen that has data: layout of a
@@ -496,4 +546,5 @@ export const populatedShellQueries = {
   "task.list": projectionResponse(populatedTaskList),
   "project.list": projectionResponse(populatedProjectList),
   "relationship.workspace": projectionResponse(populatedRelationshipWorkspace),
+  "attention.inbox": projectionResponse(populatedAttentionInbox),
 };

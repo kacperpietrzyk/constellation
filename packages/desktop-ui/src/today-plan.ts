@@ -74,6 +74,21 @@ export const isoWeekdayInZone = (value: string, timeZone: string): number => {
   return index + 1;
 };
 
+/**
+ * Czy spotkanie stoi na tym dniu. Jeden predykat na całe repo: po nim
+ * kubełkuje się kolumnę tygodnia I liczy `meetingCount`, bo kubełkowanie po
+ * samym `startsAt` rysowałoby spotkanie 23:00–01:00 raz, a liczyło dwa razy.
+ * Wiersz i liczba pod nim muszą wychodzić z tego samego zdania — przepisany
+ * drugi raz rozjeżdża się dokładnie wtedy, gdy ktoś poprawi jedną kopię.
+ */
+export const meetingFallsOnDay = (
+  meeting: CalendarMeeting,
+  dayKey: string,
+  timeZone: string,
+): boolean =>
+  dateKeyInZone(meeting.startsAt, timeZone) <= dayKey &&
+  dateKeyInZone(meeting.endsAt, timeZone) >= dayKey;
+
 export type DayCapacity = {
   /** Czy w ogóle jest to dzień roboczy w tym workspace. */
   readonly isWorkingDay: boolean;
@@ -104,10 +119,8 @@ export const dayCapacity = (input: {
     ? workingDay.endMinute - workingDay.startMinute
     : 0;
 
-  const onThisDay = meetings.filter(
-    (meeting) =>
-      dateKeyInZone(meeting.startsAt, timeZone) <= dayKey &&
-      dateKeyInZone(meeting.endsAt, timeZone) >= dayKey,
+  const onThisDay = meetings.filter((meeting) =>
+    meetingFallsOnDay(meeting, dayKey, timeZone),
   );
   const meetingMinutes = onThisDay
     .filter((meeting) => !meeting.isAllDay)
@@ -166,6 +179,14 @@ export const plannedForDay = (
  * Termin w zasięgu wzroku, którego NIKT nie zaplanował. To jedyne miejsce, gdzie
  * `dueAt` ma na tym ekranie prawo głosu — termin nie może pojawić się pierwszy
  * raz w dniu, w którym mija.
+ *
+ * `notBeforeDayKey` jest DOLNĄ granicą okna i istnieje dlatego, że samo „nie
+ * dalej niż tyle dni" nie ma dna: ekran przeglądający przyszły tydzień pytał
+ * o horyzont tamtego tygodnia, a dostawał wszystko po drodze — czyli listę
+ * pod nagłówkiem „termin w tym tygodniu", w której terminów z tego tygodnia
+ * prawie nie było. Pominięty parametr zostawia okno bez dna świadomie: dzień
+ * dzisiejszy MA wciągać wszystko zaległe, bo termin po czasie, którego nikt
+ * nie zaplanował, najbardziej potrzebuje dnia.
  */
 export const approachingUnplanned = (
   tasks: readonly PlannedTask[],
@@ -173,19 +194,22 @@ export const approachingUnplanned = (
     readonly dayKey: string;
     readonly withinDays: number;
     readonly timeZone: string;
+    readonly notBeforeDayKey?: string | undefined;
   },
 ): readonly PlannedTask[] => {
   const horizon = new Date(`${input.dayKey}T00:00:00.000Z`);
   horizon.setUTCDate(horizon.getUTCDate() + input.withinDays);
   const horizonKey = horizon.toISOString().slice(0, 10);
+  const floorKey = input.notBeforeDayKey;
   return tasks
-    .filter(
-      (task) =>
-        task.completionState === "open" &&
-        task.startAt === undefined &&
-        task.dueAt !== undefined &&
-        dateKeyInZone(task.dueAt, input.timeZone) <= horizonKey,
-    )
+    .filter((task) => {
+      if (task.completionState !== "open") return false;
+      if (task.startAt !== undefined) return false;
+      if (task.dueAt === undefined) return false;
+      const dueKey = dateKeyInZone(task.dueAt, input.timeZone);
+      if (dueKey > horizonKey) return false;
+      return floorKey === undefined || dueKey >= floorKey;
+    })
     .toSorted((left, right) =>
       (left.dueAt ?? "").localeCompare(right.dueAt ?? ""),
     );

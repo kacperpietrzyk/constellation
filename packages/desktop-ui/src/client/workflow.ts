@@ -36,6 +36,10 @@ import type {
   RendererCommandResponse,
   RendererQueryResponse,
 } from "@constellation/desktop-preload/client";
+// Limit skrzynki mieszka przy module, który nadaje jej liczbie znaczenie:
+// ekran musi wiedzieć, o jaką granicę projekcja się obcięła, żeby nie podać
+// obciętej liczby jako całości.
+import { ATTENTION_INBOX_LIMIT } from "../inbox-triage.js";
 
 type Projection<Kind extends QueryProjection["kind"]> = Extract<
   QueryProjection,
@@ -296,7 +300,9 @@ export const loadDesktopSnapshot = async (
     optionalProjection(
       queryProjection(
         client,
-        queryEnvelope("attention.inbox", workspaceId, { limit: 100 }),
+        queryEnvelope("attention.inbox", workspaceId, {
+          limit: ATTENTION_INBOX_LIMIT,
+        }),
         "attention.inbox",
       ),
     ),

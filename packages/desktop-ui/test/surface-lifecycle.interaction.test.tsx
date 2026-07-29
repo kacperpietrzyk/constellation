@@ -53,6 +53,7 @@ const lazyImports = vi.hoisted(() => {
   };
 });
 
+vi.mock("../src/CalendarSurface.js", () => lazyImports.hold("calendar"));
 vi.mock("../src/WorkSurface.js", () => lazyImports.hold("work"));
 vi.mock("../src/DocumentsSurface.js", () => lazyImports.hold("library"));
 vi.mock("../src/MeetingsSurface.js", () => lazyImports.hold("meetings"));

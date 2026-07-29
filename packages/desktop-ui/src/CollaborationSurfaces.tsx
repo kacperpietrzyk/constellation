@@ -19,6 +19,11 @@ import type {
 } from "./client/workflow.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
 import { countLabel, formatDateTime } from "./i18n.js";
+// Pełna taksonomia powodów z kontraktu attention.inbox stoi w JEDNYM miejscu,
+// wspólnym dla obu ekranów, które ją czytają. Kopia trzymana tutaj zdążyła się
+// już rozjechać na wielkości liter — niewidocznie, bo lista pisze powód
+// wersalikami.
+import { inboxReasonLabels as reasonLabels } from "./inbox-triage.js";
 
 type Comment = CommentListProjection["threads"][number];
 type Candidate = MentionCandidatesProjection["candidates"][number];
@@ -593,30 +598,6 @@ export const CommentsPanel = ({
 };
 
 type AttentionItem = AttentionInboxProjection["items"][number];
-
-// Pełna taksonomia powodów z kontraktu attention.inbox. Typ mapowany po unii
-// wymusza kompletność: nowy powód w kontrakcie nie przejdzie typecheck bez
-// polskiej etykiety.
-const reasonLabels: { readonly [reason in AttentionItem["reason"]]: string } = {
-  comment_mention: "Mention",
-  task_assignment: "Responsibility",
-  sync_conflict: "Sync conflict",
-  knowledge_evidence_changed: "Evidence changed",
-  renewal_due: "Renewal due",
-  waiting_review_elapsed: "Waiting review overdue",
-  relationship_fact_stale: "Stale relationship fact",
-  decision_impact_review: "Impact review due",
-  capture_duplicate: "Duplicate Capture",
-  capture_ambiguous: "Unclear destination",
-  capture_unsupported: "Unsupported original",
-  capture_parsing_failure: "Read error",
-  capture_permission_failure: "Missing permission",
-  capture_stale_conflict: "Stale version",
-  capture_missing_target: "Missing target",
-  capture_missing_payload: "Missing original",
-  capture_partial_payload_transfer: "Partial transfer",
-  capture_unknown_reconcile: "Unknown outcome",
-};
 
 export const captureRecoveryActions = (
   reason: AttentionItem["reason"],

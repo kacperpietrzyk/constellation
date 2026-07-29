@@ -35,6 +35,7 @@ import { navItems } from "./shell/nav-items.js";
 import { taskPriorityLabels } from "./task-priority-labels.js";
 import {
   AccessSurface,
+  CalendarSurface,
   ActivitySurface,
   DocumentsSurface,
   MeetingsSurface,
@@ -69,11 +70,7 @@ import {
   useCollapsedNavigationGroups,
 } from "./hooks/useCollapsedNavigationGroups.js";
 import { useDismissiblePanel } from "./hooks/useDismissiblePanel.js";
-import {
-  AttentionDetail,
-  AttentionSurface,
-  CommentsPanel,
-} from "./CollaborationSurfaces.js";
+import { AttentionDetail, CommentsPanel } from "./CollaborationSurfaces.js";
 import {
   countLabel,
   dateKeyInZone,
@@ -83,6 +80,8 @@ import {
 } from "./i18n.js";
 
 import { TodaySurface } from "./TodaySurface.js";
+import { InboxSurface } from "./InboxSurface.js";
+import { inboxWaitingCount } from "./inbox-triage.js";
 import {
   CaptureHistoryDetail,
   HistorySurface,
@@ -1619,10 +1618,8 @@ export const RealApp = ({
           aria-label={
             item.id === "tasks"
               ? `${item.label} · ${tasks.length}`
-              : item.id === "inbox" &&
-                  state.snapshot.attention.kind === "ready" &&
-                  state.snapshot.attention.data.unreadCount > 0
-                ? `${item.label} · ${state.snapshot.attention.data.unreadCount} unread`
+              : item.id === "inbox" && inboxWaiting > 0
+                ? `${item.label} · ${inboxWaiting} waiting`
                 : item.label
           }
           aria-current={surface === item.id ? "page" : undefined}
@@ -1651,11 +1648,9 @@ export const RealApp = ({
           <span className="nav-item-meta" aria-hidden="true">
             {item.id === "tasks" ? (
               <span className="nav-count">{tasks.length}</span>
-            ) : item.id === "inbox" &&
-              state.snapshot.attention.kind === "ready" &&
-              state.snapshot.attention.data.unreadCount > 0 ? (
+            ) : item.id === "inbox" && inboxWaiting > 0 ? (
               <span className="nav-count nav-count--attention">
-                {state.snapshot.attention.data.unreadCount}
+                {inboxWaiting}
               </span>
             ) : null}
             <kbd
@@ -1701,6 +1696,16 @@ export const RealApp = ({
   // build do czasu podpięcia ekranu — zamiast renderować pusty panel. Wpisy
   // są funkcjami, nie elementami: inaczej każdy ekran liczyłby swój JSX przy
   // każdym renderze powłoki, także ten, którego nikt nie ogląda.
+  // DECYZJA #22: liczba z boku znaczy „tyle rzeczy na mnie czeka", a nie „tyle
+  // rzeczy jednego rodzaju". Bierze się z TEJ SAMEJ funkcji, co podział ekranu
+  // — drugie liczenie tej samej rzeczy było defektem, z którego ta decyzja
+  // powstała. Skutek do zapamiętania: przeczytanie sygnału NIE zmniejsza
+  // liczby, bo przeczytana rzecz dalej czeka; zmniejsza ją dopiero odrzucenie.
+  const inboxWaiting =
+    state.snapshot.attention.kind === "ready"
+      ? inboxWaitingCount(state.snapshot.attention.data.items)
+      : 0;
+
   const surfacePanels: Record<SurfaceId, () => ReactNode> = {
     today: () => (
       <TodaySurface
@@ -1737,6 +1742,44 @@ export const RealApp = ({
           });
         }}
       />
+    ),
+    calendar: () => (
+      <LazySurfaceBoundary label="Calendar">
+        <Suspense fallback={<SurfaceLoadingState label="Calendar" />}>
+          <CalendarSurface
+            client={client}
+            snapshot={state.snapshot}
+            selectedTaskId={selectedTaskId}
+            planBusyTaskId={busyTaskId}
+            onSelectTask={selectTaskInInspector}
+            onOpenTask={(id) => {
+              const task = tasks.find((item) => item.id === id);
+              openContext(taskContext(id, task?.title ?? "Task"));
+            }}
+            onPlanTaskOnDay={(id, dayKey) => {
+              const task = tasks.find((item) => item.id === id);
+              if (!client || !task) return;
+              const startAt = instantForZonedDate(
+                dayKey,
+                state.snapshot.bootstrap.workspace.timezone,
+                "start",
+              );
+              if (startAt === undefined) return;
+              setBusyTaskId(id);
+              // Ta sama zasada co na Today: dzień to PLAN, nie obietnica.
+              // `dueAt` nie pojawia się w ładunku nawet jako `null`.
+              void updateTaskDetails(client, state.snapshot, id, task.version, {
+                startAt,
+              }).then(async (result) => {
+                setBusyTaskId(undefined);
+                if (result.kind === "success")
+                  await refreshAfter("Planned for that day.");
+                else showFailure(result);
+              });
+            }}
+          />
+        </Suspense>
+      </LazySurfaceBoundary>
     ),
     meetings: () =>
       client === undefined ? null : (
@@ -2263,12 +2306,20 @@ export const RealApp = ({
       </LazySurfaceBoundary>
     ),
     inbox: () => (
-      <AttentionSurface
+      <InboxSurface
         attention={state.snapshot.attention}
         selectedItemId={selectedAttentionId}
-        onRetry={() => void reload()}
-        onOpen={openAttentionDestination}
+        busy={attentionBusy}
+        timezone={state.snapshot.bootstrap.workspace.timezone}
         onSelect={(item) => selectAttentionInInspector(item.id)}
+        onOpen={openAttentionDestination}
+        onMarkRead={readAttention}
+        onDismiss={dismissAttention}
+        onRouteCapture={routeAttentionCapture}
+        onRetryCapture={retryAttentionCapture}
+        onKeepCapture={keepAttentionCapture}
+        onReplaceCapturePayload={replaceAttentionPayload}
+        onRetryLoad={() => void reload()}
       />
     ),
     access: () => (

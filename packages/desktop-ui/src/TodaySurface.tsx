@@ -214,8 +214,22 @@ export const TodaySurface = ({
             Today
           </h1>
         </div>
-        <p className={styles.capacity} data-capacity>
-          {capacity.isWorkingDay ? (
+        {/* Pojemność policzona bez kalendarza to nie pojemność: gdy spotkania
+            nie są przeczytane, `dayCapacity` dostaje pustą listę i „8h wolnego"
+            stoi tuż nad paskiem z odmową. Dzień mówi więc, czego nie wie,
+            zamiast podawać liczbę, wokół której ktoś ułoży sobie dzień. */}
+        <p
+          className={styles.capacity}
+          data-capacity
+          data-capacity-known={
+            meetingsState.kind === "ready" ? "true" : "false"
+          }
+        >
+          {!capacity.isWorkingDay ? (
+            <strong>Outside the working week</strong>
+          ) : meetingsState.kind !== "ready" ? (
+            <strong>Free time unknown without the calendar</strong>
+          ) : (
             <>
               <strong>{formatSpan(capacity.freeMinutes)} free</strong>
               <span className={styles.separator}>·</span>
@@ -230,8 +244,6 @@ export const TodaySurface = ({
                 </>
               ) : null}
             </>
-          ) : (
-            <strong>Outside the working week</strong>
           )}
         </p>
       </header>

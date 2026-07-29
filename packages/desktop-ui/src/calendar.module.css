@@ -1,0 +1,387 @@
+/* Calendar — tydzień jako CZAS. Ten sam materiał co Today, w innym
+   powiększeniu, więc i wygląd wiersza jest ten sam: godzina jako kotwica,
+   tytuł łamany zamiast ucinanego, stan po prawej.
+
+   Zasady, które ten arkusz musi utrzymać:
+   · kolor nigdy nie jest jedynym nośnikiem znaczenia — dzisiejsza kolumna ma
+     obwódkę I napis, spotkanie ma tło I plakietkę, miernik ma szerokości
+     I liczby obok;
+   · ognisko musi zostać widoczne wszędzie, gdzie da się wejść z klawiatury;
+   · `prefers-reduced-motion` wyłącza ruch przez `animation: none`, nie przez
+     skrócenie czasu — krótsza animacja to nadal animacja. */
+
+.calendar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.headline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.weekNav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Jedyna liczba, która naprawdę coś znaczy: ile miejsca zostało w tygodniu. */
+.capacity {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.capacity strong {
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-weight: 590;
+}
+
+.separator {
+  color: var(--text-quaternary);
+}
+
+.calendarState {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.quiet {
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-sm);
+}
+
+/* Odmowa kalendarza jest ODPOWIEDZIĄ, nie awarią — i musi być widoczna,
+   bo tydzień bez pokazanych spotkań wygląda dokładnie jak tydzień bez
+   spotkań. */
+.refusal {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--status-warning-bg);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+
+.day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 12rem;
+  padding: var(--space-3);
+  background: var(--surface-content);
+}
+
+.dayOff {
+  background: var(--surface-sunken);
+}
+
+/* Dzisiaj: obwódka ORAZ napis w nagłówku kolumny. Sama obwódka byłaby
+   kolorem jako jedynym nośnikiem. */
+.dayToday {
+  box-shadow: inset 0 0 0 2px var(--border-strong);
+}
+
+.dayDropping {
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+  background: var(--surface-selected);
+}
+
+.dayHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.dayName {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 560;
+}
+
+.dayNum {
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.todayTag {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  background: var(--surface-selected);
+  color: var(--text-primary);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.free {
+  margin-inline-start: auto;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.freeNone {
+  color: var(--status-warning);
+}
+
+/* Miernik pokazuje SKŁAD dnia, nie tylko wynik. Liczba stoi obok, więc sam
+   pasek niczego nie musi nieść samodzielnie. */
+.meter {
+  display: flex;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--surface-hover);
+  overflow: hidden;
+}
+
+.meterMeetings {
+  background: var(--text-tertiary);
+}
+
+.meterReserved {
+  background: var(--action-primary-bg);
+}
+
+.dayBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Spotkanie jest tym, czego nie przesuniesz wolą: inne tło, inna krawędź,
+   plakietka. Stoi POZA listboksem dnia, bo nie jest opcją do wybrania —
+   listbox z pozycjami niewybieralnymi kłamie czytnikowi o tym, ile ich ma. */
+.meeting {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: var(--space-2);
+  border-inline-start: 3px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  cursor: default;
+}
+
+.meetingTitle {
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.locked {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  cursor: grab;
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+.row[aria-selected="true"] {
+  background: var(--surface-selected);
+  border-color: var(--border-default);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.rowDragging {
+  opacity: 0.5;
+}
+
+/* Godzina jest kotwicą wzroku, więc cyfry nie tańczą między wierszami. */
+.when {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Pozycja bez rezerwacji jest umówiona z dniem, nie z zegarem — i tak ma
+   wyglądać, bez udawania precyzji, której nie ma. */
+.loose {
+  color: var(--text-quaternary);
+}
+
+.title {
+  color: var(--text-primary);
+  /* Realny tytuł bywa dłuższy niż sto znaków: łamiemy, nie ucinamy. */
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Klawiaturowa droga do tego samego zapisu, co przeciągnięcie. Gest, którego
+   nie da się wykonać bez myszy, jest gestem nieosiągalnym. */
+.dayPicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  padding: var(--space-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.dayPicker button[aria-current="true"] {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.dayNone {
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.sectionHead h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 560;
+  letter-spacing: var(--tracking-tight);
+}
+
+.count {
+  color: var(--text-quaternary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.tray {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trayRow {
+  font-size: var(--text-base);
+}
+
+.lead {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.leadLate {
+  color: var(--status-error);
+}
+
+/* Pustka jest tu informacją, nie brakiem. */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-5);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.emptyState p {
+  margin: 0;
+}
+
+.emptyState strong {
+  color: var(--text-primary);
+}
+
+/* Siedem kolumn przestaje być czytelne dużo wcześniej niż okno przestaje być
+   szerokie: poniżej progu tydzień jest listą dni, a nie siatką. */
+@media (max-width: 68rem) {
+  .week {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .day {
+    min-height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row,
+  .day {
+    animation: none;
+    transition: none;
+  }
+}
