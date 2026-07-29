@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
 export type ConceptHelpTopicId =
-  "data-home" | "hub" | "mcp" | "agent-access" | "recovery";
+  | "data-home"
+  | "hub"
+  | "mcp"
+  | "agent-access"
+  | "recovery"
+  | "calendar-meetings";
 
 export type ConceptHelpTopic = {
   readonly id: ConceptHelpTopicId;
@@ -47,6 +52,15 @@ export const conceptHelpTopics: readonly ConceptHelpTopic[] = [
       "An access profile sets the allowed actions, the visible Spaces and how long it lasts. Technical documentation calls such a profile a grant.",
     boundary:
       "Full access drops extra prompts only inside the granted scope. It does not bypass workspace bounds, system permissions, versions or the audit.",
+  },
+  {
+    id: "calendar-meetings",
+    term: "Meetings",
+    question: "Why can't I move a meeting here?",
+    explanation:
+      "Meetings belong to the calendar they came from. Constellation reads them so the day shows its real shape, and moves only the time it reserved itself.",
+    boundary:
+      "Rescheduling a meeting notifies the people in it, so that stays with the calendar app that owns the invitation.",
   },
   {
     id: "recovery",

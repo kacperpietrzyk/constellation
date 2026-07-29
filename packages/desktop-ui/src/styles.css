@@ -4982,222 +4982,9 @@ button.mention-chip:disabled {
   color: var(--text-tertiary);
   line-height: var(--leading-normal);
 }
-/* One curated human reason, not a row of algorithm tags. The differentiating
-   reasons only; the ever-present eligibility criterion (task_open) is dropped. */
-.now-reason {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 var(--space-2);
-  margin: var(--space-4) 0 0;
-  max-width: 39rem;
-  color: var(--text-tertiary);
-  font-size: var(--text-sm);
-  line-height: var(--leading-snug);
-}
-.now-reason-sep {
-  color: var(--text-quaternary);
-}
-/* The "today" dimension is a quiet luminance lift, not a new hue. */
-.now-reason-today {
-  color: var(--text-secondary);
-  font-weight: 560;
-}
 /* Exceptions ahead of the work queue: unread Attention signals with a
    deep-link to "Do uwagi". The bar renders only when signals exist, so amber
    stays strictly warning semantics. */
-/* Plan tygodnia: czasowa kompozycja kokpitu — realne terminy na dniach
-   tygodnia, praca po terminie przed planem, uczciwa notka o zadaniach bez
-   daty. Bez wynajdywania pojemności ani wykresów. */
-.week-plan {
-  max-width: var(--surface-measure, 58rem);
-  margin: 0 auto var(--space-5);
-}
-.week-plan-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
-  gap: var(--space-2);
-}
-.week-plan-day {
-  min-width: 0;
-  display: grid;
-  align-content: start;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--panel-reading-bg);
-}
-.week-plan-day.today {
-  border-color: var(--border-strong);
-  background: var(--surface-selected);
-}
-.week-plan-day h3 {
-  margin: 0;
-  color: var(--text-quaternary);
-  font-size: var(--text-2xs);
-  font-weight: 500;
-}
-.week-plan-day.today h3 {
-  color: var(--text-secondary);
-}
-.week-plan-empty {
-  margin: 0;
-  color: var(--text-quaternary);
-}
-.week-plan-task {
-  min-width: 0;
-  overflow: hidden;
-  padding: 0.15rem 0;
-  color: var(--text-secondary);
-  background: transparent;
-  border: 0;
-  font-size: var(--text-2xs);
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.week-plan-task:hover,
-.week-plan-task.selected {
-  color: var(--text-primary);
-}
-.week-plan-more {
-  margin: 0;
-  color: var(--text-quaternary);
-  font-size: var(--text-2xs);
-}
-/* R12.6 — reserved time on the day it was reserved for. Separated from the
-   deadlines above by a rule rather than a colour, so the day column reads as
-   two distinct facts (due / doing) without adding a second accent. */
-.week-plan-reserved {
-  display: grid;
-  gap: 0.1rem;
-  margin-top: 0.25rem;
-  padding-top: 0.25rem;
-  border-top: 1px solid var(--border-subtle);
-}
-.week-plan-block {
-  display: flex;
-  gap: var(--space-2);
-  min-width: 0;
-  overflow: hidden;
-  padding: 0.15rem 0;
-  color: var(--text-tertiary);
-  background: transparent;
-  border: 0;
-  font-size: var(--text-2xs);
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.week-plan-block:hover,
-.week-plan-block.selected {
-  color: var(--text-primary);
-}
-.week-plan-block-time {
-  flex: none;
-  color: var(--text-quaternary);
-  font-variant-numeric: tabular-nums;
-}
-/* Meetings are context, not work items: they are read-only here and carry no
-   click target, so they stay visually quieter than the tasks above them. */
-.week-plan-meetings {
-  display: grid;
-  gap: 0.1rem;
-  margin-top: 0.25rem;
-  padding-top: 0.25rem;
-  border-top: 1px dashed var(--border-subtle);
-}
-.week-plan-meeting {
-  display: flex;
-  gap: var(--space-2);
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: var(--text-quaternary);
-  font-size: var(--text-2xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.week-plan-overdue {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2) var(--space-3);
-  margin-bottom: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid
-    color-mix(in oklch, var(--status-warning) 32%, var(--border-default));
-  border-radius: var(--radius-md);
-  background: var(--status-warning-bg);
-}
-.week-plan-overdue p {
-  margin: 0;
-  font-size: var(--text-xs);
-}
-.week-plan-overdue-items {
-  min-width: 0;
-  flex: 1 1 14rem;
-  color: var(--text-tertiary);
-  font-size: var(--text-2xs);
-}
-.week-plan-overdue-items button {
-  padding: 0;
-  margin-right: var(--space-3);
-  color: var(--text-secondary);
-  background: transparent;
-  border: 0;
-  font-size: var(--text-2xs);
-  text-align: left;
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
-  text-decoration-color: transparent;
-}
-.week-plan-overdue-items button:hover {
-  color: var(--text-primary);
-  text-decoration-color: currentColor;
-}
-.week-plan-note {
-  margin: var(--space-2) 0 0;
-  color: var(--text-quaternary);
-  font-size: var(--text-2xs);
-}
-.cockpit-exceptions {
-  max-width: var(--surface-measure, 58rem);
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-3);
-  margin: 0 auto var(--space-4);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid
-    color-mix(in oklch, var(--status-warning) 32%, var(--border-default));
-  border-radius: var(--radius-md);
-  background: var(--status-warning-bg);
-}
-.cockpit-exceptions > p {
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin: 0;
-  overflow: hidden;
-}
-.cockpit-exceptions strong {
-  flex: 0 0 auto;
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-  font-weight: 590;
-}
-.cockpit-exceptions > p > span {
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* The project name is the only place the cockpit deep-links; it uses the
-   contract's projectId, which the surface previously ignored. */
 .reason-link {
   position: relative;
   padding: 0;
@@ -5230,13 +5017,6 @@ button.mention-chip:disabled {
 .now-panel > .primary-button {
   position: relative;
   flex: 0 0 auto;
-}
-.cockpit-grid {
-  max-width: var(--surface-measure, 58rem);
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(17rem, 0.8fr);
-  gap: var(--space-4);
-  margin: 0 auto var(--space-4);
 }
 .outcome-row {
   width: 100%;
@@ -5297,10 +5077,6 @@ button.mention-chip:disabled {
   color: var(--text-quaternary);
   font-size: var(--text-2xs);
   text-align: center;
-}
-.active-work {
-  max-width: var(--surface-measure, 58rem);
-  margin: 0 auto;
 }
 /* The signature: the ordering rule stated once, at a glance. This is what
    signals "deterministic, not model-ranked" in the first three seconds. */
@@ -7830,7 +7606,6 @@ button.mention-chip:disabled {
 }
 
 @media (max-width: 84rem) {
-  .cockpit-grid,
   .activity-layout {
     grid-template-columns: 1fr;
   }

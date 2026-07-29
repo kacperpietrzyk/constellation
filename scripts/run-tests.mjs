@@ -46,10 +46,20 @@ if (tests.length < FEWEST_PLAUSIBLE_TEST_FILES) {
   );
 }
 
-const result = spawnSync(process.execPath, ["--test", ...tests], {
-  cwd: root,
-  stdio: "inherit",
-});
+// Komponenty pisane od 0.2.0 przynoszą własny arkusz jako CSS Module, a Today
+// jest powierzchnią startową, więc nie da się jej ukryć za leniwym importem.
+// Bez tego haka test renderujący powłokę przewraca się na rozszerzeniu `.css`,
+// zanim wykona jedną asercję.
+const cssHook = path.join(root, "scripts", "css-module-register.mjs");
+
+const result = spawnSync(
+  process.execPath,
+  ["--import", cssHook, "--test", ...tests],
+  {
+    cwd: root,
+    stdio: "inherit",
+  },
+);
 
 if (result.error !== undefined) throw result.error;
 process.exitCode = result.status ?? 1;
