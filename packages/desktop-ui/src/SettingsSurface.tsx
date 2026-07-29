@@ -35,6 +35,11 @@ import {
   type ConceptHelpTopicId,
 } from "./components/ConceptHelpDialog.js";
 import type { SurfaceId } from "./client/wave2-fixtures.js";
+import {
+  settingsCategories,
+  settingsCategoryElementId,
+  type SettingsCategoryId,
+} from "./settings-categories.js";
 
 const fieldTypeLabels: Record<string, string> = {
   text: "Text",
@@ -53,19 +58,6 @@ const statusSemanticsLabels: Record<string, string> = {
 };
 
 type Theme = "system" | "dark" | "light";
-
-const settingsCategories = [
-  { id: "workspace", label: "Workspace" },
-  { id: "data", label: "Data and privacy" },
-  { id: "appearance", label: "Appearance" },
-  { id: "access", label: "Access and connections" },
-  { id: "application", label: "Setup and app" },
-] as const;
-
-type SettingsCategoryId = (typeof settingsCategories)[number]["id"];
-
-const settingsCategoryElementId = (category: SettingsCategoryId) =>
-  `settings-category-${category}`;
 
 // Section feedback carries its own tone: errors interrupt as alerts,
 // progress and confirmations stay polite status messages.
