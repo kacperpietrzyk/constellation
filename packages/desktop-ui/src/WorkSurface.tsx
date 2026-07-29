@@ -332,7 +332,11 @@ export const WorkSurface = ({
         label: priorityLabels[priority],
       };
     }
-    if (groupBy !== undefined) {
+    // Narrowed on the object shape, not on "not undefined": the vocabulary now
+    // also carries "assignee" and "project", which this surface does not group
+    // by. They fall through to the single "all" group below — the Tasks screen
+    // that replaces this surface owns those two branches.
+    if (typeof groupBy === "object") {
       const definition = (snapshot.bootstrap.fieldDefinitions ?? []).find(
         (candidate) => candidate.id === groupBy.fieldId,
       );
@@ -407,7 +411,7 @@ export const WorkSurface = ({
         }),
       );
     }
-    if (groupBy !== undefined) {
+    if (typeof groupBy === "object") {
       const definition = (snapshot.bootstrap.fieldDefinitions ?? []).find(
         (candidate) => candidate.id === groupBy.fieldId,
       );

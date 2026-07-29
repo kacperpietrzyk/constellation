@@ -1467,10 +1467,15 @@ export interface SavedWorkViewFilters {
   }[];
 }
 
+// Third restatement of the contract unions (schema, domain record, here). No
+// compiler reaches across the wire, so this one drifts silently: a member
+// missing here is a view the app cannot write even though the kernel accepts
+// it, which reads as a dead control rather than an error.
 export type SavedWorkViewGroupBy =
-  "status" | "priority" | { readonly fieldId: string };
+  "status" | "priority" | "assignee" | "project" | { readonly fieldId: string };
 
-export type SavedWorkViewLayout = "list" | "board" | "timeline" | "calendar";
+export type SavedWorkViewLayout =
+  "list" | "board" | "timeline" | "calendar" | "table";
 
 export const createSavedWorkView = (
   client: ConstellationRendererClient,

@@ -1314,6 +1314,248 @@ it("manages saved view lifecycle with field filters and grouping", () => {
   assert.equal(overview()[0]?.name, "Segment MSSP", "undo restores the view");
 });
 
+it("carries a table view and the two grouping keys the record does not hold", () => {
+  // Nothing in the type system sees a widened enum VALUE: `UnprojectableKeys`
+  // compares key sets, and `relationship.workspace` spreads the raw record
+  // into an untyped projection that is then parsed strictly. So "table",
+  // "assignee" and "project" each need a round trip through BOTH saved-view
+  // projections, or the widening builds clean and throws on read.
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("table-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Work graph",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+
+  const overview = () => {
+    const result = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "work.overview",
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space },
+    });
+    if (
+      result.kind !== "query_result" ||
+      result.result.outcome !== "success" ||
+      result.result.projection.kind !== "work.overview"
+    )
+      assert.fail("Expected Work overview");
+    return result.result.projection;
+  };
+  const projectedView = () => {
+    const result = harness.kernel.query(context(), {
+      contractVersion: 1,
+      queryName: "relationship.workspace",
+      queryId: uuid(),
+      workspaceId: ids.workspace,
+      consistency: "local_authoritative",
+      parameters: { spaceId: ids.space },
+    });
+    if (
+      result.kind !== "query_result" ||
+      result.result.outcome !== "success" ||
+      result.result.projection.kind !== "relationship.workspace"
+    )
+      assert.fail("Expected the relationship workspace projection");
+    const record = result.result.projection.records.find(
+      (candidate) => candidate.kind === "saved_view",
+    );
+    return record?.kind === "saved_view" ? record : undefined;
+  };
+
+  // Wersje CZYTAMY, nie wpisujemy: `record.relate` dokłada rekord relacji
+  // i podbija wersję zadania, więc liczba wpisana z palca opisuje stan
+  // z połowy tego przypadku, a nie stan bieżący — i cała asercja pada na
+  // `conflict`, komunikatem bez związku z tym, co sprawdza.
+  const taskVersion = (taskId: string) =>
+    overview().tasks.find((task) => task.id === taskId)?.version ?? 1;
+  const savedViewVersion = () => overview().savedViews[0]?.version ?? 1;
+
+  // A board without grouping has no columns and is refused; a table without
+  // grouping is the ordinary case. Copying the board branch would pass every
+  // other assertion in this file while making the commonest table view
+  // uncreatable, so the acceptance is pinned here.
+  const savedViewId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("table-view-create"),
+        commandName: "savedView.create",
+        payload: {
+          savedViewId,
+          spaceId: ids.space,
+          name: "Wszystkie zadania",
+          filters: {},
+          sort: "updated_desc",
+          layout: "table",
+        },
+      }),
+    ).outcome,
+    "success",
+    "a table needs no grouping, unlike a board",
+  );
+  assert.equal(overview().savedViews[0]?.layout, "table");
+  assert.equal(
+    projectedView()?.layout,
+    "table",
+    "the strict relationship projection accepts the widened layout too",
+  );
+  assert.equal(
+    overview().savedViews[0]?.groupBy,
+    undefined,
+    "an accepted table view really was stored ungrouped",
+  );
+
+  const twoProjectTaskId = uuid();
+  const noProjectTaskId = uuid();
+  const firstProjectId = uuid();
+  const secondProjectId = uuid();
+  for (const [key, taskId, title] of [
+    ["table-task-a", twoProjectTaskId, "Zadanie w dwóch projektach"],
+    ["table-task-b", noProjectTaskId, "Zadanie bez projektu"],
+  ] as const)
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(key),
+          commandName: "task.create",
+          payload: { taskId, spaceId: ids.space, title },
+        }),
+      ).outcome,
+      "success",
+    );
+  for (const [key, projectId, title] of [
+    ["table-project-a", firstProjectId, "Wdrożenie"],
+    ["table-project-b", secondProjectId, "Utrzymanie"],
+  ] as const)
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(key),
+          commandName: "project.create",
+          payload: { projectId, spaceId: ids.space, title },
+        }),
+      ).outcome,
+      "success",
+    );
+  for (const [key, projectId] of [
+    ["table-relate-a", firstProjectId],
+    ["table-relate-b", secondProjectId],
+  ] as const)
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          // `record.relate` żąda DOKŁADNEJ wersji obu końców, a pierwsze
+          // powiązanie podbija wersję zadania — więc drugie z pustymi
+          // oczekiwaniami dostaje `conflict`. Czytamy wersję zamiast ją
+          // zakładać.
+          ...metadata(key, {
+            [twoProjectTaskId]: taskVersion(twoProjectTaskId),
+            [projectId]: 1,
+          }),
+          commandName: "record.relate",
+          payload: {
+            relationType: "task_contributes_to_project",
+            taskId: twoProjectTaskId,
+            projectId,
+          },
+        }),
+      ).outcome,
+      "success",
+    );
+
+  // `record.relate` guards pair-uniqueness only, so one task legitimately
+  // contributes to several deliveries. The projection carries all of them —
+  // grouping by project then lists that task under each — and Task has no
+  // projection guard, so a mapper that never ran would show every task with an
+  // empty list and nothing would fail.
+  const projectIdsFor = (taskId: string) =>
+    overview().tasks.find((task) => task.id === taskId)?.projectIds;
+  assert.deepEqual(
+    [...(projectIdsFor(twoProjectTaskId) ?? [])].sort(),
+    [firstProjectId, secondProjectId].sort(),
+    "both memberships reach the projection, not just the first",
+  );
+  assert.deepEqual(
+    projectIdsFor(noProjectTaskId),
+    [],
+    "no membership is an empty list, which is the No project group",
+  );
+
+  // NIEZAASERTOWANE, świadomie i z powodem: że projekcja patrzy na relacje
+  // AKTYWNE, a nie na wszystkie, jakie kiedykolwiek istniały, dałoby się
+  // pokazać wyłącznie przez `record.unrelate` — a ta komenda bierze
+  // IDENTYFIKATOR relacji, którego żadne zapytanie nie wystawia. Z zewnątrz
+  // kernela nie ma więc czym w to celować. Zostaje to nazwane tutaj, żeby nie
+  // wyglądało na przeoczenie; zniknie razem z pierwszym zapytaniem, które
+  // wystawi rekordy relacji.
+
+  for (const [key, groupBy] of [
+    ["table-group-assignee", "assignee"],
+    ["table-group-project", "project"],
+  ] as const) {
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata(key, { [savedViewId]: savedViewVersion() }),
+          commandName: "savedView.update",
+          payload: { savedViewId, groupBy },
+        }),
+      ).outcome,
+      "success",
+      `${groupBy} grouping is not mistaken for a field definition`,
+    );
+    assert.equal(overview().savedViews[0]?.groupBy, groupBy);
+    assert.equal(
+      projectedView()?.groupBy,
+      groupBy,
+      `${groupBy} survives the strict relationship projection`,
+    );
+  }
+
+  // The undo descriptor restates both unions a second time. The compiler does
+  // reach that restatement, but not the compensation itself: this proves the
+  // widened value survives being written into a descriptor and read back out.
+  const layoutCommand = {
+    ...metadata("table-layout-board", { [savedViewId]: savedViewVersion() }),
+    commandName: "savedView.update" as const,
+    payload: { savedViewId, layout: "board" as const },
+  };
+  assert.equal(
+    unwrap(harness.kernel.execute(context(), layoutCommand)).outcome,
+    "success",
+  );
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("table-layout-undo", { [savedViewId]: savedViewVersion() }),
+        commandName: "command.undo",
+        payload: { targetCommandId: layoutCommand.commandId },
+      }),
+    ).diagnosticCode,
+    "command.undone",
+  );
+  assert.equal(
+    overview().savedViews[0]?.layout,
+    "table",
+    "undo restores a table layout the descriptor had to be able to hold",
+  );
+});
+
 it("projects a meeting into routed, promoted, and identified work-graph records", () => {
   // ADR-040 / R12.5. One meeting becomes: a routed context (project +
   // organization), a real Task from its follow-up, and Person records for its

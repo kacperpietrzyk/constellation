@@ -5,7 +5,10 @@ import type { RendererCommandResponse } from "@constellation/desktop-preload/cli
 
 import { WorkSurface } from "../WorkSurface.js";
 import { createScenarioClient } from "../client/scenario-client.js";
-import type { DesktopSnapshot } from "../client/workflow.js";
+import type {
+  DesktopSnapshot,
+  SavedWorkViewLayout,
+} from "../client/workflow.js";
 
 const ids = {
   workspace: "00000000-0000-4000-8000-000000000401",
@@ -302,9 +305,7 @@ if (workHarnessSnapshot.work.kind !== "ready") {
 const baseWork = workHarnessSnapshot.work.data;
 
 export const WorkHarness = () => {
-  const [layout, setLayout] = useState<
-    "list" | "board" | "timeline" | "calendar"
-  >("board");
+  const [layout, setLayout] = useState<SavedWorkViewLayout>("board");
   const snapshot = useMemo(
     () =>
       ({
