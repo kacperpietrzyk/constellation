@@ -402,6 +402,19 @@ const CaptureHistoryItemBaseSchema = z.object({
   version: z.int().positive(),
 });
 
+// Kto położył zadanie na dniu i kiedy. JEDEN kształt dla wszystkich trzech
+// projekcji, które niosą harmonogram zadania — druga kopia jest dokładnie tym,
+// przez co słownik powiązań zaczął znaczyć co innego dla piszącego niż dla
+// czytającego. Kontrakt „każdy projektowany harmonogram ma autora" jest
+// wyprowadzany z tego rejestru w teście, bo `Task` nie ma strażnika projekcji.
+export const TaskPlanAuthorshipSchema = z
+  .object({
+    principalId: PrincipalIdSchema,
+    principalKind: z.enum(["human", "integration", "system", "agent"]),
+    at: z.iso.datetime({ offset: true }),
+  })
+  .strict();
+
 const StrategicRecordBaseSchema = z.object({
   id: StrategicRecordIdSchema,
   workspaceId: WorkspaceIdSchema,
@@ -713,6 +726,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
               .optional(),
             completionState: z.enum(["open", "completed"]),
             startAt: z.iso.datetime({ offset: true }).optional(),
+            plannedBy: TaskPlanAuthorshipSchema.optional(),
             dueAt: z.iso.datetime({ offset: true }).optional(),
             priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
             parentTaskId: TaskIdSchema.optional(),
@@ -1109,6 +1123,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             description: z.string().optional(),
             nextAction: z.string().optional(),
             startAt: z.iso.datetime({ offset: true }).optional(),
+            plannedBy: TaskPlanAuthorshipSchema.optional(),
             dueAt: z.iso.datetime({ offset: true }).optional(),
             priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
             parentTaskId: TaskIdSchema.optional(),
@@ -1786,6 +1801,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             title: z.string(),
             score: z.int().nonnegative(),
             startAt: z.iso.datetime({ offset: true }).optional(),
+            plannedBy: TaskPlanAuthorshipSchema.optional(),
             dueAt: z.iso.datetime({ offset: true }).optional(),
             priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
             // Time reserved to do the work, distinct from the deadline above,

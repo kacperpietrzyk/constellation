@@ -8,7 +8,53 @@ import type {
   WorkspaceId,
 } from "@constellation/contracts";
 
-import type { Project, Task, TaskPriority, TaskWorkRelation } from "./model.js";
+import type {
+  Project,
+  Task,
+  TaskPlanAuthorship,
+  TaskPriority,
+  TaskWorkRelation,
+} from "./model.js";
+
+/**
+ * Kto odpowiada za plan po tej zmianie — parametr WYMAGANY, bo `Task` nie ma
+ * strażnika `UnprojectableKeys` i nic poza sygnaturą nie zmusi kolejnego
+ * wywołania do podjęcia tej decyzji.
+ *
+ * - `acting` — ktoś właśnie ustawia `startAt`; podpisujemy go tym, kto wykonał
+ *   komendę.
+ * - `restore` — cofnięcie; przywracamy podpis SPRZED zmiany, nie podpisujemy
+ *   cofającego.
+ */
+export type TaskPlanDecision =
+  | {
+      readonly kind: "acting";
+      readonly principalId: PrincipalId;
+      readonly principalKind: TaskPlanAuthorship["principalKind"];
+    }
+  | { readonly kind: "restore"; readonly plannedBy?: TaskPlanAuthorship };
+
+const stampPlan = (
+  startAt: string | undefined,
+  decision: TaskPlanDecision,
+  occurredAt: string,
+): { plannedBy?: TaskPlanAuthorship } => {
+  // Autorstwo istnieje dokładnie tak długo jak plan: bez `startAt` nie ma czego
+  // podpisać, więc podpis znika razem z datą.
+  if (startAt === undefined) return {};
+  if (decision.kind === "restore") {
+    return decision.plannedBy === undefined
+      ? {}
+      : { plannedBy: decision.plannedBy };
+  }
+  return {
+    plannedBy: {
+      principalId: decision.principalId,
+      principalKind: decision.principalKind,
+      at: occurredAt,
+    },
+  };
+};
 
 export interface CreateTaskInput {
   readonly id: TaskId;
@@ -23,6 +69,9 @@ export interface CreateTaskInput {
   readonly parentTaskId?: TaskId;
   readonly statusId: TaskStatusId;
   readonly createdBy: PrincipalId;
+  /** Wymagane, bo zadanie założone z datą jest już zaplanowane — przez tego,
+   *  kto je zakłada. Przy tworzeniu nie ma przypadku „przywróć cudzy podpis". */
+  readonly createdByKind: TaskPlanAuthorship["principalKind"];
   readonly occurredAt: string;
 }
 
@@ -36,6 +85,15 @@ export const createTask = (input: CreateTaskInput): Task => ({
     : { description: input.description }),
   ...(input.nextAction === undefined ? {} : { nextAction: input.nextAction }),
   ...(input.startAt === undefined ? {} : { startAt: input.startAt }),
+  ...stampPlan(
+    input.startAt,
+    {
+      kind: "acting",
+      principalId: input.createdBy,
+      principalKind: input.createdByKind,
+    },
+    input.occurredAt,
+  ),
   ...(input.dueAt === undefined ? {} : { dueAt: input.dueAt }),
   ...(input.priority === undefined ? {} : { priority: input.priority }),
   ...(input.parentTaskId === undefined
@@ -71,11 +129,13 @@ export const updateTaskDetails = (
   task: Task,
   update: TaskDetailsUpdate,
   occurredAt: string,
+  plan: TaskPlanDecision,
 ): Task => {
   const {
     description: currentDescription,
     nextAction: currentNextAction,
     startAt: currentStartAt,
+    plannedBy: currentPlannedBy,
     dueAt: currentDueAt,
     priority: currentPriority,
     attachmentSourceIds: currentAttachmentSourceIds,
@@ -94,6 +154,13 @@ export const updateTaskDetails = (
     ...(description === undefined ? {} : { description }),
     ...(nextAction === undefined ? {} : { nextAction }),
     ...(startAt === undefined ? {} : { startAt }),
+    // Podpis zmienia się TYLKO wtedy, gdy zmiana dotknęła `startAt`. Zmiana
+    // tytułu nie czyni zmieniającego autorem cudzego planu.
+    ...(update.startAt === undefined
+      ? currentPlannedBy === undefined
+        ? {}
+        : { plannedBy: currentPlannedBy }
+      : stampPlan(startAt, plan, occurredAt)),
     ...(dueAt === undefined ? {} : { dueAt }),
     ...(priority === undefined ? {} : { priority }),
     ...(attachmentSourceIds === undefined ? {} : { attachmentSourceIds }),

@@ -3390,6 +3390,9 @@ export class ApplicationKernel {
               ? {}
               : { nextAction: task.nextAction }),
             ...(task.startAt === undefined ? {} : { startAt: task.startAt }),
+            ...(task.plannedBy === undefined
+              ? {}
+              : { plannedBy: task.plannedBy }),
             ...(task.dueAt === undefined ? {} : { dueAt: task.dueAt }),
             ...(task.priority === undefined ? {} : { priority: task.priority }),
             ...(task.parentTaskId === undefined
