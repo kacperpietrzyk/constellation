@@ -16,20 +16,20 @@
     "@constellation/desktop-preload": "0.0.0",
     "@constellation/realtime-documents": "^0.0.0",
     "@hocuspocus/provider": "^4.4.0",
-    "@tiptap/extension-collaboration": "3.28.0",
-    "@tiptap/extension-placeholder": "3.28.0",
-    "@tiptap/react": "3.28.0",
-    "@tiptap/starter-kit": "3.28.0",
-    "react": "19.2.7",
-    "react-dom": "19.2.7",
+    "@tiptap/extension-collaboration": "3.29.2",
+    "@tiptap/extension-placeholder": "3.29.2",
+    "@tiptap/react": "3.29.2",
+    "@tiptap/starter-kit": "3.29.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "yjs": "^13.6.31"
   },
   "devDependencies": {
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "6.0.3",
+    "@vitejs/plugin-react": "6.0.4",
     "happy-dom": "20.11.1",
-    "vite": "8.1.4",
+    "vite": "8.1.5",
     "vitest": "4.1.10"
   }
 }

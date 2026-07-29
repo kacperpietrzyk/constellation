@@ -25,9 +25,9 @@
     "@constellation/contracts": "0.0.0",
     "@constellation/domain": "0.0.0",
     "@constellation/mcp": "0.0.0",
-    "@modelcontextprotocol/sdk": "1.29.0",
     "@constellation/realtime-documents": "^0.0.0",
     "@hocuspocus/server": "^4.4.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "crossws": "^0.4.4",
     "pg": "^8.22.0",
     "yjs": "^13.6.31"
@@ -37,6 +37,6 @@
     "@hocuspocus/provider": "^4.4.0",
     "@types/pg": "^8.20.0",
     "@types/ws": "^8.18.1",
-    "ws": "^8.21.0"
+    "ws": "8.21.1"
   }
 }

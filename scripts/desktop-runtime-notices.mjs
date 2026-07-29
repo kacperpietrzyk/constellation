@@ -4,7 +4,11 @@ import path from "node:path";
 
 import { ACCEPTED_LICENSE_EXPRESSIONS } from "./verify-dependency-licenses.mjs";
 
-const DESKTOP_RUNTIME_ROOTS = [
+// Korzenie runtime'u, których licencje MUSZĄ trafić do paczki. Eksportowane,
+// bo test pokrycia ma je czytać STĄD, a nie trzymać własnej kopii: lista
+// przepisana ręcznie po drugiej stronie przestaje być utrzymywana i nikt tego
+// nie zauważa, dopóki paczka nie wyjedzie bez czyjejś licencji.
+export const DESKTOP_RUNTIME_ROOTS = [
   "@hocuspocus/provider",
   "@modelcontextprotocol/sdk",
   "better-sqlite3",

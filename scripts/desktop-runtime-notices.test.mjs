@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   collectDesktopRuntimeNotices,
+  DESKTOP_RUNTIME_ROOTS,
   renderDesktopRuntimeNotices,
 } from "./desktop-runtime-notices.mjs";
 
@@ -13,22 +14,34 @@ const root = path.resolve(import.meta.dirname, "..");
 
 test("desktop runtime notices cover bundled roots and preserve license text", () => {
   const packages = collectDesktopRuntimeNotices({ root });
-  const keys = new Set(packages.map((entry) => entry.key));
-  for (const required of [
-    "@hocuspocus/provider@4.4.0",
-    "@modelcontextprotocol/sdk@1.29.0",
-    "better-sqlite3@12.11.1",
-    "electron-updater@6.8.9",
-    "lazy-val@1.0.5",
-    "react@19.2.7",
-    "yjs@13.6.31",
-    "zod@4.4.3",
-  ]) {
-    assert.equal(keys.has(required), true, required);
+  // Sprawdzaną gwarancją jest POKRYCIE: każdy zadeklarowany korzeń runtime'u ma
+  // swój wpis w notatkach. Wcześniej ta lista była przepisana tutaj RAZEM
+  // Z WERSJAMI (`react@19.2.7`), więc każde podbicie zapalało ją na czerwono
+  // nie mówiąc nic o licencjach, a nowy korzeń dodany po tamtej stronie
+  // przechodził niezauważony — czyli myliła się w obie strony naraz.
+  // Teraz zbiór wymagany jest CZYTANY ze źródła prawdy.
+  const names = new Set(
+    packages.map((entry) => entry.key.slice(0, entry.key.lastIndexOf("@"))),
+  );
+  assert.ok(
+    DESKTOP_RUNTIME_ROOTS.length > 5,
+    `expected the declared runtime roots to be non-trivial, got ${DESKTOP_RUNTIME_ROOTS.length}`,
+  );
+  for (const required of DESKTOP_RUNTIME_ROOTS) {
+    assert.equal(names.has(required), true, required);
+  }
+  // Wersja jest częścią klucza i musi tam być — bez niej notatka nie mówi,
+  // czyją licencję cytuje. Sprawdzamy KSZTAŁT, nie konkretny numer.
+  for (const entry of packages) {
+    assert.match(
+      entry.key,
+      /^@?[^@]+@\d+\.\d+\.\d+/u,
+      `every notice must name a version: ${entry.key}`,
+    );
   }
   const rendered = renderDesktopRuntimeNotices(packages);
   assert.match(rendered, /Permission is hereby granted/u);
-  assert.match(rendered, /lazy-val 1\.0\.5 — MIT/u);
+  assert.match(rendered, /lazy-val \d+\.\d+\.\d+ — MIT/u);
   assert.doesNotMatch(rendered, /\/Users\//u);
 });
 
