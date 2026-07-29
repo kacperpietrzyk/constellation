@@ -40,17 +40,27 @@ const packageRoot = ((): string => {
 })();
 const sourceRoot = path.join(packageRoot, "src");
 
+// Ścieżki porównujemy WYŁĄCZNIE w formie ukośnikowej. Windowsowy `path.sep`
+// zamienia `components/Foo.tsx` w `components\Foo.tsx`, przez co i wyjątek na
+// Ustawienia, i lista odstępstw przestają pasować — a strażnik pada na jednym
+// z trzech systemów z listą rzeczy, których nikt nie dodał. Złapane przez CI
+// za pierwszym razem, więc zamiana jest tu, a nie w komentarzu.
+// Rozdziela po OBU separatorach, nie po `path.sep`: inaczej asercja niżej
+// przechodziłaby na macOS nie sprawdzając niczego, bo windowsowa ścieżka
+// wyglądałaby tam jak jeden długi człon.
+const slashed = (file: string): string => file.split(/[\\/]/u).join("/");
+
 /** Powierzchnie DEV-only znikają razem z falami ekranowymi. */
-const DEV_ONLY = path.join("src", "dev") + path.sep;
+const DEV_ONLY = "src/dev/";
 /** Ekran Ustawień i jego lista sekcji — patrz komentarz wyżej. */
-const SETTINGS_BY_HAND = /(^|\/)((S|s)ettings[A-Za-z-]*)\.tsx?$/;
+const SETTINGS_BY_HAND = /(^|\/)([Ss]ettings[A-Za-z-]*)\.tsx?$/;
 /** Pomoc kontekstowa ma własny limit, nie ten. */
 const HELP_DIALOG = "ConceptHelpDialog.tsx";
 
 const inScope = (file: string): boolean =>
-  !file.includes(DEV_ONLY) &&
-  !SETTINGS_BY_HAND.test(file) &&
-  !file.endsWith(HELP_DIALOG);
+  !slashed(file).includes(DEV_ONLY) &&
+  !SETTINGS_BY_HAND.test(slashed(file)) &&
+  !slashed(file).endsWith(HELP_DIALOG);
 
 /**
  * Zdania dłuższe niż próg, które BYŁY w drzewie, zanim strażnik powstał —
@@ -132,7 +142,7 @@ test("no screen outside Settings lectures the reader (Settings is reviewed by ha
   const matched = new Set<number>();
 
   for (const file of scanned) {
-    const relative = path.relative(sourceRoot, file);
+    const relative = slashed(path.relative(sourceRoot, file));
     for (const lecture of lecturesIn(file, readFileSync(file, "utf8"))) {
       const known = KNOWN_LECTURES.findIndex(
         (entry) =>
@@ -183,6 +193,31 @@ test("on-demand help stays a topic, not a lecture behind one more click (#35)", 
     overlong,
     [],
     `Help topics must fit in ${HELP_LIMIT} characters:\n${overlong.join("\n")}`,
+  );
+});
+
+test("the scope filter reads the same path on every system", () => {
+  // To NIE jest hipoteza: pierwsza wersja porównywała ścieżki w formie danej
+  // przez system, więc na Windowsie `components\Foo.tsx` nie pasowało do
+  // `components/Foo.tsx`, a wyjątek na Ustawienia w ogóle nie działał. Zielono
+  // na macOS i Linuksie, czerwono na trzecim systemie po dwóch minutach.
+  assert.equal(
+    inScope("C:\\repo\\packages\\desktop-ui\\src\\dev\\Harness.tsx"),
+    false,
+  );
+  assert.equal(
+    inScope("C:\\repo\\packages\\desktop-ui\\src\\SettingsSurface.tsx"),
+    false,
+  );
+  assert.equal(
+    inScope(
+      "C:\\repo\\packages\\desktop-ui\\src\\components\\ConceptHelpDialog.tsx",
+    ),
+    false,
+  );
+  assert.equal(
+    inScope("C:\\repo\\packages\\desktop-ui\\src\\WorkSurface.tsx"),
+    true,
   );
 });
 
