@@ -231,3 +231,62 @@ test("exactly one navigation target is in the tab order at a time", async () => 
     "the tab stop must follow the target the user chose",
   );
 });
+
+test("settings is a mode: it takes the left column and gives it back", async () => {
+  // #31: wejście w Ustawienia podmienia CAŁĄ lewą kolumnę na spis sekcji,
+  // a wyjście wraca tam, gdzie się było. To jest zachowanie, nie układ —
+  // statyczny render pokaże oba drzewa naraz i nie powie, które jest widoczne.
+  await mountShell();
+
+  const projects = navItems().find(
+    (item) => item.dataset.surface === "projects",
+  );
+  assert.ok(projects, "the Projects target must be present");
+  await act(async () => {
+    projects.click();
+  });
+  assert.equal(activeSurface(), "projects");
+
+  const gear = container.querySelector<HTMLElement>("[data-settings-entry]");
+  assert.ok(
+    gear,
+    "the shell must offer a way into settings beside the identity",
+  );
+  await act(async () => {
+    gear.click();
+  });
+
+  // Kolumna przestała być nawigacją po pracy...
+  assert.equal(
+    container.querySelector(".settings-mode-column") !== null,
+    true,
+    "entering settings must replace the left column with its sections",
+  );
+  assert.equal(
+    navItems().length,
+    0,
+    "the work navigation must not stay reachable behind the settings mode",
+  );
+  assert.ok(
+    container.querySelectorAll("[data-settings-section]").length > 1,
+    "the settings column must list its sections",
+  );
+
+  // ...i oddaje ją dokładnie tam, skąd się przyszło.
+  const back = container.querySelector<HTMLElement>("[data-settings-back]");
+  assert.ok(back, "the settings mode must offer a way back");
+  await act(async () => {
+    back.click();
+  });
+
+  assert.equal(
+    container.querySelector(".settings-mode-column"),
+    null,
+    "leaving settings must restore the work navigation",
+  );
+  assert.equal(
+    activeSurface(),
+    "projects",
+    "leaving settings must return to the target you came from",
+  );
+});

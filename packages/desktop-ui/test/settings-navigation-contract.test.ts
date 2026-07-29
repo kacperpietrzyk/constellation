@@ -27,6 +27,8 @@ const styles = readFileSync(path.join(root, "src", "styles.css"), "utf8");
 const countOccurrences = (haystack: string, needle: RegExp): number =>
   haystack.match(needle)?.length ?? 0;
 
+import { settingsCategories } from "../src/settings-categories.js";
+
 const settingsCategoryIds = [
   "workspace",
   "data",
@@ -42,19 +44,17 @@ describe("enterprise settings navigation contract", () => {
     // the Polish-to-English flip changed every one of them without changing a
     // single guarantee, so we assert the shape of the labels — present, and
     // one per category — never which words they use.
-    const literal = /const settingsCategories = \[([\s\S]*?)\] as const;/.exec(
-      settings,
-    );
-    assert.ok(
-      literal,
-      "settingsCategories literal not found — the slice below would be vacuous",
-    );
-    const declaration = literal[1] ?? "";
-    assert.ok(declaration.trim().length > 0, "settingsCategories is empty");
+    // Lista sekcji przeniosła się do `settings-categories.ts`, bo w trybie
+    // Ustawień rysuje ją TAKŻE lewa kolumna powłoki, a ekran jest leniwy
+    // i nie wolno go wciągnąć na ścieżkę gorącą. Czytamy ją więc ze ŹRÓDŁA
+    // PRAWDY, nie wycinając literału z pliku ekranu — poprzednia wersja pękła
+    // przy samym przeniesieniu, nie mówiąc nic o żadnej gwarancji.
+    const declared = settingsCategories.map((category) => ({
+      id: category.id as string,
+      label: category.label as string,
+    }));
+    assert.ok(declared.length > 0, "settingsCategories is empty");
 
-    const declared = [
-      ...declaration.matchAll(/id: "([a-z]+)", label: "([^"]*)"/g),
-    ].map((match) => ({ id: match[1] ?? "", label: match[2] ?? "" }));
     // The five ids, in the order the navigator walks them.
     assert.deepEqual(
       declared.map((category) => category.id),
@@ -74,7 +74,7 @@ describe("enterprise settings navigation contract", () => {
     assert.equal(new Set(declared.map((category) => category.label)).size, 5);
     // Exactly five: an extra entry, or a section anchored outside the list,
     // would break the navigator/status/scroll-spy correspondence.
-    assert.equal(countOccurrences(declaration, /id: "/g), 5);
+    assert.equal(declared.length, 5);
     assert.equal(countOccurrences(settings, /data-settings-category="/g), 5);
 
     // Status-bearing: every category id maps to a status string, and the

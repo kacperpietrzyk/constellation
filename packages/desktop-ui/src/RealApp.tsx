@@ -161,6 +161,10 @@ import {
 } from "./client/shell-navigation.js";
 import { subscribeToAgentWrites } from "./client/agent-write-reload.js";
 import {
+  settingsCategories,
+  settingsCategoryElementId,
+} from "./settings-categories.js";
+import {
   conditionCopy,
   type PreviewCondition,
   type SurfaceId,
@@ -1663,6 +1667,29 @@ export const RealApp = ({
     surfaceFocusPendingRef.current = true;
     setNavigation((current) => navigateShellContext(current, context));
   }, []);
+
+  // Ustawienia są TRYBEM, nie kolejnym ekranem w rzędzie: wejście podmienia
+  // lewą kolumnę, a wyjście wraca tam, gdzie się było. Kontekst powrotu
+  // zapamiętujemy przy WEJŚCIU, bo po otwarciu Ustawień aktywnym kontekstem są
+  // już one same i nie da się go odtworzyć.
+  const [settingsReturn, setSettingsReturn] = useState<ShellContext>();
+  const openSettings = useCallback(() => {
+    surfaceFocusPendingRef.current = true;
+    setNavigation((current) => {
+      const active = activeShellContext(current);
+      if (active.surface !== "settings") setSettingsReturn(active);
+      return navigateShellContext(
+        current,
+        destinationContext("settings", "Settings"),
+      );
+    });
+  }, []);
+  const leaveSettings = useCallback(() => {
+    surfaceFocusPendingRef.current = true;
+    const back = settingsReturn ?? destinationContext("today", "Today");
+    setNavigation((current) => navigateShellContext(current, back));
+    setSettingsReturn(undefined);
+  }, [settingsReturn]);
   const openContextInNewTab = useCallback(
     (context: ShellContext) => {
       const outcome = openShellContextReportingEviction(navigation, context);
@@ -2123,6 +2150,15 @@ export const RealApp = ({
       } else if ((event.metaKey || event.ctrlKey) && event.code === "KeyK") {
         event.preventDefault();
         setSearchOpen(true);
+      } else if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.shiftKey &&
+        (event.key === "," || event.code === "Comma")
+      ) {
+        // ⌘, to systemowy skrót do ustawień na macOS — człowiek przychodzi
+        // z nim z każdej innej aplikacji.
+        event.preventDefault();
+        openSettings();
       } else if (
         (event.metaKey || event.ctrlKey) &&
         !event.shiftKey &&
@@ -2966,67 +3002,110 @@ export const RealApp = ({
               })}
             </>
           )}
-          {/* Cele bez modułu (Today, Inbox) stoją NAD modułami i bez nagłówka
+          {/* TRYB USTAWIEŃ: lewa kolumna przestaje być nawigacją po pracy
+              i staje się spisem sekcji. Nawigacja nie jest ukrywana stylem —
+              po prostu się nie renderuje, więc nie zostaje osiągalna Tabem
+              w miejscu, którego nie widać. */}
+          {surface === "settings" ? (
+            <nav
+              className="settings-mode-column"
+              aria-label="Settings sections"
+            >
+              <button
+                type="button"
+                className="nav-item settings-mode-back"
+                data-settings-back="true"
+                onClick={leaveSettings}
+              >
+                <span aria-hidden="true">‹</span>
+                <span>Settings</span>
+              </button>
+              {settingsCategories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  className="nav-item settings-mode-section"
+                  data-settings-section={category.id}
+                  onClick={() =>
+                    document
+                      .getElementById(settingsCategoryElementId(category.id))
+                      ?.scrollIntoView({ block: "start", behavior: "auto" })
+                  }
+                >
+                  <span>{category.label}</span>
+                </button>
+              ))}
+            </nav>
+          ) : (
+            <>
+              {/* Cele bez modułu (Today, Inbox) stoją NAD modułami i bez nagłówka
               grupy: to nie są filtry, tylko tryby pracy. Renderują się tą samą
               funkcją co pozycje w modułach, więc nie mogą się od nich rozjechać. */}
-          {navItems
-            .filter((item) => item.group === null && item.shortcut !== null)
-            .map((item) => navEntry(item))}
-          {navigationGroups.map((group) => {
-            const groupItems = navItems.filter((item) => item.group === group);
-            const activeGroupItem = groupItems.find(
-              (item) => item.id === surface,
-            );
-            const expanded =
-              railMode || !collapsedNavigationGroups.includes(group);
-            // `aria-controls` rozdziela wartość po BIAŁYCH ZNAKACH, więc nazwa
-            // modułu ze spacją („Work Management") rozpadała się na dwa tokeny
-            // — `primary-navigation-work` i `management` — z których żaden nie
-            // istniał. Przycisk rozwijania wskazywał w nicość, a asystujące
-            // technologie nie miały jak powiedzieć, co on właściwie otwiera.
-            // Poprzednie nazwy grup („Praca", „Wiedza") były jednowyrazowe,
-            // więc defekt czekał na pierwszą nazwę ze spacją.
-            const groupId = `primary-navigation-${group
-              .toLocaleLowerCase("en")
-              .replace(/[^a-z0-9]+/gu, "-")
-              .replace(/^-|-$/gu, "")}`;
-            return (
-              <div className="nav-group" key={group}>
-                {!railMode && (
-                  <button
-                    type="button"
-                    className={`nav-group-toggle${activeGroupItem === undefined ? "" : " contains-current"}`}
-                    tabIndex={
-                      activeGroupItem !== undefined && !expanded ? 0 : -1
-                    }
-                    aria-expanded={expanded}
-                    aria-controls={groupId}
-                    aria-label={
-                      activeGroupItem === undefined
-                        ? group
-                        : `${group}, current view ${activeGroupItem.label}`
-                    }
-                    onClick={() => toggleNavigationGroup(group)}
-                  >
-                    <span>{group}</span>
-                    {activeGroupItem !== undefined && !expanded && (
-                      <small>{activeGroupItem.label}</small>
+              {navItems
+                .filter((item) => item.group === null && item.shortcut !== null)
+                .map((item) => navEntry(item))}
+              {navigationGroups.map((group) => {
+                const groupItems = navItems.filter(
+                  (item) => item.group === group,
+                );
+                const activeGroupItem = groupItems.find(
+                  (item) => item.id === surface,
+                );
+                const expanded =
+                  railMode || !collapsedNavigationGroups.includes(group);
+                // `aria-controls` rozdziela wartość po BIAŁYCH ZNAKACH, więc nazwa
+                // modułu ze spacją („Work Management") rozpadała się na dwa tokeny
+                // — `primary-navigation-work` i `management` — z których żaden nie
+                // istniał. Przycisk rozwijania wskazywał w nicość, a asystujące
+                // technologie nie miały jak powiedzieć, co on właściwie otwiera.
+                // Poprzednie nazwy grup („Praca", „Wiedza") były jednowyrazowe,
+                // więc defekt czekał na pierwszą nazwę ze spacją.
+                const groupId = `primary-navigation-${group
+                  .toLocaleLowerCase("en")
+                  .replace(/[^a-z0-9]+/gu, "-")
+                  .replace(/^-|-$/gu, "")}`;
+                return (
+                  <div className="nav-group" key={group}>
+                    {!railMode && (
+                      <button
+                        type="button"
+                        className={`nav-group-toggle${activeGroupItem === undefined ? "" : " contains-current"}`}
+                        tabIndex={
+                          activeGroupItem !== undefined && !expanded ? 0 : -1
+                        }
+                        aria-expanded={expanded}
+                        aria-controls={groupId}
+                        aria-label={
+                          activeGroupItem === undefined
+                            ? group
+                            : `${group}, current view ${activeGroupItem.label}`
+                        }
+                        onClick={() => toggleNavigationGroup(group)}
+                      >
+                        <span>{group}</span>
+                        {activeGroupItem !== undefined && !expanded && (
+                          <small>{activeGroupItem.label}</small>
+                        )}
+                        <span
+                          className="nav-group-chevron"
+                          aria-hidden="true"
+                        />
+                      </button>
                     )}
-                    <span className="nav-group-chevron" aria-hidden="true" />
-                  </button>
-                )}
-                <div
-                  id={groupId}
-                  className="nav-group-items"
-                  role="group"
-                  aria-label={group}
-                  hidden={!expanded}
-                >
-                  {groupItems.map((item) => navEntry(item))}
-                </div>
-              </div>
-            );
-          })}
+                    <div
+                      id={groupId}
+                      className="nav-group-items"
+                      role="group"
+                      aria-label={group}
+                      hidden={!expanded}
+                    >
+                      {groupItems.map((item) => navEntry(item))}
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
         </nav>
         <div className="sidebar-spacer" />
         {isPreview && (
@@ -3068,6 +3147,19 @@ export const RealApp = ({
               · {build.version}
             </span>
           </div>
+          {/* Wejście w tryb Ustawień stoi PRZY tożsamości, bo to jest miejsce,
+              w którym człowiek szuka „moich rzeczy" — a nie kolejna pozycja
+              w rzędzie celów pracy. */}
+          <button
+            type="button"
+            className="settings-entry"
+            data-settings-entry="true"
+            aria-label="Open settings"
+            title="Settings (⌘,)"
+            onClick={openSettings}
+          >
+            <Icon name="settings" />
+          </button>
         </div>
       </aside>
 
