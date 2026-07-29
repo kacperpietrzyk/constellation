@@ -75,8 +75,7 @@ test("release service serializes checks and keeps failures retryable", async () 
     kind: "failure",
     currentVersion: "0.1.0",
     operation: "check",
-    message:
-      "Could not check for updates safely. This version is unchanged.",
+    message: "Could not check for updates safely. This version is unchanged.",
   });
 });
 

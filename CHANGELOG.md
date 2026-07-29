@@ -30,7 +30,7 @@ releases begin.
 - **Saved navigation state survives the rename.** The shell serialises open tabs
   to `localStorage`, and every stored tab carries the identifier of a surface —
   including the ones this release retires. Stored state now declares `version:
-  3`, retired identifiers are carried to their successors (`cockpit` → `today`,
+3`, retired identifiers are carried to their successors (`cockpit` → `today`,
   `attention` → `inbox`, `documents` → `library`, `relationships` →
   `organizations`), and anything still unrecognised falls back to `Today`
   instead of pointing a tab at a target that no longer exists. The same guard

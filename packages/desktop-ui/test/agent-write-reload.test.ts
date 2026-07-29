@@ -157,6 +157,10 @@ test("disposing cancels a re-read in flight and unsubscribes", () => {
   h.advance(AGENT_WRITE_RELOAD_DELAY_MS * 2);
 
   assert.equal(h.reloads(), 0, "a reload must not land after teardown");
-  assert.equal(h.pendingCount(), 0, "and its timer must not outlive the window");
+  assert.equal(
+    h.pendingCount(),
+    0,
+    "and its timer must not outlive the window",
+  );
   assert.equal(h.unsubscribed(), 1);
 });

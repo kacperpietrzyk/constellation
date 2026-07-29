@@ -80,7 +80,9 @@ test("every user-visible string in the renderer is English", () => {
     [],
     `Polish copy still reaches the screen in ${offenders.length} place(s):\n${offenders
       .slice(0, 40)
-      .join("\n")}${offenders.length > 40 ? `\n… and ${offenders.length - 40} more` : ""}`,
+      .join(
+        "\n",
+      )}${offenders.length > 40 ? `\n… and ${offenders.length - 40} more` : ""}`,
   );
 });
 

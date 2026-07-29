@@ -24,41 +24,124 @@ const settings = readFileSync(
 );
 const styles = readFileSync(path.join(root, "src", "styles.css"), "utf8");
 
+const countOccurrences = (haystack: string, needle: RegExp): number =>
+  haystack.match(needle)?.length ?? 0;
+
+const settingsCategoryIds = [
+  "workspace",
+  "data",
+  "appearance",
+  "access",
+  "application",
+] as const;
+
 describe("enterprise settings navigation contract", () => {
   it("groups the settings surface into five stable, status-bearing categories", () => {
-    for (const [id, label] of [
-      ["workspace", "Workspace"],
-      ["data", "Dane i prywatność"],
-      ["appearance", "Wygląd"],
-      ["access", "Dostęp i połączenia"],
-      ["application", "Start i aplikacja"],
-    ]) {
-      assert.match(settings, new RegExp(`id: "${id}", label: "${label}"`));
+    // The category *ids* are the stable contract: they name the sections, the
+    // scroll anchors and the status record. The *labels* are interface copy —
+    // the Polish-to-English flip changed every one of them without changing a
+    // single guarantee, so we assert the shape of the labels — present, and
+    // one per category — never which words they use.
+    const literal = /const settingsCategories = \[([\s\S]*?)\] as const;/.exec(
+      settings,
+    );
+    assert.ok(
+      literal,
+      "settingsCategories literal not found — the slice below would be vacuous",
+    );
+    const declaration = literal[1] ?? "";
+    assert.ok(declaration.trim().length > 0, "settingsCategories is empty");
+
+    const declared = [
+      ...declaration.matchAll(/id: "([a-z]+)", label: "([^"]*)"/g),
+    ].map((match) => ({ id: match[1] ?? "", label: match[2] ?? "" }));
+    // The five ids, in the order the navigator walks them.
+    assert.deepEqual(
+      declared.map((category) => category.id),
+      [...settingsCategoryIds],
+    );
+    for (const id of settingsCategoryIds)
       assert.match(settings, new RegExp(`data-settings-category="${id}"`));
-    }
+    // Every category carries a label a human can read, and no two categories
+    // read the same. Which words they use is copy and deliberately unpinned —
+    // five entries all labelled "Workspace" is not copy, it is a navigator
+    // nobody can steer, so distinctness is asserted structurally.
+    for (const category of declared)
+      assert.ok(
+        category.label.trim().length > 0,
+        `category ${category.id} carries no label`,
+      );
+    assert.equal(new Set(declared.map((category) => category.label)).size, 5);
+    // Exactly five: an extra entry, or a section anchored outside the list,
+    // would break the navigator/status/scroll-spy correspondence.
+    assert.equal(countOccurrences(declaration, /id: "/g), 5);
+    assert.equal(countOccurrences(settings, /data-settings-category="/g), 5);
+
+    // Status-bearing: every category id maps to a status string, and the
+    // navigator actually renders that string beside the category.
     assert.match(
       settings,
       /categoryStatus: Record<SettingsCategoryId, string>/,
     );
-    assert.match(settings, /aria-current=.*"location"/s);
+    assert.match(
+      settings,
+      /<small>\{categoryStatus\[category\.id\]\}<\/small>/,
+    );
+
+    // The navigator marks the category you are looking at as the current
+    // location. Anchored to the expression itself: an unrelated aria-current
+    // elsewhere in the file must not satisfy this.
+    assert.match(
+      settings,
+      /aria-current=\{\s*activeCategory === category\.id \? "location" : undefined,?\s*\}/,
+    );
   });
 
   it("keeps every category available through a native narrow-width control", () => {
     assert.match(settings, /<select\s+id="settings-category-select"/s);
     assert.match(settings, /settingsCategories\.map\(\(category\) =>/);
+    // Narrow width: the sticky sidebar disappears and the native select takes
+    // over, so no category becomes unreachable. Both rules must live inside
+    // the same container query — hence the [^@] bound between them.
     assert.match(
       styles,
-      /@container \(max-width: 58rem\)[^{]*\{[\s\S]*?\.settings-category-picker\s*\{[\s\S]*?display: grid/s,
+      /@container \(max-width: 58rem\)[^@]*?\.settings-navigator\s*\{[^}]*display: none/s,
     );
-    assert.match(styles, /\.settings-navigator\s*\{[\s\S]*?position: sticky/s);
+    assert.match(
+      styles,
+      /@container \(max-width: 58rem\)[^@]*?\.settings-category-picker\s*\{[^}]*display: grid/s,
+    );
+    assert.match(styles, /\.settings-navigator\s*\{[^}]*position: sticky/s);
   });
 
   it("offers one global and three contextual routes into the concept help", () => {
-    assert.match(settings, /Wyjaśnij pojęcia danych i dostępu/);
-    assert.match(settings, /Wyjaśnij Data Home, Hub i MCP/);
-    assert.match(settings, /Wyjaśnij odzyskiwanie/);
-    assert.match(settings, /Wyjaśnij dostęp agenta/);
-    assert.equal(settings.match(/aria-haspopup="dialog"/g)?.length, 4);
+    // One global entry point in the header, three contextual ones next to the
+    // sections they explain. The two class names are what distinguishes them,
+    // so they carry the "one global / three contextual" shape structurally.
+    assert.equal(
+      countOccurrences(settings, /className="settings-help-entry"/g),
+      1,
+    );
+    assert.equal(
+      countOccurrences(settings, /className="settings-context-help"/g),
+      3,
+    );
+    // All four announce themselves as opening a dialog...
+    assert.equal(countOccurrences(settings, /aria-haspopup="dialog"/g), 4);
+    // ...and all four are wired to a concept-help topic rather than being
+    // decorative. Topic ids are typed values (ConceptHelpTopicId), not copy.
+    assert.equal(countOccurrences(settings, /setConceptHelpTopic\("/g), 4);
+    const topics = new Set(
+      [...settings.matchAll(/setConceptHelpTopic\("([a-z-]+)"\)/g)].map(
+        (match) => match[1],
+      ),
+    );
+    assert.deepEqual([...topics].sort(), [
+      "agent-access",
+      "data-home",
+      "recovery",
+    ]);
+    // The chosen topic is what the dialog opens on.
     assert.match(settings, /initialTopic=\{conceptHelpTopic\}/);
   });
 });
