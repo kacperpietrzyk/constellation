@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { WorkingDaySchema as WorkingDayProjectionSchema } from "./working-day.js";
+
 import {
   AuditReceiptIdSchema,
   CaptureIdSchema,
@@ -45,6 +47,7 @@ export const DiagnosticCodeSchema = z.enum([
   "workspace.created",
   "workspace.renamed",
   "workspace.voice_audio_retention_changed",
+  "workspace.working_day_changed",
   "workspace.member_added",
   "workspace.member_access_changed",
   "workspace.member_revoked",
@@ -183,6 +186,15 @@ export const WorkspaceRenamedProjectionSchema = z
     kind: z.literal("workspace.renamed"),
     workspaceId: WorkspaceIdSchema,
     name: z.string(),
+    version: z.int().positive(),
+  })
+  .strict();
+
+export const WorkspaceWorkingDayChangedProjectionSchema = z
+  .object({
+    kind: z.literal("workspace.working_day_changed"),
+    workspaceId: WorkspaceIdSchema,
+    workingDay: WorkingDayProjectionSchema,
     version: z.int().positive(),
   })
   .strict();
@@ -914,6 +926,13 @@ const WorkspaceVoiceAudioRetentionChangedSuccessOutcomeSchema =
     projection: WorkspaceVoiceAudioRetentionChangedProjectionSchema,
   }).strict();
 
+const WorkspaceWorkingDayChangedSuccessOutcomeSchema =
+  CommittedOutcomeMetadataSchema.extend({
+    outcome: z.literal("success"),
+    diagnosticCode: z.literal("workspace.working_day_changed"),
+    projection: WorkspaceWorkingDayChangedProjectionSchema,
+  }).strict();
+
 const WorkspaceMemberAddedSuccessOutcomeSchema =
   CommittedOutcomeMetadataSchema.extend({
     outcome: z.literal("success"),
@@ -1308,6 +1327,7 @@ export const SuccessOutcomeSchema = z.discriminatedUnion("diagnosticCode", [
   WorkspaceCreatedSuccessOutcomeSchema,
   WorkspaceRenamedSuccessOutcomeSchema,
   WorkspaceVoiceAudioRetentionChangedSuccessOutcomeSchema,
+  WorkspaceWorkingDayChangedSuccessOutcomeSchema,
   WorkspaceMemberAddedSuccessOutcomeSchema,
   WorkspaceMemberAccessChangedSuccessOutcomeSchema,
   WorkspaceMemberRevokedSuccessOutcomeSchema,

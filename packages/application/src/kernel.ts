@@ -47,6 +47,7 @@ import {
   validateQueryEnvelope,
 } from "@constellation/contracts";
 import {
+  effectiveWorkingDay,
   createLocalWorkspace,
   awaitVoiceTranscript,
   writeVoiceTranscript,
@@ -57,6 +58,7 @@ import {
   createKnowledgeSource,
   renameWorkspace,
   setWorkspaceVoiceAudioRetention,
+  setWorkspaceWorkingDay,
   routeCaptureAsKnowledgeSource,
   routeCaptureAsTask,
   submitCapture,
@@ -253,7 +255,8 @@ const isCurrentlyAuthorized = (
         canUseSpace(context, command.workspaceId, command.payload.rootSpaceId)
       );
     case "workspace.rename":
-    case "workspace.setVoiceAudioRetention": {
+    case "workspace.setVoiceAudioRetention":
+    case "workspace.setWorkingDay": {
       // Asked before anything is read, for the reason stated at the top of this
       // file: a branch that refuses before consulting the policy consults
       // nothing, and a verdict reached over nothing is reported as a
@@ -812,6 +815,15 @@ export class ApplicationKernel {
           fingerprint,
           occurredAt,
         );
+      case "workspace.setWorkingDay":
+        return this.setWorkspaceWorkingDay(
+          transaction,
+          context,
+          command,
+          scope,
+          fingerprint,
+          occurredAt,
+        );
       case "workspace.setVoiceAudioRetention":
         return this.setWorkspaceVoiceAudioRetention(
           transaction,
@@ -1305,6 +1317,107 @@ export class ApplicationKernel {
     transaction.insertIdempotency({ scope, fingerprint, outcome });
     transaction.insertSyncCommand(command);
     transaction.insertOutbox(outbox);
+    return outcome;
+  }
+
+  private setWorkspaceWorkingDay(
+    transaction: ApplicationTransaction,
+    context: ExecutionContext,
+    command: Extract<
+      CommandEnvelope,
+      { commandName: "workspace.setWorkingDay" }
+    >,
+    scope: string,
+    fingerprint: string,
+    occurredAt: string,
+  ): CommandOutcome {
+    const workspace = transaction.getWorkspace(command.workspaceId);
+    const membership = transaction.getMembership(
+      command.workspaceId,
+      context.principalId,
+    );
+    if (
+      workspace === undefined ||
+      !canEditSpace(
+        transaction,
+        context,
+        command.workspaceId,
+        workspace.rootSpaceId,
+      ) ||
+      !isWorkspaceAdministrator(membership)
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "authorization.denied",
+      });
+    const expectedVersion = command.expectedVersions[workspace.id];
+    if (
+      expectedVersion === undefined ||
+      Object.keys(command.expectedVersions).length !== 1
+    )
+      return this.outcome(command, occurredAt, {
+        outcome: "rejected",
+        diagnosticCode: "command.precondition_failed",
+      });
+    if (expectedVersion !== workspace.version)
+      return this.outcome(command, occurredAt, {
+        outcome: "conflict",
+        diagnosticCode: "record.version_conflict",
+        currentVersions: currentVersionMap(workspace.id, workspace.version),
+      });
+    const updated = setWorkspaceWorkingDay(
+      workspace,
+      command.payload.workingDay,
+      occurredAt,
+    );
+    const eventId = EventIdSchema.parse(this.dependencies.ids.next("event"));
+    const auditReceiptId = AuditReceiptIdSchema.parse(
+      this.dependencies.ids.next("auditReceipt"),
+    );
+    const event: DomainEvent = {
+      id: eventId,
+      commandId: command.commandId,
+      type: "workspace.working_day_changed",
+      workspaceId: workspace.id,
+      spaceId: workspace.rootSpaceId,
+      aggregateId: workspace.id,
+      aggregateVersion: updated.version,
+      occurredAt,
+    };
+    const audit = this.auditReceipt(
+      auditReceiptId,
+      context,
+      command,
+      workspace.rootSpaceId,
+      [workspace.id],
+      { [workspace.id]: updated.version },
+      ["workingDay"],
+      occurredAt,
+    );
+    const outcome = this.outcome(command, occurredAt, {
+      outcome: "success",
+      diagnosticCode: "workspace.working_day_changed",
+      affected: [
+        {
+          recordId: updated.id,
+          recordKind: "workspace",
+          version: updated.version,
+        },
+      ],
+      auditReceiptId,
+      projection: {
+        kind: "workspace.working_day_changed",
+        workspaceId: updated.id,
+        workingDay: command.payload.workingDay,
+        version: updated.version,
+      },
+    });
+    if (!transaction.updateWorkspace(updated, expectedVersion))
+      throw new RetryableUnitOfWorkError();
+    transaction.insertEvent(event);
+    transaction.insertAuditReceipt(audit);
+    transaction.insertIdempotency({ scope, fingerprint, outcome });
+    transaction.insertSyncCommand(command);
     return outcome;
   }
 
@@ -3023,6 +3136,7 @@ export class ApplicationKernel {
           defaultTaskStatusId: workspace.defaultTaskStatusId,
           voiceAudioRetentionPolicy:
             workspace.voiceAudioRetentionPolicy ?? "delete_after_transcript",
+          workingDay: effectiveWorkingDay(workspace),
           version: workspace.version,
         },
         spaces: spaces.map((space) => ({

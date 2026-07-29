@@ -13,6 +13,7 @@ import {
   TaskStatusIdSchema,
   WorkspaceIdSchema,
   type QueryProjection,
+  DEFAULT_WORKING_DAY,
 } from "@constellation/contracts";
 import type { RendererQueryResponse } from "@constellation/desktop-preload/client";
 
@@ -169,6 +170,7 @@ const snapshot: DesktopSnapshot = {
       timezone: "Europe/Warsaw",
       defaultTaskStatusId: taskStatusId,
       voiceAudioRetentionPolicy: "delete_after_transcript",
+      workingDay: DEFAULT_WORKING_DAY,
       version: 1,
     },
     spaces: [{ id: spaceId, name: "Praca", version: 1 }],

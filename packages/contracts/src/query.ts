@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { WorkingDaySchema as WorkingDayProjectionSchema } from "./working-day.js";
+
 import {
   AuditReceiptIdSchema,
   CaptureIdSchema,
@@ -1018,6 +1020,10 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             "delete_after_transcript",
             "retain",
           ]),
+          // WYMAGANE, nie opcjonalne: odczyt dostaje wartość SKUTECZNĄ, więc
+          // żaden ekran nie ma powodu przepisywać u siebie domyślnych ośmiu
+          // godzin. Domyślna wartość mieszka w jednym miejscu, w domenie.
+          workingDay: WorkingDayProjectionSchema,
           version: z.int().positive(),
         })
         .strict(),
@@ -1794,6 +1800,11 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
       kind: z.literal("cockpit.week"),
       weekStart: z.iso.date(),
       weekEnd: z.iso.date(),
+      // Pojemność dnia liczy się z tego, a nie z ośmiu godzin wpisanych w
+      // ekran. Jedzie razem z tygodniem, bo ekran dnia i tak czyta ten wynik —
+      // druga runda po ustawienia workspace'u byłaby pretekstem do trzeciej
+      // kopii domyślnej wartości.
+      workingDay: WorkingDayProjectionSchema,
       focus: z.array(
         z
           .object({

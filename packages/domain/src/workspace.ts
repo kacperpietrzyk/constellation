@@ -1,16 +1,18 @@
-import type {
-  MembershipId,
-  PrincipalId,
-  SpaceId,
-  TaskStatusId,
-  WorkspaceId,
+import {
+  type MembershipId,
+  type PrincipalId,
+  type SpaceId,
+  type TaskStatusId,
+  type WorkspaceId,
+  DEFAULT_WORKING_DAY,
 } from "@constellation/contracts";
 
-import type {
-  Space,
-  TaskStatusDefinition,
-  Workspace,
-  WorkspaceMembership,
+import {
+  type Space,
+  type TaskStatusDefinition,
+  type WorkingDay,
+  type Workspace,
+  type WorkspaceMembership,
 } from "./model.js";
 import { createDefaultTaskStatus } from "./task.js";
 
@@ -79,6 +81,34 @@ export const renameWorkspace = (
 ): Workspace => ({
   ...workspace,
   name,
+  version: workspace.version + 1,
+  updatedAt: occurredAt,
+});
+
+/**
+ * Dzień roboczy, którego workspace faktycznie używa. Jedyne miejsce, w którym
+ * wolno sięgnąć po wartość domyślną — czytający dostaje ją już wyliczoną.
+ */
+export const effectiveWorkingDay = (workspace: Workspace): WorkingDay =>
+  workspace.workingDay ?? DEFAULT_WORKING_DAY;
+
+/** Ile minut liczy dzień roboczy — pojemność, od której odejmuje się zajęte. */
+export const workingDayMinutes = (workingDay: WorkingDay): number =>
+  workingDay.endMinute - workingDay.startMinute;
+
+/** Czy ten dzień tygodnia (ISO, 1 = poniedziałek) jest w ogóle roboczy. */
+export const isWorkingWeekday = (
+  workingDay: WorkingDay,
+  isoWeekday: number,
+): boolean => workingDay.weekdays.includes(isoWeekday);
+
+export const setWorkspaceWorkingDay = (
+  workspace: Workspace,
+  workingDay: WorkingDay,
+  occurredAt: string,
+): Workspace => ({
+  ...workspace,
+  workingDay,
   version: workspace.version + 1,
   updatedAt: occurredAt,
 });

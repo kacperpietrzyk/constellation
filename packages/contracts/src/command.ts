@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { WorkingDaySchema } from "./working-day.js";
+
 import {
   CausationIdSchema,
   CaptureIdSchema,
@@ -121,6 +123,16 @@ export const WorkspaceSetVoiceAudioRetentionCommandSchema =
   }).strict();
 export type WorkspaceSetVoiceAudioRetentionCommand = z.infer<
   typeof WorkspaceSetVoiceAudioRetentionCommandSchema
+>;
+
+export const WorkspaceSetWorkingDayCommandSchema = CommandMetadataSchema.extend(
+  {
+    commandName: z.literal("workspace.setWorkingDay"),
+    payload: z.object({ workingDay: WorkingDaySchema }).strict(),
+  },
+).strict();
+export type WorkspaceSetWorkingDayCommand = z.infer<
+  typeof WorkspaceSetWorkingDayCommandSchema
 >;
 
 const MembershipRoleSchema = z.enum(["admin", "member", "guest"]);
@@ -2026,6 +2038,7 @@ export const CommandEnvelopeSchema = z.discriminatedUnion("commandName", [
   WorkspaceCreateLocalCommandSchema,
   WorkspaceRenameCommandSchema,
   WorkspaceSetVoiceAudioRetentionCommandSchema,
+  WorkspaceSetWorkingDayCommandSchema,
   WorkspaceMemberAddCommandSchema,
   WorkspaceMemberSetAccessCommandSchema,
   WorkspaceMemberRevokeCommandSchema,
