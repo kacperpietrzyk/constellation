@@ -387,3 +387,36 @@ test("the work plane keeps the anchors the packaged smoke finds it by", async ()
     );
   }
 });
+
+test("no two destinations render the same screen", async () => {
+  // Bramka wyżej pyta „czy COŚ się wyrenderowało". Przechodzi więc także wtedy,
+  // gdy dwie destynacje pokazują TEN SAM ekran — a to jest dokładnie defekt,
+  // który produkuje rozbicie płaskiego łańcucha `{surface === "x" && …}` na
+  // mapę dyspozytora: jedna literówka w kluczu i dwa cele wskazują na jedno
+  // wejście. Nawigacja działa, panel nie jest pusty, wszystko świeci na zielono,
+  // a jeden ekran po prostu przestaje być osiągalny.
+  //
+  // Ta asercja jest tu ZANIM PR 6 ruszy ten łańcuch, bo po fakcie nie da się
+  // odróżnić „zawsze tak było" od „właśnie to zepsułem".
+  const { render } = await shell();
+
+  const byPanel = new Map<string, DesktopSurface[]>();
+  for (const id of desktopSurfaceIds) {
+    const plane = workPlaneFor(render(id), id);
+    const panel = firstInner(plane?.inner ?? "", surfacePanelPattern()) ?? "";
+    // Sam kształt panelu, bez atrybutu, który niesie identyfikator celu —
+    // inaczej każde dwa panele różniłyby się nim i porównanie nic nie mówi.
+    const shape = panel.replace(/\sdata-surface="[^"]*"/g, "").trim();
+    assert.ok(shape.length > 0, `${id}: empty surface panel`);
+    byPanel.set(shape, [...(byPanel.get(shape) ?? []), id]);
+  }
+
+  const collisions = [...byPanel.values()].filter((ids) => ids.length > 1);
+  assert.deepEqual(
+    collisions,
+    [],
+    `these destinations render an identical screen: ${collisions
+      .map((ids) => ids.join(" = "))
+      .join("; ")}`,
+  );
+});
