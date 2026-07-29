@@ -39,7 +39,14 @@ import type {
   MeetingWorkItem,
   RelationCondition,
   WorkLinkType,
+  WorkingDayContract,
 } from "@constellation/contracts";
+
+/**
+ * Ile dnia jest do dyspozycji — kształt i wartość domyślna mieszkają w
+ * kontraktach, bo sięga po nie także renderer. Tutaj tylko nazwa domenowa.
+ */
+export type WorkingDay = WorkingDayContract;
 
 export interface Workspace {
   readonly id: WorkspaceId;
@@ -49,6 +56,7 @@ export interface Workspace {
   readonly defaultTaskStatusId: TaskStatusId;
   readonly policyVersion?: number;
   readonly voiceAudioRetentionPolicy?: "delete_after_transcript" | "retain";
+  readonly workingDay?: WorkingDay;
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -1328,6 +1336,7 @@ export type DomainEvent = { readonly commandId: CommandId } & (
       readonly type:
         | "workspace.renamed"
         | "workspace.voice_audio_retention_changed"
+        | "workspace.working_day_changed"
         | "workspace.default_status_changed";
       readonly workspaceId: WorkspaceId;
       readonly spaceId: SpaceId;

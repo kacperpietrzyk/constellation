@@ -7,6 +7,7 @@ import {
   StrategicRecordIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
+  DEFAULT_WORKING_DAY,
 } from "@constellation/contracts";
 
 import {
@@ -225,6 +226,7 @@ const snapshot: DesktopSnapshot = {
       timezone: "Europe/Warsaw",
       defaultTaskStatusId: statusId,
       voiceAudioRetentionPolicy: "delete_after_transcript",
+      workingDay: DEFAULT_WORKING_DAY,
       version: 1,
     },
     spaces: [{ id: spaceId, name: "Praca", version: 1 }],

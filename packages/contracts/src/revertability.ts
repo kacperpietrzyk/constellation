@@ -29,6 +29,7 @@ export const COMMAND_REVERTABILITY: Readonly<
   "workspace.createLocal": "never",
   "workspace.rename": "never",
   "workspace.setVoiceAudioRetention": "never",
+  "workspace.setWorkingDay": "never",
   "workspace.memberAdd": "never",
   "workspace.memberSetAccess": "never",
   "workspace.memberRevoke": "never",

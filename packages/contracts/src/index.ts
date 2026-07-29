@@ -8,6 +8,7 @@ export * from "./meeting-loop.js";
 export * from "./narrative.js";
 export * from "./outcome.js";
 export * from "./query.js";
+export * from "./working-day.js";
 export * from "./record-kind-registry.js";
 export * from "./recovery.js";
 export * from "./revertability.js";
