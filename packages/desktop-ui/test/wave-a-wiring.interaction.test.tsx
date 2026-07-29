@@ -54,6 +54,22 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** Czeka na warunek, przepuszczając kolejkę pod `act`. */
+const waitForCondition = async (
+  ready: () => boolean,
+  message: string,
+): Promise<void> => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (ready()) return;
+    await act(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 10);
+      });
+    });
+  }
+  assert.fail(message);
+};
+
 const mountShell = async (): Promise<void> => {
   const { RealApp } = await import("../src/RealApp.js");
   const { createScenarioClient } =
@@ -92,13 +108,19 @@ const openDestination = async (surface: string): Promise<HTMLElement> => {
   await act(async () => {
     item.click();
   });
-  // Kalendarz jest leniwy: bez przepuszczenia kolejki plan roboczy stoi na
-  // zaślepce ładowania i każdy pomiar niżej mierzyłby stan przejściowy.
-  await act(async () => {
-    await new Promise((resolve) => {
-      setTimeout(resolve, 5);
-    });
-  });
+  // Kalendarz jest leniwy, więc plan roboczy stoi najpierw na zaślepce
+  // ładowania. Stała pauza jest tu zakładem o szybkość maszyny: na wolniejszym
+  // runnerze pięć milisekund nie wystarczało i test meldował „tydzień nie ma
+  // kolumny na dziś", czyli mierzył moment, a nie ekran. Czekamy na WARUNEK.
+  await waitForCondition(
+    () =>
+      (
+        container.querySelector<HTMLElement>(
+          "main[data-surface] [role=tabpanel]",
+        )?.textContent ?? ""
+      ).trim().length > 0,
+    `${surface} never rendered anything into the work plane`,
+  );
   const main = container.querySelector<HTMLElement>("main[data-surface]");
   assert.ok(main, "the shell rendered no main landmark");
   assert.equal(
@@ -115,6 +137,10 @@ test("dropping work on a day in Calendar writes the plan and never the deadline"
   await mountShell();
   const plane = await openDestination("calendar");
 
+  await waitForCondition(
+    () => plane.querySelector(`[data-day="${populatedPlanDayKey}"]`) !== null,
+    "the week never exposed a column for today",
+  );
   const day = plane.querySelector<HTMLElement>(
     `[data-day="${populatedPlanDayKey}"]`,
   );
