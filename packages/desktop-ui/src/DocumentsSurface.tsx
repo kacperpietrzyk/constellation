@@ -53,43 +53,43 @@ type DocumentItem = Extract<
 >["data"]["items"][number];
 
 const roleCopy = {
-  note: "Notatka",
-  document: "Dokument",
-  deliverable: "Rezultat",
+  note: "Note",
+  document: "Document",
+  deliverable: "Deliverable",
 } as const;
 
 const roleAccusativeCopy = {
-  note: "notatkę",
-  document: "dokument",
-  deliverable: "rezultat",
+  note: "note",
+  document: "document",
+  deliverable: "deliverable",
 } as const;
 
 const entityKindCopy: Record<DocumentEntityTargetKind, string> = {
-  task: "Zadanie",
-  project: "Projekt",
-  person: "Osoba",
-  organization: "Organizacja",
-  meeting: "Spotkanie",
+  task: "Task",
+  project: "Project",
+  person: "Person",
+  organization: "Organization",
+  meeting: "Meeting",
 };
 
 const milestoneCopy = {
-  finalized: "Sfinalizowana",
-  delivered: "Dostarczona",
-  approved: "Zatwierdzona",
-  published: "Opublikowana",
+  finalized: "Finalized",
+  delivered: "Delivered",
+  approved: "Approved",
+  published: "Published",
 } as const;
 
 const sourceKindCopy = {
   url: "Link",
-  file: "Plik",
-  screenshot: "Zrzut ekranu",
-  excerpt: "Fragment",
+  file: "File",
+  screenshot: "Screenshot",
+  excerpt: "Excerpt",
 } as const;
 
 const availabilityCopy = {
-  reference_only: "Tylko referencja",
-  available: "Dostępne",
-  unavailable: "Niedostępne",
+  reference_only: "Reference only",
+  available: "Available",
+  unavailable: "Unavailable",
 } as const;
 
 const EvidenceMotif = () => (
@@ -97,7 +97,7 @@ const EvidenceMotif = () => (
     className="knowledge-motif"
     viewBox="0 0 240 92"
     role="img"
-    aria-label="Źródło prowadzi do notatki i zamrożonej wersji"
+    aria-label="A source leads to a note and a frozen version"
   >
     <path d="M44 46h48M148 46h48" />
     <circle cx="28" cy="46" r="14" />
@@ -147,12 +147,12 @@ const DocumentToolbar = ({
     <div
       className="document-toolbar"
       role="toolbar"
-      aria-label="Formatowanie dokumentu"
+      aria-label="Document formatting"
     >
       <button
         type="button"
         aria-pressed={editor?.isActive("bold") ?? false}
-        aria-label="Pogrubienie"
+        aria-label="Bold"
         disabled={disabled}
         onClick={() =>
           command(() => editor?.chain().focus().toggleBold().run() ?? false)
@@ -163,7 +163,7 @@ const DocumentToolbar = ({
       <button
         type="button"
         aria-pressed={editor?.isActive("italic") ?? false}
-        aria-label="Kursywa"
+        aria-label="Italic"
         disabled={disabled}
         onClick={() =>
           command(() => editor?.chain().focus().toggleItalic().run() ?? false)
@@ -174,7 +174,7 @@ const DocumentToolbar = ({
       <button
         type="button"
         aria-pressed={editor?.isActive("heading", { level: 2 }) ?? false}
-        aria-label="Nagłówek drugiego poziomu"
+        aria-label="Heading 2"
         disabled={disabled}
         onClick={() =>
           command(
@@ -189,7 +189,7 @@ const DocumentToolbar = ({
       <button
         type="button"
         aria-pressed={editor?.isActive("bulletList") ?? false}
-        aria-label="Lista punktowana"
+        aria-label="Bulleted list"
         disabled={disabled}
         onClick={() =>
           command(
@@ -197,12 +197,12 @@ const DocumentToolbar = ({
           )
         }
       >
-        <span aria-hidden="true">• Lista</span>
+        <span aria-hidden="true">• List</span>
       </button>
       <button
         type="button"
         aria-pressed={editor?.isActive("orderedList") ?? false}
-        aria-label="Lista numerowana"
+        aria-label="Numbered list"
         disabled={disabled}
         onClick={() =>
           command(
@@ -210,12 +210,12 @@ const DocumentToolbar = ({
           )
         }
       >
-        <span aria-hidden="true">1. Lista</span>
+        <span aria-hidden="true">1. List</span>
       </button>
       <button
         type="button"
         aria-pressed={editor?.isActive("codeBlock") ?? false}
-        aria-label="Blok kodu"
+        aria-label="Code block"
         disabled={disabled}
         onClick={() =>
           command(
@@ -223,11 +223,11 @@ const DocumentToolbar = ({
           )
         }
       >
-        <span aria-hidden="true">Kod</span>
+        <span aria-hidden="true">Code</span>
       </button>
       <InlinePopover
         label="Link"
-        panelLabel="Dodaj link do zaznaczonego tekstu"
+        panelLabel="Add a link to the selected text"
         triggerClassName="document-link-trigger"
         disabled={disabled}
         open={linkOpen}
@@ -254,7 +254,7 @@ const DocumentToolbar = ({
             setLinkOpen(false);
           }}
         >
-          <label htmlFor="document-link-url">Adres linku</label>
+          <label htmlFor="document-link-url">Link address</label>
           <input
             id="document-link-url"
             type="url"
@@ -265,21 +265,21 @@ const DocumentToolbar = ({
           />
           <div className="popover-actions">
             <button type="submit" className="primary-button">
-              {linkUrl.trim() === "" ? "Usuń link" : "Zastosuj"}
+              {linkUrl.trim() === "" ? "Remove link" : "Apply"}
             </button>
           </div>
         </form>
       </InlinePopover>
       <InlinePopover
-        label="Powiąż rekord"
-        panelLabel="Powiąż dokument z rekordem"
+        label="Link record"
+        panelLabel="Link this document to a record"
         triggerClassName="document-entity-trigger"
         disabled={disabled}
         open={entityOpen}
         onOpenChange={onEntityOpenChange}
       >
         <div className="document-entity-picker">
-          <label htmlFor="document-entity-query">Znajdź rekord</label>
+          <label htmlFor="document-entity-query">Find record</label>
           <input
             id="document-entity-query"
             type="search"
@@ -294,7 +294,7 @@ const DocumentToolbar = ({
                 : `${entityListId}-${activeEntityIndex}`
             }
             value={entityQuery}
-            placeholder="Zadanie, projekt, osoba…"
+            placeholder="Task, project, person…"
             onChange={(event) => onEntityQueryChange(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
@@ -325,10 +325,10 @@ const DocumentToolbar = ({
             id={entityListId}
             className="document-entity-options"
             role="listbox"
-            aria-label="Dostępne rekordy"
+            aria-label="Available records"
           >
             {entityCandidates.length === 0 ? (
-              <p role="status">Brak pasujących dostępnych rekordów.</p>
+              <p role="status">No matching records.</p>
             ) : (
               entityCandidates.map((candidate, index) => (
                 <div
@@ -378,33 +378,33 @@ const SourceDetail = ({
       aria-labelledby={`${renameId}-title`}
     >
       <header className="document-inspector-header">
-        <p className="eyebrow">Źródło</p>
+        <p className="eyebrow">Source</p>
         <h3 id={`${renameId}-title`}>{source.title}</h3>
       </header>
       <section className="inspector-section">
-        <p className="section-label">Metadane</p>
+        <p className="section-label">Metadata</p>
         <dl className="record-fields">
           <div>
-            <dt>Rodzaj</dt>
+            <dt>Kind</dt>
             <dd>{sourceKindCopy[source.sourceKind]}</dd>
           </div>
           <div>
-            <dt>Dostępność</dt>
+            <dt>Availability</dt>
             <dd>{availabilityCopy[source.availability]}</dd>
           </div>
           <div>
-            <dt>Wersja</dt>
+            <dt>Version</dt>
             <dd className="mono">v{source.version}</dd>
           </div>
           <div>
-            <dt>Zaobserwowano</dt>
+            <dt>Observed</dt>
             <dd>{formatDateTime(source.observedAt)}</dd>
           </div>
         </dl>
       </section>
       {source.canonicalUrl !== undefined && (
         <section className="inspector-section">
-          <p className="section-label">Adres źródła</p>
+          <p className="section-label">Source URL</p>
           <a
             className="source-canonical-link"
             href={source.canonicalUrl}
@@ -434,7 +434,7 @@ const SourceDetail = ({
           });
         }}
       >
-        <label htmlFor={`${renameId}-input`}>Zmień tytuł</label>
+        <label htmlFor={`${renameId}-input`}>Change title</label>
         <input
           id={`${renameId}-input`}
           name="sourceTitle"
@@ -448,7 +448,7 @@ const SourceDetail = ({
             !client || busy || nextTitle === "" || nextTitle === source.title
           }
         >
-          {busy ? "Zapisuję…" : "Zapisz tytuł"}
+          {busy ? "Saving…" : "Save title"}
         </button>
       </form>
     </article>
@@ -542,7 +542,7 @@ const KnowledgeEditor = ({
           link: { openOnClick: false },
         }),
         Placeholder.configure({
-          placeholder: "Zacznij pisać. Źródła pozostają osobno.",
+          placeholder: "Start writing. Sources stay separate.",
         }),
         Collaboration.configure({
           document: yDocument,
@@ -556,7 +556,7 @@ const KnowledgeEditor = ({
         attributes: {
           class: "document-canvas",
           role: "textbox",
-          "aria-label": `Treść: ${document.title}`,
+          "aria-label": `Body: ${document.title}`,
           "aria-multiline": "true",
           spellcheck: "true",
         },
@@ -945,14 +945,17 @@ const KnowledgeEditor = ({
   useEffect(loadRevisions, [client, document.id]);
 
   const statusCopy = {
-    opening: "Otwieranie…",
-    local: "Lokalnie i bezpiecznie",
-    connecting: "Łączenie…",
-    current: "Współpraca aktywna",
-    offline: pending > 0 ? `Offline · ${pending} zmian oczekuje` : "Offline",
-    denied: "Dostęp został odebrany",
-    upgrade_required: "Wymagana nowsza wersja aplikacji",
-    migration_failed: "Nie udało się przygotować edytora",
+    opening: "Opening…",
+    local: "Saved locally",
+    connecting: "Connecting…",
+    current: "Collaboration live",
+    offline:
+      pending > 0
+        ? `Offline · ${countLabel(pending, "change")} waiting`
+        : "Offline",
+    denied: "Access was revoked",
+    upgrade_required: "Needs a newer version of the app",
+    migration_failed: "Could not prepare the editor",
   }[status];
 
   const allSources =
@@ -978,8 +981,8 @@ const KnowledgeEditor = ({
       <section className="named-versions" aria-labelledby={revisionNameId}>
         <div className="section-heading-row">
           <div>
-            <p className="eyebrow">Zamrożony stan</p>
-            <h4 id={revisionNameId}>Nazwane wersje</h4>
+            <p className="eyebrow">Frozen state</p>
+            <h4 id={revisionNameId}>Named versions</h4>
           </div>
           <span>{context ? context.namedVersions.length : "–"}</span>
         </div>
@@ -1007,7 +1010,7 @@ const KnowledgeEditor = ({
                 if (result.kind !== "success") {
                   onFailure({
                     ...result,
-                    message: `${result.message} Rewizja treści pozostaje bezpiecznie zapisana; ponów powiązanie wersji.`,
+                    message: `${result.message} The content revision is saved; link the version again.`,
                   });
                   return;
                 }
@@ -1020,13 +1023,13 @@ const KnowledgeEditor = ({
                 onFailure({
                   kind: "retry",
                   message:
-                    "Nie udało się zamrozić wersji. Treść pozostała zapisana.",
+                    "Could not freeze the version. The content is still saved.",
                 }),
               )
               .finally(() => setBusy(false));
           }}
         >
-          <label htmlFor={`${revisionNameId}-name`}>Nazwa wersji</label>
+          <label htmlFor={`${revisionNameId}-name`}>Version name</label>
           <div className="named-version-controls">
             <input
               id={`${revisionNameId}-name`}
@@ -1034,14 +1037,14 @@ const KnowledgeEditor = ({
               value={revisionName}
               maxLength={120}
               onChange={(event) => setRevisionName(event.target.value)}
-              placeholder="np. Raport dla klienta · 15 lipca"
+              placeholder="e.g. Client report · Jul 15"
             />
             <button className="primary-button" disabled={busy}>
-              {busy ? "Zamrażam…" : "Zamroź wersję"}
+              {busy ? "Freezing…" : "Freeze version"}
             </button>
           </div>
           <fieldset className="milestone-options">
-            <legend>Znaczenie wersji</legend>
+            <legend>Version milestone</legend>
             {(Object.keys(milestoneCopy) as (keyof typeof milestoneCopy)[]).map(
               (value) => (
                 <label key={value}>
@@ -1061,7 +1064,7 @@ const KnowledgeEditor = ({
         {context === undefined ? (
           contextError ? null : (
             <p className="inline-empty" aria-busy="true">
-              Wczytywanie nazwanych wersji…
+              Loading named versions…
             </p>
           )
         ) : context.namedVersions.length ? (
@@ -1076,16 +1079,10 @@ const KnowledgeEditor = ({
                   </span>
                 </div>
                 <p>
-                  {countLabel(
-                    version.evidence.length,
-                    "dowód",
-                    "dowody",
-                    "dowodów",
-                  )}{" "}
-                  ·{" "}
+                  {countLabel(version.evidence.length, "evidence item")} ·{" "}
                   {version.evidence.some((item) => item.changed)
-                    ? "źródła zmieniły się później"
-                    : "dowody nadal zgodne"}
+                    ? "sources changed since"
+                    : "evidence still matches"}
                 </p>
                 <button
                   className="text-button"
@@ -1104,15 +1101,14 @@ const KnowledgeEditor = ({
                       .finally(() => setBusy(false));
                   }}
                 >
-                  Przywróć jako nową zmianę
+                  Restore as a new change
                 </button>
               </li>
             ))}
           </ol>
         ) : (
           <p className="inline-empty">
-            Wersja powstaje dopiero przy świadomym finalizowaniu lub
-            dostarczeniu.
+            A version appears when you finalize or deliver.
           </p>
         )}
       </section>
@@ -1123,8 +1119,8 @@ const KnowledgeEditor = ({
       >
         <div className="section-heading-row">
           <div>
-            <p className="eyebrow">Stan dowodów</p>
-            <h4 id={evidenceHeadingId}>Źródła i notatki</h4>
+            <p className="eyebrow">Evidence state</p>
+            <h4 id={evidenceHeadingId}>Sources and notes</h4>
           </div>
           <span>
             {context ? selectedSources.length + selectedNotes.length : "–"}
@@ -1140,7 +1136,7 @@ const KnowledgeEditor = ({
               void attachManagedFileToDocument(client, snapshot, document.id)
                 .then(async (result) => {
                   if (result.kind !== "success") {
-                    if (result.message !== "Nie wybrano pliku.")
+                    if (result.message !== "No file was chosen.")
                       onFailure(result);
                     return;
                   }
@@ -1150,15 +1146,14 @@ const KnowledgeEditor = ({
                 .finally(() => setAttachmentBusy(false));
             }}
           >
-            {attachmentBusy ? "Zabezpieczam plik…" : "Dołącz plik"}
+            {attachmentBusy ? "Securing file…" : "Attach file"}
           </button>
           <p aria-live="polite">
-            Plik trafia do zarządzanego magazynu; treść dokumentu przechowuje
-            tylko relację.
+            The file goes to managed storage; the document keeps only the link.
           </p>
         </div>
         {context?.evidence.some((item) => item.attachment !== undefined) && (
-          <ul className="document-attachment-list" aria-label="Załączniki">
+          <ul className="document-attachment-list" aria-label="Attachments">
             {context.evidence.flatMap((item) =>
               item.attachment === undefined ||
               (item.attachment.original.kind !== "managed_file" &&
@@ -1184,10 +1179,10 @@ const KnowledgeEditor = ({
                         </div>
                         <span className={`attachment-state ${custodyState}`}>
                           {custodyState === "available"
-                            ? "W zarządzanym magazynie"
+                            ? "In managed storage"
                             : custodyState === "checking"
-                              ? "Sprawdzam przechowanie…"
-                              : "Plik niedostępny na tym urządzeniu"}
+                              ? "Checking storage…"
+                              : "File not available on this device"}
                         </span>
                         {custodyState === "unavailable" && (
                           <button
@@ -1211,7 +1206,7 @@ const KnowledgeEditor = ({
                                 .finally(() => setAttachmentBusy(false));
                             }}
                           >
-                            Pobierz ponownie
+                            Fetch again
                           </button>
                         )}
                         <button
@@ -1238,7 +1233,7 @@ const KnowledgeEditor = ({
                               .finally(() => setAttachmentBusy(false));
                           }}
                         >
-                          Odłącz
+                          Unlink
                         </button>
                       </li>,
                     ];
@@ -1248,9 +1243,9 @@ const KnowledgeEditor = ({
         )}
         {contextError ? (
           <div className="inline-error" role="alert">
-            <strong>Nie udało się odczytać dowodów.</strong>
+            <strong>Could not read the evidence.</strong>
             <button className="text-button" onClick={reloadContext}>
-              Spróbuj ponownie
+              Try again
             </button>
           </div>
         ) : (
@@ -1275,9 +1270,9 @@ const KnowledgeEditor = ({
             }}
           >
             <fieldset disabled={contextLoading}>
-              <legend>Źródła</legend>
+              <legend>Sources</legend>
               {allSources.length === 0 ? (
-                <p className="inline-empty">Najpierw zachowaj jedno źródło.</p>
+                <p className="inline-empty">Save a source first.</p>
               ) : (
                 allSources.map((source) => (
                   <label className="evidence-option" key={source.id}>
@@ -1294,16 +1289,16 @@ const KnowledgeEditor = ({
                     />
                     <span>
                       <strong>{source.title}</strong>
-                      <small>Źródło · v{source.version}</small>
+                      <small>Source · v{source.version}</small>
                     </span>
                   </label>
                 ))
               )}
             </fieldset>
             <fieldset disabled={contextLoading}>
-              <legend>Notatki</legend>
+              <legend>Notes</legend>
               {noteCandidates.length === 0 ? (
-                <p className="inline-empty">Brak innych notatek w tym Space.</p>
+                <p className="inline-empty">No other notes in this Space.</p>
               ) : (
                 noteCandidates.map((note) => (
                   <label className="evidence-option" key={note.id}>
@@ -1320,7 +1315,7 @@ const KnowledgeEditor = ({
                     />
                     <span>
                       <strong>{note.title}</strong>
-                      <small>Notatka · v{note.version}</small>
+                      <small>Note · v{note.version}</small>
                     </span>
                   </label>
                 ))
@@ -1330,7 +1325,7 @@ const KnowledgeEditor = ({
               className="secondary-button"
               disabled={busy || contextLoading}
             >
-              {busy ? "Zapisuję…" : "Zapisz zestaw dowodów"}
+              {busy ? "Saving…" : "Save evidence set"}
             </button>
           </form>
         )}
@@ -1338,7 +1333,7 @@ const KnowledgeEditor = ({
 
       {revisions.length > 0 && (
         <details className="technical-revisions">
-          <summary>Rewizje robocze ({revisions.length})</summary>
+          <summary>Working revisions ({revisions.length})</summary>
           <ol>
             {revisions.map((revision) => (
               <li key={revision.id}>
@@ -1362,17 +1357,17 @@ const KnowledgeEditor = ({
         <div className="document-editor-actions">
           <p className="sr-only" role="status">
             {searchIndexState === "current"
-              ? "Treść dokumentu jest dostępna w wyszukiwaniu."
+              ? "This document is searchable."
               : searchIndexState === "rebuilding"
-                ? "Indeks treści dokumentu jest odbudowywany. Edycja pozostaje dostępna."
-                : "Indeks treści dokumentu jest chwilowo niedostępny. Edycja pozostaje dostępna."}
+                ? "Search index is rebuilding. Editing still works."
+                : "Search index is unavailable. Editing still works."}
           </p>
           <div className={`document-presence ${status}`} role="status">
             <span aria-hidden="true" />
             {limitReached
-              ? "Osiągnięto limit 200 000 znaków"
+              ? "Reached the 200,000 character limit"
               : saveAcknowledged
-                ? "Zmiany zapisują się automatycznie"
+                ? "Changes save automatically"
                 : statusCopy}
           </div>
           <DocumentToolbar
@@ -1419,23 +1414,18 @@ const KnowledgeEditor = ({
       <div className="knowledge-writing-plane">
         {status === "denied" ? (
           <div className="document-blocked" role="alert">
-            <strong>Ta treść nie jest już dostępna.</strong>
-            <p>Lokalna sesja została zamknięta i jej cache usunięty.</p>
+            <strong>This content is no longer available.</strong>
+            <p>The local session was closed and its cache removed.</p>
           </div>
         ) : status === "upgrade_required" ? (
           <div className="document-blocked" role="alert">
-            <strong>Ten dokument używa nowszego formatu.</strong>
-            <p>
-              Zaktualizuj Constellation, aby edytować treść bez ryzyka utraty
-              struktury.
-            </p>
+            <strong>This document uses a newer format.</strong>
+            <p>Update Constellation to edit it without losing structure.</p>
           </div>
         ) : status === "migration_failed" ? (
           <div className="document-blocked" role="alert">
-            <strong>Nie udało się bezpiecznie przygotować dokumentu.</strong>
-            <p>
-              Oryginalna treść pozostała zachowana. Możesz ponowić otwarcie.
-            </p>
+            <strong>Could not prepare the document safely.</strong>
+            <p>The original content is intact. You can open it again.</p>
             <button
               type="button"
               className="secondary-button"
@@ -1444,7 +1434,7 @@ const KnowledgeEditor = ({
                 setSessionGeneration((value) => value + 1);
               }}
             >
-              Spróbuj ponownie
+              Try again
             </button>
           </div>
         ) : (
@@ -1514,12 +1504,12 @@ export const DocumentsSurface = ({
 
   return (
     <div className="knowledge-layout">
-      <aside className="knowledge-library" aria-label="Biblioteka wiedzy">
+      <aside className="knowledge-library" aria-label="Knowledge library">
         <header>
           <div>
-            <p className="eyebrow">Źródła i rezultaty</p>
+            <p className="eyebrow">Sources and deliverables</p>
             <h1 id="surface-title" tabIndex={-1}>
-              Dokumenty
+              Library
             </h1>
           </div>
           <span className="library-count">
@@ -1527,10 +1517,13 @@ export const DocumentsSurface = ({
           </span>
         </header>
 
-        <div className="knowledge-create-bar" aria-label="Utwórz w bibliotece">
+        <div
+          className="knowledge-create-bar"
+          aria-label="Create in the library"
+        >
           <InlinePopover
-            label="Dodaj źródło"
-            panelLabel="Dodaj źródło do biblioteki"
+            label="Add source"
+            panelLabel="Add a source to the library"
             open={openCreate === "source"}
             onOpenChange={(open) => setOpenCreate(open ? "source" : undefined)}
             disabled={!client || creating}
@@ -1556,32 +1549,32 @@ export const DocumentsSurface = ({
                 });
               }}
             >
-              <label htmlFor="knowledge-source-title">Zachowaj źródło</label>
+              <label htmlFor="knowledge-source-title">Save a source</label>
               <input
                 id="knowledge-source-title"
                 name="sourceTitle"
                 required
                 value={sourceTitle}
                 onChange={(event) => setSourceTitle(event.target.value)}
-                placeholder="Co warto zachować?"
+                placeholder="What is worth keeping?"
                 maxLength={500}
               />
               <input
                 name="sourceUrl"
                 type="url"
-                aria-label="Adres URL źródła"
+                aria-label="Source URL"
                 value={sourceUrl}
                 onChange={(event) => setSourceUrl(event.target.value)}
-                placeholder="https://… (opcjonalnie)"
+                placeholder="https://… (optional)"
               />
               <button className="primary-button" disabled={creating}>
-                Zachowaj źródło
+                Save source
               </button>
             </form>
           </InlinePopover>
           <InlinePopover
-            label="Nowa treść"
-            panelLabel="Utwórz treść w bibliotece"
+            label="New content"
+            panelLabel="Create content in the library"
             open={openCreate === "content"}
             onOpenChange={(open) => setOpenCreate(open ? "content" : undefined)}
             disabled={!client || creating}
@@ -1605,20 +1598,20 @@ export const DocumentsSurface = ({
                 );
               }}
             >
-              <label htmlFor="knowledge-title">Nowa treść</label>
+              <label htmlFor="knowledge-title">New content</label>
               <input
                 id="knowledge-title"
                 name="knowledgeTitle"
                 required
                 value={newTitle}
                 onChange={(event) => setNewTitle(event.target.value)}
-                placeholder="Tytuł notatki lub rezultatu"
+                placeholder="Note or deliverable title"
                 maxLength={500}
               />
               <div
                 className="role-options"
                 role="group"
-                aria-label="Rodzaj treści"
+                aria-label="Content kind"
               >
                 {(Object.keys(roleCopy) as (keyof typeof roleCopy)[]).map(
                   (role) => (
@@ -1634,7 +1627,7 @@ export const DocumentsSurface = ({
                 )}
               </div>
               <button className="primary-button" disabled={creating}>
-                Utwórz {roleAccusativeCopy[newRole]}
+                Create {roleAccusativeCopy[newRole]}
               </button>
             </form>
           </InlinePopover>
@@ -1642,12 +1635,12 @@ export const DocumentsSurface = ({
 
         <section className="library-section" aria-labelledby="sources-title">
           <div className="library-section-heading">
-            <h2 id="sources-title">Źródła</h2>
+            <h2 id="sources-title">Sources</h2>
             <span>{knowledge?.sources.length ?? 0}</span>
           </div>
           {snapshot.knowledge.kind === "unavailable" ? (
             <div className="inline-error" role="status">
-              Metadane źródeł są chwilowo niedostępne.
+              Source metadata is unavailable right now.
             </div>
           ) : knowledge?.sources.length ? (
             <ul className="source-list">
@@ -1682,23 +1675,23 @@ export const DocumentsSurface = ({
           ) : (
             <div className="library-empty">
               <EvidenceMotif />
-              <p>Źródło pozostaje osobno, nawet gdy później zasila notatkę.</p>
+              <p>A source stays separate, even when it later feeds a note.</p>
             </div>
           )}
         </section>
 
         <section className="library-section" aria-labelledby="documents-title">
           <div className="library-section-heading">
-            <h2 id="documents-title">Treści</h2>
+            <h2 id="documents-title">Content</h2>
             <span>{items.length}</span>
           </div>
           {snapshot.documents.kind === "unavailable" ? (
             <p className="inline-error">
-              Treści nie są dostępne w tym zakresie.
+              Content is not available in this scope.
             </p>
           ) : items.length === 0 ? (
             <div className="library-empty">
-              <p>Notatka może ewoluować. Rezultat zachowuje nazwane wersje.</p>
+              <p>A note can evolve. A deliverable keeps named versions.</p>
             </div>
           ) : (
             <ul className="knowledge-document-list">
@@ -1723,12 +1716,15 @@ export const DocumentsSurface = ({
                       <span>
                         <strong>{item.title}</strong>
                         <small>
-                          {roleCopy[item.role]} · {summary?.evidenceCount ?? 0}{" "}
-                          dowodów
+                          {roleCopy[item.role]} ·{" "}
+                          {countLabel(
+                            summary?.evidenceCount ?? 0,
+                            "evidence item",
+                          )}
                         </small>
                       </span>
                       {summary?.staleEvidence && (
-                        <em title="Dowody zmieniły się od ostatniej wersji">
+                        <em title="Evidence changed since the last version">
                           !
                         </em>
                       )}
@@ -1755,10 +1751,10 @@ export const DocumentsSurface = ({
       ) : (
         <section className="knowledge-welcome">
           <EvidenceMotif />
-          <h2>Od źródła do wersji, bez utraty pochodzenia</h2>
+          <h2>From source to version, without losing provenance</h2>
           <p>
-            Zachowaj źródło, rozwiń je w notatce i zamroź rezultat dopiero
-            wtedy, gdy ma konkretne znaczenie.
+            Save a source, expand it in a note, and freeze a deliverable when it
+            matters.
           </p>
         </section>
       )}

@@ -37,16 +37,16 @@ export const shellShortcutGroups = (
   surfaces: readonly { readonly label: string; readonly shortcut?: string }[],
 ): readonly ShortcutGroup[] => [
   {
-    title: "Globalne",
+    title: "Global",
     entries: [
-      { keys: [`${modifierLabel}K`], label: "Paleta poleceń i wyszukiwanie" },
+      { keys: [`${modifierLabel}K`], label: "Command palette and search" },
       { keys: [`${modifierLabel}⇧K`], label: "Quick Capture" },
-      { keys: [`${modifierLabel}/`], label: "Lista skrótów" },
-      { keys: ["Esc"], label: "Zamknij nakładkę lub wyczyść wybór" },
+      { keys: [`${modifierLabel}/`], label: "Shortcut list" },
+      { keys: ["Esc"], label: "Close the overlay or clear the selection" },
     ],
   },
   {
-    title: "Widoki bezpośrednie",
+    title: "Direct views",
     entries: surfaces
       .filter((item) => item.shortcut !== undefined)
       .map((item) => ({
@@ -55,7 +55,7 @@ export const shellShortcutGroups = (
       })),
   },
   {
-    title: "Widoki przez paletę",
+    title: "Views through the palette",
     entries: surfaces
       .filter((item) => item.shortcut === undefined)
       .map((item) => ({
@@ -66,23 +66,23 @@ export const shellShortcutGroups = (
   {
     // ⌘Tab należy na macOS do systemowego przełącznika aplikacji, dlatego
     // karty kontekstu przełącza Ctrl+Tab (obsługiwane też z menu aplikacji).
-    title: "Karty i historia",
+    title: "Tabs and history",
     entries: [
-      { keys: ["Ctrl+Tab"], label: "Następna karta" },
-      { keys: ["Ctrl+⇧Tab"], label: "Poprzednia karta" },
-      { keys: [`${modifierLabel}W`], label: "Zamknij kartę" },
-      { keys: ["Alt+←", "Alt+→"], label: "Wstecz / Dalej w historii" },
+      { keys: ["Ctrl+Tab"], label: "Next tab" },
+      { keys: ["Ctrl+⇧Tab"], label: "Previous tab" },
+      { keys: [`${modifierLabel}W`], label: "Close tab" },
+      { keys: ["Alt+←", "Alt+→"], label: "Back / forward in history" },
     ],
   },
   {
-    title: "Listy rekordów",
+    title: "Record lists",
     entries: [
-      { keys: ["↑", "↓"], label: "Poprzedni / następny wiersz" },
-      { keys: ["Home", "End"], label: "Pierwszy / ostatni wiersz" },
-      { keys: ["Space"], label: "Pokaż w podglądzie kontekstu" },
-      { keys: ["Enter"], label: "Otwórz jako aktywny kontekst" },
+      { keys: ["↑", "↓"], label: "Previous / next row" },
+      { keys: ["Home", "End"], label: "First / last row" },
+      { keys: ["Space"], label: "Show in the context preview" },
+      { keys: ["Enter"], label: "Open as the active context" },
       // Obsługa: listener cyfr w CockpitSurface (Wave2Surfaces.tsx).
-      { keys: ["1–9"], label: "Otwórz n-te działanie fokusu (Tydzień)" },
+      { keys: ["1–9"], label: "Open the nth focus action (Week)" },
     ],
   },
 ];
@@ -124,12 +124,12 @@ export const ShortcutsOverlay = ({
       <section className="shortcuts-dialog">
         <header>
           <div>
-            <p className="eyebrow">Klawiatura</p>
-            <h2 id="shortcuts-title">Skróty klawiszowe</h2>
+            <p className="eyebrow">Keyboard</p>
+            <h2 id="shortcuts-title">Keyboard shortcuts</h2>
           </div>
           <button
             className="icon-button"
-            aria-label="Zamknij listę skrótów"
+            aria-label="Close the shortcut list"
             onClick={onClose}
           >
             <Icon name="close" />
@@ -156,8 +156,8 @@ export const ShortcutsOverlay = ({
         </div>
         {modifierLabel === "⌘" && (
           <p className="shortcuts-note">
-            ⌘Tab należy do systemowego przełącznika aplikacji — karty kontekstu
-            przełącza Ctrl+Tab.
+            ⌘Tab belongs to the system app switcher — Ctrl+Tab switches context
+            tabs.
           </p>
         )}
       </section>

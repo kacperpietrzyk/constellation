@@ -220,7 +220,7 @@ test("tasks CSV maps onto the v2 exchange manifest through the same engine", () 
   assert.equal(rowError.outcome, "failure");
   if (rowError.outcome !== "failure") throw new Error("Expected failure.");
   assert.ok(
-    rowError.errors.some((error) => error.includes("Wiersz 3")),
+    rowError.errors.some((error) => error.includes("Row 3")),
     "row errors carry row numbers",
   );
 

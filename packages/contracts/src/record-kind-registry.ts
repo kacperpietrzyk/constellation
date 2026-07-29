@@ -1,13 +1,18 @@
 import { z } from "zod";
 
+// Powierzchnia, na której rekord tego rodzaju otwiera się do obejrzenia.
+// Wartości są identyfikatorami celów nawigacji z przebudowy 0.2.0 — ta unia
+// musi z nimi zostać zgodna, ale świadomie jej NIE importujemy z paczki
+// desktopowej: kontrakty nie mają zależeć od powłoki, a agent czyta ten katalog
+// bez uruchomionej aplikacji.
 export type HumanRecordInspectorSurface =
   | "work"
   | "tasks"
   | "projects"
   | "history"
-  | "documents"
+  | "library"
   | "meetings"
-  | "relationships";
+  | "organizations";
 
 export type HumanRecordSearchSource =
   "task" | "project" | "capture" | "source" | "document" | "strategic";
@@ -31,19 +36,24 @@ interface LocalHumanRecordKindDescriptor {
 export type HumanRecordKindDescriptor =
   SearchableHumanRecordKindDescriptor | LocalHumanRecordKindDescriptor;
 
+// Labels are what a person reads: ⌘K results, the strategic ledger and the
+// inspector all take the kind name from here, so a raw contract identifier
+// never reaches a screen. `initiative`, `work_link` and `saved_view` used to
+// carry their own identifier as a label — invisible only because nothing
+// searchable rendered them.
 // Product-level discovery metadata only. Domain unions and mutation receipt
 // kinds remain explicit because they carry different invariants (ADR-065).
 export const humanRecordKindRegistry = [
   {
     id: "task",
-    label: "Zadanie",
+    label: "Task",
     searchable: true,
     searchSource: "task",
     inspectorSurface: "tasks",
   },
   {
     id: "project",
-    label: "Projekt",
+    label: "Project",
     searchable: true,
     searchSource: "project",
     inspectorSurface: "projects",
@@ -57,147 +67,147 @@ export const humanRecordKindRegistry = [
   },
   {
     id: "source",
-    label: "Źródło",
+    label: "Source",
     searchable: true,
     searchSource: "source",
-    inspectorSurface: "documents",
+    inspectorSurface: "library",
   },
   {
     id: "note",
-    label: "Notatka",
+    label: "Note",
     searchable: true,
     searchSource: "document",
-    inspectorSurface: "documents",
+    inspectorSurface: "library",
   },
   {
     id: "document",
-    label: "Dokument",
+    label: "Document",
     searchable: true,
     searchSource: "document",
-    inspectorSurface: "documents",
+    inspectorSurface: "library",
   },
   {
     id: "deliverable",
-    label: "Rezultat",
+    label: "Deliverable",
     searchable: true,
     searchSource: "document",
-    inspectorSurface: "documents",
+    inspectorSurface: "library",
   },
   {
     id: "organization",
-    label: "Organizacja",
+    label: "Organization",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "person",
-    label: "Osoba",
+    label: "Person",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "opportunity",
-    label: "Szansa",
+    label: "Opportunity",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "offer",
-    label: "Oferta",
+    label: "Offer",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "renewal",
-    label: "Odnowienie",
+    label: "Renewal",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "relationship_fact",
-    label: "Fakt relacji",
+    label: "Relationship fact",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "fact",
-    label: "Fakt",
+    label: "Fact",
     searchable: false,
     searchSource: null,
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "decision",
-    label: "Decyzja",
+    label: "Decision",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "impact_review",
-    label: "Przegląd skutków",
+    label: "Impact review",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "area",
-    label: "Obszar",
+    label: "Area",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "initiative",
-    label: "initiative",
+    label: "Initiative",
     searchable: false,
     searchSource: null,
     inspectorSurface: "work",
   },
   {
     id: "work_link",
-    label: "work_link",
+    label: "Work link",
     searchable: false,
     searchSource: null,
     inspectorSurface: "work",
   },
   {
     id: "saved_view",
-    label: "saved_view",
+    label: "Saved view",
     searchable: false,
     searchSource: null,
     inspectorSurface: "work",
   },
   {
     id: "recurrence",
-    label: "Cykl",
+    label: "Recurrence",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "radar_candidate",
-    label: "Radar wiedzy",
+    label: "Knowledge radar",
     searchable: true,
     searchSource: "strategic",
-    inspectorSurface: "relationships",
+    inspectorSurface: "organizations",
   },
   {
     id: "meeting",
-    label: "Spotkanie",
+    label: "Meeting",
     searchable: true,
     searchSource: "strategic",
     inspectorSurface: "meetings",
   },
   {
     id: "commitment",
-    label: "Zobowiązanie",
+    label: "Commitment",
     searchable: false,
     searchSource: null,
     inspectorSurface: "meetings",

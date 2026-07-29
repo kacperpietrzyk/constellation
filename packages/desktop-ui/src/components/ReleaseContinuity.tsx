@@ -27,10 +27,10 @@ export const ReleaseContinuity = ({
       .catch(() =>
         setStatus({
           kind: "failure",
-          currentVersion: "nieznana",
+          currentVersion: "unknown",
           operation: "check",
           message:
-            "Nie udało się odczytać kanału wydania. Workspace pozostaje bez zmian.",
+            "Could not read the release channel. The workspace is unchanged.",
         }),
       );
   }, [client]);
@@ -54,7 +54,7 @@ export const ReleaseContinuity = ({
         currentVersion: pending.currentVersion,
         operation,
         message:
-          "Kanał wydania jest chwilowo niedostępny. Obecna aplikacja i workspace pozostają bez zmian.",
+          "The release channel is unavailable. The app and workspace are unchanged.",
       });
     }
   };
@@ -62,40 +62,40 @@ export const ReleaseContinuity = ({
   const currentVersion = status?.currentVersion ?? "…";
   const detail =
     status === undefined
-      ? "Sprawdzam podpisany kanał wydania…"
+      ? "Checking the signed release channel…"
       : status.kind === "unavailable"
         ? status.reason === "developer_preview"
-          ? "Podgląd deweloperski nie łączy się z kanałem wydań."
+          ? "The developer preview does not connect to the release channel."
           : status.reason === "mechanism_only_build"
-            ? "Ten build służy do weryfikacji instalatora i nie pobiera aktualizacji."
+            ? "This build verifies the installer and does not download updates."
             : status.reason === "platform_unsupported"
-              ? "Aktualizacje dla tej platformy nie są jeszcze obsługiwane."
-              : "Kanał wydania nie ma bezpiecznego adresu HTTPS."
+              ? "Updates for this platform are not supported yet."
+              : "The release channel has no secure HTTPS address."
         : status.kind === "idle"
-          ? "Sprawdzenie uruchamiasz ręcznie; nic nie pobierze się w tle."
+          ? "Checks are manual. Nothing downloads in the background."
           : status.kind === "checking"
-            ? "Sprawdzam podpisane metadane wydania…"
+            ? "Checking the signed release metadata…"
             : status.kind === "current"
-              ? "Masz najnowszą wersję z tego kanału."
+              ? "You have the newest version from this channel."
               : status.kind === "available"
-                ? `Wersja ${status.version} jest dostępna. Pobieranie rozpocznie się dopiero po potwierdzeniu.`
+                ? `Version ${status.version} is available. Nothing downloads until you confirm.`
                 : status.kind === "downloading"
-                  ? `Pobieram i weryfikuję wersję ${status.version}…`
+                  ? `Downloading and verifying version ${status.version}…`
                   : status.kind === "ready"
-                    ? `Wersja ${status.version} jest zweryfikowana i gotowa do restartu.`
+                    ? `Version ${status.version} is verified and ready to restart.`
                     : status.kind === "installing"
-                      ? `Zamykam aplikację i instaluję wersję ${status.version}…`
+                      ? `Closing the app and installing version ${status.version}…`
                       : status.message;
 
   return (
     <section className="release-continuity" aria-labelledby={titleId}>
       <div>
-        <p className="eyebrow">Aplikacja</p>
-        <Heading id={titleId}>Aktualizacja bez utraty workspace’u</Heading>
+        <p className="eyebrow">App</p>
+        <Heading id={titleId}>Update without losing the workspace</Heading>
         <p role={status?.kind === "failure" ? "alert" : "status"}>{detail}</p>
         <small>
-          Wersja {currentVersion}. Odinstalowanie usuwa aplikację, ale domyślnie
-          zachowuje zaszyfrowany workspace i klucze w magazynie systemowym.
+          Version {currentVersion}. Uninstalling removes the app but keeps the
+          encrypted workspace and its keys in the system store.
         </small>
       </div>
       {(status?.kind === "idle" ||
@@ -110,7 +110,7 @@ export const ReleaseContinuity = ({
             })
           }
         >
-          {status.kind === "failure" ? "Spróbuj ponownie" : "Sprawdź wersję"}
+          {status.kind === "failure" ? "Try again" : "Check for updates"}
         </button>
       )}
       {status?.kind === "available" && (
@@ -124,7 +124,7 @@ export const ReleaseContinuity = ({
             })
           }
         >
-          Pobierz i zweryfikuj
+          Download and verify
         </button>
       )}
       {status?.kind === "ready" && (
@@ -138,7 +138,7 @@ export const ReleaseContinuity = ({
             })
           }
         >
-          Uruchom ponownie i zainstaluj
+          Restart and install
         </button>
       )}
       {(status?.kind === "checking" ||

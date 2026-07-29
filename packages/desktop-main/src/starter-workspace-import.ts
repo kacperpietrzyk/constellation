@@ -695,14 +695,14 @@ export const parseTasksCsv = (input: string): TasksCsvResult => {
     return {
       outcome: "failure",
       errors: [
-        `Nagłówek CSV musi używać wyłącznie kolumn: ${CSV_HEADERS.join(", ")} (kolumna "title" jest wymagana).`,
+        `The CSV header may only use these columns: ${CSV_HEADERS.join(", ")}. "title" is required.`,
       ],
     };
   }
   if (rows.length - 1 > 100) {
     return {
       outcome: "failure",
-      errors: ["Plik CSV może mieć najwyżej 100 wierszy zadań."],
+      errors: ["A CSV file may hold at most 100 task rows."],
     };
   }
   const errors: string[] = [];
@@ -718,13 +718,15 @@ export const parseTasksCsv = (input: string): TasksCsvResult => {
     const rowNumber = offset + 2;
     if (row.length !== columns.length) {
       errors.push(
-        `Wiersz ${rowNumber}: liczba pól (${row.length}) nie zgadza się z nagłówkiem (${columns.length}).`,
+        `Row ${rowNumber}: ${row.length} fields, but the header declares ${columns.length}.`,
       );
       return;
     }
     const title = cell(row, "title");
     if (title === undefined || title.length > 500) {
-      errors.push(`Wiersz ${rowNumber}: wymagany tytuł (do 500 znaków).`);
+      errors.push(
+        `Row ${rowNumber}: a title is required, up to 500 characters.`,
+      );
       return;
     }
     const project = cell(row, "project");
@@ -737,7 +739,7 @@ export const parseTasksCsv = (input: string): TasksCsvResult => {
       !["urgent", "high", "normal", "low"].includes(priority)
     ) {
       errors.push(
-        `Wiersz ${rowNumber}: priorytet musi być jednym z urgent, high, normal, low.`,
+        `Row ${rowNumber}: priority must be one of urgent, high, normal, low.`,
       );
       return;
     }
@@ -749,7 +751,7 @@ export const parseTasksCsv = (input: string): TasksCsvResult => {
       }
       if (!Number.isNaN(Date.parse(value)) && value.includes("T")) return value;
       errors.push(
-        `Wiersz ${rowNumber}: kolumna "${name}" wymaga daty YYYY-MM-DD albo pełnego znacznika ISO.`,
+        `Row ${rowNumber}: column "${name}" needs a YYYY-MM-DD date or a full ISO timestamp.`,
       );
       return null;
     };
@@ -762,7 +764,7 @@ export const parseTasksCsv = (input: string): TasksCsvResult => {
       !["actionable", "waiting", "blocked"].includes(state)
     ) {
       errors.push(
-        `Wiersz ${rowNumber}: stan musi być jednym z actionable, waiting, blocked.`,
+        `Row ${rowNumber}: state must be one of actionable, waiting, blocked.`,
       );
       return;
     }
@@ -772,13 +774,15 @@ export const parseTasksCsv = (input: string): TasksCsvResult => {
       waitingOn === undefined
     ) {
       errors.push(
-        `Wiersz ${rowNumber}: stan "${state}" wymaga wypełnionej kolumny "waitingOn".`,
+        `Row ${rowNumber}: state "${state}" needs the "waitingOn" column filled in.`,
       );
       return;
     }
     const description = cell(row, "description");
     if (description !== undefined && description.length > 8_000) {
-      errors.push(`Wiersz ${rowNumber}: opis przekracza 8000 znaków.`);
+      errors.push(
+        `Row ${rowNumber}: the description is longer than 8000 characters.`,
+      );
       return;
     }
     const statusLabel = cell(row, "status");

@@ -74,7 +74,7 @@ test("a writable calendar with no default target refuses rather than guessing", 
   const target = reservationTarget(withoutDefault);
   assert.equal(target.kind, "unavailable");
   if (target.kind !== "unavailable") return;
-  assert.match(target.reason, /domyślnego miejsca/u);
+  assert.match(target.reason, /no default place/u);
 });
 
 test("every way a device can be unable to reserve time is refused distinctly", () => {

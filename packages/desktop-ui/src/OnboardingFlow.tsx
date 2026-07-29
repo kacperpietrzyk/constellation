@@ -48,7 +48,7 @@ export const OnboardingFlow = ({
       onFailure({
         kind: "unavailable",
         message:
-          "Workspace jest gotowy, ale nie udało się odświeżyć aplikacji. Spróbuj ponownie.",
+          "The workspace is ready, but the app could not refresh. Try again.",
       });
     } finally {
       setBusy(false);
@@ -114,14 +114,13 @@ export const OnboardingFlow = ({
         </header>
         {step === 0 && (
           <div className="onboarding-step">
-            <p className="eyebrow">Jedno źródło prawdy</p>
+            <p className="eyebrow">One source of truth</p>
             <h2 id="onboarding-title" ref={titleRef} tabIndex={-1}>
-              Praca zachowuje kontekst
+              Work keeps its context
             </h2>
             <p>
-              Capture przyjmuje wejście bez klasyfikacji. Obszary, inicjatywy,
-              projekty, zadania, dokumenty, spotkania i relacje pozostają
-              typowanymi rekordami jednego grafu.
+              Capture takes input without sorting it. Everything else stays a
+              typed record in one graph.
             </p>
             <div
               className="onboarding-thread evidence-thread"
@@ -129,24 +128,24 @@ export const OnboardingFlow = ({
             >
               <span className="evidence-node">Capture</span>
               <i aria-hidden="true" />
-              <span className="evidence-node">Praca</span>
+              <span className="evidence-node">Work</span>
               <i aria-hidden="true" />
-              <span className="evidence-node">Wynik</span>
+              <span className="evidence-node">Outcome</span>
             </div>
           </div>
         )}
         {step === 1 && (
           <div className="onboarding-step">
-            <p className="eyebrow">Twój workspace</p>
+            <p className="eyebrow">Your workspace</p>
             <h2 id="onboarding-title" ref={titleRef} tabIndex={-1}>
-              Nazwij miejsce pracy
+              Name your workspace
             </h2>
             <p>
-              Ten workspace ma własny Data Home, zakres dostępu i możliwość
-              eksportu. Nazwę możesz później zmienić w Ustawieniach.
+              This workspace has its own Data Home and access scope. You can
+              rename it later in Settings.
             </p>
             <label>
-              <span>Nazwa workspace</span>
+              <span>Workspace name</span>
               <input
                 value={name}
                 maxLength={80}
@@ -165,44 +164,44 @@ export const OnboardingFlow = ({
             </label>
             <aside>
               <strong>
-                {snapshot.dataHome?.descriptor.displayName ?? "Tylko lokalnie"}
+                {snapshot.dataHome?.descriptor.displayName ?? "Local only"}
               </strong>
               <span>
                 {snapshot.dataHome === undefined
-                  ? "Stan Data Home sprawdzisz po otwarciu workspace."
+                  ? "Data Home status shows once the workspace opens."
                   : snapshot.dataHome.descriptor.storageRole === "canonical"
-                    ? "To urządzenie przechowuje źródło prawdy."
-                    : "Dane korzystają ze skoordynowanego Data Home."}
+                    ? "This device holds the source of truth."
+                    : "Data uses a coordinated Data Home."}
               </span>
             </aside>
           </div>
         )}
         {step === 2 && (
           <div className="onboarding-step">
-            <p className="eyebrow">Szybki start</p>
+            <p className="eyebrow">Quick start</p>
             <h2 id="onboarding-title" ref={titleRef} tabIndex={-1}>
-              Ty i agenci używacie tych samych operacji
+              You and agents use the same operations
             </h2>
             <ul>
               <li>
                 <kbd>⌘/Ctrl ⇧ K</kbd>
-                <span>Quick Capture z dowolnego miejsca.</span>
+                <span>Quick Capture from anywhere.</span>
               </li>
               <li>
                 <kbd>⌘/Ctrl K</kbd>
-                <span>Paleta widoków i lokalne wyszukiwanie.</span>
+                <span>View palette and local search.</span>
               </li>
               <li>
                 <strong>MCP</strong>
                 <span>
-                  Agenci działają w jawnym zakresie możliwości i Space, z
-                  audytem i cofaniem.
+                  Agents work inside an explicit capability and Space scope,
+                  audited and reversible.
                 </span>
               </li>
             </ul>
             <p className="onboarding-note">
-              Constellation nie uruchamia modeli i nie zawiera czatu. Jamie
-              pozostaje właścicielem nagrywania i transkrypcji.
+              Constellation runs no models and has no chat. Jamie still owns
+              recording and transcription.
             </p>
           </div>
         )}
@@ -212,22 +211,22 @@ export const OnboardingFlow = ({
             className="onboarding-feedback is-error"
             role="alert"
           >
-            Nazwa nie została zapisana. {renameError}{" "}
+            The name was not saved. {renameError}{" "}
             {step !== 1 && (
               <button
                 type="button"
                 className="text-button"
                 onClick={() => setStep(1)}
               >
-                Popraw nazwę
+                Fix the name
               </button>
             )}
           </p>
         )}
         {skipConfirm && renameError === undefined && (
           <p className="onboarding-feedback" role="status">
-            Pominąć wprowadzenie? Naciśnij Esc ponownie albo wybierz „Pomiń
-            wprowadzenie”. Ten ekran nie pokaże się przy kolejnym otwarciu.
+            Skip the intro? Press Esc again or choose “Skip intro”. This screen
+            will not show up next time.
           </p>
         )}
         <footer>
@@ -240,7 +239,7 @@ export const OnboardingFlow = ({
               setStep((current) => current - 1);
             }}
           >
-            Wstecz
+            Back
           </button>
           <div className="onboarding-forward">
             <button
@@ -249,7 +248,7 @@ export const OnboardingFlow = ({
               disabled={busy}
               onClick={() => void skip()}
             >
-              Pomiń wprowadzenie
+              Skip intro
             </button>
             {step < 2 ? (
               <button
@@ -261,7 +260,7 @@ export const OnboardingFlow = ({
                   setStep((current) => current + 1);
                 }}
               >
-                Dalej
+                Next
               </button>
             ) : (
               <button
@@ -270,7 +269,7 @@ export const OnboardingFlow = ({
                 disabled={busy || !name.trim()}
                 onClick={() => void finish()}
               >
-                {busy ? "Przygotowuję…" : "Otwórz workspace"}
+                {busy ? "Preparing…" : "Open workspace"}
               </button>
             )}
           </div>

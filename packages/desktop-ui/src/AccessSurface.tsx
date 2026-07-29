@@ -17,6 +17,7 @@ import type { SpaceId } from "@constellation/contracts";
 
 import { Icon } from "./components/Icon.js";
 import { reportFirstEmptyRequiredField } from "./components/InlinePopover.js";
+import { countLabel, formatDate, plural } from "./i18n.js";
 
 type Member = AccessProjection["members"][number];
 type AgentGrant = AgentAccessProjection["grants"][number];
@@ -25,53 +26,41 @@ type GrantPreset = Exclude<AgentGrant["preset"], "custom">;
 
 const presetLabel = (preset: AgentGrant["preset"]): string =>
   preset === "full_access"
-    ? "Pełny dostęp"
+    ? "Full access"
     : preset === "operate"
-      ? "Działa"
+      ? "Acts"
       : preset === "propose"
-        ? "Proponuje"
+        ? "Proposes"
         : preset === "custom"
-          ? "Ręcznie dobrany"
-          : "Obserwuje";
+          ? "Hand-picked"
+          : "Observes";
 
 const sameSpaceSet = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((spaceId) => b.includes(spaceId));
 
 /** The one taxonomy both the issuing and the editing dialog choose from. */
 const GRANT_PRESETS = [
-  ["observe", "Obserwuj", "Tylko odczyt i dowody"],
-  ["propose", "Proponuj", "Odczyt i sugestie w komentarzach"],
-  ["operate", "Działaj", "Typowe zmiany bez administracji"],
-  ["full_access", "Pełny dostęp", "Wszystkie przyznane operacje"],
+  ["observe", "Observe", "Read and evidence only"],
+  ["propose", "Propose", "Read and suggest in comments"],
+  ["operate", "Act", "Everyday changes, no administration"],
+  ["full_access", "Full access", "Every granted operation"],
 ] as const satisfies readonly (readonly [GrantPreset, string, string])[];
 
 /**
- * Polish counts split three ways and the relative pronoun follows the same
- * split, so the whole sentence is built here — assembled from parts at the
- * call site, the number and the pronoun could disagree.
+ * The whole sentence is built here rather than assembled at the call site: the
+ * count and the pronoun that refers back to it have to agree, and a caller
+ * joining parts can let them drift.
  */
-export const missingCapabilitiesNote = (count: number): string => {
-  if (count === 1)
-    return "Ten poziom niesie dziś 1 uprawnienie, którego ten grant nie ma — zapis je doda.";
-  const teens = count % 100;
-  const last = count % 10;
-  const noun =
-    last >= 2 && last <= 4 && !(teens >= 12 && teens <= 14)
-      ? "uprawnienia"
-      : "uprawnień";
-  return `Ten poziom niesie dziś ${count} ${noun}, których ten grant nie ma — zapis je doda.`;
-};
+export const missingCapabilitiesNote = (count: number): string =>
+  `This level now carries ${countLabel(count, "permission")} this grant lacks — saving adds ${plural(count, "it", "them")}.`;
 
 /**
- * The same count in the case `brakuje` governs. The genitive splits two ways,
- * not the three of {@link missingCapabilitiesNote}: only 1 takes the genitive
- * singular `uprawnienia`, every other count takes the genitive plural
- * `uprawnień`. Borrowing the nominative split would print "brakuje 2
- * uprawnienia", and the single hardcoded noun the grant row carried printed
- * "brakuje 1 uprawnień".
+ * The same count as a clause the grant row folds into a longer line. Kept
+ * beside {@link missingCapabilitiesNote} so the two counts cannot read
+ * differently for the same grant.
  */
 export const missingCapabilitiesClause = (count: number): string =>
-  `brakuje ${count} ${count === 1 ? "uprawnienia" : "uprawnień"}`;
+  `missing ${countLabel(count, "permission")}`;
 
 /**
  * Why saving is unavailable, or `undefined` when it is not. One string is both
@@ -83,9 +72,8 @@ export const rescopeBlockedReason = (
   preset: GrantPreset | undefined,
   spaceIds: readonly string[],
 ): string | undefined => {
-  if (preset === undefined) return "Wybierz poziom możliwości, aby zapisać.";
-  if (spaceIds.length === 0)
-    return "Wybierz co najmniej jeden Space, aby zapisać.";
+  if (preset === undefined) return "Choose a capability level to save.";
+  if (spaceIds.length === 0) return "Choose at least one Space to save.";
   // Restating the same level is not a no-op for a grant that predates an
   // upgrade: the command carries today's capability list for that level,
   // which is exactly what closes the drift.
@@ -98,7 +86,7 @@ export const rescopeBlockedReason = (
     ) ||
     closesDrift
     ? undefined
-    : "Nic się nie zmienia — nie ma czego zapisać.";
+    : "Nothing changes — there is nothing to save.";
 };
 
 /**
@@ -189,13 +177,13 @@ export const summariseRescope = (
   const removed = held.filter((spaceId) => !spaceIds.includes(spaceId));
   return [
     preset !== undefined && preset !== grant.preset
-      ? `Poziom: ${presetLabel(grant.preset)} → ${presetLabel(preset)}.`
+      ? `Level: ${presetLabel(grant.preset)} → ${presetLabel(preset)}.`
       : undefined,
     added.length > 0
-      ? `Dodajesz dostęp do: ${added.map(nameOf).join(", ")}.`
+      ? `Adding access to: ${added.map(nameOf).join(", ")}.`
       : undefined,
     removed.length > 0
-      ? `Odbierasz dostęp do: ${removed.map(nameOf).join(", ")}.`
+      ? `Removing access to: ${removed.map(nameOf).join(", ")}.`
       : undefined,
   ]
     .filter((sentence) => sentence !== undefined)
@@ -272,7 +260,7 @@ const AccessDialog = ({
           <button
             type="button"
             className="icon-button"
-            aria-label={`Zamknij: ${title}`}
+            aria-label={`Close: ${title}`}
             onClick={close}
           >
             <Icon name="close" />
@@ -424,14 +412,14 @@ export const AccessSurface = ({
     ...spaces.map((space) => ({
       id: space.id,
       name: space.name,
-      note: "Relacje nie poszerzą tego zakresu.",
+      note: "Relationships do not widen this scope.",
     })),
     ...(rescoping?.spaces ?? [])
       .filter((held) => !spaces.some((space) => space.id === held.spaceId))
       .map((held) => ({
         id: held.spaceId,
         name: held.spaceName,
-        note: "Poza Twoim dostępem — ma go ten agent.",
+        note: "Outside your access — this agent has it.",
       })),
   ];
   const rescopeClosesDrift =
@@ -517,13 +505,13 @@ export const AccessSurface = ({
           <div>
             <p className="eyebrow">Workspace</p>
             <h1 id="surface-title" tabIndex={-1}>
-              Dostęp
+              Access
             </h1>
-            <p>Nie można teraz odczytać bieżącej polityki dostępu.</p>
+            <p>The current access policy could not be read.</p>
           </div>
         </header>
         <div className="access-unavailable" role="alert">
-          <strong>Dostęp jest niedostępny</strong>
+          <strong>Access is unavailable</strong>
           <span>{access.message}</span>
         </div>
       </section>
@@ -537,20 +525,18 @@ export const AccessSurface = ({
         <div>
           <p className="eyebrow">Workspace</p>
           <h1 id="surface-title" tabIndex={-1}>
-            Dostęp
+            Access
           </h1>
-          <p>Sprawdź, kto może pracować w tym workspace i w jakim zakresie.</p>
+          <p>Who can work in this workspace, and how far that reaches.</p>
         </div>
-        <span className="policy-version">
-          Polityka v{current.policyVersion}
-        </span>
+        <span className="policy-version">Policy v{current.policyVersion}</span>
       </header>
 
       <section className="access-ledger" aria-labelledby="member-list-title">
         <header className="access-ledger-heading">
           <div>
-            <h2 id="member-list-title">Osoby</h2>
-            <p>Rola w workspace i dostęp do Space pozostają niezależne.</p>
+            <h2 id="member-list-title">People</h2>
+            <p>Workspace role and Space access stay independent.</p>
           </div>
           <div className="access-ledger-actions">
             <span className="access-ledger-count">
@@ -558,7 +544,7 @@ export const AccessSurface = ({
                 current.members.filter((member) => member.status === "active")
                   .length
               }{" "}
-              aktywne
+              active
             </span>
             {current.canManage && (
               <button
@@ -569,7 +555,7 @@ export const AccessSurface = ({
                 onClick={() => setOpenCreation("person")}
               >
                 <Icon name="access" />
-                Dodaj osobę
+                Add person
               </button>
             )}
           </div>
@@ -594,32 +580,32 @@ export const AccessSurface = ({
                 <div className="member-identity">
                   <strong>
                     {member.displayName}
-                    {self ? " · Ty" : ""}
+                    {self ? " · You" : ""}
                   </strong>
                   <span>
                     {member.role === "owner"
-                      ? "Właściciel"
+                      ? "Owner"
                       : member.role === "admin"
-                        ? "Administrator"
+                        ? "Admin"
                         : member.role === "guest"
-                          ? "Gość"
-                          : "Członek"}
+                          ? "Guest"
+                          : "Member"}
                     {grant
                       ? ` · ${grant.spaceName}`
                       : member.role === "owner"
-                        ? " · główny Space"
-                        : " · bez aktywnego Space"}
+                        ? " · primary Space"
+                        : " · no active Space"}
                   </span>
                 </div>
                 <span className={`access-state ${member.status}`}>
-                  {member.status === "active" ? "Aktywny" : "Cofnięty"}
+                  {member.status === "active" ? "Active" : "Revoked"}
                 </span>
                 {current.canManage && !self && member.status === "active" && (
                   <div className="member-actions">
                     {grant && (
                       <label>
                         <span className="sr-only">
-                          Zakres dla {member.displayName}
+                          Access for {member.displayName}
                         </span>
                         <select
                           value={grant.access}
@@ -631,9 +617,9 @@ export const AccessSurface = ({
                           }
                           disabled={busy}
                         >
-                          <option value="view">Tylko odczyt</option>
-                          <option value="comment">Może komentować</option>
-                          <option value="edit">Może edytować</option>
+                          <option value="view">View only</option>
+                          <option value="comment">Can comment</option>
+                          <option value="edit">Can edit</option>
                         </select>
                       </label>
                     )}
@@ -645,7 +631,7 @@ export const AccessSurface = ({
                           onClick={() => setConfirmAction(undefined)}
                           disabled={busy}
                         >
-                          Anuluj
+                          Cancel
                         </button>
                         <button
                           className="quiet-danger-button"
@@ -656,7 +642,7 @@ export const AccessSurface = ({
                           }}
                           disabled={busy}
                         >
-                          Potwierdź cofnięcie
+                          Confirm revoke
                         </button>
                       </>
                     ) : (
@@ -668,7 +654,7 @@ export const AccessSurface = ({
                         }
                         disabled={busy}
                       >
-                        Cofnij dostęp
+                        Revoke access
                       </button>
                     )}
                   </div>
@@ -681,28 +667,28 @@ export const AccessSurface = ({
 
       {current.canManage && openCreation === "person" && (
         <AccessDialog
-          eyebrow="Nowy dostęp"
-          title="Dodaj osobę"
-          description="Utwórz trwałą tożsamość, a rolę w workspace i dostęp do bieżącego Space przyznaj osobno."
+          eyebrow="New access"
+          title="Add person"
+          description="Create a lasting identity; grant the workspace role and Space access separately."
           open
           onClose={closeCreation}
         >
           <form className="access-composer" onSubmit={submit}>
             <label>
-              <span>Nazwa osoby</span>
+              <span>Person name</span>
               <input
                 name="display-name"
                 autoComplete="name"
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
-                placeholder="np. Ada Nowak"
+                placeholder="e.g. Ada Nowak"
                 maxLength={120}
                 disabled={busy}
                 required
               />
             </label>
             <label>
-              <span>Rola w workspace</span>
+              <span>Workspace role</span>
               <select
                 value={role}
                 onChange={(event) =>
@@ -710,13 +696,13 @@ export const AccessSurface = ({
                 }
                 disabled={busy}
               >
-                <option value="member">Członek</option>
-                <option value="guest">Gość</option>
-                <option value="admin">Administrator</option>
+                <option value="member">Member</option>
+                <option value="guest">Guest</option>
+                <option value="admin">Admin</option>
               </select>
             </label>
             <fieldset>
-              <legend>Dostęp w bieżącym Space</legend>
+              <legend>Access in the current Space</legend>
               <label>
                 <input
                   type="radio"
@@ -725,7 +711,7 @@ export const AccessSurface = ({
                   onChange={() => setSpaceAccess("comment")}
                   disabled={busy}
                 />
-                Może komentować
+                Can comment
               </label>
               <label>
                 <input
@@ -735,7 +721,7 @@ export const AccessSurface = ({
                   onChange={() => setSpaceAccess("view")}
                   disabled={busy}
                 />
-                Tylko odczyt
+                View only
               </label>
               <label>
                 <input
@@ -745,12 +731,12 @@ export const AccessSurface = ({
                   onChange={() => setSpaceAccess("edit")}
                   disabled={busy}
                 />
-                Może edytować
+                Can edit
               </label>
             </fieldset>
             <p className="access-boundary-note">
-              Dostęp nie obejmuje ukrytych Space. Pełny zakres funkcji nigdy nie
-              poszerza zakresu danych.
+              Access never includes hidden Spaces. Full capabilities never widen
+              the data scope.
             </p>
             <div className="access-dialog-actions">
               <button
@@ -759,10 +745,10 @@ export const AccessSurface = ({
                 onClick={closeCreation}
                 disabled={busy}
               >
-                Anuluj
+                Cancel
               </button>
               <button className="primary-button" type="submit" disabled={busy}>
-                {busy ? "Zapisuję…" : "Utwórz dostęp"}
+                {busy ? "Saving…" : "Create access"}
               </button>
             </div>
           </form>
@@ -777,15 +763,12 @@ export const AccessSurface = ({
           <div>
             <p className="eyebrow">
               MCP ·{" "}
-              {agentTransport === "remote_hub"
-                ? "zdalnie przez Hub"
-                : "lokalnie"}
+              {agentTransport === "remote_hub" ? "remote via Hub" : "local"}
             </p>
-            <h2 id="agent-access-title">Agenci zewnętrzni</h2>
+            <h2 id="agent-access-title">External agents</h2>
             <p>
-              Możliwości i dane to dwie osobne granice. Pełny dostęp działa
-              tylko w wybranych Space i nadal wymaga wersji, audytu oraz
-              bezpiecznego cofnięcia.
+              Capabilities and data are separate boundaries. Full access stays
+              inside the chosen Spaces.
             </p>
           </div>
           {agentAccess.kind === "ready" && (
@@ -796,7 +779,7 @@ export const AccessSurface = ({
                     (grant) => grant.status === "active",
                   ).length
                 }{" "}
-                aktywne
+                active
               </span>
               {agentAccess.data.canManage && (
                 <button
@@ -807,7 +790,7 @@ export const AccessSurface = ({
                   onClick={() => setOpenCreation("agent")}
                 >
                   <span className="agent-orbit-mark" aria-hidden="true" />
-                  Dodaj agenta
+                  Add agent
                 </button>
               )}
             </div>
@@ -818,8 +801,8 @@ export const AccessSurface = ({
           <div className="access-unavailable" role="alert">
             <strong>
               {agentTransport === "remote_hub"
-                ? "Zdalny MCP jest niedostępny"
-                : "Lokalny MCP jest niedostępny"}
+                ? "Remote MCP is unavailable"
+                : "Local MCP is unavailable"}
             </strong>
             <span>{agentAccess.message}</span>
           </div>
@@ -827,37 +810,37 @@ export const AccessSurface = ({
           <>
             {agentAccess.data.canManage && openCreation === "agent" && (
               <AccessDialog
-                eyebrow="Nowy dostęp"
+                eyebrow="New access"
                 title={
                   agentTransport === "remote_hub"
-                    ? "Dodaj zdalnego agenta"
-                    : "Dodaj lokalnego agenta"
+                    ? "Add remote agent"
+                    : "Add local agent"
                 }
-                description="Najpierw określ możliwości, potem jawnie ogranicz dane, które agent może zobaczyć."
+                description="Set the capabilities first, then limit the data the agent can see."
                 open
                 onClose={closeCreation}
               >
                 <form className="agent-access-composer" onSubmit={submitAgent}>
                   <div className="agent-trust-boundary" aria-hidden="true">
-                    <span>Co może zrobić</span>
+                    <span>What it can do</span>
                     <i />
-                    <span>Co może zobaczyć</span>
+                    <span>What it can see</span>
                   </div>
                   <label className="agent-name-field">
-                    <span>Nazwa agenta lub hosta</span>
+                    <span>Agent or host name</span>
                     <input
                       name="agent-name"
                       autoComplete="off"
                       value={agentName}
                       onChange={(event) => setAgentName(event.target.value)}
-                      placeholder="np. Codex — praca projektowa"
+                      placeholder="e.g. Codex — project work"
                       maxLength={120}
                       disabled={busy}
                       required
                     />
                   </label>
                   <fieldset>
-                    <legend>Poziom możliwości</legend>
+                    <legend>Capability level</legend>
                     {GRANT_PRESETS.map(([value, label, description]) => (
                       <label key={value} className="agent-option">
                         <input
@@ -880,19 +863,19 @@ export const AccessSurface = ({
                       showSpacesError ? "agent-spaces-error" : undefined
                     }
                   >
-                    <legend>Zakres danych</legend>
+                    <legend>Data scope</legend>
                     {spaces.length === 0 ? (
                       <p className="access-boundary-note">
-                        Ten workspace nie ma jeszcze żadnego Space, więc nie da
-                        się przyznać zakresu danych. Grant utworzysz po dodaniu
-                        pierwszego Space.
+                        This workspace has no Space yet, so there is no data
+                        scope to grant. Add the first Space, then create the
+                        grant.
                       </p>
                     ) : (
                       spaces.map((space) => (
                         <SpaceScopeOption
                           key={space.id}
                           name={space.name}
-                          note="Relacje nie poszerzą tego zakresu."
+                          note="Relationships do not widen this scope."
                           checked={agentSpaces.includes(space.id)}
                           invalid={showSpacesError}
                           describedBy={
@@ -912,7 +895,7 @@ export const AccessSurface = ({
                     )}
                   </fieldset>
                   <fieldset className="agent-expiry">
-                    <legend>Wygaśnięcie</legend>
+                    <legend>Expiry</legend>
                     <label>
                       <input
                         type="radio"
@@ -921,7 +904,7 @@ export const AccessSurface = ({
                         onChange={() => setAgentExpiry("30_days")}
                         disabled={busy}
                       />
-                      30 dni
+                      30 days
                     </label>
                     <label>
                       <input
@@ -931,25 +914,25 @@ export const AccessSurface = ({
                         onChange={() => setAgentExpiry("never")}
                         disabled={busy}
                       />
-                      Bez terminu
+                      No expiry
                     </label>
                   </fieldset>
                   {agentTransport === "remote_hub" && (
                     <fieldset className="agent-federation-scope">
-                      <legend>Granice między workspace</legend>
+                      <legend>Cross-workspace boundaries</legend>
                       {(
                         [
                           [
                             "crossWorkspaceRead",
-                            "Odczyt z innych przyznanych workspace",
+                            "Read from other granted workspaces",
                           ],
                           [
                             "derivedResultWrite",
-                            "Zapis wyniku pochodnego do celu",
+                            "Write derived results to the target",
                           ],
                           [
                             "sourceMaterialization",
-                            "Materializacja treści źródłowej",
+                            "Materialize source content",
                           ],
                         ] as const
                       ).map(([key, label]) => (
@@ -967,7 +950,7 @@ export const AccessSurface = ({
                           />
                           <span>
                             <strong>{label}</strong>
-                            <small>Osobny grant. Domyślnie wyłączony.</small>
+                            <small>A separate grant. Off by default.</small>
                           </span>
                         </label>
                       ))}
@@ -980,7 +963,7 @@ export const AccessSurface = ({
                       onClick={closeCreation}
                       disabled={busy}
                     >
-                      Anuluj
+                      Cancel
                     </button>
                     <button
                       className="primary-button"
@@ -988,10 +971,10 @@ export const AccessSurface = ({
                       disabled={busy}
                     >
                       {busy
-                        ? "Zapisuję…"
+                        ? "Saving…"
                         : agentTransport === "remote_hub"
-                          ? "Utwórz zdalny dostęp MCP"
-                          : "Utwórz lokalny dostęp MCP"}
+                          ? "Create remote MCP access"
+                          : "Create local MCP access"}
                     </button>
                   </div>
                   {showSpacesError && (
@@ -1000,7 +983,7 @@ export const AccessSurface = ({
                       className="field-error"
                       role="alert"
                     >
-                      Wybierz co najmniej jeden Space.
+                      Choose at least one Space.
                     </p>
                   )}
                 </form>
@@ -1009,9 +992,9 @@ export const AccessSurface = ({
 
             {agentAccess.data.canManage && rescoping !== undefined && (
               <AccessDialog
-                eyebrow="Zmiana uprawnień"
-                title={`Zmień uprawnienia: ${rescoping.displayName}`}
-                description="Poziom możliwości i zakres danych zmieniają się razem, jednym zapisem. Poświadczenie zostaje bez zmian."
+                eyebrow="Change permissions"
+                title={`Change permissions: ${rescoping.displayName}`}
+                description="Capability level and data scope change together, in one save. The credential stays."
                 open
                 onClose={closeRescope}
               >
@@ -1020,12 +1003,12 @@ export const AccessSurface = ({
                   onSubmit={submitRescope}
                 >
                   <div className="agent-trust-boundary" aria-hidden="true">
-                    <span>Co może zrobić</span>
+                    <span>What it can do</span>
                     <i />
-                    <span>Co może zobaczyć</span>
+                    <span>What it can see</span>
                   </div>
                   <fieldset>
-                    <legend>Poziom możliwości</legend>
+                    <legend>Capability level</legend>
                     {GRANT_PRESETS.map(([value, label, description]) => (
                       <label key={value} className="agent-option">
                         <input
@@ -1043,11 +1026,11 @@ export const AccessSurface = ({
                     ))}
                   </fieldset>
                   <fieldset className="agent-space-scope">
-                    <legend>Zakres danych</legend>
+                    <legend>Data scope</legend>
                     {rescopeSpaceOptions.length === 0 ? (
                       <p className="access-boundary-note">
-                        Ten workspace nie ma jeszcze żadnego Space, więc nie da
-                        się zmienić zakresu danych.
+                        This workspace has no Space yet, so there is no data
+                        scope to change.
                       </p>
                     ) : (
                       rescopeSpaceOptions.map((space) => (
@@ -1070,8 +1053,8 @@ export const AccessSurface = ({
                   </fieldset>
                   {rescoping.preset === "custom" && (
                     <p className="access-dialog-note">
-                      Ten grant ma ręcznie dobrany zestaw uprawnień. Wybór
-                      poziomu zastąpi go w całości.
+                      This grant has a hand-picked set of permissions. Choosing
+                      a level replaces all of it.
                     </p>
                   )}
                   {rescopeClosesDrift && (
@@ -1086,7 +1069,7 @@ export const AccessSurface = ({
                       hear it, including the reason saving is unavailable. */}
                   <p className="access-dialog-note" aria-live="polite">
                     {rescopeBlocked ??
-                      `${summariseRescope(rescoping, rescopePreset, rescopeSpaceIds, spaces)} Zadziała od następnego wywołania agenta — bez ponownego łączenia.`.trim()}
+                      `${summariseRescope(rescoping, rescopePreset, rescopeSpaceIds, spaces)} Takes effect on the agent's next call — no reconnect.`.trim()}
                   </p>
                   <div className="access-dialog-actions">
                     <button
@@ -1095,7 +1078,7 @@ export const AccessSurface = ({
                       onClick={closeRescope}
                       disabled={busy || rescopeSaving}
                     >
-                      Anuluj
+                      Cancel
                     </button>
                     <button
                       className="primary-button"
@@ -1104,9 +1087,7 @@ export const AccessSurface = ({
                         busy || rescopeSaving || rescopeBlocked !== undefined
                       }
                     >
-                      {busy || rescopeSaving
-                        ? "Zapisuję…"
-                        : "Zapisz uprawnienia"}
+                      {busy || rescopeSaving ? "Saving…" : "Save permissions"}
                     </button>
                   </div>
                   {/* A refused save is answered where the choice was made: the
@@ -1126,11 +1107,14 @@ export const AccessSurface = ({
                 <div className="agent-empty-state">
                   <span className="agent-orbit-mark" aria-hidden="true" />
                   <div>
-                    <strong>Żaden host nie ma dostępu</strong>
+                    <strong>No host has access</strong>
                     <p>
-                      Utwórz jawny grant, aby Codex, Claude lub inny host mógł
-                      połączyć się przez{" "}
-                      {agentTransport === "remote_hub" ? "Hub" : "lokalny MCP"}.
+                      Create an explicit grant so Codex, Claude or another host
+                      can connect through{" "}
+                      {agentTransport === "remote_hub"
+                        ? "the Hub"
+                        : "local MCP"}
+                      .
                     </p>
                   </div>
                 </div>
@@ -1148,25 +1132,25 @@ export const AccessSurface = ({
                         {` · ${grant.spaces.map((space) => space.spaceName).join(", ")}`}
                       </span>
                       <small>
-                        Poświadczenie v{grant.credentialVersion}
+                        Credential v{grant.credentialVersion}
                         {grant.expiresAt
-                          ? ` · wygasa ${new Intl.DateTimeFormat("pl", { dateStyle: "medium" }).format(new Date(grant.expiresAt))}`
-                          : " · bez terminu"}
+                          ? ` · expires ${formatDate(grant.expiresAt)}`
+                          : " · no expiry"}
                         {/* Drift is a repair, and only an active grant can be
                             repaired — a revoked or expired grant authorizes
                             nothing, so naming its stale scope sends a person
                             to fix a grant that is already closed. */}
                         {grant.status === "active" &&
                           grant.scopeStatus === "behind_preset" &&
-                          ` · zakres sprzed aktualizacji: ${missingCapabilitiesClause(grant.missingFromPreset.length)} tego poziomu`}
+                          ` · scope from before an update: ${missingCapabilitiesClause(grant.missingFromPreset.length)} from this level`}
                       </small>
                     </div>
                     <span className={`access-state ${grant.status}`}>
                       {grant.status === "active"
-                        ? "Aktywny"
+                        ? "Active"
                         : grant.status === "expired"
-                          ? "Wygasł"
-                          : "Cofnięty"}
+                          ? "Expired"
+                          : "Revoked"}
                     </span>
                     {agentAccess.data.canManage &&
                       grant.status === "active" && (
@@ -1179,7 +1163,7 @@ export const AccessSurface = ({
                                 onClick={() => setConfirmAction(undefined)}
                                 disabled={busy}
                               >
-                                Anuluj
+                                Cancel
                               </button>
                               <button
                                 className="secondary-button"
@@ -1190,7 +1174,7 @@ export const AccessSurface = ({
                                 }}
                                 disabled={busy}
                               >
-                                Potwierdź rotację
+                                Confirm rotation
                               </button>
                             </>
                           ) : confirmAction === `agent-${grant.grantId}` ? (
@@ -1201,7 +1185,7 @@ export const AccessSurface = ({
                                 onClick={() => setConfirmAction(undefined)}
                                 disabled={busy}
                               >
-                                Anuluj
+                                Cancel
                               </button>
                               <button
                                 className="quiet-danger-button"
@@ -1212,7 +1196,7 @@ export const AccessSurface = ({
                                 }}
                                 disabled={busy}
                               >
-                                Potwierdź cofnięcie
+                                Confirm revoke
                               </button>
                             </>
                           ) : (
@@ -1235,7 +1219,7 @@ export const AccessSurface = ({
                                     }
                                     disabled={busy}
                                   >
-                                    Zmień uprawnienia
+                                    Change permissions
                                   </button>
                                 )
                               }
@@ -1249,7 +1233,7 @@ export const AccessSurface = ({
                                 }
                                 disabled={busy}
                               >
-                                Obróć poświadczenie
+                                Rotate credential
                               </button>
                               <button
                                 className="quiet-danger-button"
@@ -1259,7 +1243,7 @@ export const AccessSurface = ({
                                 }
                                 disabled={busy}
                               >
-                                Cofnij dostęp
+                                Revoke access
                               </button>
                             </>
                           )}

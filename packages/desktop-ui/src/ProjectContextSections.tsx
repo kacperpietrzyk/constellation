@@ -50,17 +50,14 @@ const ClientLinkRow = ({
         // Space. Collapsing them is what left two surfaces saying "unavailable"
         // with nothing naming the cause.
         <small>
-          Nie udało się wczytać organizacji, więc nie można teraz połączyć
-          klienta.
+          Could not load organizations, so no client can be linked right now.
         </small>
       ) : candidates.length === 0 ? (
-        <small>
-          Brak organizacji do połączenia w przestrzeni tego projektu.
-        </small>
+        <small>No organization to link in this project’s Space.</small>
       ) : (
         <>
           <label className="sr-only" htmlFor="project-client-link">
-            Organizacja klienta do połączenia
+            Client organization to link
           </label>
           <select
             id="project-client-link"
@@ -68,7 +65,7 @@ const ClientLinkRow = ({
             disabled={busy}
             onChange={(event) => setSelected(event.target.value)}
           >
-            <option value="">Wybierz klienta…</option>
+            <option value="">Choose a client…</option>
             {candidates.map((candidate) => (
               <option key={candidate.id} value={candidate.id}>
                 {candidate.name}
@@ -84,7 +81,7 @@ const ClientLinkRow = ({
               setSelected("");
             }}
           >
-            Połącz klienta
+            Link client
           </button>
         </>
       )}
@@ -92,8 +89,8 @@ const ClientLinkRow = ({
         confirmingId === organization.id ? (
           <Fragment key={organization.id}>
             <small>
-              Odłączenie usuwa tylko bezpośrednie powiązanie. Klient wskazany
-              też przez szansę lub spotkanie zostanie na liście.
+              Only the direct link goes. A client also reached by an opportunity
+              or meeting stays listed.
             </small>
             <button
               type="button"
@@ -104,7 +101,7 @@ const ClientLinkRow = ({
                 onUnlink(organization.id);
               }}
             >
-              Potwierdź odłączenie
+              Confirm unlink
             </button>
             <button
               type="button"
@@ -112,7 +109,7 @@ const ClientLinkRow = ({
               disabled={busy}
               onClick={() => setConfirmingId(undefined)}
             >
-              Anuluj
+              Cancel
             </button>
           </Fragment>
         ) : (
@@ -123,7 +120,7 @@ const ClientLinkRow = ({
             disabled={busy}
             onClick={() => setConfirmingId(organization.id)}
           >
-            Odłącz „{organization.name}”
+            Unlink “{organization.name}”
           </button>
         ),
       )}
@@ -172,24 +169,24 @@ export default function ProjectContextSections({
   }[] = [
     {
       key: "client",
-      eyebrow: "Kontekst relacji",
-      title: "Klient",
+      eyebrow: "Relationship context",
+      title: "Client",
       // Named the three reaches rather than the two it used to, because since
       // 0.1.5 a Project can be linked straight to an Organization and this line
       // was telling the reader to go looking for a deal that need not exist.
-      empty: "Brak klienta połączonego przez szansę, spotkanie lub powiązanie.",
+      empty: "No client linked by an opportunity, a meeting or a direct link.",
       wide: true,
       items: overview.clientOrganizations.map((organization) => ({
         id: organization.id,
         kind: "organization",
         title: organization.name,
-        detail: "Klient projektu",
+        detail: "Project client",
         status:
           organization.relationshipState === "active"
-            ? "Aktywny"
+            ? "Active"
             : organization.relationshipState === "prospect"
-              ? "Prospekt"
-              : "Nieaktywny",
+              ? "Prospect"
+              : "Inactive",
         onOpen: () => onOpenRelationship(organization.id),
       })),
       footer: (
@@ -209,48 +206,48 @@ export default function ProjectContextSections({
     },
     {
       key: "meetings",
-      eyebrow: "Rozmowy",
-      title: "Spotkania",
-      empty: "Żadne spotkanie nie zostało jeszcze skierowane do projektu.",
+      eyebrow: "Conversations",
+      title: "Meetings",
+      empty: "No meeting has been routed to this project yet.",
       items: overview.relatedMeetings.map((meeting) => ({
         id: meeting.id,
         kind: "meeting",
         title: meeting.title,
         detail: formatDate(meeting.startedAt),
-        status: meeting.triage === "ready" ? "Gotowe" : "Do przeglądu",
+        status: meeting.triage === "ready" ? "Ready" : "To review",
         onOpen: () => onOpenMeeting(meeting.id),
       })),
     },
     {
       key: "documents",
-      eyebrow: "Materiały",
-      title: "Dokumenty",
-      empty: "Dodaj odnośnik do projektu w dokumencie, aby pojawił się tutaj.",
+      eyebrow: "Materials",
+      title: "Documents",
+      empty: "Reference this project from a document and it shows up here.",
       items: overview.relatedDocuments.map((document) => ({
         id: document.id,
         kind: "document",
         title: document.title,
         detail:
           document.role === "deliverable"
-            ? "Rezultat"
+            ? "Deliverable"
             : document.role === "note"
-              ? "Notatka"
-              : "Dokument",
+              ? "Note"
+              : "Document",
         status: formatDate(document.updatedAt),
         onOpen: () => onOpenDocument(document.id, document.title),
       })),
     },
     {
       key: "decisions",
-      eyebrow: "Ustalenia",
-      title: "Decyzje",
-      empty: "Brak decyzji wskazujących ten projekt.",
+      eyebrow: "Agreements",
+      title: "Decisions",
+      empty: "No decision references this project.",
       items: overview.relatedDecisions.map((decision) => ({
         id: decision.id,
         kind: "decision",
         title: decision.title,
-        detail: "Decyzja projektu",
-        status: decision.state === "current" ? "Aktualna" : "Zastąpiona",
+        detail: "Project decision",
+        status: decision.state === "current" ? "Current" : "Superseded",
         onOpen: () => onOpenRelationship(decision.id),
       })),
     },

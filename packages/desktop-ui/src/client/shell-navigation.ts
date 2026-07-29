@@ -7,6 +7,8 @@ import type {
 
 import {
   desktopSurfaceIds,
+  desktopSurfaceLabel,
+  resolveDesktopSurface,
   type DesktopSurface as SurfaceId,
 } from "@constellation/desktop-preload/surface-registry";
 
@@ -82,8 +84,59 @@ const isRestorableShellContext = (value: unknown): value is ShellContext => {
   return true;
 };
 
+// Wersja 3 przyszła z przebudową 0.2.0: osiem identyfikatorów powierzchni
+// zmieniło nazwę. Zapis idzie już w nowej wersji, ODCZYT przyjmuje obie —
+// stan zapisany przez 0.1.9 ma się otworzyć, a nie wyparować.
+const NAVIGATION_STATE_VERSION = 3;
+
 export const serializeShellNavigation = (state: ShellNavigationState): string =>
-  JSON.stringify({ version: 2, state });
+  JSON.stringify({ version: NAVIGATION_STATE_VERSION, state });
+
+// Kontekst zapisany pod starym identyfikatorem celu, przeniesiony na nowy.
+// Cel, którego nie da się umiejscowić, zostaje nietknięty — odsiewa go dopiero
+// `isRestorableShellContext`, a wołający traktuje to jako „nie ufam całemu
+// zapisowi" i wraca na start. To jest świadomie mocniejsze niż wyrzucenie
+// pojedynczej zakładki: zapis, którego połowy nie rozumiemy, mógł zostać
+// napisany przez wersję, o której nic nie wiemy.
+//
+// Etykieta zakładki-celu jest odczytywana Z REJESTRU, a nie z zapisu. Zapis
+// niesie własną kopię napisu sprzed aktualizacji, więc bez tego pierwsze
+// uruchomienie po przebudowie pokazywałoby angielską nawigację i polskie
+// zakładki naraz. Zakładki rekordów (`task:`, `project:`, …) zachowują swój
+// tytuł — tam napis to nazwa cudzej pracy, nie etykieta interfejsu.
+const migrateRestoredContext = (value: unknown): unknown => {
+  if (typeof value !== "object" || value === null) return value;
+  const context = value as {
+    readonly surface?: unknown;
+    readonly key?: unknown;
+  };
+  const resolved = resolveDesktopSurface(context.surface);
+  if (resolved === undefined) return value;
+  const isDestination =
+    typeof context.key === "string" && context.key.startsWith("destination:");
+  if (!isDestination) {
+    return resolved === context.surface
+      ? value
+      : { ...context, surface: resolved };
+  }
+  return {
+    ...context,
+    key: migrateContextKey(context.key as string),
+    surface: resolved,
+    label: desktopSurfaceLabel(resolved),
+  };
+};
+
+// Klucz zakładki-celu niesie identyfikator powierzchni, więc przeniesienie
+// celu MUSI przenieść też klucz — inaczej zapisany `activeKey` nie wskazuje
+// żadnej z odtworzonych zakładek i cała sesja jest odrzucana. Drugi powód:
+// zakładka zostawiona pod starym kluczem zdublowałaby się, gdy człowiek otworzy
+// ten sam cel jeszcze raz.
+const migrateContextKey = (key: string): string => {
+  if (!key.startsWith("destination:")) return key;
+  const resolved = resolveDesktopSurface(key.slice("destination:".length));
+  return resolved === undefined ? key : `destination:${resolved}`;
+};
 
 export const restoreShellNavigation = (
   value: string | null,
@@ -97,7 +150,7 @@ export const restoreShellNavigation = (
     };
     const state = parsed.state;
     if (
-      parsed.version !== 2 ||
+      (parsed.version !== 2 && parsed.version !== NAVIGATION_STATE_VERSION) ||
       state === undefined ||
       !Array.isArray(state.tabs) ||
       state.tabs.length === 0 ||
@@ -107,12 +160,17 @@ export const restoreShellNavigation = (
       typeof state.historyIndex !== "number"
     )
       return createShellNavigation(fallback);
-    const tabs = state.tabs.filter(isRestorableShellContext);
+    const tabs = state.tabs
+      .map(migrateRestoredContext)
+      .filter(isRestorableShellContext);
     if (tabs.length !== state.tabs.length)
       return createShellNavigation(fallback);
-    if (!tabs.some((tab) => tab.key === state.activeKey))
+    const activeKey = migrateContextKey(state.activeKey);
+    if (!tabs.some((tab) => tab.key === activeKey))
       return createShellNavigation(fallback);
-    const history = state.history.filter(isRestorableShellContext);
+    const history = state.history
+      .map(migrateRestoredContext)
+      .filter(isRestorableShellContext);
     if (history.length !== state.history.length || history.length === 0)
       return createShellNavigation(fallback);
     // Indeks klamrowany PO przycięciu historii i skorygowany o wpisy odcięte
@@ -121,7 +179,7 @@ export const restoreShellNavigation = (
     const dropped = history.length - bounded.length;
     return {
       tabs,
-      activeKey: state.activeKey,
+      activeKey,
       history: bounded,
       historyIndex: Math.min(
         Math.max(0, Math.trunc(state.historyIndex) - dropped),
@@ -205,7 +263,7 @@ export const documentContext = (
 ): ShellContext => ({
   key: `document:${documentId}`,
   label,
-  surface: "documents",
+  surface: "library",
   documentId,
 });
 
@@ -215,7 +273,7 @@ export const organizationContext = (
 ): ShellContext => ({
   key: `organization:${organizationId}`,
   label,
-  surface: "relationships",
+  surface: "organizations",
   organizationId,
 });
 

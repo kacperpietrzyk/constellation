@@ -30,7 +30,7 @@ export const reportFirstEmptyRequiredField = (form: HTMLFormElement): void => {
       element.required &&
       element.value.trim() === ""
     ) {
-      element.setCustomValidity("To pole nie może zawierać samych spacji.");
+      element.setCustomValidity("This field cannot be only spaces.");
       element.reportValidity();
       element.addEventListener("input", () => element.setCustomValidity(""), {
         once: true,

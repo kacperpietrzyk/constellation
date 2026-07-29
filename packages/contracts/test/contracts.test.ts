@@ -151,7 +151,7 @@ describe("application contracts", () => {
     assert.equal(isGlobalSearchRecordKind("commitment"), false);
     assert.equal(
       getHumanRecordKindDescriptor("organization").inspectorSurface,
-      "relationships",
+      "organizations",
     );
   });
 

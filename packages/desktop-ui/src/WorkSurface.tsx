@@ -78,34 +78,34 @@ const monthDateKeys = (monthKey: string): readonly (string | undefined)[] => {
 };
 
 const monthLabel = (monthKey: string): string =>
-  new Intl.DateTimeFormat("pl-PL", {
+  new Intl.DateTimeFormat("en-US", {
     month: "long",
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(`${monthKey}-01T12:00:00.000Z`));
 
 const fullDateLabel = (dateKey: string): string =>
-  new Intl.DateTimeFormat("pl-PL", {
+  new Intl.DateTimeFormat("en-US", {
     dateStyle: "full",
     timeZone: "UTC",
   }).format(new Date(`${dateKey}T12:00:00.000Z`));
 
 const stateLabel = {
-  actionable: "Do działania",
-  waiting: "Czekam na",
-  blocked: "Zablokowane",
+  actionable: "Actionable",
+  waiting: "Waiting",
+  blocked: "Blocked",
 } as const;
 
 const coreWorkListFields: readonly {
   readonly key: WorkListFieldKey;
   readonly label: string;
 }[] = [
-  { key: "context", label: "Kontekst" },
+  { key: "context", label: "Context" },
   { key: "status", label: "Status" },
-  { key: "assignee", label: "Odpowiedzialność" },
-  { key: "priority", label: "Priorytet" },
+  { key: "assignee", label: "Assignee" },
+  { key: "priority", label: "Priority" },
   { key: "start", label: "Start" },
-  { key: "due", label: "Termin" },
+  { key: "due", label: "Deadline" },
 ];
 
 const WorkEmpty = ({
@@ -295,18 +295,18 @@ export const WorkSurface = ({
   };
   const priorityRank = { urgent: 3, high: 2, normal: 1, low: 0 } as const;
   const priorityLabels = {
-    urgent: "Pilne",
-    high: "Wysoki priorytet",
-    normal: "Normalny priorytet",
-    low: "Niski priorytet",
+    urgent: "Urgent",
+    high: "High priority",
+    normal: "Normal priority",
+    low: "Low priority",
   } as const;
   const groupBy = activeView?.groupBy;
   const orderedTaskStatuses = snapshot.bootstrap.taskStatuses.toSorted(
     (left, right) => left.position - right.position,
   );
   // Group order is declared, never inferred: status position, priority rank,
-  // or the definition's option order, with an explicit trailing "Bez
-  // wartości" group. Grouping composes before the view's sort.
+  // or the definition's option order, with an explicit trailing "No value"
+  // group. Grouping composes before the view's sort.
   const groupFor = (
     task: NonNullable<typeof projection>["tasks"][number],
   ): {
@@ -321,7 +321,7 @@ export const WorkSurface = ({
       return {
         key: index === -1 ? "status:historical" : `status:${task.statusId}`,
         rank: index === -1 ? Number.MAX_SAFE_INTEGER : index,
-        label: orderedTaskStatuses[index]?.label ?? "Status historyczny",
+        label: orderedTaskStatuses[index]?.label ?? "Historical status",
       };
     }
     if (groupBy === "priority") {
@@ -345,7 +345,7 @@ export const WorkSurface = ({
         ? {
             key: "field:empty",
             rank: Number.MAX_SAFE_INTEGER,
-            label: "Bez wartości",
+            label: "No value",
           }
         : {
             key: `field:${options[index]!}`,
@@ -508,9 +508,9 @@ export const WorkSurface = ({
     ]);
   }
   const calendarOverflowGroups = [
-    { label: "Wcześniej", tasks: calendarBeforeTasks },
-    { label: "Później", tasks: calendarAfterTasks },
-    { label: "Bez daty", tasks: calendarUndatedTasks },
+    { label: "Earlier", tasks: calendarBeforeTasks },
+    { label: "Later", tasks: calendarAfterTasks },
+    { label: "No date", tasks: calendarUndatedTasks },
   ] as const;
   const taskNav = useListNavigation({
     itemCount: visibleTasks.length,
@@ -578,8 +578,7 @@ export const WorkSurface = ({
     } catch {
       onFailure({
         kind: "unavailable",
-        message:
-          "Polecenie nie dotarło do warstwy danych. Nic nie zmieniono — spróbuj ponownie.",
+        message: "Could not reach the data layer. Nothing changed — try again.",
       });
       return false;
     } finally {
@@ -596,25 +595,23 @@ export const WorkSurface = ({
       <div className="surface-scroll work-surface">
         <header className="surface-header wave2-header">
           <div>
-            <p className="eyebrow">Model pracy</p>
+            <p className="eyebrow">Work model</p>
             <h1 id="surface-title" tabIndex={-1}>
-              Praca
+              Work
             </h1>
-            <p>Odpowiedzialność, wyniki i następne działania w jednym wątku.</p>
+            <p>Responsibility, outcomes and next actions in one thread.</p>
           </div>
         </header>
         <WorkEmpty
-          title="Widok pracy jest niedostępny"
-          detail={
-            work.kind === "unavailable" ? work.message : "Spróbuj ponownie."
-          }
+          title="Work view unavailable"
+          detail={work.kind === "unavailable" ? work.message : "Try again."}
           action={
             <button
               type="button"
               className="secondary-button"
               onClick={() => void onReload()}
             >
-              Spróbuj ponownie
+              Try again
             </button>
           }
         />
@@ -794,7 +791,7 @@ export const WorkSurface = ({
     if (taskId === dependencyId) {
       const field = form.elements.namedItem("dependencyId");
       if (field instanceof HTMLSelectElement) {
-        field.setCustomValidity("Zadanie nie może zależeć od samego siebie.");
+        field.setCustomValidity("A task cannot depend on itself.");
         field.reportValidity();
         field.addEventListener("change", () => field.setCustomValidity(""), {
           once: true,
@@ -867,21 +864,19 @@ export const WorkSurface = ({
     )?.title;
     if (task.waitingOn !== undefined) {
       const direction =
-        task.waitingOn.direction === "we_owe"
-          ? "Zobowiązanie: "
-          : "Czekamy na: ";
+        task.waitingOn.direction === "we_owe" ? "We owe: " : "Waiting on: ";
       const review =
         task.waitingOn.expectedAt === undefined
           ? ""
-          : ` · przegląd ${formatDate(
+          : ` · review ${formatDate(
               task.waitingOn.expectedAt,
               snapshot.bootstrap.workspace.timezone,
             )}`;
       return `${direction}${task.waitingOn.label}${review}`;
     }
     return dependencyTitle === undefined
-      ? "Gotowe do podjęcia"
-      : `Zależy od: ${dependencyTitle}`;
+      ? "Ready to start"
+      : `Depends on: ${dependencyTitle}`;
   };
   const listFieldValue = (
     task: (typeof visibleTasks)[number],
@@ -893,13 +888,13 @@ export const WorkSurface = ({
       case "status":
         return (
           orderedTaskStatuses.find((status) => status.id === task.statusId)
-            ?.label ?? "Status historyczny"
+            ?.label ?? "Historical status"
         );
       case "assignee":
         return task.assigneePrincipalId === undefined
-          ? "Nieprzypisane"
+          ? "Unassigned"
           : (assigneeNames.get(task.assigneePrincipalId) ??
-              "Osoba poza bieżącym zakresem");
+              "Person outside current scope");
       case "priority":
         return priorityLabels[task.priority ?? "normal"];
       case "start":
@@ -912,7 +907,7 @@ export const WorkSurface = ({
           : `${formatDate(
               task.dueAt,
               snapshot.bootstrap.workspace.timezone,
-            )}${Date.parse(task.dueAt) < Date.now() ? " · po terminie" : ""}`;
+            )}${Date.parse(task.dueAt) < Date.now() ? " · overdue" : ""}`;
       default: {
         const value = task.fields?.[field.key.slice("field:".length)];
         if (value === undefined) return "—";
@@ -971,23 +966,21 @@ export const WorkSurface = ({
                 ...(task.dueAt === undefined
                   ? []
                   : [
-                      `Termin: ${formatDate(
+                      `Deadline: ${formatDate(
                         task.dueAt,
                         snapshot.bootstrap.workspace.timezone,
-                      )}${Date.parse(task.dueAt) < Date.now() ? " · po terminie" : ""}`,
+                      )}${Date.parse(task.dueAt) < Date.now() ? " · overdue" : ""}`,
                     ]),
                 ...((variant !== "timeline" && variant !== "calendar") ||
                 task.startAt !== undefined ||
                 task.dueAt !== undefined
                   ? []
-                  : ["Bez terminu"]),
+                  : ["No deadline"]),
                 ...(task.priority === undefined ||
                 task.priority === "normal" ||
                 task.priority === "low"
                   ? []
-                  : [
-                      task.priority === "urgent" ? "Pilne" : "Wysoki priorytet",
-                    ]),
+                  : [task.priority === "urgent" ? "Urgent" : "High priority"]),
               ].join(" · ")}
             </span>
           )}
@@ -1011,7 +1004,7 @@ export const WorkSurface = ({
         )}
         <InlinePopover
           label={stateLabel[task.operationalState]}
-          panelLabel={`Zmień stan zadania: ${task.title}`}
+          panelLabel={`Change task state: ${task.title}`}
           triggerClassName="task-state-trigger"
           open={openPopover === `state:${task.id}`}
           onOpenChange={(next) =>
@@ -1024,7 +1017,7 @@ export const WorkSurface = ({
               disabled={busyIds.has(`state:${task.id}`) || !client}
               onClick={() => applyTaskState(task, "actionable")}
             >
-              Do działania
+              Actionable
             </button>
             <input
               value={waitingDraft[task.id] ?? task.waitingOn?.label ?? ""}
@@ -1034,8 +1027,8 @@ export const WorkSurface = ({
                   [task.id]: event.target.value,
                 }))
               }
-              placeholder="Na kogo lub co czekasz?"
-              aria-label={`Powód oczekiwania: ${task.title}`}
+              placeholder="Who or what are you waiting on?"
+              aria-label={`Waiting reason: ${task.title}`}
             />
             <select
               value={
@@ -1043,7 +1036,7 @@ export const WorkSurface = ({
                 task.waitingOn?.direction ??
                 "waiting_on_them"
               }
-              aria-label={`Kierunek oczekiwania: ${task.title}`}
+              aria-label={`Waiting direction: ${task.title}`}
               onChange={(event) =>
                 setWaitingDirectionDraft((current) => ({
                   ...current,
@@ -1051,8 +1044,8 @@ export const WorkSurface = ({
                 }))
               }
             >
-              <option value="waiting_on_them">Czekamy na nich</option>
-              <option value="we_owe">Nasze zobowiązanie</option>
+              <option value="waiting_on_them">Waiting on them</option>
+              <option value="we_owe">We owe</option>
             </select>
             <input
               type="date"
@@ -1065,7 +1058,7 @@ export const WorkSurface = ({
                       snapshot.bootstrap.workspace.timezone,
                     ))
               }
-              aria-label={`Data przeglądu oczekiwania: ${task.title}`}
+              aria-label={`Waiting review date: ${task.title}`}
               onChange={(event) =>
                 setWaitingExpectedDraft((current) => ({
                   ...current,
@@ -1111,14 +1104,14 @@ export const WorkSurface = ({
                 );
               }}
             >
-              Ustaw oczekiwanie
+              Set waiting
             </button>
             <button
               type="button"
               disabled={busyIds.has(`state:${task.id}`) || !client}
               onClick={() => applyTaskState(task, "blocked")}
             >
-              Zablokowane
+              Blocked
             </button>
           </div>
         </InlinePopover>
@@ -1130,54 +1123,52 @@ export const WorkSurface = ({
     <div className="surface-scroll work-surface" data-density={density}>
       <header className="surface-header wave2-header work-header">
         <div>
-          <p className="eyebrow">Obszar → inicjatywa → projekt → działanie</p>
+          <p className="eyebrow">Area → initiative → project → action</p>
           <h1 id="surface-title" tabIndex={-1}>
-            Praca
+            Work
           </h1>
           <p>
-            Trwała odpowiedzialność jest oddzielona od wyniku do osiągnięcia.
-            Zadania pokazują, co można zrobić teraz, a co czeka albo jest
-            blokowane.
+            Lasting responsibility stays separate from the outcome to reach.
           </p>
         </div>
         <div className="work-header-controls">
           <span className="work-freshness">
             {projection.freshness.mode === "local_authoritative"
-              ? "Lokalne źródło prawdy"
-              : "Projekcja zsynchronizowana"}
+              ? "Local source of truth"
+              : "Synced projection"}
           </span>
           <fieldset className="work-density-switch">
-            <legend>Gęstość powierzchni Praca</legend>
+            <legend>Work surface density</legend>
             <button
               type="button"
               aria-pressed={density === "comfortable"}
               onClick={() => setDensity("comfortable")}
             >
-              Spokojna
+              Comfortable
             </button>
             <button
               type="button"
               aria-pressed={density === "compact"}
               onClick={() => setDensity("compact")}
             >
-              Zwarta
+              Compact
             </button>
           </fieldset>
         </div>
       </header>
 
-      <nav className="saved-view-strip" aria-label="Zapisane widoki pracy">
-        <span>Widoki</span>
+      <nav className="saved-view-strip" aria-label="Saved work views">
+        <span>Views</span>
         <button
           type="button"
           className={`view-chip${activeViewId === undefined ? " active" : ""}`}
           aria-pressed={activeViewId === undefined}
           onClick={() => setActiveViewId(undefined)}
         >
-          Wszystkie
+          All
         </button>
         {projection.savedViews.length === 0 ? (
-          <em>Jeszcze bez zapisanych filtrów</em>
+          <em>No saved views yet</em>
         ) : (
           projection.savedViews.map((view) => (
             <button
@@ -1199,8 +1190,8 @@ export const WorkSurface = ({
         {activeView !== undefined && (
           <span className="view-chip-actions">
             <InlinePopover
-              label="Zmień nazwę"
-              panelLabel="Zmień nazwę widoku"
+              label="Rename"
+              panelLabel="Rename view"
               open={openPopover === "view-rename"}
               onOpenChange={(next) =>
                 setOpenPopover(next ? "view-rename" : undefined)
@@ -1227,13 +1218,13 @@ export const WorkSurface = ({
               >
                 <input
                   name="name"
-                  aria-label="Nowa nazwa widoku"
+                  aria-label="New view name"
                   defaultValue={activeView.name}
                   maxLength={200}
                   required
                 />
                 <button disabled={busyIds.has("view-rename") || !client}>
-                  {busyIds.has("view-rename") ? "Zapisuję…" : "Zapisz nazwę"}
+                  {busyIds.has("view-rename") ? "Saving…" : "Save name"}
                 </button>
               </form>
             </InlinePopover>
@@ -1260,31 +1251,31 @@ export const WorkSurface = ({
                 });
               }}
             >
-              {confirmingViewDelete ? "Potwierdź usunięcie" : "Usuń widok"}
+              {confirmingViewDelete ? "Confirm delete" : "Delete view"}
             </button>
           </span>
         )}
         <InlinePopover
-          label="Zapisz widok"
-          panelLabel="Zapisz widok pracy"
+          label="Save view"
+          panelLabel="Save work view"
           open={openPopover === "view"}
           onOpenChange={(next) => setOpenPopover(next ? "view" : undefined)}
         >
           <form onSubmit={(event) => void submitView(event)}>
             <input
               name="name"
-              aria-label="Nazwa widoku"
-              placeholder="Moje oczekujące"
+              aria-label="View name"
+              placeholder="My waiting items"
               required
             />
-            <select name="state" aria-label="Stan zadań" defaultValue="">
-              <option value="">Każdy stan</option>
-              <option value="actionable">Do działania</option>
-              <option value="waiting">Czekam na</option>
-              <option value="blocked">Zablokowane</option>
+            <select name="state" aria-label="Task state" defaultValue="">
+              <option value="">Any state</option>
+              <option value="actionable">Actionable</option>
+              <option value="waiting">Waiting</option>
+              <option value="blocked">Blocked</option>
             </select>
             <select name="statusId" aria-label="Status" defaultValue="">
-              <option value="">Każdy status</option>
+              <option value="">Any status</option>
               {snapshot.bootstrap.taskStatuses
                 .filter((status) => status.state !== "archived")
                 .map((status) => (
@@ -1293,26 +1284,22 @@ export const WorkSurface = ({
                   </option>
                 ))}
             </select>
-            <select name="priority" aria-label="Priorytet" defaultValue="">
-              <option value="">Każdy priorytet</option>
-              <option value="urgent">Pilny</option>
-              <option value="high">Wysoki</option>
-              <option value="normal">Normalny</option>
-              <option value="low">Niski</option>
+            <select name="priority" aria-label="Priority" defaultValue="">
+              <option value="">Any priority</option>
+              <option value="urgent">Urgent</option>
+              <option value="high">High</option>
+              <option value="normal">Normal</option>
+              <option value="low">Low</option>
             </select>
-            <select name="dueWindow" aria-label="Termin" defaultValue="">
-              <option value="">Dowolny termin</option>
-              <option value="overdue">Po terminie</option>
-              <option value="today">Termin dziś</option>
-              <option value="this_week">Termin w tym tygodniu</option>
+            <select name="dueWindow" aria-label="Deadline" defaultValue="">
+              <option value="">Any deadline</option>
+              <option value="overdue">Overdue</option>
+              <option value="today">Due today</option>
+              <option value="this_week">Due this week</option>
             </select>
-            <select
-              name="assignee"
-              aria-label="Odpowiedzialność"
-              defaultValue=""
-            >
-              <option value="">Każda osoba</option>
-              <option value="unassigned">Nieprzypisane</option>
+            <select name="assignee" aria-label="Assignee" defaultValue="">
+              <option value="">Anyone</option>
+              <option value="unassigned">Unassigned</option>
               {(snapshot.assignmentCandidates.kind === "ready"
                 ? snapshot.assignmentCandidates.data.candidates
                 : []
@@ -1331,10 +1318,10 @@ export const WorkSurface = ({
             {(projection?.projects ?? []).length > 0 && (
               <select
                 name="relationProjectId"
-                aria-label="Projekt"
+                aria-label="Project"
                 defaultValue=""
               >
-                <option value="">Każdy projekt</option>
+                <option value="">Any project</option>
                 {(projection?.projects ?? []).map((project) => (
                   <option key={project.id} value={project.id}>
                     {project.title}
@@ -1351,11 +1338,11 @@ export const WorkSurface = ({
             ) && (
               <>
                 <select
-                  aria-label="Pole"
+                  aria-label="Field"
                   value={viewFieldId}
                   onChange={(event) => setViewFieldId(event.target.value)}
                 >
-                  <option value="">Bez warunku pola</option>
+                  <option value="">No field condition</option>
                   {(snapshot.bootstrap.fieldDefinitions ?? [])
                     .filter(
                       (definition) =>
@@ -1373,11 +1360,11 @@ export const WorkSurface = ({
                 {viewFieldId !== "" && (
                   <select
                     name="fieldPredicate"
-                    aria-label="Warunek pola"
+                    aria-label="Field condition"
                     defaultValue="set"
                   >
-                    <option value="set">Ma wartość</option>
-                    <option value="empty">Puste</option>
+                    <option value="set">Has a value</option>
+                    <option value="empty">Empty</option>
                     {(snapshot.bootstrap.fieldDefinitions ?? [])
                       .filter(
                         (definition) =>
@@ -1398,10 +1385,10 @@ export const WorkSurface = ({
                 )}
               </>
             )}
-            <select name="groupBy" aria-label="Grupowanie" defaultValue="">
-              <option value="">Bez grupowania</option>
-              <option value="status">Według statusu</option>
-              <option value="priority">Według priorytetu</option>
+            <select name="groupBy" aria-label="Grouping" defaultValue="">
+              <option value="">No grouping</option>
+              <option value="status">By status</option>
+              <option value="priority">By priority</option>
               {(snapshot.bootstrap.fieldDefinitions ?? [])
                 .filter(
                   (definition) =>
@@ -1411,21 +1398,17 @@ export const WorkSurface = ({
                 )
                 .map((definition) => (
                   <option key={definition.id} value={`field:${definition.id}`}>
-                    Według pola „{definition.label}”
+                    By field “{definition.label}”
                   </option>
                 ))}
             </select>
-            <select
-              name="sort"
-              aria-label="Kolejność"
-              defaultValue="updated_desc"
-            >
-              <option value="updated_desc">Ostatnio zmieniane</option>
-              <option value="due_asc">Najbliższy termin</option>
-              <option value="title_asc">Alfabetycznie</option>
+            <select name="sort" aria-label="Order" defaultValue="updated_desc">
+              <option value="updated_desc">Recently changed</option>
+              <option value="due_asc">Earliest deadline</option>
+              <option value="title_asc">Alphabetical</option>
             </select>
             <button disabled={busyIds.has("view") || !client}>
-              {busyIds.has("view") ? "Zapisuję…" : "Zapisz"}
+              {busyIds.has("view") ? "Saving…" : "Save"}
             </button>
           </form>
         </InlinePopover>
@@ -1438,14 +1421,13 @@ export const WorkSurface = ({
         >
           <div className="work-section-heading">
             <div>
-              <h2 id="work-context-title">Kontekst odpowiedzialności</h2>
+              <h2 id="work-context-title">Responsibility context</h2>
             </div>
             <span>
               {countLabel(
                 projection.areas.length + projection.initiatives.length,
-                "wpis",
-                "wpisy",
-                "wpisów",
+                "entry",
+                "entries",
               )}
             </span>
           </div>
@@ -1463,7 +1445,7 @@ export const WorkSurface = ({
                 A
               </span>
               <span className="work-row-copy">
-                <small>Obszar odpowiedzialności</small>
+                <small>Area of responsibility</small>
                 <strong>{area.title}</strong>
                 <span>
                   <NarrativeText
@@ -1489,7 +1471,7 @@ export const WorkSurface = ({
                 I
               </span>
               <span className="work-row-copy">
-                <small>Inicjatywa · wynik do zamknięcia</small>
+                <small>Initiative · outcome to close</small>
                 <strong>{initiative.title}</strong>
                 <span>
                   <NarrativeText
@@ -1503,37 +1485,37 @@ export const WorkSurface = ({
           ))}
           {projection.areas.length + projection.initiatives.length === 0 && (
             <WorkEmpty
-              title="Brak kontekstu pracy"
-              detail="Dodaj trwały Obszar albo Inicjatywę z konkretnym wynikiem."
+              title="No work context"
+              detail="Add a lasting area or an initiative with a concrete outcome."
             />
           )}
           <div className="work-create-pair">
             <InlinePopover
-              label="Dodaj Obszar"
-              panelLabel="Dodaj obszar odpowiedzialności"
+              label="Add area"
+              panelLabel="Add area of responsibility"
               open={openPopover === "area"}
               onOpenChange={(next) => setOpenPopover(next ? "area" : undefined)}
             >
               <form onSubmit={(event) => void submitArea(event)}>
                 <input
                   name="title"
-                  aria-label="Nazwa obszaru"
-                  placeholder="np. Relacje z klientami"
+                  aria-label="Area name"
+                  placeholder="e.g. Client relationships"
                   required
                 />
                 <textarea
                   name="responsibility"
-                  aria-label="Stała odpowiedzialność obszaru (opcjonalnie)"
-                  placeholder="Za co stale odpowiadasz? Możesz uzupełnić później."
+                  aria-label="Lasting responsibility (optional)"
+                  placeholder="What do you stay responsible for? You can fill this in later."
                 />
                 <button disabled={busyIds.has("area") || !client}>
-                  {busyIds.has("area") ? "Zapisuję…" : "Dodaj"}
+                  {busyIds.has("area") ? "Saving…" : "Add"}
                 </button>
               </form>
             </InlinePopover>
             <InlinePopover
-              label="Dodaj Inicjatywę"
-              panelLabel="Dodaj inicjatywę"
+              label="Add initiative"
+              panelLabel="Add initiative"
               open={openPopover === "initiative"}
               onOpenChange={(next) =>
                 setOpenPopover(next ? "initiative" : undefined)
@@ -1542,17 +1524,17 @@ export const WorkSurface = ({
               <form onSubmit={(event) => void submitInitiative(event)}>
                 <input
                   name="title"
-                  aria-label="Nazwa inicjatywy"
-                  placeholder="np. Interaktywna alfa"
+                  aria-label="Initiative name"
+                  placeholder="e.g. Interactive alpha"
                   required
                 />
                 <textarea
                   name="outcome"
-                  aria-label="Oczekiwany wynik inicjatywy (opcjonalnie)"
-                  placeholder="Jaki wynik pozwoli ją zamknąć? Możesz uzupełnić później."
+                  aria-label="Intended outcome (optional)"
+                  placeholder="What outcome closes it? You can fill this in later."
                 />
                 <button disabled={busyIds.has("initiative") || !client}>
-                  {busyIds.has("initiative") ? "Zapisuję…" : "Dodaj"}
+                  {busyIds.has("initiative") ? "Saving…" : "Add"}
                 </button>
               </form>
             </InlinePopover>
@@ -1565,25 +1547,17 @@ export const WorkSurface = ({
         >
           <div className="work-section-heading">
             <div>
-              <h2 id="work-delivery-title">Projekty i następne działania</h2>
+              <h2 id="work-delivery-title">Projects and next actions</h2>
             </div>
             <div className="work-heading-meta">
               <span>
-                {countLabel(
-                  projection.projects.length,
-                  "projekt",
-                  "projekty",
-                  "projektów",
-                )}{" "}
-                ·{" "}
-                {countLabel(visibleTasks.length, "zadanie", "zadania", "zadań")}
-                {activeView !== undefined
-                  ? ` · widok „${activeView.name}”`
-                  : ""}
+                {countLabel(projection.projects.length, "project")} ·{" "}
+                {countLabel(visibleTasks.length, "task")}
+                {activeView !== undefined ? ` · view “${activeView.name}”` : ""}
               </span>
               {activeView !== undefined && (
                 <fieldset className="work-layout-switch">
-                  <legend>Układ widoku</legend>
+                  <legend>View layout</legend>
                   <button
                     type="button"
                     aria-pressed={activeLayout === "list"}
@@ -1592,7 +1566,7 @@ export const WorkSurface = ({
                     }
                     onClick={() => changeLayout("list")}
                   >
-                    Lista
+                    List
                   </button>
                   <button
                     type="button"
@@ -1609,7 +1583,7 @@ export const WorkSurface = ({
                     }
                     onClick={() => changeLayout("board")}
                   >
-                    Tablica
+                    Board
                   </button>
                   <button
                     type="button"
@@ -1619,7 +1593,7 @@ export const WorkSurface = ({
                     }
                     onClick={() => changeLayout("timeline")}
                   >
-                    Oś czasu
+                    Timeline
                   </button>
                   <button
                     type="button"
@@ -1629,19 +1603,19 @@ export const WorkSurface = ({
                     }
                     onClick={() => changeLayout("calendar")}
                   >
-                    Kalendarz
+                    Calendar
                   </button>
                   {groupBy === undefined && (
                     <small id="work-board-requirement">
-                      Tablica wymaga widoku grupowanego.
+                      Board needs a grouped view.
                     </small>
                   )}
                 </fieldset>
               )}
               {activeLayout === "list" && (
                 <InlinePopover
-                  label={`Pola · ${visibleListFields.length}`}
-                  panelLabel={`Widoczne pola listy: ${activeView?.name ?? "Wszystkie"}`}
+                  label={`Fields · ${visibleListFields.length}`}
+                  panelLabel={`Visible list fields: ${activeView?.name ?? "All"}`}
                   triggerClassName="work-field-visibility-trigger"
                   open={openPopover === "list-fields"}
                   onOpenChange={(next) =>
@@ -1649,12 +1623,10 @@ export const WorkSurface = ({
                   }
                 >
                   <fieldset className="work-field-visibility">
-                    <legend>
-                      Pola listy — {activeView?.name ?? "Wszystkie"}
-                    </legend>
+                    <legend>List fields — {activeView?.name ?? "All"}</legend>
                     <p>
-                      Tytuł i stan działania pozostają zawsze widoczne. Wybór
-                      dotyczy tylko tego urządzenia.
+                      Title and action state always show. This choice is local
+                      to this device.
                     </p>
                     <div className="work-field-visibility-options">
                       {availableListFields.map((field) => (
@@ -1669,7 +1641,7 @@ export const WorkSurface = ({
                       ))}
                     </div>
                     <button type="button" onClick={resetListFields}>
-                      Przywróć zalecane
+                      Reset to recommended
                     </button>
                   </fieldset>
                 </InlinePopover>
@@ -1690,7 +1662,7 @@ export const WorkSurface = ({
               <span className="work-row-copy">
                 <small>
                   {projectContext.get(project.id) ??
-                    "Projekt bez przypisanego kontekstu"}
+                    "Project without a context"}
                 </small>
                 <strong>{project.title}</strong>
                 <span>
@@ -1705,8 +1677,8 @@ export const WorkSurface = ({
           ))}
           {projection.projects.length === 0 && (
             <WorkEmpty
-              title="Brak projektów"
-              detail="Projekt powinien prowadzić do jednego sprawdzalnego wyniku."
+              title="No projects"
+              detail="A project should lead to one checkable outcome."
             />
           )}
           {/* Roving tabindex pairs with listbox/option semantics, matching the
@@ -1721,7 +1693,7 @@ export const WorkSurface = ({
                 aria-hidden="true"
               >
                 <span />
-                <span>Zadanie</span>
+                <span>Task</span>
                 {visibleListFields.length > 0 && (
                   <span
                     className="work-list-field-headings"
@@ -1736,12 +1708,12 @@ export const WorkSurface = ({
                     ))}
                   </span>
                 )}
-                <span>Stan</span>
+                <span>State</span>
               </div>
               <div
                 className="work-task-list"
                 role="listbox"
-                aria-label="Następne działania — lista"
+                aria-label="Next actions — list"
               >
                 {visibleTasks.map((task, index) => {
                   const group =
@@ -1762,9 +1734,7 @@ export const WorkSurface = ({
                                 (candidate) =>
                                   groupFor(candidate).key === group.key,
                               ).length,
-                              "zadanie",
-                              "zadania",
-                              "zadań",
+                              "task",
                             )}
                           </small>
                         </div>
@@ -1780,7 +1750,7 @@ export const WorkSurface = ({
             <div
               className="work-task-board"
               role="listbox"
-              aria-label="Następne działania — tablica"
+              aria-label="Next actions — board"
             >
               {taskGroups.map((group) => (
                 <section
@@ -1795,7 +1765,7 @@ export const WorkSurface = ({
                   </header>
                   <div className="work-board-cards">
                     {group.tasks.length === 0 ? (
-                      <p>Brak zadań</p>
+                      <p>No tasks</p>
                     ) : (
                       group.tasks.map((task) =>
                         renderTask(
@@ -1814,13 +1784,13 @@ export const WorkSurface = ({
             <div
               className="work-task-timeline"
               role="listbox"
-              aria-label="Następne działania — oś czasu"
+              aria-label="Next actions — timeline"
             >
               <div className="work-timeline-content">
                 <div className="work-timeline-axis" aria-hidden="true">
-                  <span>Zadanie</span>
+                  <span>Task</span>
                   {timelineTicks.length === 0 ? (
-                    <strong>Brak zaplanowanych dat</strong>
+                    <strong>No planned dates</strong>
                   ) : (
                     <div>
                       {timelineTicks.map((instant, index) => (
@@ -1870,7 +1840,7 @@ export const WorkSurface = ({
                           />
                         ) : (
                           <span className="work-timeline-unscheduled">
-                            Bez terminu
+                            No deadline
                           </span>
                         )}
                       </div>
@@ -1887,15 +1857,15 @@ export const WorkSurface = ({
             >
               <header className="work-calendar-toolbar">
                 <div>
-                  <span>Kalendarz zadań</span>
+                  <span>Task calendar</span>
                   <h3 id="work-calendar-month-label">
                     {monthLabel(calendarMonthKey)}
                   </h3>
                 </div>
-                <nav aria-label="Nawigacja miesiąca">
+                <nav aria-label="Month navigation">
                   <button
                     type="button"
-                    aria-label="Poprzedni miesiąc"
+                    aria-label="Previous month"
                     onClick={() =>
                       setCalendarMonthKey((current) =>
                         shiftMonthKey(current, -1),
@@ -1908,11 +1878,11 @@ export const WorkSurface = ({
                     type="button"
                     onClick={() => setCalendarMonthKey(todayKey.slice(0, 7))}
                   >
-                    Dzisiaj
+                    Today
                   </button>
                   <button
                     type="button"
-                    aria-label="Następny miesiąc"
+                    aria-label="Next month"
                     onClick={() =>
                       setCalendarMonthKey((current) =>
                         shiftMonthKey(current, 1),
@@ -1926,7 +1896,7 @@ export const WorkSurface = ({
               <div className="work-calendar-scroll">
                 <div className="work-calendar-content">
                   <div className="work-calendar-weekdays" aria-hidden="true">
-                    {["Pon", "Wt", "Śr", "Czw", "Pt", "Sob", "Niedz"].map(
+                    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(
                       (weekday) => (
                         <span key={weekday}>{weekday}</span>
                       ),
@@ -1935,7 +1905,7 @@ export const WorkSurface = ({
                   <div
                     className="work-calendar-grid"
                     role="listbox"
-                    aria-label={`Zadania — ${monthLabel(calendarMonthKey)}`}
+                    aria-label={`Tasks — ${monthLabel(calendarMonthKey)}`}
                   >
                     {calendarCells.map((dateKey, cellIndex) => {
                       if (dateKey === undefined) {
@@ -1963,7 +1933,7 @@ export const WorkSurface = ({
                             <time dateTime={dateKey}>
                               {Number(dateKey.slice(-2))}
                             </time>
-                            {dateKey === todayKey && <span>Dziś</span>}
+                            {dateKey === todayKey && <span>Today</span>}
                           </header>
                           <div className="work-calendar-day-tasks">
                             {tasks.map((task) =>
@@ -1979,7 +1949,7 @@ export const WorkSurface = ({
                     })}
                     {calendarTasksByDate.size === 0 && (
                       <p className="work-calendar-month-empty" role="status">
-                        Brak zadań z datą w tym miesiącu
+                        No dated tasks this month
                       </p>
                     )}
                     {calendarOverflowGroups.map(({ label, tasks }) =>
@@ -2015,79 +1985,71 @@ export const WorkSurface = ({
             <WorkEmpty
               title={
                 activeView !== undefined && projection.tasks.length > 0
-                  ? "Ten widok nie pasuje do żadnego zadania"
-                  : "Brak następnych działań"
+                  ? "No task matches this view"
+                  : "No next actions"
               }
               detail={
                 activeView !== undefined && projection.tasks.length > 0
-                  ? "Filtry widoku są jawne — zmień widok albo wróć do „Wszystkie”."
-                  : "Quick Capture utworzy zadanie bez wymagania klasyfikacji na wejściu."
+                  ? "Change the view or go back to “All”."
+                  : "Quick Capture creates a task without asking you to classify it."
               }
             />
           )}
           <div className="work-link-tools">
             <InlinePopover
-              label="Przypisz projekt do kontekstu"
-              panelLabel="Przypisz projekt do kontekstu"
+              label="Link project to context"
+              panelLabel="Link project to context"
               open={openPopover === "link-project"}
               onOpenChange={(next) =>
                 setOpenPopover(next ? "link-project" : undefined)
               }
             >
               <form onSubmit={(event) => void submitProjectLink(event)}>
-                <select name="projectId" required aria-label="Projekt">
-                  <option value="">Wybierz projekt</option>
+                <select name="projectId" required aria-label="Project">
+                  <option value="">Choose project</option>
                   {projection.projects.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.title}
                     </option>
                   ))}
                 </select>
-                <select
-                  name="target"
-                  required
-                  aria-label="Obszar lub inicjatywa"
-                >
-                  <option value="">Wybierz kontekst</option>
+                <select name="target" required aria-label="Area or initiative">
+                  <option value="">Choose context</option>
                   {projection.initiatives.map((item) => (
                     <option key={item.id} value={`initiative:${item.id}`}>
-                      Inicjatywa · {item.title}
+                      Initiative · {item.title}
                     </option>
                   ))}
                   {projection.areas.map((item) => (
                     <option key={item.id} value={`area:${item.id}`}>
-                      Obszar · {item.title}
+                      Area · {item.title}
                     </option>
                   ))}
                 </select>
                 <button disabled={busyIds.has("link-project") || !client}>
-                  {busyIds.has("link-project") ? "Zapisuję…" : "Połącz"}
+                  {busyIds.has("link-project") ? "Saving…" : "Link"}
                 </button>
               </form>
             </InlinePopover>
             <InlinePopover
-              label="Dodaj zależność zadań"
-              panelLabel="Dodaj zależność zadań"
+              label="Add task dependency"
+              panelLabel="Add task dependency"
               open={openPopover === "link-dependency"}
               onOpenChange={(next) =>
                 setOpenPopover(next ? "link-dependency" : undefined)
               }
             >
               <form onSubmit={(event) => void submitDependency(event)}>
-                <select name="taskId" required aria-label="Zadanie zależne">
-                  <option value="">Zadanie zależne</option>
+                <select name="taskId" required aria-label="Dependent task">
+                  <option value="">Dependent task</option>
                   {projection.tasks.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.title}
                     </option>
                   ))}
                 </select>
-                <select
-                  name="dependencyId"
-                  required
-                  aria-label="Zadanie wymagane"
-                >
-                  <option value="">Wymaga zadania</option>
+                <select name="dependencyId" required aria-label="Required task">
+                  <option value="">Requires task</option>
                   {projection.tasks.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.title}
@@ -2096,8 +2058,8 @@ export const WorkSurface = ({
                 </select>
                 <button disabled={busyIds.has("link-dependency") || !client}>
                   {busyIds.has("link-dependency")
-                    ? "Zapisuję…"
-                    : "Dodaj zależność"}
+                    ? "Saving…"
+                    : "Add dependency"}
                 </button>
               </form>
             </InlinePopover>

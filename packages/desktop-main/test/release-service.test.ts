@@ -75,8 +75,7 @@ test("release service serializes checks and keeps failures retryable", async () 
     kind: "failure",
     currentVersion: "0.1.0",
     operation: "check",
-    message:
-      "Nie udało się bezpiecznie sprawdzić aktualizacji. Obecna wersja pozostaje bez zmian.",
+    message: "Could not check for updates safely. This version is unchanged.",
   });
 });
 

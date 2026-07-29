@@ -864,10 +864,12 @@ describe("real Wave 2 renderer workflow", () => {
   it("explains recoverable capacity and permission failures without partial-save ambiguity", async () => {
     const { client } = createTypedClient();
     const snapshot = await loadDesktopSnapshot(client);
-    for (const [diagnosticCode, expectedCopy] of [
-      ["storage.capacity_exhausted", "Zwolnij miejsce"],
-      ["storage.permission_denied", "Przywróć dostęp"],
-    ] as const) {
+    const retryMessage = async (
+      diagnosticCode:
+        | "storage.capacity_exhausted"
+        | "storage.permission_denied"
+        | "storage.unit_of_work_failed",
+    ) => {
       client.executeCommand = async (command) =>
         ({
           kind: "command_outcome",
@@ -888,11 +890,30 @@ describe("real Wave 2 renderer workflow", () => {
         "Recovery probe",
         "No partial write",
       );
+      // Every retryable outcome is a safe retry, whatever the cause: that part
+      // of the guarantee is carried by the discriminant, not by any wording.
       assert.equal(result.kind, "retry");
       if (result.kind !== "retry") throw new Error("Expected safe retry.");
-      assert.match(result.message, /Nic nie zapisano częściowo/u);
-      assert.match(result.message, new RegExp(expectedCopy, "u"));
-    }
+      return result.message;
+    };
+    const capacity = await retryMessage("storage.capacity_exhausted");
+    const permission = await retryMessage("storage.permission_denied");
+    // The third recoverable code the kernel can send, and the one with no
+    // dedicated remedy. Holding it next to the other two proves the cause is
+    // actually read, rather than every retryable outcome sharing one sentence.
+    const contention = await retryMessage("storage.unit_of_work_failed");
+    assert.equal(new Set([capacity, permission, contention]).size, 3);
+    // Copy is legitimately the guarantee here, and there is no structure to
+    // anchor on: a retryable outcome means the workspace was left untouched,
+    // and the only place a human learns that is the sentence. Drop the clause
+    // and the message reads as "it may have half-written" — the very ambiguity
+    // this test is named for — so the words are the assertion.
+    for (const message of [capacity, permission, contention])
+      assert.match(message, /Nothing was half-saved/u);
+    // Also copy, for the same reason: a retry with no named remedy is a dead
+    // end, so each distinguishable cause has to say what clears it.
+    assert.match(capacity, /Free up space/u);
+    assert.match(permission, /Restore access/u);
   });
 
   it("uses search.global and all Wave 2 mutation commands without local decisions", async () => {
@@ -1098,8 +1119,12 @@ describe("real Wave 2 renderer workflow", () => {
       organizationId,
     );
     assert.equal(unloaded.kind, "unavailable");
+    // Copy is the guarantee, and nothing structural carries it: `unavailable`
+    // is also what a kernel refusal returns, so the sentence is the only place
+    // a human learns this refusal is temporary and that a reload — not a
+    // permission, not an unlink elsewhere — is what clears it.
     if (unloaded.kind === "unavailable")
-      assert.match(unloaded.message, /ponownego wczytania danych/u);
+      assert.match(unloaded.message, /needs a (data )?reload before/u);
     const detached = await unlinkProjectClient(
       client,
       { ...snapshot, relationships: readyRelationships },
@@ -1110,6 +1135,10 @@ describe("real Wave 2 renderer workflow", () => {
       detachedOrganizationId,
     );
     assert.equal(detached.kind, "unavailable");
+    // A link that is present but already removed is the same kind of refusal:
+    // the reader has stale data, so it must read as reloadable too.
+    if (detached.kind === "unavailable")
+      assert.match(detached.message, /needs a (data )?reload before/u);
     assert.deepEqual(commands, []);
   });
 
@@ -1205,6 +1234,11 @@ describe("real Wave 2 renderer workflow", () => {
       projectId,
     );
     assert.equal(link.kind, "unavailable");
+    // Both halves refuse the same way and for the same reason, so both have to
+    // say the same thing about what clears it. See the Project-side test for
+    // why this one assertion is legitimately about the words.
+    if (link.kind === "unavailable")
+      assert.match(link.message, /needs a (data )?reload before/u);
     const unlink = await unlinkOrganizationDelivery(
       client,
       { ...snapshot, relationships: readyRelationships },
@@ -1214,7 +1248,7 @@ describe("real Wave 2 renderer workflow", () => {
     );
     assert.equal(unlink.kind, "unavailable");
     if (unlink.kind === "unavailable")
-      assert.match(unlink.message, /ponownego wczytania danych/u);
+      assert.match(unlink.message, /needs a (data )?reload before/u);
     assert.deepEqual(commands, []);
   });
 

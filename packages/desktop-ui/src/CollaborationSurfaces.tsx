@@ -53,16 +53,16 @@ const MentionChips = ({
   readonly currentPrincipalId: PrincipalId | undefined;
 }) =>
   ids.length === 0 ? null : (
-    <ul className="comment-mentions" aria-label="Wzmiankowani uczestnicy">
+    <ul className="comment-mentions" aria-label="Mentioned participants">
       {ids.map((id) => {
         const candidate = candidateById.get(id);
         return (
           <li className="mention-chip" key={id}>
             @
             {id === currentPrincipalId
-              ? "Ty"
-              : (candidate?.displayName ?? "Uczestnik")}
-            {candidate?.participantKind === "guest" && <small>Gość</small>}
+              ? "You"
+              : (candidate?.displayName ?? "Participant")}
+            {candidate?.participantKind === "guest" && <small>Guest</small>}
           </li>
         );
       })}
@@ -242,7 +242,7 @@ export const CommentsPanel = ({
         </span>
         <strong>{comment.author.displayName}</strong>
         {comment.author.principalId === currentPrincipalId && (
-          <span className="comment-own-mark">Ty</span>
+          <span className="comment-own-mark">You</span>
         )}
       </span>
       <time dateTime={comment.createdAt}>
@@ -269,14 +269,14 @@ export const CommentsPanel = ({
             onClick={() => saveEdit(comment)}
             disabled={busy || !(editDrafts[comment.id] ?? "").trim()}
           >
-            Zapisz
+            Save
           </button>
           <button
             type="button"
             onClick={() => cancelEdit(comment)}
             disabled={busy}
           >
-            Anuluj
+            Cancel
           </button>
         </div>
       </div>
@@ -291,7 +291,7 @@ export const CommentsPanel = ({
         {comment.attachments.length > 0 && (
           <ul
             className="managed-attachment-list"
-            aria-label="Załączniki komentarza"
+            aria-label="Comment attachments"
           >
             {comment.attachments.map((attachment) => (
               <li key={attachment.sourceId}>
@@ -306,10 +306,10 @@ export const CommentsPanel = ({
                   className={`attachment-state ${attachmentCustody[attachment.sourceId] ?? "checking"}`}
                 >
                   {attachmentCustody[attachment.sourceId] === "available"
-                    ? "W zarządzanym magazynie"
+                    ? "In managed storage"
                     : attachmentCustody[attachment.sourceId] === "unavailable"
-                      ? "Niedostępny na tym urządzeniu"
-                      : "Sprawdzam przechowanie…"}
+                      ? "Not on this device"
+                      : "Checking storage…"}
                 </span>
                 {attachmentCustody[attachment.sourceId] === "unavailable" &&
                   onRestoreAttachment && (
@@ -330,7 +330,7 @@ export const CommentsPanel = ({
                         );
                       }}
                     >
-                      Pobierz ponownie
+                      Restore
                     </button>
                   )}
                 {comment.author.principalId === currentPrincipalId && (
@@ -350,7 +350,7 @@ export const CommentsPanel = ({
                       )
                     }
                   >
-                    Odłącz
+                    Unlink
                   </button>
                 )}
               </li>
@@ -377,19 +377,20 @@ export const CommentsPanel = ({
     <section className="comments-panel" aria-labelledby="comments-heading">
       <header>
         <div>
-          <span>Komentarze</span>
-          <h3 id="comments-heading">Ustalenia przy pracy</h3>
+          <span>Comments</span>
+          <h3 id="comments-heading">What was agreed here</h3>
         </div>
-        <small>{countLabel(roots.length, "wątek", "wątki", "wątków")}</small>
+        <small>{countLabel(roots.length, "thread")}</small>
       </header>
       {comments.kind === "unavailable" ? (
         <div className="comments-state" role="status">
-          Komentarze są teraz niedostępne. Odśwież kontekst bez utraty wersji.
+          Comments are unavailable right now. Refresh the context — nothing is
+          lost.
         </div>
       ) : roots.length === 0 ? (
         <div className="comments-state">
-          Nie ma jeszcze komentarzy. Pierwszy wpis pozostanie przy tym
-          rekordzie, nie w osobnym czacie.
+          No comments yet. The first one stays with this record, not in a
+          separate chat.
         </div>
       ) : (
         <ol className="comment-threads">
@@ -404,15 +405,13 @@ export const CommentsPanel = ({
               >
                 <article className={entryClassName(root)}>
                   {entryHeader(root)}
-                  {entryBody(root, "Edytuj komentarz")}
+                  {entryBody(root, "Edit comment")}
                   <footer>
-                    {root.edited && <span>Edytowany · historia zachowana</span>}
-                    {draftPreserved(root) && (
-                      <span>Szkic edycji zachowany</span>
-                    )}
+                    {root.edited && <span>Edited · history kept</span>}
+                    {draftPreserved(root) && <span>Draft kept</span>}
                     {canComment && root.threadState === "open" && (
                       <button type="button" onClick={() => setReplyTo(root)}>
-                        Odpowiedz
+                        Reply
                       </button>
                     )}
                     {(root.author.principalId === currentPrincipalId ||
@@ -424,9 +423,7 @@ export const CommentsPanel = ({
                         }
                         disabled={busy}
                       >
-                        {root.threadState === "resolved"
-                          ? "Otwórz ponownie"
-                          : "Rozwiąż"}
+                        {root.threadState === "resolved" ? "Reopen" : "Resolve"}
                       </button>
                     )}
                     {root.author.principalId === currentPrincipalId &&
@@ -436,7 +433,7 @@ export const CommentsPanel = ({
                           onClick={() => beginEdit(root)}
                           disabled={busy}
                         >
-                          Edytuj
+                          Edit
                         </button>
                       )}
                   </footer>
@@ -447,14 +444,12 @@ export const CommentsPanel = ({
                     key={reply.id}
                   >
                     {entryHeader(reply)}
-                    {entryBody(reply, "Edytuj odpowiedź")}
+                    {entryBody(reply, "Edit reply")}
                     {(draftPreserved(reply) ||
                       (reply.author.principalId === currentPrincipalId &&
                         editingId !== reply.id)) && (
                       <footer>
-                        {draftPreserved(reply) && (
-                          <span>Szkic edycji zachowany</span>
-                        )}
+                        {draftPreserved(reply) && <span>Draft kept</span>}
                         {reply.author.principalId === currentPrincipalId &&
                           editingId !== reply.id && (
                             <button
@@ -462,7 +457,7 @@ export const CommentsPanel = ({
                               onClick={() => beginEdit(reply)}
                               disabled={busy}
                             >
-                              Edytuj
+                              Edit
                             </button>
                           )}
                       </footer>
@@ -479,20 +474,20 @@ export const CommentsPanel = ({
         onSubmit={submit}
         aria-label={
           replyTo
-            ? `Odpowiedź w wątku ${replyTo.author.displayName}`
-            : "Nowy komentarz"
+            ? `Reply in the thread by ${replyTo.author.displayName}`
+            : "New comment"
         }
       >
         {replyTo && (
           <div className="reply-context">
-            <span>Odpowiedź do {replyTo.author.displayName}</span>
+            <span>Replying to {replyTo.author.displayName}</span>
             <button type="button" onClick={() => setReplyTo(undefined)}>
-              Anuluj
+              Cancel
             </button>
           </div>
         )}
         <label>
-          <span>{replyTo ? "Odpowiedź" : "Komentarz"}</span>
+          <span>{replyTo ? "Reply" : "Comment"}</span>
           <textarea
             value={body}
             onChange={(event) => setBody(event.target.value)}
@@ -500,8 +495,8 @@ export const CommentsPanel = ({
             disabled={!canComment || busy}
             placeholder={
               canComment
-                ? "Dodaj konkretne ustalenie…"
-                : "Ten zakres pozwala tylko czytać."
+                ? "Add something concrete…"
+                : "This scope is read-only."
             }
             onKeyDown={(event) => {
               if ((event.metaKey || event.ctrlKey) && event.key === "Enter")
@@ -511,7 +506,7 @@ export const CommentsPanel = ({
         </label>
         {mentionOptions.length > 0 && (
           <fieldset className="mention-picker" disabled={!canComment || busy}>
-            <legend>Wzmianki</legend>
+            <legend>Mentions</legend>
             <div className="mention-chips">
               {mentionOptions.map((candidate) => (
                 <button
@@ -523,7 +518,9 @@ export const CommentsPanel = ({
                   onClick={() => toggleMention(candidate.principalId)}
                 >
                   {candidate.displayName}
-                  {candidate.participantKind === "guest" && <small>Gość</small>}
+                  {candidate.participantKind === "guest" && (
+                    <small>Guest</small>
+                  )}
                 </button>
               ))}
             </div>
@@ -532,13 +529,13 @@ export const CommentsPanel = ({
         {pendingAttachments.length > 0 && (
           <ul
             className="managed-attachment-list pending"
-            aria-label="Załączniki nowego komentarza"
+            aria-label="New comment attachments"
           >
             {pendingAttachments.map((attachment) => (
               <li key={attachment.sourceId}>
                 <span>
                   <strong>{attachment.original.payload.displayName}</strong>
-                  <small>Gotowy do dołączenia</small>
+                  <small>Ready to attach</small>
                 </span>
                 <button
                   type="button"
@@ -552,7 +549,7 @@ export const CommentsPanel = ({
                     )
                   }
                 >
-                  Usuń
+                  Remove
                 </button>
               </li>
             ))}
@@ -560,7 +557,7 @@ export const CommentsPanel = ({
         )}
         <div className="comment-composer-actions">
           <span className="comment-composer-hint">
-            <kbd>⌘ Enter</kbd> wysyła
+            <kbd>⌘ Enter</kbd> sends
           </span>
           {onAttach && (
             <button
@@ -579,7 +576,7 @@ export const CommentsPanel = ({
                 });
               }}
             >
-              Dołącz plik
+              Attach file
             </button>
           )}
           <button
@@ -587,11 +584,7 @@ export const CommentsPanel = ({
             type="submit"
             disabled={!canComment || busy || !body.trim()}
           >
-            {busy
-              ? "Zapisuję…"
-              : replyTo
-                ? "Dodaj odpowiedź"
-                : "Dodaj komentarz"}
+            {busy ? "Saving…" : replyTo ? "Add reply" : "Add comment"}
           </button>
         </div>
       </form>
@@ -605,24 +598,24 @@ type AttentionItem = AttentionInboxProjection["items"][number];
 // wymusza kompletność: nowy powód w kontrakcie nie przejdzie typecheck bez
 // polskiej etykiety.
 const reasonLabels: { readonly [reason in AttentionItem["reason"]]: string } = {
-  comment_mention: "Wzmianka",
-  task_assignment: "Odpowiedzialność",
-  sync_conflict: "Konflikt synchronizacji",
-  knowledge_evidence_changed: "Zmiana dowodów wiedzy",
-  renewal_due: "Termin odnowienia",
-  waiting_review_elapsed: "Minął termin przeglądu oczekiwania",
-  relationship_fact_stale: "Nieaktualny fakt relacji",
-  decision_impact_review: "Skutki decyzji do przeglądu",
-  capture_duplicate: "Duplikat Capture",
-  capture_ambiguous: "Niejasny kierunek",
-  capture_unsupported: "Nieobsługiwany oryginał",
-  capture_parsing_failure: "Błąd odczytu",
-  capture_permission_failure: "Brak uprawnienia",
-  capture_stale_conflict: "Nieaktualna wersja",
-  capture_missing_target: "Brak celu",
-  capture_missing_payload: "Brak oryginału",
-  capture_partial_payload_transfer: "Niepełny transfer",
-  capture_unknown_reconcile: "Wynik nieznany",
+  comment_mention: "Mention",
+  task_assignment: "Responsibility",
+  sync_conflict: "Sync conflict",
+  knowledge_evidence_changed: "Evidence changed",
+  renewal_due: "Renewal due",
+  waiting_review_elapsed: "Waiting review overdue",
+  relationship_fact_stale: "Stale relationship fact",
+  decision_impact_review: "Impact review due",
+  capture_duplicate: "Duplicate Capture",
+  capture_ambiguous: "Unclear destination",
+  capture_unsupported: "Unsupported original",
+  capture_parsing_failure: "Read error",
+  capture_permission_failure: "Missing permission",
+  capture_stale_conflict: "Stale version",
+  capture_missing_target: "Missing target",
+  capture_missing_payload: "Missing original",
+  capture_partial_payload_transfer: "Partial transfer",
+  capture_unknown_reconcile: "Unknown outcome",
 };
 
 export const captureRecoveryActions = (
@@ -695,53 +688,45 @@ export const AttentionSurface = ({
     <section className="attention-surface" aria-labelledby="surface-title">
       <header className="surface-header attention-heading">
         <div>
-          <p className="eyebrow">Sygnały wymagające reakcji</p>
+          <p className="eyebrow">Signals that need action</p>
           <h1 id="surface-title" tabIndex={-1}>
-            Do uwagi
+            Inbox
           </h1>
-          <p>
-            To nie jest dziennik aktywności. Każdy wpis ma powód i prowadzi do
-            dokładnego kontekstu.
-          </p>
+          <p>Every entry has a reason and opens its exact context.</p>
         </div>
         {attention.kind === "ready" && (
           <span className="attention-total">
-            {countLabel(
-              attention.data.unreadCount,
-              "nieprzeczytany",
-              "nieprzeczytane",
-              "nieprzeczytanych",
-            )}
+            {countLabel(attention.data.unreadCount, "unread", "unread")}
           </span>
         )}
       </header>
       {attention.kind === "unavailable" ? (
         <div className="attention-empty" role="status">
-          <strong>Skrzynka uwagi jest chwilowo niedostępna</strong>
-          <span>Żaden sygnał nie został oznaczony jako przeczytany.</span>
+          <strong>Inbox is unavailable right now</strong>
+          <span>Nothing was marked as read.</span>
           {onRetry && (
             <button
               type="button"
               className="secondary-button compact"
               onClick={onRetry}
             >
-              Spróbuj ponownie
+              Try again
             </button>
           )}
         </div>
       ) : items.length === 0 ? (
         <div className="attention-empty">
-          <strong>Nic nie wymaga reakcji</strong>
+          <strong>Nothing needs action</strong>
           <span>
-            Rutynowa aktywność pozostaje w historii i nie tworzy długu uwagi.
+            Routine activity stays in history and never becomes a backlog.
           </span>
         </div>
       ) : (
         <div className="attention-ledger">
           <div className="attention-ledger-head" aria-hidden="true">
-            <span>Sygnał</span>
-            <span>Powód</span>
-            <span>Otrzymano</span>
+            <span>Signal</span>
+            <span>Reason</span>
+            <span>Received</span>
           </div>
           <ol className="attention-list-real">
             {items.map((item, index) => (
@@ -765,23 +750,23 @@ export const AttentionSurface = ({
                             className="attention-unread-dot"
                             aria-hidden="true"
                           />
-                          <span className="sr-only">Nieprzeczytane: </span>
+                          <span className="sr-only">Unread: </span>
                         </>
                       )}
                       {item.title}
                     </strong>
                     <span>
                       {item.reason === "comment_mention"
-                        ? "Wspomniano Cię w komentarzu."
+                        ? "You were mentioned in a comment."
                         : item.reason === "task_assignment"
-                          ? "Masz odpowiedzialność za to zadanie."
+                          ? "This task is assigned to you."
                           : item.detail}
                     </span>
                   </span>
                   <span className="attention-reason">
                     {reasonLabels[item.reason]}
                     {item.urgency === "urgent" && (
-                      <b className="attention-urgent">Pilne</b>
+                      <b className="attention-urgent">Urgent</b>
                     )}
                   </span>
                   <time dateTime={item.occurredAt}>
@@ -827,19 +812,19 @@ export const AttentionDetail = ({
       <span className="record-status">
         <i />
         {item.urgency === "urgent"
-          ? "Pilne"
+          ? "Urgent"
           : item.state === "unread"
-            ? "Nieprzeczytane"
-            : "Przeczytane"}
+            ? "Unread"
+            : "Read"}
       </span>
       <h2>{item.title}</h2>
       <p className="record-summary">{item.detail}</p>
       <section className="inspector-section">
-        <p className="section-label">Powód</p>
+        <p className="section-label">Reason</p>
         <p>{reasonLabels[item.reason]}</p>
       </section>
       <section className="inspector-section">
-        <p className="section-label">Otrzymano</p>
+        <p className="section-label">Received</p>
         <p>
           <time dateTime={item.occurredAt}>
             {formatDateTime(item.occurredAt)}
@@ -853,7 +838,7 @@ export const AttentionDetail = ({
           onClick={() => onOpen(item)}
           disabled={busy}
         >
-          Otwórz dokładny kontekst
+          Open exact context
         </button>
         {item.destination.kind === "capture" &&
           recoveryActions.includes("route") && (
@@ -863,14 +848,14 @@ export const AttentionDetail = ({
                 onClick={() => onRouteCapture(item, "task")}
                 disabled={busy}
               >
-                Utwórz zadanie
+                Create task
               </button>
               <button
                 type="button"
                 onClick={() => onRouteCapture(item, "knowledge_source")}
                 disabled={busy}
               >
-                Zapisz jako źródło
+                Save as source
               </button>
             </>
           )}
@@ -881,7 +866,7 @@ export const AttentionDetail = ({
               onClick={() => onRetryCapture(item)}
               disabled={busy}
             >
-              Spróbuj ponownie
+              Try again
             </button>
           )}
         {item.destination.kind === "capture" &&
@@ -891,7 +876,7 @@ export const AttentionDetail = ({
               onClick={() => onReplaceCapturePayload(item)}
               disabled={busy}
             >
-              Zastąp oryginał
+              Replace original
             </button>
           )}
         {item.destination.kind === "capture" &&
@@ -901,16 +886,16 @@ export const AttentionDetail = ({
               onClick={() => onKeepCapture(item)}
               disabled={busy}
             >
-              Zachowaj bez klasyfikacji
+              Keep unclassified
             </button>
           )}
         {item.state === "unread" && (
           <button type="button" onClick={() => onRead(item)} disabled={busy}>
-            Oznacz jako przeczytane
+            Mark as read
           </button>
         )}
         <button type="button" onClick={() => onDismiss(item)} disabled={busy}>
-          Usuń z uwagi
+          Dismiss
         </button>
       </div>
     </div>

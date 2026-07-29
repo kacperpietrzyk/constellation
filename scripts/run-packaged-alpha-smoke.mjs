@@ -4,6 +4,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { assertPackagedCredentialStoreTestAllowed } from "./desktop/packaged-credential-store-policy.mjs";
+// Zbiór celów bierzemy z rejestru, nie z liczby wpisanej w asercję. Poprzednia
+// wersja sprawdzała `length === 12`, a nowa nawigacja też ma dwanaście pozycji —
+// czyli ta asercja przeszłaby przez CAŁKOWITĄ wymianę zbioru celów.
+import { desktopSurfaceIds } from "../packages/desktop-preload/dist/src/surface-registry.js";
+// Etykieta rodzaju też idzie z rejestru, nie z napisu wpisanego tutaj. Poprzednia
+// wersja porównywała z „Projekt" i przeżyła flip na angielski jako czerwień na
+// trzech systemach — a jest to dokładnie ten sam niezmiennik co wyżej: kontrakt
+// wyprowadzamy ze źródła prawdy, nie przepisujemy go ręcznie.
+import { getHumanRecordKindDescriptor } from "../packages/contracts/dist/src/record-kind-registry.js";
+
+const projectKindLabel = getHumanRecordKindDescriptor("project").label;
 
 assertPackagedCredentialStoreTestAllowed();
 
@@ -581,13 +592,13 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     if (phase !== "restore-confirm") {
       await waitFor(
         client,
-        `document.querySelector(".capture-dock") !== null && document.querySelectorAll(".nav-item[data-surface]").length === 12`,
+        `document.querySelector(".capture-dock") !== null && JSON.stringify([...document.querySelectorAll(".nav-item[data-surface]")].map((item) => item.dataset.surface).sort()) === ${JSON.stringify(JSON.stringify([...desktopSurfaceIds].sort()))}`,
         "PACKAGED_ALPHA_OPERATIONAL_SHELL_NOT_READY",
       );
       const shellAccessibility = await client.evaluate(`(() => {
         const main = document.querySelector("main");
         const attention = document.querySelector(
-          '.nav-item[data-surface="attention"]'
+          '.nav-item[data-surface="inbox"]'
         );
         const attentionCount = attention?.querySelector(".nav-count")?.textContent?.trim();
         const ids = [...document.querySelectorAll("[id]")].map(
@@ -608,7 +619,12 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         };
       })()`);
       if (
-        shellAccessibility.language !== "pl" ||
+        // Interfejs jest po angielsku od przebudowy 0.2.0, więc `lang` musi to
+        // mówić — czytnik ekranu wymawia treść według tego atrybutu, a angielskie
+        // zdanie czytane polską fonetyką jest niezrozumiałe. To jedyne miejsce
+        // w smoke'ach, gdzie język był wpisany na sztywno, i wyszło dopiero na
+        // paczkowanym buildzie: grep po polskich znakach go nie łapie.
+        shellAccessibility.language !== "en" ||
         shellAccessibility.mainCount !== 1 ||
         !shellAccessibility.mainIsWorkColumn ||
         shellAccessibility.sidebarInsideMain ||
@@ -738,7 +754,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
           }
         } finally {
           document.documentElement.style.fontSize = "";
-          document.querySelector('.nav-item[data-surface="cockpit"]')?.click();
+          document.querySelector('.nav-item[data-surface="today"]')?.click();
           await new Promise((resolve) =>
             requestAnimationFrame(() => requestAnimationFrame(resolve))
           );
@@ -905,13 +921,16 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
                 return !hasVisibleIcon && !hasVisibleText;
               })
               .map((element) => element.textContent?.trim() || "unnamed");
-            const unavailableHeading = [...(surface?.querySelectorAll("h2, h3, strong") ?? [])]
-              .find((element) => /niedostępn/i.test(element.textContent ?? ""));
+            // Gwarancja: powierzchnia, której nie da się otworzyć, ZAWSZE proponuje
+            // ponowienie. Rozpoznawana po stanie, nie po słowach — inaczej flip na
+            // angielski wywala test pilnujący czegoś prawdziwego.
+            const unavailableSurface = surface?.querySelector(
+              '[data-surface-state="failed"]'
+            );
             const unavailableWithoutRetry =
-              unavailableHeading !== undefined &&
-              ![...surface.querySelectorAll("button")].some((element) =>
-                /spróbuj ponownie/i.test(element.textContent ?? "")
-              );
+              unavailableSurface !== null &&
+              unavailableSurface !== undefined &&
+              unavailableSurface.querySelector('[data-surface-action="retry"]') === null;
             const ids = [...document.querySelectorAll("[id]")].map(
               (element) => element.id
             );
@@ -969,7 +988,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         }
 
         const resetTabCount = await client.evaluate(`(async () => {
-          document.querySelector('.nav-item[data-surface="cockpit"]').click();
+          document.querySelector('.nav-item[data-surface="today"]').click();
           await new Promise((resolve) =>
             requestAnimationFrame(() => requestAnimationFrame(resolve))
           );
@@ -1188,7 +1207,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         throw new Error("PACKAGED_ALPHA_CONTEXT_TAB_COUNT_INVALID");
       }
       await client.evaluate(`(() => {
-        document.querySelector('.shell-history-controls [aria-label="Wstecz"]').click();
+        document.querySelector('.shell-history-controls [data-shell-history="back"]').click();
         return true;
       })()`);
       await waitFor(
@@ -1197,7 +1216,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         "PACKAGED_ALPHA_CONTEXT_BACK_FAILED",
       );
       await client.evaluate(`(() => {
-        document.querySelector('.shell-history-controls [aria-label="Dalej"]').click();
+        document.querySelector('.shell-history-controls [data-shell-history="forward"]').click();
         return true;
       })()`);
       await waitFor(
@@ -1295,7 +1314,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       })()`);
       await waitFor(
         client,
-        `document.querySelector('.inspector-header small')?.textContent === 'Projekt' && document.querySelector('.inspector-body h2')?.textContent === ${JSON.stringify(projectTitle)} && document.querySelector('.provenance-block blockquote')?.textContent === ${JSON.stringify(projectOutcome)}`,
+        `document.querySelector('.inspector-header small')?.textContent === ${JSON.stringify(projectKindLabel)} && document.querySelector('.inspector-body h2')?.textContent === ${JSON.stringify(projectTitle)} && document.querySelector('.provenance-block blockquote')?.textContent === ${JSON.stringify(projectOutcome)}`,
         "PACKAGED_ALPHA_PROJECT_CONTEXT_MISSING",
       );
       await client.evaluate(`(() => {

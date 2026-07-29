@@ -16,6 +16,14 @@ const render = async (): Promise<void> => {
   const root = document.getElementById("root");
   if (root === null) throw new Error("Missing renderer root.");
   let content: ReactNode = <App client={window.constellation} />;
+  // Harnessy `?surface=` są DEV-only (kompilują się poza paczkę) i ŚWIADOMIE
+  // zostają po polsku przy przejściu interfejsu na angielski. Ich nazwy nie są
+  // już nazwami celów nawigacji — jest ich trzynaście, pokrywają się z rejestrem
+  // tylko w kilku miejscach, a kilka powierzchni produkcyjnych nie ma żadnego.
+  // Przetłumaczenie ich teraz utrwaliłoby martwy zestaw nazw obok prawdziwej
+  // nawigacji; dostają nowy kształt albo znikają razem z falami ekranowymi,
+  // gdzie widać, który z nich naprawdę zastępuje który ekran. `english-copy`
+  // pomija ten katalog z tego samego powodu.
   if (
     import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get("surface") === "capture"

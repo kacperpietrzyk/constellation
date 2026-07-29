@@ -46,7 +46,7 @@ describe("stable shell navigation", () => {
   });
 
   it("preserves record contexts across Back and Forward", () => {
-    let state = createShellNavigation(destinationContext("cockpit", "Tydzień"));
+    let state = createShellNavigation(destinationContext("today", "Tydzień"));
     state = openShellContext(state, taskContext(taskId, "Zadanie Alpha"));
     state = openShellContext(state, projectContext(projectId, "Projekt Alpha"));
     state = openShellContext(
@@ -59,13 +59,13 @@ describe("stable shell navigation", () => {
     state = moveShellHistory(state, -1);
     assert.equal(activeShellContext(state).taskId, taskId);
     state = moveShellHistory(state, -1);
-    assert.equal(activeShellContext(state).surface, "cockpit");
+    assert.equal(activeShellContext(state).surface, "today");
     state = moveShellHistory(state, 1);
     assert.equal(activeShellContext(state).taskId, taskId);
   });
 
   it("reuses a context, truncates forward history, and closes safely", () => {
-    const cockpit = destinationContext("cockpit", "Tydzień");
+    const cockpit = destinationContext("today", "Tydzień");
     const task = taskContext(taskId, "Zadanie Alpha");
     const project = projectContext(projectId, "Projekt Alpha");
     let state = createShellNavigation(cockpit);
@@ -85,7 +85,7 @@ describe("stable shell navigation", () => {
   });
 
   it("re-materializes contexts navigated within one card on Back and Forward", () => {
-    const cockpit = destinationContext("cockpit", "Tydzień");
+    const cockpit = destinationContext("today", "Tydzień");
     const task = taskContext(taskId, "Zadanie Alpha");
     const project = projectContext(projectId, "Projekt Alpha");
     let state = createShellNavigation(cockpit);
@@ -107,7 +107,7 @@ describe("stable shell navigation", () => {
   });
 
   it("does not replace another open card on Back after closing a card", () => {
-    const cockpit = destinationContext("cockpit", "Tydzień");
+    const cockpit = destinationContext("today", "Tydzień");
     const taskB = taskContext(taskId, "Zadanie B");
     const projectC = projectContext(projectId, "Projekt C");
     let state = createShellNavigation(cockpit);
@@ -140,7 +140,7 @@ describe("stable shell navigation", () => {
   });
 
   it("reports the silently evicted context when the tab limit overflows", () => {
-    let state = createShellNavigation(destinationContext("cockpit", "Tydzień"));
+    let state = createShellNavigation(destinationContext("today", "Tydzień"));
     for (let index = 0; index < 6; index += 1) {
       const id = TaskIdSchema.parse(
         `00000000-0000-4000-8000-${String(index + 10).padStart(12, "0")}`,
@@ -166,7 +166,7 @@ describe("stable shell navigation", () => {
   });
 
   it("bounds open contexts without evicting the current context", () => {
-    let state = createShellNavigation(destinationContext("cockpit", "Tydzień"));
+    let state = createShellNavigation(destinationContext("today", "Tydzień"));
     for (let index = 0; index < 9; index += 1) {
       const id = TaskIdSchema.parse(
         `00000000-0000-4000-8000-${String(index + 10).padStart(12, "0")}`,
@@ -182,22 +182,22 @@ describe("stable shell navigation", () => {
     state = openShellContext(state, taskContext(taskId, "Zadanie Alpha"));
     const restored = restoreShellNavigation(
       serializeShellNavigation(state),
-      destinationContext("cockpit", "Tydzień"),
+      destinationContext("today", "Tydzień"),
     );
     assert.equal(activeShellContext(restored).taskId, taskId);
     assert.equal(
       activeShellContext(
         restoreShellNavigation(
           '{"version":1,"state":{"tabs":[{"key":"x","label":"X","surface":"unknown"}]}}',
-          destinationContext("cockpit", "Tydzień"),
+          destinationContext("today", "Tydzień"),
         ),
       ).surface,
-      "cockpit",
+      "today",
     );
   });
 
   it("removes inaccessible record titles and IDs after reauthorization", () => {
-    const cockpit = destinationContext("cockpit", "Tydzień");
+    const cockpit = destinationContext("today", "Tydzień");
     let state = createShellNavigation(cockpit);
     state = openShellContext(state, taskContext(taskId, "Poufne zadanie"));
     state = openShellContext(
@@ -224,5 +224,102 @@ describe("stable shell navigation", () => {
     assert.deepEqual(pruned.history, [cockpit]);
     assert.equal(pruned.activeKey, cockpit.key);
     assert.doesNotMatch(serializeShellNavigation(pruned), /Poufne|00000000/);
+  });
+});
+
+describe("shell navigation across a version upgrade", () => {
+  it("carries the tabs of a session saved by the previous version over", () => {
+    // Osiem identyfikatorów celów zmieniło nazwę w 0.2.0, a KAŻDA zapisana
+    // zakładka niesie identyfikator powierzchni. Bez migracji pierwsze
+    // uruchomienie po aktualizacji odrzuca całą zapisaną sesję — bez awarii,
+    // więc bez śladu, ale człowiek traci wszystko, co miał otwarte.
+    const legacy = JSON.stringify({
+      version: 2,
+      state: {
+        tabs: [
+          { key: "destination:cockpit", label: "Tydzień", surface: "cockpit" },
+          {
+            key: "destination:attention",
+            label: "Do uwagi",
+            surface: "attention",
+          },
+          {
+            key: "destination:documents",
+            label: "Dokumenty",
+            surface: "documents",
+          },
+          {
+            key: "destination:relationships",
+            label: "Relacje",
+            surface: "relationships",
+          },
+        ],
+        activeKey: "destination:attention",
+        history: [
+          { key: "destination:cockpit", label: "Tydzień", surface: "cockpit" },
+        ],
+        historyIndex: 0,
+      },
+    });
+    const restored = restoreShellNavigation(
+      legacy,
+      destinationContext("today", "Today"),
+    );
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.surface),
+      ["today", "inbox", "library", "organizations"],
+    );
+    // Etykieta i klucz idą razem z celem. Zapis niesie WŁASNĄ kopię napisu,
+    // więc bez tego pierwsze uruchomienie po przebudowie pokazuje angielską
+    // nawigację i polskie zakładki w tym samym oknie; a zakładka zostawiona
+    // pod starym kluczem dubluje się, gdy ten sam cel zostanie otwarty jeszcze
+    // raz.
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.label),
+      ["Today", "Inbox", "Library", "Organizations"],
+    );
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.key),
+      [
+        "destination:today",
+        "destination:inbox",
+        "destination:library",
+        "destination:organizations",
+      ],
+    );
+    // Zapisany `activeKey` wskazywał starą nazwę; gdyby nie przeszedł tej samej
+    // migracji, nie trafiałby w żadną odtworzoną zakładkę i CAŁA sesja
+    // zostałaby odrzucona — cicho, bo bez awarii.
+    assert.equal(restored.activeKey, "destination:inbox");
+    assert.deepEqual(
+      restored.history.map((entry) => entry.label),
+      ["Today"],
+    );
+  });
+
+  it("refuses a saved destination it cannot place, instead of guessing", () => {
+    // Odmowa jest tu lepsza niż zgadywanie: zakładka otwarta na losowym ekranie
+    // czyta się jak utrata pracy, a nie jak migracja.
+    const unknown = JSON.stringify({
+      version: 2,
+      state: {
+        tabs: [
+          { key: "destination:atlantis", label: "?", surface: "atlantis" },
+        ],
+        activeKey: "destination:atlantis",
+        history: [
+          { key: "destination:atlantis", label: "?", surface: "atlantis" },
+        ],
+        historyIndex: 0,
+      },
+    });
+    const restored = restoreShellNavigation(
+      unknown,
+      destinationContext("today", "Today"),
+    );
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.surface),
+      ["today"],
+    );
   });
 });

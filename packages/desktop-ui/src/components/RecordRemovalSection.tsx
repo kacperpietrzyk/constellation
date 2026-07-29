@@ -42,11 +42,11 @@ export const RecordRemovalSection = ({
   if (dependentLabels.length > 0) {
     return (
       <section className="inspector-section task-removal-block">
-        <p className="section-label">Usuń rekord</p>
+        <p className="section-label">Delete record</p>
         <p className="muted-text">
-          Wskazuje na niego inna praca ({dependentLabels.join(", ")}). Odłącz ją
-          albo usuń najpierw — nie da się usunąć rekordu, od którego zależy coś
-          żywego.
+          Other work points at it ({dependentLabels.join(", ")}). Unlink or
+          delete that first — a record something live depends on cannot be
+          deleted.
         </p>
       </section>
     );
@@ -54,7 +54,7 @@ export const RecordRemovalSection = ({
 
   return (
     <section className="inspector-section task-removal-block">
-      <p className="section-label">Usuń rekord</p>
+      <p className="section-label">Delete record</p>
       {confirming ? (
         <div className="task-removal-actions">
           <button
@@ -69,14 +69,14 @@ export const RecordRemovalSection = ({
                   setConfirming(false);
                   if (result.kind === "success")
                     await onRemoved(
-                      "Rekord usunięto. Cofnij, jeśli to pomyłka.",
+                      "Record deleted. Undo if that was a mistake.",
                     );
                   else onFailure(result);
                 },
               );
             }}
           >
-            {busy ? "Usuwam…" : "Potwierdź usunięcie"}
+            {busy ? "Deleting…" : "Confirm delete"}
           </button>
           <button
             type="button"
@@ -84,20 +84,20 @@ export const RecordRemovalSection = ({
             disabled={busy}
             onClick={() => setConfirming(false)}
           >
-            Anuluj
+            Cancel
           </button>
         </div>
       ) : (
         <>
           <p className="muted-text">
-            Usunięcie ukrywa rekord i jego historię. Można je cofnąć.
+            Deleting hides the record and its history. You can undo it.
           </p>
           <button
             type="button"
             className="secondary-button"
             onClick={() => setConfirming(true)}
           >
-            Usuń rekord
+            Delete record
           </button>
         </>
       )}

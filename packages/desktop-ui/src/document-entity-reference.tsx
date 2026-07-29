@@ -42,11 +42,11 @@ const subscribe = (listener: () => void) => {
 };
 
 const kindLabel: Record<DocumentEntityTargetKind, string> = {
-  task: "Zadanie",
-  project: "Projekt",
-  person: "Osoba",
-  organization: "Organizacja",
-  meeting: "Spotkanie",
+  task: "Task",
+  project: "Project",
+  person: "Person",
+  organization: "Organization",
+  meeting: "Meeting",
 };
 
 const EntityReferenceView = ({ node }: NodeViewProps) => {
@@ -54,9 +54,9 @@ const EntityReferenceView = ({ node }: NodeViewProps) => {
   const targetId = node.attrs.targetId as string;
   const label = useSyncExternalStore(
     subscribe,
-    () => labels.get(keyOf(targetKind, targetId)) ?? "Rekord niedostępny",
+    () => labels.get(keyOf(targetKind, targetId)) ?? "Record unavailable",
   );
-  const available = label !== "Rekord niedostępny";
+  const available = label !== "Record unavailable";
   const activate = () => {
     if (!available) return;
     window.dispatchEvent(
@@ -73,7 +73,7 @@ const EntityReferenceView = ({ node }: NodeViewProps) => {
       tabIndex={available ? 0 : -1}
       aria-disabled={!available}
       aria-label={
-        available ? `${kindLabel[targetKind]}: ${label}` : "Rekord niedostępny"
+        available ? `${kindLabel[targetKind]}: ${label}` : "Record unavailable"
       }
       data-target-kind={targetKind}
       data-target-id={targetId}
@@ -120,7 +120,7 @@ export const EntityReference = Node.create({
       mergeAttributes(HTMLAttributes, {
         "data-constellation-entity-reference": "",
       }),
-      "Powiązany rekord",
+      "Linked record",
     ];
   },
 

@@ -28,6 +28,7 @@ import {
   type MutationFailure,
 } from "./client/workflow.js";
 
+import { countLabel } from "./i18n.js";
 import { ReleaseContinuity } from "./components/ReleaseContinuity.js";
 import {
   ConceptHelpDialog,
@@ -36,29 +37,29 @@ import {
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 
 const fieldTypeLabels: Record<string, string> = {
-  text: "Tekst",
-  number: "Liczba",
-  date: "Data",
-  choice: "Wybór",
-  formula: "Formuła",
+  text: "Text",
+  number: "Number",
+  date: "Date",
+  choice: "Choice",
+  formula: "Formula",
   rollup: "Rollup",
 };
 
 const statusSemanticsLabels: Record<string, string> = {
-  actionable: "Do działania",
-  waiting: "Oczekiwanie",
-  blocked: "Blokada",
-  paused: "Wstrzymane",
+  actionable: "Actionable",
+  waiting: "Waiting",
+  blocked: "Blocked",
+  paused: "Paused",
 };
 
 type Theme = "system" | "dark" | "light";
 
 const settingsCategories = [
   { id: "workspace", label: "Workspace" },
-  { id: "data", label: "Dane i prywatność" },
-  { id: "appearance", label: "Wygląd" },
-  { id: "access", label: "Dostęp i połączenia" },
-  { id: "application", label: "Start i aplikacja" },
+  { id: "data", label: "Data and privacy" },
+  { id: "appearance", label: "Appearance" },
+  { id: "access", label: "Access and connections" },
+  { id: "application", label: "Setup and app" },
 ] as const;
 
 type SettingsCategoryId = (typeof settingsCategories)[number]["id"];
@@ -74,11 +75,11 @@ type SectionMessage = {
 };
 
 const availabilityLabels = {
-  available: "Dostępny",
-  locked: "Zablokowany",
-  unavailable: "Niedostępny",
-  recovery_required: "Wymaga odzyskania",
-  degraded: "Działa częściowo",
+  available: "Available",
+  locked: "Locked",
+  unavailable: "Unavailable",
+  recovery_required: "Needs recovery",
+  degraded: "Partly working",
 } as const;
 
 export const SettingsSurface = ({
@@ -268,7 +269,7 @@ export const SettingsSurface = ({
           if (active)
             setWorkspaceMessage({
               tone: "alert",
-              text: "Lista workspace jest chwilowo niedostępna. Bieżące dane pozostają otwarte.",
+              text: "The workspace list is unavailable right now. Your current data stays open.",
             });
         });
     return () => {
@@ -293,7 +294,7 @@ export const SettingsSurface = ({
       setBusyWorkspace(false);
       setWorkspaceMessage({
         tone: "alert",
-        text: "Operacja nie potwierdziła się w ciągu 15 sekund. Bieżący workspace pozostaje aktywny; spróbuj ponownie.",
+        text: "No confirmation after 15 seconds. The current workspace is still active — try again.",
       });
     }, 15_000);
   };
@@ -306,7 +307,7 @@ export const SettingsSurface = ({
     setBusyWorkspace(true);
     setWorkspaceMessage({
       tone: "status",
-      text: "Tworzę osobny zaszyfrowany Data Home…",
+      text: "Creating a separate encrypted Data Home…",
     });
     armWorkspaceTimeout();
     void client
@@ -319,7 +320,7 @@ export const SettingsSurface = ({
           clearWorkspaceTimeout();
           setWorkspaceMessage({
             tone: "status",
-            text: "Workspace utworzony. Aplikacja za chwilę uruchomi się ponownie.",
+            text: "Workspace created. The app restarts in a moment.",
           });
           return;
         }
@@ -329,8 +330,8 @@ export const SettingsSurface = ({
           tone: "alert",
           text:
             result.code === "invalid_name"
-              ? "Podaj nazwę od 1 do 80 znaków."
-              : "Nie udało się bezpiecznie utworzyć workspace.",
+              ? "Use a name between 1 and 80 characters."
+              : "Could not create the workspace safely.",
         });
       })
       .catch(() => {
@@ -338,7 +339,7 @@ export const SettingsSurface = ({
         setBusyWorkspace(false);
         setWorkspaceMessage({
           tone: "alert",
-          text: "Nie udało się uruchomić tworzenia. Bieżący workspace nie został zmieniony.",
+          text: "Could not start creating. The current workspace is unchanged.",
         });
       });
   };
@@ -351,7 +352,7 @@ export const SettingsSurface = ({
     setBusyWorkspace(true);
     setWorkspaceMessage({
       tone: "status",
-      text: "Zamykam bieżący runtime i otwieram wybrany workspace…",
+      text: "Closing the current runtime and opening the chosen workspace…",
     });
     armWorkspaceTimeout();
     void client
@@ -363,7 +364,7 @@ export const SettingsSurface = ({
           clearWorkspaceTimeout();
           setWorkspaceMessage({
             tone: "status",
-            text: "Przełączenie potwierdzone. Aplikacja za chwilę uruchomi się ponownie.",
+            text: "Switch confirmed. The app restarts in a moment.",
           });
           return;
         }
@@ -371,7 +372,7 @@ export const SettingsSurface = ({
         setBusyWorkspace(false);
         setWorkspaceMessage({
           tone: "alert",
-          text: "Wybrany workspace nie jest już dostępny.",
+          text: "That workspace is no longer available.",
         });
       })
       .catch(() => {
@@ -379,7 +380,7 @@ export const SettingsSurface = ({
         setBusyWorkspace(false);
         setWorkspaceMessage({
           tone: "alert",
-          text: "Przełączenie nie rozpoczęło się. Bieżący workspace pozostaje aktywny.",
+          text: "The switch did not start. The current workspace is still active.",
         });
       });
   };
@@ -393,17 +394,17 @@ export const SettingsSurface = ({
       if (result.outcome === "success") {
         setExportMessage({
           tone: "status",
-          text: `Zapisano ${result.fileLabel}: ${result.counts.projects} projektów, ${result.counts.tasks} zadań i ${result.counts.documents} dokumentów. Ten sam plik można wczytać importem.`,
+          text: `Saved ${result.fileLabel}: ${countLabel(result.counts.projects, "project")}, ${countLabel(result.counts.tasks, "task")} and ${countLabel(result.counts.documents, "document")}. Import can read this same file.`,
         });
       } else if (result.outcome === "cancelled") {
         setExportMessage({
           tone: "status",
-          text: "Eksport anulowany. Nic nie zostało zapisane.",
+          text: "Export cancelled. Nothing was saved.",
         });
       } else {
         setExportMessage({
           tone: "alert",
-          text: "Nie udało się zapisać pakietu. Sprawdź uprawnienia do wybranego katalogu.",
+          text: "Could not save the package. Check permissions for the chosen folder.",
         });
       }
     } finally {
@@ -419,14 +420,14 @@ export const SettingsSurface = ({
     if (file.size > 256 * 1024) {
       setImportMessage({
         tone: "alert",
-        text: "Pakiet jest większy niż bezpieczny limit 256 KB.",
+        text: "The package is larger than the safe 256 KB limit.",
       });
       return;
     }
     setBusyImport(true);
     setImportMessage({
       tone: "status",
-      text: "Waliduję pakiet. Nic nie zostało jeszcze zapisane…",
+      text: "Validating the package. Nothing has been saved yet…",
     });
     try {
       const manifest: unknown = file.name.toLocaleLowerCase().endsWith(".csv")
@@ -441,27 +442,27 @@ export const SettingsSurface = ({
         });
         setImportMessage({
           tone: "status",
-          text: "Podgląd gotowy. Sprawdź zakres i potwierdź import.",
+          text: "Preview ready. Check the scope and confirm the import.",
         });
       } else {
         setImportMessage({
           tone: "alert",
           text:
             result.errors !== undefined && result.errors.length > 0
-              ? `Plik odrzucono: ${result.errors.slice(0, 5).join(" ")}${
+              ? `File rejected: ${result.errors.slice(0, 5).join(" ")}${
                   result.errors.length > 5
-                    ? ` (i ${result.errors.length - 5} dalszych problemów)`
+                    ? ` (and ${countLabel(result.errors.length - 5, "more problem")})`
                     : ""
                 }`
               : result.code === "manifest_invalid"
-                ? "Plik nie pasuje do udokumentowanego formatu importu."
-                : "Podgląd jest dostępny w trwałej aplikacji desktopowej.",
+                ? "This file does not match the documented import format."
+                : "Preview is available in the installed desktop app.",
         });
       }
     } catch {
       setImportMessage({
         tone: "alert",
-        text: "Plik nie jest poprawnym JSON-em ani CSV.",
+        text: "That file is not valid JSON or CSV.",
       });
     } finally {
       setBusyImport(false);
@@ -473,7 +474,7 @@ export const SettingsSurface = ({
     setBusyImport(true);
     setImportMessage({
       tone: "status",
-      text: "Wykonuję wersjonowane komendy…",
+      text: "Running versioned commands…",
     });
     try {
       const result = await client.importStarterWorkspace(
@@ -484,7 +485,7 @@ export const SettingsSurface = ({
         setImportCandidate(undefined);
         setImportMessage({
           tone: "status",
-          text: `Gotowe. Obszary: ${areas} · inicjatywy: ${initiatives} · projekty: ${projects} · zadania: ${tasks} · powiązania: ${links}.`,
+          text: `Done. Areas: ${areas} · initiatives: ${initiatives} · projects: ${projects} · tasks: ${tasks} · links: ${links}.`,
         });
         await onReload();
       } else {
@@ -492,16 +493,16 @@ export const SettingsSurface = ({
           tone: "alert",
           text:
             result.code === "manifest_invalid"
-              ? "Pakiet zmienił się lub nie przeszedł ponownej walidacji. Wybierz go jeszcze raz."
+              ? "The package changed or failed re-validation. Choose it again."
               : result.code === "unavailable"
-                ? "Import jest dostępny w trwałej aplikacji desktopowej."
-                : "Import zatrzymał się. Zapisane kroki są bezpieczne; ponów ten sam plik, aby dokończyć idempotentnie.",
+                ? "Import is available in the installed desktop app."
+                : "The import stopped. Saved steps are safe — run the same file again to finish it.",
         });
       }
     } catch {
       setImportMessage({
         tone: "alert",
-        text: "Import nie został ukończony. Ponowienie tego samego pakietu jest bezpieczne.",
+        text: "The import did not finish. Running the same package again is safe.",
       });
     } finally {
       setBusyImport(false);
@@ -555,29 +556,29 @@ export const SettingsSurface = ({
   const exportSupportReport = async () => {
     if (!client?.exportSupportReport) return;
     setBusySupport(true);
-    setSupportMessage({ tone: "status", text: "Otwieram zapis raportu…" });
+    setSupportMessage({ tone: "status", text: "Opening the save dialog…" });
     try {
       const result = await client.exportSupportReport();
       setSupportMessage(
         result.outcome === "success"
           ? {
               tone: "status",
-              text: `Raport zapisany jako ${result.fileLabel}. Sprawdź plik przed udostępnieniem.`,
+              text: `Report saved as ${result.fileLabel}. Check the file before sharing it.`,
             }
           : result.outcome === "cancelled"
             ? {
                 tone: "status",
-                text: "Anulowano. Żaden raport nie został zapisany.",
+                text: "Cancelled. No report was saved.",
               }
             : {
                 tone: "alert",
-                text: "Nie udało się zapisać raportu. Spróbuj ponownie. Dane aplikacji pozostały bez zmian.",
+                text: "Could not save the report. Try again — app data is unchanged.",
               },
       );
     } catch {
       setSupportMessage({
         tone: "alert",
-        text: "Raport jest chwilowo niedostępny. Dane aplikacji pozostały bez zmian.",
+        text: "The report is unavailable right now. App data is unchanged.",
       });
     } finally {
       setBusySupport(false);
@@ -585,16 +586,16 @@ export const SettingsSurface = ({
   };
 
   const themeLabel =
-    theme === "system" ? "System" : theme === "dark" ? "Ciemny" : "Jasny";
+    theme === "system" ? "System" : theme === "dark" ? "Dark" : "Light";
   const categoryStatus: Record<SettingsCategoryId, string> = {
     workspace: snapshot.bootstrap.workspace.name,
     data:
       snapshot.dataHome === undefined
-        ? "Stan Data Home nieznany"
+        ? "Data Home state unknown"
         : `Data Home: ${availabilityLabels[snapshot.dataHome.availability]}`,
-    appearance: `Motyw: ${themeLabel}`,
-    access: "Role, agenci, Kalendarz i Jamie",
-    application: `Wersja ${snapshot.build.version}`,
+    appearance: `Theme: ${themeLabel}`,
+    access: "Roles, agents, Calendar and Jamie",
+    application: `Version ${snapshot.build.version}`,
   };
   const navigateToCategory = (category: SettingsCategoryId) => {
     setActiveCategory(category);
@@ -609,25 +610,22 @@ export const SettingsSurface = ({
         <div>
           <p className="eyebrow">Workspace</p>
           <h1 id="surface-title" tabIndex={-1}>
-            Ustawienia
+            Settings
           </h1>
-          <p>
-            Tożsamość, dane, wygląd, dostęp, połączenia i wydanie w jednym
-            spokojnym miejscu.
-          </p>
+          <p>Identity, data, appearance, access and release.</p>
           <button
             type="button"
             className="settings-help-entry"
             aria-haspopup="dialog"
             onClick={() => setConceptHelpTopic("data-home")}
           >
-            Wyjaśnij pojęcia danych i dostępu
+            Explain data and access
           </button>
         </div>
       </header>
 
       <div className="settings-category-picker">
-        <label htmlFor="settings-category-select">Kategoria ustawień</label>
+        <label htmlFor="settings-category-select">Settings category</label>
         <select
           id="settings-category-select"
           value={activeCategory}
@@ -644,8 +642,8 @@ export const SettingsSurface = ({
       </div>
 
       <div className="settings-layout">
-        <nav className="settings-navigator" aria-label="Kategorie ustawień">
-          <p>Kategorie</p>
+        <nav className="settings-navigator" aria-label="Settings categories">
+          <p>Categories</p>
           <ol>
             {settingsCategories.map((category) => (
               <li key={category.id}>
@@ -673,14 +671,14 @@ export const SettingsSurface = ({
           >
             <section>
               <div className="settings-copy">
-                <h2>Tożsamość</h2>
+                <h2>Identity</h2>
                 <p>
-                  Nazwa jest wersjonowaną zmianą widoczną dla tych samych
-                  operatorów co pozostała praca.
+                  Renaming is a versioned change, visible to the same operators
+                  as any other work.
                 </p>
               </div>
               <form className="settings-control" onSubmit={submitName}>
-                <label htmlFor="workspace-name">Nazwa workspace</label>
+                <label htmlFor="workspace-name">Workspace name</label>
                 <div>
                   <input
                     id="workspace-name"
@@ -696,7 +694,7 @@ export const SettingsSurface = ({
                       name.trim() === snapshot.bootstrap.workspace.name
                     }
                   >
-                    {busyName ? "Zapisuję…" : "Zmień nazwę"}
+                    {busyName ? "Saving…" : "Rename"}
                   </button>
                 </div>
               </form>
@@ -704,12 +702,12 @@ export const SettingsSurface = ({
 
             <section>
               <div className="settings-copy">
-                <h2>Statusy zadań</h2>
+                <h2>Task statuses</h2>
                 <p>
-                  Etykiety i kolejność należą do workspace; szerokie znaczenie
-                  operacyjne pozostaje jawne, żeby widoki i agenci zachowywali
-                  się przewidywalnie. Archiwizacja nie przepisuje istniejących
-                  zadań — zachowują historyczną etykietę.
+                  Labels and order belong to this workspace; the operational
+                  meaning stays explicit so views and agents stay predictable.
+                  Archiving does not rewrite existing tasks — they keep their
+                  old label.
                 </p>
               </div>
               <div className="settings-control status-manager">
@@ -758,7 +756,7 @@ export const SettingsSurface = ({
                                 value={statusEditLabel}
                                 maxLength={120}
                                 autoFocus
-                                aria-label={`Nowa etykieta statusu ${status.label}`}
+                                aria-label={`New label for ${status.label}`}
                                 onChange={(event) =>
                                   setStatusEditLabel(event.target.value)
                                 }
@@ -770,14 +768,14 @@ export const SettingsSurface = ({
                                 }}
                               />
                               <button type="submit" disabled={busy}>
-                                Zapisz
+                                Save
                               </button>
                               <button
                                 type="button"
                                 disabled={busy}
                                 onClick={() => setStatusEditId(undefined)}
                               >
-                                Anuluj
+                                Cancel
                               </button>
                             </form>
                           ) : (
@@ -788,15 +786,15 @@ export const SettingsSurface = ({
                                   {statusSemanticsLabels[
                                     status.operationalSemantics
                                   ] ?? status.operationalSemantics}
-                                  {isDefault ? " · domyślny" : ""}
-                                  {archived ? " · archiwalny" : ""}
+                                  {isDefault ? " · default" : ""}
+                                  {archived ? " · archived" : ""}
                                 </small>
                               </span>
                               <span className="status-actions">
                                 <button
                                   type="button"
                                   disabled={busy || index === 0 || archived}
-                                  aria-label={`Przesuń wyżej: ${status.label}`}
+                                  aria-label={`Move up: ${status.label}`}
                                   onClick={() => {
                                     const above = ordered[index - 1];
                                     if (!client || !above) return;
@@ -828,7 +826,7 @@ export const SettingsSurface = ({
                                     index === ordered.length - 1 ||
                                     archived
                                   }
-                                  aria-label={`Przesuń niżej: ${status.label}`}
+                                  aria-label={`Move down: ${status.label}`}
                                   onClick={() => {
                                     const below = ordered[index + 1];
                                     if (!client || !below) return;
@@ -859,7 +857,7 @@ export const SettingsSurface = ({
                                     setStatusEditLabel(status.label);
                                   }}
                                 >
-                                  Zmień nazwę
+                                  Rename
                                 </button>
                                 {!isDefault && !archived && (
                                   <button
@@ -876,7 +874,7 @@ export const SettingsSurface = ({
                                       );
                                     }}
                                   >
-                                    Ustaw domyślny
+                                    Set as default
                                   </button>
                                 )}
                                 {archived ? (
@@ -896,7 +894,7 @@ export const SettingsSurface = ({
                                       );
                                     }}
                                   >
-                                    Przywróć
+                                    Restore
                                   </button>
                                 ) : statusArchiveConfirmId === status.id ? (
                                   <>
@@ -918,9 +916,9 @@ export const SettingsSurface = ({
                                         );
                                       }}
                                     >
-                                      Potwierdź archiwizację
+                                      Confirm archive
                                       {carrying > 0
-                                        ? ` (${carrying} zadań zachowa etykietę)`
+                                        ? ` (${countLabel(carrying, "task")} will keep the label)`
                                         : ""}
                                     </button>
                                     <button
@@ -929,7 +927,7 @@ export const SettingsSurface = ({
                                         setStatusArchiveConfirmId(undefined)
                                       }
                                     >
-                                      Anuluj
+                                      Cancel
                                     </button>
                                   </>
                                 ) : (
@@ -941,7 +939,7 @@ export const SettingsSurface = ({
                                         setStatusArchiveConfirmId(status.id)
                                       }
                                     >
-                                      Archiwizuj
+                                      Archive
                                     </button>
                                   )
                                 )}
@@ -969,11 +967,11 @@ export const SettingsSurface = ({
                   }}
                 >
                   <label>
-                    <span className="sr-only">Etykieta nowego statusu</span>
+                    <span className="sr-only">New status label</span>
                     <input
                       value={newStatusLabel}
                       maxLength={120}
-                      placeholder="Nowy status — etykieta"
+                      placeholder="New status — label"
                       disabled={statusBusyId === "create"}
                       onChange={(event) =>
                         setNewStatusLabel(event.target.value)
@@ -981,7 +979,7 @@ export const SettingsSurface = ({
                     />
                   </label>
                   <select
-                    aria-label="Znaczenie operacyjne nowego statusu"
+                    aria-label="Operational meaning of the new status"
                     value={newStatusSemantics}
                     disabled={statusBusyId === "create"}
                     onChange={(event) =>
@@ -990,10 +988,10 @@ export const SettingsSurface = ({
                       )
                     }
                   >
-                    <option value="actionable">Do działania</option>
-                    <option value="waiting">Oczekiwanie</option>
-                    <option value="blocked">Blokada</option>
-                    <option value="paused">Wstrzymane</option>
+                    <option value="actionable">Actionable</option>
+                    <option value="waiting">Waiting</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="paused">Paused</option>
                   </select>
                   <button
                     type="submit"
@@ -1003,7 +1001,7 @@ export const SettingsSurface = ({
                       !client
                     }
                   >
-                    Dodaj
+                    Add
                   </button>
                 </form>
               </div>
@@ -1011,11 +1009,11 @@ export const SettingsSurface = ({
 
             <section>
               <div className="settings-copy">
-                <h2>Pola rekordów</h2>
+                <h2>Record fields</h2>
                 <p>
-                  Typowane pola workspace rozszerzają zadania i projekty bez
-                  wydania aplikacji. Wartości dziedziczą uprawnienia rekordu;
-                  wycofana definicja nie zmienia zapisanych wartości.
+                  Typed workspace fields extend tasks and projects without an
+                  app release. Values inherit the record's permissions, and
+                  retiring a definition leaves saved values alone.
                 </p>
               </div>
               <div className="settings-control status-manager">
@@ -1033,14 +1031,14 @@ export const SettingsSurface = ({
                             <strong>{definition.label}</strong>
                             <small>
                               {definition.targetKind === "task"
-                                ? "Zadanie"
-                                : "Projekt"}
+                                ? "Task"
+                                : "Project"}
                               {" · "}
                               {fieldTypeLabels[definition.type.kind]}
                               {definition.type.kind === "choice"
                                 ? ` (${definition.type.options.join(", ")})`
                                 : ""}
-                              {retired ? " · wycofane" : ""}
+                              {retired ? " · retired" : ""}
                             </small>
                           </span>
                           <span className="status-actions">
@@ -1061,7 +1059,7 @@ export const SettingsSurface = ({
                                   );
                                 }}
                               >
-                                Przywróć
+                                Restore
                               </button>
                             ) : (
                               <button
@@ -1080,7 +1078,7 @@ export const SettingsSurface = ({
                                   );
                                 }}
                               >
-                                Wycofaj
+                                Retire
                               </button>
                             )}
                           </span>
@@ -1109,7 +1107,7 @@ export const SettingsSurface = ({
                       onFailure({
                         kind: "error",
                         message:
-                          "Pole wyboru wymaga co najmniej jednej opcji (rozdziel przecinkami).",
+                          "A choice field needs at least one option, separated by commas.",
                       });
                       return;
                     }
@@ -1128,17 +1126,17 @@ export const SettingsSurface = ({
                   }}
                 >
                   <label>
-                    <span className="sr-only">Etykieta nowego pola</span>
+                    <span className="sr-only">New field label</span>
                     <input
                       value={newFieldLabel}
                       maxLength={120}
-                      placeholder="Nowe pole — etykieta"
+                      placeholder="New field — label"
                       disabled={fieldBusyId === "create"}
                       onChange={(event) => setNewFieldLabel(event.target.value)}
                     />
                   </label>
                   <select
-                    aria-label="Rekord docelowy"
+                    aria-label="Target record"
                     value={newFieldTarget}
                     disabled={fieldBusyId === "create"}
                     onChange={(event) =>
@@ -1147,11 +1145,11 @@ export const SettingsSurface = ({
                       )
                     }
                   >
-                    <option value="task">Zadanie</option>
-                    <option value="project">Projekt</option>
+                    <option value="task">Task</option>
+                    <option value="project">Project</option>
                   </select>
                   <select
-                    aria-label="Typ pola"
+                    aria-label="Field type"
                     value={newFieldType}
                     disabled={fieldBusyId === "create"}
                     onChange={(event) =>
@@ -1161,16 +1159,16 @@ export const SettingsSurface = ({
                       )
                     }
                   >
-                    <option value="text">Tekst</option>
-                    <option value="number">Liczba</option>
-                    <option value="date">Data</option>
-                    <option value="choice">Wybór</option>
+                    <option value="text">Text</option>
+                    <option value="number">Number</option>
+                    <option value="date">Date</option>
+                    <option value="choice">Choice</option>
                   </select>
                   {newFieldType === "choice" && (
                     <input
                       value={newFieldOptions}
-                      placeholder="Opcje po przecinku"
-                      aria-label="Opcje pola wyboru"
+                      placeholder="Comma-separated options"
+                      aria-label="Choice field options"
                       disabled={fieldBusyId === "create"}
                       onChange={(event) =>
                         setNewFieldOptions(event.target.value)
@@ -1185,7 +1183,7 @@ export const SettingsSurface = ({
                       !client
                     }
                   >
-                    Dodaj
+                    Add
                   </button>
                 </form>
               </div>
@@ -1193,11 +1191,11 @@ export const SettingsSurface = ({
 
             <section>
               <div className="settings-copy">
-                <h2>Szablony projektów</h2>
+                <h2>Project templates</h2>
                 <p>
-                  Szablon startuje projekt z gotowymi zadaniami. Zastosowanie
-                  jest zawsze jawne i niczego nie nadpisuje; zmiana szablonu
-                  dotyczy tylko przyszłych zastosowań.
+                  A template starts a project with ready tasks. Applying one is
+                  always explicit and overwrites nothing; editing a template
+                  only affects future uses.
                 </p>
               </div>
               <div className="settings-control status-manager">
@@ -1215,9 +1213,9 @@ export const SettingsSurface = ({
                             <strong>{template.name}</strong>
                             <small>
                               {template.taskTitles.length === 1
-                                ? "1 zadanie startowe"
-                                : `${template.taskTitles.length} zadań startowych`}
-                              {retired ? " · wycofany" : ""}
+                                ? "1 starter task"
+                                : `${template.taskTitles.length} starter tasks`}
+                              {retired ? " · retired" : ""}
                             </small>
                           </span>
                           <span className="status-actions">
@@ -1239,7 +1237,7 @@ export const SettingsSurface = ({
                                 );
                               }}
                             >
-                              {retired ? "Przywróć" : "Wycofaj"}
+                              {retired ? "Restore" : "Retire"}
                             </button>
                           </span>
                         </li>
@@ -1271,11 +1269,11 @@ export const SettingsSurface = ({
                   }}
                 >
                   <label>
-                    <span className="sr-only">Nazwa nowego szablonu</span>
+                    <span className="sr-only">New template name</span>
                     <input
                       value={newTemplateName}
                       maxLength={120}
-                      placeholder="Nowy szablon — nazwa"
+                      placeholder="New template — name"
                       disabled={templateBusyId === "create"}
                       onChange={(event) =>
                         setNewTemplateName(event.target.value)
@@ -1284,11 +1282,11 @@ export const SettingsSurface = ({
                   </label>
                   <label>
                     <span className="sr-only">
-                      Zadania startowe rozdzielone przecinkami
+                      Comma-separated starter tasks
                     </span>
                     <input
                       value={newTemplateTasks}
-                      placeholder="Zadania startowe po przecinku"
+                      placeholder="Comma-separated starter tasks"
                       disabled={templateBusyId === "create"}
                       onChange={(event) =>
                         setNewTemplateTasks(event.target.value)
@@ -1303,7 +1301,7 @@ export const SettingsSurface = ({
                       !client
                     }
                   >
-                    Dodaj
+                    Add
                   </button>
                 </form>
               </div>
@@ -1311,11 +1309,11 @@ export const SettingsSurface = ({
 
             <section>
               <div className="settings-copy">
-                <h2>Automatyzacje</h2>
+                <h2>Automations</h2>
                 <p>
-                  Ograniczone, deterministyczne reguły: bez skryptów i bez
-                  efektów poza workspace. Wyłączona reguła niczego nie cofa;
-                  efekty pozostają w audycie z atrybucją reguły.
+                  Narrow, deterministic rules: no scripts, no effects outside
+                  the workspace. Disabling a rule undoes nothing; its past
+                  effects stay in the audit, attributed to the rule.
                 </p>
               </div>
               <div className="settings-control status-manager">
@@ -1329,7 +1327,7 @@ export const SettingsSurface = ({
                             (status) =>
                               rule.recipe.kind === "complete_sets_status" &&
                               status.id === rule.recipe.statusId,
-                          )?.label ?? "status historyczny")
+                          )?.label ?? "a removed status")
                         : undefined;
                     return (
                       <li
@@ -1340,9 +1338,9 @@ export const SettingsSurface = ({
                           <strong>{rule.name}</strong>
                           <small>
                             {rule.recipe.kind === "complete_sets_status"
-                              ? `Ukończone zadanie trafia do „${statusLabel}”`
-                              : "Sygnał po miniętym terminie przeglądu oczekiwania"}
-                            {disabled ? " · wyłączona" : ""}
+                              ? `Completed task moves to “${statusLabel}”`
+                              : "Signal when a waiting review is overdue"}
+                            {disabled ? " · disabled" : ""}
                           </small>
                         </span>
                         <span className="status-actions">
@@ -1365,7 +1363,7 @@ export const SettingsSurface = ({
                               );
                             }}
                           >
-                            {disabled ? "Włącz" : "Wyłącz"}
+                            {disabled ? "Enable" : "Disable"}
                           </button>
                         </span>
                       </li>
@@ -1384,8 +1382,7 @@ export const SettingsSurface = ({
                     ) {
                       onFailure({
                         kind: "error",
-                        message:
-                          "Reguła ukończenia wymaga wybranego statusu docelowego.",
+                        message: "The completion rule needs a target status.",
                       });
                       return;
                     }
@@ -1409,11 +1406,11 @@ export const SettingsSurface = ({
                   }}
                 >
                   <label>
-                    <span className="sr-only">Nazwa nowej reguły</span>
+                    <span className="sr-only">New rule name</span>
                     <input
                       value={newAutomationName}
                       maxLength={120}
-                      placeholder="Nowa reguła — nazwa"
+                      placeholder="New rule — name"
                       disabled={automationBusyId === "create"}
                       onChange={(event) =>
                         setNewAutomationName(event.target.value)
@@ -1421,7 +1418,7 @@ export const SettingsSurface = ({
                     />
                   </label>
                   <select
-                    aria-label="Rodzaj reguły"
+                    aria-label="Rule type"
                     value={newAutomationRecipe}
                     disabled={automationBusyId === "create"}
                     onChange={(event) =>
@@ -1432,22 +1429,22 @@ export const SettingsSurface = ({
                     }
                   >
                     <option value="waiting_review_signals">
-                      Sygnał po miniętym przeglądzie oczekiwania
+                      Signal when a waiting review is overdue
                     </option>
                     <option value="complete_sets_status">
-                      Ukończone zadanie trafia do statusu
+                      Completed task moves to a status
                     </option>
                   </select>
                   {newAutomationRecipe === "complete_sets_status" && (
                     <select
-                      aria-label="Status docelowy"
+                      aria-label="Target status"
                       value={newAutomationStatusId}
                       disabled={automationBusyId === "create"}
                       onChange={(event) =>
                         setNewAutomationStatusId(event.target.value)
                       }
                     >
-                      <option value="">Wybierz status…</option>
+                      <option value="">Choose status…</option>
                       {snapshot.bootstrap.taskStatuses
                         .filter((status) => status.state !== "archived")
                         .map((status) => (
@@ -1465,7 +1462,7 @@ export const SettingsSurface = ({
                       !client
                     }
                   >
-                    Dodaj
+                    Add
                   </button>
                 </form>
               </div>
@@ -1473,22 +1470,24 @@ export const SettingsSurface = ({
 
             <section>
               <div className="settings-copy">
-                <h2>Domyślna retencja audio</h2>
+                <h2>Default audio retention</h2>
                 <p>
-                  Nowe notatki głosowe dziedziczą tę decyzję. W Quick Capture
-                  możesz ją zmienić dla pojedynczego nagrania.
+                  New voice notes inherit this choice. Quick Capture can change
+                  it for a single recording.
                 </p>
               </div>
               <div className="settings-control">
-                <label htmlFor="voice-audio-retention">Po transkrypcji</label>
+                <label htmlFor="voice-audio-retention">
+                  After transcription
+                </label>
                 <select
                   id="voice-audio-retention"
                   disabled={busyRetention || !client}
                   value={snapshot.bootstrap.workspace.voiceAudioRetentionPolicy}
                   onChange={changeVoiceRetention}
                 >
-                  <option value="delete_after_transcript">Usuń audio</option>
-                  <option value="retain">Zachowaj audio</option>
+                  <option value="delete_after_transcript">Delete audio</option>
+                  <option value="retain">Keep audio</option>
                 </select>
               </div>
             </section>
@@ -1501,11 +1500,11 @@ export const SettingsSurface = ({
           >
             <section>
               <div className="settings-copy">
-                <h2>Osobne granice danych</h2>
+                <h2>Separate data boundaries</h2>
                 <p>
-                  Każdy workspace ma własną szyfrowaną bazę, Data Home,
-                  poświadczenia Hub i lokalny endpoint MCP. Przełączenie
-                  bezpiecznie uruchamia aplikację ponownie.
+                  Every workspace has its own encrypted database, Data Home, Hub
+                  credentials and local MCP endpoint. Switching restarts the app
+                  safely.
                 </p>
                 <button
                   type="button"
@@ -1513,13 +1512,13 @@ export const SettingsSurface = ({
                   aria-haspopup="dialog"
                   onClick={() => setConceptHelpTopic("data-home")}
                 >
-                  Wyjaśnij Data Home, Hub i MCP
+                  Explain Data Home, Hub and MCP
                 </button>
               </div>
               <div className="settings-control workspace-registry-control">
                 <div className="workspace-registry-list">
                   {workspaces.length === 0 ? (
-                    <span>Lista jest dostępna w aplikacji desktopowej.</span>
+                    <span>The list is available in the desktop app.</span>
                   ) : (
                     workspaces.map((workspace) => (
                       <button
@@ -1544,7 +1543,7 @@ export const SettingsSurface = ({
                           setConfirmSwitchId(workspace.workspaceId);
                           setWorkspaceMessage({
                             tone: "status",
-                            text: "Przełączenie bezpiecznie zamknie bieżący workspace i uruchomi aplikację ponownie. Kliknij „Potwierdź przełączenie”.",
+                            text: "Switching closes this workspace and restarts the app. Click “Confirm switch”.",
                           });
                         }}
                       >
@@ -1552,16 +1551,16 @@ export const SettingsSurface = ({
                           <strong>{workspace.name}</strong>
                           <small>
                             {workspace.active
-                              ? "Otwarty teraz"
-                              : "Osobny Data Home"}
+                              ? "Open now"
+                              : "Separate Data Home"}
                           </small>
                         </span>
                         <em>
                           {workspace.active
-                            ? "Aktywny"
+                            ? "Active"
                             : confirmSwitchId === workspace.workspaceId
-                              ? "Potwierdź przełączenie"
-                              : "Przełącz"}
+                              ? "Confirm switch"
+                              : "Switch"}
                         </em>
                       </button>
                     ))
@@ -1576,11 +1575,11 @@ export const SettingsSurface = ({
                       setWorkspaceMessage(undefined);
                     }}
                   >
-                    Anuluj przełączenie
+                    Cancel switch
                   </button>
                 )}
                 <form onSubmit={createWorkspace}>
-                  <label htmlFor="new-workspace-name">Nowy workspace</label>
+                  <label htmlFor="new-workspace-name">New workspace</label>
                   <div>
                     <input
                       id="new-workspace-name"
@@ -1588,7 +1587,7 @@ export const SettingsSurface = ({
                       onChange={(event) =>
                         setNewWorkspaceName(event.target.value)
                       }
-                      placeholder="Np. Studio"
+                      placeholder="e.g. Studio"
                       maxLength={80}
                     />
                     <button
@@ -1598,7 +1597,7 @@ export const SettingsSurface = ({
                         newWorkspaceName.trim().length === 0
                       }
                     >
-                      Utwórz
+                      Create
                     </button>
                   </div>
                 </form>
@@ -1610,10 +1609,10 @@ export const SettingsSurface = ({
 
             <section>
               <div className="settings-copy">
-                <h2>Dane, backup i odzyskiwanie</h2>
+                <h2>Data, backup and recovery</h2>
                 <p>
                   {snapshot.dataHome?.descriptor.displayName ??
-                    "Stan Data Home jest chwilowo niedostępny."}
+                    "Data Home state is unavailable right now."}
                 </p>
                 <button
                   type="button"
@@ -1621,7 +1620,7 @@ export const SettingsSurface = ({
                   aria-haspopup="dialog"
                   onClick={() => setConceptHelpTopic("recovery")}
                 >
-                  Wyjaśnij odzyskiwanie
+                  Explain recovery
                 </button>
               </div>
               <div className="settings-control">
@@ -1630,34 +1629,33 @@ export const SettingsSurface = ({
                 >
                   <i aria-hidden="true" />
                   {snapshot.dataHome === undefined
-                    ? "Stan nieznany"
+                    ? "State unknown"
                     : availabilityLabels[snapshot.dataHome.availability]}
                 </span>
                 <button type="button" onClick={onOpenRecovery}>
-                  Otwórz Data Home
+                  Open Data Home
                 </button>
               </div>
             </section>
 
             <section className="support-report-section">
               <div className="settings-copy">
-                <h2>Raport wsparcia</h2>
+                <h2>Support report</h2>
                 <p>
-                  Zapisz plik diagnostyczny, gdy prosisz o pomoc. Pokazuje stan
-                  aplikacji, ale nie treść pracy ani dane identyfikujące.
+                  Save a diagnostic file when you ask for help. It shows app
+                  state, not your work or anything identifying.
                 </p>
                 <details className="support-report-details">
-                  <summary>Co znajdzie się w raporcie?</summary>
+                  <summary>What goes into the report?</summary>
                   <div>
                     <p>
-                      <strong>Zawiera:</strong> wersje aplikacji i systemu oraz
-                      nazwane stany Data Home, odzyskiwania i aktualizacji.
+                      <strong>Includes:</strong> app and system versions, plus
+                      named Data Home, recovery and update states.
                     </p>
                     <p>
-                      <strong>Nie zawiera:</strong> treści, nazw,
-                      identyfikatorów, ścieżek, adresów usług, liczby rekordów,
-                      poświadczeń, logów, stosów błędów ani surowych
-                      komunikatów.
+                      <strong>Excludes:</strong> content, names, identifiers,
+                      paths, service addresses, record counts, credentials,
+                      logs, stack traces and raw messages.
                     </p>
                   </div>
                 </details>
@@ -1668,11 +1666,10 @@ export const SettingsSurface = ({
                   disabled={busySupport || !client?.exportSupportReport}
                   onClick={() => void exportSupportReport()}
                 >
-                  Zapisz raport…
+                  Save report…
                 </button>
                 <p className="support-report-privacy-note">
-                  Plik zostaje na Twoim urządzeniu. Nic nie jest wysyłane
-                  automatycznie.
+                  The file stays on this device. Nothing is sent automatically.
                 </p>
                 {supportMessage && (
                   <p role={supportMessage.tone}>{supportMessage.text}</p>
@@ -1688,14 +1685,14 @@ export const SettingsSurface = ({
           >
             <section>
               <div className="settings-copy">
-                <h2>Wygląd</h2>
+                <h2>Appearance</h2>
                 <p>
-                  Motyw jest lokalną preferencją urządzenia. Kontrast,
-                  przezroczystość i ruch respektują ustawienia systemowe.
+                  Theme is a local device preference. Contrast, transparency and
+                  motion follow system settings.
                 </p>
               </div>
               <fieldset className="settings-control settings-choice">
-                <legend>Motyw</legend>
+                <legend>Theme</legend>
                 {(["system", "dark", "light"] as const).map((item) => (
                   <label key={item}>
                     <input
@@ -1708,8 +1705,8 @@ export const SettingsSurface = ({
                       {item === "system"
                         ? "System"
                         : item === "dark"
-                          ? "Ciemny"
-                          : "Jasny"}
+                          ? "Dark"
+                          : "Light"}
                     </span>
                   </label>
                 ))}
@@ -1724,10 +1721,10 @@ export const SettingsSurface = ({
           >
             <section>
               <div className="settings-copy">
-                <h2>Dostęp i agenci</h2>
+                <h2>Access and agents</h2>
                 <p>
-                  Rola, zakres Space i możliwości agentów pozostają niezależnymi
-                  ustawieniami.
+                  Role, Space scope and agent capabilities stay separate
+                  settings.
                 </p>
                 <button
                   type="button"
@@ -1735,33 +1732,33 @@ export const SettingsSurface = ({
                   aria-haspopup="dialog"
                   onClick={() => setConceptHelpTopic("agent-access")}
                 >
-                  Wyjaśnij dostęp agenta
+                  Explain agent access
                 </button>
               </div>
               <div className="settings-control settings-actions">
                 <button
                   type="button"
-                  onClick={() => onNavigate("access", "Dostęp")}
+                  onClick={() => onNavigate("access", "Access")}
                 >
-                  Zarządzaj dostępem
+                  Manage access
                 </button>
               </div>
             </section>
 
             <section>
               <div className="settings-copy">
-                <h2>Kalendarz i Jamie</h2>
+                <h2>Calendar and Jamie</h2>
                 <p>
-                  Constellation czyta Kalendarz i importuje wyniki Jamie; nie
-                  przejmuje nagrywania ani transkrypcji.
+                  Constellation reads Calendar and imports Jamie results; it
+                  does not record or transcribe.
                 </p>
               </div>
               <div className="settings-control settings-actions">
                 <button
                   type="button"
-                  onClick={() => onNavigate("meetings", "Spotkania")}
+                  onClick={() => onNavigate("meetings", "Meetings")}
                 >
-                  Otwórz połączenia
+                  Open connections
                 </button>
               </div>
             </section>
@@ -1774,14 +1771,14 @@ export const SettingsSurface = ({
           >
             <section>
               <div className="settings-copy">
-                <h2>Import bez ukrytych zapisów</h2>
+                <h2>Import with no hidden writes</h2>
                 <p>
-                  Wersjonowany pakiet JSON tworzy Areas, Initiatives, Projects i
-                  Tasks; CSV zadań (kolumny: title, project, status, priority,
-                  due, start, description, state, waitingOn) mapuje się na ten
-                  sam silnik. Wyłącznie te same wersjonowane komendy co UI i
-                  MCP; podgląd przed zapisem; ponowienie tego samego pliku
-                  bezpiecznie dokańcza przerwany import.
+                  A versioned JSON package creates Areas, Initiatives, Projects
+                  and Tasks; a task CSV (columns: title, project, status,
+                  priority, due, start, description, state, waitingOn) maps onto
+                  the same engine. You see a preview before anything is written,
+                  and running the same file again finishes an interrupted
+                  import.
                 </p>
               </div>
               <div className="settings-control settings-actions">
@@ -1794,7 +1791,7 @@ export const SettingsSurface = ({
                     disabled={busyImport || !client?.previewStarterWorkspace}
                     onChange={(event) => void importStarter(event)}
                   />
-                  <span>Wybierz plik importu (JSON lub CSV zadań)</span>
+                  <span>Choose an import file (JSON or task CSV)</span>
                 </label>
                 {importCandidate && (
                   <div
@@ -1803,36 +1800,36 @@ export const SettingsSurface = ({
                     aria-labelledby="import-preview-title"
                   >
                     <strong id="import-preview-title">
-                      Zakres przed importem
+                      Scope before import
                     </strong>
                     <span>{importCandidate.fileName}</span>
                     <dl>
                       <div>
-                        <dt>Statusy zadań</dt>
+                        <dt>Task statuses</dt>
                         <dd>{importCandidate.counts.taskStatuses}</dd>
                       </div>
                       <div>
-                        <dt>Dokumenty</dt>
+                        <dt>Documents</dt>
                         <dd>{importCandidate.counts.documents}</dd>
                       </div>
                       <div>
-                        <dt>Obszary</dt>
+                        <dt>Areas</dt>
                         <dd>{importCandidate.counts.areas}</dd>
                       </div>
                       <div>
-                        <dt>Inicjatywy</dt>
+                        <dt>Initiatives</dt>
                         <dd>{importCandidate.counts.initiatives}</dd>
                       </div>
                       <div>
-                        <dt>Projekty</dt>
+                        <dt>Projects</dt>
                         <dd>{importCandidate.counts.projects}</dd>
                       </div>
                       <div>
-                        <dt>Zadania</dt>
+                        <dt>Tasks</dt>
                         <dd>{importCandidate.counts.tasks}</dd>
                       </div>
                       <div>
-                        <dt>Powiązania</dt>
+                        <dt>Links</dt>
                         <dd>{importCandidate.counts.links}</dd>
                       </div>
                     </dl>
@@ -1843,7 +1840,7 @@ export const SettingsSurface = ({
                         disabled={busyImport}
                         onClick={() => void confirmStarterImport()}
                       >
-                        Importuj ten zakres
+                        Import this scope
                       </button>
                       <button
                         type="button"
@@ -1852,11 +1849,11 @@ export const SettingsSurface = ({
                           setImportCandidate(undefined);
                           setImportMessage({
                             tone: "status",
-                            text: "Import anulowany. Nic nie zostało zapisane.",
+                            text: "Import cancelled. Nothing was saved.",
                           });
                         }}
                       >
-                        Anuluj
+                        Cancel
                       </button>
                     </div>
                   </div>
@@ -1865,21 +1862,20 @@ export const SettingsSurface = ({
                   <p role={importMessage.tone}>{importMessage.text}</p>
                 )}
                 <small>
-                  Reguły cykliczne i zapisane widoki pozostają zwykłymi
-                  rekordami Work; import nie wykonuje kodu ani nie omija audytu.
+                  Recurrences and saved views stay ordinary Work records; import
+                  runs no code and skips no audit.
                 </small>
               </div>
             </section>
 
             <section>
               <div className="settings-copy">
-                <h2>Eksport pakietu wymiany</h2>
+                <h2>Exchange package export</h2>
                 <p>
-                  Zapisuje Areas, Initiatives, Projects i Tasks tego workspace w
-                  tym samym formacie, który przyjmuje import — pakiet można
-                  wczytać na innym urządzeniu, a ponowne wczytanie tego samego
-                  pliku niczego nie duplikuje. Treść dokumentów i załączniki nie
-                  wchodzą do pakietu.
+                  Saves this workspace's Areas, Initiatives, Projects and Tasks
+                  in the format import accepts, so another device can read it
+                  and re-reading the same file duplicates nothing. Document
+                  content and attachments stay out of the package.
                 </p>
               </div>
               <div className="settings-control settings-actions">
@@ -1888,7 +1884,7 @@ export const SettingsSurface = ({
                   disabled={busyExport || !client?.exportExchangePackage}
                   onClick={() => void exportExchange()}
                 >
-                  Eksportuj pakiet wymiany
+                  Export exchange package
                 </button>
                 {exportMessage && (
                   <p role={exportMessage.tone}>{exportMessage.text}</p>
@@ -1902,9 +1898,9 @@ export const SettingsSurface = ({
               ) : (
                 <>
                   <div className="settings-copy">
-                    <h2>Aktualizacja aplikacji</h2>
+                    <h2>App update</h2>
                     <p role="status">
-                      Stan wydania jest dostępny w aplikacji desktopowej.
+                      Release state is available in the desktop app.
                     </p>
                   </div>
                   <div className="settings-control">

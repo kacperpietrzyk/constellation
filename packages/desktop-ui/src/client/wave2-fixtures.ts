@@ -36,8 +36,8 @@ export interface ActivityFixture {
 
 export interface SearchFixture {
   readonly id: string;
-  readonly group: "Praca" | "Wiedza" | "Capture";
-  readonly kind: "Projekt" | "Zadanie" | "Notatka" | "Capture";
+  readonly group: "Work" | "Knowledge" | "Capture";
+  readonly kind: "Project" | "Task" | "Note" | "Capture";
   readonly title: string;
   readonly detail: string;
   readonly surface: SurfaceId;
@@ -46,26 +46,26 @@ export interface SearchFixture {
 export const projects: readonly ProjectFixture[] = [
   {
     id: "project-offer",
-    title: "Oferta Northstar",
-    outcome: "Oferta gotowa do decyzji handlowej",
-    state: "Weryfikacja",
-    nextAction: "Domknij model cenowy",
-    deadline: "Piątek 11:00",
-    risk: "Brak cennika dystrybutora blokuje finalny wariant.",
+    title: "Northstar offer",
+    outcome: "Offer ready for a commercial decision",
+    state: "Review",
+    nextAction: "Close the pricing model",
+    deadline: "Friday 11:00",
+    risk: "A missing distributor price list blocks the final variant.",
     taskTitles: [
-      "Uzupełnij model cenowy",
-      "Zsyntetyzuj wywiady kwalifikacyjne",
-      "Wyślij poprawione warunki",
+      "Fill in the pricing model",
+      "Synthesize the qualification interviews",
+      "Send the revised terms",
     ],
   },
   {
     id: "project-alpha",
     title: "Interactive alpha",
-    outcome: "Lokalna wersja Capture → Task gotowa do codziennego użycia",
-    state: "W realizacji",
-    nextAction: "Podłączyć trwały adapter",
-    deadline: "Ten tydzień",
-    taskTitles: ["Sprawdź recovery", "Zweryfikuj build Windows"],
+    outcome: "Local Capture → Task flow ready for daily use",
+    state: "In progress",
+    nextAction: "Connect the durable adapter",
+    deadline: "This week",
+    taskTitles: ["Check recovery", "Verify the Windows build"],
   },
 ] as const;
 
@@ -73,8 +73,8 @@ export const activity: readonly ActivityFixture[] = [
   {
     id: "activity-1",
     actor: "human",
-    title: "Kacper powiązał zadanie z projektem",
-    detail: "Oferta Northstar · 2 powiązania",
+    title: "Kacper linked a task to a project",
+    detail: "Northstar offer · 2 links",
     time: "10:42",
     reversible: true,
     command: "record.relate",
@@ -83,8 +83,8 @@ export const activity: readonly ActivityFixture[] = [
   {
     id: "activity-2",
     actor: "agent",
-    title: "Research Partner dodał 3 źródła",
-    detail: "run 7F31 · zakres tylko Space Praca",
+    title: "Research Partner added 3 sources",
+    detail: "run 7F31 · scoped to the Praca Space",
     time: "10:31",
     reversible: true,
     command: "source.attach",
@@ -93,7 +93,7 @@ export const activity: readonly ActivityFixture[] = [
   {
     id: "activity-3",
     actor: "import",
-    title: "Import Jamie utworzył zobowiązanie",
+    title: "Jamie import created a commitment",
     detail: "meeting_884 · exact match",
     time: "09:58",
     reversible: false,
@@ -105,34 +105,34 @@ export const activity: readonly ActivityFixture[] = [
 const baseSearch: readonly SearchFixture[] = [
   {
     id: "search-project",
-    group: "Praca",
-    kind: "Projekt",
-    title: "Oferta Northstar",
-    detail: "Następnie: domknij model cenowy",
+    group: "Work",
+    kind: "Project",
+    title: "Northstar offer",
+    detail: "Next: close the pricing model",
     surface: "projects",
   },
   {
     id: "search-task",
-    group: "Praca",
-    kind: "Zadanie",
-    title: "Wyślij warunki Northstar",
-    detail: "Jutro · Oferta Northstar",
+    group: "Work",
+    kind: "Task",
+    title: "Send the Northstar terms",
+    detail: "Tomorrow · Northstar offer",
     surface: "tasks",
   },
   {
     id: "search-note",
-    group: "Wiedza",
-    kind: "Notatka",
-    title: "Notatka z wywiadu Northstar",
-    detail: "„…zakres odpowiedzialności oferty…”",
+    group: "Knowledge",
+    kind: "Note",
+    title: "Northstar interview note",
+    detail: "“…the offer's scope of responsibility…”",
     surface: "projects",
   },
   {
     id: "search-capture",
     group: "Capture",
     kind: "Capture",
-    title: "Sprawdź warunki odnowienia",
-    detail: "Oryginał · iPhone · 09:18",
+    title: "Check the renewal terms",
+    detail: "Original · iPhone · 09:18",
     surface: "history",
   },
 ] as const;
@@ -142,8 +142,8 @@ export const buildSearchFixtures = (
 ): readonly SearchFixture[] => [
   ...snapshot.tasks.map((task) => ({
     id: task.id,
-    group: "Praca" as const,
-    kind: "Zadanie" as const,
+    group: "Work" as const,
+    kind: "Task" as const,
     title: task.title,
     detail: `${task.status.label} · ${snapshot.bootstrap.workspace.name}`,
     surface: "tasks" as const,
@@ -155,8 +155,8 @@ export const buildSearchFixtures = (
     title: capture.originalText,
     detail:
       capture.processingState === "routed_as_task"
-        ? "Przetworzone jako zadanie"
-        : "Oczekuje na decyzję",
+        ? "Processed as a task"
+        : "Awaiting a decision",
     surface: "history" as const,
   })),
   ...baseSearch,
@@ -172,42 +172,41 @@ export const conditionCopy: Record<
   }
 > = {
   offline: {
-    title: "Pracujesz offline",
-    detail:
-      "Lokalne dane są dostępne. Zmiany czekają bezpiecznie na połączenie.",
-    action: "Pokaż kolejkę",
+    title: "You are offline",
+    detail: "Local data is available. Changes wait safely for a connection.",
+    action: "Show queue",
     tone: "info",
   },
   retry: {
-    title: "Store jest chwilowo zajęty",
-    detail: "Nic nie zapisano częściowo. Możesz bezpiecznie ponowić operację.",
-    action: "Ponów teraz",
+    title: "The store is busy right now",
+    detail: "Nothing was half-saved. You can safely retry.",
+    action: "Retry now",
     tone: "warning",
   },
   partial: {
-    title: "Widok jest częściowy",
+    title: "This view is partial",
     detail:
-      "Zadania i projekty są gotowe; indeks Capture nadal się odbudowuje.",
-    action: "Zobacz postęp",
+      "Tasks and projects are ready; the Capture index is still rebuilding.",
+    action: "See progress",
     tone: "warning",
   },
   conflict: {
-    title: "Dwie wersje wymagają decyzji",
-    detail:
-      "Nowsza wersja została zachowana. Twoja zmiana nie została nadpisana.",
-    action: "Porównaj wersje",
+    title: "Two versions need a decision",
+    detail: "The newer version was kept. Your change was not overwritten.",
+    action: "Compare versions",
     tone: "error",
   },
   permission: {
-    title: "Zakres dostępu uległ zmianie",
-    detail: "Niedostępne wyniki usunięto z widoku i lokalnego indeksu.",
-    action: "Pokaż politykę",
+    title: "The access scope changed",
+    detail:
+      "Results out of reach were removed from the view and the local index.",
+    action: "Show policy",
     tone: "error",
   },
   recovery: {
-    title: "Workspace otwarto z ostatniego checkpointu",
-    detail: "Odzyskano 18 zmian. Jedna operacja oczekuje na ponowienie.",
-    action: "Otwórz recovery",
+    title: "Workspace opened from the last checkpoint",
+    detail: "18 changes recovered. One operation is waiting to be retried.",
+    action: "Open recovery",
     tone: "info",
   },
 };

@@ -290,7 +290,7 @@ const projection = (
       .filter((spaceGrant) => spaceGrant.principalId === grant.agentPrincipalId)
       .map((spaceGrant) => ({
         spaceId: spaceGrant.spaceId,
-        spaceName: spaceNames.get(spaceGrant.spaceId) ?? "Niedostępny Space",
+        spaceName: spaceNames.get(spaceGrant.spaceId) ?? "Unavailable Space",
         spaceGrantId: spaceGrant.id,
         access: spaceGrant.access,
         version: spaceGrant.version,

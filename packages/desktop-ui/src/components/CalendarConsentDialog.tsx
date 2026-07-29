@@ -55,16 +55,16 @@ export const CalendarConsentDialog = ({
       <section className="meeting-consent-dialog">
         <header>
           <div>
-            <p className="eyebrow">Zgoda kalendarza</p>
+            <p className="eyebrow">Calendar consent</p>
             <h2 id="calendar-consent-title">
               {deleting
-                ? "Usuń blok z kalendarza?"
-                : "Potwierdź ten blok pracy"}
+                ? "Delete this block from the calendar?"
+                : "Confirm this calendar block"}
             </h2>
           </div>
           <button
             className="icon-button"
-            aria-label="Zamknij podgląd"
+            aria-label="Close the preview"
             onClick={onClose}
             disabled={busy}
           >
@@ -73,26 +73,26 @@ export const CalendarConsentDialog = ({
         </header>
         <dl className="calendar-preview-facts">
           <div>
-            <dt>Tytuł</dt>
+            <dt>Title</dt>
             <dd>{block.title}</dd>
           </div>
           <div>
-            <dt>Początek</dt>
+            <dt>Start</dt>
             <dd>{formatWeekdayTime(block.startsAt)}</dd>
           </div>
           <div>
-            <dt>Koniec</dt>
+            <dt>End</dt>
             <dd>{formatWeekdayTime(block.endsAt)}</dd>
           </div>
           <div>
-            <dt>Kalendarz</dt>
+            <dt>Calendar</dt>
             <dd>{block.calendarExternalId}</dd>
           </div>
         </dl>
         <p className="meeting-consent-note">
           {deleting
-            ? "To usuwa wydarzenie. Bez cofania. Zgoda wygasa za pięć minut."
-            : "Jednorazowa zgoda dotyczy tych wartości i wygasa po pięciu minutach. Zmiana wymaga nowego podglądu."}
+            ? "This deletes the event. There is no undo. Consent expires in five minutes."
+            : "This one-time consent covers these values and expires in five minutes. A change needs a new preview."}
         </p>
         {error && (
           <p id="calendar-consent-error" className="inline-error" role="alert">
@@ -106,7 +106,7 @@ export const CalendarConsentDialog = ({
             onClick={onClose}
             disabled={busy}
           >
-            Anuluj
+            Cancel
           </button>
           <button
             className={
@@ -130,17 +130,17 @@ export const CalendarConsentDialog = ({
                   else
                     setError(
                       result.code === "stale_revision"
-                        ? "Kalendarz się zmienił. Ponów."
-                        : "Operacja nieudana. Sprawdź uprawnienie.",
+                        ? "The calendar changed. Try again."
+                        : "The write did not go through. Check the Calendar permission.",
                     );
                 });
             }}
           >
             {busy
-              ? "Pracuję…"
+              ? "Working…"
               : deleting
-                ? "Usuń z kalendarza"
-                : "Zapisz ten blok"}
+                ? "Delete from calendar"
+                : "Save this block"}
           </button>
         </footer>
       </section>
