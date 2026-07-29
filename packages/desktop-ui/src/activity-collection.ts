@@ -11,50 +11,50 @@ export const activityCategoryDefinitions: readonly {
   readonly id: ActivityCategory;
   readonly label: string;
 }[] = [
-  { id: "all", label: "Wszystkie zmiany" },
-  { id: "work", label: "Praca" },
+  { id: "all", label: "All changes" },
+  { id: "work", label: "Work" },
   { id: "capture", label: "Capture" },
-  { id: "collaboration", label: "Współpraca" },
-  { id: "knowledge", label: "Wiedza" },
-  { id: "recovery", label: "Odzyskiwanie" },
+  { id: "collaboration", label: "Collaboration" },
+  { id: "knowledge", label: "Knowledge" },
+  { id: "recovery", label: "Recovery" },
 ];
 
 export const activityLabels: Record<ActivityItem["activityType"], string> = {
-  capture_routed: "Capture przekształcono w zadanie",
-  capture_transcript_ready: "Zapisano transkrypcję notatki głosowej",
-  project_created: "Utworzono projekt",
-  project_outcome_changed: "Zmieniono zamierzony wynik projektu",
-  task_created: "Utworzono zadanie",
-  task_details_updated: "Zmieniono treść zadania",
-  task_parent_changed: "Zmieniono strukturę podzadań",
-  task_status_definition_created: "Utworzono status zadań",
-  field_definition_created: "Utworzono pole",
-  field_definition_changed: "Zmieniono definicję pola",
-  record_field_value_set: "Zmieniono wartość pola",
-  template_definition_created: "Utworzono szablon projektu",
-  template_definition_changed: "Zmieniono szablon projektu",
-  project_template_applied: "Zastosowano szablon do projektu",
-  automation_rule_created: "Utworzono regułę automatyzacji",
-  automation_rule_changed: "Zmieniono regułę automatyzacji",
-  automation_swept: "Automatyzacja sprawdziła terminy oczekiwania",
-  task_status_definition_changed: "Zmieniono definicję statusu zadań",
-  workspace_default_status_changed: "Zmieniono domyślny status zadań",
-  task_completed: "Ukończono zadanie",
-  task_reopened: "Ponownie otwarto zadanie",
-  task_assigned: "Przypisano odpowiedzialność za zadanie",
-  task_unassigned: "Usunięto odpowiedzialność za zadanie",
-  comment_added: "Dodano komentarz",
-  comment_resolved: "Rozwiązano wątek komentarzy",
-  comment_reopened: "Ponownie otwarto wątek komentarzy",
-  relation_added: "Powiązano zadanie z projektem",
-  relation_removed: "Usunięto powiązanie",
-  knowledge_source_created: "Zachowano źródło wiedzy",
-  knowledge_source_updated: "Zaktualizowano źródło wiedzy",
-  knowledge_evidence_updated: "Zmieniono dowody dokumentu",
-  knowledge_named_version_created: "Zamrożono nazwaną wersję",
-  knowledge_named_version_voided: "Unieważniono nazwaną wersję",
-  strategic_record_changed: "Zmieniono rekord strategiczny",
-  command_undone: "Cofnięto polecenie",
+  capture_routed: "Turned a Capture into a task",
+  capture_transcript_ready: "Saved a voice note transcript",
+  project_created: "Created a project",
+  project_outcome_changed: "Changed a project's intended outcome",
+  task_created: "Created a task",
+  task_details_updated: "Changed a task's details",
+  task_parent_changed: "Changed the subtask structure",
+  task_status_definition_created: "Created a task status definition",
+  field_definition_created: "Created a field",
+  field_definition_changed: "Changed a field definition",
+  record_field_value_set: "Changed a field value",
+  template_definition_created: "Created a project template",
+  template_definition_changed: "Changed a project template",
+  project_template_applied: "Applied a template to a project",
+  automation_rule_created: "Created an automation rule",
+  automation_rule_changed: "Changed an automation rule",
+  automation_swept: "Automation checked the waiting deadlines",
+  task_status_definition_changed: "Changed a task status definition",
+  workspace_default_status_changed: "Changed the default task status",
+  task_completed: "Completed a task",
+  task_reopened: "Reopened a task",
+  task_assigned: "Assigned a task",
+  task_unassigned: "Unassigned a task",
+  comment_added: "Added a comment",
+  comment_resolved: "Resolved a comment thread",
+  comment_reopened: "Reopened a comment thread",
+  relation_added: "Linked a task to a project",
+  relation_removed: "Removed a link",
+  knowledge_source_created: "Saved a knowledge source",
+  knowledge_source_updated: "Updated a knowledge source",
+  knowledge_evidence_updated: "Changed a document's evidence",
+  knowledge_named_version_created: "Froze a named version",
+  knowledge_named_version_voided: "Voided a named version",
+  strategic_record_changed: "Changed a strategic record",
+  command_undone: "Undid a command",
 };
 
 const categoryByType: Record<
@@ -103,13 +103,13 @@ export const activityCategoryFor = (item: ActivityItem): ActivityItemCategory =>
 
 export const activityCategoryLabel = (category: ActivityCategory): string =>
   activityCategoryDefinitions.find((definition) => definition.id === category)
-    ?.label ?? "Zmiana";
+    ?.label ?? "Change";
 
 export const activityCategoryMark: Record<ActivityItemCategory, string> = {
   capture: "C",
-  work: "P",
-  collaboration: "W",
-  knowledge: "Ź",
+  work: "W",
+  collaboration: "@",
+  knowledge: "K",
   recovery: "↶",
 };
 
@@ -167,9 +167,9 @@ const fullDateLabel = (value: Date, timeZone?: string): string => {
     timeZone,
   };
   try {
-    return new Intl.DateTimeFormat("pl-PL", options).format(value);
+    return new Intl.DateTimeFormat("en-US", options).format(value);
   } catch {
-    return new Intl.DateTimeFormat("pl-PL", {
+    return new Intl.DateTimeFormat("en-US", {
       weekday: "long",
       day: "numeric",
       month: "long",
@@ -206,9 +206,9 @@ export const groupActivityItems = (
     key,
     label:
       key === todayKey
-        ? "Dzisiaj"
+        ? "Today"
         : key === yesterdayKey
-          ? "Wczoraj"
+          ? "Yesterday"
           : fullDateLabel(group.date, timeZone),
     items: group.items,
   }));

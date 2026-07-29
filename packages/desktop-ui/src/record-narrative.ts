@@ -15,25 +15,25 @@ export const recordNarrativeGaps: {
   readonly [kind in RecordNarrativeKind]: RecordNarrativeGap;
 } = {
   area: {
-    marker: "Odpowiedzialność do napisania",
+    marker: "Responsibility to write",
     detail:
-      "Ten obszar powstał bez opisanej odpowiedzialności. Napisz, za co stale odpowiadasz.",
-    action: "Napisz odpowiedzialność",
-    field: "Stała odpowiedzialność",
+      "This area was created without a responsibility. Write what you stay responsible for.",
+    action: "Write responsibility",
+    field: "Ongoing responsibility",
   },
   initiative: {
-    marker: "Wynik do napisania",
+    marker: "Outcome to write",
     detail:
-      "Ta inicjatywa powstała bez zapisanego wyniku. Napisz, co pozwoli ją zamknąć.",
-    action: "Napisz wynik",
-    field: "Zamierzony wynik",
+      "This initiative was created without an outcome. Write what will let you close it.",
+    action: "Write outcome",
+    field: "Intended outcome",
   },
   project: {
-    marker: "Wynik do napisania",
+    marker: "Outcome to write",
     detail:
-      "Ten projekt powstał bez zapisanego wyniku. Napisz, po czym poznasz, że praca jest skończona.",
-    action: "Napisz wynik",
-    field: "Zamierzony wynik",
+      "This project was created without an outcome. Write how you will know the work is done.",
+    action: "Write outcome",
+    field: "Intended outcome",
   },
 };
 

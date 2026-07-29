@@ -15,47 +15,47 @@ export const conceptHelpTopics: readonly ConceptHelpTopic[] = [
   {
     id: "data-home",
     term: "Data Home",
-    question: "Gdzie są dane tego workspace?",
+    question: "Where does this workspace keep its data?",
     explanation:
-      "Data Home to wybrane miejsce przechowywania danych jednego workspace. Może działać tylko na tym urządzeniu albo koordynować pracę kilku urządzeń.",
+      "Data Home is the chosen storage location for one workspace. It can stay on this device alone, or coordinate the work of several devices.",
     boundary:
-      "Zmiana miejsca danych nigdy nie odbywa się po cichu. Constellation pokazuje zakres i wymaga jawnej operacji.",
+      "Moving the data is never silent. Constellation shows the scope and asks for an explicit operation.",
   },
   {
     id: "hub",
     term: "Hub",
-    question: "Jak urządzenia pozostają aktualne?",
+    question: "How do devices stay up to date?",
     explanation:
-      "Hub to usługa wybrana i kontrolowana przez Ciebie. Koordynuje zmiany między urządzeniami, gdy Data Home nie jest tylko lokalny.",
+      "The Hub is a service you choose and control. It coordinates changes between devices when Data Home is not local only.",
     boundary:
-      "Hub nie synchronizuje otwartego pliku bazy przez zwykły folder chmurowy. Bez połączenia nadal możesz pracować na lokalnej, zaszyfrowanej kopii.",
+      "The Hub does not sync an open database file through a plain cloud folder. With no connection you still work on a local encrypted copy.",
   },
   {
     id: "mcp",
     term: "MCP",
-    question: "Jak zewnętrzny agent pracuje w Constellation?",
+    question: "How does an outside agent work in Constellation?",
     explanation:
-      "Model Context Protocol (MCP) to interfejs dla zewnętrznych agentów. Agent korzysta z tych samych wyszukiwań i działań co aplikacja.",
+      "Model Context Protocol (MCP) is the interface for outside agents. An agent uses the same searches and actions as the app.",
     boundary:
-      "Constellation nie uruchamia modelu ani czatu. Host agenta odpowiada za model, a każda operacja pozostawia przypisany ślad audytowy.",
+      "Constellation runs no model and no chat. The agent host owns the model, and every operation leaves an attributed audit trail.",
   },
   {
     id: "agent-access",
-    term: "Dostęp agenta",
-    question: "Co wolno agentowi?",
+    term: "Agent access",
+    question: "What is an agent allowed to do?",
     explanation:
-      "Profil dostępu określa dozwolone działania, widoczne Space i czas ważności. W dokumentacji technicznej taki profil bywa nazywany grantem.",
+      "An access profile sets the allowed actions, the visible Spaces and how long it lasts. Technical documentation calls such a profile a grant.",
     boundary:
-      "Pełny dostęp usuwa dodatkowe pytania tylko w przyznanym zakresie. Nie omija granic workspace, uprawnień systemu, wersji ani audytu.",
+      "Full access drops extra prompts only inside the granted scope. It does not bypass workspace bounds, system permissions, versions or the audit.",
   },
   {
     id: "recovery",
-    term: "Odzyskiwanie",
-    question: "Jak wrócić do pracy po awarii?",
+    term: "Recovery",
+    question: "How do you get back to work after a failure?",
     explanation:
-      "Odzyskiwanie przywraca workspace z zaszyfrowanego backupu przy użyciu osobnego kodu. Przed zmianą Constellation sprawdza plik i pokazuje zakres.",
+      "Recovery restores a workspace from an encrypted backup using a separate code. Constellation checks the file and shows the scope first.",
     boundary:
-      "Bieżące dane nie są zastępowane bez potwierdzenia. Przerwaną operację można bezpiecznie rozpoznać i wznowić po restarcie.",
+      "Current data is never replaced without a confirmation. An interrupted operation can be recognized and safely resumed after a restart.",
   },
 ];
 
@@ -102,17 +102,16 @@ export const ConceptHelpDialog = ({
       <section className="concept-help-dialog">
         <header>
           <div>
-            <p className="eyebrow">Pojęcia</p>
-            <h2 id="concept-help-title">Jak działają dane i dostęp</h2>
+            <p className="eyebrow">Concepts</p>
+            <h2 id="concept-help-title">How data and access work</h2>
             <p id="concept-help-intro">
-              Wybierz pojęcie. Odpowiedź opisuje skutek dla Twojej pracy, nie
-              architekturę systemu.
+              Pick a concept. Each answer describes the effect on your work.
             </p>
           </div>
           <button
             type="button"
             className="icon-button"
-            aria-label="Zamknij pomoc pojęciową"
+            aria-label="Close concept help"
             onClick={onClose}
           >
             <span aria-hidden="true">×</span>
@@ -120,7 +119,7 @@ export const ConceptHelpDialog = ({
         </header>
 
         <div className="concept-help-layout">
-          <nav aria-label="Pojęcia danych i dostępu">
+          <nav aria-label="Data and access concepts">
             <ol>
               {conceptHelpTopics.map((topic) => (
                 <li key={topic.id}>
@@ -146,7 +145,7 @@ export const ConceptHelpDialog = ({
             <h3>{activeTopic.term}</h3>
             <p>{activeTopic.explanation}</p>
             <aside>
-              <strong>Najważniejsza granica</strong>
+              <strong>Where this ends</strong>
               <span>{activeTopic.boundary}</span>
             </aside>
           </article>
@@ -154,7 +153,7 @@ export const ConceptHelpDialog = ({
 
         <footer>
           <button type="button" onClick={onClose}>
-            Zamknij pomoc
+            Close help
           </button>
         </footer>
       </section>

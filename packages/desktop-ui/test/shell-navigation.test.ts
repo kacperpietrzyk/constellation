@@ -269,7 +269,32 @@ describe("shell navigation across a version upgrade", () => {
       restored.tabs.map((tab) => tab.surface),
       ["today", "inbox", "library", "organizations"],
     );
-    assert.equal(restored.activeKey, "destination:attention");
+    // Etykieta i klucz idą razem z celem. Zapis niesie WŁASNĄ kopię napisu,
+    // więc bez tego pierwsze uruchomienie po przebudowie pokazuje angielską
+    // nawigację i polskie zakładki w tym samym oknie; a zakładka zostawiona
+    // pod starym kluczem dubluje się, gdy ten sam cel zostanie otwarty jeszcze
+    // raz.
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.label),
+      ["Today", "Inbox", "Library", "Organizations"],
+    );
+    assert.deepEqual(
+      restored.tabs.map((tab) => tab.key),
+      [
+        "destination:today",
+        "destination:inbox",
+        "destination:library",
+        "destination:organizations",
+      ],
+    );
+    // Zapisany `activeKey` wskazywał starą nazwę; gdyby nie przeszedł tej samej
+    // migracji, nie trafiałby w żadną odtworzoną zakładkę i CAŁA sesja
+    // zostałaby odrzucona — cicho, bo bez awarii.
+    assert.equal(restored.activeKey, "destination:inbox");
+    assert.deepEqual(
+      restored.history.map((entry) => entry.label),
+      ["Today"],
+    );
   });
 
   it("refuses a saved destination it cannot place, instead of guessing", () => {

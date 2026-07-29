@@ -72,7 +72,7 @@ export const TaskAttachmentsSection = ({
     void stageManagedAttachment(client, snapshot)
       .then(async (staged) => {
         if (staged.kind !== "success") {
-          if (staged.message !== "Nie wybrano pliku.") onFailure(staged);
+          if (staged.message !== "No file was chosen.") onFailure(staged);
           return;
         }
         onSnapshot(staged.data.snapshot);
@@ -83,7 +83,7 @@ export const TaskAttachmentsSection = ({
           onFailure({
             kind: "unavailable",
             message:
-              "Plik zapisano w bibliotece, ale zadanie nie jest już dostępne.",
+              "The file is in the library, but this task is no longer available.",
           });
           return;
         }
@@ -102,7 +102,7 @@ export const TaskAttachmentsSection = ({
           },
         );
         if (result.kind === "success")
-          await onChanged("Plik dołączono do zadania.");
+          await onChanged("File attached to the task.");
         else onFailure(result);
       })
       .finally(() => onBusyChange(false));
@@ -118,7 +118,7 @@ export const TaskAttachmentsSection = ({
     })
       .then(async (result) => {
         if (result.kind === "success")
-          await onChanged("Plik odłączono od zadania.");
+          await onChanged("File unlinked from the task.");
         else onFailure(result);
       })
       .finally(() => onBusyChange(false));
@@ -128,8 +128,8 @@ export const TaskAttachmentsSection = ({
     <section className="inspector-section task-attachments">
       <div className="section-heading-row">
         <div>
-          <p className="section-label">Załączniki</p>
-          <p>Oryginały pozostają w zarządzanym magazynie Capture.</p>
+          <p className="section-label">Attachments</p>
+          <p>Originals stay in managed Capture storage.</p>
         </div>
         <button
           type="button"
@@ -137,11 +137,11 @@ export const TaskAttachmentsSection = ({
           disabled={busy || !canEdit || !client}
           onClick={attach}
         >
-          {busy ? "Zabezpieczam…" : "Dołącz plik"}
+          {busy ? "Attaching…" : "Attach file"}
         </button>
       </div>
       {task.attachments.length === 0 ? (
-        <p>Brak załączników.</p>
+        <p>No attachments.</p>
       ) : (
         <ul className="managed-attachment-list">
           {task.attachments.map((attachment) => (
@@ -156,10 +156,10 @@ export const TaskAttachmentsSection = ({
                 className={`attachment-state ${custody[attachment.sourceId]}`}
               >
                 {custody[attachment.sourceId] === "available"
-                  ? "W zarządzanym magazynie"
+                  ? "In managed storage"
                   : custody[attachment.sourceId] === "checking"
-                    ? "Sprawdzam przechowanie…"
-                    : "Niedostępny na tym urządzeniu"}
+                    ? "Checking storage…"
+                    : "Not on this device"}
               </span>
               {custody[attachment.sourceId] === "unavailable" && (
                 <button
@@ -179,7 +179,7 @@ export const TaskAttachmentsSection = ({
                     );
                   }}
                 >
-                  Pobierz ponownie
+                  Restore
                 </button>
               )}
               <button
@@ -188,7 +188,7 @@ export const TaskAttachmentsSection = ({
                 disabled={busy || !canEdit || !client}
                 onClick={() => unlink(attachment)}
               >
-                Odłącz
+                Unlink
               </button>
             </li>
           ))}

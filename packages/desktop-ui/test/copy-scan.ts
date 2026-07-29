@@ -51,6 +51,9 @@ export const stripCommentsAndCode = (source: string): CopyLine[] => {
   // Kod bez komentarzy i bez literałów — zostaje w nim struktura JSX, z której
   // druga faza wyciąga treść między znacznikami.
   let skeleton = "";
+  // Ostatni znak niebędący białym — rozstrzyga, czy apostrof otwiera literał,
+  // czy stoi w środku angielskiego słowa.
+  let previousMeaningful = "";
 
   const flushBuffer = (): void => {
     if (buffer.trim().length > 0) {
@@ -79,6 +82,18 @@ export const stripCommentsAndCode = (source: string): CopyLine[] => {
           index += 1;
           continue;
         }
+        // Apostrof w PROZIE JSX ("the record's permissions", "don't") nie
+        // otwiera literału. Bez tego wyjątku maszyna stanu wchodzi w tryb
+        // stringa na środku zdania i połyka wszystko do następnego apostrofu —
+        // a to ukrywa polską treść, czyli psuje pomiar w stronę fałszywego
+        // spokoju. Rozróżnienie: literał zaczyna się PO znaku, który nie jest
+        // literą ani cyfrą (`=`, `(`, `,`, `[`, `{`, `:`, `?`), apostrof w
+        // prozie stoi zaraz po literze. Prettier w tym repo normalizuje stringi
+        // do cudzysłowów, więc `'` po literze nie jest tu literałem nigdy.
+        if (character === "'" && /[A-Za-z0-9]/.test(previousMeaningful)) {
+          skeleton += character;
+          continue;
+        }
         if (character === '"' || character === "'" || character === "`") {
           mode = character === "`" ? "template" : "string";
           quote = character;
@@ -86,6 +101,7 @@ export const stripCommentsAndCode = (source: string): CopyLine[] => {
           bufferLine = line;
           continue;
         }
+        if (!/\s/.test(character)) previousMeaningful = character;
         skeleton += character;
         continue;
       }
@@ -143,7 +159,14 @@ export const stripCommentsAndCode = (source: string): CopyLine[] => {
 
   // Treść JSX: to, co stoi między `>` a `<` i nie jest wyrażeniem. Numer linii
   // odtwarzamy licząc końce linii w szkielecie do miejsca trafienia.
-  const jsxText = /> *([^<>{}\n][^<>{}]*?) *</g;
+  //
+  // Białe znaki po `>` obejmują KOŃCE LINII, bo prettier łamie dłuższą treść
+  // do własnej linii — `<button>\n  Otwórz w nowej karcie\n</button>`. Wersja
+  // wymagająca treści zaraz po `>` przepuszczała dokładnie te napisy, czyli
+  // te dłuższe, czyli te, na których najbardziej zależy. Nadmiarowe złapanie
+  // (`a > b && c < d`) jest tu nieszkodliwe: wołający szuka POLSKICH
+  // znaczników, a identyfikatory w tym repo są angielskie.
+  const jsxText = />\s*([^<>{}][^<>{}]*?)\s*</g;
   let match: RegExpExecArray | null;
   while ((match = jsxText.exec(skeleton)) !== null) {
     const text = match[1] ?? "";

@@ -171,3 +171,15 @@ export const resolveDesktopSurface = (
   if (isDesktopSurface(value)) return value;
   return retiredDesktopSurfaces[value];
 };
+
+// Etykieta celu, wyprowadzona z rejestru. Zapisany stan powłoki niesie WŁASNĄ
+// kopię etykiety sprzed aktualizacji, więc bez tego zakładka przeniesiona
+// z `cockpit` na `today` otwierałaby się z napisem „Tydzień" — nawigacja po
+// angielsku i zakładki po polsku, w tym samym oknie.
+const labelsBySurface: Readonly<Record<DesktopSurface, string>> =
+  Object.fromEntries(
+    desktopSurfaceRegistry.map((surface) => [surface.id, surface.label]),
+  ) as Record<DesktopSurface, string>;
+
+export const desktopSurfaceLabel = (surface: DesktopSurface): string =>
+  labelsBySurface[surface];

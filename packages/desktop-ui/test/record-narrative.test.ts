@@ -112,7 +112,7 @@ describe("unwritten record narrative", () => {
           needsReview: true,
         }),
       ),
-      '<span class="narrative-gap">Odpowiedzialność do napisania</span>',
+      '<span class="narrative-gap">Responsibility to write</span>',
     );
     const block = renderToStaticMarkup(
       createElement(NarrativeGap, { kind: "initiative", onWrite: () => {} }),

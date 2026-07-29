@@ -155,13 +155,9 @@ const queryProjection = async <Kind extends QueryProjection["kind"]>(
 ): Promise<Projection<Kind>> => {
   const response: RendererQueryResponse = await client.runQuery(query);
   if (response.kind === "contract_rejected")
-    throw new Error(
-      "Aplikacja odrzuciła nieprawidłowe zapytanie. Odśwież i spróbuj ponownie.",
-    );
+    throw new Error("The app refused an invalid query. Refresh and try again.");
   if (response.result.outcome !== "success")
-    throw new Error(
-      "Dane tego widoku są chwilowo niedostępne. Spróbuj ponownie.",
-    );
+    throw new Error("This view's data is unavailable right now. Try again.");
   if (response.result.projection.kind !== kind)
     throw new Error(
       `Unexpected projection: ${response.result.projection.kind}`,
@@ -178,7 +174,7 @@ const optionalProjection = async <Kind extends QueryProjection["kind"]>(
     const message =
       error instanceof Error
         ? error.message
-        : "Dane tego widoku są chwilowo niedostępne.";
+        : "This view's data is unavailable right now.";
     return { kind: "unavailable", message };
   }
 };
@@ -416,7 +412,7 @@ export const loadDesktopSnapshot = async (
       agentAccess = {
         kind: "unavailable",
         message:
-          "Zdalna brama MCP nie odpowiada. Workspace pozostaje dostępny lokalnie; spróbuj ponownie po przywróceniu Hubu.",
+          "The remote MCP gateway is not responding. Agent access returns once the Hub is back.",
       };
     }
   }
@@ -468,17 +464,17 @@ export const createDocument = async (
       }),
     );
     if (response.kind === "contract_rejected") {
-      return { kind: "error", message: "Nie udało się utworzyć dokumentu." };
+      return { kind: "error", message: "Could not create the document." };
     }
     if (response.outcome.outcome !== "success") {
       return {
         kind: response.outcome.outcome === "conflict" ? "conflict" : "error",
-        message: "Dokument nie został utworzony. Spróbuj ponownie.",
+        message: "The document was not created. Try again.",
       };
     }
     return { kind: "success", data: documentId };
   } catch {
-    return { kind: "error", message: "Nie udało się utworzyć dokumentu." };
+    return { kind: "error", message: "Could not create the document." };
   }
 };
 
@@ -525,10 +521,10 @@ export const createKnowledgeSource = async (
       response.kind !== "command_outcome" ||
       response.outcome.outcome !== "success"
     )
-      return { kind: "error", message: "Źródło nie zostało zapisane." };
+      return { kind: "error", message: "The source was not saved." };
     return { kind: "success", data: sourceId };
   } catch {
-    return { kind: "error", message: "Źródło nie zostało zapisane." };
+    return { kind: "error", message: "The source was not saved." };
   }
 };
 
@@ -560,17 +556,17 @@ export const updateKnowledgeSourceTitle = async (
       }),
     );
     if (response.kind !== "command_outcome")
-      return { kind: "error", message: "Tytuł źródła nie został zapisany." };
+      return { kind: "error", message: "The source title was not saved." };
     if (response.outcome.outcome === "conflict")
       return {
         kind: "conflict",
-        message: "Źródło zmieniło się w tle. Odśwież i spróbuj ponownie.",
+        message: "The source changed in the background. Refresh and try again.",
       };
     return response.outcome.outcome === "success"
       ? { kind: "success", data: undefined }
-      : { kind: "error", message: "Tytuł źródła nie został zapisany." };
+      : { kind: "error", message: "The source title was not saved." };
   } catch {
-    return { kind: "error", message: "Tytuł źródła nie został zapisany." };
+    return { kind: "error", message: "The source title was not saved." };
   }
 };
 
@@ -602,7 +598,10 @@ export const setKnowledgeEvidence = async (
     sources.length !== sourceIds.length ||
     notes.length !== noteDocumentIds.length
   )
-    return { kind: "unavailable", message: "Dowody nie są już dostępne." };
+    return {
+      kind: "unavailable",
+      message: "The evidence is no longer available.",
+    };
   const expectedVersions = {
     [document.id]: document.version,
     ...Object.fromEntries(sources.map((source) => [source.id, source.version])),
@@ -622,17 +621,17 @@ export const setKnowledgeEvidence = async (
       }),
     );
     if (response.kind !== "command_outcome")
-      return { kind: "error", message: "Nie zapisano zestawu dowodów." };
+      return { kind: "error", message: "The evidence set was not saved." };
     if (response.outcome.outcome === "conflict")
       return {
         kind: "conflict",
-        message: "Dowody zmieniły się. Odśwież i wybierz ponownie.",
+        message: "The evidence changed. Refresh and choose again.",
       };
     return response.outcome.outcome === "success"
       ? { kind: "success", data: undefined }
-      : { kind: "error", message: "Nie zapisano zestawu dowodów." };
+      : { kind: "error", message: "The evidence set was not saved." };
   } catch {
-    return { kind: "error", message: "Nie zapisano zestawu dowodów." };
+    return { kind: "error", message: "The evidence set was not saved." };
   }
 };
 
@@ -679,17 +678,17 @@ export const createNamedKnowledgeVersion = async (
       }),
     );
     if (response.kind !== "command_outcome")
-      return { kind: "error", message: "Nazwana wersja nie została zapisana." };
+      return { kind: "error", message: "The named version was not saved." };
     if (response.outcome.outcome === "conflict")
       return {
         kind: "conflict",
-        message: "Treść lub dowody zmieniły się. Utwórz świeżą wersję.",
+        message: "The content or evidence changed. Create a fresh version.",
       };
     return response.outcome.outcome === "success"
       ? { kind: "success", data: namedVersionId }
-      : { kind: "error", message: "Nazwana wersja nie została zapisana." };
+      : { kind: "error", message: "The named version was not saved." };
   } catch {
-    return { kind: "error", message: "Nazwana wersja nie została zapisana." };
+    return { kind: "error", message: "The named version was not saved." };
   }
 };
 
@@ -783,7 +782,7 @@ export const createAgentGrant = async (
   }>
 > => {
   if (snapshot.agentAccess.kind !== "ready")
-    return { kind: "unavailable", message: "Dostęp agentów jest niedostępny." };
+    return { kind: "unavailable", message: "Agent access is unavailable." };
   const grantId = crypto.randomUUID() as GrantId;
   try {
     const credential = await client.prepareAgentCredential({ grantId });
@@ -833,7 +832,7 @@ export const createAgentGrant = async (
       },
     };
   } catch {
-    return { kind: "error", message: "Nie udało się utworzyć dostępu agenta." };
+    return { kind: "error", message: "Could not create the agent access." };
   }
 };
 
@@ -882,7 +881,7 @@ export const rotateAgentCredential = async (
       },
     };
   } catch {
-    return { kind: "error", message: "Nie udało się obrócić poświadczenia." };
+    return { kind: "error", message: "Could not rotate the credential." };
   }
 };
 
@@ -892,7 +891,7 @@ export const revokeAgentGrant = async (
   grant: AgentAccessProjection["grants"][number],
 ): Promise<MutationResult<undefined>> => {
   if (snapshot.agentAccess.kind !== "ready")
-    return { kind: "unavailable", message: "Dostęp agentów jest niedostępny." };
+    return { kind: "unavailable", message: "Agent access is unavailable." };
   const expectedVersions = {
     [snapshot.bootstrap.workspace.id]:
       snapshot.agentAccess.data.workspaceVersion,
@@ -922,7 +921,7 @@ export const revokeAgentGrant = async (
       return commandFailure(response);
     return { kind: "success", data: undefined };
   } catch {
-    return { kind: "error", message: "Nie udało się cofnąć dostępu agenta." };
+    return { kind: "error", message: "Could not revoke the agent access." };
   }
 };
 
@@ -952,7 +951,7 @@ export const updateAgentGrantScope = async (
   },
 ): Promise<MutationResult<undefined>> => {
   if (snapshot.agentAccess.kind !== "ready")
-    return { kind: "unavailable", message: "Dostęp agentów jest niedostępny." };
+    return { kind: "unavailable", message: "Agent access is unavailable." };
   // A stated-but-empty list is a deliberate "zero Spaces", which fails
   // authorization outright once applied (the runtime has no resource left
   // to explain) — refuse it here rather than let the schema's `min(1)`
@@ -961,7 +960,7 @@ export const updateAgentGrantScope = async (
   if (target.spaceIds?.length === 0)
     return {
       kind: "unavailable",
-      message: "Dostęp agenta musi obejmować co najmniej jedną Przestrzeń.",
+      message: "Agent access must include at least one Space.",
     };
   const spaceIds = target.spaceIds;
   const access = spaceAccessForPreset(target.preset);
@@ -1026,7 +1025,7 @@ export const updateAgentGrantScope = async (
   } catch {
     return {
       kind: "error",
-      message: "Nie udało się zaktualizować zakresu dostępu agenta.",
+      message: "Could not update the agent's access scope.",
     };
   }
 };
@@ -1080,7 +1079,7 @@ export const createRemoteAgentGrant = async (
       message:
         error instanceof Error
           ? error.message
-          : "Nie udało się utworzyć zdalnego dostępu MCP.",
+          : "Could not create the remote MCP access.",
     };
   }
 };
@@ -1109,7 +1108,7 @@ export const rotateRemoteAgentCredential = async (
       message:
         error instanceof Error
           ? error.message
-          : "Nie udało się obrócić zdalnego poświadczenia.",
+          : "Could not rotate the remote credential.",
     };
   }
 };
@@ -1130,7 +1129,7 @@ export const revokeRemoteAgentGrant = async (
       message:
         error instanceof Error
           ? error.message
-          : "Nie udało się cofnąć zdalnego dostępu.",
+          : "Could not revoke the remote access.",
     };
   }
 };
@@ -1191,23 +1190,23 @@ const commandFailure = (response: RendererCommandResponse): MutationFailure => {
   if (response.kind === "contract_rejected")
     return {
       kind: "error",
-      message: "Polecenie odrzucono na granicy desktopu.",
+      message: "The command was refused at the desktop boundary.",
     };
   const outcome = response.outcome;
   if (outcome.outcome === "conflict")
     return {
       kind: "conflict",
-      message: `Zmiana nie została zapisana: ${outcome.diagnosticCode}. Odśwież dane i spróbuj ponownie.`,
+      message: `The change was not saved: ${outcome.diagnosticCode}. Refresh the data and try again.`,
     };
   if (outcome.outcome === "retryable")
     return {
       kind: "retry",
       message:
         outcome.diagnosticCode === "storage.capacity_exhausted"
-          ? "Brakuje miejsca na bezpieczny zapis. Nic nie zapisano częściowo. Zwolnij miejsce i spróbuj ponownie."
+          ? "There is no room for a safe write. Nothing was half-saved. Free up space and try again."
           : outcome.diagnosticCode === "storage.permission_denied"
-            ? "Workspace nie ma teraz prawa zapisu. Nic nie zapisano częściowo. Przywróć dostęp i spróbuj ponownie."
-            : "Lokalny store jest chwilowo zajęty. Nic nie zapisano częściowo.",
+            ? "The workspace cannot write right now. Nothing was half-saved. Restore access and try again."
+            : "The local store is busy right now. Nothing was half-saved.",
       ...(outcome.retryAfterMs === undefined
         ? {}
         : { retryAfterMs: outcome.retryAfterMs }),
@@ -1224,14 +1223,14 @@ const commandFailure = (response: RendererCommandResponse): MutationFailure => {
       // thing that clears it.
       message:
         outcome.diagnosticCode === "authorization.denied"
-          ? "Brak uprawnienia do tej zmiany."
+          ? "This access does not allow that change."
           : outcome.diagnosticCode === "record.still_referenced"
-            ? "Nie można tego usunąć: inny rekord nadal się do tego odwołuje. Odłącz to, co na niego wskazuje, i spróbuj ponownie."
-            : "Nie można wykonać tej zmiany: rekord jest poza Twoim dostępem albo jego stan się zmienił.",
+            ? "Cannot delete this: another record still references it. Unlink what points at it and try again."
+            : "Cannot make that change: the record is out of reach or its state moved.",
     };
   return {
     kind: "unavailable",
-    message: `Nie można teraz potwierdzić wyniku: ${outcome.diagnosticCode}.`,
+    message: `Cannot confirm the outcome right now: ${outcome.diagnosticCode}.`,
   };
 };
 
@@ -1255,7 +1254,7 @@ const execute = async <T>(
     return {
       kind: "error",
       message:
-        error instanceof Error ? error.message : "Nieoczekiwany błąd desktopu.",
+        error instanceof Error ? error.message : "Unexpected desktop error.",
     };
   }
 };
@@ -1770,8 +1769,7 @@ export const unlinkProjectClient = (
   if (link === undefined)
     return Promise.resolve<MutationResult<never>>({
       kind: "unavailable",
-      message:
-        "Powiązanie z klientem wymaga ponownego wczytania danych przed odłączeniem.",
+      message: "The client link needs a data reload before it can be unlinked.",
     });
   return removeWorkLink(client, snapshot, {
     id: link.linkId,
@@ -1844,8 +1842,7 @@ export const linkOrganizationDelivery = (
   if (organization === undefined || organization.kind !== "organization")
     return Promise.resolve<MutationResult<never>>({
       kind: "unavailable",
-      message:
-        "Dane klienta wymagają ponownego wczytania przed połączeniem projektu.",
+      message: "The client data needs a reload before a project can be linked.",
     });
   return createWorkLink(
     client,
@@ -1868,7 +1865,7 @@ export const unlinkOrganizationDelivery = (
     return Promise.resolve<MutationResult<never>>({
       kind: "unavailable",
       message:
-        "Powiązanie z projektem wymaga ponownego wczytania danych przed odłączeniem.",
+        "The project link needs a data reload before it can be unlinked.",
     });
   return removeWorkLink(client, snapshot, {
     id: link.linkId,
@@ -1989,7 +1986,7 @@ export const removeStrategicRecord = (
   if (command === undefined)
     return Promise.resolve<MutationResult<never>>({
       kind: "error",
-      message: "Tego rodzaju rekordu nie da się usunąć.",
+      message: "This kind of record cannot be removed.",
     });
   return execute(
     client,
@@ -2101,7 +2098,7 @@ export const createOffer = async (
   if (ownerPrincipalId === undefined)
     return Promise.resolve<MutationResult<never>>({
       kind: "unavailable",
-      message: "Nie można ustalić właściciela oferty.",
+      message: "Cannot determine the offer owner.",
     });
   const offerId = crypto.randomUUID() as StrategicRecordId;
   const created = await execute(
@@ -2142,7 +2139,7 @@ export const createOffer = async (
     return {
       kind: "unavailable",
       message:
-        "Oferta powstała, ale Opportunity wymaga ponownego wczytania przed powiązaniem.",
+        "The offer was created, but the Opportunity needs a reload before linking.",
     } as const;
   const linked = await execute(
     client,
@@ -2183,7 +2180,7 @@ export const createRenewal = (
   if (ownerPrincipalId === undefined)
     return Promise.resolve<MutationResult<never>>({
       kind: "unavailable",
-      message: "Nie można ustalić właściciela odnowienia.",
+      message: "Cannot determine the renewal owner.",
     });
   const renewalId = crypto.randomUUID() as StrategicRecordId;
   const followUpTaskId = crypto.randomUUID() as TaskId;
@@ -2431,7 +2428,7 @@ export const setWorkspaceMemberAccess = (
   if (grant === undefined)
     return Promise.resolve<MutationResult<never>>({
       kind: "unavailable",
-      message: "Członek nie ma aktywnego zakresu Space.",
+      message: "This member has no active Space scope.",
     });
   return execute(
     client,
@@ -3064,7 +3061,7 @@ export const setTaskAssignment = (
   if (assigneePrincipalId === undefined && task.assignment === undefined) {
     return Promise.resolve<MutationResult<never>>({
       kind: "unavailable",
-      message: "Zadanie nie ma przypisanej osoby.",
+      message: "This task has no assignee.",
     });
   }
   const expectedVersions = {
@@ -3250,7 +3247,7 @@ export const routeCaptureException = (
   if (capture === undefined) {
     return Promise.resolve<MutationResult<never>>({
       kind: "error",
-      message: "Nie znaleziono zachowanego Capture.",
+      message: "The stored Capture was not found.",
     });
   }
   return execute(
@@ -3282,19 +3279,19 @@ export const resolveCaptureException = (
   if (signal.destination.kind !== "capture")
     return Promise.resolve<MutationResult<never>>({
       kind: "error",
-      message: "Ten sygnał nie prowadzi do Capture.",
+      message: "This signal does not lead to a Capture.",
     });
   const captureId = signal.destination.captureId;
   const capture = snapshot.captures.find((item) => item.id === captureId);
   if (capture === undefined)
     return Promise.resolve<MutationResult<never>>({
       kind: "error",
-      message: "Nie znaleziono zachowanego Capture.",
+      message: "The stored Capture was not found.",
     });
   if (action === "replace_payload" && original === undefined)
     return Promise.resolve<MutationResult<never>>({
       kind: "error",
-      message: "Wybierz plik zastępczy przed wykonaniem tej operacji.",
+      message: "Choose a replacement file before running this operation.",
     });
   return execute(
     client,
@@ -3553,7 +3550,7 @@ export const previewUndo = async (
     )
       return {
         kind: "error",
-        message: "Podglądy cofnięcia nie są spójne. Nie wykonano zmiany.",
+        message: "The undo previews disagree. Nothing was changed.",
       };
     return {
       kind: "success",
@@ -3563,7 +3560,7 @@ export const previewUndo = async (
     return {
       kind: "error",
       message:
-        error instanceof Error ? error.message : "Podgląd jest niedostępny.",
+        error instanceof Error ? error.message : "The preview is unavailable.",
     };
   }
 };
@@ -3673,9 +3670,7 @@ export const submitQuickCapture = async (
                     captureId: routed.outcome.projection.captureId,
                   }
                 : (() => {
-                    throw new Error(
-                      "Nieoczekiwany wynik przetwarzania Capture.",
-                    );
+                    throw new Error("Unexpected Capture processing result.");
                   })(),
       snapshot: nextSnapshot,
     };
@@ -3683,7 +3678,7 @@ export const submitQuickCapture = async (
     return {
       kind: "error",
       message:
-        error instanceof Error ? error.message : "Nieoczekiwany błąd desktopu.",
+        error instanceof Error ? error.message : "Unexpected desktop error.",
     };
   }
 };
@@ -3704,20 +3699,20 @@ export const stageManagedAttachment = async (
   if (client.selectCapturePayload === undefined)
     return {
       kind: "unavailable",
-      message: "Wybór zarządzanego pliku nie jest dostępny w tym środowisku.",
+      message: "Choosing a managed file is not available in this environment.",
     };
   const selected = await client.selectCapturePayload();
   if (selected.outcome === "failure") {
     if (selected.code === "cancelled")
-      return { kind: "unavailable", message: "Nie wybrano pliku." };
+      return { kind: "unavailable", message: "No file was chosen." };
     return {
       kind: selected.code === "payload_unavailable" ? "retry" : "error",
       message:
         selected.code === "payload_too_large"
-          ? "Plik przekracza limit 25 MB."
+          ? "The file is over the 25 MB limit."
           : selected.code === "payload_empty"
-            ? "Pustego pliku nie można dołączyć."
-            : "Nie udało się bezpiecznie przygotować pliku.",
+            ? "An empty file cannot be attached."
+            : "Could not prepare the file safely.",
     };
   }
   if (
@@ -3727,7 +3722,7 @@ export const stageManagedAttachment = async (
     await client.discardCapturePayload?.(selected.original);
     return {
       kind: "error",
-      message: "Wybrany oryginał nie jest obsługiwanym załącznikiem.",
+      message: "The chosen original is not a supported attachment.",
     };
   }
   const routed = await submitQuickCapture(
@@ -3740,7 +3735,7 @@ export const stageManagedAttachment = async (
   if (routed.result.kind !== "knowledge_source")
     return {
       kind: "error",
-      message: "Plik zachowano, ale nie powstało źródło załącznika.",
+      message: "The file was stored, but no attachment source was created.",
     };
   return {
     kind: "success",
@@ -3763,7 +3758,10 @@ export const attachManagedFileToDocument = async (
     documentId,
   ).catch(() => undefined);
   if (initialContext === undefined)
-    return { kind: "unavailable", message: "Dokument nie jest już dostępny." };
+    return {
+      kind: "unavailable",
+      message: "The document is no longer available.",
+    };
   const staged = await stageManagedAttachment(client, snapshot);
   if (staged.kind !== "success") return staged;
   const currentContext = await loadKnowledgeDocumentContext(
@@ -3775,7 +3773,7 @@ export const attachManagedFileToDocument = async (
     return {
       kind: "unavailable",
       message:
-        "Plik pozostaje bezpiecznie zapisany w bibliotece, ale dokument nie jest już dostępny.",
+        "The file is safely stored in the library, but the document is no longer available.",
     };
   const linked = await setKnowledgeEvidence(
     client,
@@ -3796,7 +3794,7 @@ export const attachManagedFileToDocument = async (
   if (linked.kind !== "success")
     return {
       ...linked,
-      message: `${linked.message} Plik pozostaje bezpiecznie zapisany w bibliotece źródeł.`,
+      message: `${linked.message} The file is safely stored in the source library.`,
     };
   return {
     kind: "success",
@@ -3839,7 +3837,7 @@ export const submitCaptureAsTask = async (
   );
   if (result.kind !== "success") return result;
   if (result.result.kind !== "task") {
-    return { kind: "error", message: "Capture nie utworzył zadania." };
+    return { kind: "error", message: "The Capture did not create a task." };
   }
   return {
     kind: "success",

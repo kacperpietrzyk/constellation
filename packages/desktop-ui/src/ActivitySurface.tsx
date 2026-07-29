@@ -21,13 +21,12 @@ import "./activity-surface.css";
 const ActivityHeader = () => (
   <header className="surface-header wave2-header">
     <div>
-      <p className="eyebrow">Znacząca aktywność</p>
+      <p className="eyebrow">Meaningful activity</p>
       <h1 id="surface-title" tabIndex={-1}>
-        Aktywność
+        Activity
       </h1>
       <p>
-        Timeline pokazuje potwierdzone zmiany. Atrybucja i pełny receipt
-        pozostają w audycie.
+        Confirmed changes. Attribution and full receipts stay in the audit log.
       </p>
     </div>
   </header>
@@ -91,8 +90,8 @@ export const ActivitySurface = ({
       >
         <header className="section-heading activity-heading">
           <div>
-            <p className="eyebrow">Lokalny timeline</p>
-            <h2 id="timeline-title">Ostatnie zmiany</h2>
+            <p className="eyebrow">Local timeline</p>
+            <h2 id="timeline-title">Recent changes</h2>
           </div>
           {activity.kind === "ready" && items.length > 0 && (
             <p
@@ -101,14 +100,14 @@ export const ActivitySurface = ({
               aria-live="polite"
             >
               {filtersActive
-                ? `${countLabel(filteredItems.length, "wynik", "wyniki", "wyników")} z ${items.length}`
-                : countLabel(items.length, "zmiana", "zmiany", "zmian")}
+                ? `${countLabel(filteredItems.length, "result")} of ${items.length}`
+                : countLabel(items.length, "change")}
             </p>
           )}
         </header>
         {activity.kind === "unavailable" ? (
           <ActivityInlineState
-            title="Aktywność jest niedostępna"
+            title="Activity is unavailable"
             detail={activity.message}
             action={
               <button
@@ -116,29 +115,26 @@ export const ActivitySurface = ({
                 className="secondary-button"
                 onClick={onRetry}
               >
-                Spróbuj ponownie
+                Try again
               </button>
             }
           />
         ) : items.length === 0 ? (
           <ActivityInlineState
-            title="Nie ma jeszcze znaczących zmian"
-            detail="Utworzenie projektu, routing Capture lub zmiana zadania pojawią się tutaj."
+            title="No meaningful changes yet"
+            detail="Creating a project, routing a Capture or changing a task will show up here."
           />
         ) : (
           <>
-            <div
-              className="activity-controls"
-              aria-label="Filtrowanie aktywności"
-            >
+            <div className="activity-controls" aria-label="Activity filters">
               <label className="activity-search" htmlFor="activity-search">
-                <span className="sr-only">Szukaj w aktywności</span>
+                <span className="sr-only">Search activity</span>
                 <Icon name="search" />
                 <input
                   id="activity-search"
                   type="search"
                   value={query}
-                  placeholder="Zdarzenie lub ID rekordu"
+                  placeholder="Event or record ID"
                   onChange={(event) => setQuery(event.currentTarget.value)}
                 />
               </label>
@@ -146,7 +142,7 @@ export const ActivitySurface = ({
                 className="activity-category-control"
                 htmlFor="activity-category"
               >
-                <span>Rodzaj</span>
+                <span>Category</span>
                 <select
                   id="activity-category"
                   value={category}
@@ -167,21 +163,21 @@ export const ActivitySurface = ({
                 disabled={!filtersActive}
                 onClick={resetFilters}
               >
-                Wyczyść
+                Clear
               </button>
             </div>
 
             {filteredItems.length === 0 ? (
               <ActivityInlineState
-                title="Brak pasujących zmian"
-                detail="Zmień rodzaj lub wyszukiwane słowa. Pełna historia pozostała bez zmian."
+                title="No matching changes"
+                detail="Change the category or the search words. The full history is unchanged."
                 action={
                   <button
                     type="button"
                     className="secondary-button"
                     onClick={resetFilters}
                   >
-                    Pokaż wszystkie
+                    Show all
                   </button>
                 }
               />
@@ -195,14 +191,7 @@ export const ActivitySurface = ({
                   >
                     <header>
                       <h3 id={`activity-group-${group.key}`}>{group.label}</h3>
-                      <span>
-                        {countLabel(
-                          group.items.length,
-                          "zmiana",
-                          "zmiany",
-                          "zmian",
-                        )}
-                      </span>
+                      <span>{countLabel(group.items.length, "change")}</span>
                     </header>
                     <ol className="activity-list">
                       {group.items.map((item) => {
@@ -223,14 +212,14 @@ export const ActivitySurface = ({
                               <strong>
                                 {activityLabels[item.activityType]}
                               </strong>
-                              <code>rekord {item.recordId.slice(0, 8)}</code>
+                              <code>record {item.recordId.slice(0, 8)}</code>
                             </span>
                             <button
                               type="button"
                               className="ghost-button"
                               onClick={() => onUndo(item.targetCommandId)}
                             >
-                              Podgląd cofnięcia
+                              Preview undo
                             </button>
                           </li>
                         );

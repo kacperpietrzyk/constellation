@@ -28,7 +28,7 @@ type ReservedBlock = {
   readonly endsAt: string;
 };
 
-const previewFailed = "Nie udało się przygotować podglądu. Bez zmian.";
+const previewFailed = "Could not prepare the preview. Nothing changed.";
 
 // R12.6 / ADR-042 — "when I will do it", kept deliberately separate from the
 // deadline shown above it in the inspector.
@@ -89,7 +89,7 @@ export const TaskReservationSection = ({
     );
     if (result.kind === "success") {
       setOpen(false);
-      await onRecorded("Czas zarezerwowano i zapisano przy zadaniu.");
+      await onRecorded("Time reserved and recorded on the task.");
       return;
     }
     // The provider event exists — the write already succeeded. Saying
@@ -97,7 +97,7 @@ export const TaskReservationSection = ({
     // for a calendar entry that is really there. ADR-042 §2's recovery is
     // reconcile-on-next-preview, so say exactly that.
     setNotice(
-      "Blok zapisano w kalendarzu, ale nie udało się go zapisać przy zadaniu. Wydarzenie istnieje — kolejny podgląd rezerwacji je odnajdzie i uzgodni.",
+      "The block is in the calendar but was not recorded on the task. The event exists — the next reservation preview finds it and reconciles.",
     );
   };
 
@@ -127,12 +127,12 @@ export const TaskReservationSection = ({
         const startsAt = new Date(`${date}T${startTime}:00`);
         if (Number.isNaN(startsAt.getTime())) {
           setBusy(false);
-          setNotice("Podaj poprawną datę i godzinę rozpoczęcia.");
+          setNotice("Enter a valid start date and time.");
           return;
         }
         if (startsAt.getTime() <= Date.now()) {
           setBusy(false);
-          setNotice("Wybierz przyszłą godzinę rozpoczęcia.");
+          setNotice("Choose a start time in the future.");
           return;
         }
         const draft: CalendarBlockDraft = {
@@ -164,12 +164,12 @@ export const TaskReservationSection = ({
         if (result.kind === "success")
           await onRecorded(
             calendarDeleted
-              ? "Usunięto wydarzenie i rezerwację."
-              : "Zwolniono rezerwację. Wydarzenie pozostaje w kalendarzu.",
+              ? "Event and reservation removed."
+              : "Reservation released. The event stays in the calendar.",
           );
         else if (calendarDeleted)
           setNotice(
-            "Wydarzenie usunięto, ale zadanie nadal pokazuje rezerwację. Przestań ją śledzić.",
+            "The event was deleted but the task still shows the reservation. Stop tracking it.",
           );
         else onFailure(result);
       },
@@ -199,11 +199,11 @@ export const TaskReservationSection = ({
 
   return (
     <section className="inspector-section task-reservation-block">
-      <p className="section-label">Zarezerwowany czas</p>
+      <p className="section-label">Reserved time</p>
       {block === undefined ? (
         <p className="muted-text">
-          Termin mówi, kiedy to ma być zrobione. Rezerwacja mówi, kiedy to
-          zrobisz.
+          The deadline says when it is due. The reservation says when you will
+          do it.
         </p>
       ) : (
         <p className="task-reservation-window">
@@ -219,7 +219,7 @@ export const TaskReservationSection = ({
       {open && block === undefined && (
         <div className="task-reservation-form">
           <label>
-            Dzień
+            Day
             <input
               type="date"
               value={date}
@@ -227,7 +227,7 @@ export const TaskReservationSection = ({
             />
           </label>
           <label>
-            Początek
+            Start
             <input
               type="time"
               value={startTime}
@@ -235,15 +235,15 @@ export const TaskReservationSection = ({
             />
           </label>
           <label>
-            Długość
+            Length
             <select
               value={minutes}
               onChange={(event) => setMinutes(Number(event.target.value))}
             >
-              <option value={30}>30 minut</option>
-              <option value={60}>1 godzina</option>
-              <option value={90}>1,5 godziny</option>
-              <option value={120}>2 godziny</option>
+              <option value={30}>30 minutes</option>
+              <option value={60}>1 hour</option>
+              <option value={90}>1.5 hours</option>
+              <option value={120}>2 hours</option>
             </select>
           </label>
         </div>
@@ -258,7 +258,7 @@ export const TaskReservationSection = ({
                 disabled={busy}
                 onClick={startReservation}
               >
-                {busy ? "Przygotowuję podgląd…" : "Pokaż podgląd zapisu"}
+                {busy ? "Preparing preview…" : "Show write preview"}
               </button>
               <button
                 type="button"
@@ -269,7 +269,7 @@ export const TaskReservationSection = ({
                   setNotice(undefined);
                 }}
               >
-                Anuluj
+                Cancel
               </button>
             </>
           ) : (
@@ -278,7 +278,7 @@ export const TaskReservationSection = ({
               className="secondary-button"
               onClick={() => setOpen(true)}
             >
-              Zarezerwuj czas
+              Reserve time
             </button>
           )
         ) : (
@@ -289,7 +289,7 @@ export const TaskReservationSection = ({
               disabled={busy}
               onClick={release}
             >
-              {busy ? "Zwalniam…" : "Przestań śledzić"}
+              {busy ? "Releasing…" : "Stop tracking"}
             </button>
             <button
               type="button"
@@ -297,7 +297,7 @@ export const TaskReservationSection = ({
               disabled={busy}
               onClick={previewDeletion}
             >
-              Usuń z kalendarza…
+              Delete from calendar…
             </button>
           </>
         )}
@@ -318,7 +318,7 @@ export const TaskReservationSection = ({
             }
             if (revision === undefined) {
               setNotice(
-                "Kalendarz nie zwrócił rewizji zapisu, więc rezerwacji nie zapisano przy zadaniu.",
+                "The calendar returned no revision, so the reservation was not recorded on the task.",
               );
               return;
             }

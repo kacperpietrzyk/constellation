@@ -26,6 +26,7 @@ import {
   InlinePopover,
   reportFirstEmptyRequiredField,
 } from "./components/InlinePopover.js";
+import { recurrenceCadenceLabels } from "./strategic-labels.js";
 
 type Record = RelationshipWorkspaceProjection["records"][number];
 type Operation = () => Promise<MutationResult<unknown>>;
@@ -103,8 +104,8 @@ export const StrategicCreatePanel = ({
     >
       <div className="strategic-create-toolbar">
         <div>
-          <h2 id="strategic-create-title">Rejestr relacji</h2>
-          <span>Każdy zapis ma wersję, autora i audyt</span>
+          <h2 id="strategic-create-title">Relationship register</h2>
+          <span>Every record keeps a revision, an author and an audit</span>
         </div>
         <button
           type="button"
@@ -116,21 +117,19 @@ export const StrategicCreatePanel = ({
           onClick={toggleLauncher}
         >
           <span aria-hidden="true">{launcherOpen ? "×" : "+"}</span>
-          {launcherOpen ? "Zamknij wybór" : "Dodaj rekord"}
+          {launcherOpen ? "Close" : "Add record"}
         </button>
       </div>
       {launcherOpen && (
         <div className="strategic-create-options" id="strategic-create-options">
           <header>
-            <h3>Co chcesz dodać?</h3>
-            <p>
-              Wybierz typ dopiero wtedy, gdy wiesz, jaką rolę ma pełnić zapis.
-            </p>
+            <h3>What do you want to add?</h3>
+            <p>Pick a type once you know the role the record has to play.</p>
           </header>
           <div className="strategic-create-grid">
             <InlinePopover
-              label="Organizacja"
-              panelLabel="Dodaj organizację"
+              label="Organization"
+              panelLabel="Add organization"
               open={openId === "organization"}
               onOpenChange={(next) =>
                 setOpenId(next ? "organization" : undefined)
@@ -151,22 +150,22 @@ export const StrategicCreatePanel = ({
               >
                 <input
                   name="name"
-                  aria-label="Nazwa organizacji"
-                  placeholder="Nazwa organizacji"
+                  aria-label="Organization name"
+                  placeholder="Organization name"
                   required
                 />
                 <input
                   name="nextAction"
-                  aria-label="Następny ruch dla organizacji"
-                  placeholder="Co ma wydarzyć się dalej?"
+                  aria-label="Next move for the organization"
+                  placeholder="What happens next?"
                 />
-                <button disabled={busy}>Dodaj organizację</button>
+                <button disabled={busy}>Add organization</button>
               </form>
             </InlinePopover>
 
             <InlinePopover
-              label="Szansa"
-              panelLabel="Dodaj szansę"
+              label="Opportunity"
+              panelLabel="Add opportunity"
               open={openId === "opportunity"}
               onOpenChange={(next) =>
                 setOpenId(next ? "opportunity" : undefined)
@@ -193,10 +192,10 @@ export const StrategicCreatePanel = ({
               >
                 <select
                   name="organizationId"
-                  aria-label="Organizacja szansy"
+                  aria-label="Organization for the opportunity"
                   required
                 >
-                  <option value="">Wybierz organizację</option>
+                  <option value="">Choose organization</option>
                   {organizations.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name}
@@ -205,34 +204,34 @@ export const StrategicCreatePanel = ({
                 </select>
                 <input
                   name="title"
-                  aria-label="Nazwa szansy"
-                  placeholder="Nazwa szansy"
+                  aria-label="Opportunity name"
+                  placeholder="Opportunity name"
                   required
                 />
                 <input
                   name="need"
-                  aria-label="Potwierdzona potrzeba szansy"
-                  placeholder="Jaka potrzeba jest potwierdzona?"
+                  aria-label="Confirmed need behind the opportunity"
+                  placeholder="What need is confirmed?"
                   required
                 />
                 <input
                   name="nextAction"
-                  aria-label="Następny ruch dla szansy"
-                  placeholder="Jedna konkretna czynność"
+                  aria-label="Next move for the opportunity"
+                  placeholder="One concrete action"
                   required
                 />
                 <button disabled={busy || organizations.length === 0}>
-                  Dodaj szansę
+                  Add opportunity
                 </button>
                 {organizations.length === 0 && (
-                  <small>Najpierw dodaj organizację.</small>
+                  <small>Add an organization first.</small>
                 )}
               </form>
             </InlinePopover>
 
             <InlinePopover
-              label="Osoba"
-              panelLabel="Dodaj osobę"
+              label="Person"
+              panelLabel="Add person"
               open={openId === "person"}
               onOpenChange={(next) => setOpenId(next ? "person" : undefined)}
             >
@@ -259,32 +258,39 @@ export const StrategicCreatePanel = ({
               >
                 <input
                   name="name"
-                  aria-label="Imię i nazwisko osoby"
-                  placeholder="Imię i nazwisko"
+                  aria-label="Full name of the person"
+                  placeholder="Full name"
                   required
                 />
-                <select name="organizationId" aria-label="Organizacja osoby">
-                  <option value="">Bez organizacji</option>
+                <select
+                  name="organizationId"
+                  aria-label="Organization for the person"
+                >
+                  <option value="">No organization</option>
                   {organizations.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name}
                     </option>
                   ))}
                 </select>
-                <input name="role" aria-label="Rola osoby" placeholder="Rola" />
+                <input
+                  name="role"
+                  aria-label="Role of the person"
+                  placeholder="Role"
+                />
                 <input
                   name="email"
                   type="email"
-                  aria-label="Adres e-mail osoby"
-                  placeholder="E-mail"
+                  aria-label="Email address of the person"
+                  placeholder="Email"
                 />
-                <button disabled={busy}>Dodaj osobę</button>
+                <button disabled={busy}>Add person</button>
               </form>
             </InlinePopover>
 
             <InlinePopover
-              label="Oferta"
-              panelLabel="Utwórz szkic oferty"
+              label="Offer"
+              panelLabel="Create offer draft"
               open={openId === "offer"}
               onOpenChange={(next) => setOpenId(next ? "offer" : undefined)}
             >
@@ -309,10 +315,10 @@ export const StrategicCreatePanel = ({
               >
                 <select
                   name="opportunityId"
-                  aria-label="Szansa dla oferty"
+                  aria-label="Opportunity for the offer"
                   required
                 >
-                  <option value="">Wybierz szansę</option>
+                  <option value="">Choose opportunity</option>
                   {opportunities.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.title}
@@ -321,10 +327,10 @@ export const StrategicCreatePanel = ({
                 </select>
                 <select
                   name="documentId"
-                  aria-label="Deliverable dla oferty"
+                  aria-label="Deliverable for the offer"
                   required
                 >
-                  <option value="">Wybierz Deliverable</option>
+                  <option value="">Choose deliverable</option>
                   {deliverables.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.title}
@@ -333,14 +339,14 @@ export const StrategicCreatePanel = ({
                 </select>
                 <input
                   name="title"
-                  aria-label="Nazwa oferty"
-                  placeholder="Nazwa oferty"
+                  aria-label="Offer name"
+                  placeholder="Offer name"
                   required
                 />
                 <input
                   name="nextAction"
-                  aria-label="Następny ruch dla oferty"
-                  placeholder="Następny ruch"
+                  aria-label="Next move for the offer"
+                  placeholder="Next move"
                   required
                 />
                 <button
@@ -350,17 +356,17 @@ export const StrategicCreatePanel = ({
                     deliverables.length === 0
                   }
                 >
-                  Utwórz szkic
+                  Create draft
                 </button>
                 {deliverables.length === 0 && (
-                  <small>Najpierw utwórz dokument typu Deliverable.</small>
+                  <small>Create a deliverable document first.</small>
                 )}
               </form>
             </InlinePopover>
 
             <InlinePopover
-              label="Odnowienie"
-              panelLabel="Dodaj odnowienie"
+              label="Renewal"
+              panelLabel="Add renewal"
               open={openId === "renewal"}
               onOpenChange={(next) => setOpenId(next ? "renewal" : undefined)}
             >
@@ -388,10 +394,10 @@ export const StrategicCreatePanel = ({
               >
                 <select
                   name="organizationId"
-                  aria-label="Organizacja odnowienia"
+                  aria-label="Organization for the renewal"
                   required
                 >
-                  <option value="">Wybierz organizację</option>
+                  <option value="">Choose organization</option>
                   {organizations.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name}
@@ -400,24 +406,24 @@ export const StrategicCreatePanel = ({
                 </select>
                 <input
                   name="title"
-                  aria-label="Nazwa odnowienia"
-                  placeholder="Nazwa odnowienia"
+                  aria-label="Renewal name"
+                  placeholder="Renewal name"
                   required
                 />
                 <input
                   name="scope"
-                  aria-label="Zakres odnowienia"
-                  placeholder="Zakres"
+                  aria-label="Scope of the renewal"
+                  placeholder="Scope"
                   required
                 />
                 <input
                   name="expiresAt"
                   type="date"
-                  aria-label="Data wygaśnięcia odnowienia"
+                  aria-label="Expiry date of the renewal"
                   required
                 />
-                <select name="sourceId" aria-label="Źródło odnowienia">
-                  <option value="">Bez źródła</option>
+                <select name="sourceId" aria-label="Source for the renewal">
+                  <option value="">No source</option>
                   {sources.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.title}
@@ -425,14 +431,14 @@ export const StrategicCreatePanel = ({
                   ))}
                 </select>
                 <button disabled={busy || organizations.length === 0}>
-                  Dodaj i utwórz follow-up
+                  Add and create follow-up
                 </button>
               </form>
             </InlinePopover>
 
             <InlinePopover
-              label="Fakt ze źródłem"
-              panelLabel="Zapisz fakt ze źródłem"
+              label="Relationship fact"
+              panelLabel="Save a relationship fact with its source"
               open={openId === "fact"}
               onOpenChange={(next) => setOpenId(next ? "fact" : undefined)}
             >
@@ -457,10 +463,10 @@ export const StrategicCreatePanel = ({
               >
                 <select
                   name="organizationId"
-                  aria-label="Organizacja opisywana przez fakt"
+                  aria-label="Organization the fact describes"
                   required
                 >
-                  <option value="">Wybierz organizację</option>
+                  <option value="">Choose organization</option>
                   {organizations.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name}
@@ -469,18 +475,22 @@ export const StrategicCreatePanel = ({
                 </select>
                 <input
                   name="factType"
-                  aria-label="Typ faktu"
-                  placeholder="Typ faktu"
+                  aria-label="Fact type"
+                  placeholder="Fact type"
                   required
                 />
                 <textarea
                   name="factValue"
-                  aria-label="Potwierdzona wartość faktu"
-                  placeholder="Potwierdzona wartość"
+                  aria-label="Confirmed value of the fact"
+                  placeholder="Confirmed value"
                   required
                 />
-                <select name="sourceId" aria-label="Źródło faktu" required>
-                  <option value="">Wybierz źródło</option>
+                <select
+                  name="sourceId"
+                  aria-label="Source for the fact"
+                  required
+                >
+                  <option value="">Choose source</option>
                   {sources.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.title}
@@ -488,14 +498,14 @@ export const StrategicCreatePanel = ({
                   ))}
                 </select>
                 <button disabled={busy || sources.length === 0}>
-                  Zapisz fakt
+                  Save fact
                 </button>
               </form>
             </InlinePopover>
 
             <InlinePopover
-              label="Decyzja"
-              panelLabel="Zapisz decyzję"
+              label="Decision"
+              panelLabel="Save decision"
               open={openId === "decision"}
               onOpenChange={(next) => setOpenId(next ? "decision" : undefined)}
             >
@@ -519,31 +529,31 @@ export const StrategicCreatePanel = ({
               >
                 <input
                   name="title"
-                  aria-label="Treść decyzji"
-                  placeholder="Co zdecydowano?"
+                  aria-label="What the decision says"
+                  placeholder="What was decided?"
                   required
                 />
                 <textarea
                   name="rationale"
-                  aria-label="Uzasadnienie decyzji"
-                  placeholder="Dlaczego?"
+                  aria-label="Rationale for the decision"
+                  placeholder="Why?"
                   required
                 />
-                <select name="sourceId" aria-label="Źródło decyzji">
-                  <option value="">Bez źródła</option>
+                <select name="sourceId" aria-label="Source for the decision">
+                  <option value="">No source</option>
                   {sources.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.title}
                     </option>
                   ))}
                 </select>
-                <button disabled={busy}>Zapisz decyzję</button>
+                <button disabled={busy}>Save decision</button>
               </form>
             </InlinePopover>
 
             <InlinePopover
-              label="Zastąp decyzję"
-              panelLabel="Zastąp decyzję z historią"
+              label="Supersede decision"
+              panelLabel="Supersede a decision and keep the history"
               open={openId === "supersede"}
               onOpenChange={(next) => setOpenId(next ? "supersede" : undefined)}
             >
@@ -568,10 +578,10 @@ export const StrategicCreatePanel = ({
               >
                 <select
                   name="decisionId"
-                  aria-label="Decyzja do zastąpienia"
+                  aria-label="Decision to supersede"
                   required
                 >
-                  <option value="">Bieżąca decyzja</option>
+                  <option value="">Current decision</option>
                   {decisions.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.title}
@@ -580,31 +590,31 @@ export const StrategicCreatePanel = ({
                 </select>
                 <input
                   name="title"
-                  aria-label="Treść nowej decyzji"
-                  placeholder="Nowa decyzja"
+                  aria-label="What the new decision says"
+                  placeholder="New decision"
                   required
                 />
                 <textarea
                   name="rationale"
-                  aria-label="Uzasadnienie nowej decyzji"
-                  placeholder="Nowe uzasadnienie"
+                  aria-label="Rationale for the new decision"
+                  placeholder="New rationale"
                   required
                 />
                 <input
                   name="reason"
-                  aria-label="Powód zastąpienia poprzedniej decyzji"
-                  placeholder="Dlaczego zastępuje poprzednią?"
+                  aria-label="Reason for superseding the previous decision"
+                  placeholder="Why does it replace the previous one?"
                   required
                 />
                 <button disabled={busy || decisions.length === 0}>
-                  Zastąp z historią
+                  Supersede and keep history
                 </button>
               </form>
             </InlinePopover>
 
             <InlinePopover
-              label="Reguła cykliczna"
-              panelLabel="Dodaj regułę cykliczną"
+              label="Recurrence"
+              panelLabel="Add recurrence"
               open={openId === "recurrence"}
               onOpenChange={(next) =>
                 setOpenId(next ? "recurrence" : undefined)
@@ -629,29 +639,35 @@ export const StrategicCreatePanel = ({
               >
                 <input
                   name="title"
-                  aria-label="Nazwa reguły cyklicznej"
-                  placeholder="Nazwa reguły"
+                  aria-label="Name of the recurrence"
+                  placeholder="Recurrence name"
                   required
                 />
                 <input
                   name="taskTitle"
-                  aria-label="Tytuł powtarzanego zadania"
-                  placeholder="Tytuł powtarzanego zadania"
+                  aria-label="Title of the repeated task"
+                  placeholder="Title of the repeated task"
                   required
                 />
-                <select name="cadence" aria-label="Częstotliwość reguły">
-                  <option value="weekly">Co tydzień</option>
-                  <option value="monthly">Co miesiąc</option>
-                  <option value="daily">Codziennie</option>
-                  <option value="yearly">Co rok</option>
+                <select name="cadence" aria-label="Cadence of the recurrence">
+                  <option value="weekly">
+                    {recurrenceCadenceLabels.weekly}
+                  </option>
+                  <option value="monthly">
+                    {recurrenceCadenceLabels.monthly}
+                  </option>
+                  <option value="daily">{recurrenceCadenceLabels.daily}</option>
+                  <option value="yearly">
+                    {recurrenceCadenceLabels.yearly}
+                  </option>
                 </select>
-                <button disabled={busy}>Dodaj regułę</button>
+                <button disabled={busy}>Add recurrence</button>
               </form>
             </InlinePopover>
 
             <InlinePopover
-              label="Kandydat Radar"
-              panelLabel="Dodaj kandydata Radaru"
+              label="Knowledge radar"
+              panelLabel="Add a knowledge radar candidate"
               open={openId === "radar"}
               onOpenChange={(next) => setOpenId(next ? "radar" : undefined)}
             >
@@ -673,10 +689,10 @@ export const StrategicCreatePanel = ({
               >
                 <select
                   name="sourceId"
-                  aria-label="Źródło kandydata Radar"
+                  aria-label="Source for the radar candidate"
                   required
                 >
-                  <option value="">Wybierz źródło</option>
+                  <option value="">Choose source</option>
                   {sources.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.title}
@@ -685,18 +701,18 @@ export const StrategicCreatePanel = ({
                 </select>
                 <input
                   name="title"
-                  aria-label="Tytuł kandydata Radar"
-                  placeholder="Co warto przejrzeć?"
+                  aria-label="Title of the radar candidate"
+                  placeholder="What is worth reading?"
                   required
                 />
                 <textarea
                   name="relevance"
-                  aria-label="Znaczenie kandydata Radar"
-                  placeholder="Dlaczego to może być istotne?"
+                  aria-label="Why the radar candidate matters"
+                  placeholder="Why might this matter?"
                   required
                 />
                 <button disabled={busy || sources.length === 0}>
-                  Dodaj do skończonego przeglądu
+                  Add to review
                 </button>
               </form>
             </InlinePopover>

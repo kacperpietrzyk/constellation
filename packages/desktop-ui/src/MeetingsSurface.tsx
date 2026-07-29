@@ -34,54 +34,54 @@ type CompletedMeeting = MeetingLoopSurface["completed"][number];
 type MeetingWorkItem = CompletedMeeting["workItems"][number];
 
 const staleRefreshNotice =
-  "Nie udało się odświeżyć spotkań. Pokazuję ostatni bezpieczny stan.";
+  "Could not refresh meetings. Showing the last safe state.";
 
 const healthLabel = (meeting: CompletedMeeting) => {
   switch (meeting.triage) {
     case "ready":
-      return "Gotowe";
+      return "Ready";
     case "partial":
-      return "Częściowe";
+      return "Partial";
     case "conflicted":
-      return "Konflikt";
+      return "Conflicted";
     case "needs_review":
-      return "Do uwagi";
+      return "Needs review";
   }
 };
 
 const workItemKindLabel = (item: MeetingWorkItem) => {
   switch (item.kind) {
     case "task":
-      return "Zadanie";
+      return "Task";
     case "decision":
-      return "Decyzja";
+      return "Decision";
     case "waiting":
-      return "Oczekiwanie";
+      return "Waiting";
     case "note":
-      return "Notatka";
+      return "Note";
     case "follow_up":
-      return "Dalszy kontakt";
+      return "Follow-up";
   }
 };
 
 const workItemStateLabel = (item: MeetingWorkItem) => {
   switch (item.state) {
     case "open":
-      return "Otwarte";
+      return "Open";
     case "completed":
-      return "Ukończone";
+      return "Completed";
     case "dismissed":
-      return "Odrzucone";
+      return "Dismissed";
     case "withdrawn":
-      return "Wycofane w Jamie";
+      return "Withdrawn in Jamie";
     case "conflicted":
-      return "Konflikt";
+      return "Conflicted";
   }
 };
 
 const workItemMetadata = (item: MeetingWorkItem) =>
   item.responsibilityOverride !== undefined
-    ? `${workItemStateLabel(item)} · Odpowiedzialność: ${item.responsibilityOverride.name} · korekta lokalna`
+    ? `${workItemStateLabel(item)} · Assignee: ${item.responsibilityOverride.name} · local correction`
     : item.assignee === undefined
       ? workItemStateLabel(item)
       : `${workItemStateLabel(item)} · Jamie: ${item.assignee.name}`;
@@ -89,19 +89,19 @@ const workItemMetadata = (item: MeetingWorkItem) =>
 const capabilityCopy = (surface: MeetingLoopSurface) => {
   switch (surface.capability.availability) {
     case "available":
-      return "Kalendarz jest dostępny. Wydarzenia pozostają źródłem prawdy w wybranym kalendarzu.";
+      return "Calendar is available. Events stay the source of truth in that calendar.";
     case "permission_required":
-      return "macOS wymaga pełnego dostępu do Kalendarza, aby Constellation mogło odczytać nadchodzące wydarzenia.";
+      return "macOS needs full Calendar access before Constellation can read upcoming events.";
     case "permission_denied":
-      return "Dostęp do Kalendarza jest wyłączony. Zmień uprawnienie w Ustawieniach systemowych.";
+      return "Calendar access is off. Change the permission in System Settings.";
     case "provider_unavailable":
       return surface.capability.platform === "windows"
-        ? "Provider kalendarza dla Windows nie jest jeszcze skonfigurowany. Wyniki Jamie nadal pozostają dostępne."
-        : "Na tym urządzeniu nie ma obsługiwanego providera kalendarza.";
+        ? "The Windows calendar provider is not set up yet. Jamie results still work."
+        : "This device has no supported calendar provider.";
     case "offline":
-      return "Kalendarz jest chwilowo offline. Pokazujemy ostatnie bezpieczne dane bez udawania aktualności.";
+      return "Calendar is offline. Showing the last safe data instead of pretending it is current.";
     case "error":
-      return "Nie udało się odczytać kalendarza. Spróbuj ponownie; żadne wydarzenie nie zostało zmienione.";
+      return "Could not read the calendar. Try again; no event was changed.";
   }
 };
 
@@ -113,7 +113,7 @@ const capabilityCopy = (surface: MeetingLoopSurface) => {
 // dla obu zablokowanych wyników, bo to jest TO SAMO rozwiązanie tego samego
 // problemu — i dlatego da się o nią asertować bez czytania zdania.
 const CALENDAR_PERMISSION_REMEDY =
-  "Ustawienia systemowe → Prywatność i ochrona → Kalendarze";
+  "System Settings → Privacy & Security → Calendars";
 
 export type CalendarAccessOutcome = {
   // Rozstrzygnięcie, po którym wołający i test rozpoznają wynik. Wcześniej
@@ -133,13 +133,12 @@ export const calendarAccessOutcome = (
   if (capability.availability === "available")
     return {
       tag: "granted",
-      message:
-        "Dostęp do Kalendarza przyznany. Nadchodzące wydarzenia są już widoczne.",
+      message: "Calendar access granted. Upcoming events are visible now.",
     };
   if (capability.availability === "permission_denied")
     return {
       tag: "denied",
-      message: `Odmówiono dostępu do Kalendarza. Włącz go w ${CALENDAR_PERMISSION_REMEDY}.`,
+      message: `Calendar access was refused. Turn it on in ${CALENDAR_PERMISSION_REMEDY}.`,
       remedy: CALENDAR_PERMISSION_REMEDY,
     };
   // macOS declined to raise the prompt at all. The person did nothing wrong
@@ -147,13 +146,12 @@ export const calendarAccessOutcome = (
   if (capability.detailCode === "permission_prompt_suppressed")
     return {
       tag: "suppressed",
-      message: `macOS nie pokazał pytania o dostęp do Kalendarza. Nadaj uprawnienie w ${CALENDAR_PERMISSION_REMEDY}.`,
+      message: `macOS did not show the Calendar access prompt. Grant the permission in ${CALENDAR_PERMISSION_REMEDY}.`,
       remedy: CALENDAR_PERMISSION_REMEDY,
     };
   return {
     tag: "unavailable",
-    message:
-      "Dostęp do Kalendarza nie został przyznany. Żadne wydarzenie nie zostało zmienione.",
+    message: "Calendar access is still not in place. No event was changed.",
   };
 };
 
@@ -329,7 +327,7 @@ export const MeetingsSurface = ({
           setState({
             kind: "error",
             message:
-              "Pętla spotkań jest niedostępna. Dane i kalendarz nie zostały zmienione.",
+              "The meeting loop is unavailable. No data and no calendar event changed.",
           });
       });
   };
@@ -345,7 +343,7 @@ export const MeetingsSurface = ({
         meeting.id,
         meeting.summaryMarkdown
           ? toMeetingResultPreview(meeting.summaryMarkdown)
-          : "Brak podsumowania w wyniku Jamie.",
+          : "No summary in the Jamie result.",
       ]),
     );
   }, [state]);
@@ -370,7 +368,7 @@ export const MeetingsSurface = ({
     return (
       <section className="meeting-surface meeting-skeleton" aria-busy="true">
         <h1 id="surface-title" className="sr-only" tabIndex={-1}>
-          Otwieram spotkania…
+          Opening meetings…
         </h1>
         <div />
         <div />
@@ -393,11 +391,11 @@ export const MeetingsSurface = ({
           </svg>
         </span>
         <h1 id="surface-title" tabIndex={-1}>
-          Spotkania są chwilowo niedostępne
+          Meetings are unavailable right now
         </h1>
         <p>{state.message}</p>
         <button className="primary-button" onClick={load}>
-          Spróbuj ponownie
+          Try again
         </button>
       </section>
     );
@@ -414,7 +412,7 @@ export const MeetingsSurface = ({
       <strong>
         {surface.capability.provider === "eventkit"
           ? "Apple Calendar"
-          : "Kalendarz"}
+          : "Calendar"}
       </strong>
       <span>{capabilityCopy(surface)}</span>
       {surface.capability.availability !== "available" && (
@@ -442,7 +440,7 @@ export const MeetingsSurface = ({
               })
               .catch(() =>
                 setNotice(
-                  "Nie udało się poprosić o dostęp do Kalendarza. Nic nie zostało zmienione.",
+                  "Could not ask for Calendar access. Nothing was changed.",
                 ),
               )
               .finally(() => setCalendarAccessBusy(false));
@@ -451,9 +449,9 @@ export const MeetingsSurface = ({
           {surface.capability.platform === "macos" &&
           surface.capability.availability === "permission_required"
             ? calendarAccessBusy
-              ? "Pytam macOS…"
-              : "Przyznaj dostęp"
-            : "Sprawdź ponownie"}
+              ? "Asking macOS…"
+              : "Grant access"
+            : "Check again"}
         </button>
       )}
     </div>
@@ -472,26 +470,25 @@ export const MeetingsSurface = ({
               Jamie
             </span>
             <span className="meeting-integration-status">
-              Połączono klucz{" "}
-              {jamie.scope === "workspace" ? "zespołu" : "osobisty"}
+              Connected{" "}
+              {jamie.scope === "workspace" ? "workspace key" : "personal key"}
             </span>
           </p>
         ) : (
           <div>
-            <p className="eyebrow">Źródło wyników</p>
+            <p className="eyebrow">Result source</p>
             <h2 id="jamie-title">Jamie</h2>
             <p>
-              Jamie zachowuje odpowiedzialność za nagranie, transkrypcję i
-              inteligencję spotkania. Constellation importuje wynik oraz trwałe
-              identyfikatory zadań.
+              Jamie records and transcribes. Constellation imports the result
+              and its durable task ids.
             </p>
           </div>
         )}
         {jamie.kind === "loading" ? (
-          <span className="meeting-integration-status">Sprawdzam…</span>
+          <span className="meeting-integration-status">Checking…</span>
         ) : jamie.kind === "error" ? (
           <button className="secondary-button" onClick={loadJamieStatus}>
-            Ponów sprawdzenie
+            Check again
           </button>
         ) : jamie.configured ? (
           <div className="meeting-integration-actions">
@@ -505,19 +502,9 @@ export const MeetingsSurface = ({
                   .then((result) => {
                     setJamieBusy(false);
                     setNotice(
-                      `Jamie: ${countLabel(
-                        result.applied + result.corrected,
-                        "nowy lub poprawiony",
-                        "nowe lub poprawione",
-                        "nowych lub poprawionych",
-                      )}, ${result.noChange} bez zmian, ${countLabel(
-                        result.partial,
-                        "częściowy",
-                        "częściowe",
-                        "częściowych",
-                      )}${
+                      `Jamie: ${result.applied + result.corrected} new or corrected, ${result.noChange} unchanged, ${result.partial} partial${
                         result.failed
-                          ? `, ${countLabel(result.failed, "błąd", "błędy", "błędów")}`
+                          ? `, ${countLabel(result.failed, "error")}`
                           : ""
                       }.`,
                     );
@@ -526,12 +513,12 @@ export const MeetingsSurface = ({
                   .catch(() => {
                     setJamieBusy(false);
                     setNotice(
-                      "Nie udało się zsynchronizować Jamie. Dotychczasowe wyniki pozostały bez zmian.",
+                      "Could not sync Jamie. The results you already have are unchanged.",
                     );
                   });
               }}
             >
-              {jamieBusy ? "Synchronizuję…" : "Synchronizuj ostatnie 90 dni"}
+              {jamieBusy ? "Syncing…" : "Sync the last 90 days"}
             </button>
             <button
               className="quiet-button"
@@ -541,13 +528,13 @@ export const MeetingsSurface = ({
                 void client.disconnectJamie().then(() => {
                   setJamieBusy(false);
                   setNotice(
-                    "Odłączono klucz Jamie. Zaimportowane wyniki zachowano.",
+                    "Jamie key disconnected. Imported results were kept.",
                   );
                   loadJamieStatus();
                 });
               }}
             >
-              Odłącz
+              Disconnect
             </button>
           </div>
         ) : (
@@ -562,32 +549,32 @@ export const MeetingsSurface = ({
                   setJamieApiKey("");
                   setJamieBusy(false);
                   setNotice(
-                    "Klucz Jamie zapisano w ochronie poświadczeń systemu operacyjnego.",
+                    "Jamie key saved in the operating system credential store.",
                   );
                   loadJamieStatus();
                 })
                 .catch(() => {
                   setJamieBusy(false);
                   setNotice(
-                    "Nie zapisano klucza Jamie. Sprawdź format i ochronę poświadczeń systemu.",
+                    "Could not save the Jamie key. Check its format and the system credential store.",
                   );
                 });
             }}
           >
             <label>
-              Zakres klucza
+              Key scope
               <select
                 value={jamieScope}
                 onChange={(event) =>
                   setJamieScope(event.target.value as typeof jamieScope)
                 }
               >
-                <option value="personal">Osobisty</option>
+                <option value="personal">Personal</option>
                 <option value="workspace">Workspace</option>
               </select>
             </label>
             <label>
-              Klucz API
+              API key
               <input
                 type="password"
                 autoComplete="off"
@@ -601,7 +588,7 @@ export const MeetingsSurface = ({
               className="primary-button"
               disabled={jamieBusy || jamieApiKey.trim().length < 19}
             >
-              {jamieBusy ? "Zabezpieczam…" : "Połącz Jamie"}
+              {jamieBusy ? "Securing…" : "Connect Jamie"}
             </button>
           </form>
         )}
@@ -612,13 +599,13 @@ export const MeetingsSurface = ({
     <section className="meeting-surface" aria-labelledby="surface-title">
       <header className="meeting-hero">
         <div>
-          <p className="eyebrow">Od przygotowania do dalszej pracy</p>
+          <p className="eyebrow">From preparation to follow-up</p>
           <h1 id="surface-title" tabIndex={-1}>
-            Spotkania
+            Meetings
           </h1>
           <p>
-            Fakty przed spotkaniem, wynik Jamie po nim i każde dalsze działanie
-            z własnym cyklem życia.
+            Facts before a meeting, the Jamie result after, and every action
+            item that follows.
           </p>
         </div>
       </header>
@@ -635,24 +622,16 @@ export const MeetingsSurface = ({
           aria-labelledby="completed-title"
         >
           <header>
-            <h2 id="completed-title">Wyniki Jamie</h2>
-            <span>
-              {countLabel(
-                surface.completed.length,
-                "wynik",
-                "wyniki",
-                "wyników",
-              )}
-            </span>
+            <h2 id="completed-title">Jamie results</h2>
+            <span>{countLabel(surface.completed.length, "result")}</span>
           </header>
           {jamieConnection}
           {surface.completed.length === 0 ? (
             <div className="meeting-empty meeting-empty--compact">
-              <h3>Nie zaimportowano jeszcze wyniku</h3>
+              <h3>No result imported yet</h3>
               <p>
-                Jamie nadal odpowiada za nagranie, transkrypcję i inteligencję
-                spotkania. Import zachowa źródło i bezpiecznie zbiegnie
-                duplikaty.
+                Jamie still owns recording and transcription. Import keeps the
+                source and merges duplicates safely.
               </p>
             </div>
           ) : (
@@ -660,20 +639,18 @@ export const MeetingsSurface = ({
               <ol
                 className="meeting-result-list"
                 role="listbox"
-                aria-label="Zaimportowane wyniki Jamie"
+                aria-label="Imported Jamie results"
               >
                 {surface.completed.map((meeting, index) => {
                   const selected = meeting.id === selectedMeeting?.id;
                   const preview =
                     resultPreviews.get(meeting.id) ??
-                    "Brak podsumowania w wyniku Jamie.";
+                    "No summary in the Jamie result.";
                   const previewId = `meeting-result-preview-${index}`;
-                  const title = meeting.title ?? "Spotkanie bez tytułu";
+                  const title = meeting.title ?? "Untitled meeting";
                   const workCount = countLabel(
                     meeting.workItems.length,
-                    "działanie",
-                    "działania",
-                    "działań",
+                    "action item",
                   );
                   return (
                     <li key={meeting.id} role="presentation">
@@ -727,9 +704,9 @@ export const MeetingsSurface = ({
                   >
                     <header className="meeting-result-detail-header">
                       <div>
-                        <p className="eyebrow">Wynik Jamie</p>
+                        <p className="eyebrow">Jamie result</p>
                         <h3 id="meeting-result-detail-title">
-                          {selectedMeeting.title ?? "Spotkanie bez tytułu"}
+                          {selectedMeeting.title ?? "Untitled meeting"}
                         </h3>
                         <p>
                           <time dateTime={selectedMeeting.startedAt}>
@@ -738,9 +715,7 @@ export const MeetingsSurface = ({
                           <span aria-hidden="true"> · </span>
                           {countLabel(
                             selectedMeeting.participants.length,
-                            "uczestnik",
-                            "uczestników",
-                            "uczestników",
+                            "participant",
                           )}
                         </p>
                       </div>
@@ -758,19 +733,19 @@ export const MeetingsSurface = ({
                       <header>
                         <div>
                           <h4 id="meeting-result-routing-title">
-                            Projekt i klient
+                            Project and client
                           </h4>
                           <p>
                             {selectedMeeting.projectId ||
                             selectedMeeting.organizationId
-                              ? "Spotkanie należy do wybranego projektu i klienta."
-                              : "To spotkanie nie ma jeszcze projektu ani klienta."}
+                              ? "This meeting belongs to the chosen project and client."
+                              : "This meeting has no project or client yet."}
                           </p>
                         </div>
                       </header>
                       <div className="meeting-routing-fields">
                         <label htmlFor="meeting-routing-project">
-                          Projekt
+                          Project
                           <select
                             id="meeting-routing-project"
                             value={selectedMeeting.projectId ?? ""}
@@ -788,12 +763,12 @@ export const MeetingsSurface = ({
                                 if (changed) load();
                                 else
                                   setNotice(
-                                    "Nie udało się zmienić projektu. Wynik mógł zmienić się w międzyczasie — odśwież i spróbuj ponownie.",
+                                    "Could not change the project. The result may have changed since — refresh and try again.",
                                   );
                               });
                             }}
                           >
-                            <option value="">Bez projektu</option>
+                            <option value="">No project</option>
                             {routingOptions.projects.map((project) => (
                               <option key={project.id} value={project.id}>
                                 {project.title}
@@ -802,7 +777,7 @@ export const MeetingsSurface = ({
                           </select>
                         </label>
                         <label htmlFor="meeting-routing-organization">
-                          Klient
+                          Client
                           <select
                             id="meeting-routing-organization"
                             value={selectedMeeting.organizationId ?? ""}
@@ -820,12 +795,12 @@ export const MeetingsSurface = ({
                                 if (changed) load();
                                 else
                                   setNotice(
-                                    "Nie udało się zmienić klienta. Wynik mógł zmienić się w międzyczasie — odśwież i spróbuj ponownie.",
+                                    "Could not change the client. The result may have changed since — refresh and try again.",
                                   );
                               });
                             }}
                           >
-                            <option value="">Bez klienta</option>
+                            <option value="">No client</option>
                             {routingOptions.organizations.map(
                               (organization) => (
                                 <option
@@ -845,14 +820,14 @@ export const MeetingsSurface = ({
                       className="meeting-result-summary"
                       aria-labelledby="meeting-result-summary-title"
                     >
-                      <h4 id="meeting-result-summary-title">Podsumowanie</h4>
+                      <h4 id="meeting-result-summary-title">Summary</h4>
                       {selectedMeeting.summaryMarkdown ? (
                         <MeetingMarkdown
                           value={selectedMeeting.summaryMarkdown}
                         />
                       ) : (
                         <p className="meeting-result-empty-copy">
-                          Jamie nie zwrócił podsumowania dla tego spotkania.
+                          Jamie returned no summary for this meeting.
                         </p>
                       )}
                     </section>
@@ -865,9 +840,9 @@ export const MeetingsSurface = ({
                         <header>
                           <div>
                             <h4 id="meeting-result-transcript-title">
-                              Transkrypcja
+                              Transcript
                             </h4>
-                            <p>Oryginalna treść zaimportowana z Jamie.</p>
+                            <p>The original content imported from Jamie.</p>
                           </div>
                           <button
                             type="button"
@@ -889,8 +864,8 @@ export const MeetingsSurface = ({
                             }
                           >
                             {visibleTranscriptMeetingId === selectedMeeting.id
-                              ? "Ukryj transkrypcję"
-                              : "Pokaż transkrypcję"}
+                              ? "Hide transcript"
+                              : "Show transcript"}
                           </button>
                         </header>
                         {visibleTranscriptMeetingId === selectedMeeting.id && (
@@ -910,12 +885,11 @@ export const MeetingsSurface = ({
                       <header>
                         <div>
                           <h4 id="meeting-result-participants-title">
-                            Uczestnicy
+                            Participants
                           </h4>
                           <p>
-                            Uczestnicy z adresem e-mail stają się Osobami.
-                            Pozostali czekają na Twoją decyzję — nikt nie jest
-                            łączony na podstawie samego imienia.
+                            Participants with an email become People. The rest
+                            wait for your decision.
                           </p>
                         </div>
                         {selectedMeeting.participants.some(
@@ -949,18 +923,18 @@ export const MeetingsSurface = ({
                                 if (changed) load();
                                 else
                                   setNotice(
-                                    "Nie udało się połączyć uczestników. Odśwież i spróbuj ponownie.",
+                                    "Could not link participants. Refresh and try again.",
                                   );
                               });
                             }}
                           >
-                            Połącz z Osobami
+                            Link to People
                           </button>
                         )}
                       </header>
                       {selectedMeeting.participants.length === 0 && (
                         <p className="meeting-result-empty-copy">
-                          Jamie nie zwrócił uczestników dla tego spotkania.
+                          Jamie returned no participants for this meeting.
                         </p>
                       )}
                       <ul className="meeting-participants">
@@ -969,10 +943,10 @@ export const MeetingsSurface = ({
                             <strong>{participant.name}</strong>
                             <small>
                               {participant.personId
-                                ? "Osoba w przestrzeni roboczej"
+                                ? "Person in the workspace"
                                 : participant.email
-                                  ? "Nie połączony"
-                                  : "Brak adresu e-mail — wymaga decyzji"}
+                                  ? "Not linked"
+                                  : "No email — needs a decision"}
                             </small>
                           </li>
                         ))}
@@ -985,26 +959,22 @@ export const MeetingsSurface = ({
                     >
                       <header>
                         <div>
-                          <h4 id="meeting-result-work-title">
-                            Dalsze działania
-                          </h4>
+                          <h4 id="meeting-result-work-title">Action items</h4>
                           <p>
-                            Każdy zapis ma własny stan i pozostaje powiązany ze
-                            spotkaniem.
+                            Each item has its own state and stays linked to the
+                            meeting.
                           </p>
                         </div>
                         <span>
                           {countLabel(
                             selectedMeeting.workItems.length,
-                            "zapis",
-                            "zapisy",
-                            "zapisów",
+                            "action item",
                           )}
                         </span>
                       </header>
                       {selectedMeeting.workItems.length === 0 ? (
                         <p className="meeting-result-empty-copy">
-                          W tym wyniku nie ma jeszcze dalszych działań.
+                          This result has no action items yet.
                         </p>
                       ) : (
                         <ul className="meeting-work-items">
@@ -1020,7 +990,7 @@ export const MeetingsSurface = ({
                                   item.kind === "follow_up") &&
                                   (item.taskId ? (
                                     <span className="meeting-item-promoted">
-                                      Jest zadaniem
+                                      Is a task
                                     </span>
                                   ) : (
                                     <button
@@ -1047,12 +1017,12 @@ export const MeetingsSurface = ({
                                           if (changed) load();
                                           else
                                             setNotice(
-                                              "Nie udało się utworzyć zadania. Wynik mógł zmienić się w międzyczasie — odśwież i spróbuj ponownie.",
+                                              "Could not create the task. The result may have changed since — refresh and try again.",
                                             );
                                         });
                                       }}
                                     >
-                                      Utwórz zadanie
+                                      Create task
                                     </button>
                                   ))}
                                 <button
@@ -1077,16 +1047,16 @@ export const MeetingsSurface = ({
                                         if (changed) load();
                                         else
                                           setNotice(
-                                            "Ten wynik zmienił się w międzyczasie. Odświeżono bez nadpisywania nowszej wersji.",
+                                            "This result changed since. Refreshed without overwriting the newer version.",
                                           );
                                       });
                                   }}
                                 >
                                   {item.state === "open"
-                                    ? "Ukończ"
+                                    ? "Complete"
                                     : item.state === "conflicted"
-                                      ? "Zachowaj lokalne"
-                                      : "Przywróć"}
+                                      ? "Keep local"
+                                      : "Reopen"}
                                 </button>
                                 {item.state === "conflicted" &&
                                   item.sourceValueInConflict && (
@@ -1108,12 +1078,12 @@ export const MeetingsSurface = ({
                                             if (changed) load();
                                             else
                                               setNotice(
-                                                "Nie rozstrzygnięto konfliktu, bo istnieje nowsza wersja.",
+                                                "Could not resolve the conflict; a newer version exists.",
                                               );
                                           });
                                       }}
                                     >
-                                      Przyjmij Jamie
+                                      Accept Jamie
                                     </button>
                                   )}
                                 {item.state === "open" && (
@@ -1135,12 +1105,12 @@ export const MeetingsSurface = ({
                                           if (changed) load();
                                           else
                                             setNotice(
-                                              "Nie odrzucono wyniku, bo istnieje nowsza wersja.",
+                                              "Could not dismiss the item; a newer version exists.",
                                             );
                                         });
                                     }}
                                   >
-                                    Odrzuć
+                                    Dismiss
                                   </button>
                                 )}
                                 {(item.kind === "task" ||
@@ -1160,8 +1130,8 @@ export const MeetingsSurface = ({
                                   >
                                     {item.responsibilityOverride ===
                                       undefined && item.assignee === undefined
-                                      ? "Ustaw osobę"
-                                      : "Zmień osobę"}
+                                      ? "Set person"
+                                      : "Change person"}
                                   </button>
                                 )}
                               </div>
@@ -1186,13 +1156,13 @@ export const MeetingsSurface = ({
                                           load();
                                         } else
                                           setNotice(
-                                            "Nie zapisano odpowiedzialności, bo wynik zmienił się w międzyczasie.",
+                                            "Could not save the assignee; the result changed since.",
                                           );
                                       });
                                   }}
                                 >
                                   <label>
-                                    Odpowiedzialność za to działanie
+                                    Assignee for this item
                                     <input
                                       autoFocus
                                       maxLength={300}
@@ -1206,7 +1176,7 @@ export const MeetingsSurface = ({
                                     />
                                     {item.assignee !== undefined && (
                                       <small>
-                                        Jamie wskazuje: {item.assignee.name}
+                                        Jamie says: {item.assignee.name}
                                       </small>
                                     )}
                                   </label>
@@ -1218,7 +1188,7 @@ export const MeetingsSurface = ({
                                     }
                                     type="submit"
                                   >
-                                    Zapisz korektę
+                                    Save correction
                                   </button>
                                   {item.responsibilityOverride !==
                                     undefined && (
@@ -1247,12 +1217,12 @@ export const MeetingsSurface = ({
                                               load();
                                             } else
                                               setNotice(
-                                                "Nie przywrócono odpowiedzialności z Jamie, bo wynik zmienił się w międzyczasie.",
+                                                "Could not restore the Jamie assignee; the result changed since.",
                                               );
                                           });
                                       }}
                                     >
-                                      Przywróć Jamie
+                                      Restore Jamie
                                     </button>
                                   )}
                                   <button
@@ -1263,7 +1233,7 @@ export const MeetingsSurface = ({
                                       setResponsibilityName("");
                                     }}
                                   >
-                                    Anuluj
+                                    Cancel
                                   </button>
                                 </form>
                               )}
@@ -1294,13 +1264,13 @@ export const MeetingsSurface = ({
                                 load();
                               } else
                                 setNotice(
-                                  "Nie dodano działania, bo spotkanie zmieniło się w międzyczasie.",
+                                  "Could not add the item; the meeting changed since.",
                                 );
                             });
                         }}
                       >
                         <label>
-                          Typ
+                          Kind
                           <select
                             value={newItemKind}
                             onChange={(event) =>
@@ -1309,15 +1279,15 @@ export const MeetingsSurface = ({
                               )
                             }
                           >
-                            <option value="task">Zadanie</option>
-                            <option value="waiting">Oczekiwanie</option>
-                            <option value="decision">Decyzja</option>
-                            <option value="note">Notatka</option>
-                            <option value="follow_up">Dalszy kontakt</option>
+                            <option value="task">Task</option>
+                            <option value="waiting">Waiting</option>
+                            <option value="decision">Decision</option>
+                            <option value="note">Note</option>
+                            <option value="follow_up">Follow-up</option>
                           </select>
                         </label>
                         <label>
-                          Treść
+                          Content
                           <input
                             value={newItemTitle}
                             onChange={(event) =>
@@ -1334,14 +1304,14 @@ export const MeetingsSurface = ({
                             jamieBusy || newItemTitle.trim().length === 0
                           }
                         >
-                          Dodaj niezależnie
+                          Add item
                         </button>
                         <button
                           type="button"
                           className="quiet-button"
                           onClick={() => setNewItemMeetingId(undefined)}
                         >
-                          Anuluj
+                          Cancel
                         </button>
                       </form>
                     ) : (
@@ -1349,13 +1319,13 @@ export const MeetingsSurface = ({
                         className="secondary-button meeting-add-trigger"
                         onClick={() => setNewItemMeetingId(selectedMeeting.id)}
                       >
-                        Dodaj niezależny zapis
+                        Add a standalone item
                       </button>
                     )}
                     {selectedMeeting.missingComponents.length > 0 && (
                       <p className="inline-warning">
-                        Brakuje trwałych identyfikatorów zadań Jamie. Ponowienie
-                        uzupełni je bez duplikowania spotkania.
+                        Some Jamie task ids are missing. Syncing again fills
+                        them in without duplicating the meeting.
                       </p>
                     )}
                   </article>,
@@ -1366,8 +1336,8 @@ export const MeetingsSurface = ({
         </section>
         <aside className="meeting-context-rail" aria-labelledby="sources-title">
           <header>
-            <p className="eyebrow">Źródła i przygotowanie</p>
-            <h2 id="sources-title">Kontekst spotkań</h2>
+            <p className="eyebrow">Sources and preparation</p>
+            <h2 id="sources-title">Meeting context</h2>
           </header>
           {calendarCapability}
           <section
@@ -1375,26 +1345,19 @@ export const MeetingsSurface = ({
             aria-labelledby="upcoming-title"
           >
             <header>
-              <h3 id="upcoming-title">Nadchodzące</h3>
-              <span>
-                {countLabel(
-                  surface.upcoming.length,
-                  "wydarzenie",
-                  "wydarzenia",
-                  "wydarzeń",
-                )}
-              </span>
+              <h3 id="upcoming-title">Upcoming</h3>
+              <span>{countLabel(surface.upcoming.length, "event")}</span>
             </header>
             {surface.upcoming.length === 0 ? (
               <div className="meeting-empty">
                 <svg aria-hidden="true" viewBox="0 0 48 48">
                   <path d="M9 12h30v27H9zM15 7v10M33 7v10M9 20h30" />
                 </svg>
-                <h4>Brak widocznych wydarzeń</h4>
+                <h4>No events visible</h4>
                 <p>
                   {surface.capability.canRead
-                    ? "W tym oknie czasu kalendarz nie ma spotkań."
-                    : "Odblokuj provider, aby zobaczyć przygotowanie."}
+                    ? "The calendar has no meetings in this window."
+                    : "Unblock the provider to see preparation."}
                 </p>
               </div>
             ) : (
@@ -1407,51 +1370,44 @@ export const MeetingsSurface = ({
                     <strong>{formatWeekdayTime(event.startsAt)}</strong>
                     <span>
                       {event.isAllDay
-                        ? "Cały dzień"
+                        ? "All day"
                         : `${Math.round((Date.parse(event.endsAt) - Date.parse(event.startsAt)) / 60000)} min`}
                     </span>
                   </div>
                   <div className="meeting-event-body">
                     <h4>{event.title}</h4>
                     <p>
-                      {countLabel(
-                        event.attendees.length,
-                        "uczestnik",
-                        "uczestników",
-                        "uczestników",
-                      )}
+                      {countLabel(event.attendees.length, "participant")}
                       {event.location ? ` · ${event.location}` : ""}
                     </p>
                     <div className="evidence-thread">
-                      <span className="evidence-node">Wydarzenie</span>
+                      <span className="evidence-node">Event</span>
                       <i aria-hidden="true" />
-                      <span className="evidence-node">
-                        Brief faktograficzny
-                      </span>
+                      <span className="evidence-node">Fact brief</span>
                       <i aria-hidden="true" />
                       <span className="evidence-node evidence-node--muted">
-                        Wynik Jamie po spotkaniu
+                        Jamie result after
                       </span>
                     </div>
                     <div className="meeting-brief">
                       <div>
-                        <strong>Orientacja</strong>
+                        <strong>Orientation</strong>
                         <span>
                           {brief.orientation.length
                             ? brief.orientation
                                 .map((item) => item.label)
                                 .join(" · ")
-                            : "Brak dokładnie powiązanych rekordów."}
+                            : "No exactly linked records."}
                         </span>
                       </div>
                       <div>
-                        <strong>Otwarte pętle</strong>
+                        <strong>Open loops</strong>
                         <span>
                           {brief.openLoops.length
                             ? brief.openLoops
                                 .map((item) => item.label)
                                 .join(" · ")
-                            : "Brak bezpiecznie dopasowanych zobowiązań."}
+                            : "No safely matched commitments."}
                         </span>
                       </div>
                     </div>
@@ -1463,7 +1419,7 @@ export const MeetingsSurface = ({
                     }
                     title={
                       !surface.capability.canWriteOwnedBlocks
-                        ? "Provider nie zezwala na zapis własnych bloków."
+                        ? "The provider does not allow writing owned blocks."
                         : undefined
                     }
                     onClick={() => {
@@ -1473,7 +1429,7 @@ export const MeetingsSurface = ({
                       const block: CalendarBlockDraft = {
                         calendarExternalId: event.calendarExternalId,
                         ownedBlockExternalId: `meeting-prep:${event.eventExternalId}`,
-                        title: `Przygotowanie: ${event.title}`,
+                        title: `Preparation: ${event.title}`,
                         startsAt,
                         endsAt: event.startsAt,
                         expectedRevision: null,
@@ -1486,13 +1442,13 @@ export const MeetingsSurface = ({
                         .then((result) => {
                           if (result === undefined)
                             setNotice(
-                              "Nie udało się przygotować bezpiecznego podglądu. Nic nie zapisano.",
+                              "Could not build a safe preview. Nothing was written.",
                             );
                           else setPreview(result);
                         });
                     }}
                   >
-                    Podgląd bloku
+                    Preview block
                   </button>
                 </article>
               ))
@@ -1507,9 +1463,7 @@ export const MeetingsSurface = ({
           onClose={() => setPreview(undefined)}
           onApplied={() => {
             setPreview(undefined);
-            setNotice(
-              "Blok przygotowania zapisano po dokładnym potwierdzeniu.",
-            );
+            setNotice("Preparation block saved after your exact confirmation.");
             load();
           }}
         />

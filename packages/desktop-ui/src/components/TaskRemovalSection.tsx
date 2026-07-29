@@ -41,10 +41,10 @@ export const TaskRemovalSection = ({
   if (activeChildCount > 0) {
     return (
       <section className="inspector-section task-removal-block">
-        <p className="section-label">Usuń zadanie</p>
+        <p className="section-label">Delete task</p>
         <p className="muted-text">
-          To zadanie ma podzadania. Usuń albo przenieś je najpierw — nie da się
-          usunąć zadania, od którego zależy inna praca.
+          This task has subtasks. Delete or move them first — a task other work
+          depends on cannot be deleted.
         </p>
       </section>
     );
@@ -52,7 +52,7 @@ export const TaskRemovalSection = ({
 
   return (
     <section className="inspector-section task-removal-block">
-      <p className="section-label">Usuń zadanie</p>
+      <p className="section-label">Delete task</p>
       {confirming ? (
         <div className="task-removal-actions">
           <button
@@ -67,14 +67,14 @@ export const TaskRemovalSection = ({
                   setConfirming(false);
                   if (result.kind === "success")
                     await onRemoved(
-                      "Zadanie usunięto. Cofnij, jeśli to pomyłka.",
+                      "Task deleted. Undo if that was a mistake.",
                     );
                   else onFailure(result);
                 },
               );
             }}
           >
-            {busy ? "Usuwam…" : "Potwierdź usunięcie"}
+            {busy ? "Deleting…" : "Confirm delete"}
           </button>
           <button
             type="button"
@@ -82,20 +82,20 @@ export const TaskRemovalSection = ({
             disabled={busy}
             onClick={() => setConfirming(false)}
           >
-            Anuluj
+            Cancel
           </button>
         </div>
       ) : (
         <>
           <p className="muted-text">
-            Usunięcie ukrywa zadanie i jego historię. Można je cofnąć.
+            Deleting hides the task and its history. You can undo it.
           </p>
           <button
             type="button"
             className="secondary-button"
             onClick={() => setConfirming(true)}
           >
-            Usuń zadanie
+            Delete task
           </button>
         </>
       )}

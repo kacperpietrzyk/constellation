@@ -350,37 +350,45 @@ test("a level change, a Space change, or drift each open the save", () => {
 });
 
 /**
- * Polish counts take three forms, and the relative pronoun follows the same
- * split — a count formatted as "2 uprawnień" or a plural pronoun on a single
- * capability is wrong in a sentence a person reads before widening an agent's
- * powers. Te dwa testy celowo cytują polskie formy: sprawdzaną gwarancją jest
- * sam język, więc żyją i giną razem z polską odmianą w źródle.
+ * Ta para testów pilnowała wcześniej POLSKIEJ odmiany: trzech form liczebnika,
+ * wyjątku nastek i drugiego podziału w dopełniaczu po „brakuje". Interfejs jest
+ * po angielsku, więc ta gwarancja nie zniknęła — zmieniła kształt na taki,
+ * jakiego wymaga angielski: liczba, rzeczownik i ZAIMEK muszą się zgadzać
+ * w zdaniu, które człowiek czyta tuż przed poszerzeniem uprawnień agenta.
+ *
+ * Zaimek jest tu istotą, a nie ozdobą: „saving adds it" przy pięciu
+ * uprawnieniach albo „adds them" przy jednym czyta się jak zdanie o czymś
+ * innym niż to, co się zaraz stanie.
  */
 test("the drift sentence agrees with its own number", () => {
-  assert.match(missingCapabilitiesNote(1), /1 uprawnienie, którego /u);
-  assert.match(missingCapabilitiesNote(2), /2 uprawnienia, których /u);
-  assert.match(missingCapabilitiesNote(4), /4 uprawnienia, których /u);
-  assert.match(missingCapabilitiesNote(5), /5 uprawnień, których /u);
-  // The teens are the exception every naive rule gets wrong.
-  assert.match(missingCapabilitiesNote(12), /12 uprawnień, /u);
-  assert.match(missingCapabilitiesNote(13), /13 uprawnień, /u);
-  assert.match(missingCapabilitiesNote(14), /14 uprawnień, /u);
-  assert.match(missingCapabilitiesNote(22), /22 uprawnienia, /u);
-  assert.match(missingCapabilitiesNote(25), /25 uprawnień, /u);
-  assert.match(missingCapabilitiesNote(101), /101 uprawnień, /u);
+  assert.match(missingCapabilitiesNote(1), /\b1 permission\b/u);
+  assert.match(missingCapabilitiesNote(1), /\badds it\b/u);
+  assert.doesNotMatch(missingCapabilitiesNote(1), /\bpermissions\b/u);
+
+  for (const count of [0, 2, 4, 5, 12, 13, 22, 101]) {
+    assert.match(
+      missingCapabilitiesNote(count),
+      new RegExp(`\\b${count} permissions\\b`, "u"),
+      `${count} must take the plural noun`,
+    );
+    assert.match(
+      missingCapabilitiesNote(count),
+      /\badds them\b/u,
+      `${count} must take the plural pronoun`,
+    );
+  }
 });
 
 /**
- * The grant row states the same count after `brakuje`, which governs the
- * genitive — a different case with a different split. Only 1 takes the
- * genitive singular; 2, 3 and 4 take the genitive plural that the nominative
- * rule above would spell "uprawnienia", so the two sentences cannot share a
- * helper and the row's noun cannot be a constant.
+ * Wiersz grantu podaje tę samą liczbę w krótszej formie. Osobny test, bo to
+ * osobne zdanie i osobna funkcja — wcześniej musiały być rozdzielone, bo polski
+ * wymagał tam innego przypadka; po angielsku dzielą regułę, ale nie kod, więc
+ * rozjazd między nimi nadal jest możliwy i nadal jest defektem.
  */
-test("the row's count agrees in the case `brakuje` governs", () => {
-  assert.equal(missingCapabilitiesClause(1), "brakuje 1 uprawnienia");
-  assert.equal(missingCapabilitiesClause(2), "brakuje 2 uprawnień");
-  assert.equal(missingCapabilitiesClause(4), "brakuje 4 uprawnień");
-  assert.equal(missingCapabilitiesClause(5), "brakuje 5 uprawnień");
-  assert.equal(missingCapabilitiesClause(22), "brakuje 22 uprawnień");
+test("the grant row's count agrees with its own noun", () => {
+  assert.equal(missingCapabilitiesClause(1), "missing 1 permission");
+  assert.equal(missingCapabilitiesClause(0), "missing 0 permissions");
+  assert.equal(missingCapabilitiesClause(2), "missing 2 permissions");
+  assert.equal(missingCapabilitiesClause(4), "missing 4 permissions");
+  assert.equal(missingCapabilitiesClause(22), "missing 22 permissions");
 });

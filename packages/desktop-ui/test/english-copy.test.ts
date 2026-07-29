@@ -94,6 +94,11 @@ test("the scanner sees copy and ignores comments", () => {
     'const label = "Save changes";',
     'const stale = "Zapisz zmiany";',
     "return <p>Nothing to review.</p>;",
+    // Prettier łamie dłuższą treść do własnej linii. Skaner, który wymagał
+    // tekstu ZARAZ po `>`, przepuszczał dokładnie te napisy — czyli te dłuższe.
+    "<button>",
+    "  Otwórz w nowej karcie",
+    "</button>",
   ].join("\n");
 
   const lines = stripCommentsAndCode(sample);
@@ -101,7 +106,28 @@ test("the scanner sees copy and ignores comments", () => {
 
   assert.deepEqual(
     flagged.map((line) => line.line),
-    [4],
-    `only the Polish string literal should be flagged, got ${JSON.stringify(lines)}`,
+    [4, 6],
+    `the Polish string literal and the Polish multi-line JSX text should both be flagged, got ${JSON.stringify(lines)}`,
+  );
+});
+
+test("an apostrophe in English prose does not blind the scanner", () => {
+  // To był PRAWDZIWY defekt tego skanera, nie hipoteza: apostrof w „record's"
+  // otwierał tryb literału w środku zdania, a maszyna stanu połykała wszystko
+  // do następnego apostrofu. Skaner, który gubi treść, myli się w stronę
+  // fałszywego spokoju — melduje zero i nie widzi tego, co zostało.
+  const sample = [
+    "<p>Values inherit the record's permissions.</p>",
+    'const stale = "Usunięto powiązanie";',
+    "<p>You don't lose saved values.</p>",
+  ].join("\n");
+
+  const lines = stripCommentsAndCode(sample);
+  const flagged = lines.filter((line) => polishHits(line.text));
+
+  assert.deepEqual(
+    flagged.map((line) => line.text),
+    ["Usunięto powiązanie"],
+    `the Polish literal between two apostrophes must still be seen, got ${JSON.stringify(lines)}`,
   );
 });

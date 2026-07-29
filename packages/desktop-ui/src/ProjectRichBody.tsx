@@ -29,11 +29,11 @@ import {
 } from "./document-entity-reference.js";
 
 const kindLabel: Record<DocumentEntityTargetKind, string> = {
-  task: "Zadanie",
-  project: "Projekt",
-  person: "Osoba",
-  organization: "Organizacja",
-  meeting: "Spotkanie",
+  task: "Task",
+  project: "Project",
+  person: "Person",
+  organization: "Organization",
+  meeting: "Meeting",
 };
 
 type EditorStatus =
@@ -46,13 +46,13 @@ type EditorStatus =
   | "upgrade_required";
 
 const statusCopy: Record<EditorStatus, string> = {
-  opening: "Otwieram treść…",
-  local: "Zapis lokalny",
-  connecting: "Łączę współpracę…",
-  current: "Współpraca aktualna",
-  offline: "Offline · zmiany czekają",
-  denied: "Brak dostępu do treści",
-  upgrade_required: "Wymagana nowsza wersja aplikacji",
+  opening: "Opening…",
+  local: "Saved locally",
+  connecting: "Connecting…",
+  current: "Collaboration live",
+  offline: "Offline · changes waiting",
+  denied: "No access to this content",
+  upgrade_required: "Needs a newer version of the app",
 };
 
 export default function ProjectRichBody({
@@ -109,7 +109,7 @@ export default function ProjectRichBody({
       extensions: [
         StarterKit.configure({ undoRedo: false, link: { openOnClick: false } }),
         Placeholder.configure({
-          placeholder: "Rozwiń wynik w plan, kontekst i decyzje projektu.",
+          placeholder: "Expand the outcome into plan, context and decisions.",
         }),
         Collaboration.configure({
           document: yDocument,
@@ -123,7 +123,7 @@ export default function ProjectRichBody({
         attributes: {
           class: "document-canvas project-document-canvas",
           role: "textbox",
-          "aria-label": `Treść projektu: ${project.title}`,
+          "aria-label": `Project body: ${project.title}`,
           "aria-multiline": "true",
           spellcheck: "true",
         },
@@ -392,22 +392,22 @@ export default function ProjectRichBody({
     >
       <header className="section-heading project-body-heading">
         <div>
-          <p className="eyebrow">Dokument projektu</p>
-          <h2 id="project-body-title">Plan i kontekst</h2>
+          <p className="eyebrow">Project document</p>
+          <h2 id="project-body-title">Plan and context</h2>
         </div>
         <span className={`document-sync-state status-${status}`} role="status">
           {statusCopy[status]}
-          {pending > 0 ? ` · ${pending} oczekuje` : ""}
+          {pending > 0 ? ` · ${pending} waiting` : ""}
         </span>
       </header>
       <div
         className="document-toolbar"
         role="toolbar"
-        aria-label="Formatowanie treści projektu"
+        aria-label="Project body formatting"
       >
         <button
           type="button"
-          aria-label="Pogrubienie"
+          aria-label="Bold"
           aria-pressed={editor?.isActive("bold") ?? false}
           disabled={access !== "edit"}
           onClick={() => editor?.chain().focus().toggleBold().run()}
@@ -416,7 +416,7 @@ export default function ProjectRichBody({
         </button>
         <button
           type="button"
-          aria-label="Kursywa"
+          aria-label="Italic"
           aria-pressed={editor?.isActive("italic") ?? false}
           disabled={access !== "edit"}
           onClick={() => editor?.chain().focus().toggleItalic().run()}
@@ -425,7 +425,7 @@ export default function ProjectRichBody({
         </button>
         <button
           type="button"
-          aria-label="Nagłówek drugiego poziomu"
+          aria-label="Heading 2"
           aria-pressed={editor?.isActive("heading", { level: 2 }) ?? false}
           disabled={access !== "edit"}
           onClick={() =>
@@ -436,12 +436,12 @@ export default function ProjectRichBody({
         </button>
         <button
           type="button"
-          aria-label="Lista punktowana"
+          aria-label="Bulleted list"
           aria-pressed={editor?.isActive("bulletList") ?? false}
           disabled={access !== "edit"}
           onClick={() => editor?.chain().focus().toggleBulletList().run()}
         >
-          • Lista
+          • List
         </button>
         <button
           type="button"
@@ -450,12 +450,12 @@ export default function ProjectRichBody({
           disabled={access !== "edit"}
           onClick={() => setEntityOpen((value) => !value)}
         >
-          Powiąż rekord
+          Link record
         </button>
       </div>
       {entityOpen && (
         <div className="document-entity-picker project-entity-picker">
-          <label htmlFor={`${entityListId}-query`}>Znajdź rekord</label>
+          <label htmlFor={`${entityListId}-query`}>Find record</label>
           <input
             id={`${entityListId}-query`}
             type="search"
@@ -491,10 +491,10 @@ export default function ProjectRichBody({
             id={entityListId}
             className="document-entity-options"
             role="listbox"
-            aria-label="Dostępne rekordy"
+            aria-label="Available records"
           >
             {entityCandidates.length === 0 ? (
-              <p role="status">Brak pasujących dostępnych rekordów.</p>
+              <p role="status">No matching records.</p>
             ) : (
               entityCandidates.map((candidate, index) => (
                 <button
@@ -516,7 +516,7 @@ export default function ProjectRichBody({
       )}
       {limitReached && (
         <p className="capacity-note" role="alert">
-          Treść osiągnęła bezpieczny limit długości.
+          Content reached the safe length limit.
         </p>
       )}
       <EditorContent
@@ -524,12 +524,12 @@ export default function ProjectRichBody({
         className="document-editor-shell project-editor-shell"
       />
       <div className="project-revision-row">
-        <label htmlFor={revisionNameId}>Punkt odzyskiwania</label>
+        <label htmlFor={revisionNameId}>Recovery point</label>
         <input
           id={revisionNameId}
           value={revisionName}
           maxLength={120}
-          placeholder="np. Przed przeglądem"
+          placeholder="e.g. Before review"
           onChange={(event) => setRevisionName(event.target.value)}
         />
         <button
@@ -547,13 +547,13 @@ export default function ProjectRichBody({
               .finally(() => setBusy(false));
           }}
         >
-          Utwórz punkt
+          Create point
         </button>
       </div>
       {revisions.length > 0 && (
         <ul
           className="project-revision-list"
-          aria-label="Punkty odzyskiwania projektu"
+          aria-label="Project recovery points"
         >
           {revisions.slice(0, 5).map((revision) => (
             <li key={revision.id}>
@@ -577,7 +577,7 @@ export default function ProjectRichBody({
                     .finally(() => setBusy(false));
                 }}
               >
-                Przywróć
+                Restore
               </button>
             </li>
           ))}

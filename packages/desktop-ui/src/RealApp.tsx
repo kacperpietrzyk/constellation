@@ -67,6 +67,7 @@ import {
   countLabel,
   dateKeyInZone,
   formatDate,
+  formatDateTime,
   instantForZonedDate,
   recordKindLabels,
 } from "./i18n.js";
@@ -181,10 +182,10 @@ type LoadState =
 const AGENT_WRITE_RELOAD_DELAY_MS = 400;
 
 const taskPriorityLabels: Record<string, string> = {
-  urgent: "Pilny",
-  high: "Wysoki",
-  normal: "Normalny",
-  low: "Niski",
+  urgent: "Urgent",
+  high: "High",
+  normal: "Normal",
+  low: "Low",
 };
 
 type DocumentBacklinkTarget = {
@@ -194,9 +195,9 @@ type DocumentBacklinkTarget = {
 };
 
 const backlinkRoleLabels = {
-  note: "Notatka",
-  document: "Dokument",
-  deliverable: "Rezultat",
+  note: "Note",
+  document: "Document",
+  deliverable: "Deliverable",
 } as const;
 
 const DocumentBacklinks = ({
@@ -233,15 +234,15 @@ const DocumentBacklinks = ({
   if (!target) return null;
   return (
     <section className="inspector-section entity-backlinks" aria-live="polite">
-      <p className="section-label">Wspomniane w dokumentach</p>
+      <p className="section-label">Mentioned in documents</p>
       {unavailable ? (
         <p className="entity-backlinks-status">
-          Odwołania są teraz niedostępne.
+          Mentions are unavailable right now.
         </p>
       ) : projection === undefined ? (
-        <p className="entity-backlinks-status">Sprawdzam odwołania…</p>
+        <p className="entity-backlinks-status">Checking mentions…</p>
       ) : projection.items.length === 0 ? (
-        <p className="entity-backlinks-status">Brak odwołań.</p>
+        <p className="entity-backlinks-status">No mentions.</p>
       ) : (
         <ul className="entity-backlinks-list">
           {projection.items.map((item) => (
@@ -367,17 +368,15 @@ class LazySurfaceBoundary extends Component<
         >
           <p className="eyebrow">{this.props.label}</p>
           <h1 id="surface-title" tabIndex={-1}>
-            Nie udało się otworzyć tej części aplikacji
+            Could not open this part of the app
           </h1>
-          <p>
-            Dane nie zostały zmienione. Odśwież aplikację i spróbuj ponownie.
-          </p>
+          <p>Nothing was changed. Refresh the app and try again.</p>
           <button
             className="secondary-button"
             data-surface-action="retry"
             onClick={() => window.location.reload()}
           >
-            Spróbuj ponownie
+            Try again
           </button>
         </section>
       );
@@ -396,9 +395,9 @@ const SurfaceLoadingState = ({ label }: { readonly label: string }) => (
   >
     <p className="eyebrow">{label}</p>
     <h1 id="surface-title" tabIndex={-1}>
-      Otwieram tę część aplikacji…
+      Opening this part of the app…
     </h1>
-    <p>Ładuję bieżącą zawartość workspace.</p>
+    <p>Loading the current workspace content.</p>
   </section>
 );
 
@@ -450,7 +449,7 @@ const AgentGrantDetailsDialog = ({
           </div>
           <button
             className="icon-button"
-            aria-label="Zamknij szczegóły dostępu"
+            aria-label="Close access details"
             onClick={onClose}
           >
             <Icon name="close" />
@@ -464,7 +463,7 @@ const AgentGrantDetailsDialog = ({
               className="secondary-button"
               onClick={() => void copy("descriptor", details.descriptorPath)}
             >
-              {copied === "descriptor" ? "Skopiowano" : "Kopiuj"}
+              {copied === "descriptor" ? "Copied" : "Copy"}
             </button>
           </div>
           <div>
@@ -474,16 +473,16 @@ const AgentGrantDetailsDialog = ({
               className="secondary-button"
               onClick={() => void copy("connection", details.connectionValue)}
             >
-              {copied === "connection" ? "Skopiowano" : "Kopiuj"}
+              {copied === "connection" ? "Copied" : "Copy"}
             </button>
           </div>
         </dl>
         <footer className="capture-footer">
           <span>
-            Skopiuj wartości teraz — poda je host MCP przy konfiguracji.
+            Copy these values now — the MCP host asks for them at setup.
           </span>
           <button className="primary-button" onClick={onClose}>
-            Gotowe
+            Done
           </button>
         </footer>
       </section>
@@ -549,7 +548,7 @@ const strategicDependentLabels = (
     )
     .map(
       (candidate) =>
-        `${recordKindLabels[candidate.kind] ?? "rekord"}: ${strategicRecordTitle(candidate)}`,
+        `${recordKindLabels[candidate.kind] ?? "record"}: ${strategicRecordTitle(candidate)}`,
     );
 
 const StrategicRecordInspector = ({
@@ -617,29 +616,26 @@ const StrategicRecordInspector = ({
       <h2>{strategicRecordTitle(record)}</h2>
       <p className="record-summary">
         {organizationName
-          ? `${recordKindLabels[record.kind] ?? "Rekord"} w relacji ${organizationName}.`
-          : "Wersjonowany rekord strategiczny w aktywnym Space."}
+          ? `${recordKindLabels[record.kind] ?? "Record"} in the ${organizationName} relationship.`
+          : "Versioned strategic record in the active Space."}
       </p>
       {record.kind === "organization" && (
         <>
           <section className="inspector-section provenance-block">
-            <p className="section-label">Następny ruch</p>
-            <blockquote>
-              {record.nextAction ?? "Brak następnego ruchu"}
-            </blockquote>
-            <p>Relacja prowadzi szanse, oferty i odnowienia.</p>
+            <p className="section-label">Next move</p>
+            <blockquote>{record.nextAction ?? "No next move"}</blockquote>
+            <p>This relationship carries opportunities, offers and renewals.</p>
           </section>
           <section className="inspector-section">
             <p className="section-label">
               {countLabel(
                 relatedOpportunities.length,
-                "szansa",
-                "szanse",
-                "szans",
+                "opportunity",
+                "opportunities",
               )}
             </p>
             {relatedOpportunities.length === 0 ? (
-              <p>Nie ma jeszcze szans powiązanych z tą relacją.</p>
+              <p>No opportunities linked to this relationship yet.</p>
             ) : (
               <ul className="inspector-links">
                 {relatedOpportunities.map((item) => (
@@ -659,14 +655,14 @@ const StrategicRecordInspector = ({
       )}
       {record.kind === "person" && (
         <section className="inspector-section">
-          <p className="section-label">Dane kontaktowe</p>
+          <p className="section-label">Contact details</p>
           <dl className="record-fields">
             <div>
-              <dt>Rola</dt>
+              <dt>Role</dt>
               <dd>{record.role ?? "—"}</dd>
             </div>
             <div>
-              <dt>E-mail</dt>
+              <dt>Email</dt>
               <dd>{record.email ?? "—"}</dd>
             </div>
           </dl>
@@ -675,16 +671,16 @@ const StrategicRecordInspector = ({
       {record.kind === "opportunity" && (
         <>
           <section className="inspector-section provenance-block">
-            <p className="section-label">Potwierdzona potrzeba</p>
+            <p className="section-label">Confirmed need</p>
             <blockquote>{record.need}</blockquote>
-            <p>Następny ruch: {record.nextAction}</p>
+            <p>Next move: {record.nextAction}</p>
           </section>
           <section className="inspector-section">
             <p className="section-label">
-              {countLabel(relatedOffers.length, "oferta", "oferty", "ofert")}
+              {countLabel(relatedOffers.length, "offer")}
             </p>
             {relatedOffers.length === 0 ? (
-              <p>Ta szansa nie ma jeszcze ofert.</p>
+              <p>This opportunity has no offers yet.</p>
             ) : (
               <ul className="inspector-links">
                 {relatedOffers.map((offer) => (
@@ -702,15 +698,10 @@ const StrategicRecordInspector = ({
           </section>
           <section className="inspector-section">
             <p className="section-label">
-              {countLabel(
-                linkedProjects.length,
-                "projekt",
-                "projekty",
-                "projektów",
-              )}
+              {countLabel(linkedProjects.length, "project")}
             </p>
             {linkedProjects.length === 0 ? (
-              <p>Ta szansa nie prowadzi jeszcze do projektu.</p>
+              <p>This opportunity does not lead to a project yet.</p>
             ) : (
               <ul className="inspector-links">
                 {linkedProjects.map((project) => (
@@ -730,11 +721,11 @@ const StrategicRecordInspector = ({
       )}
       {record.kind === "offer" && (
         <section className="inspector-section provenance-block">
-          <p className="section-label">Następny ruch</p>
+          <p className="section-label">Next move</p>
           <blockquote>{record.nextAction}</blockquote>
           {parentOpportunity && (
             <p>
-              Szansa:{" "}
+              Opportunity:{" "}
               <button
                 type="button"
                 className="inspector-link"
@@ -748,46 +739,43 @@ const StrategicRecordInspector = ({
       )}
       {record.kind === "renewal" && (
         <section className="inspector-section">
-          <p className="section-label">Terminy</p>
+          <p className="section-label">Dates</p>
           <dl className="record-fields">
             <div>
-              <dt>Zakres</dt>
+              <dt>Scope</dt>
               <dd>{record.scope}</dd>
             </div>
             <div>
-              <dt>Wygasa</dt>
-              <dd>{new Date(record.expiresAt).toLocaleDateString("pl-PL")}</dd>
+              <dt>Expires</dt>
+              <dd>{formatDate(record.expiresAt)}</dd>
             </div>
           </dl>
         </section>
       )}
       {record.kind === "relationship_fact" && (
         <section className="inspector-section provenance-block">
-          <p className="section-label">Potwierdzona wartość</p>
+          <p className="section-label">Confirmed value</p>
           <blockquote>{record.value}</blockquote>
-          <p>
-            Zweryfikowano{" "}
-            {new Date(record.verifiedAt).toLocaleDateString("pl-PL")}.
-          </p>
+          <p>Verified {formatDate(record.verifiedAt)}.</p>
         </section>
       )}
       {record.kind === "decision" && (
         <section className="inspector-section provenance-block">
-          <p className="section-label">Uzasadnienie</p>
+          <p className="section-label">Rationale</p>
           <blockquote>{record.rationale}</blockquote>
-          <p>Decyzja pozostaje częścią wersjonowanej historii.</p>
+          <p>This decision stays part of the versioned history.</p>
         </section>
       )}
       {record.kind === "recurrence" && (
         <section className="inspector-section">
-          <p className="section-label">Reguła</p>
+          <p className="section-label">Rule</p>
           <dl className="record-fields">
             <div>
-              <dt>Zadanie</dt>
+              <dt>Task</dt>
               <dd>{record.taskTitle}</dd>
             </div>
             <div>
-              <dt>Rytm</dt>
+              <dt>Cadence</dt>
               <dd>{recurrenceCadenceLabels[record.cadence]}</dd>
             </div>
           </dl>
@@ -795,9 +783,9 @@ const StrategicRecordInspector = ({
       )}
       {record.kind === "radar_candidate" && (
         <section className="inspector-section provenance-block">
-          <p className="section-label">Znaczenie</p>
+          <p className="section-label">Relevance</p>
           <blockquote>{record.relevance}</blockquote>
-          <p>Kandydat czeka na decyzję w przeglądzie Relacji.</p>
+          <p>This candidate is waiting for a decision in Organizations.</p>
         </section>
       )}
       {client !== undefined && (
@@ -895,17 +883,17 @@ export const CaptureDialog = ({
   const payloadFailure = (code: string): string => {
     switch (code) {
       case "payload_empty":
-        return "Ten plik jest pusty. Wybierz inny plik.";
+        return "That file is empty. Choose another file.";
       case "payload_too_large":
-        return "Plik przekracza limit 25 MB. Zachowaj mniejszą wersję.";
+        return "That file is over the 25 MB limit. Keep a smaller version.";
       case "payload_unsupported":
-        return "Tego pliku nie można bezpiecznie przejąć.";
+        return "That file cannot be captured safely.";
       case "payload_transfer_unavailable":
-        return "Pliki w workspace z Hubem będą dostępne po włączeniu bezpiecznego transferu. Tekst i linki działają nadal.";
+        return "Files in a Hub workspace need secure transfer turned on. Text and links still work.";
       case "cancelled":
         return "";
       default:
-        return "Nie udało się zachować pliku. Spróbuj ponownie.";
+        return "Could not keep that file. Try again.";
     }
   };
   const acceptPayload = (result: CapturePayloadResponse) => {
@@ -925,7 +913,7 @@ export const CaptureDialog = ({
     inputKind: "file" | "screenshot",
   ) => {
     if (client?.stageCapturePayload === undefined) {
-      setPayloadError("Zarządzane pliki są niedostępne w tym uruchomieniu.");
+      setPayloadError("Managed files are unavailable in this build.");
       return;
     }
     if (nextFile.size === 0) {
@@ -942,8 +930,7 @@ export const CaptureDialog = ({
       acceptPayload(
         await client.stageCapturePayload({
           displayName:
-            nextFile.name ||
-            `Screenshot ${new Date().toLocaleString("pl-PL")}.png`,
+            nextFile.name || `Screenshot ${formatDateTime(new Date())}.png`,
           mediaType: nextFile.type || "application/octet-stream",
           inputKind,
           bytes: new Uint8Array(await nextFile.arrayBuffer()),
@@ -952,13 +939,13 @@ export const CaptureDialog = ({
     } catch {
       setPayloadBusy(false);
       setPayloadError(
-        "Nie udało się odczytać pliku. Sprawdź uprawnienia i spróbuj ponownie.",
+        "Could not read that file. Check its permissions and try again.",
       );
     }
   };
   const choosePayload = async () => {
     if (client?.selectCapturePayload === undefined) {
-      setPayloadError("Wybór zarządzanego pliku jest niedostępny.");
+      setPayloadError("Choosing a managed file is unavailable.");
       return;
     }
     setPayloadBusy(true);
@@ -967,24 +954,24 @@ export const CaptureDialog = ({
       acceptPayload(await client.selectCapturePayload());
     } catch {
       setPayloadBusy(false);
-      setPayloadError("Nie udało się otworzyć pliku. Spróbuj ponownie.");
+      setPayloadError("Could not open that file. Try again.");
     }
   };
   const voiceFailure = (code: string): string => {
     switch (code) {
       case "unsupported":
-        return "Nagrywanie krótkiej notatki głosowej nie jest wspierane w tym uruchomieniu.";
+        return "Recording a short voice note is not supported in this build.";
       case "permission_denied":
-        return "Brak dostępu do mikrofonu. Zezwól Constellation na mikrofon w ustawieniach systemu i spróbuj ponownie.";
+        return "No microphone access. Allow Constellation the microphone in system settings and try again.";
       case "device_unavailable":
-        return "Mikrofon jest niedostępny lub używany przez inną aplikację.";
+        return "The microphone is unavailable or in use by another app.";
       default:
-        return "Nagranie nie zostało zachowane. Spróbuj ponownie.";
+        return "The recording was not kept. Try again.";
     }
   };
   const startVoice = async () => {
     if (client?.stageCapturePayload === undefined) {
-      setPayloadError("Szyfrowane notatki głosowe są niedostępne.");
+      setPayloadError("Encrypted voice notes are unavailable.");
       return;
     }
     if (managedOriginal !== undefined) discardPayload();
@@ -1022,9 +1009,7 @@ export const CaptureDialog = ({
       }
       if (finished.bytes.byteLength > MAX_VOICE_NOTE_BYTES) {
         setVoiceState("idle");
-        setPayloadError(
-          "Nagranie przekroczyło limit 25 MB i nie zostało zapisane.",
-        );
+        setPayloadError("The recording went over 25 MB and was not saved.");
         return;
       }
       setVoiceState("staging");
@@ -1038,7 +1023,7 @@ export const CaptureDialog = ({
       try {
         acceptPayload(
           await client.stageCapturePayload!({
-            displayName: `Notatka głosowa ${new Date().toLocaleString("pl-PL")}.${extension}`,
+            displayName: `Voice note ${formatDateTime(new Date())}.${extension}`,
             mediaType: finished.mediaType,
             inputKind: "voice_note",
             bytes: finished.bytes,
@@ -1050,14 +1035,12 @@ export const CaptureDialog = ({
         setVoiceState("idle");
         if (finished.automaticallyStopped)
           setPayloadError(
-            "Osiągnięto limit 2 minut. Nagranie jest gotowe do zapisania.",
+            "The 2 minute limit was reached. The recording is ready to save.",
           );
       } catch {
         setPayloadBusy(false);
         setVoiceState("idle");
-        setPayloadError(
-          "Nie udało się zaszyfrować nagrania. Spróbuj ponownie.",
-        );
+        setPayloadError("Could not encrypt the recording. Try again.");
       }
     });
   };
@@ -1132,11 +1115,11 @@ export const CaptureDialog = ({
         <header className="capture-header">
           <div>
             <p className="eyebrow">Quick Capture</p>
-            <h2 id="capture-title">Zapisz cokolwiek</h2>
+            <h2 id="capture-title">Capture anything</h2>
           </div>
           <button
             className="icon-button"
-            aria-label="Zamknij Quick Capture"
+            aria-label="Close Quick Capture"
             disabled={busy || payloadBusy}
             onClick={requestClose}
           >
@@ -1144,11 +1127,7 @@ export const CaptureDialog = ({
           </button>
         </header>
         <form onSubmit={submit}>
-          <div
-            className="capture-kind"
-            role="group"
-            aria-label="Rodzaj Capture"
-          >
+          <div className="capture-kind" role="group" aria-label="Capture kind">
             {(["text", "url", "file", "voice"] as const).map((kind) => (
               <button
                 key={kind}
@@ -1160,19 +1139,19 @@ export const CaptureDialog = ({
                 }}
               >
                 {kind === "text"
-                  ? "Tekst"
+                  ? "Text"
                   : kind === "url"
                     ? "Link"
                     : kind === "file"
-                      ? "Plik"
-                      : "Głos"}
+                      ? "File"
+                      : "Voice"}
               </button>
             ))}
           </div>
           {mode === "text" ? (
             <>
               <label className="sr-only" htmlFor="capture-text">
-                Treść przechwycenia
+                Capture content
               </label>
               <textarea
                 id="capture-text"
@@ -1180,7 +1159,7 @@ export const CaptureDialog = ({
                 ref={inputRef}
                 value={text}
                 onChange={(event) => setText(event.target.value)}
-                placeholder="Myśl, zadanie albo coś do zrobienia…"
+                placeholder="A thought, a task, or something to do…"
                 maxLength={262_144}
                 onKeyDown={(event) => {
                   if ((event.metaKey || event.ctrlKey) && event.key === "Enter")
@@ -1188,13 +1167,12 @@ export const CaptureDialog = ({
                 }}
               />
               <small className="capture-mode-note">
-                Dyktowanie systemowe działa w tym polu jak zwykły tekst —
-                Constellation nie zachowuje wtedy audio.
+                System dictation types here like any text — no audio is kept.
               </small>
             </>
           ) : mode === "url" ? (
             <label className="capture-field">
-              <span>Adres URL</span>
+              <span>URL</span>
               <input
                 type="url"
                 value={url}
@@ -1218,18 +1196,18 @@ export const CaptureDialog = ({
                 <div>
                   <strong>
                     {managedOriginal?.kind === "voice_note"
-                      ? "Nagranie zaszyfrowane i gotowe"
+                      ? "Recording encrypted and ready"
                       : voiceState === "requesting"
-                        ? "Czekam na zgodę systemu…"
+                        ? "Waiting for system permission…"
                         : voiceState === "recording"
-                          ? "Nagrywanie"
+                          ? "Recording"
                           : voiceState === "staging"
-                            ? "Szyfruję i zachowuję…"
-                            : "Krótka notatka głosowa"}
+                            ? "Encrypting and keeping…"
+                            : "Short voice note"}
                   </strong>
                   <span>
                     {managedOriginal?.kind === "voice_note"
-                      ? `${Math.ceil(managedOriginal.durationMs / 1000)} s · ${Math.ceil(managedOriginal.payload.byteLength / 1024).toLocaleString("pl-PL")} KB`
+                      ? `${Math.ceil(managedOriginal.durationMs / 1000)} s · ${Math.ceil(managedOriginal.payload.byteLength / 1024).toLocaleString("en-US")} KB`
                       : `${Math.floor(voiceElapsedMs / 60_000)}:${Math.floor(
                           (voiceElapsedMs % 60_000) / 1000,
                         )
@@ -1246,14 +1224,14 @@ export const CaptureDialog = ({
                       type="button"
                       onClick={() => voiceSessionRef.current?.stop()}
                     >
-                      Zatrzymaj
+                      Stop
                     </button>
                     <button
                       className="secondary-button"
                       type="button"
                       onClick={cancelVoice}
                     >
-                      Anuluj nagranie
+                      Cancel recording
                     </button>
                   </>
                 ) : (
@@ -1266,8 +1244,8 @@ export const CaptureDialog = ({
                     onClick={() => void startVoice()}
                   >
                     {managedOriginal?.kind === "voice_note"
-                      ? "Nagraj ponownie"
-                      : "Rozpocznij nagrywanie"}
+                      ? "Record again"
+                      : "Start recording"}
                   </button>
                 )}
               </div>
@@ -1282,14 +1260,13 @@ export const CaptureDialog = ({
                   onChange={(event) => setRetainVoice(event.target.checked)}
                 />
                 <span>
-                  Zachowaj audio po transkrypcji. Domyślnie zostanie usunięte
-                  dopiero po trwałym zapisie transkryptu przez zewnętrznego
-                  agenta MCP.
+                  Keep the audio after transcription. By default it is deleted
+                  once an MCP agent has written the transcript.
                 </span>
               </label>
               <small>
-                Constellation nie transkrybuje i nie nagrywa spotkań. Mikrofon
-                działa wyłącznie podczas widocznego nagrywania w tym oknie.
+                Constellation does not transcribe or record meetings. The
+                microphone runs only while this window is visibly recording.
               </small>
               {payloadError && (
                 <p className="capture-payload-error" role="alert">
@@ -1320,8 +1297,8 @@ export const CaptureDialog = ({
                 managedOriginal?.kind === "screenshot"
                   ? managedOriginal.payload.displayName
                   : payloadBusy
-                    ? "Szyfruję i zachowuję…"
-                    : "Upuść plik lub wklej screenshot"}
+                    ? "Encrypting and keeping…"
+                    : "Drop a file or paste a screenshot"}
               </strong>
               <button
                 className="secondary-button"
@@ -1329,11 +1306,11 @@ export const CaptureDialog = ({
                 disabled={payloadBusy}
                 onClick={() => void choosePayload()}
               >
-                {managedOriginal === undefined ? "Wybierz plik" : "Zmień plik"}
+                {managedOriginal === undefined ? "Choose file" : "Change file"}
               </button>
               <small>
-                Constellation zachowa zaszyfrowaną kopię w tym workspace przed
-                uporządkowaniem. Lokalna ścieżka nie zostanie zapisana.
+                Constellation keeps an encrypted copy in this workspace before
+                filing it. The local path is not saved.
               </small>
               {payloadError && (
                 <p className="capture-payload-error" role="alert">
@@ -1348,13 +1325,13 @@ export const CaptureDialog = ({
               <strong>{workspaceName}</strong>
             </div>
             <div>
-              <span>Wynik</span>
-              <strong>Reguła aplikacji · z możliwością cofnięcia</strong>
+              <span>Result</span>
+              <strong>App rule · can be undone</strong>
             </div>
           </div>
           {confirmDiscard && (
             <div className="capture-discard-confirm" role="alert">
-              <span>Masz niezapisaną treść. Odrzucić ją?</span>
+              <span>You have unsaved content. Discard it?</span>
               <div>
                 <button
                   type="button"
@@ -1362,26 +1339,26 @@ export const CaptureDialog = ({
                   autoFocus
                   onClick={() => setConfirmDiscard(false)}
                 >
-                  Wróć do edycji
+                  Back to editing
                 </button>
                 <button
                   type="button"
                   className="quiet-danger-button"
                   onClick={close}
                 >
-                  Odrzuć treść
+                  Discard content
                 </button>
               </div>
             </div>
           )}
           <footer className="capture-footer">
-            <span>Oryginał zostanie zachowany i powiązany z wynikiem.</span>
+            <span>The original is kept and linked to the result.</span>
             <button
               className="primary-button"
               type="submit"
               disabled={busy || payloadBusy || !canSubmit}
             >
-              {busy ? "Przetwarzam…" : "Zapisz i uporządkuj"}
+              {busy ? "Working…" : "Save and file"}
             </button>
           </footer>
         </form>
@@ -1419,7 +1396,7 @@ export const RealApp = ({
     );
     const fallback = destinationContext(
       requested?.id ?? "today",
-      requested?.label ?? "Tydzień",
+      requested?.label ?? "Today",
     );
     return parameters.get("detached") === "1"
       ? createShellNavigation(fallback)
@@ -1513,7 +1490,7 @@ export const RealApp = ({
   const [historyBusyCaptureId, setHistoryBusyCaptureId] = useState<CaptureId>();
   const [comments, setComments] = useState<DataSlice<CommentListProjection>>({
     kind: "unavailable",
-    message: "Wybierz Zadanie albo Projekt.",
+    message: "Choose a task or a project.",
   });
   const [sessionRelation, setSessionRelation] = useState<{
     id: RelationId;
@@ -1695,7 +1672,7 @@ export const RealApp = ({
       setNavigation(outcome.state);
       if (outcome.evictedContext !== undefined) {
         pushToast({
-          message: `Zamknięto kartę „${outcome.evictedContext.label}”, aby otworzyć nową.`,
+          message: `Closed the “${outcome.evictedContext.label}” tab to open a new one.`,
           restore: outcome.evictedContext,
         });
       }
@@ -1907,7 +1884,7 @@ export const RealApp = ({
             title: area.title,
             detail: area.responsibility,
             needsReview: area.needsReview,
-            stateLabel: area.state === "active" ? "Aktywny" : "Zarchiwizowany",
+            stateLabel: area.state === "active" ? "Active" : "Archived",
           };
     }
     const initiative = snapshot.work.data.initiatives.find(
@@ -1922,7 +1899,7 @@ export const RealApp = ({
           title: initiative.title,
           detail: initiative.intendedOutcome,
           needsReview: initiative.needsReview,
-          stateLabel: initiative.state === "active" ? "Aktywna" : "Zamknięta",
+          stateLabel: initiative.state === "active" ? "Active" : "Closed",
         };
   }, [selectedWorkContext, snapshot]);
   // Szkic należy do wybranego rekordu, nie do inspectora — zmiana wyboru nie
@@ -1965,7 +1942,7 @@ export const RealApp = ({
       pruneInaccessibleShellContexts(
         current,
         { taskIds, projectIds, documentIds, organizationIds },
-        destinationContext("today", "Tydzień"),
+        destinationContext("today", "Today"),
       ),
     );
   }, [snapshot]);
@@ -1974,11 +1951,11 @@ export const RealApp = ({
     if (!client) return;
     return client.onAttentionActivated((destination) => {
       if (destination.kind === "task") {
-        openContext(taskContext(destination.taskId, "Zadanie"));
+        openContext(taskContext(destination.taskId, "Task"));
       } else if (destination.kind === "project") {
-        openContext(projectContext(destination.projectId, "Projekt"));
+        openContext(projectContext(destination.projectId, "Project"));
       } else {
-        openContext(destinationContext("library", "Dokumenty"));
+        openContext(destinationContext("library", "Library"));
       }
     });
   }, [client, openContext]);
@@ -2031,7 +2008,7 @@ export const RealApp = ({
       setState({
         kind: "unavailable",
         message:
-          "Bezpieczny most Electron jest niedostępny. Uruchom aplikację przez skrypt desktopowy.",
+          "The secure Electron bridge is unavailable. Start the app through the desktop script.",
       });
       return;
     }
@@ -2067,7 +2044,7 @@ export const RealApp = ({
             message:
               error instanceof Error
                 ? error.message
-                : "Nie udało się otworzyć workspace.",
+                : "Could not open the workspace.",
           }),
       );
     return () => {
@@ -2091,7 +2068,7 @@ export const RealApp = ({
             message:
               error instanceof Error
                 ? error.message
-                : "Przegląd projektu jest niedostępny.",
+                : "The project overview is unavailable.",
           });
         }
       });
@@ -2104,7 +2081,7 @@ export const RealApp = ({
     if (!client || !snapshot || (!selectedTaskId && !selectedProjectId)) {
       setComments({
         kind: "unavailable",
-        message: "Wybierz Zadanie albo Projekt.",
+        message: "Choose a task or a project.",
       });
       return;
     }
@@ -2122,7 +2099,7 @@ export const RealApp = ({
             message:
               error instanceof Error
                 ? error.message
-                : "Komentarze są niedostępne.",
+                : "Comments are unavailable.",
           }),
       );
     return () => {
@@ -2447,8 +2424,8 @@ export const RealApp = ({
       setWorkContextNarrative(undefined);
       await refreshAfter(
         record.kind === "area"
-          ? "Stałą odpowiedzialność zapisano."
-          : "Zamierzony wynik zapisano.",
+          ? "Responsibility saved."
+          : "Intended outcome saved.",
       );
     });
   };
@@ -2456,7 +2433,7 @@ export const RealApp = ({
     if (!client || !snapshot) return undefined;
     const result = await stageManagedAttachment(client, snapshot);
     if (result.kind !== "success") {
-      if (result.message !== "Nie wybrano pliku.") showFailure(result);
+      if (result.message !== "No file was chosen.") showFailure(result);
       return undefined;
     }
     setState({ kind: "ready", snapshot: result.data.snapshot });
@@ -2488,7 +2465,7 @@ export const RealApp = ({
       });
       if (result.state === "available") {
         await reloadSnapshot();
-        pushToast({ message: "Załącznik jest ponownie dostępny." });
+        pushToast({ message: "The attachment is available again." });
         return "available";
       }
     } catch {
@@ -2496,7 +2473,7 @@ export const RealApp = ({
     }
     showFailure({
       kind: "retry",
-      message: "Nie udało się jeszcze pobrać załącznika na to urządzenie.",
+      message: "Could not fetch the attachment to this device yet. Try again.",
     });
     return "unavailable";
   };
@@ -2520,9 +2497,9 @@ export const RealApp = ({
         projectContext(destination.projectId, project?.title ?? item.title),
       );
     } else if (destination.kind === "document") {
-      openContext(destinationContext("library", "Dokumenty"));
+      openContext(destinationContext("library", "Library"));
     } else {
-      openContext(destinationContext("history", "Historia Capture"));
+      openContext(destinationContext("history", "Capture history"));
     }
     if (client && snapshot && item.state === "unread") {
       setAttentionBusy(true);
@@ -2542,7 +2519,7 @@ export const RealApp = ({
       async (result) => {
         setAttentionBusy(false);
         if (result.kind === "success")
-          await refreshAfter("Sygnał oznaczono jako przeczytany.");
+          await refreshAfter("Signal marked as read.");
         else showFailure(result);
       },
     );
@@ -2554,7 +2531,7 @@ export const RealApp = ({
       async (result) => {
         setAttentionBusy(false);
         if (result.kind === "success")
-          await refreshAfter("Sygnał usunięto z uwagi.");
+          await refreshAfter("Signal removed from the inbox.");
         else showFailure(result);
       },
     );
@@ -2575,8 +2552,8 @@ export const RealApp = ({
       if (result.kind === "success")
         await refreshAfter(
           destination === "task"
-            ? "Capture skierowano do zadań."
-            : "Capture zapisano jako źródło wiedzy.",
+            ? "Capture filed as a task."
+            : "Capture filed as a knowledge source.",
         );
       else showFailure(result);
     });
@@ -2588,9 +2565,7 @@ export const RealApp = ({
       async (result) => {
         setAttentionBusy(false);
         if (result.kind === "success")
-          await refreshAfter(
-            "Capture wrócił do bezpiecznej kolejki przetwarzania.",
-          );
+          await refreshAfter("Capture is back in the safe processing queue.");
         else showFailure(result);
       },
     );
@@ -2606,13 +2581,13 @@ export const RealApp = ({
     ).then(async (result) => {
       setAttentionBusy(false);
       if (result.kind === "success")
-        await refreshAfter("Oryginał zachowano bez wymuszonej klasyfikacji.");
+        await refreshAfter("Original kept without a forced classification.");
       else showFailure(result);
     });
   };
   const replaceAttentionPayload = (item: AttentionItem) => {
     if (!client?.selectCapturePayload || !snapshot) {
-      pushToast({ message: "Wybór pliku jest chwilowo niedostępny." });
+      pushToast({ message: "Choosing a file is unavailable right now." });
       return;
     }
     setAttentionBusy(true);
@@ -2621,8 +2596,7 @@ export const RealApp = ({
         setAttentionBusy(false);
         if (selected.code !== "cancelled")
           pushToast({
-            message:
-              "Nie udało się przygotować bezpiecznego pliku zastępczego.",
+            message: "Could not prepare a safe replacement file. Try again.",
           });
         return;
       }
@@ -2635,9 +2609,7 @@ export const RealApp = ({
       );
       setAttentionBusy(false);
       if (result.kind === "success")
-        await refreshAfter(
-          "Oryginał zastąpiono i skierowano do ponownego przetwarzania.",
-        );
+        await refreshAfter("Original replaced and sent back for processing.");
       else showFailure(result);
     });
   };
@@ -2719,41 +2691,41 @@ export const RealApp = ({
       <main className="center-state" aria-busy="true">
         <BrandMark />
         <div className="loading-line" />
-        <p>Otwieram workspace…</p>
+        <p>Opening the workspace…</p>
       </main>
     );
   if (state.kind === "recovery") {
     const reason =
       state.build.recoveryReason === "secure_storage_unavailable"
-        ? "Bezpieczny magazyn systemu jest niedostępny. Możesz spróbować ponownie po odblokowaniu systemu albo przywrócić zweryfikowany backup."
+        ? "The system keychain is unavailable. Unlock the system and try again, or restore a verified backup."
         : state.build.recoveryReason === "protected_key_unavailable"
-          ? "Chroniony klucz workspace’u jest niedostępny lub uszkodzony. Istniejące dane nie zostały zastąpione."
-          : "Lokalny workspace nie przeszedł bezpiecznego otwarcia. Constellation zatrzymał się przed zapisem.";
+          ? "The protected workspace key is unavailable or damaged. Existing data was not replaced."
+          : "The local workspace did not open safely. Constellation stopped before writing anything.";
     return (
       <main className="center-state recovery-required-state">
         <BrandMark />
-        <p className="eyebrow">Odzyskiwanie workspace</p>
-        <h1>Dane wymagają bezpiecznego restore</h1>
+        <p className="eyebrow">Workspace recovery</p>
+        <h1>This data needs a safe restore</h1>
         <p>{reason}</p>
         <div>
           <button
             className="primary-button"
             onClick={() => setRecoveryOpen(true)}
           >
-            Otwórz odzyskiwanie
+            Open recovery
           </button>
           <button
             className="secondary-button"
             onClick={() => window.location.reload()}
           >
-            Spróbuj otworzyć ponownie
+            Try opening again
           </button>
         </div>
         {recoveryOpen && client && (
           <Suspense fallback={null}>
             <WorkspaceRecovery
               client={client}
-              workspaceName="Lokalny workspace"
+              workspaceName="Local workspace"
               recoveredPrevious={false}
               restoreOnly
               onClose={() => setRecoveryOpen(false)}
@@ -2771,15 +2743,15 @@ export const RealApp = ({
         <p className="eyebrow">Constellation</p>
         <h1>
           {state.kind === "unavailable"
-            ? "Most desktopowy jest niedostępny"
-            : "Nie udało się otworzyć workspace"}
+            ? "The desktop bridge is unavailable"
+            : "Could not open the workspace"}
         </h1>
         <p>{state.message}</p>
         <button
           className="secondary-button"
           onClick={() => window.location.reload()}
         >
-          Spróbuj ponownie
+          Try again
         </button>
       </main>
     );
@@ -2789,8 +2761,8 @@ export const RealApp = ({
   const coordinatedDataHome =
     state.snapshot.dataHome?.descriptor.providerKind === "coordinated";
   const dataHomeLabel = coordinatedDataHome
-    ? `${state.snapshot.dataHome?.descriptor.displayName ?? "Hub"} · skoordynowany`
-    : "Local only · dane na tym urządzeniu";
+    ? `${state.snapshot.dataHome?.descriptor.displayName ?? "Hub"} · coordinated`
+    : "Local only · data on this device";
   // Product-owner correction (2026-07-18): the work plane owns the available
   // width until a deliberate record selection opens the inspector. The panel
   // remains the single detail plane, but it never consumes an empty column.
@@ -2812,7 +2784,7 @@ export const RealApp = ({
               : item.id === "inbox" &&
                   state.snapshot.attention.kind === "ready" &&
                   state.snapshot.attention.data.unreadCount > 0
-                ? `${item.label} · ${state.snapshot.attention.data.unreadCount} nieprzeczytanych`
+                ? `${item.label} · ${state.snapshot.attention.data.unreadCount} unread`
                 : item.label
           }
           aria-current={surface === item.id ? "page" : undefined}
@@ -2821,7 +2793,7 @@ export const RealApp = ({
               ? undefined
               : shortcutHint.kind === "direct"
                 ? `${item.label} · ${shortcutHint.keys}`
-                : `${item.label} · przez paletę ${shortcutHint.keys}`
+                : `${item.label} · via palette ${shortcutHint.keys}`
           }
           onFocus={(event) => {
             setFocusedNavItemId(item.id);
@@ -2866,7 +2838,7 @@ export const RealApp = ({
           tabIndex={
             focusedNavItemId === item.id || surface === item.id ? 0 : -1
           }
-          aria-label={`${favorites.includes(item.id) ? "Usuń" : "Dodaj"} ${item.label} ${favorites.includes(item.id) ? "z" : "do"} ulubionych`}
+          aria-label={`${favorites.includes(item.id) ? "Remove" : "Add"} ${item.label} ${favorites.includes(item.id) ? "from" : "to"} favorites`}
           aria-pressed={favorites.includes(item.id)}
           onClick={() =>
             setFavorites((current) =>
@@ -2895,9 +2867,9 @@ export const RealApp = ({
           document.getElementById("main-content")?.focus();
         }}
       >
-        Przejdź do treści
+        Skip to content
       </a>
-      <aside className="sidebar" aria-label="Workspace i nawigacja">
+      <aside className="sidebar" aria-label="Workspace and navigation">
         <div className="window-drag" />
         <div className="brand-row">
           <BrandMark />
@@ -2910,13 +2882,13 @@ export const RealApp = ({
           disabled={isPreview}
           title={
             isPreview
-              ? "Otwórz ustawienia workspace"
+              ? "Open workspace settings"
               : coordinatedDataHome
-                ? "Otwórz ustawienia skoordynowanego workspace"
-                : "Otwórz ustawienia i przełączanie workspace"
+                ? "Open coordinated workspace settings"
+                : "Open workspace settings and switching"
           }
           onClick={() =>
-            openContext(destinationContext("settings", "Ustawienia"))
+            openContext(destinationContext("settings", "Settings"))
           }
         >
           <span className="workspace-avatar">I</span>
@@ -2925,23 +2897,23 @@ export const RealApp = ({
             <small>
               {state.snapshot.dataHome?.availability === "available"
                 ? dataHomeLabel
-                : "Data Home wymaga uwagi"}
+                : "Data Home needs attention"}
             </small>
           </span>
           {!isPreview && <span className="workspace-switcher-action">•••</span>}
         </button>
         <button
           className="search-control"
-          aria-label={`Szukaj · ${modifierLabel}K`}
+          aria-label={`Search · ${modifierLabel}K`}
           onFocus={(event) =>
-            showRailTip(event.currentTarget, "Szukaj", {
+            showRailTip(event.currentTarget, "Search", {
               keys: `${modifierLabel}K`,
               kind: "direct",
             })
           }
           onBlur={hideRailTip}
           onMouseEnter={(event) =>
-            showRailTip(event.currentTarget, "Szukaj", {
+            showRailTip(event.currentTarget, "Search", {
               keys: `${modifierLabel}K`,
               kind: "direct",
             })
@@ -2950,13 +2922,13 @@ export const RealApp = ({
           onClick={() => setSearchOpen(true)}
         >
           <Icon name="search" />
-          <span>Szukaj</span>
+          <span>Search</span>
           <kbd>{modifierLabel}K</kbd>
         </button>
-        <nav ref={navRef} aria-label="Główna nawigacja" onKeyDown={navKeyDown}>
+        <nav ref={navRef} aria-label="Main navigation" onKeyDown={navKeyDown}>
           {favorites.length > 0 && (
             <>
-              <p className="nav-label">Ulubione</p>
+              <p className="nav-label">Favorites</p>
               {favorites.map((favorite) => {
                 const item = navItems.find((entry) => entry.id === favorite);
                 return item ? (
@@ -2979,7 +2951,7 @@ export const RealApp = ({
           )}
           {recentContexts.length > 0 && (
             <>
-              <p className="nav-label">Ostatnie</p>
+              <p className="nav-label">Recent</p>
               {recentContexts.map((recent) => {
                 const item = navItems.find(
                   (entry) => entry.id === recent.surface,
@@ -3029,7 +3001,7 @@ export const RealApp = ({
                     aria-label={
                       activeGroupItem === undefined
                         ? group
-                        : `${group}, bieżący widok ${activeGroupItem.label}`
+                        : `${group}, current view ${activeGroupItem.label}`
                     }
                     onClick={() => toggleNavigationGroup(group)}
                   >
@@ -3056,20 +3028,20 @@ export const RealApp = ({
         <div className="sidebar-spacer" />
         {isPreview && (
           <details className="fixture-condition">
-            <summary>Stan podglądu</summary>
+            <summary>Preview condition</summary>
             <select
               value={previewCondition}
               onChange={(event) =>
                 setPreviewCondition(event.target.value as PreviewCondition)
               }
-              aria-label="Wybierz deterministyczny stan podglądu"
+              aria-label="Choose a deterministic preview condition"
             >
-              <option value="ready">Gotowy</option>
+              <option value="ready">Ready</option>
               <option value="offline">Offline</option>
               <option value="retry">Retry</option>
-              <option value="partial">Częściowy</option>
-              <option value="conflict">Konflikt</option>
-              <option value="permission">Uprawnienia</option>
+              <option value="partial">Partial</option>
+              <option value="conflict">Conflict</option>
+              <option value="permission">Permission</option>
               <option value="recovery">Recovery</option>
             </select>
           </details>
@@ -3079,17 +3051,17 @@ export const RealApp = ({
           <div>
             <strong>
               {isPreview
-                ? "Podgląd deweloperski"
+                ? "Developer preview"
                 : coordinatedDataHome
-                  ? "Skoordynowany workspace"
-                  : "Lokalny workspace"}
+                  ? "Coordinated workspace"
+                  : "Local workspace"}
             </strong>
             <span>
               {coordinatedDataHome
-                ? "Hub + zaszyfrowana kopia robocza"
+                ? "Hub + encrypted working copy"
                 : build.persistence === "encrypted-local"
-                  ? "Zaszyfrowany zapis lokalny"
-                  : "Pamięć sesji"}{" "}
+                  ? "Encrypted local storage"
+                  : "Session memory"}{" "}
               · {build.version}
             </span>
           </div>
@@ -3106,16 +3078,13 @@ export const RealApp = ({
         data-surface={surface}
         aria-labelledby="surface-title"
       >
-        <div className="shell-tabbar" aria-label="Otwarte konteksty">
-          <div
-            className="shell-history-controls"
-            aria-label="Historia kontekstu"
-          >
+        <div className="shell-tabbar" aria-label="Open contexts">
+          <div className="shell-history-controls" aria-label="Context history">
             <button
               className="icon-button"
               data-shell-history="back"
-              aria-label="Wstecz"
-              title="Wstecz · Alt+←"
+              aria-label="Back"
+              title="Back · Alt+←"
               disabled={!canMoveShellHistory(navigation, -1)}
               onClick={() =>
                 setNavigation((current) => moveShellHistory(current, -1))
@@ -3126,8 +3095,8 @@ export const RealApp = ({
             <button
               className="icon-button"
               data-shell-history="forward"
-              aria-label="Dalej"
-              title="Dalej · Alt+→"
+              aria-label="Forward"
+              title="Forward · Alt+→"
               disabled={!canMoveShellHistory(navigation, 1)}
               onClick={() =>
                 setNavigation((current) => moveShellHistory(current, 1))
@@ -3140,7 +3109,7 @@ export const RealApp = ({
             ref={tabRef}
             className="shell-tabs"
             role="tablist"
-            aria-label="Konteksty"
+            aria-label="Contexts"
           >
             {navigation.tabs.map((tab, index) => {
               const active = tab.key === navigation.activeKey;
@@ -3172,8 +3141,8 @@ export const RealApp = ({
                     <button
                       type="button"
                       className="shell-tab-close"
-                      aria-label={`Zamknij kontekst ${tab.label}`}
-                      title={`Zamknij · ${modifierLabel}W`}
+                      aria-label={`Close context ${tab.label}`}
+                      title={`Close · ${modifierLabel}W`}
                       onClick={() =>
                         setNavigation((current) =>
                           closeShellContext(current, tab.key),
@@ -3192,8 +3161,8 @@ export const RealApp = ({
             className="shell-detach"
             aria-label={
               detachedWindow
-                ? "Zamknij osobne okno"
-                : `Otwórz ${activeContext.label} w osobnym oknie`
+                ? "Close the separate window"
+                : `Open ${activeContext.label} in a separate window`
             }
             disabled={
               !detachedWindow && client?.openDetachedSurface === undefined
@@ -3205,16 +3174,16 @@ export const RealApp = ({
                   setNotice({
                     kind: "unavailable",
                     message:
-                      "Nie udało się otworzyć osobnego okna. Bieżący kontekst pozostaje tutaj.",
+                      "Could not open a separate window. This context stays here.",
                   }),
                 );
             }}
           >
             <span className="shell-detach-long">
-              {detachedWindow ? "Dołącz z powrotem" : "Osobne okno"}
+              {detachedWindow ? "Attach back" : "Separate window"}
             </span>
             <span className="shell-detach-short" aria-hidden="true">
-              {detachedWindow ? "Dołącz" : "Okno"}
+              {detachedWindow ? "Attach" : "Window"}
             </span>
           </button>
         </div>
@@ -3245,12 +3214,12 @@ export const RealApp = ({
                       .catch(() => undefined)
                   }
                 >
-                  Kopiuj szczegóły
+                  Copy details
                 </button>
               )}
               <button
                 className="icon-button"
-                aria-label="Zamknij komunikat"
+                aria-label="Close message"
                 onClick={() => setNotice(undefined)}
               >
                 <Icon name="close" />
@@ -3290,23 +3259,23 @@ export const RealApp = ({
                         (item) => item.id === id,
                       )
                     : undefined;
-                openContext(projectContext(id, project?.title ?? "Projekt"));
+                openContext(projectContext(id, project?.title ?? "Project"));
               }}
               onSelectProject={selectProjectInInspector}
               onOpenTask={(id) => {
                 const task = tasks.find((item) => item.id === id);
-                openContext(taskContext(id, task?.title ?? "Zadanie"));
+                openContext(taskContext(id, task?.title ?? "Task"));
               }}
               onSelectTask={selectTaskInInspector}
               onOpenAttention={() =>
-                openContext(destinationContext("inbox", "Do uwagi"))
+                openContext(destinationContext("inbox", "Inbox"))
               }
               onCapture={openCapture}
             />
           )}
           {surface === "meetings" && client && (
-            <LazySurfaceBoundary label="Spotkania">
-              <Suspense fallback={<SurfaceLoadingState label="Spotkania" />}>
+            <LazySurfaceBoundary label="Meetings">
+              <Suspense fallback={<SurfaceLoadingState label="Meetings" />}>
                 <MeetingsSurface
                   client={client}
                   activeMeetingId={selectedMeetingId}
@@ -3318,8 +3287,10 @@ export const RealApp = ({
             </LazySurfaceBoundary>
           )}
           {surface === "organizations" && (
-            <LazySurfaceBoundary label="Relacje">
-              <Suspense fallback={<SurfaceLoadingState label="Relacje" />}>
+            <LazySurfaceBoundary label="Organizations">
+              <Suspense
+                fallback={<SurfaceLoadingState label="Organizations" />}
+              >
                 {activeOrganizationId === undefined ? (
                   <StrategicDepthSurface
                     client={client}
@@ -3352,7 +3323,7 @@ export const RealApp = ({
                       ).then(async (result) => {
                         setProjectBusy(false);
                         if (result.kind === "success")
-                          await refreshAfter("Projekt połączono z klientem.");
+                          await refreshAfter("Project linked to the client.");
                         else showFailure(result);
                       });
                     }}
@@ -3367,9 +3338,7 @@ export const RealApp = ({
                       ).then(async (result) => {
                         setProjectBusy(false);
                         if (result.kind === "success")
-                          await refreshAfter(
-                            "Powiązanie z projektem usunięto.",
-                          );
+                          await refreshAfter("Project link removed.");
                         else showFailure(result);
                       });
                     }}
@@ -3384,11 +3353,11 @@ export const RealApp = ({
                     }
                     onOpenMeeting={(id) => {
                       setSelectedMeetingId(id);
-                      openContext(destinationContext("meetings", "Spotkania"));
+                      openContext(destinationContext("meetings", "Meetings"));
                     }}
                     onOpenRelationship={(id) => {
                       openContext(
-                        destinationContext("organizations", "Relacje"),
+                        destinationContext("organizations", "Organizations"),
                       );
                       selectStrategicInInspector(id);
                     }}
@@ -3398,8 +3367,8 @@ export const RealApp = ({
             </LazySurfaceBoundary>
           )}
           {surface === "work" && (
-            <LazySurfaceBoundary label="Praca">
-              <Suspense fallback={<SurfaceLoadingState label="Praca" />}>
+            <LazySurfaceBoundary label="Saved views">
+              <Suspense fallback={<SurfaceLoadingState label="Saved views" />}>
                 <WorkSurface
                   client={client}
                   snapshot={state.snapshot}
@@ -3409,7 +3378,7 @@ export const RealApp = ({
                   onSelectTask={selectTaskInInspector}
                   onOpenTask={(id) => {
                     const task = tasks.find((item) => item.id === id);
-                    openContext(taskContext(id, task?.title ?? "Zadanie"));
+                    openContext(taskContext(id, task?.title ?? "Task"));
                   }}
                   onSelectProject={selectProjectInInspector}
                   onSelectContext={selectWorkContextInInspector}
@@ -3420,8 +3389,8 @@ export const RealApp = ({
             </LazySurfaceBoundary>
           )}
           {surface === "settings" && (
-            <LazySurfaceBoundary label="Ustawienia">
-              <Suspense fallback={<SurfaceLoadingState label="Ustawienia" />}>
+            <LazySurfaceBoundary label="Settings">
+              <Suspense fallback={<SurfaceLoadingState label="Settings" />}>
                 <SettingsSurface
                   client={client}
                   snapshot={state.snapshot}
@@ -3442,7 +3411,7 @@ export const RealApp = ({
               busyTaskId={busyTaskId}
               onOpenTask={(id) => {
                 const task = tasks.find((item) => item.id === id);
-                openContext(taskContext(id, task?.title ?? "Zadanie"));
+                openContext(taskContext(id, task?.title ?? "Task"));
               }}
               onSelectTask={selectTaskInInspector}
               onCapture={openCapture}
@@ -3452,7 +3421,7 @@ export const RealApp = ({
                   title,
                 });
                 if (result.kind === "success") {
-                  await refreshAfter("Zadanie utworzono.");
+                  await refreshAfter("Task created.");
                   selectTaskInInspector(result.data.taskId);
                   return true;
                 }
@@ -3472,7 +3441,7 @@ export const RealApp = ({
                 ).then(async (result) => {
                   setBusyTaskId(undefined);
                   if (result.kind === "success")
-                    await refreshAfter("Status zadania zaktualizowano.");
+                    await refreshAfter("Task status updated.");
                   else showFailure(result);
                 });
               }}
@@ -3490,9 +3459,7 @@ export const RealApp = ({
                   setBusyTaskId(undefined);
                   if (result.kind === "success")
                     await refreshAfter(
-                      completed
-                        ? "Zadanie ukończono."
-                        : "Zadanie otwarto ponownie.",
+                      completed ? "Task completed." : "Task reopened.",
                     );
                   else showFailure(result);
                 });
@@ -3516,8 +3483,8 @@ export const RealApp = ({
                   if (result.kind === "success")
                     await refreshAfter(
                       principalId === undefined
-                        ? "Odpowiedzialność usunięto."
-                        : "Odpowiedzialność przypisano.",
+                        ? "Assignee removed."
+                        : "Assignee set.",
                     );
                   else showFailure(result);
                 });
@@ -3525,8 +3492,8 @@ export const RealApp = ({
             />
           )}
           {surface === "library" && (
-            <LazySurfaceBoundary label="Dokumenty">
-              <Suspense fallback={<SurfaceLoadingState label="Dokumenty" />}>
+            <LazySurfaceBoundary label="Library">
+              <Suspense fallback={<SurfaceLoadingState label="Library" />}>
                 <DocumentsSurface
                   client={client}
                   snapshot={state.snapshot}
@@ -3544,7 +3511,7 @@ export const RealApp = ({
                       openContext(
                         taskContext(
                           target.targetId as TaskId,
-                          task?.title ?? "Zadanie",
+                          task?.title ?? "Task",
                         ),
                       );
                       return;
@@ -3559,7 +3526,7 @@ export const RealApp = ({
                       openContext(
                         projectContext(
                           target.targetId as ProjectId,
-                          project?.title ?? "Projekt",
+                          project?.title ?? "Project",
                         ),
                       );
                       return;
@@ -3572,12 +3539,12 @@ export const RealApp = ({
                         target.targetId as StrategicRecordId,
                       );
                       openContext(
-                        destinationContext("organizations", "Relacje"),
+                        destinationContext("organizations", "Organizations"),
                       );
                       return;
                     }
                     setSelectedMeetingId(target.targetId);
-                    openContext(destinationContext("meetings", "Spotkania"));
+                    openContext(destinationContext("meetings", "Meetings"));
                   }}
                   onReload={reload}
                   onFailure={showFailure}
@@ -3619,27 +3586,29 @@ export const RealApp = ({
                         (item) => item.id === id,
                       )
                     : undefined;
-                openContext(projectContext(id, project?.title ?? "Projekt"));
+                openContext(projectContext(id, project?.title ?? "Project"));
               }}
               onSelectProject={selectProjectInInspector}
               onBackToProjects={() =>
-                openContext(destinationContext("projects", "Projekty"))
+                openContext(destinationContext("projects", "Projects"))
               }
               onOpenDocument={(id, title) =>
                 openContext(documentContext(id, title))
               }
               onOpenMeeting={(id) => {
                 setSelectedMeetingId(id);
-                openContext(destinationContext("meetings", "Spotkania"));
+                openContext(destinationContext("meetings", "Meetings"));
               }}
               onOpenRelationship={(id) => {
                 setSelectedStrategicId(id);
-                openContext(destinationContext("organizations", "Relacje"));
+                openContext(
+                  destinationContext("organizations", "Organizations"),
+                );
               }}
               onEntityActivate={(target) => {
                 if (target.targetKind === "task") {
                   setSelectedTaskId(target.targetId as TaskId);
-                  openContext(destinationContext("tasks", "Zadania"));
+                  openContext(destinationContext("tasks", "Tasks"));
                   return;
                 }
                 if (target.targetKind === "project") {
@@ -3652,7 +3621,7 @@ export const RealApp = ({
                   openContext(
                     projectContext(
                       target.targetId as ProjectId,
-                      project?.title ?? "Projekt",
+                      project?.title ?? "Project",
                     ),
                   );
                   return;
@@ -3662,11 +3631,13 @@ export const RealApp = ({
                   target.targetKind === "organization"
                 ) {
                   setSelectedStrategicId(target.targetId as StrategicRecordId);
-                  openContext(destinationContext("organizations", "Relacje"));
+                  openContext(
+                    destinationContext("organizations", "Organizations"),
+                  );
                   return;
                 }
                 setSelectedMeetingId(target.targetId);
-                openContext(destinationContext("meetings", "Spotkania"));
+                openContext(destinationContext("meetings", "Meetings"));
               }}
               onCreate={async (title, outcome, templateId) => {
                 if (!client) return false;
@@ -3698,7 +3669,7 @@ export const RealApp = ({
                 openContext(
                   projectContext(result.data.projectId, title.trim()),
                 );
-                await refreshAfter("Projekt utworzono.");
+                await refreshAfter("Project created.");
                 return true;
               }}
               onApplyTemplate={(templateId) => {
@@ -3711,7 +3682,7 @@ export const RealApp = ({
                 }).then(async (result) => {
                   setProjectBusy(false);
                   if (result.kind === "success") {
-                    await refreshAfter("Szablon zastosowano.");
+                    await refreshAfter("Template applied.");
                   } else {
                     showFailure(result);
                   }
@@ -3728,7 +3699,7 @@ export const RealApp = ({
                 ).then(async (result) => {
                   setProjectBusy(false);
                   if (result.kind === "success")
-                    await refreshAfter("Zamierzony wynik zaktualizowano.");
+                    await refreshAfter("Intended outcome updated.");
                   else showFailure(result);
                 });
               }}
@@ -3745,8 +3716,8 @@ export const RealApp = ({
                   if (result.kind === "success")
                     await refreshAfter(
                       lifecycle === "closed"
-                        ? "Projekt zamknięto; historia i otwarte zadania pozostały bez zmian."
-                        : "Projekt otwarto ponownie.",
+                        ? "Project closed. History and open tasks are unchanged."
+                        : "Project reopened.",
                     );
                   else showFailure(result);
                 });
@@ -3770,7 +3741,7 @@ export const RealApp = ({
                       version: result.data.version,
                       taskId,
                     });
-                    await refreshAfter("Zadanie powiązano z projektem.");
+                    await refreshAfter("Task linked to the project.");
                   } else showFailure(result);
                 });
               }}
@@ -3785,7 +3756,7 @@ export const RealApp = ({
                 ).then(async (result) => {
                   setProjectBusy(false);
                   if (result.kind === "success")
-                    await refreshAfter("Klienta połączono z projektem.");
+                    await refreshAfter("Client linked to the project.");
                   else showFailure(result);
                 });
               }}
@@ -3804,7 +3775,7 @@ export const RealApp = ({
                 ).then(async (result) => {
                   setProjectBusy(false);
                   if (result.kind === "success")
-                    await refreshAfter("Powiązanie z klientem usunięto.");
+                    await refreshAfter("Client link removed.");
                   else showFailure(result);
                 });
               }}
@@ -3820,7 +3791,7 @@ export const RealApp = ({
                   setProjectBusy(false);
                   if (result.kind === "success") {
                     setSessionRelation(undefined);
-                    await refreshAfter("Powiązanie usunięto.");
+                    await refreshAfter("Link removed.");
                   } else showFailure(result);
                 });
               }}
@@ -3834,8 +3805,8 @@ export const RealApp = ({
             />
           )}
           {surface === "activity" && (
-            <LazySurfaceBoundary label="Aktywność">
-              <Suspense fallback={<SurfaceLoadingState label="Aktywność" />}>
+            <LazySurfaceBoundary label="Activity">
+              <Suspense fallback={<SurfaceLoadingState label="Activity" />}>
                 <ActivitySurface
                   activity={state.snapshot.activity}
                   timezone={state.snapshot.bootstrap.workspace.timezone}
@@ -3855,8 +3826,8 @@ export const RealApp = ({
             />
           )}
           {surface === "access" && (
-            <LazySurfaceBoundary label="Dostęp">
-              <Suspense fallback={<SurfaceLoadingState label="Dostęp" />}>
+            <LazySurfaceBoundary label="Access">
+              <Suspense fallback={<SurfaceLoadingState label="Access" />}>
                 <AccessSurface
                   access={state.snapshot.access}
                   agentAccess={state.snapshot.agentAccess}
@@ -3876,7 +3847,7 @@ export const RealApp = ({
                       async (result) => {
                         setAccessBusy(false);
                         if (result.kind === "success")
-                          await refreshAfter("Dostęp utworzono.");
+                          await refreshAfter("Access created.");
                         else showFailure(result);
                       },
                     );
@@ -3893,7 +3864,7 @@ export const RealApp = ({
                     ).then(async (result) => {
                       setAccessBusy(false);
                       if (result.kind === "success")
-                        await refreshAfter("Zakres dostępu zaktualizowano.");
+                        await refreshAfter("Access scope updated.");
                       else showFailure(result);
                     });
                   }}
@@ -3909,7 +3880,7 @@ export const RealApp = ({
                       setAccessBusy(false);
                       if (result.kind === "success")
                         await refreshAfter(
-                          "Dostęp cofnięto. Urządzenia usuną projekcję po synchronizacji.",
+                          "Access revoked. Devices drop the projection at the next sync.",
                         );
                       else showFailure(result);
                     });
@@ -3932,17 +3903,17 @@ export const RealApp = ({
                         setAgentGrantDetails(
                           "endpoint" in result.data
                             ? {
-                                title: "Zdalny dostęp MCP utworzono",
-                                descriptorLabel: "Chroniony plik konfiguracji",
+                                title: "Remote MCP access created",
+                                descriptorLabel: "Protected configuration file",
                                 descriptorPath: result.data.descriptorPath,
                                 connectionLabel: "Endpoint",
                                 connectionValue: result.data.endpoint,
                               }
                             : {
-                                title: "Dostęp MCP utworzono",
-                                descriptorLabel: "Plik dostępu",
+                                title: "MCP access created",
+                                descriptorLabel: "Access file",
                                 descriptorPath: result.data.descriptorPath,
-                                connectionLabel: "Adapter hosta",
+                                connectionLabel: "Host adapter",
                                 connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
                               },
                         );
@@ -3967,17 +3938,17 @@ export const RealApp = ({
                         setAgentGrantDetails(
                           "endpoint" in result.data
                             ? {
-                                title: "Zdalne poświadczenie obrócono",
-                                descriptorLabel: "Chroniony plik konfiguracji",
+                                title: "Remote credential rotated",
+                                descriptorLabel: "Protected configuration file",
                                 descriptorPath: result.data.descriptorPath,
                                 connectionLabel: "Endpoint",
                                 connectionValue: result.data.endpoint,
                               }
                             : {
-                                title: "Poświadczenie obrócono",
-                                descriptorLabel: "Plik dostępu",
+                                title: "Credential rotated",
+                                descriptorLabel: "Access file",
                                 descriptorPath: result.data.descriptorPath,
-                                connectionLabel: "Adapter hosta",
+                                connectionLabel: "Host adapter",
                                 connectionValue: `${result.data.launchCommand} ${result.data.launchArgs.join(" ")}`,
                               },
                         );
@@ -3986,7 +3957,7 @@ export const RealApp = ({
                   }}
                   onAgentRescope={async (grant, target) => {
                     if (!client)
-                      return "Brak połączenia z jądrem — spróbuj ponownie.";
+                      return "No connection to the kernel. Try again.";
                     setAccessBusy(true);
                     setNotice(undefined);
                     const result = await updateAgentGrantScope(
@@ -4005,7 +3976,7 @@ export const RealApp = ({
                       setNotice({
                         kind: "conflict",
                         message:
-                          "Ten dostęp zmienił się w międzyczasie, więc zapis nie przeszedł. Dane odświeżono — otwórz „Zmień uprawnienia” ponownie i sprawdź zakres przed zapisem.",
+                          "This access changed meanwhile, so the write did not go through. The data is refreshed — open “Change permissions” again and check the scope before saving.",
                       });
                       await reloadSnapshot();
                       return undefined;
@@ -4017,7 +3988,7 @@ export const RealApp = ({
                       // to act on the refusal is inside the dialog.
                       return result.message;
                     }
-                    await refreshAfter("Uprawnienia agenta zaktualizowano.");
+                    await refreshAfter("Agent permissions updated.");
                     return undefined;
                   }}
                   onAgentRevoke={(grant) => {
@@ -4036,8 +4007,8 @@ export const RealApp = ({
                       if (result.kind === "success")
                         await refreshAfter(
                           remote
-                            ? "Zdalny dostęp agenta cofnięto, a chroniony plik konfiguracji usunięto."
-                            : "Dostęp agenta cofnięto, a lokalne poświadczenie usunięto.",
+                            ? "Remote agent access revoked and its configuration file deleted."
+                            : "Agent access revoked and the local credential deleted.",
                         );
                       else showFailure(result);
                     });
@@ -4053,7 +4024,7 @@ export const RealApp = ({
             <span className="capture-dock-content">
               <Icon name="capture" />
               <span className="capture-dock-label">
-                Zapisz myśl, link albo zadanie…
+                Capture a thought, a link or a task…
               </span>
             </span>
             <kbd>{modifierLabel}⇧K</kbd>
@@ -4070,18 +4041,18 @@ export const RealApp = ({
       )}
       <aside
         className={`inspector${surface === "meetings" ? " inspector--meeting" : ""}${inspectorDetailOpen ? " open" : ""}`}
-        aria-label="Podgląd kontekstu"
+        aria-label="Context preview"
         aria-hidden={!inspectorDetailOpen}
       >
         <div
           className="inspector-resize"
           role="separator"
           aria-orientation="vertical"
-          aria-label="Zmień szerokość panelu podglądu"
+          aria-label="Resize the preview panel"
           aria-valuemin={280}
           aria-valuemax={640}
           aria-valuenow={inspectorWidth}
-          title="Podwójne kliknięcie przywraca domyślną szerokość"
+          title="Double-click restores the default width"
           tabIndex={0}
           onPointerDown={beginInspectorResize}
           onPointerMove={moveInspectorResize}
@@ -4104,35 +4075,35 @@ export const RealApp = ({
           ref={inspectorPanel.focusTargetRef}
         >
           <div>
-            <span>Podgląd kontekstu</span>
+            <span>Context preview</span>
             <small>
               {selectedTask
-                ? "Zadanie"
+                ? "Task"
                 : selectedProject
-                  ? "Projekt"
+                  ? "Project"
                   : selectedWorkContextRecord
                     ? selectedWorkContextRecord.kind === "area"
-                      ? "Obszar odpowiedzialności"
-                      : "Inicjatywa"
+                      ? "Area"
+                      : "Initiative"
                     : selectedStrategicRecord
                       ? (recordKindLabels[selectedStrategicRecord.kind] ??
-                        "Rekord strategiczny")
+                        "Strategic record")
                       : selectedCapture
                         ? "Capture"
                         : selectedAttention
-                          ? "Sygnał uwagi"
+                          ? "Signal"
                           : surface === "meetings"
-                            ? "Wynik Jamie"
+                            ? "Jamie result"
                             : surface === "library"
                               ? documentInspectorKind === "source"
-                                ? "Źródło"
-                                : "Dokument"
+                                ? "Source"
+                                : "Document"
                               : "Workspace"}
             </small>
           </div>
           <button
             className="icon-button"
-            aria-label="Zamknij podgląd kontekstu"
+            aria-label="Close the context preview"
             onClick={dismissInspector}
           >
             <Icon name="close" />
@@ -4182,7 +4153,7 @@ export const RealApp = ({
               ).then(async (result) => {
                 setHistoryBusyCaptureId(undefined);
                 if (result.kind === "success")
-                  await refreshAfter("Zachowane audio zostało usunięte.");
+                  await refreshAfter("The kept audio was deleted.");
                 else showFailure(result);
               });
             }}
@@ -4192,17 +4163,17 @@ export const RealApp = ({
             <span className="record-status">
               <i />
               {selectedTask.completionState === "completed"
-                ? "Ukończone"
+                ? "Completed"
                 : selectedTask.status.label}
             </span>
             <h2>{selectedTask.title}</h2>
             <p className="record-summary">
               {sourceCapture
-                ? "Utworzone z zachowanego Capture."
-                : "Zadanie w aktywnym workspace."}
+                ? "Created from a kept Capture."
+                : "In the active workspace."}
             </p>
             <section className="inspector-section task-context-block">
-              <p className="section-label">Kontekst roboczy</p>
+              <p className="section-label">Working context</p>
               {taskEditOpen ? (
                 <form
                   className="task-context-editor"
@@ -4249,7 +4220,7 @@ export const RealApp = ({
                     if (startAt === undefined || dueAt === undefined) {
                       showFailure({
                         kind: "error",
-                        message: "Data ma nieprawidłowy format.",
+                        message: "That date has an invalid format.",
                       });
                       return;
                     }
@@ -4261,7 +4232,7 @@ export const RealApp = ({
                       showFailure({
                         kind: "error",
                         message:
-                          "Start nie może wypadać po terminie. Popraw daty i zapisz ponownie.",
+                          "Start cannot fall after the deadline. Fix the dates and save again.",
                       });
                       return;
                     }
@@ -4313,13 +4284,13 @@ export const RealApp = ({
                       if (result.kind === "success") {
                         taskEditWantsFocusRef.current = true;
                         setTaskEditOpen(false);
-                        await refreshAfter("Kontekst zadania zapisano.");
+                        await refreshAfter("Task context saved.");
                       } else showFailure(result);
                     });
                   }}
                 >
                   <label>
-                    <span>Tytuł</span>
+                    <span>Title</span>
                     <input
                       value={taskDraft.title}
                       maxLength={500}
@@ -4335,13 +4306,13 @@ export const RealApp = ({
                     />
                   </label>
                   <label>
-                    <span>Kontekst</span>
+                    <span>Context</span>
                     <textarea
                       value={taskDraft.description}
                       rows={6}
                       maxLength={16000}
                       disabled={taskEditBusy}
-                      placeholder="Co trzeba wiedzieć, aby podjąć to zadanie po przerwie?"
+                      placeholder="What do you need to know to pick this up later?"
                       onChange={(event) =>
                         setTaskDraft((current) => ({
                           ...current,
@@ -4351,12 +4322,12 @@ export const RealApp = ({
                     />
                   </label>
                   <label>
-                    <span>Następny krok</span>
+                    <span>Next step</span>
                     <input
                       value={taskDraft.nextAction}
                       maxLength={500}
                       disabled={taskEditBusy}
-                      placeholder="Jedno zdanie: od czego zacząć."
+                      placeholder="One sentence: where to start."
                       onChange={(event) =>
                         setTaskDraft((current) => ({
                           ...current,
@@ -4381,7 +4352,7 @@ export const RealApp = ({
                       />
                     </label>
                     <label>
-                      <span>Termin</span>
+                      <span>Deadline</span>
                       <input
                         type="date"
                         value={taskDraft.dueDate}
@@ -4396,7 +4367,7 @@ export const RealApp = ({
                     </label>
                   </div>
                   <label>
-                    <span>Priorytet</span>
+                    <span>Priority</span>
                     <select
                       value={taskDraft.priority}
                       disabled={taskEditBusy}
@@ -4407,11 +4378,11 @@ export const RealApp = ({
                         }))
                       }
                     >
-                      <option value="">Domyślny (normalny)</option>
-                      <option value="urgent">Pilny</option>
-                      <option value="high">Wysoki</option>
-                      <option value="normal">Normalny</option>
-                      <option value="low">Niski</option>
+                      <option value="">Default (normal)</option>
+                      <option value="urgent">Urgent</option>
+                      <option value="high">High</option>
+                      <option value="normal">Normal</option>
+                      <option value="low">Low</option>
                     </select>
                   </label>
                   <div className="task-context-actions">
@@ -4420,7 +4391,7 @@ export const RealApp = ({
                       className="secondary-button"
                       disabled={taskEditBusy || !client}
                     >
-                      {taskEditBusy ? "Zapisywanie…" : "Zapisz"}
+                      {taskEditBusy ? "Saving…" : "Save"}
                     </button>
                     <button
                       type="button"
@@ -4430,7 +4401,7 @@ export const RealApp = ({
                         setTaskEditOpen(false);
                       }}
                     >
-                      Anuluj
+                      Cancel
                     </button>
                   </div>
                 </form>
@@ -4442,13 +4413,13 @@ export const RealApp = ({
                     </p>
                   ) : (
                     <p>
-                      Brak zapisanego kontekstu. Dodaj notatki, aby wrócić do
-                      zadania bez odtwarzania z pamięci.
+                      No context saved yet. Add notes so you can pick this up
+                      without reconstructing it from memory.
                     </p>
                   )}
                   {selectedTask.nextAction && (
                     <p className="task-next-action">
-                      <span>Następny krok:</span> {selectedTask.nextAction}
+                      <span>Next step:</span> {selectedTask.nextAction}
                     </p>
                   )}
                   {(selectedTask.startAt !== undefined ||
@@ -4473,21 +4444,21 @@ export const RealApp = ({
                               : undefined
                           }
                         >
-                          Termin:{" "}
+                          Deadline:{" "}
                           {formatDate(
                             selectedTask.dueAt,
                             state.snapshot.bootstrap.workspace.timezone,
                           )}
                           {selectedTask.completionState === "open" &&
                           Date.parse(selectedTask.dueAt) < Date.now()
-                            ? " · po terminie"
+                            ? " · overdue"
                             : ""}
                         </span>
                       )}
                       {selectedTask.priority !== undefined &&
                         selectedTask.priority !== "normal" && (
                           <span>
-                            Priorytet:{" "}
+                            Priority:{" "}
                             {taskPriorityLabels[selectedTask.priority]}
                           </span>
                         )}
@@ -4517,7 +4488,7 @@ export const RealApp = ({
                       setTaskEditOpen(true);
                     }}
                   >
-                    Edytuj kontekst
+                    Edit context
                   </button>
                 </>
               )}
@@ -4535,10 +4506,10 @@ export const RealApp = ({
               />
             )}
             <section className="inspector-section subtasks-block">
-              <p className="section-label">Podzadania</p>
+              <p className="section-label">Subtasks</p>
               {selectedTask.parentTaskId !== undefined ? (
                 <p>
-                  Część zadania:{" "}
+                  Part of:{" "}
                   <button
                     type="button"
                     className="inspector-link"
@@ -4549,7 +4520,7 @@ export const RealApp = ({
                     }}
                   >
                     {tasks.find((item) => item.id === selectedTask.parentTaskId)
-                      ?.title ?? "Zadanie nadrzędne"}
+                      ?.title ?? "Parent task"}
                   </button>
                 </p>
               ) : (
@@ -4564,15 +4535,15 @@ export const RealApp = ({
                     <>
                       {children.length === 0 ? (
                         <p>
-                          Rozbij wynik tylko wtedy, gdy część pracy ma własny
-                          stan, termin lub odpowiedzialność.
+                          Split the outcome only when part of the work has its
+                          own state, deadline or assignee.
                         </p>
                       ) : (
                         <>
                           <p>
-                            Ukończone {doneCount} z {children.length}
+                            {doneCount} of {children.length} completed
                             {doneCount === children.length
-                              ? " · wynik zamykasz świadomie"
+                              ? " · closing the outcome stays your call"
                               : ""}
                           </p>
                           <ul className="inspector-links subtask-list">
@@ -4594,7 +4565,7 @@ export const RealApp = ({
                                   />
                                   {child.title}
                                   {child.completionState === "completed"
-                                    ? " · ukończone"
+                                    ? " · completed"
                                     : ""}
                                 </button>
                               </li>
@@ -4617,20 +4588,18 @@ export const RealApp = ({
                             setSubtaskBusy(false);
                             if (result.kind === "success") {
                               setSubtaskDraft("");
-                              await refreshAfter("Podzadanie utworzono.");
+                              await refreshAfter("Subtask created.");
                             } else showFailure(result);
                           });
                         }}
                       >
                         <label>
-                          <span className="sr-only">
-                            Tytuł nowego podzadania
-                          </span>
+                          <span className="sr-only">New subtask title</span>
                           <input
                             value={subtaskDraft}
                             maxLength={500}
                             disabled={subtaskBusy}
-                            placeholder="Dodaj podzadanie"
+                            placeholder="Add a subtask"
                             onChange={(event) =>
                               setSubtaskDraft(event.target.value)
                             }
@@ -4641,7 +4610,7 @@ export const RealApp = ({
                           className="secondary-button"
                           disabled={subtaskBusy || subtaskDraft.trim() === ""}
                         >
-                          Dodaj
+                          Add
                         </button>
                       </form>
                     </>
@@ -4656,7 +4625,7 @@ export const RealApp = ({
                   selectedTask.fields?.[definition.id] !== undefined),
             ) && (
               <section className="inspector-section task-fields-block">
-                <p className="section-label">Pola</p>
+                <p className="section-label">Fields</p>
                 {(state.snapshot.bootstrap.fieldDefinitions ?? [])
                   .filter(
                     (definition) =>
@@ -4685,7 +4654,7 @@ export const RealApp = ({
                             delete next[definition.id];
                             return next;
                           });
-                          await refreshAfter("Wartość pola zapisano.");
+                          await refreshAfter("Field value saved.");
                         } else showFailure(result);
                       });
                     };
@@ -4693,7 +4662,7 @@ export const RealApp = ({
                       <div className="task-field-row" key={definition.id}>
                         <span className="task-field-label">
                           {definition.label}
-                          {retired ? " (wycofane)" : ""}
+                          {retired ? " (retired)" : ""}
                         </span>
                         {retired ||
                         definition.type.kind === "formula" ||
@@ -4708,7 +4677,7 @@ export const RealApp = ({
                             {!retired &&
                             (definition.type.kind === "formula" ||
                               definition.type.kind === "rollup")
-                              ? " · wyliczane"
+                              ? " · calculated"
                               : ""}
                           </span>
                         ) : definition.type.kind === "choice" ? (
@@ -4781,8 +4750,7 @@ export const RealApp = ({
                                 if (!Number.isFinite(parsed)) {
                                   showFailure({
                                     kind: "error",
-                                    message:
-                                      "Wartość liczbowa jest nieprawidłowa.",
+                                    message: "That number is not valid.",
                                   });
                                   return;
                                 }
@@ -4815,7 +4783,7 @@ export const RealApp = ({
                                   className="secondary-button"
                                   disabled={fieldSaveBusy}
                                 >
-                                  Zapisz
+                                  Save
                                 </button>
                               )}
                           </form>
@@ -4826,23 +4794,23 @@ export const RealApp = ({
               </section>
             )}
             <section className="inspector-section assignment-block">
-              <p className="section-label">Odpowiedzialność</p>
+              <p className="section-label">Assignee</p>
               <p>
-                {selectedTask.assignment?.displayName ?? "Nieprzypisane"}
+                {selectedTask.assignment?.displayName ?? "Unassigned"}
                 {selectedTask.assignment?.availability === "former_member"
-                  ? " · dostęp cofnięty"
+                  ? " · access revoked"
                   : ""}
               </p>
             </section>
             <section className="inspector-section provenance-block">
-              <p className="section-label">Pochodzenie z Capture</p>
+              <p className="section-label">Capture origin</p>
               {sourceCapture ? (
                 <>
                   <blockquote>{sourceCapture.originalText}</blockquote>
-                  <p>Quick Capture · oryginał zachowany</p>
+                  <p>Quick Capture · original kept</p>
                 </>
               ) : (
-                <p>Brak powiązanego źródła Capture.</p>
+                <p>No linked Capture source.</p>
               )}
             </section>
             <Suspense fallback={null}>
@@ -4862,11 +4830,11 @@ export const RealApp = ({
               />
             </Suspense>
             <section className="inspector-section audit-block">
-              <p className="section-label">Ślad audytowy</p>
+              <p className="section-label">Audit trail</p>
               {receipt ? (
                 <dl>
                   <div>
-                    <dt>Polecenie</dt>
+                    <dt>Command</dt>
                     <dd>{receipt.commandName}</dd>
                   </div>
                   <div>
@@ -4875,10 +4843,7 @@ export const RealApp = ({
                   </div>
                 </dl>
               ) : (
-                <p>
-                  Pełne potwierdzenie operacji pozostaje w lokalnym rdzeniu
-                  danych.
-                </p>
+                <p>The full receipt stays in the local data core.</p>
               )}
             </section>
             {client && (
@@ -4929,7 +4894,7 @@ export const RealApp = ({
                       taskId: selectedTask.id,
                     });
                     setComments({ kind: "ready", data });
-                    pushToast({ message: "Komentarz zapisano." });
+                    pushToast({ message: "Comment saved." });
                     return true;
                   }
                   showFailure(result);
@@ -4987,15 +4952,15 @@ export const RealApp = ({
             <span className="record-status">
               <i />
               {selectedProject.lifecycle === "active"
-                ? "Aktywny"
+                ? "Active"
                 : selectedProject.lifecycle}
             </span>
             <h2>{selectedProject.title}</h2>
             <p className="record-summary">
-              Projekt w aktywnym workspace i bieżącym zakresie Space.
+              In the active workspace and the current Space scope.
             </p>
             <section className="inspector-section provenance-block">
-              <p className="section-label">Zamierzony wynik</p>
+              <p className="section-label">Intended outcome</p>
               {/* Inspector jest podglądem, więc luka prowadzi na powierzchnię
                   Projektu, gdzie wynik da się napisać. */}
               {selectedProject.needsReview ? (
@@ -5010,17 +4975,19 @@ export const RealApp = ({
               ) : (
                 <blockquote>{selectedProject.intendedOutcome}</blockquote>
               )}
-              <p>Wynik pozostaje częścią wersjonowanego rekordu Projektu.</p>
+              <p>The outcome stays part of the versioned project record.</p>
             </section>
             <section className="inspector-section">
-              <p className="section-label">Kontekst pracy</p>
+              <p className="section-label">Work context</p>
               <dl className="record-fields">
                 <div>
-                  <dt>Otwarte</dt>
-                  <dd>{selectedProject.relatedOpenTaskCount} zadań</dd>
+                  <dt>Open</dt>
+                  <dd>
+                    {countLabel(selectedProject.relatedOpenTaskCount, "task")}
+                  </dd>
                 </div>
                 <div>
-                  <dt>Wersja</dt>
+                  <dt>Version</dt>
                   <dd>
                     {projectOverview?.project.version ??
                       selectedProject.version}
@@ -5059,7 +5026,7 @@ export const RealApp = ({
                       projectId: selectedProject.id,
                     });
                     setComments({ kind: "ready", data });
-                    pushToast({ message: "Komentarz zapisano." });
+                    pushToast({ message: "Comment saved." });
                     return true;
                   }
                   showFailure(result);
@@ -5121,14 +5088,14 @@ export const RealApp = ({
             <h2>{selectedWorkContextRecord.title}</h2>
             <p className="record-summary">
               {selectedWorkContextRecord.kind === "area"
-                ? "Trwała odpowiedzialność w modelu pracy."
-                : "Inicjatywa z wynikiem do zamknięcia."}
+                ? "A standing responsibility in the work model."
+                : "An initiative with an outcome to close."}
             </p>
             <section className="inspector-section provenance-block">
               <p className="section-label">
                 {selectedWorkContextRecord.kind === "area"
-                  ? "Stała odpowiedzialność"
-                  : "Zamierzony wynik"}
+                  ? "Standing responsibility"
+                  : "Intended outcome"}
               </p>
               {!selectedWorkContextRecord.needsReview ? (
                 <blockquote>{selectedWorkContextRecord.detail}</blockquote>
@@ -5161,7 +5128,7 @@ export const RealApp = ({
                       className="ghost-button"
                       onClick={() => setWorkContextNarrative(undefined)}
                     >
-                      Anuluj
+                      Cancel
                     </button>
                     <button
                       className="primary-button"
@@ -5170,15 +5137,15 @@ export const RealApp = ({
                       }
                       type="submit"
                     >
-                      Zapisz
+                      Save
                     </button>
                   </div>
                 </form>
               )}
               <p>
                 {selectedWorkContextRecord.kind === "area"
-                  ? "Obszar nie ma daty końca; zamyka się projektami."
-                  : "Inicjatywę zamyka osiągnięcie tego wyniku."}
+                  ? "An area has no end date; projects close inside it."
+                  : "An initiative closes when this outcome is reached."}
               </p>
             </section>
           </div>
@@ -5210,28 +5177,28 @@ export const RealApp = ({
         ) : (
           <div className="inspector-empty workspace-context">
             <BrandMark />
-            <p className="eyebrow">Aktywny kontekst</p>
+            <p className="eyebrow">Active context</p>
             <h2>{bootstrap.workspace.name}</h2>
             <p>
               Root Space ·{" "}
               {coordinatedDataHome
-                ? "skoordynowany Data Home"
-                : "lokalne źródło danych"}
+                ? "coordinated Data Home"
+                : "local data source"}
             </p>
             <dl>
               <div>
-                <dt>Tryb</dt>
+                <dt>Mode</dt>
                 <dd>
                   {coordinatedDataHome
-                    ? "Hub + zaszyfrowana kopia robocza"
+                    ? "Hub + encrypted working copy"
                     : build.persistence === "encrypted-local"
-                      ? "Zaszyfrowany zapis lokalny"
-                      : "Podgląd deweloperski"}
+                      ? "Encrypted local storage"
+                      : "Developer preview"}
                 </dd>
               </div>
               <div>
-                <dt>Stan</dt>
-                <dd>Gotowy</dd>
+                <dt>State</dt>
+                <dd>Ready</dd>
               </div>
             </dl>
           </div>
@@ -5275,7 +5242,7 @@ export const RealApp = ({
           workspaceName={bootstrap.workspace.name}
           onClose={() => !capturing && dismissCapture()}
           onSubmit={async (original) => {
-            if (!client) return "Desktop jest chwilowo niedostępny.";
+            if (!client) return "The desktop is unavailable right now.";
             setCapturing(true);
             setNotice(undefined);
             const result = await submitQuickCapture(
@@ -5295,32 +5262,29 @@ export const RealApp = ({
                 (item) => item.id === captureResult.taskId,
               );
               openContext(
-                taskContext(
-                  captureResult.taskId,
-                  task?.title ?? "Nowe zadanie",
-                ),
+                taskContext(captureResult.taskId, task?.title ?? "New task"),
               );
               setReceipts((current) => ({
                 ...current,
                 [captureResult.taskId]: result.receipt,
               }));
             } else if (captureResult.kind === "review") {
-              openContext(destinationContext("inbox", "Do uwagi"));
+              openContext(destinationContext("inbox", "Inbox"));
             } else if (captureResult.kind === "voice_note") {
-              openContext(destinationContext("history", "Historia Capture"));
+              openContext(destinationContext("history", "Capture history"));
             } else {
-              openContext(destinationContext("library", "Dokumenty"));
+              openContext(destinationContext("library", "Library"));
             }
             setCaptureOpen(false);
             pushToast({
               message:
                 captureResult.kind === "task"
-                  ? "Capture zapisano jako zadanie."
+                  ? "Capture filed as a task."
                   : captureResult.kind === "knowledge_source"
-                    ? "Capture zapisano jako źródło wiedzy."
+                    ? "Capture filed as a knowledge source."
                     : captureResult.kind === "voice_note"
-                      ? "Notatka głosowa jest bezpieczna i czeka na transkrypcję agenta."
-                      : "Capture wymaga decyzji i trafił do Attention.",
+                      ? "The voice note is safe and waiting for an agent to transcribe it."
+                      : "This capture needs a decision and went to the inbox.",
             });
             return undefined;
           }}
@@ -5346,7 +5310,7 @@ export const RealApp = ({
             if (nextSurface === "tasks") {
               const id = recordId as TaskId;
               const task = tasks.find((item) => item.id === id);
-              openContext(taskContext(id, task?.title ?? "Zadanie"));
+              openContext(taskContext(id, task?.title ?? "Task"));
             } else if (nextSurface === "projects") {
               const id = recordId as ProjectId;
               const project =
@@ -5355,7 +5319,7 @@ export const RealApp = ({
                       (item) => item.id === id,
                     )
                   : undefined;
-              openContext(projectContext(id, project?.title ?? "Projekt"));
+              openContext(projectContext(id, project?.title ?? "Project"));
             } else if (nextSurface === "library") {
               const id = recordId as DocumentId;
               const document =
@@ -5369,7 +5333,7 @@ export const RealApp = ({
               } else {
                 const item = navItems.find((entry) => entry.id === nextSurface);
                 openContext(
-                  destinationContext(nextSurface, item?.label ?? "Dokumenty"),
+                  destinationContext(nextSurface, item?.label ?? "Library"),
                 );
               }
             } else if (nextSurface === "organizations") {
@@ -5382,16 +5346,18 @@ export const RealApp = ({
               if (record?.kind === "organization") {
                 openContext(organizationContext(record.id, record.name));
               } else {
-                openContext(destinationContext("organizations", "Relacje"));
+                openContext(
+                  destinationContext("organizations", "Organizations"),
+                );
                 selectStrategicInInspector(recordId);
               }
             } else if (nextSurface === "meetings") {
               setSelectedMeetingId(recordId);
-              openContext(destinationContext("meetings", "Spotkania"));
+              openContext(destinationContext("meetings", "Meetings"));
             } else {
               const item = navItems.find((entry) => entry.id === nextSurface);
               openContext(
-                destinationContext(nextSurface, item?.label ?? "Widok"),
+                destinationContext(nextSurface, item?.label ?? "View"),
               );
             }
           }}
@@ -5410,8 +5376,10 @@ export const RealApp = ({
                 setUndoBusy(false);
                 if (result.kind === "success") {
                   setUndoPreview(undefined);
-                  await refreshAfter("Zmianę cofnięto i zapisano w audycie.");
-                  openContext(destinationContext("activity", "Aktywność"));
+                  await refreshAfter(
+                    "Change undone and recorded in the audit.",
+                  );
+                  openContext(destinationContext("activity", "Activity"));
                 } else showFailure(result);
               },
             );
@@ -5445,9 +5413,9 @@ export const RealApp = ({
             onClose={() => setRecoveryOpen(false)}
             onRestored={async () => {
               await reload();
-              openContext(destinationContext("today", "Tydzień"));
+              openContext(destinationContext("today", "Today"));
               pushToast({
-                message: "Workspace przywrócono i otwarto ponownie.",
+                message: "Workspace restored and reopened.",
               });
             }}
           />
@@ -5472,7 +5440,7 @@ export const RealApp = ({
             ref={navMenuRef}
             className="context-menu"
             role="menu"
-            aria-label={`Akcje kontekstu ${navMenu.context.label}`}
+            aria-label={`Actions for ${navMenu.context.label}`}
             style={{ left: navMenu.x, top: navMenu.y }}
             onMouseDown={(event) => event.stopPropagation()}
             onKeyDown={navMenuKeyDown}
@@ -5486,7 +5454,7 @@ export const RealApp = ({
                 closeNavMenu(true);
               }}
             >
-              Otwórz
+              Open
             </button>
             <button
               type="button"
@@ -5497,7 +5465,7 @@ export const RealApp = ({
                 closeNavMenu(true);
               }}
             >
-              Otwórz w nowej karcie
+              Open in a new tab
             </button>
           </div>
         </div>
@@ -5511,7 +5479,7 @@ export const RealApp = ({
           <span>{railTip.label}</span>
           {railTip.hint !== undefined && (
             <span>
-              {railTip.hint.kind === "palette" && <small>przez paletę</small>}
+              {railTip.hint.kind === "palette" && <small>via palette</small>}
               <kbd>{railTip.hint.keys}</kbd>
             </span>
           )}
@@ -5539,7 +5507,7 @@ export const RealApp = ({
           {toasts.length > 1 && (
             <span
               className="undo-toast-queue"
-              aria-label={`W kolejce: ${toasts.length - 1}`}
+              aria-label={`${toasts.length - 1} queued`}
             >
               +{toasts.length - 1}
             </span>
@@ -5553,7 +5521,7 @@ export const RealApp = ({
                 if (restore) openContextInNewTab(restore);
               }}
             >
-              Przywróć
+              Restore
             </button>
           )}
           {activeToast.undoCommandId && (
@@ -5565,14 +5533,14 @@ export const RealApp = ({
                 if (target) void openUndo(target);
               }}
             >
-              Cofnij
+              Undo
             </button>
           )}
           <button
             className="ghost-button"
             onClick={() => dismissToast(activeToast.id)}
           >
-            Zamknij
+            Close
           </button>
         </div>
       )}

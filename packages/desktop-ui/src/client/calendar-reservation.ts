@@ -50,15 +50,15 @@ export const calendarReadRefusal = (
   capability: CalendarCapability | undefined,
 ): string | undefined => {
   if (capability === undefined)
-    return "Na tym urządzeniu nie ma obsługiwanego kalendarza, więc spotkania nie są tu widoczne.";
+    return "No supported calendar on this device, so meetings cannot be shown here.";
   if (capability.availability === "permission_required")
-    return "Pokazanie spotkań wymaga dostępu do Kalendarza. Przyznaj uprawnienie w Spotkaniach.";
+    return "Showing meetings needs Calendar access. Grant the permission in Meetings.";
   if (capability.availability === "permission_denied")
-    return "Dostęp do Kalendarza jest wyłączony, więc spotkania nie są tu widoczne.";
+    return "Calendar access is turned off, so meetings cannot be shown here.";
   if (capability.availability === "provider_unavailable")
-    return "Provider kalendarza nie jest dostępny, więc spotkania nie są tu widoczne.";
+    return "The calendar provider is unavailable, so meetings cannot be shown here.";
   if (!capability.canRead)
-    return "Ten kalendarz nie pozwala na odczyt, więc spotkania nie są tu widoczne.";
+    return "This calendar does not allow reading, so meetings cannot be shown here.";
   return undefined;
 };
 
@@ -74,31 +74,30 @@ export const reservationTarget = (
     return {
       kind: "unavailable",
       reason:
-        "Na tym urządzeniu nie ma obsługiwanego kalendarza, więc nie można zarezerwować czasu.",
+        "No supported calendar on this device, so time cannot be reserved.",
     };
   if (capability.availability === "permission_required")
     return {
       kind: "unavailable",
       reason:
-        "Zarezerwowanie czasu wymaga pełnego dostępu do Kalendarza. Przyznaj uprawnienie w Spotkaniach.",
+        "Reserving time needs full Calendar access. Grant the permission in Meetings.",
     };
   if (capability.availability === "permission_denied")
     return {
       kind: "unavailable",
-      reason:
-        "Dostęp do Kalendarza jest wyłączony, więc nie można zarezerwować czasu.",
+      reason: "Calendar access is turned off, so time cannot be reserved.",
     };
   if (capability.availability === "provider_unavailable")
     return {
       kind: "unavailable",
       reason:
-        "Provider kalendarza nie jest dostępny, więc nie można zarezerwować czasu.",
+        "The calendar provider is unavailable, so time cannot be reserved.",
     };
   if (!capability.canWriteOwnedBlocks)
     return {
       kind: "unavailable",
       reason:
-        "Ten kalendarz nie zezwala na zapis własnych bloków, więc nie można zarezerwować czasu.",
+        "This calendar does not allow writing owned blocks, so time cannot be reserved.",
     };
   // Available and writable, but the provider names no calendar for new events.
   // Guessing one would write where the user never asked.
@@ -106,7 +105,7 @@ export const reservationTarget = (
     return {
       kind: "unavailable",
       reason:
-        "Kalendarz nie wskazuje domyślnego miejsca na nowe wydarzenia, więc nie wiadomo, gdzie zapisać blok.",
+        "The calendar names no default place for new events, so there is nowhere to write the block.",
     };
   return {
     kind: "ready",

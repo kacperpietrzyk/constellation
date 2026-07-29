@@ -204,23 +204,23 @@ const focusTimingLabel = (
 ): string | null => {
   if (timing === null) return null;
   if (timing.kind === "overdue")
-    return `Po terminie (${formatDate(timing.dueAt, timeZone)})`;
+    return `Overdue (${formatDate(timing.dueAt, timeZone)})`;
   if (timing.kind === "due")
     return dateKeyInTimeZone(new Date(timing.dueAt), timeZone) === todayKey
-      ? "Termin dziś"
-      : `Termin: ${formatDate(timing.dueAt, timeZone)}`;
+      ? "Due today"
+      : `Due ${formatDate(timing.dueAt, timeZone)}`;
   return dateKeyInTimeZone(new Date(timing.startAt), timeZone) === todayKey
-    ? "Start dziś"
-    : "Start w tym tygodniu";
+    ? "Starts today"
+    : "Starts this week";
 };
 
 const focusPriorityLabel = (
   priority: CuratedFocusReason["priority"],
 ): string | null =>
   priority === "urgent"
-    ? "Pilne"
+    ? "Urgent"
     : priority === "high"
-      ? "Wysoki priorytet"
+      ? "High priority"
       : null;
 
 // Plain-text differentiator parts for the ranked rows (no nested controls:
@@ -236,7 +236,7 @@ const focusReasonParts = (
   if (timingLabel) parts.push(timingLabel);
   const priorityLabel = focusPriorityLabel(priority);
   if (priorityLabel) parts.push(priorityLabel);
-  if (project) parts.push(`Z projektu „${project.title}”`);
+  if (project) parts.push(`From project “${project.title}”`);
   return parts;
 };
 
@@ -264,26 +264,16 @@ const dateKeyInTimeZone = (date: Date, timeZone: string): string => {
 // are plain dates, so they are anchored at local midnight — no timezone shift.
 const weekRangeLabel = (weekStart: string, weekEnd: string): string => {
   try {
-    return new Intl.DateTimeFormat("pl-PL", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    }).formatRange(
-      new Date(`${weekStart}T00:00:00`),
+    return `${formatDate(new Date(`${weekStart}T00:00:00`))} – ${formatDate(
       new Date(`${weekEnd}T00:00:00`),
-    );
+    )}`;
   } catch {
     return `${weekStart} – ${weekEnd}`;
   }
 };
 
 const unreadSignalsLabel = (count: number): string =>
-  countLabel(
-    count,
-    "nieprzeczytany sygnał",
-    "nieprzeczytane sygnały",
-    "nieprzeczytanych sygnałów",
-  );
+  countLabel(count, "unread signal");
 
 // Hero differentiator, where the project name is a real deep link (the hero is
 // a non-button container, so a control here is valid).
@@ -306,7 +296,7 @@ const HeroFocusReason = ({
       ? `${timingLabel} · ${priorityLabel}`
       : (timingLabel ?? priorityLabel);
   if (!leadLabel && !project) {
-    return <p className="now-reason">Otwarte zadanie w kolejności tygodnia.</p>;
+    return <p className="now-reason">Open task in this week’s order.</p>;
   }
   return (
     <p className="now-reason">
@@ -326,7 +316,7 @@ const HeroFocusReason = ({
       ) : null}
       {project ? (
         <span>
-          {leadLabel ? "z projektu " : "Z projektu "}
+          {leadLabel ? "from project " : "From project "}
           <button
             type="button"
             className="reason-link"
@@ -391,18 +381,18 @@ export const CockpitSurface = ({
     const record = taskRecords.get(taskId);
     const workTask = workTasks.get(taskId);
     const parts: string[] = [];
-    if (workTask?.operationalState === "blocked") parts.push("Zablokowane");
+    if (workTask?.operationalState === "blocked") parts.push("Blocked");
     else if (workTask?.operationalState === "waiting")
       parts.push(
         workTask.waitingOn
-          ? `Czeka na: ${workTask.waitingOn.label}`
-          : "Oczekuje",
+          ? `Waiting on: ${workTask.waitingOn.label}`
+          : "Waiting",
       );
     else if (record) parts.push(record.status.label);
     if (record?.assignment) parts.push(record.assignment.displayName);
     parts.push(...focusReasonParts(reasons, timezone, todayKey));
     return parts.length === 0
-      ? "Otwarte zadanie w kolejności tygodnia"
+      ? "Open task in this week’s order"
       : parts.join(" · ");
   };
   // Exceptions ahead of the queue: unread Attention signals with the oldest
@@ -422,7 +412,7 @@ export const CockpitSurface = ({
       <InlineState
         tone="info"
         headingLevel="h2"
-        title="Sygnały do uwagi są chwilowo niedostępne"
+        title="Inbox signals are unavailable"
         detail={attention.message}
         action={
           <button
@@ -430,22 +420,19 @@ export const CockpitSurface = ({
             className="secondary-button"
             onClick={onOpenAttention}
           >
-            Otwórz Do uwagi
+            Open Inbox
           </button>
         }
       />
     ) : attention.kind === "ready" && attention.data.unreadCount > 0 ? (
-      <section
-        className="cockpit-exceptions"
-        aria-label="Nieprzeczytane sygnały do uwagi"
-      >
+      <section className="cockpit-exceptions" aria-label="Unread inbox signals">
         <Mark kind="warning" />
         <p>
           <strong>{unreadSignalsLabel(attention.data.unreadCount)}</strong>
           {oldestUnread.length > 0 ? (
             <span>
-              {oldestUnread.length === 1 ? "Najstarszy: " : "Najstarsze: "}
-              {oldestUnread.map((item) => `„${item.title}”`).join(", ")}
+              {oldestUnread.length === 1 ? "Oldest: " : "Oldest two: "}
+              {oldestUnread.map((item) => `“${item.title}”`).join(", ")}
             </span>
           ) : null}
         </p>
@@ -454,7 +441,7 @@ export const CockpitSurface = ({
           className="secondary-button compact"
           onClick={onOpenAttention}
         >
-          Otwórz Do uwagi
+          Open Inbox
         </button>
       </section>
     ) : null;
@@ -585,7 +572,7 @@ export const CockpitSurface = ({
           const key = dateKeyInTimeZone(date, timezone);
           return {
             key,
-            label: new Intl.DateTimeFormat("pl-PL", {
+            label: new Intl.DateTimeFormat("en-US", {
               weekday: "short",
               day: "numeric",
             }).format(date),
@@ -649,43 +636,26 @@ export const CockpitSurface = ({
       <section className="week-plan" aria-labelledby="week-plan-title">
         <header className="section-heading">
           <div>
-            <p className="eyebrow">Plan tygodnia</p>
+            <p className="eyebrow">Week plan</p>
             <h2 id="week-plan-title">
-              Terminy, spotkania i zarezerwowany czas dzień po dniu
+              Deadlines, meetings and reserved time, day by day
             </h2>
           </div>
           <span>
             {countLabel(
               scheduledThisWeek,
-              "termin w tym tygodniu",
-              "terminy w tym tygodniu",
-              "terminów w tym tygodniu",
+              "deadline this week",
+              "deadlines this week",
             )}
             {reservedThisWeek.size > 0 &&
-              ` · ${countLabel(
-                reservedCount,
-                "zarezerwowany blok",
-                "zarezerwowane bloki",
-                "zarezerwowanych bloków",
-              )}`}
+              ` · ${countLabel(reservedCount, "reserved block")}`}
           </span>
         </header>
         {overdueTasks.length > 0 ? (
-          <div
-            className="week-plan-overdue"
-            role="group"
-            aria-label="Po terminie"
-          >
+          <div className="week-plan-overdue" role="group" aria-label="Overdue">
             <Mark kind="warning" />
             <p>
-              <strong>
-                {countLabel(
-                  overdueTasks.length,
-                  "zadanie po terminie",
-                  "zadania po terminie",
-                  "zadań po terminie",
-                )}
-              </strong>
+              <strong>{countLabel(overdueTasks.length, "overdue task")}</strong>
             </p>
             <span className="week-plan-overdue-items">
               {overdueTasks.slice(0, 3).map((task) => (
@@ -699,7 +669,7 @@ export const CockpitSurface = ({
                 </button>
               ))}
               {overdueTasks.length > 3
-                ? ` +${overdueTasks.length - 3} więcej`
+                ? ` +${overdueTasks.length - 3} more`
                 : null}
             </span>
           </div>
@@ -738,9 +708,7 @@ export const CockpitSurface = ({
                       </button>
                     ))}
                     {tasks.length > 3 ? (
-                      <p className="week-plan-more">
-                        +{tasks.length - 3} więcej
-                      </p>
+                      <p className="week-plan-more">+{tasks.length - 3} more</p>
                     ) : null}
                   </>
                 )}
@@ -748,7 +716,7 @@ export const CockpitSurface = ({
                   <div
                     className="week-plan-reserved"
                     role="group"
-                    aria-label={`Zarezerwowany czas, ${day.label}`}
+                    aria-label={`Reserved time, ${day.label}`}
                   >
                     {reserved.map((task) => (
                       <button
@@ -772,7 +740,7 @@ export const CockpitSurface = ({
                   <div
                     className="week-plan-meetings"
                     role="group"
-                    aria-label={`Spotkania, ${day.label}`}
+                    aria-label={`Meetings, ${day.label}`}
                   >
                     {meetings.map((meeting) => (
                       <p
@@ -796,10 +764,8 @@ export const CockpitSurface = ({
         )}
         {unscheduledCount > 0 ? (
           <p className="week-plan-note">
-            Bez terminu:{" "}
-            {countLabel(unscheduledCount, "zadanie", "zadania", "zadań")}.
-            Termin i rezerwację czasu nadasz w inspektorze zadania — to dwie
-            różne rzeczy: kiedy ma być zrobione i kiedy to zrobisz.
+            No deadline: {countLabel(unscheduledCount, "task")}. Set a deadline
+            or reserve time in the task inspector.
           </p>
         ) : null}
       </section>
@@ -816,16 +782,11 @@ export const CockpitSurface = ({
         >
           <header>
             <div>
-              <p className="eyebrow">Twoje workspace</p>
-              <h2 id="workspace-focus-title">Fokus według workspace</h2>
+              <p className="eyebrow">Your workspaces</p>
+              <h2 id="workspace-focus-title">Focus by workspace</h2>
             </div>
             <span>
-              {countLabel(
-                workspaceFocus.length,
-                "autoryzowany",
-                "autoryzowane",
-                "autoryzowanych",
-              )}
+              {countLabel(workspaceFocus.length, "authorized", "authorized")}
             </span>
           </header>
           <div>
@@ -848,20 +809,15 @@ export const CockpitSurface = ({
                   <strong>{workspace.name}</strong>
                   <small>
                     {workspace.availability === "unavailable"
-                      ? "Lokalna projekcja niedostępna"
-                      : (workspace.firstFocus ?? "Brak otwartych działań")}
+                      ? "Local projection unavailable"
+                      : (workspace.firstFocus ?? "No open work")}
                   </small>
                 </span>
                 <em>
                   {workspace.active
-                    ? "Otwarty"
+                    ? "Open"
                     : workspace.availability === "ready"
-                      ? countLabel(
-                          workspace.focusCount ?? 0,
-                          "działanie",
-                          "działania",
-                          "działań",
-                        )
+                      ? countLabel(workspace.focusCount ?? 0, "action")
                       : "Offline"}
                 </em>
               </button>
@@ -873,8 +829,8 @@ export const CockpitSurface = ({
         <InlineState
           tone="info"
           headingLevel="h2"
-          title="Przekrojowy fokus jest chwilowo niedostępny"
-          detail="Bieżący workspace działa normalnie; pozostałe zaszyfrowane projekcje nie zostały otwarte."
+          title="Cross-workspace focus is unavailable"
+          detail="This workspace works normally. The other encrypted projections were not opened."
         />
       )}
     </>
@@ -886,8 +842,8 @@ export const CockpitSurface = ({
     >
       <header className="section-heading">
         <div>
-          <p className="eyebrow">Aktywne projekty</p>
-          <h2 id="outcomes-title">Wyniki do osiągnięcia</h2>
+          <p className="eyebrow">Active projects</p>
+          <h2 id="outcomes-title">Outcomes to reach</h2>
         </div>
         <span>
           {projects.kind === "ready" ? projects.data.items.length : "—"}
@@ -896,13 +852,13 @@ export const CockpitSurface = ({
       {projects.kind === "unavailable" ? (
         <InlineState
           tone="warning"
-          title="Projekty są niedostępne"
+          title="Projects are unavailable"
           detail={projects.message}
         />
       ) : projectItems.length === 0 ? (
-        <p className="capacity-note">Nie ma jeszcze aktywnych projektów.</p>
+        <p className="capacity-note">No active projects yet.</p>
       ) : (
-        <div role="listbox" aria-label="Aktywne projekty">
+        <div role="listbox" aria-label="Active projects">
           {projectItems.map((project, index) => {
             const selected = project.id === selectedProjectId;
             return (
@@ -933,12 +889,7 @@ export const CockpitSurface = ({
                   <small>{project.title}</small>
                 </span>
                 <em>
-                  {countLabel(
-                    project.relatedOpenTaskCount,
-                    "otwarte",
-                    "otwarte",
-                    "otwartych",
-                  )}
+                  {countLabel(project.relatedOpenTaskCount, "open", "open")}
                 </em>
               </button>
             );
@@ -953,17 +904,17 @@ export const CockpitSurface = ({
         kicker={
           cockpit.kind === "ready"
             ? weekRangeLabel(cockpit.data.weekStart, cockpit.data.weekEnd)
-            : "Widok tygodnia"
+            : "Week view"
         }
-        title="Tydzień"
-        description="Deterministyczna kolejność otwartych zadań i aktywnych projektów. Bez generowanych rekomendacji."
+        title="Week"
+        description="Open tasks and active projects in one fixed order."
       />
       {cockpit.kind === "unavailable" ? (
         <>
           <InlineState
             tone="warning"
             headingLevel="h2"
-            title="Widok tygodnia jest niedostępny"
+            title="Week view is unavailable"
             detail={cockpit.message}
           />
           {exceptionsBar}
@@ -974,11 +925,11 @@ export const CockpitSurface = ({
         <>
           <InlineState
             headingLevel="h2"
-            title="Brak otwartych działań na ten tydzień"
-            detail="Dodaj zadanie przez Quick Capture albo utwórz projekt z konkretnym wynikiem."
+            title="No open work this week"
+            detail="Add a task with Quick Capture, or create a project with a clear outcome."
             action={
               <button className="secondary-button" onClick={onCapture}>
-                Otwórz Quick Capture
+                Open Quick Capture
               </button>
             }
           />
@@ -990,7 +941,7 @@ export const CockpitSurface = ({
         <>
           <section className="now-panel" aria-labelledby="now-title">
             <div className="now-copy">
-              <p className="eyebrow">Pierwszy fokus</p>
+              <p className="eyebrow">First focus</p>
               <h2 id="now-title">{focus[0]?.title}</h2>
               {focus[0] ? (
                 <HeroFocusReason
@@ -1005,7 +956,7 @@ export const CockpitSurface = ({
               className="primary-button"
               onClick={() => focus[0] && onOpenTask(focus[0].taskId)}
             >
-              Otwórz zadanie
+              Open task
             </button>
           </section>
           {exceptionsBar}
@@ -1018,16 +969,15 @@ export const CockpitSurface = ({
             >
               <header className="section-heading">
                 <div>
-                  <p className="eyebrow">Aktywna praca</p>
-                  <h2 id="active-work-title">Następne działania</h2>
+                  <p className="eyebrow">Active work</p>
+                  <h2 id="active-work-title">Next actions</h2>
                 </div>
-                <span>{focus.length} w kolejności</span>
+                <span>{focus.length} in order</span>
               </header>
               <p className="ordering-rule">
                 <span>
-                  Kolejność jest deterministyczna: otwarte zadania — najpierw po
-                  terminie i z terminem w tym tygodniu, potem pilne i z
-                  aktywnych projektów.
+                  Fixed order: overdue first, then due this week, then urgent
+                  and active projects.
                 </span>
                 <button
                   type="button"
@@ -1036,32 +986,27 @@ export const CockpitSurface = ({
                   aria-controls="ordering-rule-detail"
                   onClick={() => setRuleOpen((open) => !open)}
                 >
-                  {ruleOpen
-                    ? "Ukryj szczegóły"
-                    : "Jak ustalana jest kolejność?"}
+                  {ruleOpen ? "Hide details" : "How is the order set?"}
                 </button>
               </p>
               <div
                 id="ordering-rule-detail"
                 className="ordering-rule-detail"
                 role="region"
-                aria-label="Reguła kolejności"
+                aria-label="Ordering rule"
                 hidden={!ruleOpen}
               >
                 <p>
-                  Widok nie generuje rekomendacji. Pokazuje wyłącznie otwarte
-                  zadania i porządkuje je zawsze tak samo: najpierw po terminie,
-                  potem z terminem w tym tygodniu, następnie pilne i o wysokim
-                  priorytecie, zaczynające się w tym tygodniu oraz powiązane z
-                  aktywnym projektem, a przy remisie alfabetycznie. Data
-                  utworzenia pozostaje historią i nie wpływa na kolejność. Ta
-                  sama kolejność wyjdzie za każdym razem.
+                  Nothing here is generated. Open tasks always get the same
+                  order. Overdue first, then due this week, urgent, high
+                  priority, starting this week, active project. Ties break
+                  alphabetically; creation time never changes the order.
                 </p>
               </div>
               <div
                 className="compact-record-list compact-record-list--focus"
                 role="listbox"
-                aria-label="Następne działania w kolejności tygodnia"
+                aria-label="Next actions in this week’s order"
               >
                 {focus.map((task, index) => {
                   const state =
@@ -1191,29 +1136,29 @@ export const TasksSurface = ({
   return (
     <div className="surface-scroll">
       <SurfaceHeader
-        kicker="Root Space · lokalny widok"
-        title="Zadania"
-        description="Przechwycone działania, ich stan i zachowane źródła."
+        kicker="Root Space · local view"
+        title="Tasks"
+        description="Captured actions, their state and the kept sources."
         action={
           <button className="secondary-button" onClick={onCapture}>
             <Icon name="capture" />
-            <span>Nowe zadanie</span>
+            <span>New task</span>
           </button>
         }
       />
-      <section className="task-panel" aria-label="Lista zadań">
+      <section className="task-panel" aria-label="Task list">
         <header>
           <div>
-            <h2>Wszystkie zadania</h2>
+            <h2>All tasks</h2>
             <span aria-live="polite">
               {filteredTasks.length}
-              {filtersActive ? ` z ${snapshot.tasks.length}` : " w widoku"}
+              {filtersActive ? ` of ${snapshot.tasks.length}` : " in view"}
             </span>
           </div>
         </header>
         <form
           className="task-create-row"
-          aria-label="Nowe zadanie"
+          aria-label="New task"
           onSubmit={(event) => {
             event.preventDefault();
             const title = newTaskTitle.trim();
@@ -1226,13 +1171,13 @@ export const TasksSurface = ({
           }}
         >
           <label className="task-create-title">
-            <span className="sr-only">Tytuł nowego zadania</span>
+            <span className="sr-only">New task title</span>
             <input
               type="text"
               value={newTaskTitle}
               maxLength={500}
               disabled={creatingTask}
-              placeholder="Dodaj zadanie — wpisz tytuł i zatwierdź"
+              placeholder="Add a task — type a title and press Enter"
               onChange={(event) => setNewTaskTitle(event.target.value)}
             />
           </label>
@@ -1241,30 +1186,30 @@ export const TasksSurface = ({
             className="secondary-button"
             disabled={creatingTask || newTaskTitle.trim().length === 0}
           >
-            {creatingTask ? "Dodawanie…" : "Dodaj"}
+            {creatingTask ? "Adding…" : "Add"}
           </button>
         </form>
         {snapshot.tasks.length === 0 ? (
           <InlineState
-            title="Jeszcze nie ma zadań"
-            detail="Zapisz pierwszą myśl. Oryginał pozostanie powiązany z wynikiem routingu."
+            title="No tasks yet"
+            detail="Capture the first thought. The original stays linked to what it became."
             action={
               <button className="secondary-button" onClick={onCapture}>
-                Otwórz Quick Capture
+                Open Quick Capture
               </button>
             }
           />
         ) : (
           <>
-            <div className="task-control-strip" aria-label="Filtry zadań">
+            <div className="task-control-strip" aria-label="Task filters">
               <label className="task-search-control">
                 <Icon name="search" />
-                <span className="sr-only">Szukaj zadań</span>
+                <span className="sr-only">Search tasks</span>
                 <input
                   type="search"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Szukaj po zadaniu, stanie lub osobie"
+                  placeholder="Search by task, state or person"
                 />
               </label>
               <label className="task-filter-control">
@@ -1273,7 +1218,7 @@ export const TasksSurface = ({
                   value={statusFilter}
                   onChange={(event) => setStatusFilter(event.target.value)}
                 >
-                  <option value="all">Wszystkie</option>
+                  <option value="all">All</option>
                   {snapshot.bootstrap.taskStatuses.map((status) => (
                     <option key={status.id} value={status.id}>
                       {status.label}
@@ -1282,20 +1227,20 @@ export const TasksSurface = ({
                 </select>
               </label>
               <label className="task-filter-control">
-                <span>Odpowiedzialność</span>
+                <span>Assignee</span>
                 <select
                   value={assigneeFilter}
                   onChange={(event) => setAssigneeFilter(event.target.value)}
                 >
-                  <option value="all">Wszyscy</option>
-                  <option value="unassigned">Nieprzypisane</option>
+                  <option value="all">All</option>
+                  <option value="unassigned">Unassigned</option>
                   {assignmentCandidates.map((candidate) => (
                     <option
                       key={candidate.principalId}
                       value={candidate.principalId}
                     >
                       {candidate.displayName}
-                      {candidate.participantKind === "guest" ? " · gość" : ""}
+                      {candidate.participantKind === "guest" ? " · guest" : ""}
                     </option>
                   ))}
                 </select>
@@ -1306,23 +1251,23 @@ export const TasksSurface = ({
                   className="task-reset-button"
                   onClick={resetFilters}
                 >
-                  Wyczyść
+                  Clear
                 </button>
               )}
             </div>
             <div className="task-column-head" aria-hidden="true">
               <span />
-              <span>Zadanie</span>
+              <span>Task</span>
               <span>Status</span>
-              <span>Odpowiedzialność</span>
+              <span>Assignee</span>
             </div>
             {filteredTasks.length === 0 ? (
               <InlineState
-                title="Brak zadań w tym widoku"
-                detail="Zmień filtry albo wyczyść je, aby wrócić do pełnej listy."
+                title="No tasks in this view"
+                detail="Change the filters, or clear them to see every task."
                 action={
                   <button className="secondary-button" onClick={resetFilters}>
-                    Wyczyść filtry
+                    Clear filters
                   </button>
                 }
               />
@@ -1337,8 +1282,8 @@ export const TasksSurface = ({
                       className="task-check"
                       aria-label={
                         task.completionState === "completed"
-                          ? `Otwórz ponownie: ${task.title}`
-                          : `Ukończ: ${task.title}`
+                          ? `Reopen: ${task.title}`
+                          : `Complete: ${task.title}`
                       }
                       aria-pressed={task.completionState === "completed"}
                       disabled={busyTaskId === task.id}
@@ -1363,18 +1308,18 @@ export const TasksSurface = ({
                       <span>
                         {[
                           task.sourceCaptureId
-                            ? "Z Quick Capture · oryginał zachowany"
+                            ? "From Quick Capture · original kept"
                             : "Root Space",
                           ...(task.dueAt === undefined
                             ? []
                             : [
-                                `Termin: ${formatDate(
+                                `Due ${formatDate(
                                   task.dueAt,
                                   snapshot.bootstrap.workspace.timezone,
                                 )}${
                                   task.completionState === "open" &&
                                   Date.parse(task.dueAt) < Date.now()
-                                    ? " · po terminie"
+                                    ? " · overdue"
                                     : ""
                                 }`,
                               ]),
@@ -1383,16 +1328,16 @@ export const TasksSurface = ({
                             ? []
                             : [
                                 task.priority === "urgent"
-                                  ? "Pilny"
+                                  ? "Urgent"
                                   : task.priority === "high"
-                                    ? "Wysoki priorytet"
-                                    : "Niski priorytet",
+                                    ? "High priority"
+                                    : "Low priority",
                               ]),
                         ].join(" · ")}
                       </span>
                     </button>
                     <label className="sr-only" htmlFor={`status-${task.id}`}>
-                      Status zadania {task.title}
+                      Status of {task.title}
                     </label>
                     <span className="task-row-field">
                       <span aria-hidden="true">Status</span>
@@ -1416,14 +1361,14 @@ export const TasksSurface = ({
                       </select>
                     </span>
                     <label className="sr-only" htmlFor={`assignee-${task.id}`}>
-                      Osoba odpowiedzialna za {task.title}
+                      Assignee for {task.title}
                     </label>
                     <span className="task-row-field">
-                      <span aria-hidden="true">Odpowiedzialność</span>
+                      <span aria-hidden="true">Assignee</span>
                       <select
                         id={`assignee-${task.id}`}
                         className="task-assignee"
-                        aria-label={`Osoba odpowiedzialna za ${task.title}`}
+                        aria-label={`Assignee for ${task.title}`}
                         value={
                           task.assignment?.availability !== "active" &&
                           task.assignment
@@ -1443,13 +1388,13 @@ export const TasksSurface = ({
                           )
                         }
                       >
-                        <option value="">Nieprzypisane</option>
+                        <option value="">Unassigned</option>
                         {task.assignment?.availability !== "active" &&
                           task.assignment !== undefined && (
                             <option value="unavailable-member" disabled>
                               {task.assignment.availability === "former_member"
-                                ? "Były członek"
-                                : "Brak dostępu do Space"}
+                                ? "Former member"
+                                : "No access to the Space"}
                             </option>
                           )}
                         {assignmentCandidates.map((candidate) => (
@@ -1459,7 +1404,7 @@ export const TasksSurface = ({
                           >
                             {candidate.displayName}
                             {candidate.participantKind === "guest"
-                              ? " · gość"
+                              ? " · guest"
                               : ""}
                           </option>
                         ))}
@@ -1588,12 +1533,12 @@ export const ProjectsSurface = ({
   return (
     <div className="surface-scroll project-surface">
       <SurfaceHeader
-        kicker="Projekty · aktywne"
-        title={fullView ? overview.project.title : "Projekty"}
+        kicker="Projects · active"
+        title={fullView ? overview.project.title : "Projects"}
         description={
           fullView
-            ? "Zamierzony wynik, cykl życia i praca należące do tego projektu."
-            : "Portfel zamierzonych wyników i powiązanej pracy."
+            ? "The intended outcome, lifecycle and work in this project."
+            : "Intended outcomes and the work behind them."
         }
         action={
           <div className="project-header-actions">
@@ -1603,7 +1548,7 @@ export const ProjectsSurface = ({
                 className="ghost-button"
                 onClick={onBackToProjects}
               >
-                <span>Wróć do projektów</span>
+                <span>Back to projects</span>
               </button>
             )}
             <button
@@ -1615,7 +1560,7 @@ export const ProjectsSurface = ({
               onClick={() => setCreating((value) => !value)}
             >
               <Icon name={creating ? "close" : "capture"} />
-              <span>{creating ? "Anuluj" : "Nowy projekt"}</span>
+              <span>{creating ? "Cancel" : "New project"}</span>
             </button>
           </div>
         }
@@ -1643,7 +1588,7 @@ export const ProjectsSurface = ({
           }}
         >
           <div className="overview-intent">
-            <label htmlFor="project-title">Nazwa projektu</label>
+            <label htmlFor="project-title">Project name</label>
             <input
               ref={createTitleRef}
               id="project-title"
@@ -1652,27 +1597,25 @@ export const ProjectsSurface = ({
               maxLength={160}
               required
             />
-            <label htmlFor="project-outcome">
-              Zamierzony wynik (opcjonalnie)
-            </label>
+            <label htmlFor="project-outcome">Intended outcome (optional)</label>
             <textarea
               id="project-outcome"
               value={newOutcome}
               onChange={(event) => setNewOutcome(event.target.value)}
               maxLength={2_000}
-              placeholder="Po czym poznasz, że praca jest skończona? Możesz uzupełnić później."
+              placeholder="How will you know the work is done? You can fill this in later."
             />
             {activeTemplates.length > 0 && (
               <>
                 <label htmlFor="project-create-template">
-                  Szablon startowy (opcjonalnie)
+                  Starting template (optional)
                 </label>
                 <select
                   id="project-create-template"
                   value={createTemplateId}
                   onChange={(event) => setCreateTemplateId(event.target.value)}
                 >
-                  <option value="">Bez szablonu</option>
+                  <option value="">No template</option>
                   {activeTemplates.map((template) => (
                     <option key={template.id} value={template.id}>
                       {template.name}
@@ -1682,7 +1625,7 @@ export const ProjectsSurface = ({
               </>
             )}
             <button className="primary-button" disabled={busy} type="submit">
-              {busy ? "Tworzę…" : "Utwórz projekt"}
+              {busy ? "Creating…" : "Create project"}
             </button>
           </div>
         </form>
@@ -1691,14 +1634,14 @@ export const ProjectsSurface = ({
         <InlineState
           tone="warning"
           headingLevel="h2"
-          title="Lista projektów jest niedostępna"
+          title="The project list is unavailable"
           detail={projects.message}
         />
       ) : projectItems.length === 0 ? (
         <InlineState
           headingLevel="h2"
-          title="Nie ma jeszcze projektów"
-          detail="Utwórz projekt i nazwij wynik, po którym poznasz, że praca jest skończona."
+          title="No projects yet"
+          detail="Create a project and name the outcome that tells you it is done."
         />
       ) : fullView ? (
         <div className="project-detail-flow">
@@ -1707,7 +1650,7 @@ export const ProjectsSurface = ({
             aria-labelledby="project-outcome-title"
           >
             <div className="overview-intent">
-              <p className="eyebrow">Zamierzony wynik</p>
+              <p className="eyebrow">Intended outcome</p>
               {editing ? (
                 <form
                   onSubmit={(event) => {
@@ -1716,7 +1659,7 @@ export const ProjectsSurface = ({
                   }}
                 >
                   <label className="sr-only" htmlFor="edited-project-outcome">
-                    Zamierzony wynik
+                    Intended outcome
                   </label>
                   <textarea
                     id="edited-project-outcome"
@@ -1729,14 +1672,14 @@ export const ProjectsSurface = ({
                       className="ghost-button"
                       onClick={() => setEditing(false)}
                     >
-                      Anuluj
+                      Cancel
                     </button>
                     <button
                       className="primary-button"
                       disabled={busy || editedOutcome.trim() === ""}
                       type="submit"
                     >
-                      Zapisz wynik
+                      Save outcome
                     </button>
                   </div>
                 </form>
@@ -1766,7 +1709,7 @@ export const ProjectsSurface = ({
                         className="ghost-button"
                         onClick={() => setEditing(true)}
                       >
-                        Edytuj wynik
+                        Edit outcome
                       </button>
                     )}
                     <button
@@ -1782,8 +1725,8 @@ export const ProjectsSurface = ({
                       }
                     >
                       {overview.project.lifecycle === "active"
-                        ? "Zamknij projekt"
-                        : "Otwórz ponownie"}
+                        ? "Close project"
+                        : "Reopen"}
                     </button>
                   </div>
                 </>
@@ -1796,11 +1739,11 @@ export const ProjectsSurface = ({
                 <div className="project-template-row">
                   {overview.project.appliedTemplateId !== undefined && (
                     <small>
-                      Szablon:{" "}
+                      Template:{" "}
                       {projectTemplates.find(
                         (template) =>
                           template.id === overview.project.appliedTemplateId,
-                      )?.name ?? "wycofany szablon"}
+                      )?.name ?? "retired template"}
                     </small>
                   )}
                   {activeTemplates.some(
@@ -1812,7 +1755,7 @@ export const ProjectsSurface = ({
                         className="sr-only"
                         htmlFor="project-apply-template"
                       >
-                        Szablon do zastosowania
+                        Template to apply
                       </label>
                       <select
                         id="project-apply-template"
@@ -1822,7 +1765,7 @@ export const ProjectsSurface = ({
                           setApplyTemplateId(event.target.value)
                         }
                       >
-                        <option value="">Zastosuj szablon…</option>
+                        <option value="">Apply template…</option>
                         {activeTemplates
                           .filter(
                             (template) =>
@@ -1844,7 +1787,7 @@ export const ProjectsSurface = ({
                           setApplyTemplateId("");
                         }}
                       >
-                        Zastosuj
+                        Apply
                       </button>
                     </>
                   )}
@@ -1859,7 +1802,7 @@ export const ProjectsSurface = ({
                   className="project-rich-body reading-panel"
                   aria-busy="true"
                 >
-                  <p className="capacity-note">Otwieram dokument projektu…</p>
+                  <p className="capacity-note">Opening the project document…</p>
                 </section>
               }
             >
@@ -1888,8 +1831,8 @@ export const ProjectsSurface = ({
           >
             <header className="section-heading">
               <div>
-                <p className="eyebrow">Powiązana praca</p>
-                <h2 id="project-work-title">Zadania projektu</h2>
+                <p className="eyebrow">Related work</p>
+                <h2 id="project-work-title">Project tasks</h2>
               </div>
               {relation ? (
                 <button
@@ -1898,7 +1841,7 @@ export const ProjectsSurface = ({
                   disabled={busy}
                   onClick={onUnrelate}
                 >
-                  Usuń ostatnie powiązanie
+                  Remove last link
                 </button>
               ) : unrelated[0] ? (
                 <button
@@ -1907,13 +1850,13 @@ export const ProjectsSurface = ({
                   disabled={busy}
                   onClick={() => onRelate(unrelated[0]!.id)}
                 >
-                  Powiąż „{unrelated[0].title}”
+                  Link “{unrelated[0].title}”
                 </button>
               ) : null}
             </header>
             {overview.relatedTasks.length === 0 ? (
               <p className="capacity-note">
-                Ten projekt nie ma jeszcze powiązanych zadań.
+                No tasks are linked to this project yet.
               </p>
             ) : (
               <div className="compact-record-list">
@@ -1922,12 +1865,12 @@ export const ProjectsSurface = ({
                     <Mark kind="task" />
                     <span>
                       <strong>{task.title}</strong>
-                      <small>Powiązane z projektem</small>
+                      <small>Linked to this project</small>
                     </span>
                     <em>
                       {task.completionState === "completed"
-                        ? "Ukończone"
-                        : "Otwarte"}
+                        ? "Completed"
+                        : "Open"}
                     </em>
                   </div>
                 ))}
@@ -1936,13 +1879,13 @@ export const ProjectsSurface = ({
           </section>
         </div>
       ) : (
-        <section className="project-portfolio" aria-label="Lista projektów">
+        <section className="project-portfolio" aria-label="Project list">
           <header>
             <div>
-              <h2>Portfel projektów</h2>
-              <span>{projectItems.length} w widoku</span>
+              <h2>Project portfolio</h2>
+              <span>{projectItems.length} in view</span>
             </div>
-            <span>Wynik i otwarta praca</span>
+            <span>Outcome and open work</span>
           </header>
           <div className="project-list">
             {projectItems.map((project, index) => (
@@ -1968,7 +1911,7 @@ export const ProjectsSurface = ({
                     />
                   </small>
                 </span>
-                <em>{project.relatedOpenTaskCount} otw.</em>
+                <em>{project.relatedOpenTaskCount} open</em>
               </button>
             ))}
           </div>
@@ -1982,42 +1925,42 @@ export type HistoryCapture = DesktopSnapshot["captures"][number];
 
 const captureKindLabel = (capture: HistoryCapture): string =>
   capture.original.kind === "text"
-    ? "Tekst"
+    ? "Text"
     : capture.original.kind === "url"
       ? "Link"
       : capture.original.kind === "screenshot"
         ? "Screenshot"
         : capture.original.kind === "managed_file"
-          ? "Zarządzany plik"
+          ? "Managed file"
           : capture.original.kind === "voice_note"
-            ? "Notatka głosowa"
-            : "Odwołanie do pliku";
+            ? "Voice note"
+            : "File reference";
 
 const captureResultLabel = (capture: HistoryCapture): string =>
   capture.processingState === "routed_as_task"
-    ? "Utworzono zadanie"
+    ? "Task created"
     : capture.processingState === "routed_as_knowledge_source"
-      ? "Utworzono źródło wiedzy"
+      ? "Knowledge source created"
       : capture.processingState === "needs_review"
-        ? "Wymaga decyzji"
+        ? "Needs a decision"
         : capture.processingState === "awaiting_transcript"
-          ? "Czeka na transkrypcję"
+          ? "Waiting for the transcript"
           : capture.processingState === "transcript_ready"
             ? capture.audioState === "retained"
-              ? "Transkrypcja gotowa · audio zachowane"
+              ? "Transcript ready · audio kept"
               : capture.audioState === "deleted"
-                ? "Transkrypcja gotowa · audio usunięte"
-                : "Transkrypcja gotowa · usuwanie audio"
+                ? "Transcript ready · audio deleted"
+                : "Transcript ready · deleting audio"
             : capture.processingState === "unclassified"
-              ? "Zachowano bez klasyfikacji"
-              : "Oczekuje na przetworzenie";
+              ? "Kept without a classification"
+              : "Waiting to be processed";
 
 const captureCustodyLabel = (capture: HistoryCapture): string =>
   capture.original.kind === "managed_file" ||
   capture.original.kind === "screenshot" ||
   capture.original.kind === "voice_note"
-    ? `Zaszyfrowana kopia · ${Math.ceil(capture.original.payload.byteLength / 1024).toLocaleString("pl-PL")} KB · integralność SHA-256`
-    : "Stan lokalny potwierdzony";
+    ? `Encrypted copy · ${Math.ceil(capture.original.payload.byteLength / 1024).toLocaleString("en-US")} KB · SHA-256 integrity`
+    : "Local state confirmed";
 
 export const CaptureHistoryDetail = ({
   capture,
@@ -2041,16 +1984,16 @@ export const CaptureHistoryDetail = ({
     </span>
     <h2>{capture.originalText}</h2>
     <p className="record-summary">
-      {captureKindLabel(capture)} · zapisano{" "}
+      {captureKindLabel(capture)} · saved{" "}
       {formatDateTime(capture.capturedAt, timezone)}
     </p>
     <section className="inspector-section provenance-block">
-      <p className="section-label">Przebieg przetwarzania</p>
+      <p className="section-label">Processing steps</p>
       <ol className="processing-timeline">
         <li className="done">
           <i />
           <div>
-            <strong>Zapisano oryginał</strong>
+            <strong>Original saved</strong>
             <span>{captureCustodyLabel(capture)}</span>
           </div>
         </li>
@@ -2065,10 +2008,10 @@ export const CaptureHistoryDetail = ({
             </span>
             {capture.processingState === "transcript_ready" && (
               <small>
-                Zapis: {capture.transcript.writtenByKind} ·{" "}
+                Written by {capture.transcript.writtenByKind} ·{" "}
                 {formatDateTime(capture.transcript.writtenAt, timezone)}
                 {capture.transcript.hostRunId
-                  ? " · przebieg " + capture.transcript.hostRunId
+                  ? " · run " + capture.transcript.hostRunId
                   : ""}
               </small>
             )}
@@ -2077,18 +2020,18 @@ export const CaptureHistoryDetail = ({
       </ol>
     </section>
     <section className="inspector-section capture-history-actions">
-      <p className="section-label">Dostępne działania</p>
+      <p className="section-label">Available actions</p>
       <button
         className="secondary-button"
         disabled={undoCommandId === undefined}
         title={
           undoCommandId === undefined
-            ? "Brak odwracalnego polecenia dla tego Capture"
+            ? "No reversible command for this Capture"
             : undefined
         }
         onClick={() => undoCommandId && onUndo(undoCommandId)}
       >
-        Podgląd cofnięcia
+        Preview undo
       </button>
       {capture.processingState === "transcript_ready" &&
         capture.audioState === "retained" && (
@@ -2097,7 +2040,7 @@ export const CaptureHistoryDetail = ({
             disabled={busy}
             onClick={() => onDeleteVoiceAudio(capture.id, capture.version)}
           >
-            {busy ? "Usuwanie…" : "Usuń zachowane audio"}
+            {busy ? "Deleting…" : "Delete the kept audio"}
           </button>
         )}
     </section>
@@ -2127,31 +2070,24 @@ export const HistorySurface = ({
   return (
     <div className="surface-scroll history-surface">
       <SurfaceHeader
-        kicker="Zachowane oryginały"
-        title="Historia Capture"
-        description="Udane przetworzenie pozostaje sprawdzalne i odwracalne, jeśli bieżące wersje na to pozwalają."
+        kicker="Kept originals"
+        title="Capture history"
+        description="What was processed stays checkable, and reversible when versions match."
       />
       {snapshot.captures.length === 0 ? (
         <InlineState
           headingLevel="h2"
-          title="Historia Capture jest pusta"
-          detail="Pierwszy zapis przez Quick Capture pojawi się tutaj wraz z wynikiem przetwarzania."
+          title="Capture history is empty"
+          detail="The first Quick Capture will appear here with what it became."
         />
       ) : (
-        <section className="history-ledger" aria-label="Zachowane Capture">
+        <section className="history-ledger" aria-label="Kept captures">
           <header>
             <div>
-              <h2>Zachowane oryginały</h2>
-              <span>
-                {countLabel(
-                  snapshot.captures.length,
-                  "zapis",
-                  "zapisy",
-                  "zapisów",
-                )}
-              </span>
+              <h2>Kept originals</h2>
+              <span>{countLabel(snapshot.captures.length, "capture")}</span>
             </div>
-            <span>Kliknij rekord, aby sprawdzić przebieg</span>
+            <span>Select a row to see its steps</span>
           </header>
           <div className="history-list">
             {snapshot.captures.map((capture, index) => (
@@ -2184,8 +2120,7 @@ export const HistorySurface = ({
   );
 };
 
-const searchResultsCountLabel = (count: number) =>
-  countLabel(count, "wynik", "wyniki", "wyników");
+const searchResultsCountLabel = (count: number) => countLabel(count, "result");
 
 export const SearchOverlay = ({
   client,
@@ -2314,12 +2249,12 @@ export const SearchOverlay = ({
     >
       <section className="search-dialog">
         <h2 id="search-title" className="sr-only">
-          Paleta poleceń i globalne wyszukiwanie
+          Command palette and global search
         </h2>
         <div className="search-query">
           <Mark kind="search" />
           <label className="sr-only" htmlFor="global-search">
-            Otwórz widok albo szukaj projektów, zadań i Capture
+            Open a view, or search projects, tasks and captures
           </label>
           <input
             ref={searchInputRef}
@@ -2340,13 +2275,13 @@ export const SearchOverlay = ({
               setActiveIndex(0);
             }}
             onKeyDown={onKeyDown}
-            placeholder="Widok, projekt, zadanie, źródło…"
+            placeholder="View, project, task, source…"
           />
           <kbd>Esc</kbd>
         </div>
         <p className="search-scope">
-          Lokalny indeks · {snapshot.bootstrap.workspace.name} · dane bieżącego
-          workspace
+          Local index · {snapshot.bootstrap.workspace.name} · this workspace
+          only
         </p>
         <p className="sr-only" role="status">
           {state.kind === "ready" || state.kind === "idle"
@@ -2359,12 +2294,10 @@ export const SearchOverlay = ({
             className={`search-results${state.kind === "idle" ? " search-command-list" : ""}`}
             role="listbox"
             aria-label={
-              state.kind === "idle"
-                ? "Polecenia nawigacji"
-                : "Wyniki wyszukiwania"
+              state.kind === "idle" ? "Navigation commands" : "Search results"
             }
           >
-            {state.kind === "idle" && <p role="presentation">Otwórz widok</p>}
+            {state.kind === "idle" && <p role="presentation">Open a view</p>}
             {commandResults.map((item, index) => (
               <button
                 key={`command:${item.id}`}
@@ -2380,7 +2313,7 @@ export const SearchOverlay = ({
                 <Mark kind="command" />
                 <span>
                   <strong>{item.label}</strong>
-                  <small>Polecenie nawigacji</small>
+                  <small>Navigation command</small>
                 </span>
                 <em>
                   {item.shortcut !== undefined
@@ -2410,7 +2343,7 @@ export const SearchOverlay = ({
                   <strong>{item.title}</strong>
                   <small>
                     {recordKindLabels[item.recordKind] ?? item.recordKind} ·{" "}
-                    {item.matchedFields.includes("body") ? "Treść · " : ""}
+                    {item.matchedFields.includes("body") ? "Body · " : ""}
                     {item.snippet}
                   </small>
                 </span>
@@ -2419,15 +2352,14 @@ export const SearchOverlay = ({
           </div>
         ) : state.kind === "loading" ? (
           <div className="search-empty" aria-busy="true">
-            <strong>Wyszukuję…</strong>
-            <span>Sprawdzam projekty, zadania i Capture.</span>
+            <strong>Searching…</strong>
+            <span>Checking projects, tasks and captures.</span>
           </div>
         ) : state.kind === "error" ? (
           <div className="search-empty" role="alert">
-            <strong>Wyszukiwanie jest niedostępne</strong>
+            <strong>Search is unavailable</strong>
             <span>
-              Lokalny indeks jest chwilowo niedostępny. Twoje dane pozostały bez
-              zmian.
+              The local index could not answer. Your data is unchanged.
             </span>
             <div className="search-empty-actions">
               <button
@@ -2438,7 +2370,7 @@ export const SearchOverlay = ({
                   setSearchAttempt((attempt) => attempt + 1);
                 }}
               >
-                Ponów wyszukiwanie
+                Try again
               </button>
               <button
                 type="button"
@@ -2449,14 +2381,14 @@ export const SearchOverlay = ({
                   setActiveIndex(0);
                 }}
               >
-                Wyczyść zapytanie
+                Clear the query
               </button>
             </div>
           </div>
         ) : (
           <div className="search-empty">
-            <strong>Brak wyników dla „{query}”</strong>
-            <span>Sprawdź pisownię albo wyszukaj szersze pojęcie.</span>
+            <strong>No results for “{query}”</strong>
+            <span>Check the spelling, or try a broader term.</span>
             <button
               type="button"
               className="secondary-button"
@@ -2466,15 +2398,15 @@ export const SearchOverlay = ({
                 setActiveIndex(0);
               }}
             >
-              Wyczyść zapytanie
+              Clear the query
             </button>
           </div>
         )}
         <footer>
-          <span>↑↓ wybierz</span>
-          <span>↵ otwórz</span>
-          <span>Esc zamknij</span>
-          <span>{modifierLabel}/ skróty</span>
+          <span>↑↓ select</span>
+          <span>↵ open</span>
+          <span>Esc close</span>
+          <span>{modifierLabel}/ shortcuts</span>
         </footer>
       </section>
     </dialog>
@@ -2482,28 +2414,27 @@ export const SearchOverlay = ({
 };
 
 const compensationCopy: Record<string, string> = {
-  "project.restore_outcome": "Przywrócenie poprzedniego wyniku projektu",
-  "task.restore_state": "Przywrócenie poprzedniego stanu zadania",
-  "task.restore_operational_state":
-    "Przywrócenie poprzedniego stanu operacyjnego zadania",
-  "work_link.restore_state": "Przywrócenie poprzedniego powiązania pracy",
-  "relationship.restore_person": "Przywrócenie poprzednich danych osoby",
+  "project.restore_outcome": "Restore the previous project outcome",
+  "task.restore_state": "Restore the previous task state",
+  "task.restore_operational_state": "Restore the previous operational state",
+  "work_link.restore_state": "Restore the previous work link",
+  "relationship.restore_person": "Restore the previous person details",
   "relationship.restore_organization":
-    "Przywrócenie poprzednich danych organizacji",
-  "relation.remove": "Usunięcie dodanej relacji",
-  "relation.restore": "Przywrócenie usuniętej relacji",
-  "capture.undo_route": "Cofnięcie uporządkowania Capture",
-  "capture.undo_knowledge_route": "Cofnięcie skierowania Capture do wiedzy",
-  "knowledge.restore_source": "Przywrócenie poprzedniego źródła",
-  "knowledge.restore_evidence": "Przywrócenie poprzedniego zestawu dowodów",
-  "knowledge.void_named_version": "Unieważnienie nazwanej wersji",
+    "Restore the previous organization details",
+  "relation.remove": "Remove the added relation",
+  "relation.restore": "Restore the removed relation",
+  "capture.undo_route": "Undo the capture routing",
+  "capture.undo_knowledge_route": "Undo routing the capture to knowledge",
+  "knowledge.restore_source": "Restore the previous source",
+  "knowledge.restore_evidence": "Restore the previous evidence set",
+  "knowledge.void_named_version": "Void the named version",
 };
 
 const unavailableReasonCopy: Record<string, string> = {
-  unsupported: "To polecenie nie obsługuje cofnięcia",
-  already_undone: "To polecenie zostało już cofnięte",
-  later_change: "Późniejsza zmiana blokuje bezpieczne cofnięcie",
-  still_referenced: "Inny rekord nadal się do tego odwołuje",
+  unsupported: "This command cannot be undone",
+  already_undone: "This command was already undone",
+  later_change: "A later change blocks a safe undo",
+  still_referenced: "Another record still references this",
 };
 
 export const UndoDialog = ({
@@ -2553,14 +2484,14 @@ export const UndoDialog = ({
       <section className="undo-dialog">
         <header>
           <div>
-            <p className="eyebrow">Podgląd cofnięcia</p>
+            <p className="eyebrow">Undo preview</p>
             <h2 id="undo-title">
-              {available ? "Cofnij tę zmianę?" : "Tej zmiany nie można cofnąć"}
+              {available ? "Undo this change?" : "This change cannot be undone"}
             </h2>
           </div>
           <button
             className="icon-button"
-            aria-label="Zamknij podgląd cofnięcia"
+            aria-label="Close the undo preview"
             disabled={busy}
             onClick={onClose}
           >
@@ -2569,31 +2500,26 @@ export const UndoDialog = ({
         </header>
         <dl>
           <div>
-            <dt>Polecenie</dt>
+            <dt>Command</dt>
             <dd className="mono">{preview.targetCommandId.slice(0, 18)}…</dd>
           </div>
           <div>
-            <dt>Wpływ</dt>
+            <dt>Impact</dt>
             <dd>
-              {countLabel(
-                preview.recovery.affectedRecordIds.length,
-                "rekord",
-                "rekordy",
-                "rekordów",
-              )}
+              {countLabel(preview.recovery.affectedRecordIds.length, "record")}
             </dd>
           </div>
           <div>
-            <dt>Kompensacja</dt>
+            <dt>Compensation</dt>
             <dd>
               {preview.recovery.compensationKind !== undefined
                 ? (compensationCopy[preview.recovery.compensationKind] ??
-                  "Przywrócenie poprzedniego stanu")
+                  "Restore the previous state")
                 : preview.recovery.unavailableReason !== undefined
                   ? (unavailableReasonCopy[
                       preview.recovery.unavailableReason
-                    ] ?? "Niedostępna")
-                  : "Niedostępna"}
+                    ] ?? "Unavailable")
+                  : "Unavailable"}
             </dd>
           </div>
         </dl>
@@ -2602,13 +2528,13 @@ export const UndoDialog = ({
           <span>
             <strong>
               {available
-                ? "Wersje są zgodne"
-                : "Stan zmienił się od czasu polecenia"}
+                ? "Versions match"
+                : "The state changed since the command"}
             </strong>
             <small>
               {available
-                ? "Cofnięcie zapisze osobne, audytowalne polecenie."
-                : "Nie wykonano żadnej zmiany."}
+                ? "The undo is written as its own auditable command."
+                : "Nothing was changed."}
             </small>
           </span>
         </div>
@@ -2619,14 +2545,14 @@ export const UndoDialog = ({
             disabled={busy}
             onClick={onClose}
           >
-            Anuluj
+            Cancel
           </button>
           <button
             className="primary-button"
             disabled={!available || busy}
             onClick={onConfirm}
           >
-            {busy ? "Cofam…" : "Cofnij zmianę"}
+            {busy ? "Undoing…" : "Undo the change"}
           </button>
         </footer>
       </section>

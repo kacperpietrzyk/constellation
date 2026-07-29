@@ -9,6 +9,7 @@ import type {
 } from "@constellation/desktop-preload/client";
 
 import { ReleaseContinuity } from "./components/ReleaseContinuity.js";
+import { formatDateTime } from "./i18n.js";
 
 // Transport failure of the renderer↔main channel. Not part of the backup
 // contract: the request never reached the workspace, so nothing changed.
@@ -46,58 +47,53 @@ const syncCopy: Record<
   { readonly label: string; readonly detail: string }
 > = {
   not_configured: {
-    label: "Tylko lokalnie",
-    detail: "Bez sieci; backup pozostaje oddzielną operacją.",
+    label: "Local only",
+    detail: "No network. Backup stays a separate action.",
   },
-  current: { label: "Aktualne", detail: "Zmiany dotarły do własnego Huba." },
+  current: { label: "Up to date", detail: "Changes reached your own Hub." },
   queued: {
-    label: "W kolejce",
-    detail: "Zmiany są bezpieczne lokalnie i czekają na wysłanie.",
+    label: "Queued",
+    detail: "Changes are safe locally and waiting to be sent.",
   },
-  syncing: { label: "Synchronizacja", detail: "Wymieniam zmiany z Hubem." },
+  syncing: { label: "Syncing", detail: "Exchanging changes with the Hub." },
   offline: {
     label: "Offline",
-    detail: "Hub jest niedostępny; możesz nadal pracować lokalnie.",
+    detail: "The Hub is unreachable. You can keep working locally.",
   },
   conflict: {
-    label: "Konflikt",
-    detail: "Hub ma nowszą wersję. Żadna zmiana nie została nadpisana.",
+    label: "Conflict",
+    detail: "The Hub has a newer version. Nothing was overwritten.",
   },
   unknown_reconcile: {
-    label: "Sprawdzam wynik",
-    detail: "Połączenie przerwano po wysłaniu. Najpierw potwierdzę receipt.",
+    label: "Checking the outcome",
+    detail:
+      "The connection dropped after sending. The receipt is confirmed first.",
   },
 };
 
 const failureCopy: Record<RecoveryFailureCode, string> = {
   secure_storage_unavailable:
-    "Bezpieczny magazyn systemu jest chwilowo niedostępny. Odblokuj pęk kluczy lub magazyn poświadczeń i spróbuj ponownie.",
+    "The system secure store is unavailable. Unlock your keychain or credential store and try again.",
   archive_invalid:
-    "Backup jest uszkodzony albo niekompletny. Aktywny workspace nie został zmieniony.",
+    "This backup is damaged or incomplete. The active workspace was not changed.",
   archive_unsupported:
-    "Ten backup pochodzi z nieobsługiwanej wersji. Otwórz go w zgodnej wersji Constellation.",
+    "This backup comes from an unsupported version. Open it in a compatible Constellation.",
   recovery_code_invalid:
-    "Kod odzyskiwania nie pasuje do wybranego backupu. Aktywny workspace nie został zmieniony.",
+    "That recovery code does not match the chosen backup. The active workspace was not changed.",
   workspace_identity_invalid:
-    "Nie udało się potwierdzić kompletnej tożsamości workspace’u. Restore został zatrzymany.",
+    "The full workspace identity could not be confirmed. The restore was stopped.",
   operation_busy:
-    "Inna operacja utrzymania workspace’u nadal trwa. Zaczekaj na jej zakończenie.",
+    "Another workspace maintenance operation is still running. Wait for it to finish.",
   io_failed:
-    "Nie udało się bezpiecznie zakończyć operacji na pliku. Sprawdź miejsce i uprawnienia, a potem spróbuj ponownie.",
+    "The file operation could not finish safely. Check disk space and permissions, then try again.",
   restore_interrupted:
-    "Restore nie został potwierdzony. Constellation przywróci ostatni znany dobry workspace przy ponownym otwarciu.",
+    "The restore was not confirmed. Constellation reopens the last known good workspace.",
   channel_unavailable:
-    "Nie udało się połączyć z procesem aplikacji. Operacja nie została rozpoczęta, a aktywny workspace pozostaje bez zmian.",
+    "Could not reach the app process. Nothing was started and the active workspace is unchanged.",
 };
 
-const formatDate = (value: string): string =>
-  new Intl.DateTimeFormat("pl-PL", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-
 const formatBytes = (value: number): string =>
-  new Intl.NumberFormat("pl-PL", {
+  new Intl.NumberFormat("en-US", {
     style: "unit",
     unit: value >= 1024 * 1024 ? "megabyte" : "kilobyte",
     maximumFractionDigits: 1,
@@ -263,7 +259,7 @@ export const WorkspaceRecovery = ({
       setHubEnrollment({
         kind: "failure",
         message:
-          "Nie udało się połączyć z procesem aplikacji. Workspace pozostaje bez zmian; spróbuj ponownie.",
+          "Could not reach the app process. The workspace is unchanged. Try again.",
       });
       return;
     }
@@ -275,17 +271,18 @@ export const WorkspaceRecovery = ({
     }
     const messages = {
       input_invalid:
-        "Sprawdź adres Huba, nazwę urządzenia i pełny kod dołączenia.",
-      workspace_unavailable: "Najpierw otwórz albo przywróć ten workspace.",
+        "Check the Hub address, the device name and the full enrollment code.",
+      workspace_unavailable: "Open or restore this workspace first.",
       enrollment_invalid:
-        "Kod nie należy do tego workspace’u albo został zmieniony.",
-      enrollment_expired: "Kod wygasł. Utwórz nowy jednorazowy kod w Hubie.",
-      enrollment_used: "Ten kod został już wykorzystany. Utwórz nowy.",
-      device_already_enrolled: "To urządzenie jest już połączone z tym Hubem.",
+        "That code belongs to a different workspace, or it changed.",
+      enrollment_expired:
+        "That code expired. Create a new one-time code in the Hub.",
+      enrollment_used: "That code was already used. Create a new one.",
+      device_already_enrolled: "This device is already connected to this Hub.",
       hub_unreachable:
-        "Nie udało się bezpiecznie połączyć z Hubem. Sprawdź adres i TLS.",
+        "Could not connect to the Hub securely. Check the address and TLS.",
       credential_storage_failed:
-        "Hub przyjął urządzenie, ale system nie zapisał poświadczenia. Uruchom ponownie i sprawdź stan przed utworzeniem nowego kodu.",
+        "The Hub accepted the device but did not store the credential. Restart and check the state before creating a new code.",
     } as const;
     setHubEnrollment({ kind: "failure", message: messages[result.code] });
   };
@@ -345,13 +342,13 @@ export const WorkspaceRecovery = ({
         <header className="recovery-header">
           <div>
             <p className="eyebrow">Workspace</p>
-            <h2 id="recovery-title">Data Home i odzyskiwanie</h2>
+            <h2 id="recovery-title">Data Home and recovery</h2>
             <p>{workspaceName}</p>
           </div>
           <button
             ref={closeButtonRef}
             className="icon-button"
-            aria-label="Zamknij backup i odzyskiwanie"
+            aria-label="Close backup and recovery"
             disabled={busy || state.kind === "code-issued"}
             onClick={close}
           >
@@ -366,7 +363,7 @@ export const WorkspaceRecovery = ({
           <div className="data-home-summary-heading">
             <div>
               <p className="eyebrow">Data Home</p>
-              <h3 id="data-home-title">Kanoniczne dane tego workspace’u</h3>
+              <h3 id="data-home-title">Canonical data for this workspace</h3>
             </div>
             {dataHome.kind === "ready" && (
               <span
@@ -374,29 +371,29 @@ export const WorkspaceRecovery = ({
               >
                 <i aria-hidden="true" />
                 {dataHome.status.availability === "available"
-                  ? "Dostępny"
+                  ? "Available"
                   : dataHome.status.availability === "locked"
-                    ? "Zablokowany"
-                    : "Wymaga odzyskania"}
+                    ? "Locked"
+                    : "Needs recovery"}
               </span>
             )}
           </div>
           {dataHome.kind === "loading" && (
             <div className="data-home-loading" aria-busy="true" role="status">
-              Sprawdzam provider i ochronę danych…
+              Checking the provider and data protection…
             </div>
           )}
           {dataHome.kind === "error" && (
             <div className="data-home-status-error" role="alert">
               <span>
-                Nie udało się potwierdzić stanu Data Home. Żadna operacja nie
-                została uznana za udaną.
+                Could not confirm the Data Home state. No operation was counted
+                as successful.
               </span>
               <button
                 className="secondary-button compact"
                 onClick={refreshDataHome}
               >
-                Sprawdź ponownie
+                Try again
               </button>
             </div>
           )}
@@ -423,7 +420,7 @@ export const WorkspaceRecovery = ({
                         data-recovery-action="sync-now"
                         onClick={syncNow}
                       >
-                        Synchronizuj teraz
+                        Sync now
                       </button>
                     )}
                   </div>
@@ -435,51 +432,51 @@ export const WorkspaceRecovery = ({
                   <dd>{dataHome.status.descriptor.displayName}</dd>
                   <span>
                     {dataHome.status.descriptor.storageRole === "canonical"
-                      ? "Dane kanoniczne na tym urządzeniu"
-                      : "Lokalna projekcja + trwała kolejka zmian"}
+                      ? "Canonical data on this device"
+                      : "Local projection + durable change queue"}
                   </span>
                 </div>
                 <div>
-                  <dt>Ochrona</dt>
-                  <dd>SQLCipher + magazyn systemowy</dd>
-                  <span>Osobny kod otwiera przenośny checkpoint</span>
+                  <dt>Protection</dt>
+                  <dd>SQLCipher + system store</dd>
+                  <span>A separate code opens the portable checkpoint</span>
                 </div>
                 <div>
-                  <dt>Przenośność</dt>
+                  <dt>Portability</dt>
                   <dd>
                     {dataHome.status.checkpointState === "verified_this_session"
-                      ? "Checkpoint zweryfikowany"
-                      : "Niezweryfikowany w tej sesji"}
+                      ? "Checkpoint verified"
+                      : "Not verified this session"}
                   </dd>
-                  <span>Eksport, podgląd i bezpieczna migracja</span>
+                  <span>Export, preview and safe migration</span>
                 </div>
               </dl>
               <div className="data-home-boundary-note">
                 <span>
                   {dataHome.status.descriptor.providerKind === "local_only"
-                    ? "Synchronizacja nie jest skonfigurowana. Workspace działa lokalnie bez sieci; backup pozostaje oddzielną operacją."
-                    : "Własny Hub koordynuje urządzenia. Otwarty plik bazy nigdy nie jest synchronizowany przez folder chmurowy."}
+                    ? "Sync is not configured. This workspace runs locally; backup stays a separate action."
+                    : "Your own Hub coordinates devices. The open database file is never synced through a cloud folder."}
                 </span>
                 <small>
-                  Urządzenie …{dataHome.status.descriptor.deviceId.slice(-8)} ·
-                  limit lokalnego dysku nie jest udawany jako limit providera
+                  Device …{dataHome.status.descriptor.deviceId.slice(-8)} ·
+                  local disk space is never shown as provider quota
                 </small>
               </div>
               {dataHome.status.descriptor.providerKind === "local_only" &&
                 !restoreOnly && (
                   <form className="hub-enrollment" onSubmit={enrollHub}>
                     <div>
-                      <p className="eyebrow">Własny Data Home</p>
-                      <h4>Połącz ten workspace z własnym Hubem</h4>
+                      <p className="eyebrow">Your own Data Home</p>
+                      <h4>Connect this workspace to your own Hub</h4>
                       {/* Kolejność dla drugiego urządzenia: najpierw restore,
                           potem dołączenie. Zaczepienie na atrybucie, bo tego
                           akapitu nie da się rozpoznać po treści po zmianie
                           języka. */}
                       <p data-recovery-note="second-device-order">
-                        Przy pierwszej instalacji wyeksportuj plik autoryzacji
-                        dla operatora Huba. Na drugim urządzeniu najpierw
-                        przywróć przenośny backup. Każde urządzenie używa nowego
-                        jednorazowego kodu.
+                        On the first install, export the authorization file for
+                        your Hub operator. On a second device, restore the
+                        portable backup first. Every device uses a new one-time
+                        code.
                       </p>
                     </div>
                     <div className="hub-authorization-export">
@@ -491,24 +488,24 @@ export const WorkspaceRecovery = ({
                         onClick={() => void exportHubAuthorization()}
                       >
                         {hubAuthorizationExport.kind === "exporting"
-                          ? "Zapisuję…"
-                          : "Eksportuj plik autoryzacji"}
+                          ? "Saving…"
+                          : "Export authorization file"}
                       </button>
                       {hubAuthorizationExport.kind === "success" && (
                         <small role="status">
-                          Zapisano {hubAuthorizationExport.fileLabel}. Przekaż
-                          plik wyłącznie operatorowi własnego Huba.
+                          Saved {hubAuthorizationExport.fileLabel}. Give this
+                          file only to your own Hub operator.
                         </small>
                       )}
                       {hubAuthorizationExport.kind === "failure" && (
                         <small className="is-error" role="alert">
-                          Nie udało się zapisać pliku. Sprawdź miejsce i
-                          uprawnienia.
+                          Could not save the file. Check disk space and
+                          permissions.
                         </small>
                       )}
                     </div>
                     <label>
-                      Adres Huba
+                      Hub address
                       <input
                         type="url"
                         required
@@ -525,7 +522,7 @@ export const WorkspaceRecovery = ({
                       />
                     </label>
                     <label>
-                      Nazwa urządzenia
+                      Device name
                       <input
                         required
                         maxLength={80}
@@ -538,11 +535,11 @@ export const WorkspaceRecovery = ({
                         }
                         value={deviceLabel}
                         onChange={(event) => setDeviceLabel(event.target.value)}
-                        placeholder="MacBook podróżny"
+                        placeholder="Travel MacBook"
                       />
                     </label>
                     <label>
-                      Kod dołączenia
+                      Enrollment code
                       <input
                         type="password"
                         required
@@ -561,7 +558,7 @@ export const WorkspaceRecovery = ({
                         onChange={(event) =>
                           setEnrollmentSecret(event.target.value)
                         }
-                        placeholder="Jednorazowy kod z Huba"
+                        placeholder="One-time code from the Hub"
                       />
                     </label>
                     {hubEnrollment.kind === "failure" && (
@@ -575,8 +572,7 @@ export const WorkspaceRecovery = ({
                     )}
                     {hubEnrollment.kind === "success" && (
                       <p className="hub-enrollment-feedback" role="status">
-                        Urządzenie połączone. Pierwszy checkpoint został
-                        sprawdzony.
+                        Device connected. The first checkpoint was verified.
                       </p>
                     )}
                     <button
@@ -586,8 +582,8 @@ export const WorkspaceRecovery = ({
                       disabled={hubEnrollment.kind === "connecting"}
                     >
                       {hubEnrollment.kind === "connecting"
-                        ? "Łączę i sprawdzam…"
-                        : "Połącz z Hubem"}
+                        ? "Connecting and verifying…"
+                        : "Connect to the Hub"}
                     </button>
                   </form>
                 )}
@@ -597,23 +593,20 @@ export const WorkspaceRecovery = ({
 
         <ReleaseContinuity client={client} />
 
-        <div
-          className="recovery-chain"
-          aria-label="Bezpieczny przebieg restore"
-        >
-          <span>Zweryfikowany backup</span>
+        <div className="recovery-chain" aria-label="Safe restore path">
+          <span>Verified backup</span>
           <i aria-hidden="true" />
-          <span>Podgląd restore</span>
+          <span>Restore preview</span>
           <i aria-hidden="true" />
-          <span>Ostatni dobry workspace</span>
+          <span>Last good workspace</span>
         </div>
 
         {recoveredPrevious && state.kind === "ready" && (
           <div className="recovery-notice" role="status">
-            <strong>Odzyskano ostatni dobry workspace.</strong>
+            <strong>Recovered the last good workspace.</strong>
             <span>
-              Poprzedni restore został przerwany przed weryfikacją. Kandydat nie
-              zastąpił Twoich danych.
+              The previous restore stopped before verification. The candidate
+              did not replace your data.
             </span>
           </div>
         )}
@@ -627,17 +620,17 @@ export const WorkspaceRecovery = ({
                   className="recovery-error"
                   role="alert"
                 >
-                  <strong>Operacja została zatrzymana</strong>
+                  <strong>Operation stopped</strong>
                   <span>{failureCopy[state.code]}</span>
                 </div>
               )}
               {!restoreOnly && (
                 <section className="recovery-section">
                   <div>
-                    <h3>Utwórz przenośny backup</h3>
+                    <h3>Create a portable backup</h3>
                     <p>
-                      Constellation zapisze zweryfikowaną, zaszyfrowaną kopię i
-                      pokaże osobny kod odzyskiwania.
+                      Constellation saves a verified, encrypted copy and shows a
+                      separate recovery code.
                     </p>
                   </div>
                   <button
@@ -645,22 +638,20 @@ export const WorkspaceRecovery = ({
                     data-recovery-action="backup-export"
                     onClick={exportBackup}
                   >
-                    Eksportuj backup
+                    Export backup
                   </button>
                 </section>
               )}
               <section className="recovery-section recovery-restore-section">
                 <div>
-                  <h3>Przywróć z backupu</h3>
+                  <h3>Restore from a backup</h3>
                   <p>
-                    Najpierw sprawdzimy kopię i pokażemy jej zawartość. Aktywny
-                    workspace zmieni się dopiero po Twoim potwierdzeniu.
+                    The copy is verified and previewed first. The active
+                    workspace changes only after you confirm.
                   </p>
                 </div>
                 <form onSubmit={prepareRestore}>
-                  <label htmlFor="workspace-recovery-code">
-                    Kod odzyskiwania
-                  </label>
+                  <label htmlFor="workspace-recovery-code">Recovery code</label>
                   <div className="recovery-code-entry">
                     <input
                       id="workspace-recovery-code"
@@ -690,7 +681,7 @@ export const WorkspaceRecovery = ({
                       data-recovery-action="restore-prepare"
                       disabled={!recoveryCode.trim()}
                     >
-                      Wybierz i sprawdź backup
+                      Choose and verify backup
                     </button>
                   </div>
                 </form>
@@ -704,13 +695,13 @@ export const WorkspaceRecovery = ({
               <div>
                 <strong>
                   {state.kind === "exporting"
-                    ? "Tworzę i weryfikuję backup"
-                    : "Sprawdzam backup w izolacji"}
+                    ? "Creating and verifying the backup"
+                    : "Verifying the backup in isolation"}
                 </strong>
                 <span>
                   {state.kind === "exporting"
-                    ? "Plik pojawi się dopiero po sprawdzeniu integralności."
-                    : "Aktywny workspace pozostaje otwarty i niezmieniony."}
+                    ? "The file appears only after the integrity check passes."
+                    : "The active workspace stays open and unchanged."}
                 </span>
               </div>
             </div>
@@ -718,12 +709,12 @@ export const WorkspaceRecovery = ({
 
           {state.kind === "code-issued" && (
             <div className="recovery-code-result">
-              <p className="eyebrow">Backup zweryfikowany</p>
-              <h3>Zapisz kod oddzielnie od pliku</h3>
+              <p className="eyebrow">Backup verified</p>
+              <h3>Store the code apart from the file</h3>
               <p>
-                Bez tego kodu nie da się otworzyć backupu. Constellation nie
-                przechowuje jego kopii. Okno zamkniesz dopiero po potwierdzeniu
-                „Kod zapisany”.
+                The backup cannot be opened without this code. Constellation
+                keeps no copy of it. This window closes once you confirm “Code
+                saved”.
               </p>
               <div className="recovery-code-value">
                 <code>{state.result.recoveryCode}</code>
@@ -742,25 +733,26 @@ export const WorkspaceRecovery = ({
                       .catch(() => setCopyStatus("failed"));
                   }}
                 >
-                  {copyStatus === "copied" ? "Skopiowano" : "Kopiuj kod"}
+                  {copyStatus === "copied" ? "Copied" : "Copy code"}
                 </button>
               </div>
               {copyStatus === "failed" && (
                 <span className="recovery-copy-failure">
-                  Schowek jest niedostępny. Zaznacz kod i skopiuj go ręcznie.
+                  The clipboard is unavailable. Select the code and copy it
+                  manually.
                 </span>
               )}
               <dl className="recovery-facts">
                 <div>
-                  <dt>Plik</dt>
+                  <dt>File</dt>
                   <dd>{state.result.fileLabel}</dd>
                 </div>
                 <div>
-                  <dt>Utworzono</dt>
-                  <dd>{formatDate(state.result.metadata.createdAt)}</dd>
+                  <dt>Created</dt>
+                  <dd>{formatDateTime(state.result.metadata.createdAt)}</dd>
                 </div>
                 <div>
-                  <dt>Rozmiar danych</dt>
+                  <dt>Data size</dt>
                   <dd>
                     {formatBytes(state.result.metadata.databaseByteLength)}
                   </dd>
@@ -771,7 +763,7 @@ export const WorkspaceRecovery = ({
                   className="primary-button"
                   onClick={() => setState({ kind: "ready" })}
                 >
-                  Kod zapisany
+                  Code saved
                 </button>
               </footer>
             </div>
@@ -779,32 +771,32 @@ export const WorkspaceRecovery = ({
 
           {state.kind === "preview" && (
             <div className="restore-preview">
-              <p className="eyebrow">Backup gotowy do restore</p>
+              <p className="eyebrow">Backup ready to restore</p>
               <h3>{state.result.metadata.workspaceName}</h3>
               <p>
-                Kopia przeszła weryfikację. Po potwierdzeniu Constellation
-                zachowa obecny workspace, przełączy dane i otworzy je ponownie.
+                The copy passed verification. Confirming keeps the current
+                workspace and opens the restored data.
               </p>
               <dl className="restore-counts">
                 <div>
-                  <dt>Capture</dt>
+                  <dt>Captures</dt>
                   <dd>{state.result.counts.captures}</dd>
                 </div>
                 <div>
-                  <dt>Zadania</dt>
+                  <dt>Tasks</dt>
                   <dd>{state.result.counts.tasks}</dd>
                 </div>
                 <div>
-                  <dt>Projekty</dt>
+                  <dt>Projects</dt>
                   <dd>{state.result.counts.projects}</dd>
                 </div>
                 <div>
-                  <dt>Ślad audytowy</dt>
+                  <dt>Audit receipts</dt>
                   <dd>{state.result.counts.auditReceipts}</dd>
                 </div>
               </dl>
               <div className="restore-preview-meta">
-                <span>{formatDate(state.result.metadata.createdAt)}</span>
+                <span>{formatDateTime(state.result.metadata.createdAt)}</span>
                 <span>ID …{state.result.metadata.workspaceId.slice(-8)}</span>
               </div>
               <footer>
@@ -817,10 +809,10 @@ export const WorkspaceRecovery = ({
                     setState({ kind: "ready" });
                   }}
                 >
-                  Anuluj
+                  Cancel
                 </button>
                 <button className="primary-button" onClick={confirmRestore}>
-                  Przywróć i otwórz ponownie
+                  Restore and reopen
                 </button>
               </footer>
             </div>
@@ -830,10 +822,9 @@ export const WorkspaceRecovery = ({
             <div className="recovery-progress" aria-busy="true">
               <span className="recovery-progress-mark" aria-hidden="true" />
               <div>
-                <strong>Przywracam zweryfikowany workspace</strong>
+                <strong>Restoring the verified workspace</strong>
                 <span>
-                  Ostatnia dobra wersja pozostaje zachowana do czasu ponownego
-                  otwarcia.
+                  The last good version is kept until the workspace reopens.
                 </span>
               </div>
             </div>

@@ -20,7 +20,13 @@ import {
   type RelationshipWorkspaceProjection,
 } from "./client/workflow.js";
 import { useListNavigation } from "./hooks/useListNavigation.js";
-import { countLabel, pluralize, recordKindLabels } from "./i18n.js";
+import {
+  countLabel,
+  formatDate,
+  formatDateTime,
+  plural,
+  recordKindLabels,
+} from "./i18n.js";
 import {
   recurrenceCadenceLabels,
   strategicStateLabels,
@@ -31,9 +37,9 @@ type Radar = Extract<Record, { kind: "radar_candidate" }>;
 type Review = Extract<Record, { kind: "impact_review" }>;
 
 // The impact-review audit note is stored data, so it carries the product's
-// Polish tool voice instead of an English implementation remark.
+// tool voice instead of an English implementation remark.
 const impactReviewNote =
-  "Przejrzano na powierzchni strategicznej; bez automatycznych zmian.";
+  "Reviewed on the Relationships surface; no automatic changes.";
 
 const StateMark = ({ state }: { readonly state: string }) => (
   <span className={`strategic-state strategic-state--${state}`}>
@@ -136,7 +142,7 @@ export const StrategicDepthSurface = ({
       onFailure({
         kind: "unavailable",
         message:
-          "Polecenie nie dotarło do warstwy danych. Nic nie zmieniono — spróbuj ponownie.",
+          "Could not reach the data layer, so nothing changed. Try again.",
       });
     } finally {
       setBusyId(undefined);
@@ -172,24 +178,22 @@ export const StrategicDepthSurface = ({
     <div className="surface-scroll strategic-surface">
       <header className="surface-header strategic-header">
         <div>
-          <p className="eyebrow">Relacje i przeglądy</p>
+          <p className="eyebrow">Relationships and reviews</p>
           <h1 id="surface-title" tabIndex={-1}>
-            Relacje
+            Relationships
           </h1>
           <p>
-            Szanse, oferty, odnowienia, decyzje i wiedza zachowują źródła oraz
-            historię. Aplikacja pokazuje skutki, ale nie podejmuje decyzji za
-            Ciebie.
+            Opportunities, offers, renewals and decisions keep their sources and
+            history.
           </p>
         </div>
-        <div className="strategic-summary" aria-label="Stan przeglądu">
+        <div className="strategic-summary" aria-label="Review status">
           <strong>{radar.length + openConsequences.length}</strong>
           <span>
-            {pluralize(
+            {plural(
               radar.length + openConsequences.length,
-              "element wymaga decyzji",
-              "elementy wymagają decyzji",
-              "elementów wymaga decyzji",
+              "item needs a decision",
+              "items need a decision",
             )}
           </span>
         </div>
@@ -227,24 +231,23 @@ export const StrategicDepthSurface = ({
             </svg>
           </span>
           <div>
-            <h2>Relacje są chwilowo niedostępne</h2>
+            <h2>Relationships are unavailable</h2>
             <p>{snapshot.relationships.message}</p>
           </div>
           <button className="secondary-button" onClick={() => void onReload()}>
-            Spróbuj ponownie
+            Try again
           </button>
         </section>
       ) : records.length === 0 ? (
         <section className="strategic-empty" role="status">
           <span aria-hidden="true">◇</span>
           <div>
-            <h2>Zbuduj pierwszą relację</h2>
+            <h2>Build the first relationship</h2>
             <p>
-              Relacja łączy organizację z potwierdzoną potrzebą, ofertą,
-              projektem, odnowieniem i decyzją — każdy krok zachowuje źródło i
-              historię. Otwórz „Dodaj rekord” i zacznij od organizacji; szanse
-              oraz pozostałe rekordy pojawią się, gdy będzie je do czego
-              podłączyć.
+              A relationship links an organization to a confirmed need, an
+              offer, a project, a renewal and a decision, and every step keeps
+              its source. Open “Add record” and start with an organization; the
+              rest appear once there is something to attach them to.
             </p>
           </div>
         </section>
@@ -257,16 +260,9 @@ export const StrategicDepthSurface = ({
             >
               <header className="section-heading">
                 <div>
-                  <h2 id="thread-title">Od organizacji do projektu</h2>
+                  <h2 id="thread-title">From organization to project</h2>
                 </div>
-                <span>
-                  {countLabel(
-                    opportunities.length,
-                    "aktywny wątek",
-                    "aktywne wątki",
-                    "aktywnych wątków",
-                  )}
-                </span>
+                <span>{countLabel(opportunities.length, "active thread")}</span>
               </header>
               {organizations.map((organization) => {
                 const related = opportunities.filter(
@@ -295,7 +291,7 @@ export const StrategicDepthSurface = ({
                       >
                         <strong>{organization.name}</strong>
                         <small>
-                          {organization.nextAction ?? "Brak następnego ruchu"}
+                          {organization.nextAction ?? "No next move"}
                         </small>
                       </button>
                       <StateMark state={organization.relationshipState} />
@@ -303,7 +299,7 @@ export const StrategicDepthSurface = ({
                     <div className="relationship-branches">
                       {related.length === 0 ? (
                         <p>
-                          Nie ma jeszcze Opportunity powiązanego z tą relacją.
+                          No opportunity is linked to this relationship yet.
                         </p>
                       ) : (
                         related.map((opportunity) => (
@@ -333,27 +329,23 @@ export const StrategicDepthSurface = ({
                               <button
                                 type="button"
                                 className="outcome-link"
-                                aria-label={`Pokaż oferty szansy ${opportunity.title} w podglądzie kontekstu`}
+                                aria-label={`Show offers for ${opportunity.title} in the context panel`}
                                 onClick={() => onSelectRecord(opportunity.id)}
                               >
                                 {countLabel(
                                   opportunity.offerIds.length,
-                                  "oferta",
-                                  "oferty",
-                                  "ofert",
+                                  "offer",
                                 )}
                               </button>
                               <button
                                 type="button"
                                 className="outcome-link"
-                                aria-label={`Pokaż projekty szansy ${opportunity.title} w podglądzie kontekstu`}
+                                aria-label={`Show projects for ${opportunity.title} in the context panel`}
                                 onClick={() => onSelectRecord(opportunity.id)}
                               >
                                 {countLabel(
                                   opportunity.projectIds.length,
-                                  "projekt",
-                                  "projekty",
-                                  "projektów",
+                                  "project",
                                 )}
                               </button>
                             </div>
@@ -372,7 +364,7 @@ export const StrategicDepthSurface = ({
             >
               <header className="section-heading">
                 <div>
-                  <h2 id="ledger-title">Odnowienia i świeżość faktów</h2>
+                  <h2 id="ledger-title">Renewals and fact freshness</h2>
                 </div>
               </header>
               {timelyRecords.map((record, index) => (
@@ -390,7 +382,9 @@ export const StrategicDepthSurface = ({
                     onClick={() => onSelectRecord(record.id)}
                   >
                     <span className="record-kind">
-                      {record.kind === "renewal" ? "Odnowienie" : "Fakt"}
+                      {record.kind === "renewal"
+                        ? "Renewal"
+                        : "Relationship fact"}
                     </span>
                     <span className="ledger-copy">
                       <strong>
@@ -400,8 +394,8 @@ export const StrategicDepthSurface = ({
                       </strong>
                       <small>
                         {record.kind === "renewal"
-                          ? `${record.scope} · ${new Date(record.expiresAt).toLocaleDateString("pl-PL")}`
-                          : `${record.value} · zweryfikowano ${new Date(record.verifiedAt).toLocaleDateString("pl-PL")}`}
+                          ? `${record.scope} · ${formatDate(record.expiresAt)}`
+                          : `${record.value} · verified ${formatDate(record.verifiedAt)}`}
                       </small>
                     </span>
                   </button>
@@ -424,7 +418,7 @@ export const StrategicDepthSurface = ({
                           });
                         }}
                       >
-                        Odnowiono
+                        Renewed
                       </button>
                     </div>
                   )}
@@ -432,7 +426,7 @@ export const StrategicDepthSurface = ({
               ))}
               {timelyRecords.length === 0 && (
                 <p className="strategic-quiet">
-                  Brak terminowych rekordów do pokazania.
+                  Nothing time-bound to show yet.
                 </p>
               )}
             </section>
@@ -443,7 +437,7 @@ export const StrategicDepthSurface = ({
             >
               <header className="section-heading">
                 <div>
-                  <h2 id="supporting-title">Rekordy wspierające nić</h2>
+                  <h2 id="supporting-title">Supporting records</h2>
                 </div>
               </header>
               {supportRecords.map((record, index) => (
@@ -471,7 +465,7 @@ export const StrategicDepthSurface = ({
                         {record.kind === "person"
                           ? [record.role, record.email]
                               .filter(Boolean)
-                              .join(" · ") || "Bez dodatkowych danych"
+                              .join(" · ") || "No further details"
                           : record.kind === "decision"
                             ? record.rationale
                             : `${record.taskTitle} · ${recurrenceCadenceLabels[record.cadence]}`}
@@ -495,7 +489,7 @@ export const StrategicDepthSurface = ({
                         });
                       }}
                     >
-                      Utwórz wystąpienie
+                      Create occurrence
                     </button>
                   ) : (
                     <StateMark
@@ -508,7 +502,7 @@ export const StrategicDepthSurface = ({
               ))}
               {supportRecords.length === 0 && (
                 <p className="strategic-quiet">
-                  Brak dodatkowych rekordów w tym Space.
+                  No supporting records in this Space.
                 </p>
               )}
             </section>
@@ -516,8 +510,8 @@ export const StrategicDepthSurface = ({
 
           <aside className="strategic-review" aria-labelledby="review-title">
             <header>
-              <h2 id="review-title">Do rozstrzygnięcia</h2>
-              <span>Lista nie rozszerza się podczas przeglądu.</span>
+              <h2 id="review-title">To decide</h2>
+              <span>The list does not grow while you review it.</span>
             </header>
             {radar.map((candidate) => {
               const radarBusy =
@@ -525,7 +519,7 @@ export const StrategicDepthSurface = ({
                 busyId === `${candidate.id}:dismissed`;
               return (
                 <article key={candidate.id} className="review-item">
-                  <span className="review-type">Radar wiedzy</span>
+                  <span className="review-type">Knowledge radar</span>
                   <strong>{candidate.title}</strong>
                   <p>{candidate.relevance}</p>
                   <div className="review-actions">
@@ -534,9 +528,7 @@ export const StrategicDepthSurface = ({
                       disabled={radarBusy}
                       onClick={() => resolveRadar(candidate, "saved")}
                     >
-                      {busyId === `${candidate.id}:saved`
-                        ? "Zapisuję…"
-                        : "Zachowaj"}
+                      {busyId === `${candidate.id}:saved` ? "Saving…" : "Keep"}
                     </button>
                     <button
                       className="secondary-button compact"
@@ -544,8 +536,8 @@ export const StrategicDepthSurface = ({
                       onClick={() => resolveRadar(candidate, "dismissed")}
                     >
                       {busyId === `${candidate.id}:dismissed`
-                        ? "Zapisuję…"
-                        : "Odrzuć"}
+                        ? "Saving…"
+                        : "Dismiss"}
                     </button>
                   </div>
                 </article>
@@ -556,7 +548,7 @@ export const StrategicDepthSurface = ({
                 key={`${review.id}:${item.recordId}`}
                 className="review-item"
               >
-                <span className="review-type">Skutek decyzji</span>
+                <span className="review-type">Decision impact</span>
                 <strong>
                   {recordKindLabels[item.recordKind] ?? item.recordKind}
                 </strong>
@@ -566,32 +558,20 @@ export const StrategicDepthSurface = ({
                   disabled={busyId === `${review.id}:${item.recordId}`}
                   onClick={() => resolveImpact(review, item.recordId)}
                 >
-                  Oznacz skutek jako przejrzany
+                  Mark impact as reviewed
                 </button>
               </article>
             ))}
             {radar.length + openConsequences.length === 0 && (
               <div className="review-complete" role="status">
                 <span aria-hidden="true">✓</span>
-                <strong>Przegląd zakończony</strong>
-                <p>
-                  Nowe elementy pojawią się tylko z nowym źródłem lub
-                  kontekstem.
-                </p>
+                <strong>Review complete</strong>
+                <p>New items appear only with a new source or context.</p>
               </div>
             )}
             <footer>
-              <span>
-                {countLabel(offers.length, "oferta", "oferty", "ofert")}
-              </span>
-              <span>
-                {countLabel(
-                  recurrences.length,
-                  "reguła cykliczna",
-                  "reguły cykliczne",
-                  "reguł cyklicznych",
-                )}
-              </span>
+              <span>{countLabel(offers.length, "offer")}</span>
+              <span>{countLabel(recurrences.length, "recurrence")}</span>
             </footer>
           </aside>
         </div>
@@ -601,17 +581,17 @@ export const StrategicDepthSurface = ({
 };
 
 const emptySectionCopy = {
-  people: "Nie ma jeszcze osób powiązanych z tą organizacją.",
-  opportunities: "Nie ma aktywnych szans powiązanych z tą organizacją.",
+  people: "No people are linked to this organization yet.",
+  opportunities: "No active opportunities are linked to this organization.",
   // `activeProjects` unions two reaches (ADR-071) — the projects this client's
   // opportunities name, and deliveries linked straight at the client — so
   // attributing the emptiness to the shortage of deals alone was misleading.
-  projects: "Nie ma aktywnych projektów powiązanych z tym klientem.",
-  tasks: "Nie ma otwartych zadań w aktywnych projektach klienta.",
-  renewals: "Nie ma odnowień wymagających śledzenia.",
-  facts: "Nie ma jeszcze zweryfikowanych faktów o relacji.",
-  meetings: "Nie ma spotkań przypisanych do tej organizacji.",
-  documents: "Nie ma dokumentów połączonych z tą organizacją.",
+  projects: "No active projects are linked to this client.",
+  tasks: "No open tasks in the client's active projects.",
+  renewals: "No renewals need tracking.",
+  facts: "No verified relationship facts yet.",
+  meetings: "No meetings are assigned to this organization.",
+  documents: "No documents are linked to this organization.",
 } as const;
 
 const EmptyOrganizationSection = ({
@@ -655,17 +635,14 @@ const DeliveryLinkRow = ({
         // the row says which. Two projections feed this one: the Projects and
         // the links already made.
         <small>
-          Nie udało się wczytać projektów, więc nie można teraz połączyć
-          realizacji.
+          Could not load projects, so a delivery cannot be linked right now.
         </small>
       ) : candidates.length === 0 ? (
-        <small>
-          Brak aktywnych projektów do połączenia w przestrzeni tego klienta.
-        </small>
+        <small>No active projects to link in this client's Space.</small>
       ) : (
         <>
           <label className="sr-only" htmlFor="organization-delivery-link">
-            Projekt realizowany u tego klienta
+            Project delivered for this client
           </label>
           <select
             id="organization-delivery-link"
@@ -673,7 +650,7 @@ const DeliveryLinkRow = ({
             disabled={busy}
             onChange={(event) => setSelected(event.target.value)}
           >
-            <option value="">Wybierz projekt…</option>
+            <option value="">Choose project…</option>
             {candidates.map((candidate) => (
               <option key={candidate.id} value={candidate.id}>
                 {candidate.title}
@@ -689,7 +666,7 @@ const DeliveryLinkRow = ({
               setSelected("");
             }}
           >
-            Połącz projekt
+            Link project
           </button>
         </>
       )}
@@ -700,8 +677,8 @@ const DeliveryLinkRow = ({
                 opportunity also names stays on the list after detaching. Said
                 out loud, or the button reads as broken. */}
             <small>
-              Odłączenie usuwa tylko bezpośrednie powiązanie. Projekt wskazany
-              też przez szansę zostanie na liście.
+              Unlinking removes only the direct link. A project an opportunity
+              also names stays on the list.
             </small>
             <button
               type="button"
@@ -712,7 +689,7 @@ const DeliveryLinkRow = ({
                 onUnlink(project.id);
               }}
             >
-              Potwierdź odłączenie
+              Confirm unlink
             </button>
             <button
               type="button"
@@ -720,7 +697,7 @@ const DeliveryLinkRow = ({
               disabled={busy}
               onClick={() => setConfirmingId(undefined)}
             >
-              Anuluj
+              Cancel
             </button>
           </Fragment>
         ) : (
@@ -731,7 +708,7 @@ const DeliveryLinkRow = ({
             disabled={busy}
             onClick={() => setConfirmingId(project.id)}
           >
-            Odłącz „{project.title}”
+            Unlink “{project.title}”
           </button>
         ),
       )}
@@ -786,44 +763,37 @@ export const OrganizationContextSurface = ({
     <div className="surface-scroll organization-context">
       <header className="surface-header organization-context__header">
         <div>
-          <p className="eyebrow">Organizacja · pełny kontekst</p>
+          <p className="eyebrow">Organization · full context</p>
           <h1 id="surface-title" tabIndex={-1}>
             {organization.name}
           </h1>
-          <p>
-            {organization.nextAction ??
-              "Nie ustalono jeszcze następnego ruchu."}
-          </p>
+          <p>{organization.nextAction ?? "No next move set yet."}</p>
         </div>
         <StateMark state={organization.relationshipState} />
       </header>
 
       <section
         className="organization-context__pulse"
-        aria-label="Stan relacji"
+        aria-label="Relationship status"
       >
         <div>
-          <span>Aktywne projekty</span>
+          <span>Active projects</span>
           <strong>{overview.activeProjects.length}</strong>
         </div>
         <div>
-          <span>Otwarte zadania</span>
+          <span>Open tasks</span>
           <strong>{overview.openTasks.length}</strong>
         </div>
         <div>
-          <span>Ostatni kontakt</span>
+          <span>Last contact</span>
           <strong>
-            {lastMeeting
-              ? new Date(lastMeeting.startedAt).toLocaleDateString("pl-PL")
-              : "—"}
+            {lastMeeting ? formatDate(lastMeeting.startedAt) : "—"}
           </strong>
         </div>
         <div>
-          <span>Najbliższe odnowienie</span>
+          <span>Next renewal</span>
           <strong>
-            {nextRenewal
-              ? new Date(nextRenewal.expiresAt).toLocaleDateString("pl-PL")
-              : "—"}
+            {nextRenewal ? formatDate(nextRenewal.expiresAt) : "—"}
           </strong>
         </div>
       </section>
@@ -835,8 +805,8 @@ export const OrganizationContextSurface = ({
         >
           <header>
             <div>
-              <p className="section-label">Realizacja</p>
-              <h2 id="org-work-title">Aktywna praca</h2>
+              <p className="section-label">Delivery</p>
+              <h2 id="org-work-title">Active work</h2>
             </div>
           </header>
           {overview.activeProjects.length === 0 ? (
@@ -895,8 +865,8 @@ export const OrganizationContextSurface = ({
                       <strong>{task.title}</strong>
                       <small>
                         {task.dueAt
-                          ? `Termin ${new Date(task.dueAt).toLocaleDateString("pl-PL")}`
-                          : "Bez terminu"}{" "}
+                          ? `Deadline ${formatDate(task.dueAt)}`
+                          : "No deadline"}{" "}
                         ·{" "}
                         {strategicStateLabels[task.operationalState] ??
                           task.operationalState}
@@ -916,8 +886,8 @@ export const OrganizationContextSurface = ({
         >
           <header>
             <div>
-              <p className="section-label">Relacja</p>
-              <h2 id="org-people-title">Osoby</h2>
+              <p className="section-label">Relationship</p>
+              <h2 id="org-people-title">People</h2>
             </div>
             <span>{overview.people.length}</span>
           </header>
@@ -934,7 +904,7 @@ export const OrganizationContextSurface = ({
                     onClick={() => onOpenRelationship(person.id)}
                   >
                     <strong>{person.name}</strong>
-                    <span>{person.role ?? person.email ?? "Kontakt"}</span>
+                    <span>{person.role ?? person.email ?? "Contact"}</span>
                   </button>
                 </li>
               ))}
@@ -949,7 +919,7 @@ export const OrganizationContextSurface = ({
           <header>
             <div>
               <p className="section-label">Pipeline</p>
-              <h2 id="org-pipeline-title">Szanse i oferty</h2>
+              <h2 id="org-pipeline-title">Opportunities and offers</h2>
             </div>
             <span>{overview.opportunities.length}</span>
           </header>
@@ -990,8 +960,8 @@ export const OrganizationContextSurface = ({
         >
           <header>
             <div>
-              <p className="section-label">Terminy</p>
-              <h2 id="org-renewals-title">Odnowienia</h2>
+              <p className="section-label">Deadlines</p>
+              <h2 id="org-renewals-title">Renewals</h2>
             </div>
             <span>{overview.renewals.length}</span>
           </header>
@@ -1009,8 +979,7 @@ export const OrganizationContextSurface = ({
                   >
                     <strong>{renewal.title}</strong>
                     <span>
-                      {new Date(renewal.expiresAt).toLocaleDateString("pl-PL")}{" "}
-                      · {renewal.scope}
+                      {formatDate(renewal.expiresAt)} · {renewal.scope}
                     </span>
                   </button>
                 </li>
@@ -1025,8 +994,8 @@ export const OrganizationContextSurface = ({
         >
           <header>
             <div>
-              <p className="section-label">Wiedza</p>
-              <h2 id="org-facts-title">Fakty o relacji</h2>
+              <p className="section-label">Knowledge</p>
+              <h2 id="org-facts-title">Relationship facts</h2>
             </div>
             <span>{overview.facts.length}</span>
           </header>
@@ -1057,8 +1026,8 @@ export const OrganizationContextSurface = ({
         >
           <header>
             <div>
-              <p className="section-label">Kontakt</p>
-              <h2 id="org-meetings-title">Spotkania</h2>
+              <p className="section-label">Contact</p>
+              <h2 id="org-meetings-title">Meetings</h2>
             </div>
             <span>{overview.meetings.length}</span>
           </header>
@@ -1075,9 +1044,7 @@ export const OrganizationContextSurface = ({
                     onClick={() => onOpenMeeting(meeting.id)}
                   >
                     <strong>{meeting.title}</strong>
-                    <span>
-                      {new Date(meeting.startedAt).toLocaleString("pl-PL")}
-                    </span>
+                    <span>{formatDateTime(meeting.startedAt)}</span>
                   </button>
                 </li>
               ))}
@@ -1091,8 +1058,8 @@ export const OrganizationContextSurface = ({
         >
           <header>
             <div>
-              <p className="section-label">Materiały</p>
-              <h2 id="org-docs-title">Dokumenty</h2>
+              <p className="section-label">Materials</p>
+              <h2 id="org-docs-title">Documents</h2>
             </div>
             <span>{overview.documents.length}</span>
           </header>
@@ -1169,7 +1136,7 @@ export const OrganizationContextLoader = ({
     if (!client || !organization || organization.kind !== "organization") {
       setState({
         kind: "unavailable",
-        message: "Kontekst tej organizacji nie jest już dostępny.",
+        message: "This organization's context is no longer available.",
       });
       return;
     }
@@ -1186,8 +1153,7 @@ export const OrganizationContextLoader = ({
         if (active)
           setState({
             kind: "unavailable",
-            message:
-              "Nie udało się pobrać przeglądu. Dane nie zostały zmienione.",
+            message: "Could not load the overview. Nothing was changed.",
           });
       });
     return () => {
@@ -1219,11 +1185,11 @@ export const OrganizationContextLoader = ({
       className="surface-load-state"
       role={state.kind === "loading" ? "status" : "alert"}
     >
-      <p className="eyebrow">Organizacja</p>
+      <p className="eyebrow">Organization</p>
       <h1 id="surface-title" tabIndex={-1}>
         {state.kind === "loading"
-          ? "Otwieram kontekst klienta…"
-          : "Nie udało się otworzyć kontekstu klienta"}
+          ? "Opening client context…"
+          : "Could not open the client context"}
       </h1>
       {state.kind === "unavailable" && (
         <>
@@ -1232,7 +1198,7 @@ export const OrganizationContextLoader = ({
             className="secondary-button"
             onClick={() => setAttempt((value) => value + 1)}
           >
-            Spróbuj ponownie
+            Try again
           </button>
         </>
       )}

@@ -7,6 +7,7 @@ import type {
 
 import {
   desktopSurfaceIds,
+  desktopSurfaceLabel,
   resolveDesktopSurface,
   type DesktopSurface as SurfaceId,
 } from "@constellation/desktop-preload/surface-registry";
@@ -92,16 +93,46 @@ export const serializeShellNavigation = (state: ShellNavigationState): string =>
   JSON.stringify({ version: NAVIGATION_STATE_VERSION, state });
 
 // Kontekst zapisany pod starym identyfikatorem celu, przeniesiony na nowy.
-// Zwraca `undefined` dla celu, którego nie da się umiejscowić — wtedy zakładka
-// jest odrzucana pojedynczo, zamiast unieważniać całą zapisaną sesję.
+// Cel, którego nie da się umiejscowić, zostaje nietknięty — odsiewa go dopiero
+// `isRestorableShellContext`, a wołający traktuje to jako „nie ufam całemu
+// zapisowi" i wraca na start. To jest świadomie mocniejsze niż wyrzucenie
+// pojedynczej zakładki: zapis, którego połowy nie rozumiemy, mógł zostać
+// napisany przez wersję, o której nic nie wiemy.
+//
+// Etykieta zakładki-celu jest odczytywana Z REJESTRU, a nie z zapisu. Zapis
+// niesie własną kopię napisu sprzed aktualizacji, więc bez tego pierwsze
+// uruchomienie po przebudowie pokazywałoby angielską nawigację i polskie
+// zakładki naraz. Zakładki rekordów (`task:`, `project:`, …) zachowują swój
+// tytuł — tam napis to nazwa cudzej pracy, nie etykieta interfejsu.
 const migrateRestoredContext = (value: unknown): unknown => {
   if (typeof value !== "object" || value === null) return value;
-  const context = value as { readonly surface?: unknown };
+  const context = value as { readonly surface?: unknown; readonly key?: unknown };
   const resolved = resolveDesktopSurface(context.surface);
   if (resolved === undefined) return value;
-  return resolved === context.surface
-    ? value
-    : { ...context, surface: resolved };
+  const isDestination =
+    typeof context.key === "string" && context.key.startsWith("destination:");
+  if (!isDestination) {
+    return resolved === context.surface
+      ? value
+      : { ...context, surface: resolved };
+  }
+  return {
+    ...context,
+    key: migrateContextKey(context.key as string),
+    surface: resolved,
+    label: desktopSurfaceLabel(resolved),
+  };
+};
+
+// Klucz zakładki-celu niesie identyfikator powierzchni, więc przeniesienie
+// celu MUSI przenieść też klucz — inaczej zapisany `activeKey` nie wskazuje
+// żadnej z odtworzonych zakładek i cała sesja jest odrzucana. Drugi powód:
+// zakładka zostawiona pod starym kluczem zdublowałaby się, gdy człowiek otworzy
+// ten sam cel jeszcze raz.
+const migrateContextKey = (key: string): string => {
+  if (!key.startsWith("destination:")) return key;
+  const resolved = resolveDesktopSurface(key.slice("destination:".length));
+  return resolved === undefined ? key : `destination:${resolved}`;
 };
 
 export const restoreShellNavigation = (
@@ -131,7 +162,8 @@ export const restoreShellNavigation = (
       .filter(isRestorableShellContext);
     if (tabs.length !== state.tabs.length)
       return createShellNavigation(fallback);
-    if (!tabs.some((tab) => tab.key === state.activeKey))
+    const activeKey = migrateContextKey(state.activeKey);
+    if (!tabs.some((tab) => tab.key === activeKey))
       return createShellNavigation(fallback);
     const history = state.history
       .map(migrateRestoredContext)
@@ -144,7 +176,7 @@ export const restoreShellNavigation = (
     const dropped = history.length - bounded.length;
     return {
       tabs,
-      activeKey: state.activeKey,
+      activeKey,
       history: bounded,
       historyIndex: Math.min(
         Math.max(0, Math.trunc(state.historyIndex) - dropped),
