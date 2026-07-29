@@ -24,7 +24,7 @@ export const installApplicationMenu = (): void => {
       ? [{ role: "appMenu" } satisfies MenuItemConstructorOptions]
       : []),
     {
-      label: "Plik",
+      label: "File",
       submenu: [
         {
           label: "Quick Capture…",
@@ -33,12 +33,12 @@ export const installApplicationMenu = (): void => {
         },
         { type: "separator" },
         {
-          label: "Zamknij kartę",
+          label: "Close tab",
           accelerator: "CmdOrCtrl+W",
           click: () => sendShellCommand({ kind: "close-tab" }),
         },
         {
-          label: "Zamknij okno",
+          label: "Close window",
           accelerator: "CmdOrCtrl+Shift+W",
           click: () => BrowserWindow.getFocusedWindow()?.close(),
         },
@@ -46,40 +46,40 @@ export const installApplicationMenu = (): void => {
           ? []
           : ([
               { type: "separator" },
-              { role: "quit", label: "Zakończ" },
+              { role: "quit", label: "Quit" },
             ] satisfies MenuItemConstructorOptions[])),
       ],
     },
     {
-      label: "Edycja",
+      label: "Edit",
       submenu: [
-        { role: "undo", label: "Cofnij" },
-        { role: "redo", label: "Ponów" },
+        { role: "undo", label: "Undo" },
+        { role: "redo", label: "Redo" },
         { type: "separator" },
-        { role: "cut", label: "Wytnij" },
-        { role: "copy", label: "Kopiuj" },
-        { role: "paste", label: "Wklej" },
-        { role: "selectAll", label: "Zaznacz wszystko" },
+        { role: "cut", label: "Cut" },
+        { role: "copy", label: "Copy" },
+        { role: "paste", label: "Paste" },
+        { role: "selectAll", label: "Select all" },
       ],
     },
     {
-      label: "Widok",
+      label: "View",
       submenu: [
-        { role: "reload", label: "Odśwież" },
-        { role: "toggleDevTools", label: "Narzędzia deweloperskie" },
+        { role: "reload", label: "Reload" },
+        { role: "toggleDevTools", label: "Developer tools" },
         { type: "separator" },
-        { role: "resetZoom", label: "Rzeczywista wielkość" },
-        { role: "zoomIn", label: "Powiększ" },
-        { role: "zoomOut", label: "Pomniejsz" },
+        { role: "resetZoom", label: "Actual size" },
+        { role: "zoomIn", label: "Zoom in" },
+        { role: "zoomOut", label: "Zoom out" },
         { type: "separator" },
-        { role: "togglefullscreen", label: "Pełny ekran" },
+        { role: "togglefullscreen", label: "Full screen" },
       ],
     },
     {
-      label: "Przejdź",
+      label: "Go",
       submenu: [
         {
-          label: "Paleta poleceń…",
+          label: "Command palette…",
           accelerator: "CmdOrCtrl+K",
           click: () => sendShellCommand({ kind: "open-search" }),
         },
@@ -95,13 +95,13 @@ export const installApplicationMenu = (): void => {
         })),
       ],
     },
-    { role: "windowMenu", label: "Okno" },
+    { role: "windowMenu", label: "Window" },
     {
       role: "help",
-      label: "Pomoc",
+      label: "Help",
       submenu: [
         {
-          label: "Skróty klawiszowe",
+          label: "Keyboard shortcuts",
           accelerator: "CmdOrCtrl+/",
           click: () => sendShellCommand({ kind: "open-shortcuts" }),
         },

@@ -2062,7 +2062,7 @@ export const resolveDocumentEntityTarget = (
     return undefined;
   const label =
     record.kind === "meeting"
-      ? (record.meeting.title ?? "Spotkanie bez tytułu")
+      ? (record.meeting.title ?? "Untitled meeting")
       : record.name;
   return { targetKind, targetId, label, spaceId: record.spaceId };
 };
@@ -2102,7 +2102,7 @@ const documentEntityCandidates = (
             {
               targetKind: "meeting",
               targetId: record.id,
-              label: record.meeting.title ?? "Spotkanie bez tytułu",
+              label: record.meeting.title ?? "Untitled meeting",
               spaceId,
             },
           ];
@@ -11023,7 +11023,7 @@ export const executeWave2Query = (
         .slice(0, 100),
       relatedMeetings: relatedMeetings.slice(0, 100).map((record) => ({
         id: record.id,
-        title: record.meeting.title ?? "Spotkanie bez tytułu",
+        title: record.meeting.title ?? "Untitled meeting",
         startedAt: record.meeting.startedAt,
         triage: record.meeting.triage,
         version: record.version,
@@ -11374,7 +11374,7 @@ export const executeWave2Query = (
       })),
       meetings: meetings.slice(0, 100).map((record) => ({
         id: record.id,
-        title: record.meeting.title ?? "Spotkanie bez tytułu",
+        title: record.meeting.title ?? "Untitled meeting",
         startedAt: record.meeting.startedAt,
         triage: record.meeting.triage,
         version: record.version,

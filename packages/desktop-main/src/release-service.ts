@@ -42,10 +42,10 @@ const failureStatus = (
   operation,
   message:
     operation === "check"
-      ? "Nie udało się bezpiecznie sprawdzić aktualizacji. Obecna wersja pozostaje bez zmian."
+      ? "Could not check for updates safely. This version is unchanged."
       : operation === "download"
-        ? "Pobieranie nie zostało potwierdzone. Obecna wersja pozostaje gotowa do użycia."
-        : "Aktualizacja nie została uruchomiona. Uruchom Constellation ponownie i spróbuj jeszcze raz.",
+        ? "The download was not confirmed. This version stays ready to use."
+        : "The update did not start. Restart Constellation and try again.",
 });
 
 export class DesktopReleaseService {

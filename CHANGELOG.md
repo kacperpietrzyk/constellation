@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/) once public
 releases begin.
 
+## [Unreleased]
+
+### Changed
+
+- **The interface is English.** Every label, heading, button, refusal and empty
+  state the desktop shows is now written in English; the navigation was rebuilt
+  at the same time, because one file was both the structure of the navigation
+  and the source of its labels and splitting that into two steps would have
+  collided in every file that reads it. Twelve Polish-labelled surfaces became
+  twelve English targets in three modules — Work Management, CRM, Knowledge —
+  with `Today` and `Inbox` standing above them as ways of working rather than
+  filters. The Polish `one/few/many` plural pipeline is gone, replaced by
+  English cardinal agreement; dates read `Jul 21` and times `16:40` in the
+  workspace timezone. **Records are untouched**: their content stays in the
+  language it was written in, and sorting and search over that content still use
+  Polish collation.
+- **Two values an agent can see changed with it.** A meeting with no title is
+  answered as `Untitled meeting` rather than `Spotkanie bez tytułu`, and a Space
+  a hub grant cannot name is answered as `Unavailable Space` rather than
+  `Niedostępny Space`. Both are fallbacks, not schema — an agent matching on the
+  literal text will notice, an agent reading the shape will not.
+- **Saved navigation state survives the rename.** The shell serialises open tabs
+  to `localStorage`, and every stored tab carries the identifier of a surface —
+  including the ones this release retires. Stored state now declares `version:
+  3`, retired identifiers are carried to their successors (`cockpit` → `today`,
+  `attention` → `inbox`, `documents` → `library`, `relationships` →
+  `organizations`), and anything still unrecognised falls back to `Today`
+  instead of pointing a tab at a target that no longer exists. The same guard
+  covers the `?destination=` parameter a detached window opens with.
+
 ## [0.1.9] - 2026-07-27
 
 ### Fixed

@@ -1894,7 +1894,7 @@ const startProductionDesktop = async (): Promise<void> => {
           )
             throw error;
           throw new Error(
-            "Nie udało się przesłać pliku do Data Home. Plik pozostaje przygotowany lokalnie — spróbuj ponownie.",
+            "Could not upload the file to the Data Home. It stays prepared locally — try again.",
           );
         }
       }
