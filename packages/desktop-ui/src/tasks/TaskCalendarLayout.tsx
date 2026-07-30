@@ -14,6 +14,7 @@ import {
   formatTime,
   instantForZonedDate,
 } from "../i18n.js";
+import type { ListNavigationItemProps } from "../hooks/useListNavigation.js";
 import { isoWeekdayInZone } from "../today-plan.js";
 import {
   dueSentence,
@@ -40,7 +41,10 @@ import styles from "./task-calendar.module.css";
 //   nested zone would write the day into the wrong field.
 // · AN OPTION HOLDS NO INTERACTIVE CHILDREN. The keyboard equivalent of the
 //   drag is one picker at layout level, opened with `M` on the focused task,
-//   not a button inside every card.
+//   not a button inside every card. `M` and not Enter or Space: the shell's
+//   `useListNavigation` already binds those two to open and select, and a
+//   third meaning for one key is a key that does something different depending
+//   on which layout is on screen.
 
 const DAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
@@ -145,9 +149,9 @@ const buildGrid = (
   );
   const shownRail = rail.slice(0, RAIL_LIMIT);
 
-  // One index sequence over everything a keyboard can land on: the grid in day
-  // order, then the rail. The parent owns the number, so the order has to be
-  // stated rather than felt.
+  // One flat index sequence over everything a keyboard can land on: the grid in
+  // day order, then the rail. The shell owns the navigation hook and hands the
+  // accessor down, so the order it counts in has to be stated, not felt.
   const order = new Map<TaskId, number>();
   for (const cell of cells)
     for (const row of cell.planned) order.set(row.task.id, order.size);
@@ -174,7 +178,7 @@ const buildGrid = (
 export const TaskCalendarLayout = ({
   rows,
   prose,
-  focusedRowIndex,
+  itemProps,
   selectedTaskId,
   onSelect,
   onOpen,
@@ -183,7 +187,9 @@ export const TaskCalendarLayout = ({
 }: {
   readonly rows: readonly TaskRow[];
   readonly prose: TaskProse;
-  readonly focusedRowIndex: number;
+  /** The shell's roving tab stop, so one stop survives a layout switch. Index
+   *  order: the tasks drawn on days, in draw order, then the side rail. */
+  readonly itemProps: (index: number) => ListNavigationItemProps;
   readonly selectedTaskId?: TaskId;
   readonly onSelect: (taskId: TaskId) => void;
   readonly onOpen: (taskId: TaskId) => void;
@@ -248,42 +254,31 @@ export const TaskCalendarLayout = ({
       ?.focus();
   };
 
-  // The parent owns arrow movement over `data-row`, so this handler stays out
-  // of its way and takes only the three keys that mean something on a card.
+  // The one key this layout claims. `useListNavigation` already owns the
+  // arrows, Enter and Space, so planning needs a key of its own — otherwise
+  // dragging would be the only way to put work on a day, and a drag-only
+  // affordance does not exist for somebody working from the keyboard.
   const onCardKeyDown =
     (taskId: TaskId) =>
     (event: ReactKeyboardEvent<HTMLElement>): void => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        onOpen(taskId);
-      } else if (event.key === " ") {
-        event.preventDefault();
-        onSelect(taskId);
-      } else if (event.key === "m" || event.key === "M") {
-        event.preventDefault();
-        event.stopPropagation();
-        setPickerTaskId(taskId);
-      }
+      if (event.key !== "m" && event.key !== "M") return;
+      event.preventDefault();
+      setPickerTaskId(taskId);
     };
-
-  // An index handed in from outside can outrun the rows: planning a task takes
-  // it out of the rail on the very next render. An out-of-range index would
-  // leave no element at `tabIndex={0}` and drop the whole layout out of the Tab
-  // order, so the stop is clamped the way `useListNavigation` clamps its own.
-  const rowCount = grid.order.size;
-  const tabStop =
-    rowCount === 0 ? 0 : Math.max(0, Math.min(focusedRowIndex, rowCount - 1));
 
   const cardProps = (row: TaskRow) => {
     const index = grid.order.get(row.task.id) ?? -1;
+    const nav = itemProps(index);
     return {
+      // Focus, the tab stop and the arrow keys come from the shell's hook; what
+      // this layout adds is the one key the hook does not claim.
+      ...nav,
       role: "option" as const,
       "aria-selected": row.task.id === selectedTaskId,
       "aria-label": row.accessibleName,
       "aria-keyshortcuts": "M",
       "data-row": index,
       "data-task-card": row.task.id,
-      tabIndex: index === tabStop ? 0 : -1,
       draggable: true,
       onClick: () => onSelect(row.task.id),
       onDoubleClick: () => onOpen(row.task.id),

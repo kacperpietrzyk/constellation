@@ -173,19 +173,28 @@
   border-color: var(--border-strong);
 }
 
+.card[aria-selected="true"] {
+  border-color: var(--border-strong);
+  background: var(--surface-selected);
+  box-shadow: inset 0.125rem 0 0 var(--text-primary);
+}
+
 /* Stated here rather than left to the global rule: a roving list parks
    `tabindex="-1"` on every card but the tab stop, and the global sheet strips
    the ring from those — which would leave the card the reader just arrived at
-   with no ring at all. */
+   with no ring at all. Below the selected card on purpose: both carry their
+   mark in `box-shadow`, and the later rule is the one that survives. */
 .card:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
 
-.card[aria-selected="true"] {
-  border-color: var(--border-strong);
-  background: var(--surface-selected);
-  box-shadow: inset 0.125rem 0 0 var(--text-primary);
+/* Focused AND selected keeps both marks; a ring that erases the selection is
+   a card that stops saying what it is at the moment it is being read. */
+.card[aria-selected="true"]:focus-visible {
+  box-shadow:
+    var(--focus-ring),
+    inset 0.125rem 0 0 var(--text-primary);
 }
 
 .cardDragging {
@@ -219,7 +228,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* `min-width: 0` is what lets the ellipsis happen at all: a flex child refuses
+   to shrink below its content without it, so the day would push the card wide
+   instead of being cut. */
 .planWhen {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -12,7 +12,7 @@ import {
   shiftDayKey,
   weekStartKey,
 } from "../calendar-week.js";
-import { useListNavigation } from "../hooks/useListNavigation.js";
+import type { ListNavigationItemProps } from "../hooks/useListNavigation.js";
 import { countLabel, dateKeyInZone, formatDate } from "../i18n.js";
 import {
   dueSentence,
@@ -35,7 +35,7 @@ import styles from "./task-timeline.module.css";
 // sit on no date, and the layout counts them out loud underneath and says where
 // to find them.
 
-/** The window the accepted prototype draws. Here it is the FLOOR, not the size. */
+/** The window the prototype draws. Here it is the FLOOR, not the size. */
 const WINDOW_WEEKS = 10;
 const DAYS_IN_WEEK = 7;
 
@@ -92,7 +92,7 @@ const dayLabel = (dayKey: string, timeZone: string): string =>
 export const TaskTimelineLayout = ({
   rows,
   prose,
-  focusedRowIndex,
+  itemProps,
   selectedTaskId,
   onSelect,
   onOpen,
@@ -100,9 +100,11 @@ export const TaskTimelineLayout = ({
 }: {
   readonly rows: readonly TaskRow[];
   readonly prose: TaskProse;
-  readonly focusedRowIndex: number;
-  // `| undefined` beside the `?` on purpose: `exactOptionalPropertyTypes` is on,
-  // so without it a caller holding `TaskId | undefined` could not pass it at all.
+  /** The shell owns the roving tab stop; indices are flat over the rows drawn
+   *  here, which is only the rows that sit on a date. */
+  readonly itemProps: (index: number) => ListNavigationItemProps;
+  // `| undefined` beside the `?` on purpose: `exactOptionalPropertyTypes` is
+  // on, so without it a caller holding `TaskId | undefined` cannot pass it.
   readonly selectedTaskId?: TaskId | undefined;
   readonly onSelect: (taskId: TaskId) => void;
   readonly onOpen: (taskId: TaskId) => void;
@@ -113,7 +115,13 @@ export const TaskTimelineLayout = ({
     [rows],
   );
   const undatedCount = rows.length - drawn.length;
-  const span = useMemo(() => windowFor(drawn, prose), [drawn, prose]);
+  // Keyed on the two fields the window actually reads, not on `prose`: the
+  // caller rebuilds that object every render, so a dependency on it would
+  // recompute the window every time and the memo would be decoration.
+  const span = useMemo(
+    () => windowFor(drawn, prose),
+    [drawn, prose.timeZone, prose.todayKey],
+  );
 
   const [draggedTaskId, setDraggedTaskId] = useState<TaskId>();
   // Where the drop would land, and on whose track the pointer is standing: the
@@ -123,28 +131,6 @@ export const TaskTimelineLayout = ({
     readonly overTaskId: TaskId;
     readonly dayKey: string;
   }>();
-
-  const nav = useListNavigation({
-    itemCount: drawn.length,
-    onSelect: (index) => {
-      const row = drawn[index];
-      if (row) onSelect(row.task.id);
-    },
-    onOpen: (index) => {
-      const row = drawn[index];
-      if (row) onOpen(row.task.id);
-    },
-  });
-
-  // `focusedRowIndex` indexes `rows`, not the drawn subset: a task with no date
-  // is a legal place to stand in the list layouts and simply is not on this
-  // track. When it maps to nothing drawn, the first bar keeps the tab stop, so
-  // the timeline is never a list that Tab cannot reach.
-  const focusedTaskId = rows[focusedRowIndex]?.task.id;
-  const tabStop = Math.max(
-    0,
-    drawn.findIndex((row) => row.task.id === focusedTaskId),
-  );
 
   const dayWidth = 100 / span.totalDays;
   const offsetOf = (dayKey: string): number =>
@@ -175,6 +161,10 @@ export const TaskTimelineLayout = ({
     row: TaskRow,
     event: ReactKeyboardEvent<HTMLElement>,
   ): boolean => {
+    // A modified key belongs to the shell, not to the row: Cmd/Ctrl+T opens a
+    // tab and Cmd+[ goes back, and a row that writes a plan on those is a row
+    // that steals its host's shortcuts.
+    if (event.metaKey || event.ctrlKey || event.altKey) return false;
     if (event.key === "[" || event.key === "]") {
       event.preventDefault();
       const from =
@@ -244,7 +234,7 @@ export const TaskTimelineLayout = ({
             aria-label="Tasks on a timeline"
           >
             {drawn.map((row, index) => {
-              const navProps = nav(index);
+              const navProps = itemProps(index);
               const planKey =
                 row.task.startAt === undefined
                   ? prose.todayKey
@@ -286,9 +276,10 @@ export const TaskTimelineLayout = ({
                   aria-label={row.accessibleName}
                   data-timeline-row={row.task.id}
                   draggable
-                  ref={navProps.ref}
-                  tabIndex={index === tabStop ? 0 : -1}
-                  onFocus={navProps.onFocus}
+                  // Spread whole, then take back only `onKeyDown`: the plan
+                  // keys answer first and the shell's list navigation keeps
+                  // everything it did not claim.
+                  {...navProps}
                   onKeyDown={(event) => {
                     if (planFromKeyboard(row, event)) return;
                     navProps.onKeyDown(event);
