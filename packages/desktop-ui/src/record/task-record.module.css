@@ -23,6 +23,13 @@
 .title {
   margin: 0;
   min-inline-size: 0;
+  /* `min-inline-size: 0` lets the BOX shrink; it does nothing about a word that
+     will not break. At this size one ordinary Polish word is about 117 px, and
+     a narrow window leaves this pane a hundred — so the heading sat outside its
+     own box while every wrapper around it was already doing as it was told.
+     Record titles are somebody else's prose and run past a hundred characters,
+     so this is the normal case rather than a defensive one. */
+  overflow-wrap: anywhere;
   color: var(--text-primary);
   font-size: var(--text-2xl);
   font-weight: 580;
@@ -78,6 +85,7 @@
 }
 
 .why {
+  overflow-wrap: anywhere;
   color: var(--text-tertiary);
   font-size: var(--text-xs);
 }
@@ -128,6 +136,7 @@ button.chip:hover {
 }
 
 .plan {
+  overflow-wrap: anywhere;
   margin: 0;
   color: var(--text-secondary);
   font-size: var(--text-sm);
@@ -143,6 +152,7 @@ button.chip:hover {
 }
 
 .authorship {
+  overflow-wrap: anywhere;
   margin: 0;
   color: var(--text-tertiary);
   font-size: var(--text-xs);
@@ -155,6 +165,12 @@ button.chip:hover {
   flex-direction: column;
   gap: var(--space-5);
   min-inline-size: 0;
+  /* The container this file's `@container` rules resolve against. Without it
+     they would still match — `.screen` in `record-screen.module.css` declares
+     containment too — but against the whole record INCLUDING its padding,
+     which is not the width the two columns actually get. Declared here so the
+     body's own box is what decides whether two columns still fit. */
+  container-type: inline-size;
 }
 
 /* The reading runs wide and the standings run narrow. One grid, because the two
@@ -183,6 +199,11 @@ button.chip:hover {
 }
 
 .docHeading {
+  /* One word is the whole overflow at a narrow width: `Dependencies` is 97 px
+     and cannot break, in a pane that can be a hundred. Headings are single
+     words here, so they are exactly the case `min-inline-size: 0` cannot
+     help — the box was already allowed to shrink. */
+  overflow-wrap: anywhere;
   margin: 0;
   color: var(--text-tertiary);
   font-size: var(--text-xs);
@@ -192,8 +213,15 @@ button.chip:hover {
 }
 
 /* The LINE is limited, never the height. Real task context runs to paragraphs,
-   and there is no expander here because there is nothing truncated to open. */
+   and there is no expander here because there is nothing truncated to open.
+
+   Every text block here breaks inside a word if it has to. Record content is
+   Polish and compound, this pane can be a hundred pixels wide, and a word that
+   refuses to break sits outside its box no matter how many ancestors were told
+   they may shrink — which is what the layout gate measured the first time it
+   was allowed to open a task. */
 .prose {
+  overflow-wrap: anywhere;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -210,6 +238,7 @@ button.chip:hover {
 }
 
 .note {
+  overflow-wrap: anywhere;
   margin: 0;
   max-inline-size: 68ch;
   color: var(--text-tertiary);
@@ -217,6 +246,7 @@ button.chip:hover {
 }
 
 .nextStep {
+  overflow-wrap: anywhere;
   margin: 0;
   max-inline-size: 68ch;
   color: var(--text-secondary);
@@ -342,6 +372,7 @@ button.row:focus-visible {
 }
 
 .railHeading {
+  overflow-wrap: anywhere;
   margin: 0;
   color: var(--text-tertiary);
   font-size: var(--text-xs);
@@ -366,6 +397,7 @@ button.row:focus-visible {
 /* An absence is stated, not hidden: "nobody is assigned" is a fact about the
    task and a section that vanished is a riddle. */
 .railNone {
+  overflow-wrap: anywhere;
   margin: 0;
   color: var(--text-tertiary);
   font-size: var(--text-sm);
