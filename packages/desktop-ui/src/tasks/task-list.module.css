@@ -67,12 +67,23 @@
 }
 
 /* Wiersz: tytuł bierze całą wolną przestrzeń, reszta kolumn ma stałą szerokość,
-   bo inaczej realny tytuł na 100+ znaków wypycha plan i termin poza ekran. */
+   bo inaczej realny tytuł na 100+ znaków wypycha plan i termin poza ekran.
+   DZIEWIĘĆ ścieżek na dziewięć komórek. Poprzednia lista miała OSIEM i nie
+   liczyła kropki statusu, więc `1fr` przypadał kropce, a tytuł lądował na
+   `auto` — na fixture'ach z krótkimi tytułami wyglądało to poprawnie, a na
+   realnych danych każdy wiersz układał się inaczej: kropka rozpychała się do
+   końca wolnego miejsca, tytuł dosuwał się do prawej, a chip stanu, projekt
+   i priorytet stały w innym miejscu w każdym wierszu.
+   Kolumny poza tytułem mają stałe szerokości, nie `auto`: `auto` mierzy TREŚĆ
+   TEGO wiersza, a każdy wiersz to osobny grid — więc `auto` nie potrafi
+   ustawić kolumny w jednej linii dla całej listy, choćby liczba ścieżek się
+   zgadzała. */
 .row {
   display: grid;
   grid-template-columns:
-    auto minmax(0, 1fr) auto minmax(0, 12rem)
-    auto auto auto minmax(0, 8rem);
+    1.25rem 0.5rem minmax(0, 1fr) minmax(0, 5rem)
+    minmax(0, 12rem) minmax(0, 4rem) minmax(0, 7rem) minmax(0, 5rem)
+    minmax(0, 8rem);
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
@@ -188,8 +199,14 @@
 /* Wąskie okno: kolumny kontekstowe znikają, tytuł i plan zostają. Ukrywamy
    POWTÓRZENIA — wszystko, co tu znika, jest nadal w nazwie dostępnej wiersza. */
 @media (width <= 60rem) {
+  /* Sześć komórek zostaje: pole ukończenia, kropka, tytuł, stan, plan, termin.
+     `display: none` wyjmuje pozostałe trzy z układu, więc nie zajmują ścieżki
+     — ale ścieżek musi być dokładnie tyle, ile komórek, inaczej ostatnia
+     trafia do kolumny domyślnej i wychodzi z linii. */
   .row {
-    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+    grid-template-columns:
+      1.25rem 0.5rem minmax(0, 1fr) minmax(0, 5rem)
+      minmax(0, 7rem) minmax(0, 5rem);
   }
 
   .context,

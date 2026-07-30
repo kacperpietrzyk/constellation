@@ -1611,6 +1611,15 @@ export const RealApp = ({
     );
 
   const { bootstrap, build, tasks } = state.snapshot;
+  // The badge counts what the Tasks screen counts, and not what the inspector
+  // reads. `snapshot.tasks` is `task.list`, which stops at a hundred: the
+  // sidebar said "100" beside a screen saying "157 tasks" on a real workspace —
+  // one number, two answers, a finger apart. `work.overview` is whole-Space and
+  // uncapped, which is exactly why the Tasks screen stands on it.
+  const taskCount =
+    state.snapshot.work.kind === "ready"
+      ? state.snapshot.work.data.tasks.length
+      : tasks.length;
   const isPreview = build.channel === "developer-preview";
   const coordinatedDataHome =
     state.snapshot.dataHome?.descriptor.providerKind === "coordinated";
@@ -1634,7 +1643,7 @@ export const RealApp = ({
           tabIndex={surface === item.id ? 0 : -1}
           aria-label={
             item.id === "tasks"
-              ? `${item.label} · ${tasks.length}`
+              ? `${item.label} · ${taskCount}`
               : item.id === "inbox" && inboxWaiting > 0
                 ? `${item.label} · ${inboxWaiting} waiting`
                 : item.label
@@ -1664,7 +1673,7 @@ export const RealApp = ({
           <span>{item.label}</span>
           <span className="nav-item-meta" aria-hidden="true">
             {item.id === "tasks" ? (
-              <span className="nav-count">{tasks.length}</span>
+              <span className="nav-count">{taskCount}</span>
             ) : item.id === "inbox" && inboxWaiting > 0 ? (
               <span className="nav-count nav-count--attention">
                 {inboxWaiting}
