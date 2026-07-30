@@ -236,12 +236,41 @@ test("the populated fixture puts its projects on the Projects plane", async () =
     carrierTitle,
     `the Projects plane rendered no row for “${clip(carrier.title)}”, the only project that carries the long outcome`,
   );
-  const outcome = carrierTitle
-    .closest("button")
-    ?.querySelector<HTMLElement>("[data-row-outcome]");
+  // Gdzie ta gwarancja teraz mieszka, i dlaczego się przeniosła. Wiersz
+  // kolekcji NIE pokazuje już intencji: przyjęty prototyp wycina eseje
+  // z wierszy, bo pierwsze 190 px każdego ekranu było instrukcją obsługi,
+  // a wiersz ma mówić, co jest z projektem — nie streszczać go. Pomiar
+  // obcinania przenosi się więc tam, gdzie intencja NAPRAWDĘ jest rysowana:
+  // do inspektora, jedno kliknięcie od wiersza. Sama gwarancja się nie
+  // zmienia — CAŁA intencja dociera do DOM-u, z rytmem akapitów — i to jest
+  // ta klasa defektów, która przeszła tędy już raz.
+  //
+  // Pełny widok rekordu stoi na `project.operationalOverview`, którego ten
+  // fixture nie niesie, więc mierzenie go stąd mierzyłoby nieosiągalny ekran.
+  // Kiedy powstanie ekran rekordu (decyzja #29: szerokość do czytania, bez
+  // ucinania), gwarancja przenosi się tam razem z tą projekcją.
+  const carrierRow = carrierTitle.closest<HTMLElement>("[data-project-row]");
+  assert.ok(
+    carrierRow,
+    `the row for “${clip(carrier.title)}” carries no project identity to open`,
+  );
+  await act(async () => {
+    carrierRow.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (container.querySelector(".provenance-block blockquote")) break;
+    await act(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 10);
+      });
+    });
+  }
+  const outcome = container.querySelector<HTMLElement>(
+    ".provenance-block blockquote",
+  );
   assert.ok(
     outcome,
-    `the row for “${clip(carrier.title)}” renders no intended outcome at all`,
+    `the record for “${clip(carrier.title)}” renders no intended outcome at all`,
   );
   const rendered = (outcome.textContent ?? "").trim();
 
@@ -263,7 +292,7 @@ test("the populated fixture puts its projects on the Projects plane", async () =
   // zieloną, bo pytała tylko o pierwsze 120.
   assert.ok(
     rendered.includes(longIntendedOutcome),
-    `the row carries ${rendered.length} characters of the ${longIntendedOutcome.length}-character outcome (${sharedPrefix(rendered, longIntendedOutcome)} of them from its start), so the truncation this fixture exists to expose cannot show up`,
+    `the record carries ${rendered.length} characters of the ${longIntendedOutcome.length}-character outcome (${sharedPrefix(rendered, longIntendedOutcome)} of them from its start), so the truncation this fixture exists to expose cannot show up`,
   );
 });
 

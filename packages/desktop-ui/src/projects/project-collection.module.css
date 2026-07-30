@@ -1,0 +1,68 @@
+/* Powłoka kolekcji projektów: pasek soczewek i miejsce na układ. Każdy z trzech
+   układów przynosi własny arkusz — tutaj leży wyłącznie to, co wspólne. */
+
+.collection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-block-size: 0;
+  /* Powiększone pismo nie może rozjechać STRONY w bok. Cokolwiek jest naprawdę
+     szersze od okna — oś czasu — przewija się we własnym kontenerze. */
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-x: hidden;
+}
+
+.viewbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding-block-end: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.switcher {
+  display: flex;
+  flex-wrap: wrap;
+  min-inline-size: 0;
+  gap: var(--space-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 2px;
+}
+
+.switch {
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: var(--space-1) var(--space-3);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+/* Wybrana soczewka niesie tło ORAZ mocniejszy kolor pisma — nigdy sam kolor. */
+.switch[aria-pressed="true"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+  font-weight: 590;
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.count {
+  margin-inline-start: auto;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.unavailable {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}

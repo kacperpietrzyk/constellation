@@ -166,13 +166,27 @@ describe("unwritten record narrative", () => {
       strategicSurface,
       bareTextNode("project.intendedOutcome"),
     );
-    for (const [source, expression] of [
-      [workSurface, "area.responsibility"],
-      [workSurface, "initiative.intendedOutcome"],
-      [workSurface, "project.intendedOutcome"],
-      [surfaces, "project.intendedOutcome"],
-      [strategicSurface, "project.intendedOutcome"],
-    ] as const) {
+    // The positive half applies only where a narrative is actually DRAWN. A
+    // screen that stops showing one — the Projects collection now shows health
+    // and its reason where it used to show the outcome — must not be required
+    // to keep rendering it; the guarantee is "wherever it is drawn, it goes
+    // through NarrativeText", not "every file must draw it forever".
+    const drawn = (
+      [
+        [workSurface, "area.responsibility"],
+        [workSurface, "initiative.intendedOutcome"],
+        [workSurface, "project.intendedOutcome"],
+        [surfaces, "project.intendedOutcome"],
+        [strategicSurface, "project.intendedOutcome"],
+      ] as const
+    ).filter(([source, expression]) => source.includes(`{${expression}}`));
+    // Without this the list could empty out silently and the check would pass
+    // over nothing at all.
+    assert.ok(
+      drawn.length >= 3,
+      `only ${drawn.length} narratives are drawn anywhere — the guard has nothing left to guard`,
+    );
+    for (const [source, expression] of drawn) {
       assert.match(
         source,
         new RegExp(
