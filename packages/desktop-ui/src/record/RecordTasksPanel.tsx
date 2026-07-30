@@ -130,6 +130,11 @@ const rowAccessibleName = (
 ): string =>
   [
     task.title,
+    // Said FIRST after the title, because it changes what every other fact on
+    // the row means. Found on a real record: fifty rows sat under one status
+    // heading with twelve of them finished and nothing telling them apart —
+    // this panel lists closed work on purpose, so it has to say which is which.
+    task.completionState === "completed" ? "done" : undefined,
     statusLabel,
     task.operationalState !== "actionable" ? task.operationalState : undefined,
     dueSentence(task, prose),
@@ -234,7 +239,24 @@ export const RecordTasksPanel = ({
                   role="option"
                   data-task-row={task.id}
                 >
-                  <span className={styles.rowTitle} data-row-title>
+                  {/* A mark and a dimmed title, never colour alone. The group
+                      heading is the STATUS, and a workspace whose statuses do
+                      not end in a "Done" one puts finished work under the same
+                      heading as live work — which is exactly what a real
+                      record turned out to look like. */}
+                  <span
+                    className={`${styles.rowTitle} ${
+                      task.completionState === "completed"
+                        ? styles.rowTitleDone
+                        : ""
+                    }`}
+                    data-row-title
+                  >
+                    {task.completionState === "completed" && (
+                      <span aria-hidden="true" className={styles.rowDone}>
+                        ✓
+                      </span>
+                    )}
                     {task.title}
                   </span>
                   {/* Waiting and blocked are the only reasons a task on a live

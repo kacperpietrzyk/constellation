@@ -71,7 +71,11 @@ const BAR_SEGMENTS = ["done", "held", "open"] as const;
 const LEGEND: readonly (readonly [(typeof BAR_SEGMENTS)[number], string])[] = [
   ["done", "closed"],
   ["held", "waiting or blocked"],
-  ["open", "open"],
+  // "unblocked", never "open" — the line above this bar says `open.length`,
+  // which counts the held ones too, so two numbers one apart would sit two
+  // lines from each other under one word. The same wording as
+  // `compositionSentence`, which is what a screen reader hears here.
+  ["open", "unblocked"],
 ];
 
 const CompositionBar = ({ buckets }: { readonly buckets: ProjectBuckets }) => (
@@ -363,7 +367,13 @@ const ClientLinking = ({
             onClick={() => setConfirmingId(organization.id)}
             type="button"
           >
-            Unlink “{organization.name}”
+            {/* The name is carried only when it is needed to tell two triggers
+                apart. Real client names run to "Aplikacje Krytyczne Sp. z o.o.
+                (AKMF)", which wrapped this arming control onto two lines and
+                made a secondary verb the heaviest thing on the rail. */}
+            {detachable.length === 1
+              ? "Unlink client"
+              : `Unlink “${organization.name}”`}
           </button>
         ),
       )}
@@ -507,18 +517,27 @@ export const ProjectRecordOverview = ({
             {clients.length === 0 ? (
               <p className={styles.railNone}>Not linked to a client</p>
             ) : (
-              clients.map((client) => (
-                <RailRow
-                  icon="relationships"
-                  key={client.id}
-                  label={client.name}
-                  onOpen={
-                    onOpenClient === undefined
-                      ? undefined
-                      : () => onOpenClient(client)
-                  }
-                />
-              ))
+              // The client the HEADER already names is not listed again. Seen
+              // on real records: the header chip and this row carried the same
+              // "Aplikacje Krytyczne Sp. z o.o. (AKMF)" a finger apart, and the
+              // rail's copy was the truncated one — the same exit twice, worse
+              // the second time. A project with several clients still lists the
+              // rest here, which is the only case where this section is an
+              // index rather than a repetition.
+              clients
+                .slice(1)
+                .map((client) => (
+                  <RailRow
+                    icon="relationships"
+                    key={client.id}
+                    label={client.name}
+                    onOpen={
+                      onOpenClient === undefined
+                        ? undefined
+                        : () => onOpenClient(client)
+                    }
+                  />
+                ))
             )}
             {/* Outside the list/empty branch on purpose: linking the FIRST
                 client is the primary case, and that is exactly the empty

@@ -122,6 +122,19 @@
   font-size: var(--text-base);
 }
 
+/* Finished work stays legible. Struck-through titles turn a long Polish task
+   name into a smear, and this panel exists to be READ — the mark before the
+   title is what carries the fact, the dimming only ranks it. */
+.rowTitleDone {
+  color: var(--text-tertiary);
+}
+
+.rowDone {
+  margin-inline-end: var(--space-2);
+  color: var(--status-success);
+  font-size: var(--text-xs);
+}
+
 /* Waiting and blocked are why a task is standing still, so they are said in
    words on the row and not carried by a colour alone. */
 .rowState {

@@ -403,13 +403,26 @@ test("every record the project reaches is reachable from it, once each", async (
   // Counted by `data-rail-exit` rather than by text, because the same section
   // holds authoring controls that name the same record ("Unlink Northstar")
   // and counting text would report a duplicate that is not one.
+  const named = (text: string): HTMLElement[] =>
+    [...container.querySelectorAll<HTMLElement>("button")].filter((button) =>
+      button.textContent?.includes(text),
+    );
   const exits = (): string[] =>
     [...container.querySelectorAll<HTMLElement>("[data-rail-exit]")].map(
       (node) => node.dataset.railExit ?? "",
     );
   const timesInRail = (label: string): number =>
     exits().filter((entry) => entry === label).length;
-  assert.equal(timesInRail("Northstar"), 1, "the client exit is not unique");
+  // The header names the client; the rail must not name it again. Zero rail
+  // exits for the ONLY client is the correct answer, and it is what stops the
+  // same exit appearing twice a finger apart.
+  assert.equal(timesInRail("Northstar"), 0, "the client exit is drawn twice");
+  assert.equal(
+    named("Northstar").filter((button) => button.closest("header") !== null)
+      .length,
+    1,
+    "the header does not name the client, so nothing does",
+  );
   assert.equal(
     timesInRail("Kickoff z zespołem"),
     1,
@@ -424,10 +437,6 @@ test("every record the project reaches is reachable from it, once each", async (
   // Documents are a collection, so they are a TAB rather than a rail row — and
   // the tab must actually contain them. Both halves matter: a document listed
   // on the rail as well would be the same duplication from the other side.
-  const named = (text: string): HTMLElement[] =>
-    [...container.querySelectorAll<HTMLElement>("button")].filter((button) =>
-      button.textContent?.includes(text),
-    );
   assert.equal(timesInRail("Raport z warsztatu"), 0);
   assert.equal(named("Raport z warsztatu").length, 0);
   await openTab("documents");
@@ -611,6 +620,32 @@ test("the tab bar shows one panel at a time, and the count is open threads", asy
       button.textContent?.includes("1 resolved"),
     ),
   );
+});
+
+test("a finished task on the record says so", async () => {
+  // The panel lists closed work on purpose — hiding it would make the
+  // composition bar above unverifiable — and the group heading is the STATUS,
+  // so a workspace whose statuses do not end in a "Done" one puts finished and
+  // live work under one heading. Seen on a real record: fifty rows, twelve of
+  // them finished, nothing telling them apart.
+  await openRecord();
+  await openTab("tasks");
+  const rows = [...container.querySelectorAll<HTMLElement>("[data-task-row]")];
+  const done = rows.filter((row) =>
+    /(^|, )done(,|$)/u.test(row.getAttribute("aria-label") ?? ""),
+  );
+  const closed = rows.length - done.length;
+  assert.ok(
+    rows.length > 0,
+    "the fixture carries no tasks, so this measures nothing",
+  );
+  // Both kinds present, or the assertion cannot fail in either direction.
+  assert.ok(done.length > 0 && closed > 0, "the fixture has only one kind");
+  for (const row of done)
+    assert.ok(
+      row.querySelector("[data-row-title] span") !== null,
+      "a finished row carries no mark, only a colour",
+    );
 });
 
 test("only the panel on screen holds a tab stop", async () => {

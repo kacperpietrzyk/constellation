@@ -342,11 +342,24 @@ export const deadlineTone = (
  * the answer to a question this screen exists to ask, and a segment omitted
  * from the drawing must not be omitted from the telling.
  */
+/**
+ * The bar in words, and the third word is NOT "open".
+ *
+ * Found on real records: the record header states `open.length` — every task
+ * still owed, 38 of them — while this sentence stated `buckets.open`, which is
+ * open MINUS the held ones, 37. Two numbers one apart, both labelled "open",
+ * two lines from each other. Both were right and the screen read as broken.
+ *
+ * "Unblocked" is what this bucket actually is, and it pairs with the segment
+ * beside it. What it deliberately is NOT is "in flight" or "moving": nothing
+ * in the model says anybody has started a task — see the note on
+ * `ProjectBuckets` — and a word implying that would be a claim no data backs.
+ */
 export const compositionSentence = (buckets: ProjectBuckets): string =>
   [
     `${buckets.done} closed`,
     `${buckets.held} waiting or blocked`,
-    `${buckets.open} open`,
+    `${buckets.open} unblocked`,
   ].join(", ");
 
 /** The deadline as the date it is, for the places that show both. */
