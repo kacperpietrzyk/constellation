@@ -83,6 +83,29 @@
   background: var(--surface-selected);
 }
 
+.check {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: transparent;
+  padding: 0;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  line-height: 1;
+}
+
+.check[aria-pressed="true"] {
+  border-color: var(--status-success);
+  color: var(--status-success);
+}
+
+.check:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .statusDot {
   inline-size: 0.5rem;
   block-size: 0.5rem;
@@ -164,7 +187,7 @@
    POWTÓRZENIA — wszystko, co tu znika, jest nadal w nazwie dostępnej wiersza. */
 @media (width <= 60rem) {
   .row {
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
   }
 
   .context,

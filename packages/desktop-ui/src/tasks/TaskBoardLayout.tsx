@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import type { TaskId, TaskStatusId } from "@constellation/contracts";
 
+import type { ListNavigationItemProps } from "../hooks/useListNavigation.js";
 import { formatDate, formatTime } from "../i18n.js";
 import { daysUntil } from "../today-plan.js";
 import {
@@ -37,7 +38,7 @@ const BoardCard = ({
   prose,
   movable,
   selected,
-  tabStop,
+  nav,
   dragging,
   showProjects,
   onSelect,
@@ -52,7 +53,7 @@ const BoardCard = ({
   readonly movable: boolean;
   readonly selected: boolean;
   /** The board's single tab stop. Exactly one card carries it. */
-  readonly tabStop: boolean;
+  readonly nav: ListNavigationItemProps;
   readonly dragging: boolean;
   /** False while the board groups by project: the column already says it. */
   readonly showProjects: boolean;
@@ -77,8 +78,9 @@ const BoardCard = ({
       // The row's one reading, already built. A card composing its own name
       // would be a second answer to the same question.
       aria-label={row.accessibleName}
-      tabIndex={tabStop ? 0 : -1}
-      // The parent owns which row has focus, and reaches this card by index.
+      {...nav}
+      // The shell's hook owns the tab stop, so ONE stop survives a layout
+      // switch; this card keeps its index only so the parent can find it.
       data-row={index}
       data-card={row.task.id}
       draggable={movable || undefined}
@@ -94,6 +96,9 @@ const BoardCard = ({
       }
       onDragEnd={onDragEnd}
       onKeyDown={(event) => {
+        // Movement belongs to the shell's hook; run it first and only add the
+        // status move on top, or the arrows stop working on this layout alone.
+        nav.onKeyDown(event);
         // The split: the parent owns MOVEMENT between rows, because it owns
         // the focused index; the card owns ACTIVATION and the status move.
         // Plain arrows are left alone, and the keys handled here are stopped
@@ -177,9 +182,9 @@ const BoardCard = ({
 
 export const TaskBoardLayout = ({
   groups,
+  itemProps,
   grouping,
   prose,
-  focusedRowIndex,
   firstRowIndexOfGroup,
   selectedTaskId,
   onSelect,
@@ -190,7 +195,8 @@ export const TaskBoardLayout = ({
   readonly groups: readonly TaskGroup[];
   readonly grouping: TaskGrouping;
   readonly prose: TaskProse;
-  readonly focusedRowIndex: number;
+  /** The shell's roving tab stop, so one stop survives a layout switch. */
+  readonly itemProps: (index: number) => ListNavigationItemProps;
   readonly firstRowIndexOfGroup: (groupKey: string) => number;
   readonly selectedTaskId?: TaskId | undefined;
   readonly onSelect: (taskId: TaskId) => void;
@@ -229,18 +235,6 @@ export const TaskBoardLayout = ({
     firstIndex: firstRowIndexOfGroup(group.key),
   }));
   const largest = Math.max(1, ...groups.map((group) => group.rows.length));
-
-  // One tab stop for the whole board, and it has to exist somewhere: when the
-  // parent's focused row is not on this board — nothing focused yet, or a
-  // filter emptied the column it was in — the first card takes it. Without the
-  // fallback, Tab walks straight past the work and the board is mouse-only.
-  const focused = columns.some(
-    ({ group, firstIndex }) =>
-      focusedRowIndex >= firstIndex &&
-      focusedRowIndex < firstIndex + group.rows.length,
-  );
-  const fallback = columns.find(({ group }) => group.rows.length > 0);
-  const tabStopIndex = focused ? focusedRowIndex : fallback?.firstIndex;
 
   const move = (row: TaskRow, step: number): void => {
     const current = statusOrder.indexOf(row.task.statusId);
@@ -340,7 +334,7 @@ export const TaskBoardLayout = ({
                   prose={prose}
                   movable={movable}
                   selected={row.task.id === selectedTaskId}
-                  tabStop={firstIndex + offset === tabStopIndex}
+                  nav={itemProps(firstIndex + offset)}
                   dragging={dragged?.id === row.task.id}
                   showProjects={grouping !== "project"}
                   onSelect={() => onSelect(row.task.id)}

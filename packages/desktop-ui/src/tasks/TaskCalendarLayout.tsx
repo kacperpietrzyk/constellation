@@ -190,7 +190,7 @@ export const TaskCalendarLayout = ({
   /** The shell's roving tab stop, so one stop survives a layout switch. Index
    *  order: the tasks drawn on days, in draw order, then the side rail. */
   readonly itemProps: (index: number) => ListNavigationItemProps;
-  readonly selectedTaskId?: TaskId;
+  readonly selectedTaskId?: TaskId | undefined;
   readonly onSelect: (taskId: TaskId) => void;
   readonly onOpen: (taskId: TaskId) => void;
   /** Plan, not deadline: the shell writes `startAt` and never touches `dueAt`. */

@@ -23,6 +23,10 @@ import {
 //  2. DECYZJA #22: plakietka przy Inboxie zgadza się z tym, co NAPRAWDĘ leży
 //     na ekranie. Ekran porównujący się sam ze sobą przechodzi także wtedy,
 //     gdy powłoka pokazuje zupełnie inną liczbę.
+//  3. FALA B, ta sama para gwarancji na ekranie Zadań (B1 i B2 z warstwy B
+//     prototypu): przełożenie pracy na dzień w układzie kalendarza ustawia
+//     `startAt` i NIE DOTYKA terminu. Ten plik jest miejscem na szew, nie na
+//     jedną falę — gwarancja żyje tu, bo ekran tylko zgłasza intencję.
 
 let container: HTMLDivElement;
 let root: Root;
@@ -241,5 +245,73 @@ test("the Inbox badge counts what is really on the Inbox screen (#22)", async ()
   assert.ok(
     shown > populatedAttentionInbox.unreadCount,
     `the badge (${shown}) does not exceed the unread count (${populatedAttentionInbox.unreadCount}), so it is still counting one kind of thing`,
+  );
+});
+
+test("planning from the Tasks calendar sets the plan and leaves the deadline alone (B1, B2)", async () => {
+  await mountShell();
+  const plane = await openDestination("tasks");
+
+  // The calendar is the fifth lens and loads on demand, so the switch is the
+  // first thing to wait on — asserting before it resolves would measure the
+  // loading state.
+  const toCalendar = plane.querySelector<HTMLElement>(
+    '[data-layout="calendar"]',
+  );
+  assert.ok(toCalendar, "the Tasks screen offers no calendar lens");
+  await act(async () => {
+    toCalendar.click();
+  });
+  await waitForCondition(
+    () => plane.querySelector("[data-task-card]") !== null,
+    "the calendar lens never drew a task card",
+  );
+
+  const card = plane.querySelector<HTMLElement>("[data-task-card]");
+  assert.ok(card, "no planned task card to move");
+  // The keyboard path, not the drag: a drag-only affordance does not exist for
+  // somebody working from the keyboard, and the shared hook already owns Enter
+  // and Space, so planning has a key of its own.
+  await act(async () => {
+    card.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "m", bubbles: true }),
+    );
+  });
+  const dayButton = container.querySelector<HTMLElement>(
+    `[data-move-to="${populatedPlanDayKey}"]`,
+  );
+  assert.ok(
+    dayButton,
+    `the day picker offers no button for ${populatedPlanDayKey}: ${[
+      ...container.querySelectorAll("[data-move-to]"),
+    ]
+      .map((node) => node.getAttribute("data-move-to"))
+      .join(", ")}`,
+  );
+  await act(async () => {
+    dayButton.click();
+  });
+
+  const planning = commands.filter(
+    (command) => command.commandName === "task.updateDetails",
+  );
+  assert.equal(
+    planning.length,
+    1,
+    `expected exactly one plan write from the shell, got ${planning.length}`,
+  );
+  const payload = planning[0]?.payload as Record<string, unknown>;
+  const { dateKeyInZone } = await import("../src/i18n.js");
+  assert.equal(
+    dateKeyInZone(String(payload.startAt), "Europe/Warsaw"),
+    populatedPlanDayKey,
+    `the shell planned a different day: ${JSON.stringify(payload)}`,
+  );
+  // B2, and the point of the whole gesture: the deadline is not mentioned. A
+  // `null` would clear it, so the KEY being present at all is the defect.
+  assert.equal(
+    "dueAt" in payload,
+    false,
+    `planning must not touch the deadline, payload was ${JSON.stringify(payload)}`,
   );
 });

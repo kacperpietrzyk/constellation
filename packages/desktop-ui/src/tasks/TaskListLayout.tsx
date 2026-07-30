@@ -62,15 +62,17 @@ export const TaskListLayout = ({
   onSelect,
   onOpen,
   onAddToGroup,
+  onToggleCompleted,
 }: {
   readonly groups: readonly TaskGroup[];
   readonly prose: TaskProse;
   readonly itemProps: (index: number) => ListNavigationItemProps;
   readonly firstRowIndexOfGroup: (groupKey: string) => number;
-  readonly selectedTaskId?: TaskId;
+  readonly selectedTaskId?: TaskId | undefined;
   readonly onSelect: (taskId: TaskId) => void;
   readonly onOpen: (taskId: TaskId) => void;
   readonly onAddToGroup: (group: TaskGroup) => void;
+  readonly onToggleCompleted: (taskId: TaskId, completed: boolean) => void;
 }) => (
   <div className={styles.list} role="listbox" aria-label="Tasks">
     {groups.map((group) => {
@@ -111,13 +113,38 @@ export const TaskListLayout = ({
                 onDoubleClick={() => onOpen(row.task.id)}
                 role="option"
               >
+                {/* A real button, not a presentational tick: completing work
+                    from the row is the one write this layout offers, and an
+                    option may not carry an interactive child — so it sits
+                    outside the option's own name and carries its own. */}
+                <button
+                  aria-label={
+                    row.task.completionState === "completed"
+                      ? `Reopen ${row.task.title}`
+                      : `Complete ${row.task.title}`
+                  }
+                  aria-pressed={row.task.completionState === "completed"}
+                  className={styles.check}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onToggleCompleted(
+                      row.task.id,
+                      row.task.completionState !== "completed",
+                    );
+                  }}
+                  type="button"
+                >
+                  {row.task.completionState === "completed" ? "✓" : "○"}
+                </button>
                 <span
                   aria-hidden="true"
                   className={`${styles.statusDot} ${
                     row.status === undefined ? styles.statusDotUnknown : ""
                   }`}
                 />
-                <span className={styles.title}>{row.task.title}</span>
+                <span className={styles.title} data-row-title>
+                  {row.task.title}
+                </span>
                 {row.task.operationalState !== "actionable" && (
                   <span className={styles.state}>
                     {row.task.operationalState}

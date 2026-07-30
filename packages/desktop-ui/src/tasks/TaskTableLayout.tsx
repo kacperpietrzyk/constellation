@@ -82,7 +82,7 @@ export const TaskTableLayout = ({
    *  so the screen keeps ONE tab stop across a layout switch — this layout
    *  spreads what it is handed and adds only the pointer half. */
   readonly itemProps: (index: number) => ListNavigationItemProps;
-  readonly selectedTaskId?: TaskId;
+  readonly selectedTaskId?: TaskId | undefined;
   readonly onSelect: (taskId: TaskId) => void;
   readonly onOpen: (taskId: TaskId) => void;
 }) => {

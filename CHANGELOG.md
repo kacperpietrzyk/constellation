@@ -10,6 +10,23 @@ releases begin.
 
 ### Added
 
+- **The Tasks screen is one collection of work under five lenses.** List,
+  board, table, timeline and calendar all draw the same set: the switcher
+  changes how the work is shown and never what is in it, so filtering, grouping
+  and sorting happen once and every lens is handed finished rows. The row shows
+  the PLAN beside the deadline rather than the deadline alone — they are two
+  different facts, one your decision and one somebody else's promise, and a
+  screen built only on the second is a screen of other people's promises. Three
+  plan states are told apart by shape, not colour: time reserved, a day chosen,
+  nobody has planned it. **Moving work onto a day sets when you will start it
+  and never touches the deadline**, which is the decision the whole rebuild
+  turns on; the calendar lens takes `M` for that, because a drag-only
+  affordance does not exist for somebody working from the keyboard. The screen
+  reads the Work overview rather than the paged task query, so its filters see
+  the whole Space instead of the first fifty. Only the default lens ships in the
+  first paint — the other four load when opened, which is why the window starts
+  no slower than before despite the screen doing far more.
+
 - **The Work overview answers the same assignee, and carries the time held for
   the work.** It projected a bare assignee principal with no redaction while
   `task.list` withheld one the reader may not be told about — harmless only
