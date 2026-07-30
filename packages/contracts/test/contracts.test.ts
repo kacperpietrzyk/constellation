@@ -186,6 +186,60 @@ describe("application contracts", () => {
     );
   });
 
+  it("takes the four saved-view filters a task query could not express", () => {
+    const listWith = (parameters: Record<string, unknown>) =>
+      validateQueryEnvelope({
+        contractVersion: 1,
+        queryName: "task.list",
+        queryId: ids.query,
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.space, ...parameters },
+      });
+
+    assert.equal(
+      listWith({ operationalStates: ["waiting", "blocked"] }).ok,
+      true,
+    );
+    assert.equal(listWith({ assigneePrincipalIds: [ids.principal] }).ok, true);
+    assert.equal(listWith({ unassigned: true }).ok, true);
+    assert.equal(
+      listWith({
+        fields: [
+          {
+            fieldId: ids.correlation,
+            predicate: { kind: "choice_is", option: "Blocked" },
+          },
+        ],
+      }).ok,
+      true,
+    );
+
+    // The bounds are the saved view's bounds, not a second opinion: a view can
+    // carry three operational states and eight field predicates, and a query
+    // that accepted more would answer something no view can ask for.
+    assert.equal(
+      listWith({
+        operationalStates: ["actionable", "waiting", "blocked", "actionable"],
+      }).ok,
+      false,
+    );
+    assert.equal(
+      listWith({
+        fields: Array.from({ length: 9 }, () => ({
+          fieldId: ids.correlation,
+          predicate: { kind: "set" },
+        })),
+      }).ok,
+      false,
+    );
+
+    // `unassigned: false` is refused rather than accepted and ignored. A saved
+    // view treats it as no filter at all, so accepting it here would be a
+    // parameter that is validated and changes nothing.
+    assert.equal(listWith({ unassigned: false }).ok, false);
+  });
+
   it("accepts references and managed payload descriptors while rejecting file content", () => {
     const submitText = validateCommandEnvelope({
       ...submitUrlCommand,

@@ -37,6 +37,7 @@ import {
   type QueryResult,
   type SpaceId,
   type TaskId,
+  type WorkspaceId,
   type CaptureOriginal,
   type CaptureId,
   type CaptureReviewReason,
@@ -63,10 +64,14 @@ import {
   routeCaptureAsTask,
   submitCapture,
   taskFieldsWithComputedValues,
+  taskFieldValuesMatchFilters,
   setAttentionState,
   type AuditReceipt,
   type AttentionSignal,
   type DomainEvent,
+  type FieldDefinition,
+  type Task,
+  type TaskAssignment,
   type OutboxEntry,
   type WorkspaceMembership,
   type ReviewCapture,
@@ -142,6 +147,47 @@ type OutcomeBody = CommandOutcome extends infer Outcome
 
 /** Thrown to roll a batch preview back; never escapes `executeBatch`. */
 class BatchPreviewRollback extends Error {}
+
+/**
+ * Narrows one allow-set by another. `undefined` means "this filter imposed no
+ * constraint" and must not be confused with the empty set, which means "the
+ * filter was applied and nothing matched" — the difference between showing
+ * everything and showing nothing.
+ */
+const intersectTaskIds = (
+  current: ReadonlySet<TaskId> | undefined,
+  next: ReadonlySet<TaskId>,
+): ReadonlySet<TaskId> => {
+  if (current === undefined) return next;
+  const narrowed = new Set<TaskId>();
+  for (const id of next) if (current.has(id)) narrowed.add(id);
+  return narrowed;
+};
+
+/** Active subtasks grouped under their parent, for rollup field values. */
+const indexSubtasksByParent = <
+  T extends {
+    readonly id: TaskId;
+    readonly parentTaskId?: TaskId;
+    readonly recordState: "active" | "removed";
+  },
+>(
+  tasks: readonly T[],
+): Map<string, T[]> => {
+  const byParent = new Map<string, T[]>();
+  for (const candidate of tasks) {
+    if (
+      candidate.parentTaskId === undefined ||
+      candidate.recordState !== "active"
+    )
+      continue;
+    const siblings = byParent.get(candidate.parentTaskId);
+    if (siblings === undefined)
+      byParent.set(candidate.parentTaskId, [candidate]);
+    else siblings.push(candidate);
+  }
+  return byParent;
+};
 
 const contractRejection = (
   issueGroups: readonly (readonly ContractIssue[])[],
@@ -3322,6 +3368,38 @@ export class ApplicationKernel {
     });
   }
 
+  /**
+   * Whether this caller may be told WHO a task is assigned to. `task.list`
+   * redacts an assignee who is not an active, Space-granted member, and
+   * `task.assignmentCandidates` refuses to name revoked members and agents at
+   * all. The assignee filters resolve through this same predicate, so naming a
+   * principal the caller cannot see answers empty rather than confirming that
+   * the principal exists — a filter is not a back door into the identity a
+   * projection took care to hide.
+   */
+  private assigneeIsVisible(
+    view: ApplicationReadView,
+    workspaceId: WorkspaceId,
+    spaceId: SpaceId,
+    assignment: TaskAssignment,
+  ): boolean {
+    if (assignment.redactedAssigneeState !== undefined) return false;
+    const assignee = view.getMembership(
+      workspaceId,
+      assignment.assigneePrincipalId,
+    );
+    if (assignee === undefined || assignee.status === "revoked") return false;
+    if (
+      assignee.role === "owner" &&
+      view.getWorkspace(workspaceId)?.rootSpaceId === spaceId
+    )
+      return true;
+    return (
+      view.getSpaceGrantForPrincipal(workspaceId, spaceId, assignee.principalId)
+        ?.status === "active"
+    );
+  }
+
   private taskList(
     view: ApplicationReadView,
     context: ExecutionContext,
@@ -3374,8 +3452,89 @@ export class ApplicationKernel {
         query.parameters.relationConditions,
       );
     }
+    // B2b — three saved-view filters that are not properties of the Task
+    // record, so `taskMatchesFilters` cannot answer them on its own. Each is
+    // resolved here into the same id sets pagination already respects: a
+    // membership test survives paging, a filter applied to a drawn page does
+    // not.
+    let excludeTaskIds: ReadonlySet<TaskId> | undefined;
+    if (
+      query.parameters.assigneePrincipalIds !== undefined ||
+      query.parameters.unassigned !== undefined
+    ) {
+      const requested = query.parameters.assigneePrincipalIds;
+      const assigned = new Set<TaskId>();
+      const assignedToRequested = new Set<TaskId>();
+      for (const assignment of view.listTaskAssignments(
+        query.workspaceId,
+        query.parameters.spaceId,
+      )) {
+        // The port does NOT filter by state: a removed assignment comes back
+        // from here, while `getActiveTaskAssignment` — which the projection
+        // below reads — leaves it out. Skipping this line makes `unassigned`
+        // disagree with the assignment it projects on the very same task.
+        if (assignment.state !== "active") continue;
+        assigned.add(assignment.taskId);
+        if (
+          requested !== undefined &&
+          requested.includes(assignment.assigneePrincipalId) &&
+          this.assigneeIsVisible(
+            view,
+            query.workspaceId,
+            query.parameters.spaceId,
+            assignment,
+          )
+        )
+          assignedToRequested.add(assignment.taskId);
+      }
+      if (requested !== undefined)
+        taskIdAllowList = intersectTaskIds(
+          taskIdAllowList,
+          assignedToRequested,
+        );
+      if (query.parameters.unassigned !== undefined) excludeTaskIds = assigned;
+    }
+    // Field predicates read COMPUTED values, matching what the desktop shows —
+    // which means the whole Space and its field definitions have to be in hand
+    // before the page is drawn. Hoisted only on this path: an unfiltered
+    // `task.list` must keep the indexed page path, and loading the Space to
+    // serve a filter nobody asked for would cost every caller a full scan.
+    let hoistedSpaceTasks: readonly Task[] | undefined;
+    let hoistedFieldDefinitions: readonly FieldDefinition[] | undefined;
+    if (query.parameters.fields !== undefined) {
+      // Honest-or-error, as for relation conditions: a read view that cannot
+      // resolve field definitions refuses the filter rather than answering as
+      // though it had applied it.
+      if (!isApplicationWave2ReadView(view))
+        return this.queryRejected(query, kernelTime, "query.not_available");
+      hoistedSpaceTasks = view.listTasksInSpace(
+        query.workspaceId,
+        query.parameters.spaceId,
+      );
+      hoistedFieldDefinitions = view.listFieldDefinitions(query.workspaceId);
+      const subtasks = indexSubtasksByParent(hoistedSpaceTasks);
+      const matched = new Set<TaskId>();
+      for (const candidate of hoistedSpaceTasks) {
+        if (
+          taskFieldValuesMatchFilters(
+            taskFieldsWithComputedValues(
+              candidate.fields,
+              hoistedFieldDefinitions,
+              subtasks.get(candidate.id) ?? [],
+            ),
+            query.parameters.fields,
+          )
+        )
+          matched.add(candidate.id);
+      }
+      taskIdAllowList = intersectTaskIds(taskIdAllowList, matched);
+    }
     const filters = {
       ...(taskIdAllowList === undefined ? {} : { taskIdAllowList }),
+      ...(excludeTaskIds === undefined ? {} : { excludeTaskIds }),
+      ...(query.parameters.operationalStates === undefined
+        ? {}
+        : { operationalStates: query.parameters.operationalStates }),
       ...(query.parameters.statusIds === undefined
         ? {}
         : { statusIds: query.parameters.statusIds }),
@@ -3418,27 +3577,17 @@ export class ApplicationKernel {
       return this.queryRejected(query, kernelTime, "query.cursor_invalid");
     }
     const visibleItems = items.slice(0, limit);
-    const spaceTasks = isApplicationWave2ReadView(view)
-      ? view.listTasksInSpace(query.workspaceId, query.parameters.spaceId)
-      : visibleItems;
-    const fieldDefinitions = isApplicationWave2ReadView(view)
-      ? view.listFieldDefinitions(query.workspaceId)
-      : [];
-    const subtasksByParent = new Map<
-      string,
-      Array<(typeof spaceTasks)[number]>
-    >();
-    for (const candidate of spaceTasks) {
-      if (
-        candidate.parentTaskId === undefined ||
-        candidate.recordState !== "active"
-      )
-        continue;
-      const siblings = subtasksByParent.get(candidate.parentTaskId);
-      if (siblings === undefined)
-        subtasksByParent.set(candidate.parentTaskId, [candidate]);
-      else siblings.push(candidate);
-    }
+    const spaceTasks =
+      hoistedSpaceTasks ??
+      (isApplicationWave2ReadView(view)
+        ? view.listTasksInSpace(query.workspaceId, query.parameters.spaceId)
+        : visibleItems);
+    const fieldDefinitions =
+      hoistedFieldDefinitions ??
+      (isApplicationWave2ReadView(view)
+        ? view.listFieldDefinitions(query.workspaceId)
+        : []);
+    const subtasksByParent = indexSubtasksByParent(spaceTasks);
     const projections = visibleItems.map((task) => {
       const status = view.getTaskStatus(task.statusId);
       const assignment = view.getActiveTaskAssignment(task.id);
@@ -3449,21 +3598,17 @@ export class ApplicationKernel {
               query.workspaceId,
               assignment.assigneePrincipalId,
             );
-      const assigneeGrant =
-        assignee === undefined
-          ? undefined
-          : view.getSpaceGrantForPrincipal(
-              query.workspaceId,
-              task.spaceId,
-              assignee.principalId,
-            );
+      // One predicate, read here and by the assignee filters above, so a filter
+      // can never name a principal this projection hides behind "Former
+      // member".
       const assigneeIsActive =
-        assignment?.redactedAssigneeState === undefined &&
-        assignee !== undefined &&
-        assignee.status !== "revoked" &&
-        ((assignee.role === "owner" &&
-          view.getWorkspace(query.workspaceId)?.rootSpaceId === task.spaceId) ||
-          assigneeGrant?.status === "active");
+        assignment !== undefined &&
+        this.assigneeIsVisible(
+          view,
+          query.workspaceId,
+          task.spaceId,
+          assignment,
+        );
       const attachments = (task.attachmentSourceIds ?? []).map((sourceId) => {
         if (!isApplicationWave2ReadView(view)) return undefined;
         const source = view.getKnowledgeSource(sourceId);
@@ -3546,7 +3691,7 @@ export class ApplicationKernel {
                       ? { assigneePrincipalId: assignment.assigneePrincipalId }
                       : {}),
                     displayName: assigneeIsActive
-                      ? (assignee.displayName ?? "Workspace member")
+                      ? (assignee?.displayName ?? "Workspace member")
                       : assignment.redactedAssigneeState ===
                           "unavailable_member"
                         ? "No Space access"

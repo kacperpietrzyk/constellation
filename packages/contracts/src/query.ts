@@ -35,9 +35,12 @@ import {
   ContractVersionSchema,
   FieldDefinitionTypeSchema,
   RelationConditionsSchema,
+  SavedViewFieldFiltersSchema,
   SavedViewFiltersSchema,
   SavedViewGroupBySchema,
   SavedViewLayoutSchema,
+  TaskAssigneePrincipalIdsFilterSchema,
+  TaskOperationalStatesFilterSchema,
   WorkLinkTypeSchema,
 } from "./command.js";
 import {
@@ -127,8 +130,40 @@ export const TaskListQuerySchema = QueryMetadataSchema.extend({
         .max(4)
         .optional(),
       scheduled: z.boolean().optional(),
+      // A saved view's `dueWindow` has no parameter of its own: these two
+      // express it, and the caller supplies the boundaries because the kernel
+      // does no timezone arithmetic anywhere (`cockpit.week` takes `weekStart`
+      // the same way). The conventions the desktop uses, so an operator can
+      // reproduce a stored view exactly: `overdue` is `dueBefore: now`;
+      // `today` is `dueAfter`/`dueBefore` at the day's bounds in the
+      // workspace timezone; `this_week` is the ISO week (Monday-start) in that
+      // same timezone, which `workspace.bootstrapContext` supplies.
       dueBefore: z.iso.datetime({ offset: true }).optional(),
       dueAfter: z.iso.datetime({ offset: true }).optional(),
+      // B2b — the four saved-view filter concepts this query could not express.
+      // Bounds are imported, never restated, so the view a person stores and
+      // the query an operator sends cannot come to mean different things.
+      //
+      // Two properties an operator should know before comparing an answer to
+      // what the desktop shows. The assignee filters match the assignee this
+      // caller can SEE: a task assigned to a principal outside the caller's
+      // reach contributes nothing, so a filter naming an invisible principal
+      // answers empty rather than confirming that principal exists. And the
+      // desktop applies a saved view over the whole Space at once, while this
+      // query pages — reading one page and stopping is a different answer from
+      // the view, however faithfully the filters were translated.
+      operationalStates: TaskOperationalStatesFilterSchema.optional(),
+      assigneePrincipalIds: TaskAssigneePrincipalIdsFilterSchema.optional(),
+      // Only `true`. A saved view treats `unassigned: false` as no filter at
+      // all, so accepting it here would be a parameter that is read, validated
+      // and changes nothing — the shape of the deprecated id lists this
+      // vocabulary already regrets. Refusing it says so out loud instead.
+      unassigned: z.literal(true).optional(),
+      // Evaluated over COMPUTED field values, matching what the desktop shows:
+      // a formula or rollup definition has no stored value at all, so `set`
+      // against storage would answer false for every field the workspace
+      // computes.
+      fields: SavedViewFieldFiltersSchema.optional(),
       // R13.5 / ADR-044 — typed relation-path conditions. Imported rather than
       // restated so a saved view and a task query cannot come to mean different
       // things by the same condition (ADR-045).

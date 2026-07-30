@@ -5288,4 +5288,210 @@ describe("Wave 2 reference semantics", () => {
       "undo.already_applied",
     );
   });
+
+  it("answers the four saved-view filters task.list could not express", () => {
+    const harness = setup();
+    const mine = createTask(harness, "Mine and actionable");
+    const blocked = createTask(harness, "Blocked and mine");
+    const nobodys = createTask(harness, "Nobody owns this");
+
+    const versionOf = (taskId: TaskId): number =>
+      harness.store.snapshot().tasks.find((task) => task.id === taskId)!
+        .version;
+    const listWith = (
+      parameters: Record<string, unknown>,
+    ): readonly string[] => {
+      const result = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "task.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace, ...parameters },
+      } as never);
+      if (result.kind !== "query_result" || result.result.outcome !== "success")
+        assert.fail("Expected a task.list result");
+      return result.result.projection.kind === "task.list"
+        ? result.result.projection.items.map((item) => item.id)
+        : assert.fail("Expected task.list projection");
+    };
+
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("triage-blocked", { [blocked]: versionOf(blocked) }),
+          commandName: "task.setOperationalState",
+          payload: { taskId: blocked, operationalState: "blocked" },
+        }),
+      ).diagnosticCode,
+      "task.operational_state_changed",
+    );
+    const assignmentIds = new Map<TaskId, string>();
+    for (const taskId of [mine, blocked]) {
+      const assignmentId = requestId();
+      assignmentIds.set(taskId, assignmentId);
+      assert.equal(
+        unwrap(
+          harness.kernel.execute(context(), {
+            ...metadata(`assign-${taskId}`, { [taskId]: versionOf(taskId) }),
+            commandName: "task.assign",
+            payload: {
+              assignmentId,
+              taskId,
+              assigneePrincipalId: ids.principal,
+            },
+          }),
+        ).diagnosticCode,
+        "task.assigned",
+      );
+    }
+
+    // (a) The triage state ON THE RECORD, not the four-valued semantics of the
+    // status definition the same projection also carries.
+    assert.deepEqual(
+      [...listWith({ operationalStates: ["blocked"] })],
+      [blocked],
+    );
+    assert.deepEqual(
+      [...listWith({ operationalStates: ["actionable"] })].sort(),
+      [mine, nobodys].sort(),
+    );
+
+    // (b) The assignee filter answers exactly the tasks whose projected
+    // assignment names that principal — checkable from the response alone.
+    assert.deepEqual(
+      [...listWith({ assigneePrincipalIds: [ids.principal] })].sort(),
+      [mine, blocked].sort(),
+    );
+
+    // A principal this caller cannot see contributes nothing, and the filter
+    // answers empty rather than confirming that the principal exists.
+    assert.deepEqual(
+      [...listWith({ assigneePrincipalIds: [ids.credential] })],
+      [],
+    );
+
+    // (c) `unassigned` agrees with the assignment the same projection shows.
+    assert.deepEqual([...listWith({ unassigned: true })], [nobodys]);
+
+    // (d) The two AND rather than contradict: a stored view may carry both, and
+    // refusing the pair would make that view unreadable the moment it is used.
+    assert.deepEqual(
+      [
+        ...listWith({
+          unassigned: true,
+          assigneePrincipalIds: [ids.principal],
+        }),
+      ],
+      [],
+    );
+
+    // An assignment that was removed leaves the task unassigned again — the
+    // port that lists assignments does NOT filter by state, so a filter reading
+    // it raw would disagree with the assignment this projection omits.
+    const mineAssignmentId = assignmentIds.get(mine)!;
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("unassign-mine", {
+            [mine]: versionOf(mine),
+            [mineAssignmentId]: 1,
+          }),
+          commandName: "task.unassign",
+          payload: { assignmentId: mineAssignmentId, taskId: mine },
+        }),
+      ).diagnosticCode,
+      "task.unassigned",
+    );
+    assert.deepEqual(
+      [...listWith({ unassigned: true })].sort(),
+      [mine, nobodys].sort(),
+    );
+    assert.deepEqual(
+      [...listWith({ assigneePrincipalIds: [ids.principal] })],
+      [blocked],
+    );
+  });
+
+  it("filters task.list by field values the workspace computes, not the ones it stores", () => {
+    const harness = setup();
+    const parent = createTask(harness, "Has a computed subtask count");
+    const countFieldId = "10000000-0000-4000-8000-00000000c001";
+    const textFieldId = "10000000-0000-4000-8000-00000000c002";
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("field-count"),
+        commandName: "fieldDef.create",
+        payload: {
+          fieldId: countFieldId,
+          targetKind: "task",
+          label: "Subtask count",
+          type: {
+            kind: "rollup",
+            relationPath: "task.subtasks",
+            operation: "count",
+          },
+        },
+      }),
+    );
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("field-text"),
+        commandName: "fieldDef.create",
+        payload: {
+          fieldId: textFieldId,
+          targetKind: "task",
+          label: "Contract note",
+          type: { kind: "text" },
+        },
+      }),
+    );
+
+    const listWith = (fields: unknown): readonly string[] => {
+      const result = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "task.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace, fields },
+      } as never);
+      if (result.kind !== "query_result" || result.result.outcome !== "success")
+        assert.fail("Expected a task.list result");
+      return result.result.projection.kind === "task.list"
+        ? result.result.projection.items.map((item) => item.id)
+        : assert.fail("Expected task.list projection");
+    };
+
+    // The cheapest proof that the filter reads computed values: a count rollup
+    // over a task with no subtasks writes 0, so `set` is TRUE while the stored
+    // field map has no such key at all. Run against storage this answers empty
+    // — it typechecks either way, and only this distinguishes them.
+    assert.equal(
+      listWith([
+        { fieldId: countFieldId, predicate: { kind: "set" } },
+      ]).includes(parent),
+      true,
+    );
+    assert.equal(
+      listWith([
+        { fieldId: countFieldId, predicate: { kind: "empty" } },
+      ]).includes(parent),
+      false,
+    );
+    // A field nobody filled is empty on both readings; this is the control that
+    // says the first two assertions measured the rollup and not the mechanism.
+    assert.equal(
+      listWith([
+        { fieldId: textFieldId, predicate: { kind: "empty" } },
+      ]).includes(parent),
+      true,
+    );
+    assert.equal(
+      listWith([{ fieldId: textFieldId, predicate: { kind: "set" } }]).includes(
+        parent,
+      ),
+      false,
+    );
+  });
 });
