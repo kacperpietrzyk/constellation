@@ -9,6 +9,7 @@ import {
   QueryIdSchema,
   SpaceIdSchema,
   StrategicRecordIdSchema,
+  TaskAssignmentIdSchema,
   TaskIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
@@ -357,6 +358,18 @@ export const populatedTaskList: Projection<"task.list"> = {
         state: "active",
       },
       completionState: "open",
+      // Somebody holds this work. Without an assignment on ANY fixture task,
+      // nothing local ever rendered the owner — so the attribute a packaged
+      // smoke finds the assignee by was proved only by a twenty-minute run.
+      assignment: {
+        id: TaskAssignmentIdSchema.parse(
+          "00000000-0000-4000-8000-0000000000f1",
+        ),
+        assigneePrincipalId: principalId,
+        displayName: "Kacper",
+        availability: "active",
+        version: 1,
+      },
       attachments: [],
       createdAt: "2026-07-18T10:00:00.000Z",
       updatedAt: "2026-07-20T09:15:00.000Z",
