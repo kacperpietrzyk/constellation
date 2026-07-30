@@ -63,6 +63,7 @@ import {
   type SurfaceShortcutHint,
 } from "./components/ShortcutsOverlay.js";
 import { recordNarrativeGaps } from "./record-narrative.js";
+import { TaskAssignmentSection } from "./components/TaskAssignmentSection.js";
 import { TaskRemovalSection } from "./components/TaskRemovalSection.js";
 import { TaskReservationSection } from "./components/TaskReservationSection.js";
 import {
@@ -3914,15 +3915,15 @@ export const RealApp = ({
                   })}
               </section>
             )}
-            <section className="inspector-section assignment-block">
-              <p className="section-label">Assignee</p>
-              <p>
-                {selectedTask.assignment?.displayName ?? "Unassigned"}
-                {selectedTask.assignment?.availability === "former_member"
-                  ? " · access revoked"
-                  : ""}
-              </p>
-            </section>
+            {client && (
+              <TaskAssignmentSection
+                client={client}
+                onAssigned={refreshAfter}
+                onFailure={showFailure}
+                snapshot={state.snapshot}
+                task={selectedTask}
+              />
+            )}
             <section className="inspector-section provenance-block">
               <p className="section-label">Capture origin</p>
               {sourceCapture ? (

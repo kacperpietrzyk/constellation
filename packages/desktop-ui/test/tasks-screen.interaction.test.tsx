@@ -4,10 +4,14 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, test } from "vitest";
 
+import { PrincipalIdSchema } from "@constellation/contracts";
+
 import {
   populatedShellQueries,
   populatedWorkOverview,
+  principalId,
   projectionResponse,
+  spaceId,
 } from "./shell-fixture.js";
 
 /** The shared work fixture maps EVERY task to `operationalState: "actionable"`,
@@ -45,9 +49,32 @@ const work = {
   ],
 };
 
+/** Somebody to hand a task to. The shared fixture carries no candidates at
+ *  all, and the picker then correctly says so — which is a different screen
+ *  from the one this file needs to drive. */
+const candidates = {
+  kind: "task.assignmentCandidates" as const,
+  spaceId,
+  candidates: [
+    {
+      principalId,
+      displayName: "Kacper",
+      participantKind: "member" as const,
+    },
+    {
+      principalId: PrincipalIdSchema.parse(
+        "00000000-0000-4000-8000-00000000fb01",
+      ),
+      displayName: "Marta",
+      participantKind: "member" as const,
+    },
+  ],
+};
+
 const queries = {
   ...populatedShellQueries,
   "work.overview": projectionResponse(work),
+  "task.assignmentCandidates": projectionResponse(candidates),
 };
 
 // Two guarantees the Tasks screen lost against fixtures and gave up on real
@@ -109,12 +136,29 @@ const waitForCondition = async (
   assert.fail(message);
 };
 
+/** Every command the shell issued, in order. */
+let issued: { name: string; payload: Record<string, unknown> }[] = [];
+
 const openTasks = async (): Promise<void> => {
   const { RealApp } = await import("../src/RealApp.js");
   const { createScenarioClient } =
     await import("../src/client/scenario-client.js");
   const { loadDesktopSnapshot } = await import("../src/client/workflow.js");
-  const client = createScenarioClient({ queries });
+  issued = [];
+  const client = createScenarioClient({
+    queries,
+    executeCommand: (command) => {
+      issued.push({
+        name: command.commandName,
+        payload: command.payload as Record<string, unknown>,
+      });
+      return {
+        kind: "contract_rejected",
+        diagnosticCode: "contract.invalid",
+        issues: [{ path: "", code: "custom" }],
+      };
+    },
+  });
   const snapshot = await loadDesktopSnapshot(client);
   assert.equal(
     snapshot.work.kind,
@@ -194,4 +238,47 @@ test("the sidebar counts the tasks the screen counts", async () => {
     populatedWorkOverview.tasks.length,
     "the fixture no longer makes the two projections disagree, so this proves nothing",
   );
+});
+
+test("a task's owner can be changed, and the change reaches the kernel", async () => {
+  // Until this control existed nobody could hand a task on. `task.assign` and
+  // `task.unassign` were in the contract, `setTaskAssignment` was in the client
+  // layer with zero call sites, and a complete picker sat in a surface nothing
+  // imports — so every reachable screen SHOWED the assignee and none could set
+  // it. Asserted from a click on a row, because a component test would have
+  // been satisfied by exactly that arrangement.
+  await openTasks();
+  const row = container.querySelector<HTMLElement>("[data-task-row]");
+  assert.ok(row, "Tasks drew no row to select");
+  await act(async () => {
+    row.click();
+  });
+
+  const picker = await (async () => {
+    await waitForCondition(
+      () => container.querySelector(".assignment-block select") !== null,
+      "selecting a task offers no way to change who holds it",
+    );
+    return container.querySelector<HTMLSelectElement>(
+      ".assignment-block select",
+    )!;
+  })();
+
+  const candidate = [...picker.options].find(
+    (option) => option.value !== "" && !option.disabled,
+  );
+  assert.ok(candidate, "the picker offers nobody to assign the task to");
+
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLSelectElement.prototype,
+      "value",
+    )?.set;
+    setter?.call(picker, candidate.value);
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  const assign = issued.find((command) => command.name === "task.assign");
+  assert.ok(assign, "choosing an assignee issued no command");
+  assert.equal(assign.payload["assigneePrincipalId"], candidate.value);
 });
