@@ -23,7 +23,6 @@ import {
   type AutomationRuleId,
   type TaskId,
   type ProjectId,
-  type RelationCondition,
   TaskAssignmentIdSchema,
   AttentionSignalIdSchema,
   KnowledgeSourceIdSchema,
@@ -43,6 +42,7 @@ import {
   type GlobalSearchRecordKind,
   globalSearchRecordKindIds,
   isGlobalSearchRecordKind,
+  translatedRelationConditions,
 } from "@constellation/contracts";
 import {
   effectiveWorkingDay,
@@ -1202,45 +1202,6 @@ type SavedViewFilters = Extract<
   StrategicRecord,
   { kind: "saved_view" }
 >["filters"];
-
-// ADR-045. The R12.4 relation keys were accepted and stored while nothing read
-// them — a filter that silently did nothing. They now become the equivalent
-// relation conditions, which is the ADR-044 §4 intent finally honoured. An
-// empty legacy array contributes no condition: that preserves its historical
-// meaning exactly (it never constrained anything) rather than inventing a
-// filter that matches nothing.
-export const translatedRelationConditions = (filters: {
-  readonly relationConditions?: readonly RelationCondition[] | undefined;
-  readonly projectIds?: readonly ProjectId[] | undefined;
-  readonly areaIds?: readonly StrategicRecordId[] | undefined;
-  readonly initiativeIds?: readonly StrategicRecordId[] | undefined;
-}): readonly RelationCondition[] => [
-  ...(filters.relationConditions ?? []),
-  ...(filters.projectIds !== undefined && filters.projectIds.length > 0
-    ? [
-        {
-          path: "project",
-          predicate: { field: "id", in: [...filters.projectIds] },
-        } satisfies RelationCondition,
-      ]
-    : []),
-  ...(filters.areaIds !== undefined && filters.areaIds.length > 0
-    ? [
-        {
-          path: "project.area",
-          predicate: { field: "id", in: [...filters.areaIds] },
-        } satisfies RelationCondition,
-      ]
-    : []),
-  ...(filters.initiativeIds !== undefined && filters.initiativeIds.length > 0
-    ? [
-        {
-          path: "project.initiative",
-          predicate: { field: "id", in: [...filters.initiativeIds] },
-        } satisfies RelationCondition,
-      ]
-    : []),
-];
 
 // The command schema caps relation conditions, and the same schema validates
 // the stored record on the way out, so a translation that pushed the list past

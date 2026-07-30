@@ -228,11 +228,22 @@ export interface TaskListFilters {
   readonly scheduled?: boolean;
   readonly dueBefore?: string;
   readonly dueAfter?: string;
+  // B2b — the triage state carried by the Task itself (`Task.operationalState`,
+  // three values). Deliberately NOT `status.operationalSemantics`, which a task
+  // projection also carries: that one describes the status DEFINITION and has a
+  // fourth value, "paused". Filtering the wrong one makes the desktop and an
+  // operator disagree about the same saved view while both look right.
+  readonly operationalStates?: readonly Task["operationalState"][];
   // R13.5 / ADR-044 — an allow-set of Task ids the kernel computed by
   // evaluating relation-path conditions. It stays a task-intrinsic membership
   // test (task.id ∈ set) so pagination is applied over the already-constrained
   // set rather than filtered after a page is drawn.
   readonly taskIdAllowList?: ReadonlySet<TaskId>;
+  // B2b — the complement of the same idea, for filters that answer "not one of
+  // these": `unassigned: true` is the set of tasks NOT in the assigned set.
+  // Kept as an id set for the same reason as the allow-list — a membership test
+  // survives pagination, a post-filter over a drawn page does not.
+  readonly excludeTaskIds?: ReadonlySet<TaskId>;
 }
 
 export const taskMatchesFilters = (
@@ -242,6 +253,16 @@ export const taskMatchesFilters = (
   if (
     filters.taskIdAllowList !== undefined &&
     !filters.taskIdAllowList.has(task.id)
+  )
+    return false;
+  if (
+    filters.excludeTaskIds !== undefined &&
+    filters.excludeTaskIds.has(task.id)
+  )
+    return false;
+  if (
+    filters.operationalStates !== undefined &&
+    !filters.operationalStates.includes(task.operationalState)
   )
     return false;
   if (

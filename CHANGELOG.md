@@ -8,6 +8,25 @@ releases begin.
 
 ## [Unreleased]
 
+### Added
+
+- **A saved view now means the same thing to an agent as it does on screen.**
+  `task.list` took a strict subset of the filters a saved view can store, so the
+  desktop worked out the rest for itself and an operator asking for the same
+  view got a different answer. The query now takes the four that were missing:
+  the triage state on the task, the assignee principals, `unassigned`, and
+  predicates over workspace custom fields. Two of those carry a rule worth
+  stating. The assignee filters match the assignee the caller can SEE — a filter
+  naming a principal the projection hides behind "Former member" answers empty
+  rather than confirming that the principal exists. And the field predicates run
+  over COMPUTED values, the ones the app shows: a rollup has no stored value at
+  all, so reading storage would answer "empty" for every field the workspace
+  computes. A view's named due window stays a client translation into
+  `dueBefore`/`dueAfter`, because the kernel does no timezone arithmetic
+  anywhere; the conventions are written into the query's schema. Two things a
+  view can still say that the query cannot: sorting by title or by last update,
+  and the whole Space at once — the query pages.
+
 ### Changed
 
 - **The interface is English.** Every label, heading, button, refusal and empty

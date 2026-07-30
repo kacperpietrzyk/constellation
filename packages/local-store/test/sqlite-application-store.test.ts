@@ -2253,6 +2253,81 @@ describe("SQLite ApplicationStore", () => {
     database.close();
   });
 
+  it("filters Tasks by the triage state on the record and by an exclusion set", () => {
+    const database = new DatabaseSync(":memory:");
+    const store = new SqliteApplicationStore(sqlitePort(database));
+    const createdAt = "2026-07-19T09:00:00.000Z";
+    const workspaceId = ids.workspace as WorkspaceId;
+    const spaceId = ids.rootSpace as SpaceId;
+    const blockedId = "00000000-0000-4000-8000-0000000000c2";
+    store.transact((transaction) => {
+      transaction.insertWorkspace({ id: workspaceId, version: 1 } as never);
+      transaction.insertSpace({
+        id: spaceId,
+        workspaceId,
+        version: 1,
+      } as never);
+      const base = {
+        workspaceId,
+        spaceId,
+        statusId: "00000000-0000-4000-8000-0000000000b0",
+        recordState: "active",
+        completionState: "open",
+        createdBy: ids.principal,
+        version: 1,
+        createdAt,
+        updatedAt: createdAt,
+      };
+      transaction.insertTask({
+        ...base,
+        id: "00000000-0000-4000-8000-0000000000c1",
+        title: "Actionable",
+        operationalState: "actionable",
+      } as never);
+      transaction.insertTask({
+        ...base,
+        id: blockedId,
+        title: "Blocked",
+        operationalState: "blocked",
+      } as never);
+      transaction.insertTask({
+        ...base,
+        id: "00000000-0000-4000-8000-0000000000c3",
+        title: "Waiting",
+        operationalState: "waiting",
+      } as never);
+    });
+    const triaged = store.read((view) =>
+      view.listTasks({
+        workspaceId,
+        spaceId,
+        limit: 10,
+        order: "created_desc",
+        filters: { operationalStates: ["blocked", "waiting"] },
+      }),
+    );
+    assert.deepEqual([...(triaged ?? [])].map((task) => task.title).sort(), [
+      "Blocked",
+      "Waiting",
+    ]);
+    // The exclusion set is what `unassigned` is made of: the complement of a set
+    // the kernel computed from records the store cannot see from here.
+    const excluded = store.read((view) =>
+      view.listTasks({
+        workspaceId,
+        spaceId,
+        limit: 10,
+        order: "created_desc",
+        filters: { excludeTaskIds: new Set([blockedId as TaskId]) },
+      }),
+    );
+    assert.deepEqual([...(excluded ?? [])].map((task) => task.title).sort(), [
+      "Actionable",
+      "Waiting",
+    ]);
+    database.close();
+  });
+
   it("rolls back an interrupted migration and retries from the same source", () => {
     const database = new DatabaseSync(":memory:");
     initializeLocalStoreSchemaForVersion(sqlitePort(database), 14);

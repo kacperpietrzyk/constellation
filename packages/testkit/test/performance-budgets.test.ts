@@ -150,6 +150,17 @@ it("keeps representative large-workspace journeys inside release budgets", (t) =
   };
 
   const taskList = query("task.list", { spaceId: ids.space, limit: 100 });
+  // The filtered path is a different query plan: any filter at all abandons the
+  // indexed page and loads the Space, so an unfiltered call cannot stand in for
+  // it. Measured with the filters that reach records the Task itself does not
+  // carry — assignments and computed field values, the two that walk further
+  // than the rest.
+  const filteredTaskList = query("task.list", {
+    spaceId: ids.space,
+    limit: 100,
+    operationalStates: ["actionable"],
+    unassigned: true,
+  });
   const search = query("search.global", {
     spaceIds: [ids.space],
     text: "target needle",
@@ -167,6 +178,7 @@ it("keeps representative large-workspace journeys inside release budgets", (t) =
     seedMs: Math.round(seedMs * 100) / 100,
     captureP95Ms: Math.round(percentile95(captureDurations) * 100) / 100,
     taskListMs: Math.round(taskList.durationMs * 100) / 100,
+    filteredTaskListMs: Math.round(filteredTaskList.durationMs * 100) / 100,
     searchMs: Math.round(search.durationMs * 100) / 100,
     cockpitMs: Math.round(cockpit.durationMs * 100) / 100,
     heapGrowthBytes,
@@ -180,6 +192,7 @@ it("keeps representative large-workspace journeys inside release budgets", (t) =
   );
   for (const duration of [
     metrics.taskListMs,
+    metrics.filteredTaskListMs,
     metrics.searchMs,
     metrics.cockpitMs,
   ])

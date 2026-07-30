@@ -63,6 +63,41 @@ export const fieldDefinitionState = (
   definition: FieldDefinition,
 ): "active" | "retired" => definition.state ?? "active";
 
+/**
+ * The one reading of a saved view's field predicates, so the desktop and an
+ * operator's query cannot answer the same view differently.
+ *
+ * It takes the COMPUTED value map, never the stored one. A formula or rollup
+ * definition has no stored entry at all — `taskFieldsWithComputedValues`
+ * synthesizes it, and a `count` rollup synthesizes one unconditionally, even at
+ * zero. Run against storage instead, `set` answers false for every field the
+ * workspace computes and `empty` answers true for all of them: it typechecks,
+ * it passes any fixture whose fields are plain text, and it is wrong for
+ * exactly the fields somebody bothered to define.
+ */
+export const taskFieldValuesMatchFilters = (
+  values: FieldValueMap | undefined,
+  filters: readonly {
+    readonly fieldId: FieldDefinitionId;
+    readonly predicate:
+      | { readonly kind: "choice_is"; readonly option: string }
+      | { readonly kind: "set" }
+      | { readonly kind: "empty" };
+  }[],
+): boolean => {
+  for (const filter of filters) {
+    const value = values?.[filter.fieldId];
+    if (filter.predicate.kind === "set" && value === undefined) return false;
+    if (filter.predicate.kind === "empty" && value !== undefined) return false;
+    if (
+      filter.predicate.kind === "choice_is" &&
+      (value?.kind !== "choice" || value.value !== filter.predicate.option)
+    )
+      return false;
+  }
+  return true;
+};
+
 export interface CreateFieldDefinitionInput {
   readonly id: FieldDefinitionId;
   readonly workspaceId: WorkspaceId;

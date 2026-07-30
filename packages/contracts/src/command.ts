@@ -35,6 +35,8 @@ import {
   DocumentRevisionIdSchema,
   ExternalIdSchema,
   StrategicRecordIdSchema,
+  type ProjectId,
+  type StrategicRecordId,
 } from "./ids.js";
 import {
   AgentAccessPresetSchema,
@@ -1184,6 +1186,89 @@ export const RelationConditionsSchema = z
 
 export type RelationCondition = z.infer<typeof RelationConditionSchema>;
 
+// ADR-045. The R12.4 relation keys were accepted and stored while nothing read
+// them — a filter that silently did nothing. They now become the equivalent
+// relation conditions, which is the ADR-044 §4 intent finally honoured. An
+// empty legacy array contributes no condition: that preserves its historical
+// meaning exactly (it never constrained anything) rather than inventing a
+// filter that matches nothing.
+//
+// It lives beside the schema rather than in the kernel because the renderer
+// translating a saved view into a `task.list` query needs the SAME reading
+// (B2b). A second copy that read `filters.projectIds` directly would drop the
+// relation filter of every view stored before ADR-045, on one side only.
+export const translatedRelationConditions = (filters: {
+  readonly relationConditions?: readonly RelationCondition[] | undefined;
+  readonly projectIds?: readonly ProjectId[] | undefined;
+  readonly areaIds?: readonly StrategicRecordId[] | undefined;
+  readonly initiativeIds?: readonly StrategicRecordId[] | undefined;
+}): readonly RelationCondition[] => [
+  ...(filters.relationConditions ?? []),
+  ...(filters.projectIds !== undefined && filters.projectIds.length > 0
+    ? [
+        {
+          path: "project",
+          predicate: { field: "id", in: [...filters.projectIds] },
+        } satisfies RelationCondition,
+      ]
+    : []),
+  ...(filters.areaIds !== undefined && filters.areaIds.length > 0
+    ? [
+        {
+          path: "project.area",
+          predicate: { field: "id", in: [...filters.areaIds] },
+        } satisfies RelationCondition,
+      ]
+    : []),
+  ...(filters.initiativeIds !== undefined && filters.initiativeIds.length > 0
+    ? [
+        {
+          path: "project.initiative",
+          predicate: { field: "id", in: [...filters.initiativeIds] },
+        } satisfies RelationCondition,
+      ]
+    : []),
+];
+
+// The triage state a task is in, as a filter. This reads `Task.operationalState`
+// and has exactly three values — it is NOT `status.operationalSemantics`, which
+// a task projection also carries and which has a fourth value, "paused",
+// belonging to the status definition rather than to the task. Named separately
+// so `task.list` filters the same three values a saved view stores (B2b).
+export const TaskOperationalStatesFilterSchema = z
+  .array(z.enum(["actionable", "waiting", "blocked"]))
+  .max(3);
+
+// Assignee principals, as a filter. Same bound in both places for the same
+// reason as the two schemas around it.
+export const TaskAssigneePrincipalIdsFilterSchema = z
+  .array(PrincipalIdSchema)
+  .max(50);
+
+// Predicates over workspace custom fields, named separately from the filter
+// vocabulary below because `task.list` takes the same shape (B2b). Restating it
+// there would let the two bounds drift, which is the drift the comment on
+// `SavedViewFiltersSchema` describes; one shape, imported twice.
+export const SavedViewFieldFiltersSchema = z
+  .array(
+    z
+      .object({
+        fieldId: FieldDefinitionIdSchema,
+        predicate: z.discriminatedUnion("kind", [
+          z
+            .object({
+              kind: z.literal("choice_is"),
+              option: z.string().min(1).max(120),
+            })
+            .strict(),
+          z.object({ kind: z.literal("set") }).strict(),
+          z.object({ kind: z.literal("empty") }).strict(),
+        ]),
+      })
+      .strict(),
+  )
+  .max(8);
+
 // The one saved-view filter vocabulary. Every projection that can carry a
 // saved view reuses this schema rather than restating it: R13.3 added `fields`
 // and `groupBy` to the command and to the Work overview but not to the
@@ -1198,10 +1283,7 @@ export type RelationCondition = z.infer<typeof RelationConditionSchema>;
 // projection on the older, wider bound.
 export const SavedViewFiltersSchema = z
   .object({
-    operationalStates: z
-      .array(z.enum(["actionable", "waiting", "blocked"]))
-      .max(3)
-      .optional(),
+    operationalStates: TaskOperationalStatesFilterSchema.optional(),
     // R13.5 / ADR-045 — relation filters on a saved view. Evaluated kernel-side
     // by the same evaluator `task.list` uses, so a view means the same thing to
     // the desktop and to an MCP operator.
@@ -1220,33 +1302,14 @@ export const SavedViewFiltersSchema = z
     initiativeIds: z.array(StrategicRecordIdSchema).max(100).optional(),
     unassigned: z.boolean().optional(),
     statusIds: z.array(TaskStatusIdSchema).max(50).optional(),
-    assigneePrincipalIds: z.array(PrincipalIdSchema).max(50).optional(),
+    assigneePrincipalIds: TaskAssigneePrincipalIdsFilterSchema.optional(),
     priorities: z
       .array(z.enum(["urgent", "high", "normal", "low"]))
       .max(4)
       .optional(),
     dueWindow: z.enum(["overdue", "today", "this_week"]).optional(),
     scheduled: z.boolean().optional(),
-    fields: z
-      .array(
-        z
-          .object({
-            fieldId: FieldDefinitionIdSchema,
-            predicate: z.discriminatedUnion("kind", [
-              z
-                .object({
-                  kind: z.literal("choice_is"),
-                  option: z.string().min(1).max(120),
-                })
-                .strict(),
-              z.object({ kind: z.literal("set") }).strict(),
-              z.object({ kind: z.literal("empty") }).strict(),
-            ]),
-          })
-          .strict(),
-      )
-      .max(8)
-      .optional(),
+    fields: SavedViewFieldFiltersSchema.optional(),
   })
   .strict();
 
