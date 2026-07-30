@@ -1,4 +1,5 @@
 import {
+  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -89,6 +90,17 @@ import {
   UndoDialog,
 } from "./Wave2Surfaces.js";
 import { TasksSurface } from "./tasks/TasksSurface.js";
+import {
+  buildActorResolver,
+  buildMentionResolver,
+} from "./record/record-actors.js";
+// Lazy, and not as a preference. The record screen carries four panels and five
+// stylesheets, and the hot path it would otherwise join has single-digit
+// kilobytes left against budgets this rebuild forbids raising per screen. A
+// project nobody has opened costs nothing.
+const ProjectRecordScreen = lazy(
+  () => import("./record/ProjectRecordScreen.js"),
+);
 import {
   addWorkspaceMember,
   addComment,
@@ -1711,6 +1723,74 @@ export const RealApp = ({
       ? inboxWaitingCount(state.snapshot.attention.data.items)
       : 0;
 
+  // Attaching and detaching the project's client, named once because two
+  // places now offer the operation: the context card the collection still
+  // shows, and the record screen's rail. Two copies of a mutation drift on the
+  // first change to either — this repo has a name for that family.
+  const attachProjectClient = (organizationId: StrategicRecordId): void => {
+    if (!client || !projectOverview) return;
+    setProjectBusy(true);
+    void linkProjectClient(
+      client,
+      state.snapshot,
+      projectOverview.project,
+      organizationId,
+    ).then(async (result) => {
+      setProjectBusy(false);
+      if (result.kind === "success")
+        await refreshAfter("Client linked to the project.");
+      else showFailure(result);
+    });
+  };
+  // Detaching reloads the whole snapshot like every other write here, which is
+  // what re-derives both the client list and the candidate set — the link
+  // record the command needs lives in that snapshot, not in session state.
+  const detachProjectClient = (organizationId: StrategicRecordId): void => {
+    if (!client || !projectOverview) return;
+    setProjectBusy(true);
+    void unlinkProjectClient(
+      client,
+      state.snapshot,
+      projectOverview.project.id,
+      organizationId,
+    ).then(async (result) => {
+      setProjectBusy(false);
+      if (result.kind === "success") await refreshAfter("Client link removed.");
+      else showFailure(result);
+    });
+  };
+
+  // The project as `project.list` carries it. The record header reads health
+  // through `readProject`, which needs the `updatedAt` only that slice
+  // projects — `project.operationalOverview` does not carry it, so a header
+  // built from the overview alone would have to invent the reading the
+  // collection already made.
+  const recordProject =
+    activeContext.projectId !== undefined &&
+    state.snapshot.projects.kind === "ready"
+      ? state.snapshot.projects.data.items.find(
+          (item) => item.id === activeContext.projectId,
+        )
+      : undefined;
+  const recordProse = {
+    timeZone: state.snapshot.bootstrap.workspace.timezone,
+    todayKey: dateKeyInZone(
+      new Date(),
+      state.snapshot.bootstrap.workspace.timezone,
+    ),
+  };
+  const actorOf = buildActorResolver(
+    state.snapshot.agentAccess.kind === "ready"
+      ? state.snapshot.agentAccess.data
+      : undefined,
+  );
+  const mentionNameOf = buildMentionResolver(
+    state.snapshot.mentionCandidates.kind === "ready"
+      ? state.snapshot.mentionCandidates.data
+      : undefined,
+    currentPrincipalId,
+  );
+
   const surfacePanels: Record<SurfaceId, () => ReactNode> = {
     today: () => (
       <TodaySurface
@@ -2072,23 +2152,129 @@ export const RealApp = ({
         activeProjectId={activeContext.projectId}
         overview={projectOverview}
         relation={sessionRelation}
-        clientCandidates={
-          projectOverview
-            ? linkableClientOrganizations(
-                state.snapshot,
-                projectOverview.project,
+        renderRecordScreen={
+          projectOverview === undefined || recordProject === undefined
+            ? undefined
+            : (slots) => (
+                <Suspense
+                  fallback={
+                    <p className="capacity-note">Opening the project…</p>
+                  }
+                >
+                  <ProjectRecordScreen
+                    actions={slots.actions}
+                    activity={state.snapshot.activity}
+                    body={slots.body}
+                    busy={projectBusy}
+                    canComment={Boolean(canComment)}
+                    clientLinking={{
+                      candidates: linkableClientOrganizations(
+                        state.snapshot,
+                        projectOverview.project,
+                      ),
+                      detachableIds: new Set(
+                        directClientLinks(
+                          state.snapshot,
+                          projectOverview.project.id,
+                        ).keys(),
+                      ),
+                      busy: projectBusy,
+                      onLink: (organizationId) =>
+                        attachProjectClient(
+                          organizationId as StrategicRecordId,
+                        ),
+                      onUnlink: (organizationId) =>
+                        detachProjectClient(
+                          organizationId as StrategicRecordId,
+                        ),
+                    }}
+                    commentBusy={commentBusy}
+                    comments={comments}
+                    documents={projectOverview.relatedDocuments}
+                    mentionCandidates={
+                      state.snapshot.mentionCandidates.kind === "ready"
+                        ? state.snapshot.mentionCandidates.data.candidates.filter(
+                            (candidate) =>
+                              candidate.principalId !== currentPrincipalId,
+                          )
+                        : []
+                    }
+                    onAddComment={(body, mentions) => {
+                      if (!client) return Promise.resolve(false);
+                      setCommentBusy(true);
+                      return addComment(
+                        client,
+                        state.snapshot,
+                        {
+                          kind: "project",
+                          projectId: projectOverview.project.id,
+                        },
+                        projectOverview.project.version,
+                        body,
+                        mentions,
+                        undefined,
+                        [],
+                      ).then(async (result) => {
+                        setCommentBusy(false);
+                        if (result.kind !== "success") {
+                          showFailure(result);
+                          return false;
+                        }
+                        const data = await loadComments(
+                          client,
+                          state.snapshot,
+                          {
+                            kind: "project",
+                            projectId: projectOverview.project.id,
+                          },
+                        );
+                        setComments({ kind: "ready", data });
+                        pushToast({ message: "Comment saved." });
+                        return true;
+                      });
+                    }}
+                    actorOf={actorOf}
+                    mentionNameOf={mentionNameOf}
+                    onBack={() =>
+                      openContext(destinationContext("projects", "Projects"))
+                    }
+                    onNewTask={() =>
+                      openContext(destinationContext("tasks", "Tasks"))
+                    }
+                    onOpenDocument={(id, title) =>
+                      openContext(documentContext(id, title))
+                    }
+                    onOpenMeeting={(id) => {
+                      setSelectedMeetingId(id);
+                      openContext(destinationContext("meetings", "Meetings"));
+                    }}
+                    onOpenRelationship={(id) => {
+                      setSelectedStrategicId(id);
+                      openContext(
+                        destinationContext("organizations", "Organizations"),
+                      );
+                    }}
+                    onOpenTask={(taskId) => {
+                      setSelectedTaskId(taskId);
+                      openContext(destinationContext("tasks", "Tasks"));
+                    }}
+                    onSelectTask={setSelectedTaskId}
+                    onWriteOutcome={slots.onWriteOutcome}
+                    outcomeEditor={slots.outcomeEditor}
+                    overview={projectOverview}
+                    project={recordProject}
+                    projectId={projectOverview.project.id}
+                    prose={recordProse}
+                    statuses={state.snapshot.bootstrap.taskStatuses}
+                    taskLinking={slots.taskLinking}
+                    tasks={
+                      state.snapshot.work.kind === "ready"
+                        ? state.snapshot.work.data.tasks
+                        : []
+                    }
+                  />
+                </Suspense>
               )
-            : []
-        }
-        linkedClientIds={
-          new Set(
-            projectOverview
-              ? directClientLinks(
-                  state.snapshot,
-                  projectOverview.project.id,
-                ).keys()
-              : [],
-          )
         }
         busy={projectBusy}
         onOpenProject={(id) => {
@@ -2104,15 +2290,6 @@ export const RealApp = ({
         onBackToProjects={() =>
           openContext(destinationContext("projects", "Projects"))
         }
-        onOpenDocument={(id, title) => openContext(documentContext(id, title))}
-        onOpenMeeting={(id) => {
-          setSelectedMeetingId(id);
-          openContext(destinationContext("meetings", "Meetings"));
-        }}
-        onOpenRelationship={(id) => {
-          setSelectedStrategicId(id);
-          openContext(destinationContext("organizations", "Organizations"));
-        }}
         onEntityActivate={(target) => {
           if (target.targetKind === "task") {
             setSelectedTaskId(target.targetId as TaskId);
@@ -2247,40 +2424,6 @@ export const RealApp = ({
               });
               await refreshAfter("Task linked to the project.");
             } else showFailure(result);
-          });
-        }}
-        onLinkClient={(organizationId) => {
-          if (!client || !projectOverview) return;
-          setProjectBusy(true);
-          void linkProjectClient(
-            client,
-            state.snapshot,
-            projectOverview.project,
-            organizationId,
-          ).then(async (result) => {
-            setProjectBusy(false);
-            if (result.kind === "success")
-              await refreshAfter("Client linked to the project.");
-            else showFailure(result);
-          });
-        }}
-        // Detaching reloads the whole snapshot like every other write
-        // here, which is what re-derives both the Klient list and the
-        // candidate set — the link record the command needs lives in that
-        // snapshot, not in session state.
-        onUnlinkClient={(organizationId) => {
-          if (!client || !projectOverview) return;
-          setProjectBusy(true);
-          void unlinkProjectClient(
-            client,
-            state.snapshot,
-            projectOverview.project.id,
-            organizationId,
-          ).then(async (result) => {
-            setProjectBusy(false);
-            if (result.kind === "success")
-              await refreshAfter("Client link removed.");
-            else showFailure(result);
           });
         }}
         onUnrelate={() => {

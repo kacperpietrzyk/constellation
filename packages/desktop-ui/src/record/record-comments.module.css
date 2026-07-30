@@ -250,3 +250,64 @@
   color: var(--text-disabled);
   cursor: default;
 }
+
+/* ── WHO THIS COMMENT WAKES ────────────────────────────────────────────── */
+
+/* The mention picker sits between the field and the send control, on its own
+   row, because it is a decision about the comment rather than part of writing
+   it. Full-basis so it never shares a line with the textarea and turns two
+   controls into one crowded strip. */
+.mentions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  flex-basis: 100%;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Pressed state carries a BORDER and a fill, not colour alone — the accent is
+   what marks a comment that woke somebody, and it must not be the only thing
+   telling a reader which chips are on. */
+.mentionChip {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-2xs);
+}
+
+.mentionChip:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+/* The same colour the mention BADGE wears, because they mark the same thing at
+   two moments: the chip says "this will wake them", the badge says "this one
+   did". A second accent for one meaning is how two colours end up meaning
+   nothing. */
+.mentionChipOn {
+  border-color: var(--status-info);
+  color: var(--status-info);
+  font-weight: 590;
+}
+
+.mentionKind {
+  color: var(--text-quaternary);
+}
+
+/* Stated before the write, never after. Whether this comment reaches an Inbox
+   is the one thing about it worth knowing in advance, and the Inbox is the
+   thing this whole valve exists to protect. */
+.reach {
+  flex-basis: 100%;
+  margin: var(--space-1) 0 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}

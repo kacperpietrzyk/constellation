@@ -11,11 +11,9 @@ import {
 import type {
   CaptureId,
   CommandId,
-  DocumentId,
   PrincipalId,
   ProjectId,
   RelationId,
-  StrategicRecordId,
   TaskId,
   TaskStatusId,
 } from "@constellation/contracts";
@@ -32,9 +30,6 @@ import {
 } from "./client/workflow.js";
 import type { SurfaceId } from "./client/wave2-fixtures.js";
 import { Icon } from "./components/Icon.js";
-import { NarrativeGap } from "./components/RecordNarrative.js";
-import { recordNarrativeGaps } from "./record-narrative.js";
-import ProjectContextSections from "./ProjectContextSections.js";
 import { ProjectCollection } from "./projects/ProjectCollection.js";
 import type { DocumentEntityTargetKind } from "./document-entity-reference.js";
 import { modifierLabel } from "./components/ShortcutsOverlay.js";
@@ -490,6 +485,24 @@ export const TasksSurface = ({
   );
 };
 
+/**
+ * What the project record screen is filled with from this surface.
+ *
+ * Every entry is an operation that had the view the record screen replaces as
+ * its ONLY home in the renderer. They are passed as nodes rather than moved,
+ * because their state — which outcome is being edited, which template is
+ * selected, which relation this session created — belongs to the surface and
+ * following it upwards would have been a second refactor riding on this one.
+ */
+export interface ProjectRecordSlots {
+  readonly actions: React.ReactNode;
+  readonly body: React.ReactNode;
+  /** Replaces the record's reading of the outcome while it is being written. */
+  readonly outcomeEditor: React.ReactNode;
+  readonly taskLinking: React.ReactNode;
+  readonly onWriteOutcome: () => void;
+}
+
 export const ProjectsSurface = ({
   client,
   snapshot,
@@ -497,8 +510,6 @@ export const ProjectsSurface = ({
   activeProjectId,
   overview,
   relation,
-  clientCandidates,
-  linkedClientIds,
   busy,
   onOpenProject,
   onSelectProject,
@@ -509,12 +520,8 @@ export const ProjectsSurface = ({
   onSetLifecycle,
   onRelate,
   onUnrelate,
-  onLinkClient,
-  onUnlinkClient,
-  onOpenDocument,
-  onOpenMeeting,
-  onOpenRelationship,
   onEntityActivate,
+  renderRecordScreen,
 }: {
   readonly client: ConstellationRendererClient | undefined;
   readonly snapshot: DesktopSnapshot;
@@ -528,13 +535,6 @@ export const ProjectsSurface = ({
         readonly taskId: TaskId;
       }
     | undefined;
-  // Resolved by the caller, not here: which Organizations may be offered and
-  // which are already directly linked are both kernel preconditions, and this
-  // surface stays free of kernel semantics like every other verb on it.
-  readonly clientCandidates:
-    | readonly { readonly id: StrategicRecordId; readonly name: string }[]
-    | undefined;
-  readonly linkedClientIds: ReadonlySet<string>;
   readonly busy: boolean;
   readonly onOpenProject: (id: ProjectId) => void;
   readonly onSelectProject: (id: ProjectId) => void;
@@ -549,15 +549,17 @@ export const ProjectsSurface = ({
   readonly onSetLifecycle: (lifecycle: "active" | "closed") => void;
   readonly onRelate: (taskId: TaskId) => void;
   readonly onUnrelate: () => void;
-  readonly onLinkClient: (organizationId: StrategicRecordId) => void;
-  readonly onUnlinkClient: (organizationId: StrategicRecordId) => void;
-  readonly onOpenDocument: (id: DocumentId, title: string) => void;
-  readonly onOpenMeeting: (id: StrategicRecordId) => void;
-  readonly onOpenRelationship: (id: StrategicRecordId) => void;
   readonly onEntityActivate: (target: {
     readonly targetKind: DocumentEntityTargetKind;
     readonly targetId: string;
   }) => void;
+  /** Renders the opened project. The caller builds the screen, because the two
+   *  slices it needs — a record's comments and the activity stream — are a
+   *  targeted fetch and a snapshot slice this surface never receives; the slots
+   *  it is handed carry the operations whose state stayed here. Absent leaves
+   *  the old detail flow in place rather than showing an empty record. */
+  readonly renderRecordScreen?:
+    ((slots: ProjectRecordSlots) => React.ReactNode) | undefined;
 }) => {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -588,6 +590,187 @@ export const ProjectsSurface = ({
   const unrelated = snapshot.tasks.filter(
     (task) => !overview?.relatedTasks.some((related) => related.id === task.id),
   );
+
+  // The record screen brings its own `<h1>`, its own way back and its own
+  // verbs, so the surface header does not run for this view — two level-one
+  // headings on one screen is not a styling difference, it is two records
+  // according to the outline. The `.project-surface` wrapper stays either way:
+  // the packaged smoke finds the create-a-project journey through it.
+  //
+  // The screen is RENDERED BY THE CALLER and filled from here. The two slices
+  // it needs — a record's comments and the activity stream — are a targeted
+  // fetch and a snapshot slice this surface never receives, while the four
+  // operations that had this view as their only home (writing the outcome,
+  // closing the project, applying a template, linking a task) keep their state
+  // where it already was. Threading either one the other way would have moved
+  // twelve props or lost four operations.
+  if (fullView && renderRecordScreen !== undefined) {
+    const lifecycleAction = (
+      <button
+        className="secondary-button compact"
+        disabled={busy}
+        key="lifecycle"
+        onClick={() =>
+          onSetLifecycle(
+            overview.project.lifecycle === "active" ? "closed" : "active",
+          )
+        }
+        type="button"
+      >
+        {overview.project.lifecycle === "active" ? "Close project" : "Reopen"}
+      </button>
+    );
+    const templateApplied =
+      overview.project.appliedTemplateId === undefined
+        ? undefined
+        : (projectTemplates.find(
+            (template) => template.id === overview.project.appliedTemplateId,
+          )?.name ?? "retired template");
+    const appliable = activeTemplates.filter(
+      (template) => template.id !== overview.project.appliedTemplateId,
+    );
+    return (
+      <div className="surface-scroll project-surface">
+        {renderRecordScreen({
+          onWriteOutcome: () => setEditing(true),
+          actions: (
+            <>
+              {!editing && !overview.project.needsReview && (
+                <button
+                  className="ghost-button"
+                  onClick={() => setEditing(true)}
+                  type="button"
+                >
+                  Edit outcome
+                </button>
+              )}
+              {lifecycleAction}
+              {templateApplied !== undefined && (
+                <small>Template: {templateApplied}</small>
+              )}
+              {appliable.length > 0 && (
+                <>
+                  <label className="sr-only" htmlFor="project-apply-template">
+                    Template to apply
+                  </label>
+                  <select
+                    disabled={busy}
+                    id="project-apply-template"
+                    onChange={(event) => setApplyTemplateId(event.target.value)}
+                    value={applyTemplateId}
+                  >
+                    <option value="">Apply template…</option>
+                    {appliable.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="secondary-button compact"
+                    disabled={busy || applyTemplateId === ""}
+                    onClick={() => {
+                      onApplyTemplate(applyTemplateId);
+                      setApplyTemplateId("");
+                    }}
+                    type="button"
+                  >
+                    Apply
+                  </button>
+                </>
+              )}
+            </>
+          ),
+          outcomeEditor: editing ? (
+            <form
+              className="record-outcome-editor"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onUpdateOutcome(editedOutcome);
+                setEditing(false);
+              }}
+            >
+              <label className="sr-only" htmlFor="edited-project-outcome">
+                Intended outcome
+              </label>
+              <textarea
+                id="edited-project-outcome"
+                onChange={(event) => setEditedOutcome(event.target.value)}
+                value={editedOutcome}
+              />
+              <div className="capture-footer">
+                <button
+                  className="ghost-button"
+                  onClick={() => setEditing(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={busy || editedOutcome.trim() === ""}
+                  type="submit"
+                >
+                  Save outcome
+                </button>
+              </div>
+            </form>
+          ) : undefined,
+          body:
+            client === undefined ? undefined : (
+              <Suspense
+                fallback={
+                  <section
+                    aria-busy="true"
+                    className="project-rich-body reading-panel"
+                  >
+                    <p className="capacity-note">
+                      Opening the project document…
+                    </p>
+                  </section>
+                }
+              >
+                <ProjectRichBody
+                  client={client}
+                  onEntityActivate={onEntityActivate}
+                  project={overview.project}
+                  snapshot={snapshot}
+                />
+              </Suspense>
+            ),
+          // Linking a task to the project had this view as its only home in the
+          // whole renderer — `relateTask`/`unrelateTask` are called from
+          // nowhere else — so it travels with the screen rather than being
+          // dropped as a finishing touch.
+          taskLinking:
+            relation !== undefined || unrelated[0] !== undefined ? (
+              <div className="record-task-linking">
+                {relation ? (
+                  <button
+                    className="secondary-button compact"
+                    disabled={busy}
+                    onClick={onUnrelate}
+                    type="button"
+                  >
+                    Remove last link
+                  </button>
+                ) : (
+                  <button
+                    className="secondary-button compact"
+                    disabled={busy}
+                    onClick={() => onRelate(unrelated[0]!.id)}
+                    type="button"
+                  >
+                    Link “{unrelated[0]!.title}”
+                  </button>
+                )}
+              </div>
+            ) : undefined,
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className="surface-scroll project-surface">
       <SurfaceHeader
@@ -702,240 +885,17 @@ export const ProjectsSurface = ({
           detail="Create a project and name the outcome that tells you it is done."
         />
       ) : fullView ? (
-        <div className="project-detail-flow">
-          <section
-            className="project-overview"
-            aria-labelledby="project-outcome-title"
-          >
-            <div className="overview-intent">
-              <p className="eyebrow">Intended outcome</p>
-              {editing ? (
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    onUpdateOutcome(editedOutcome);
-                  }}
-                >
-                  <label className="sr-only" htmlFor="edited-project-outcome">
-                    Intended outcome
-                  </label>
-                  <textarea
-                    id="edited-project-outcome"
-                    value={editedOutcome}
-                    onChange={(event) => setEditedOutcome(event.target.value)}
-                  />
-                  <div className="capture-footer">
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={() => setEditing(false)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className="primary-button"
-                      disabled={busy || editedOutcome.trim() === ""}
-                      type="submit"
-                    >
-                      Save outcome
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <>
-                  {overview.project.needsReview ? (
-                    <>
-                      {/* Nagłówek zostaje dostępną nazwą sekcji, ale nie udaje
-                          treści, której nikt nie napisał. */}
-                      <h2 id="project-outcome-title" className="sr-only">
-                        {recordNarrativeGaps.project.field}
-                      </h2>
-                      <NarrativeGap
-                        kind="project"
-                        onWrite={() => setEditing(true)}
-                      />
-                    </>
-                  ) : (
-                    <h2 id="project-outcome-title">
-                      {overview.project.intendedOutcome}
-                    </h2>
-                  )}
-                  <div className="capture-footer">
-                    {!overview.project.needsReview && (
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={() => setEditing(true)}
-                      >
-                        Edit outcome
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="secondary-button compact"
-                      disabled={busy}
-                      onClick={() =>
-                        onSetLifecycle(
-                          overview.project.lifecycle === "active"
-                            ? "closed"
-                            : "active",
-                        )
-                      }
-                    >
-                      {overview.project.lifecycle === "active"
-                        ? "Close project"
-                        : "Reopen"}
-                    </button>
-                  </div>
-                </>
-              )}
-              {(overview.project.appliedTemplateId !== undefined ||
-                activeTemplates.some(
-                  (template) =>
-                    template.id !== overview.project.appliedTemplateId,
-                )) && (
-                <div className="project-template-row">
-                  {overview.project.appliedTemplateId !== undefined && (
-                    <small>
-                      Template:{" "}
-                      {projectTemplates.find(
-                        (template) =>
-                          template.id === overview.project.appliedTemplateId,
-                      )?.name ?? "retired template"}
-                    </small>
-                  )}
-                  {activeTemplates.some(
-                    (template) =>
-                      template.id !== overview.project.appliedTemplateId,
-                  ) && (
-                    <>
-                      <label
-                        className="sr-only"
-                        htmlFor="project-apply-template"
-                      >
-                        Template to apply
-                      </label>
-                      <select
-                        id="project-apply-template"
-                        value={applyTemplateId}
-                        disabled={busy}
-                        onChange={(event) =>
-                          setApplyTemplateId(event.target.value)
-                        }
-                      >
-                        <option value="">Apply template…</option>
-                        {activeTemplates
-                          .filter(
-                            (template) =>
-                              template.id !==
-                              overview.project.appliedTemplateId,
-                          )
-                          .map((template) => (
-                            <option key={template.id} value={template.id}>
-                              {template.name}
-                            </option>
-                          ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="secondary-button compact"
-                        disabled={busy || applyTemplateId === ""}
-                        onClick={() => {
-                          onApplyTemplate(applyTemplateId);
-                          setApplyTemplateId("");
-                        }}
-                      >
-                        Apply
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          </section>
-          {client !== undefined && (
-            <Suspense
-              fallback={
-                <section
-                  className="project-rich-body reading-panel"
-                  aria-busy="true"
-                >
-                  <p className="capacity-note">Opening the project document…</p>
-                </section>
-              }
-            >
-              <ProjectRichBody
-                client={client}
-                snapshot={snapshot}
-                project={overview.project}
-                onEntityActivate={onEntityActivate}
-              />
-            </Suspense>
-          )}
-          <ProjectContextSections
-            overview={overview}
-            clientCandidates={clientCandidates}
-            linkedClientIds={linkedClientIds}
-            busy={busy}
-            onLinkClient={onLinkClient}
-            onUnlinkClient={onUnlinkClient}
-            onOpenDocument={onOpenDocument}
-            onOpenMeeting={onOpenMeeting}
-            onOpenRelationship={onOpenRelationship}
-          />
-          <section
-            className="project-work reading-panel"
-            aria-labelledby="project-work-title"
-          >
-            <header className="section-heading">
-              <div>
-                <p className="eyebrow">Related work</p>
-                <h2 id="project-work-title">Project tasks</h2>
-              </div>
-              {relation ? (
-                <button
-                  type="button"
-                  className="secondary-button compact"
-                  disabled={busy}
-                  onClick={onUnrelate}
-                >
-                  Remove last link
-                </button>
-              ) : unrelated[0] ? (
-                <button
-                  type="button"
-                  className="secondary-button compact"
-                  disabled={busy}
-                  onClick={() => onRelate(unrelated[0]!.id)}
-                >
-                  Link “{unrelated[0].title}”
-                </button>
-              ) : null}
-            </header>
-            {overview.relatedTasks.length === 0 ? (
-              <p className="capacity-note">
-                No tasks are linked to this project yet.
-              </p>
-            ) : (
-              <div className="compact-record-list">
-                {overview.relatedTasks.map((task) => (
-                  <div key={task.id} className="compact-record">
-                    <Mark kind="task" />
-                    <span>
-                      <strong>{task.title}</strong>
-                      <small>Linked to this project</small>
-                    </span>
-                    <em>
-                      {task.completionState === "completed"
-                        ? "Completed"
-                        : "Open"}
-                    </em>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
+        /* The record could not be assembled — the opened project is not in
+           `project.list`, so its health has nothing to be read from. Said
+           plainly rather than degraded into a thinner record: a screen
+           missing half its reading looks like a screen, and this is a read
+           that did not land. */
+        <InlineState
+          tone="warning"
+          headingLevel="h2"
+          title="This project could not be opened"
+          detail="Its record is not in the project list for this Space. Reload, or go back to the collection."
+        />
       ) : (
         /* Kolekcja projektów: trzy soczewki nad jednym zbiorem, grupowane po
            WYLICZANYM zdrowiu. Powłoka — nagłówek i formularz zakładania —

@@ -7,6 +7,7 @@ import { countLabel, formatDate, formatTime } from "../i18n.js";
 import {
   buildThreads,
   commentsState,
+  type CommentActor,
   type CommentThread,
   type CommentTree,
 } from "./record-tabs.js";
@@ -34,30 +35,13 @@ import styles from "./record-comments.module.css";
 // of the panel have to be the same reading of the same threads — two answers to
 // one question is this repo's named repeat defect.
 
-/**
- * Who wrote a comment, already resolved.
- *
- * The projection carries only `{ principalId?, displayName }` — no agent flag
- * and no role — so this panel cannot work it out and does not guess. The
- * integrator resolves it from the PRINCIPAL first (Hermes and Claude Code hold
- * separate grants, so they are separate identities and the panel must show
- * that), then from a Person record, then falls back to `SYSTEM_ACTOR`.
- */
-export interface CommentActor {
-  readonly name: string;
-  /** Initials for a human; the agent mark replaces it for an agent. */
-  readonly short: string;
-  readonly agent: boolean;
-  /** Stated in words beside an agent's name — colour is never the carrier. */
-  readonly role: string;
-}
-
-export const SYSTEM_ACTOR: CommentActor = {
-  name: "Constellation",
-  short: "··",
-  agent: false,
-  role: "system",
-};
+// `CommentActor` and `SYSTEM_ACTOR` are declared in `record-tabs.ts`, not here:
+// the shell resolves an author from grants this panel never sees, and it is on
+// the hot path — importing them from this module would pull the panel and its
+// stylesheet along. Re-exported so a reader who starts at the panel still finds
+// the shape it draws.
+export type { CommentActor } from "./record-tabs.js";
+export { SYSTEM_ACTOR } from "./record-tabs.js";
 
 /** `@Zieliński` is one mention. The class is Unicode letters, not `\w`: record
  *  content is Polish and `\w` would cut the name in half. */
@@ -184,11 +168,19 @@ const CommentThreadView = ({
   </div>
 );
 
+/** Somebody who can be named, as the mention query answers it. */
+export interface MentionCandidate {
+  readonly principalId: PrincipalId;
+  readonly displayName: string;
+  readonly participantKind: "member" | "guest";
+}
+
 export const RecordCommentsPanel = ({
   threads,
   recordKey,
   actorOf,
   mentionNameOf,
+  mentionCandidates = [],
   onSubmit,
   busy = false,
   timeZone,
@@ -199,9 +191,15 @@ export const RecordCommentsPanel = ({
   readonly recordKey: string;
   readonly actorOf: (comment: CommentThread) => CommentActor;
   readonly mentionNameOf: (principalId: PrincipalId) => string;
+  /** Who this comment can wake. Empty means nobody can be named — which the
+   *  composer says out loud rather than showing a picker with nothing in it. */
+  readonly mentionCandidates?: readonly MentionCandidate[];
   /** Resolves true once the write is confirmed. The draft is cleared only
    *  then, so a refused command never eats what somebody typed. */
-  readonly onSubmit: (body: string) => Promise<boolean>;
+  readonly onSubmit: (
+    body: string,
+    mentions: readonly PrincipalId[],
+  ) => Promise<boolean>;
   readonly busy?: boolean;
   readonly timeZone?: string | undefined;
 }) => {
@@ -209,6 +207,11 @@ export const RecordCommentsPanel = ({
   // opened: a boolean would carry "showing resolved" into the next record.
   const [openedOn, setOpenedOn] = useState<string>();
   const [draft, setDraft] = useState("");
+  // Who this comment names, chosen from a list rather than parsed out of the
+  // text. A resolver matching `@Kacper` against "Kacper Pietrzyk" guesses, and
+  // a mention that resolves to the wrong person wakes the wrong person — while
+  // one that silently resolves to nobody turns the whole valve into a dummy.
+  const [mentions, setMentions] = useState<readonly PrincipalId[]>([]);
   const showResolved = openedOn === recordKey;
 
   const trees = buildThreads(threads);
@@ -221,8 +224,11 @@ export const RecordCommentsPanel = ({
     event.preventDefault();
     const body = draft.trim();
     if (body === "" || busy) return;
-    void onSubmit(body).then((saved) => {
-      if (saved) setDraft("");
+    void onSubmit(body, mentions).then((saved) => {
+      if (saved) {
+        setDraft("");
+        setMentions([]);
+      }
     });
   };
 
@@ -278,10 +284,54 @@ export const RecordCommentsPanel = ({
           aria-label="Write a comment"
           className={styles.field}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="Write a comment — @ to mention"
+          placeholder="Write a comment"
           rows={2}
           value={draft}
         />
+        {/* The valve, made operable. Everything above this line says a mention
+            is what wakes somebody; a composer that could not create one would
+            have made that sentence describe a thing the reader cannot do.
+            Toggles rather than a free-text `@`, because the only honest way to
+            name a person is to pick them. */}
+        {mentionCandidates.length > 0 && (
+          <ul aria-label="Mention someone" className={styles.mentions}>
+            {mentionCandidates.map((candidate) => {
+              const named = mentions.includes(candidate.principalId);
+              return (
+                <li key={candidate.principalId}>
+                  <button
+                    aria-pressed={named}
+                    className={`${styles.mentionChip} ${
+                      named ? styles.mentionChipOn : ""
+                    }`}
+                    data-principal-id={candidate.principalId}
+                    disabled={busy}
+                    onClick={() =>
+                      setMentions((current) =>
+                        named
+                          ? current.filter((id) => id !== candidate.principalId)
+                          : [...current, candidate.principalId],
+                      )
+                    }
+                    type="button"
+                  >
+                    @{candidate.displayName}
+                    {candidate.participantKind === "guest" && (
+                      <span className={styles.mentionKind}>guest</span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {/* Said before the write, not after: whether this comment will wake
+            anybody is the one thing about it worth knowing in advance. */}
+        <p className={styles.reach}>
+          {mentions.length === 0
+            ? "Nobody is notified."
+            : `${countLabel(mentions.length, "person", "people")} will be notified.`}
+        </p>
         {/* Disabled only while there is nothing to send or a write is in
             flight. A control greyed out for no stated reason is a dummy, and
             dummies are a named defect here. */}

@@ -490,6 +490,69 @@ button.railRow:focus-visible .railArrow {
   font-size: var(--text-sm);
 }
 
+/* The one authoring block on a rail of exits — attaching and detaching the
+   client. It wraps rather than scrolls: the organization names are record
+   content and run long, and a control that scrolls sideways to reach its own
+   button is a control nobody finds. */
+.railActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  margin-block-start: var(--space-2);
+  padding-block-start: var(--space-2);
+  border-block-start: 1px dashed var(--border-subtle);
+}
+
+.railNote {
+  flex-basis: 100%;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-snug);
+}
+
+.railSelect {
+  flex: 1 1 8rem;
+  min-inline-size: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+.railAction,
+.railDanger {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+.railAction:hover:not(:disabled),
+.railDanger:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.railAction:disabled,
+.railSelect:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Destructive by BORDER and by WORD before it is destructive by colour: the
+   button says "Confirm unlink" and only appears after a first press. */
+.railDanger {
+  border-color: var(--status-error);
+  color: var(--status-error);
+}
+
 .prov {
   margin: 0;
   color: var(--text-disabled);

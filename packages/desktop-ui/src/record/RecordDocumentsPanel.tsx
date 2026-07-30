@@ -15,7 +15,19 @@ import styles from "./record-panels.module.css";
 // `data-row` and joins no roving tab stop. A list that looked selectable and
 // then navigated instead would be two behaviours wearing one appearance.
 
-export type RecordDocument = DocumentListProjection["items"][number];
+/**
+ * Only the four fields this panel draws, so both slices that can feed it fit.
+ *
+ * `document.list` and the project's own `relatedDocuments` carry the same
+ * document with different amounts of it, and naming the whole of either would
+ * make the panel refuse the other for fields it never reads.
+ */
+export interface RecordDocument {
+  readonly id: DocumentId;
+  readonly title: string;
+  readonly role: DocumentListProjection["items"][number]["role"];
+  readonly updatedAt: string;
+}
 
 /** The three roles the projection can carry, named for a reader. The vocabulary
  *  is the domain's, not this screen's: an "offer" is a deliverable here until

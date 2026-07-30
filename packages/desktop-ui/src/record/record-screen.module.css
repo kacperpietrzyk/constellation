@@ -1,0 +1,73 @@
+/* The record screen's own frame: the trail out, the record-level actions, and
+   the column the header and the tab bar share.
+
+   A container, not a media query. The canvas narrows when the inspector opens
+   as well as when the window shrinks, and a screen that only answers the window
+   lays itself out for a width it does not have. */
+.screen {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-inline-size: 0;
+  padding: var(--space-5) var(--space-6) var(--space-8);
+}
+
+/* The way back and the record's own verbs on one line. The trail is first in
+   the DOM as well as first on screen: it is the thing a reader who arrived by
+   mistake wants, and it must not be behind four buttons in the tab order. */
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  min-inline-size: 0;
+}
+
+.back {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  margin-inline-start: calc(var(--space-2) * -1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+.back:hover {
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
+
+/* Pushed to the end rather than floated: the verbs belong to the record, and a
+   row that wraps on a narrow canvas must keep them together under the trail
+   instead of scattering them. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  margin-inline-start: auto;
+}
+
+/* A slice that did not land says so where its panel would have been. Told
+   apart from an empty panel on purpose: "nothing here" and "we could not read
+   it" are different facts, and the second is worth retrying. */
+.unavailable {
+  margin: 0;
+  padding: var(--space-6);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+@container (max-width: 40rem) {
+  .screen {
+    padding: var(--space-4) var(--space-4) var(--space-6);
+  }
+}

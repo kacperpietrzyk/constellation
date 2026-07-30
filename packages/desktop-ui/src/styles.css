@@ -4924,18 +4924,23 @@ button.mention-chip:disabled {
 .project-surface {
   container-type: inline-size;
 }
-.project-detail-flow {
-  max-width: var(--surface-measure, 58rem);
+/* The three blocks the record screen is FILLED with from the Projects surface.
+   They live in the global sheet rather than in the record's CSS module because
+   the surface that builds them is on the hot path, and importing the module
+   there would drag the whole record stylesheet along with it — the opposite of
+   why the screen is lazy. */
+.record-outcome-editor {
   display: grid;
-  gap: var(--space-4);
-  margin: 0 auto;
+  gap: var(--space-3);
 }
-.project-detail-flow > .project-overview,
-.project-detail-flow > .project-rich-body,
-.project-detail-flow > .project-work {
-  width: 100%;
-  max-width: none;
-  margin: 0;
+.record-outcome-editor textarea {
+  min-height: 12rem;
+  resize: vertical;
+}
+.record-task-linking {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-3) 0 0;
 }
 .project-rich-body {
   display: grid;

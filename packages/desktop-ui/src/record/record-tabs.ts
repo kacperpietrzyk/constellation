@@ -45,6 +45,34 @@ export const restoreTab = (stored: string | undefined): RecordTab =>
 export type CommentThread = CommentListProjection["threads"][number];
 
 /**
+ * Who wrote a comment, already resolved.
+ *
+ * It lives here rather than beside the panel that draws it because the SHELL
+ * resolves it — from agent grants and mention candidates it holds and the panel
+ * does not — and the shell is on the hot path. A resolver reaching into the
+ * panel's module would drag the panel and its stylesheet along with it, which
+ * is exactly what the record screen is lazy to avoid.
+ *
+ * The projection carries only `{ principalId?, displayName }` — no agent flag
+ * and no role — so the panel cannot work this out and does not guess.
+ */
+export interface CommentActor {
+  readonly name: string;
+  /** Initials for a human; the agent mark replaces it for an agent. */
+  readonly short: string;
+  readonly agent: boolean;
+  /** Stated in words beside an agent's name — colour is never the carrier. */
+  readonly role: string;
+}
+
+export const SYSTEM_ACTOR: CommentActor = {
+  name: "Constellation",
+  short: "··",
+  agent: false,
+  role: "system",
+};
+
+/**
  * What the `Comments` count means, and why it is not the number of comments.
  *
  * The domain has no read state — `RecordComment` carries none — so an unread

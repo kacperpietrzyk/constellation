@@ -1,3 +1,5 @@
+import { Fragment, useState, type ReactNode } from "react";
+
 import {
   compositionSentence,
   deadlineDate,
@@ -105,6 +107,13 @@ export interface ProjectRecordHeaderProps {
  *
  * It renders the screen's only `<h1>` — the record names itself once, at level
  * one. The crumbbar above it names the same project as a trail, not a heading.
+ *
+ * That `<h1>` carries `id="surface-title"` and `tabIndex={-1}` because the shell
+ * uses BOTH: `aria-labelledby="surface-title"` names the whole work plane, and
+ * the effect that runs after a destination change moves focus onto that id,
+ * falling back to the panel. Rendering a heading without them would leave the
+ * work plane unnamed and send focus to the panel instead of the record —
+ * silently, and only for the keyboard.
  */
 export const ProjectRecordHeader = ({
   reading,
@@ -116,7 +125,9 @@ export const ProjectRecordHeader = ({
   const tone = deadlineTone(reading);
   return (
     <header className={styles.header}>
-      <h1 className={styles.title}>{reading.project.title}</h1>
+      <h1 className={styles.title} id="surface-title" tabIndex={-1}>
+        {reading.project.title}
+      </h1>
       <div className={styles.head}>
         <span
           className={`${styles.state} ${styles[`state_${reading.health.key}`]}`}
@@ -195,10 +206,21 @@ const RailRow = ({
       )}
     </>
   );
+  // `data-rail-exit` marks an EXIT and nothing else. The section around it also
+  // holds authoring controls that mention the same record by name — the detach
+  // button says "Unlink Northstar" — so an assertion that counted exits by
+  // reading text would count that too and report a duplicate that is not one.
   return onOpen === undefined ? (
-    <div className={styles.railRow}>{content}</div>
+    <div className={styles.railRow} data-rail-exit={label}>
+      {content}
+    </div>
   ) : (
-    <button className={styles.railRow} onClick={onOpen} type="button">
+    <button
+      className={styles.railRow}
+      data-rail-exit={label}
+      onClick={onOpen}
+      type="button"
+    >
       {content}
     </button>
   );
@@ -221,6 +243,134 @@ const paragraphsOf = (outcome: string): readonly string[] =>
     .map((paragraph) => paragraph.trim())
     .filter((paragraph) => paragraph !== "");
 
+/**
+ * Attaching and detaching the client, which is an AUTHORING affordance on a
+ * rail otherwise made only of exits.
+ *
+ * It is here because it had exactly one home — the context card this record
+ * screen replaces — and a structural deletion that drops the only place an
+ * operation can be performed is a silent regression, not a simplification. The
+ * shape is the card's, kept deliberately: the caller has already resolved which
+ * organizations may be offered and which hold a DIRECT link, because both are
+ * kernel preconditions and this file must not learn them.
+ */
+export interface ProjectClientLinking {
+  readonly candidates:
+    readonly { readonly id: string; readonly name: string }[] | undefined;
+  /** The listed clients that hold a direct link — the only ones a detach can
+   *  be offered for. */
+  readonly detachableIds: ReadonlySet<string>;
+  readonly busy: boolean;
+  readonly onLink: (organizationId: string) => void;
+  readonly onUnlink: (organizationId: string) => void;
+}
+
+const ClientLinking = ({
+  linking,
+  clients,
+}: {
+  readonly linking: ProjectClientLinking;
+  readonly clients: readonly ClientOrganization[];
+}) => {
+  const [selected, setSelected] = useState("");
+  const [confirmingId, setConfirmingId] = useState<string>();
+  const { busy, candidates } = linking;
+  const detachable = clients.filter((client) =>
+    linking.detachableIds.has(client.id),
+  );
+  return (
+    <div className={styles.railActions}>
+      {candidates === undefined ? (
+        // Told apart from "there are none" on purpose: the first is a read that
+        // did not land and is worth retrying, the second is a fact about the
+        // Space.
+        <small className={styles.railNote}>
+          Could not load organizations, so no client can be linked right now.
+        </small>
+      ) : candidates.length === 0 ? (
+        <small className={styles.railNote}>
+          No organization to link in this project’s Space.
+        </small>
+      ) : (
+        <>
+          <label className="sr-only" htmlFor="project-client-link">
+            Client organization to link
+          </label>
+          <select
+            className={styles.railSelect}
+            disabled={busy}
+            id="project-client-link"
+            onChange={(event) => setSelected(event.target.value)}
+            value={selected}
+          >
+            <option value="">Choose a client…</option>
+            {candidates.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.name}
+              </option>
+            ))}
+          </select>
+          <button
+            className={styles.railAction}
+            disabled={busy || selected === ""}
+            onClick={() => {
+              linking.onLink(selected);
+              setSelected("");
+            }}
+            type="button"
+          >
+            Link client
+          </button>
+        </>
+      )}
+      {detachable.map((organization) =>
+        confirmingId === organization.id ? (
+          <Fragment key={organization.id}>
+            {/* The copy names the DIRECT link on purpose. `clientOrganizations`
+                is a set over three reaches — opportunity, meeting, direct link
+                — so a client also reached by a deal stays listed after
+                detaching, and a shorter sentence would read as a broken
+                button. */}
+            <small className={styles.railNote}>
+              Only the direct link goes. A client also reached by an opportunity
+              or meeting stays listed.
+            </small>
+            <button
+              className={styles.railDanger}
+              disabled={busy}
+              onClick={() => {
+                setConfirmingId(undefined);
+                linking.onUnlink(organization.id);
+              }}
+              type="button"
+            >
+              Confirm unlink
+            </button>
+            <button
+              className={styles.railAction}
+              disabled={busy}
+              onClick={() => setConfirmingId(undefined)}
+              type="button"
+            >
+              Cancel
+            </button>
+          </Fragment>
+        ) : (
+          <button
+            className={styles.railAction}
+            disabled={busy}
+            key={organization.id}
+            onClick={() => setConfirmingId(organization.id)}
+            type="button"
+          >
+            Unlink “{organization.name}”
+          </button>
+        ),
+      )}
+    </div>
+  );
+};
+
 export interface ProjectRecordOverviewProps {
   /** The one reading of this project. Health is never recomputed here: two
    *  surfaces answering the same question twice is this repo's named repeat
@@ -232,6 +382,18 @@ export interface ProjectRecordOverviewProps {
   /** Absent means this reader cannot write the outcome, and then the empty
    *  state offers no button rather than a dead one. */
   readonly onWriteOutcome?: (() => void) | undefined;
+  /** Conversations and agreements reach the project the same way the client
+   *  does — as exits. They were sections of the card this screen replaces, and
+   *  they are on the rail rather than in a tab because neither is a collection
+   *  anybody works inside. */
+  readonly onOpenMeeting?: ((meetingId: string) => void) | undefined;
+  readonly onOpenDecision?: ((decisionId: string) => void) | undefined;
+  readonly clientLinking?: ProjectClientLinking | undefined;
+  /** Replaces the READING of the outcome while somebody writes it, and nothing
+   *  else on the screen. Swapping the whole Overview for a textarea would take
+   *  away the health, the composition and every exit for the duration of an
+   *  edit — the reader is editing one field, not leaving the record. */
+  readonly outcomeEditor?: ReactNode;
 }
 
 export const ProjectRecordOverview = ({
@@ -240,10 +402,16 @@ export const ProjectRecordOverview = ({
   onOpenClient,
   onOpenSource,
   onWriteOutcome,
+  onOpenMeeting,
+  onOpenDecision,
+  clientLinking,
+  outcomeEditor,
 }: ProjectRecordOverviewProps) => {
   const { buckets } = reading;
   const clients = overview.clientOrganizations;
   const sources = overview.evidenceSources;
+  const meetings = overview.relatedMeetings;
+  const decisions = overview.relatedDecisions;
   const written =
     !overview.project.needsReview && overview.project.intendedOutcome !== "";
   return (
@@ -298,7 +466,9 @@ export const ProjectRecordOverview = ({
       <div className={styles.body}>
         <div className={styles.doc}>
           <h2 className={styles.docHeading}>Intended outcome</h2>
-          {written ? (
+          {outcomeEditor !== undefined ? (
+            outcomeEditor
+          ) : written ? (
             <div className={styles.prose}>
               {paragraphsOf(overview.project.intendedOutcome).map(
                 (paragraph, index) => (
@@ -350,7 +520,54 @@ export const ProjectRecordOverview = ({
                 />
               ))
             )}
+            {/* Outside the list/empty branch on purpose: linking the FIRST
+                client is the primary case, and that is exactly the empty
+                state. */}
+            {clientLinking !== undefined && (
+              <ClientLinking clients={clients} linking={clientLinking} />
+            )}
           </section>
+
+          {meetings.length > 0 && (
+            <section className={styles.railSection}>
+              <h3 className={styles.railHeading}>Meetings</h3>
+              {meetings.map((meeting) => (
+                <RailRow
+                  icon="relationships"
+                  key={meeting.id}
+                  label={meeting.title}
+                  meta={meeting.triage === "ready" ? undefined : "to review"}
+                  onOpen={
+                    onOpenMeeting === undefined
+                      ? undefined
+                      : () => onOpenMeeting(meeting.id)
+                  }
+                />
+              ))}
+            </section>
+          )}
+
+          {decisions.length > 0 && (
+            <section className={styles.railSection}>
+              <h3 className={styles.railHeading}>Decisions</h3>
+              {decisions.map((decision) => (
+                <RailRow
+                  icon="documents"
+                  key={decision.id}
+                  label={decision.title}
+                  // Only the state that changes how the decision must be read
+                  // is said. "Current" on every line is the default said out
+                  // loud.
+                  meta={decision.state === "current" ? undefined : "superseded"}
+                  onOpen={
+                    onOpenDecision === undefined
+                      ? undefined
+                      : () => onOpenDecision(decision.id)
+                  }
+                />
+              ))}
+            </section>
+          )}
 
           {sources.length > 0 && (
             <section className={styles.railSection}>
