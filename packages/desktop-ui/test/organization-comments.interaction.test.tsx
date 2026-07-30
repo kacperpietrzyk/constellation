@@ -25,13 +25,17 @@ type Projection<Kind extends QueryProjection["kind"]> = Extract<
 // Decision #28's SECOND record kind. The `Comments` tab is one tab across three
 // kinds, and until this landed it existed on exactly one of them.
 //
-// The organization is the honest next one, and the task deliberately is not:
-// the organization record had no comments at all, so a tab is pure gain, while
-// a task's comments live in the inspector rail where the older panel already
-// offers replies, editing, resolving and attachments that `RecordCommentsPanel`
-// does not. Putting the thinner panel there would be a capability regression
-// dressed as consistency. That is written down rather than left to whichever
-// file somebody edits next.
+// The organization came second, and the task was held back on purpose: its
+// comments lived in the inspector rail, where the older panel already offered
+// replies, editing, resolving and attachments that `RecordCommentsPanel` did
+// not, so moving the thinner panel there would have been a capability
+// regression dressed as consistency.
+//
+// That was reversed rather than worked around. The gap was CLOSED — the record
+// panel grew all four — and one panel now serves all three record kinds, which
+// is what the tab was for. The note is kept rather than deleted because the
+// reasoning is the same either way: consistency is worth having once it costs
+// nobody a capability, and not one line before.
 //
 // Two things this file exists to catch, both of which a component test would
 // pass over:
@@ -91,8 +95,40 @@ const comments: Projection<"comment.list"> = {
   ],
 };
 
+/** Who is reading, and on what grant. Not decoration: permission is a STATED
+ *  fact on the panel now rather than a default, so a record whose access slice
+ *  never landed offers a read-only composer — which is the correct answer, and
+ *  would leave the two tests below measuring a screen nobody can write on. */
+const access: Projection<"workspace.access"> = {
+  kind: "workspace.access",
+  policyVersion: 1,
+  currentPrincipalId: principalId,
+  canManage: true,
+  members: [
+    {
+      membershipId: "00000000-0000-4000-8000-0000000009e1",
+      principalId,
+      displayName: "Kacper",
+      role: "owner",
+      status: "active",
+      version: 1,
+      spaces: [
+        {
+          spaceGrantId: "00000000-0000-4000-8000-0000000009e2",
+          spaceId,
+          spaceName: "Space",
+          access: "edit",
+          status: "active",
+          version: 1,
+        },
+      ],
+    },
+  ],
+};
+
 const queries = {
   ...populatedShellQueries,
+  "workspace.access": projectionResponse(access),
   "organization.operationalOverview": projectionResponse(overview),
   "comment.list": projectionResponse(comments),
 };
@@ -274,4 +310,47 @@ test("a comment written on an organization reaches the kernel as an organization
     kind: "organization",
     organizationId: referencedOrganizationId,
   });
+});
+
+test("a thread settled here reaches the kernel, and a refusal is stated", async () => {
+  await openOrganization();
+  await waitForCondition(
+    () =>
+      container.querySelector('[role="tab"][data-record-tab="comments"]') !==
+      null,
+    "the organization record offers no Comments tab",
+  );
+  await act(async () => {
+    container
+      .querySelector<HTMLElement>('[role="tab"][data-record-tab="comments"]')
+      ?.click();
+  });
+
+  // Settling was one of four capabilities the record panel grew, and every one
+  // of them could have shipped with a green gate: no mount passed `onResolve`,
+  // so the control existed and reached nothing. This is the organization half
+  // of proving it is wired to the kernel rather than to a prop.
+  const settle = [
+    ...container.querySelectorAll<HTMLButtonElement>("button"),
+  ].find((button) => button.textContent === "Resolve");
+  assert.ok(settle, "the organization's threads offer no way to settle them");
+  await act(async () => {
+    settle.click();
+  });
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
+  const resolved = issued.find((command) => command.name === "comment.resolve");
+  assert.ok(resolved, "settling a thread issued no command at all");
+  assert.equal(resolved.payload["commentId"], rootComment);
+
+  // This harness refuses every command. The panel reads that answer, so the
+  // reader is told — a thread that did not settle, drawn exactly like one that
+  // did, is how a refused write goes missing without anybody noticing.
+  assert.ok(
+    container.textContent?.includes("That change was refused."),
+    "a refused settle is drawn exactly like one the kernel accepted",
+  );
 });

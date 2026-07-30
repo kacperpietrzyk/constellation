@@ -15,6 +15,7 @@ import {
 
 import {
   RecordCommentsPanel,
+  type AttachmentCustody,
   type CommentAttachment,
   type PendingAttachment,
 } from "../src/record/RecordCommentsPanel.js";
@@ -34,8 +35,10 @@ import { assertNoNode } from "./dom-assert.js";
 //
 // The panel is mounted DIRECTLY rather than through the shell, and that limit
 // is worth stating: this proves the panel honours the props it is given, not
-// that any mount gives them. The three record mounts are owned elsewhere, and
-// the shell-level half of the guarantee belongs with whoever wires them.
+// that any mount gives them. The mounts are what the compiler is for — the
+// permission pair and the two writes are REQUIRED props, so a record that
+// forgets one no longer compiles — and the mounted half of the guarantee lives
+// in `record-screen.interaction.test.tsx` and `organization-comments`.
 //
 // Nothing here selects on a CSS-module class. Module names are hashed in a
 // production build, so a class-based selector stops measuring anything the
@@ -118,6 +121,10 @@ const reply = comment({
 
 type PanelProps = Parameters<typeof RecordCommentsPanel>[0];
 
+/** Every required prop in its OFF position, so each test below turns on exactly
+ *  the one capability it measures. A richer baseline would light up Edit,
+ *  Unlink and Resolve across the whole file and let an assertion pass on a
+ *  control some other test switched on. */
 const base: PanelProps = {
   threads: [openRoot, settledRoot, reply],
   recordKey: "project-a",
@@ -131,8 +138,38 @@ const base: PanelProps = {
   mentionCandidates: [
     { principalId: other, displayName: "Marta", participantKind: "member" },
   ],
+  canComment: false,
+  canResolve: false,
+  currentPrincipalId: undefined,
   onSubmit: () => Promise.resolve(true),
+  onEdit: undefined,
+  onResolve: undefined,
   timeZone: "Europe/Warsaw",
+};
+
+/** Hands out a FRESH pending promise on every call, and answers them all at
+ *  once. Memoising an already-given answer would let a chip repair itself
+ *  inside the same `act`, and the flash the custody tests measure would never
+ *  be visible for an assertion to catch. */
+const inspector = (): {
+  readonly inspect: () => Promise<AttachmentCustody>;
+  readonly answer: (held: AttachmentCustody) => Promise<void>;
+} => {
+  const waiting: ((held: AttachmentCustody) => void)[] = [];
+  return {
+    inspect: () =>
+      new Promise<AttachmentCustody>((resolve) => {
+        waiting.push(resolve);
+      }),
+    answer: async (held) => {
+      const pending = waiting.splice(0, waiting.length);
+      await act(async () => {
+        for (const resolve of pending) resolve(held);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    },
+  };
 };
 
 let container: HTMLDivElement;
@@ -257,21 +294,27 @@ const send = async (): Promise<void> => {
 
 // ── 1. PERMISSION IS A STATED FACT ────────────────────────────────────────
 
-test("a read-only scope says so, and a mount that states nothing still writes", async () => {
-  await render({ ...base, canComment: false });
+test("a read-only scope says so, and offers no write it would refuse", async () => {
+  await render(base);
   assert.equal(
     composer().placeholder,
     "This scope is read-only.",
     "a reader without the grant gets a dead field and no reason for it",
   );
   assert.equal(composer().disabled, true);
+  // And nothing invites a write either. A Reply above a composer nobody may
+  // use is a control that exists only to be turned down.
+  assertNoNode(
+    named(entryOf(rootId), "Reply"),
+    "a read-only scope still invites an answer it cannot accept",
+  );
 
-  // The other half, and the one that cannot be seen from the shell: two of the
-  // three record mounts pass no permission at all. Read as a refusal, that
-  // would tell an owner their own project is read-only.
-  await render(base);
+  // The other direction, from the same fixture: permission is a STATED fact
+  // now, so both readings are the mount's and neither is a default.
+  await render({ ...base, canComment: true });
   assert.equal(composer().placeholder, "Write a comment");
   assert.equal(composer().disabled, false);
+  control(entryOf(rootId), "Reply", "a granted scope offers no way to answer");
 });
 
 // ── 2. REPLIES ────────────────────────────────────────────────────────────
@@ -397,6 +440,39 @@ test("the author settles their own thread and it leaves the open list", async ()
     entryOf(settledId),
     "Reopen",
     "the grant does not settle other people's threads",
+  );
+});
+
+test("a refused settle says so instead of passing for one that worked", async () => {
+  let accept = false;
+  await render({
+    ...base,
+    canComment: true,
+    canResolve: true,
+    currentPrincipalId: me,
+    threads: [openRoot],
+    onResolve: () => Promise.resolve(accept),
+  });
+
+  // A refused resolve leaves the thread exactly as it was, which on its own is
+  // what a resolve that WORKED also looks like until the list is re-read. The
+  // panel has the answer in hand; throwing it away is what made the two the
+  // same picture.
+  await click(control(entryOf(rootId), "Resolve", "the thread cannot settle"));
+  assert.equal(
+    (entryOf(rootId).textContent ?? "").includes("That change was refused."),
+    true,
+    "a refused settle is drawn exactly like one the kernel accepted",
+  );
+
+  // And the account is withdrawn the moment a settle lands, rather than
+  // sitting under a thread that did close.
+  accept = true;
+  await click(control(entryOf(rootId), "Resolve", "the control disappeared"));
+  assert.equal(
+    (entryOf(rootId).textContent ?? "").includes("That change was refused."),
+    false,
+    "the refusal is still stated over a settle that then worked",
   );
 });
 
@@ -571,6 +647,56 @@ test("unlinking one file sends the rest, and the body now on screen", async () =
   assert.deepEqual(edits, [{ body: "Treść po poprawce.", ids: [second] }]);
 });
 
+test("unlinking with the editor closed publishes no draft nobody sent", async () => {
+  const first = sourceId(203);
+  const second = sourceId(204);
+  const withFiles = comment({
+    id: rootId,
+    attachments: [attached(first, "Umowa.pdf"), attached(second, "Aneks.pdf")],
+  });
+  const edits: { body: string }[] = [];
+  await render({
+    ...base,
+    canComment: true,
+    currentPrincipalId: me,
+    threads: [withFiles],
+    onEdit: (_entry, body) => {
+      edits.push({ body });
+      return Promise.resolve(true);
+    },
+  });
+
+  const editor = (): HTMLTextAreaElement =>
+    one(container, 'textarea[aria-label="Edit comment"]', "no editor is open");
+  await click(control(entryOf(rootId), "Edit", "the author cannot edit"));
+  await typeInto(editor(), "Wersja, której nie wysłałem.");
+  await press(editor(), "Escape");
+
+  // The instrument first: the entry has to be claiming the draft was KEPT, or
+  // the assertion below could pass over an editor that is simply empty.
+  assert.equal(
+    [...entryOf(rootId).querySelectorAll("span")].some(
+      (node) => node.textContent === "Draft kept",
+    ),
+    true,
+    "the entry never claims the draft survived, so this measures nothing",
+  );
+
+  // Two defensible answers — Cancel keeps the draft, Unlink sends what is on
+  // screen — compose into a write nobody asked for: removing a file becomes
+  // the thing that finally publishes text its author had backed out of, under
+  // a label promising it was merely kept.
+  const unlinks = [
+    ...entryOf(rootId).querySelectorAll<HTMLButtonElement>("button"),
+  ].filter((button) => button.textContent === "Unlink");
+  await click(unlinks[0]!);
+  assert.deepEqual(
+    edits,
+    [{ body: withFiles.body }],
+    "removing a file published the draft its author had walked away from",
+  );
+});
+
 // ── 5. ATTACHMENTS ────────────────────────────────────────────────────────
 
 test("a staged file survives a refused write and is staged only once", async () => {
@@ -695,6 +821,101 @@ test("a file's custody is not claimed when nothing can answer for it", async () 
     );
   // The file is still listed, which is the point of the row.
   assert.equal(row.includes("Umowa.pdf"), true);
+});
+
+/** The two tests below are the whole reason the custody effect is shaped the
+ *  way it is, and neither can be read off the code: one keeps an answer across
+ *  a re-run, the other keeps a question across a re-render. Both were claimed
+ *  before they were asserted, and the claim was wrong — over a fixture whose
+ *  threads never change, the effect runs exactly once and every shape of it
+ *  looks identical. */
+test("a file already answered for keeps its answer when another arrives", async () => {
+  const first = sourceId(301);
+  const second = sourceId(302);
+  const storage = inspector();
+  const props: PanelProps = {
+    ...base,
+    canComment: true,
+    threads: [comment({ id: rootId, attachments: [attached(first, "A.pdf")] })],
+    onInspectAttachment: storage.inspect,
+  };
+  await render(props);
+  await storage.answer("available");
+
+  const row = (nth: number): string =>
+    Array.from(
+      entryOf(rootId).querySelectorAll(
+        'ul[aria-label="Comment attachments"] li',
+      ),
+      (node) => node.textContent ?? "",
+    )[nth] ?? "";
+  assert.equal(
+    row(0).includes("In managed storage"),
+    true,
+    `the first file was never answered for, so this measures nothing: ${row(0)}`,
+  );
+
+  // A second file lands on the same comment, so the inspection runs again.
+  // The older panel replaced the whole map on each run and flashed every chip
+  // back to a spinner — a settled fact redrawn as a question.
+  await render({
+    ...props,
+    threads: [
+      comment({
+        id: rootId,
+        attachments: [attached(first, "A.pdf"), attached(second, "B.pdf")],
+      }),
+    ],
+  });
+  assert.equal(
+    row(0).includes("In managed storage"),
+    true,
+    `an answer already given flashed back to a spinner: ${row(0)}`,
+  );
+  assert.equal(
+    row(1).includes("Checking storage"),
+    true,
+    "the file that just arrived is not being asked about at all",
+  );
+});
+
+test("a rebuilt inspect callback does not abandon the question in flight", async () => {
+  const only = sourceId(303);
+  const storage = inspector();
+  const props: PanelProps = {
+    ...base,
+    canComment: true,
+    threads: [comment({ id: rootId, attachments: [attached(only, "A.pdf")] })],
+    onInspectAttachment: storage.inspect,
+  };
+  await render(props);
+
+  const row = (): string =>
+    one(
+      entryOf(rootId),
+      'ul[aria-label="Comment attachments"] li',
+      "the comment's file is not listed",
+    ).textContent ?? "";
+  assert.equal(
+    row().includes("Checking storage"),
+    true,
+    "nothing is being asked, so the abandonment below cannot be seen",
+  );
+
+  // The shell rebuilds this callback on every render. An effect keyed on its
+  // identity cancels the question already asked and puts a new one to the
+  // fresh callback — and this one never answers, so the chip would spin for
+  // the life of the screen while the real answer was thrown away.
+  await render({
+    ...props,
+    onInspectAttachment: () => new Promise<AttachmentCustody>(() => undefined),
+  });
+  await storage.answer("available");
+  assert.equal(
+    row().includes("In managed storage"),
+    true,
+    `a re-render threw away the answer this file was waiting on: ${row()}`,
+  );
 });
 
 test("the twentieth staged file says what the limit is", async () => {

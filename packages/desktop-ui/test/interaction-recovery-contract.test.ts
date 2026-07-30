@@ -973,7 +973,7 @@ describe("interaction recovery contracts", () => {
     );
   });
 
-  it("reuses managed custody for Task and comment attachments", () => {
+  it("gives a Task's attachments the managed custody contract", () => {
     assert.match(taskAttachments, /stageManagedAttachment/);
     assert.match(taskAttachments, /inspectManagedPayload/);
     assert.match(taskAttachments, /attachmentSourceIds/);
@@ -984,19 +984,33 @@ describe("interaction recovery contracts", () => {
       /custody\[attachment\.sourceId\] === "unavailable" && \(\s*<button[\s\S]{0,400}?onRestore\(attachment\)/,
     );
     assert.match(taskAttachments, /onClick=\{\(\) => unlink\(attachment\)\}/);
-    assert.match(collaborationSurfaces, /aria-label="Comment attachments"/);
-    assert.match(collaborationSurfaces, /onInspectAttachment/);
-    // Staged-but-not-yet-sent attachments are their own named list, so a person
-    // can tell what is already on the comment from what is about to be.
-    assert.match(
-      collaborationSurfaces,
-      /className="managed-attachment-list pending"\s+aria-label="New comment attachments"/,
-    );
-    assert.match(collaborationSurfaces, /pendingAttachments\.map/);
+    // Four regexes over `CollaborationSurfaces.tsx` stood here — the comment
+    // composer's own attachment markup, read as TEXT — and the name of this
+    // `it()` claimed comments with them. Both are gone: the comments panel
+    // moved into `RecordCommentsPanel`, and a text assertion cannot follow it,
+    // because it names a string rather than a behaviour. So a working
+    // re-implementation would have failed it while a copied-and-broken one
+    // passed. That guarantee is MOUNTED now, in
+    // `inspector-comments.interaction.test.tsx`: the task inspector offers a
+    // way to attach, and a file this device no longer holds says so. What is
+    // left here is the Task side, which still ships in this shape.
     assert.match(
       styles,
       /\.managed-attachment-list li\s*\{[^}]*display:\s*flex;[^}]*min-width:\s*0/s,
     );
+  });
+
+  it("leaves one comments implementation, and it is not this file", () => {
+    // A deletion is the one guarantee a mounted test cannot carry: there is
+    // nothing to open. So it is read as text, and read NARROWLY — the prose
+    // above this file names `RecordCommentsPanel`, and a looser pattern would
+    // fail on the sentence explaining why the panel left.
+    assert.doesNotMatch(collaborationSurfaces, /export const CommentsPanel/);
+    // What the Inbox imports from here is untouched by the retirement. Both
+    // are asserted because the file survives only for them — if either left,
+    // the file itself would be the thing to delete.
+    assert.match(collaborationSurfaces, /export const captureRecoveryActions/);
+    assert.match(collaborationSurfaces, /export const AttentionDetail/);
   });
 
   it("keeps Access ledgers primary and opens grant construction deliberately", () => {

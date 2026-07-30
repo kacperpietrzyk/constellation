@@ -1302,27 +1302,27 @@ try {
   })()`);
   await waitFor(
     member.client,
-    `document.querySelector(".comment-composer textarea") !== null && document.querySelector(${JSON.stringify(`.comment-composer .mention-chip[data-principal-id="${ownerConnection.context.principalId}"]`)}) !== null`,
+    `document.querySelector('textarea[aria-label="Write a comment"]') !== null && document.querySelector(${JSON.stringify(`ul[aria-label="Mention someone"] button[data-principal-id="${ownerConnection.context.principalId}"]`)}) !== null`,
     "COMMENT_COMPOSER_NOT_RENDERED",
   );
   await member.client.evaluate(`(() => {
-    const textarea = document.querySelector(".comment-composer textarea");
+    const textarea = document.querySelector('textarea[aria-label="Write a comment"]');
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(textarea, ${JSON.stringify(packagedCommentBody)});
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    document.querySelector(${JSON.stringify(`.comment-composer .mention-chip[data-principal-id="${ownerConnection.context.principalId}"]`)}).click();
+    document.querySelector(${JSON.stringify(`ul[aria-label="Mention someone"] button[data-principal-id="${ownerConnection.context.principalId}"]`)}).click();
     return true;
   })()`);
   await waitFor(
     member.client,
-    `document.querySelector(".comment-composer button[type=submit]")?.disabled === false`,
+    `document.querySelector('form[aria-label="New comment"] button[type=submit]')?.disabled === false`,
     "COMMENT_SUBMIT_DISABLED",
   );
   await member.client.evaluate(
-    `(() => { document.querySelector(".comment-composer button[type=submit]").click(); return true; })()`,
+    `(() => { document.querySelector('form[aria-label="New comment"] button[type=submit]').click(); return true; })()`,
   );
   await waitFor(
     member.client,
-    `[...document.querySelectorAll(".comment-entry p")].some((node) => node.textContent === ${JSON.stringify(packagedCommentBody)})`,
+    `[...document.querySelectorAll("[data-comment-id] p")].some((node) => node.textContent === ${JSON.stringify(packagedCommentBody)})`,
     "COMMENT_NOT_RENDERED",
   );
   const forbiddenCapture = await member.client.evaluate(
@@ -1392,7 +1392,7 @@ try {
   const attentionSelectionWasMutationFree = await first.client.evaluate(
     `(() => {
       const row = [...document.querySelectorAll("[data-inbox-row]")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
-      const exactCommentIsOpen = [...document.querySelectorAll(".comment-entry p")].some((node) => node.textContent === ${JSON.stringify(packagedCommentBody)});
+      const exactCommentIsOpen = [...document.querySelectorAll("[data-comment-id] p")].some((node) => node.textContent === ${JSON.stringify(packagedCommentBody)});
       // Stan czytamy z atrybutu danych, nie z nazwy klasy: klasa jest teraz
       // lokalna dla modułu CSS i zmienia się przy każdym buildzie.
       return row?.dataset.inboxState === "unread" && !exactCommentIsOpen;
@@ -1409,7 +1409,7 @@ try {
   })()`);
   await waitFor(
     first.client,
-    `[...document.querySelectorAll(".comment-entry p")].some((node) => node.textContent === ${JSON.stringify(packagedCommentBody)})`,
+    `[...document.querySelectorAll("[data-comment-id] p")].some((node) => node.textContent === ${JSON.stringify(packagedCommentBody)})`,
     "ATTENTION_DID_NOT_OPEN_EXACT_COMMENT_CONTEXT",
   );
   await stop(first);
@@ -1444,7 +1444,7 @@ try {
   })()`);
   await waitFor(
     member.client,
-    `document.querySelector(".comment-composer textarea")?.disabled === true`,
+    `document.querySelector('textarea[aria-label="Write a comment"]')?.disabled === true`,
     "VIEWER_COMMENT_COMPOSER_NOT_DISABLED",
   );
 

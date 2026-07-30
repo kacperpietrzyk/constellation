@@ -313,13 +313,13 @@ export interface MentionCandidate {
 // attaching would have moved the same three mounts again, and the mounts drift
 // apart on one of them.
 //
-// AN ABSENT PERMISSION MEANS WHAT THE MOUNTS DO TODAY, WHICH IS NOT "NO".
-// Two of the three mounts state neither `canComment` nor `canResolve`, so a
-// panel reading an absent prop as a refusal would tell an owner their own
-// project is read-only. Absent `canComment` therefore leaves the composer
-// working, exactly as it does now. Every control that WRITES is additionally
-// gated on the callback that performs the write, so a mount which has not been
-// taught to resolve, edit or attach shows no control for it.
+// PERMISSION AND THE TWO WRITES ARE REQUIRED PROPS, NOT DEFAULTED ONES. Every
+// record can be commented on, edited and settled, so a mount that says nothing
+// about one of them is a mount that FORGOT, and a defaulted prop turns that
+// into a capability which quietly is not there. Making them required puts the
+// compiler on it. Staging files is the exception and stays optional, because
+// not every mount reaches managed storage — and where it does not, the panel
+// says so by drawing no control rather than a dead one.
 export const RecordCommentsPanel = ({
   threads,
   recordKey,
@@ -328,7 +328,7 @@ export const RecordCommentsPanel = ({
   mentionCandidates = [],
   currentPrincipalId,
   canComment,
-  canResolve = false,
+  canResolve,
   onSubmit,
   onEdit,
   onResolve,
@@ -347,21 +347,26 @@ export const RecordCommentsPanel = ({
   /** Who this comment can wake. Empty means nobody can be named — which the
    *  composer says out loud rather than showing a picker with nothing in it. */
   readonly mentionCandidates?: readonly MentionCandidate[];
-  /** Who is reading. Editing belongs to an author, and an author may settle
-   *  their own thread without the grant that settles anybody else's. */
-  readonly currentPrincipalId?: PrincipalId | undefined;
+  /** Who is reading. The VALUE may be absent — a shell whose access slice has
+   *  not landed knows nobody yet — but the prop may not: editing belongs to an
+   *  author, and an author may settle their own thread without the grant that
+   *  settles anybody else's. */
+  readonly currentPrincipalId: PrincipalId | undefined;
   /** Kept apart from `busy` on purpose. A control disabled because a write is
    *  in flight and one disabled because the grant is read-only are different
    *  facts about the same button, and folding them together leaves a reader
    *  looking at a dead control with no reason given. */
-  readonly canComment?: boolean | undefined;
-  readonly canResolve?: boolean | undefined;
+  readonly canComment: boolean;
+  readonly canResolve: boolean;
   /** Resolves true once the write is confirmed. The draft is cleared only
    *  then, so a refused command never eats what somebody typed.
    *
    *  `parent` names the root being answered — the shell turns it into both the
    *  expected version and the stored parent, so a reply cannot be written
-   *  against a thread that moved underneath it. */
+   *  against a thread that moved underneath it. A TWO-PARAMETER FUNCTION IS
+   *  ASSIGNABLE HERE and silently drops it, landing the answer as a fresh root
+   *  under a strip promising otherwise. TypeScript cannot see that, so every
+   *  mount forwards all four arguments by hand. */
   readonly onSubmit: (
     body: string,
     mentions: readonly PrincipalId[],
@@ -369,17 +374,21 @@ export const RecordCommentsPanel = ({
     attachmentSourceIds?: readonly KnowledgeSourceId[],
   ) => Promise<boolean>;
   /** Answers true only once the edit lands, for the reason `onSubmit` does: a
-   *  refused edit has to leave the typed text where the author left it. */
-  readonly onEdit?:
+   *  refused edit has to leave the typed text where the author left it.
+   *
+   *  Undefined is a MOUNT'S ANSWER, not a missing prop: it draws no Edit and no
+   *  Unlink, so nothing offers a write the mount cannot perform. */
+  readonly onEdit:
     | ((
         comment: CommentThread,
         body: string,
         attachmentSourceIds?: readonly KnowledgeSourceId[],
       ) => Promise<boolean>)
     | undefined;
-  /** Answers whether the write landed. The older panel returned nothing here,
-   *  which left a refused resolve looking exactly like one that worked. */
-  readonly onResolve?:
+  /** Answers whether the write landed, and the panel SAYS SO when it did not.
+   *  The older panel returned nothing here, which left a refused resolve
+   *  looking exactly like one that worked. */
+  readonly onResolve:
     | ((comment: CommentThread, resolved: boolean) => Promise<boolean>)
     | undefined;
   /** Stages a file and answers with it, or with nothing when the reader backs
@@ -416,20 +425,12 @@ export const RecordCommentsPanel = ({
   const [custody, setCustody] = useState<
     Readonly<Record<string, CustodyState>>
   >({});
+  // Which thread's last settle was refused, if any. A resolve that answered
+  // `false` and said nothing left the reader looking at an unchanged thread
+  // with no account of why — the same shape as a control greyed out for no
+  // stated reason, one step later.
+  const [resolveRefused, setResolveRefused] = useState<CommentThread["id"]>();
   const [scopedTo, setScopedTo] = useState(recordKey);
-
-  // Absent is not "no": see the note above the signature.
-  const mayComment = canComment ?? true;
-  // Replying needs more than permission — it needs a mount that FORWARDS the
-  // parent, and the panel cannot see whether it does: a two-argument
-  // `onSubmit` is assignable to the four-argument shape and silently drops the
-  // third. `canComment` STATED is the proxy, because permission and the
-  // widened callback arrive together at every mount that has been converted. A
-  // mount that states nothing still holds `onSubmit(body, mentions)`, which
-  // would write the reply as a fresh root under a strip promising otherwise.
-  // WHOEVER ADDS `canComment` TO A MOUNT MUST WIDEN ITS `onSubmit` IN THE SAME
-  // EDIT.
-  const mayReply = canComment === true;
 
   // EVERY UNSENT THING IS RECORD-SCOPED. Until the legacy inspector panel
   // retires, the only thing resetting a draft is a React `key` its caller
@@ -449,6 +450,7 @@ export const RecordCommentsPanel = ({
     setStaged([]);
     setEditingId(undefined);
     setEditDrafts({});
+    setResolveRefused(undefined);
   }
 
   const showResolved = openedOn === recordKey;
@@ -513,14 +515,18 @@ export const RecordCommentsPanel = ({
   };
 
   // Unlinking IS an edit: the command carries the remaining attachment ids and
-  // the body. It sends the body the author is currently looking at, not the
-  // stored one — the older panel sent the stored body and left the editor open
-  // over text that had just been silently discarded.
+  // the body. Which body is the whole question, and it turns on whether the
+  // EDITOR IS OPEN. Open, it sends what the author is looking at — the older
+  // panel sent the stored body and rolled back text that had just been typed.
+  // Closed, it sends the STORED body, because the entry says "Draft kept" and a
+  // kept draft is one nobody published: an unrelated click on Unlink must not
+  // be what finally writes the text its author backed out of.
   const unlink = (
     comment: CommentThread,
     attachment: CommentAttachment,
   ): void => {
-    const body = bodyToSend(comment);
+    const body =
+      editingId === comment.id ? bodyToSend(comment) : comment.body.trim();
     if (body === "" || busy || onEdit === undefined) return;
     void onEdit(
       comment,
@@ -575,7 +581,7 @@ export const RecordCommentsPanel = ({
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     const body = draft.trim();
-    if (body === "" || busy || !mayComment) return;
+    if (body === "" || busy || !canComment) return;
     void onSubmit(
       body,
       mentions,
@@ -694,7 +700,7 @@ export const RecordCommentsPanel = ({
   const rootActions = (root: CommentThread): ReactNode => {
     // A settled thread offers no Reply: reopening it is the way back in, and
     // an answer written into something closed is an answer nobody reads.
-    const reply = mayReply && root.threadState === "open";
+    const reply = canComment && root.threadState === "open";
     const resolve = mayResolve(root);
     if (!reply && !resolve) return undefined;
     return (
@@ -713,13 +719,22 @@ export const RecordCommentsPanel = ({
           <button
             className={styles.action}
             disabled={busy}
-            onClick={() =>
-              void onResolve?.(root, root.threadState !== "resolved")
-            }
+            onClick={() => {
+              if (onResolve === undefined) return;
+              // The answer is READ. A refused settle leaves the thread exactly
+              // as it was, which on its own is indistinguishable from a settle
+              // that worked and a list that has not re-read yet.
+              void onResolve(root, root.threadState !== "resolved").then(
+                (done) => setResolveRefused(done ? undefined : root.id),
+              );
+            }}
             type="button"
           >
             {root.threadState === "resolved" ? "Reopen" : "Resolve"}
           </button>
+        )}
+        {resolveRefused === root.id && (
+          <span className={styles.note}>That change was refused.</span>
         )}
       </>
     );
@@ -799,7 +814,7 @@ export const RecordCommentsPanel = ({
         <textarea
           aria-label="Write a comment"
           className={styles.field}
-          disabled={!mayComment || busy}
+          disabled={!canComment || busy}
           maxLength={BODY_LIMIT}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -814,7 +829,7 @@ export const RecordCommentsPanel = ({
             }
           }}
           placeholder={
-            mayComment ? "Write a comment" : "This scope is read-only."
+            canComment ? "Write a comment" : "This scope is read-only."
           }
           rows={2}
           value={draft}
@@ -836,7 +851,7 @@ export const RecordCommentsPanel = ({
                       named ? styles.mentionChipOn : ""
                     }`}
                     data-principal-id={candidate.principalId}
-                    disabled={!mayComment || busy}
+                    disabled={!canComment || busy}
                     onClick={() =>
                       setMentions((current) =>
                         named
@@ -902,7 +917,7 @@ export const RecordCommentsPanel = ({
             <button
               className={styles.action}
               disabled={
-                !mayComment || busy || staged.length >= ATTACHMENT_LIMIT
+                !canComment || busy || staged.length >= ATTACHMENT_LIMIT
               }
               onClick={attach}
               type="button"
@@ -916,7 +931,7 @@ export const RecordCommentsPanel = ({
               reason is a dummy, and dummies are a named defect here. */}
           <button
             className={styles.submit}
-            disabled={!mayComment || busy || draft.trim() === ""}
+            disabled={!canComment || busy || draft.trim() === ""}
             type="submit"
           >
             {replyTo === undefined ? "Comment" : "Add reply"}

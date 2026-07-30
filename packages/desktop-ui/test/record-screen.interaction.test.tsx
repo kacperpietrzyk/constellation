@@ -615,10 +615,16 @@ test("the tab bar shows one panel at a time, and the count is open threads", asy
   );
   // The resolved thread is hidden behind its valve rather than absent: settled
   // work stays reachable and is never the first thing read.
+  //
+  // Scoped to the RECORD, like every neighbour above. One comments panel is on
+  // screen today, so unscoped happened to measure the right one; the shell is
+  // about to mount a second in the inspector rail, and an unscoped query would
+  // then go green on somebody else's valve while this record's was missing.
   assert.ok(
-    [...container.querySelectorAll<HTMLElement>("button")].some((button) =>
+    [...record.querySelectorAll<HTMLElement>("button")].some((button) =>
       button.textContent?.includes("1 resolved"),
     ),
+    "the record's own Comments panel does not offer the resolved valve",
   );
 });
 
