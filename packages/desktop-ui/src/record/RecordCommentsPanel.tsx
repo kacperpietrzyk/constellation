@@ -1,15 +1,18 @@
 import { useState, type FormEvent } from "react";
 
-import type { PrincipalId } from "@constellation/contracts";
+import type { KnowledgeSourceId, PrincipalId } from "@constellation/contracts";
 
 import { Icon } from "../components/Icon.js";
 import { countLabel, formatDate, formatTime } from "../i18n.js";
 import {
   buildThreads,
   commentsState,
+  type AttachmentCustody,
   type CommentActor,
+  type CommentAttachment,
   type CommentThread,
   type CommentTree,
+  type PendingAttachment,
 } from "./record-tabs.js";
 import styles from "./record-comments.module.css";
 
@@ -33,14 +36,21 @@ import styles from "./record-comments.module.css";
 // Threading, the resolved filter and the three bodies are NOT decided here.
 // They come from `record-tabs.ts`, because the count on the tab and the content
 // of the panel have to be the same reading of the same threads — two answers to
-// one question is this repo's named repeat defect.
+// one question is this repo's named repeat defect. That single reading is
+// `openRoots`, and the badge, the tree builder and the valve all go through it.
 
-// `CommentActor` and `SYSTEM_ACTOR` are declared in `record-tabs.ts`, not here:
-// the shell resolves an author from grants this panel never sees, and it is on
-// the hot path — importing them from this module would pull the panel and its
+// `CommentActor`, `SYSTEM_ACTOR` and the two attachment shapes are declared in
+// `record-tabs.ts`, not here: the SHELL resolves an author from grants this
+// panel never sees and stages the files it hands over, and the shell is on the
+// hot path — naming those shapes from this module would pull the panel and its
 // stylesheet along. Re-exported so a reader who starts at the panel still finds
-// the shape it draws.
-export type { CommentActor } from "./record-tabs.js";
+// the shapes it draws.
+export type {
+  AttachmentCustody,
+  CommentActor,
+  CommentAttachment,
+  PendingAttachment,
+} from "./record-tabs.js";
 export { SYSTEM_ACTOR } from "./record-tabs.js";
 
 /** `@Zieliński` is one mention. The class is Unicode letters, not `\w`: record
@@ -175,6 +185,17 @@ export interface MentionCandidate {
   readonly participantKind: "member" | "guest";
 }
 
+// The shape below is the whole agreement between this panel and the three
+// records that mount it, and it is settled in one step rather than grown one
+// capability at a time. Half of it is not read yet: replying, resolving,
+// editing and attaching arrive next, and each would otherwise move the same
+// three mounts again — twelve edits, and the mounts drift apart on one of them.
+//
+// Everything new is OPTIONAL, so no caller has to change to keep compiling —
+// but `canComment` and `canResolve` have NO default here on purpose. They are
+// permission, and permission that defaults to a value is permission granted by
+// a forgotten prop. Whoever wires the gate decides what an absent grant means,
+// at the point where it is finally read.
 export const RecordCommentsPanel = ({
   threads,
   recordKey,
@@ -194,12 +215,55 @@ export const RecordCommentsPanel = ({
   /** Who this comment can wake. Empty means nobody can be named — which the
    *  composer says out loud rather than showing a picker with nothing in it. */
   readonly mentionCandidates?: readonly MentionCandidate[];
+  /** Who is reading. Editing belongs to an author, and an author may settle
+   *  their own thread without the grant that settles anybody else's. */
+  readonly currentPrincipalId?: PrincipalId | undefined;
+  /** Kept apart from `busy` on purpose. A control disabled because a write is
+   *  in flight and one disabled because the grant is read-only are different
+   *  facts about the same button, and folding them together leaves a reader
+   *  looking at a dead control with no reason given. */
+  readonly canComment?: boolean | undefined;
+  readonly canResolve?: boolean | undefined;
   /** Resolves true once the write is confirmed. The draft is cleared only
-   *  then, so a refused command never eats what somebody typed. */
+   *  then, so a refused command never eats what somebody typed.
+   *
+   *  `parent` names the root being answered — the shell turns it into both the
+   *  expected version and the stored parent, so a reply cannot be written
+   *  against a thread that moved underneath it. */
   readonly onSubmit: (
     body: string,
     mentions: readonly PrincipalId[],
+    parent?: CommentThread,
+    attachmentSourceIds?: readonly KnowledgeSourceId[],
   ) => Promise<boolean>;
+  /** Answers true only once the edit lands, for the reason `onSubmit` does: a
+   *  refused edit has to leave the typed text where the author left it. */
+  readonly onEdit?:
+    | ((
+        comment: CommentThread,
+        body: string,
+        attachmentSourceIds?: readonly KnowledgeSourceId[],
+      ) => Promise<boolean>)
+    | undefined;
+  /** Answers whether the write landed. The older panel returned nothing here,
+   *  which left a refused resolve looking exactly like one that worked. */
+  readonly onResolve?:
+    | ((comment: CommentThread, resolved: boolean) => Promise<boolean>)
+    | undefined;
+  /** Stages a file and answers with it, or with nothing when the reader backs
+   *  out. Only the shell reaches managed storage; the panel never does. */
+  readonly onAttach?:
+    | (() => Promise<PendingAttachment | undefined>)
+    | undefined;
+  /** Whether this device still holds the file behind a saved attachment.
+   *  Absent means custody cannot be asked about — which the chip says, rather
+   *  than waiting forever on an answer nobody is coming to give. */
+  readonly onInspectAttachment?:
+    | ((attachment: CommentAttachment) => Promise<AttachmentCustody>)
+    | undefined;
+  readonly onRestoreAttachment?:
+    | ((attachment: CommentAttachment) => Promise<AttachmentCustody>)
+    | undefined;
   readonly busy?: boolean;
   readonly timeZone?: string | undefined;
 }) => {

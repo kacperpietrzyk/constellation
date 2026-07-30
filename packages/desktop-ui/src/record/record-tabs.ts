@@ -1,3 +1,8 @@
+import type {
+  CaptureOriginal,
+  KnowledgeSourceId,
+} from "@constellation/contracts";
+
 import type { CommentListProjection } from "../client/workflow.js";
 
 // The tab bar every record screen wears, and the counts on it.
@@ -45,6 +50,41 @@ export const restoreTab = (stored: string | undefined): RecordTab =>
 export type CommentThread = CommentListProjection["threads"][number];
 
 /**
+ * An attachment already saved on a comment, as the projection answers it.
+ *
+ * Derived, never restated. A hand-written copy of this shape is the repeat
+ * defect this repo has already paid for three times: the second spelling drifts
+ * from the first and only a strict parse at runtime says so.
+ */
+export type CommentAttachment = CommentThread["attachments"][number];
+
+/**
+ * What an inspection can say about a saved attachment's file on this device.
+ *
+ * Two answers and not three: "checking" is the panel WAITING for one of these,
+ * so it belongs to the panel rather than to the shell that answers. Admitting
+ * it here would let a caller return a state that never settles into anything.
+ */
+export type AttachmentCustody = "available" | "unavailable";
+
+/**
+ * An attachment staged in the composer and not yet written to a comment.
+ *
+ * Only the SHELL can produce one — it alone reaches managed storage — so the
+ * shape lives here beside `CommentActor` for the same reason that one does:
+ * the shell must be able to name what it hands the panel without importing the
+ * panel, which would drag the panel's stylesheet onto the hot path. The
+ * contracts import above is type-only and erases to nothing.
+ */
+export interface PendingAttachment {
+  readonly sourceId: KnowledgeSourceId;
+  readonly original: Extract<
+    CaptureOriginal,
+    { kind: "managed_file" | "screenshot" }
+  >;
+}
+
+/**
  * Who wrote a comment, already resolved.
  *
  * It lives here rather than beside the panel that draws it because the SHELL
@@ -73,6 +113,43 @@ export const SYSTEM_ACTOR: CommentActor = {
 };
 
 /**
+ * A ROOT: a comment that opens a conversation rather than answering one.
+ *
+ * `rootCommentId` is deliberately NOT consulted, and that is a proof rather
+ * than an omission. The kernel writes both fields from one ternary on the
+ * resolved parent (`application/src/wave2.ts:7503-7504`): `parentCommentId`
+ * appears only when a parent was found, and `rootCommentId` falls back to the
+ * comment's own id when it was not. Neither `editComment` nor
+ * `setCommentThreadState` can break that pairing — both spread the record whole
+ * (`domain/src/comment.ts:13, 43`) — and the store round-trips the record as
+ * one JSON payload, so nothing narrows it in transit. INVARIANT:
+ * `parentCommentId === undefined` implies `rootCommentId === id`. A root can
+ * therefore never also satisfy a foreign root's reply predicate below, and a
+ * guard against that would be defending against a shape the kernel cannot emit.
+ */
+const isRoot = (thread: CommentThread): boolean =>
+  thread.parentCommentId === undefined;
+
+/**
+ * THE reading of "still open on this record" — one function, three readers.
+ *
+ * The tab count, the tree builder and the resolved valve each used to spell
+ * this predicate out for themselves. Three copies is two chances for the badge
+ * to claim something the panel underneath it contradicts, and two answers to
+ * one question is this repo's named repeat defect. Absent threads are a reading
+ * too: a record whose comments have not loaded has nothing open, not an unknown
+ * number of open threads.
+ */
+export const openRoots = (
+  threads: readonly CommentThread[] | undefined,
+): readonly CommentThread[] =>
+  threads === undefined
+    ? []
+    : threads.filter(
+        (thread) => isRoot(thread) && thread.threadState === "open",
+      );
+
+/**
  * What the `Comments` count means, and why it is not the number of comments.
  *
  * The domain has no read state — `RecordComment` carries none — so an unread
@@ -84,13 +161,7 @@ export const SYSTEM_ACTOR: CommentActor = {
  */
 export const openThreadCount = (
   threads: readonly CommentThread[] | undefined,
-): number =>
-  threads === undefined
-    ? 0
-    : threads.filter(
-        (thread) =>
-          thread.parentCommentId === undefined && thread.threadState === "open",
-      ).length;
+): number => openRoots(threads).length;
 
 /**
  * Roots and their replies, two levels and no deeper.
@@ -111,17 +182,15 @@ export const buildThreads = (
   const byTime = [...threads].sort((left, right) =>
     left.createdAt.localeCompare(right.createdAt),
   );
-  return byTime
-    .filter((thread) => thread.parentCommentId === undefined)
-    .map((root) => ({
-      root,
-      replies: byTime.filter(
-        (candidate) =>
-          candidate.id !== root.id &&
-          (candidate.parentCommentId === root.id ||
-            candidate.rootCommentId === root.id),
-      ),
-    }));
+  return byTime.filter(isRoot).map((root) => ({
+    root,
+    replies: byTime.filter(
+      (candidate) =>
+        candidate.id !== root.id &&
+        (candidate.parentCommentId === root.id ||
+          candidate.rootCommentId === root.id),
+    ),
+  }));
 };
 
 /**
@@ -142,9 +211,13 @@ export const commentsState = (
 ): CommentsState => {
   const trees = buildThreads(threads);
   if (trees.length === 0) return { kind: "none" };
+  // Routed through `openRoots` rather than re-reading `threadState` here: the
+  // valve must hide exactly what the tab counts, and one function is the only
+  // thing that keeps that true when the definition of "open" next moves.
+  const open = new Set(openRoots(threads).map((thread) => thread.id));
   const visible = showResolved
     ? trees
-    : trees.filter((tree) => tree.root.threadState === "open");
+    : trees.filter((tree) => open.has(tree.root.id));
   if (visible.length > 0) return { kind: "threads", trees: visible };
   return { kind: "all_resolved", hidden: trees.length };
 };
