@@ -1,0 +1,122 @@
+/* Powłoka ekranu Zadań: pasek widoku i miejsce na układ. Sam układ przynosi
+   własny arkusz — tutaj jest wyłącznie to, co wspólne dla wszystkich pięciu. */
+
+.tasks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-block-size: 0;
+  /* Scaled text must not make the PAGE scroll sideways. Anything genuinely
+     wider than the window — a board of columns, a table of eight — scrolls
+     inside its own container instead. */
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-x: hidden;
+}
+
+.viewbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding-block-end: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.switcher {
+  display: flex;
+  flex-wrap: wrap;
+  min-inline-size: 0;
+  gap: var(--space-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 2px;
+}
+
+.switch {
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: var(--space-1) var(--space-3);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+/* Wybrany układ niesie tło ORAZ mocniejszy kolor pisma — nigdy sam kolor. */
+.switch[aria-pressed="true"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+  font-weight: 590;
+}
+
+.switch:focus-visible,
+.search input:focus-visible,
+.control select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.search,
+.control {
+  display: flex;
+  flex-wrap: wrap;
+  min-inline-size: 0;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.searchLabel {
+  color: var(--text-tertiary);
+}
+
+.search input,
+.control select {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-content);
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.count {
+  margin: 0;
+  margin-inline-start: auto;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.separator {
+  padding-inline: var(--space-1);
+  color: var(--text-quaternary);
+}
+
+/* Odmowa, nie pusty ekran: brak płaszczyzny pracy to inna rzecz niż zero zadań
+   i wiersz musi to powiedzieć wprost. */
+.unavailable {
+  margin: 0;
+  padding: var(--space-6);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* Wąskie okno: pasek widoku zawija się, a licznik przestaje być dosunięty do
+   prawej, bo w jednej kolumnie „do prawej" nic nie znaczy. */
+@media (width <= 48rem) {
+  .count {
+    margin-inline-start: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch {
+    animation: none;
+    transition: none;
+  }
+}

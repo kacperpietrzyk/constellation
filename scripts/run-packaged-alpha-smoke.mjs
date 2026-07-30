@@ -356,7 +356,7 @@ const rendererDiagnostics = async (client) => {
         status: text(".sync-state") ?? text(".status-line"),
         documentCanvas: document.querySelector(".document-canvas") !== null,
         documentShell: document.querySelector(".document-editor-shell") !== null,
-        listItems: document.querySelectorAll("li, .list-row").length,
+        listItems: document.querySelectorAll("li, [data-task-row], [data-inbox-row], .list-row").length,
         bodyStart: document.body?.innerHTML?.slice(0, 600) ?? null,
       });
     })()`);
@@ -1245,7 +1245,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
       })()`);
       await waitFor(
         client,
-        `[...document.querySelectorAll(".task-row strong")].some(
+        `[...document.querySelectorAll("[data-task-row] [data-row-title]")].some(
           (node) => node.textContent === ${JSON.stringify(title)}
         )`,
         "PACKAGED_ALPHA_CAPTURE_RESULT_MISSING",
@@ -1268,7 +1268,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     let searchMs;
     if (phase === "created") {
       const initialCount = await client.evaluate(
-        `document.querySelectorAll(".task-row").length`,
+        `document.querySelectorAll("[data-task-row]").length`,
       );
       if (initialCount !== 0) throw new Error("PACKAGED_ALPHA_NOT_EMPTY");
       const starterPreview = await client.evaluate(
@@ -1295,7 +1295,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
         starterPreview.counts.tasks !== 0 ||
         starterPreview.counts.links !== 0 ||
         (await client.evaluate(
-          `document.querySelectorAll(".task-row").length`,
+          `document.querySelectorAll("[data-task-row]").length`,
         )) !== 0
       ) {
         throw new Error("PACKAGED_ALPHA_STARTER_PREVIEW_MUTATED");
@@ -1595,13 +1595,13 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     }
     await waitFor(
       client,
-      `[...document.querySelectorAll(".task-row strong")].some(
+      `[...document.querySelectorAll("[data-task-row] [data-row-title]")].some(
         (node) => node.textContent === ${JSON.stringify(taskTitle)}
       )`,
       `PACKAGED_ALPHA_TASK_${phase.toUpperCase()}_MISSING`,
     );
     const taskCount = await client.evaluate(
-      `document.querySelectorAll(".task-row").length`,
+      `document.querySelectorAll("[data-task-row]").length`,
     );
     const expectedTaskCount =
       phase === "restored" || phase === "continuity" ? 1 : 2;
@@ -1611,7 +1611,7 @@ const run = async (phase, recoveryCode, expectedWorkspaceId, failpoint) => {
     if (
       phase === "restored" &&
       (await client.evaluate(
-        `[...document.querySelectorAll(".task-row strong")].some(
+        `[...document.querySelectorAll("[data-task-row] [data-row-title]")].some(
           (node) => node.textContent === ${JSON.stringify(mutationTitle)}
         )`,
       ))

@@ -9,6 +9,7 @@ import {
   QueryIdSchema,
   SpaceIdSchema,
   StrategicRecordIdSchema,
+  TaskAssignmentIdSchema,
   TaskIdSchema,
   TaskStatusIdSchema,
   WorkspaceIdSchema,
@@ -357,6 +358,18 @@ export const populatedTaskList: Projection<"task.list"> = {
         state: "active",
       },
       completionState: "open",
+      // Somebody holds this work. Without an assignment on ANY fixture task,
+      // nothing local ever rendered the owner — so the attribute a packaged
+      // smoke finds the assignee by was proved only by a twenty-minute run.
+      assignment: {
+        id: TaskAssignmentIdSchema.parse(
+          "00000000-0000-4000-8000-0000000000f1",
+        ),
+        assigneePrincipalId: principalId,
+        displayName: "Kacper",
+        availability: "active",
+        version: 1,
+      },
       attachments: [],
       createdAt: "2026-07-18T10:00:00.000Z",
       updatedAt: "2026-07-20T09:15:00.000Z",
@@ -540,11 +553,66 @@ export const populatedAttentionInbox: Projection<"attention.inbox"> = {
  * the guarantee under test only exists on a screen that has data: layout of a
  * long value, a list that groups, a control that a reference blocks.
  */
+
+// The Tasks plane reads `work.overview`, not `task.list`: the overview is
+// whole-Space and uncapped while the query pages, so a screen filtering the
+// first page would answer from a truncated set. This fixture is DERIVED from
+// the task-list one above rather than written beside it — two hand-kept copies
+// of the same tasks disagree at the first edit, and then a test proves
+// something about a workspace that does not exist.
+export const populatedWorkOverview: Projection<"work.overview"> = {
+  kind: "work.overview",
+  tasks: populatedTaskList.items.map((item) => ({
+    id: item.id,
+    title: item.title,
+    statusId: item.status.id,
+    // The overview carries the task's own triage state, which `task.list` does
+    // not project; the status definition's four-valued semantics is a different
+    // thing and must not be borrowed for it.
+    operationalState: "actionable" as const,
+    completionState: item.completionState,
+    ...(item.startAt === undefined ? {} : { startAt: item.startAt }),
+    ...(item.plannedBy === undefined ? {} : { plannedBy: item.plannedBy }),
+    ...(item.dueAt === undefined ? {} : { dueAt: item.dueAt }),
+    ...(item.priority === undefined ? {} : { priority: item.priority }),
+    ...(item.parentTaskId === undefined
+      ? {}
+      : { parentTaskId: item.parentTaskId }),
+    ...(item.calendarBlock === undefined
+      ? {}
+      : { calendarBlock: item.calendarBlock }),
+    ...(item.assignment === undefined ? {} : { assignment: item.assignment }),
+    ...(item.fields === undefined ? {} : { fields: item.fields }),
+    projectIds: [projectId],
+    version: item.version,
+    updatedAt: item.updatedAt,
+  })),
+  projects: populatedProjectList.items.map((item) => ({
+    id: item.id,
+    title: item.title,
+    intendedOutcome: item.intendedOutcome,
+    needsReview: item.needsReview,
+    lifecycle: item.lifecycle,
+    ...(item.dueAt === undefined ? {} : { dueAt: item.dueAt }),
+    version: item.version,
+  })),
+  areas: [],
+  initiatives: [],
+  links: [],
+  savedViews: [],
+  freshness: {
+    mode: "local_authoritative",
+    checkpoint: null,
+    missingCapabilities: [],
+  },
+};
+
 export const populatedShellQueries = {
   ...shellQueries,
   "workspace.bootstrapContext": projectionResponse(populatedBootstrap),
   "task.list": projectionResponse(populatedTaskList),
   "project.list": projectionResponse(populatedProjectList),
+  "work.overview": projectionResponse(populatedWorkOverview),
   "relationship.workspace": projectionResponse(populatedRelationshipWorkspace),
   "attention.inbox": projectionResponse(populatedAttentionInbox),
 };

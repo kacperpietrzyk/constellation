@@ -266,3 +266,31 @@ test("the populated fixture puts its projects on the Projects plane", async () =
     `the row carries ${rendered.length} characters of the ${longIntendedOutcome.length}-character outcome (${sharedPrefix(rendered, longIntendedOutcome)} of them from its start), so the truncation this fixture exists to expose cannot show up`,
   );
 });
+
+test("a task row names its owner where the packaged smoke reads it", async () => {
+  // The packaged hub smoke proves that an assignment made on another device
+  // shows up here and names THAT member, reading the principal off
+  // `data-assignee`. Nothing local rendered an owner at all until this fixture
+  // carried one, so that attribute was verified only by a twenty-minute run —
+  // which is how four smoke selectors cost three CI cycles.
+  await mountShell();
+  const plane = await openDestination("tasks");
+  const owners = [...plane.querySelectorAll<HTMLElement>("[data-assignee]")];
+  assert.ok(
+    owners.length > 0,
+    "no row exposed data-assignee, so the packaged smoke's assignee check has nothing to read",
+  );
+  const expected = populatedTaskList.items.find(
+    (item) => item.assignment?.assigneePrincipalId !== undefined,
+  );
+  assert.ok(expected, "the populated fixture carries no assignment to render");
+  assert.ok(
+    owners.some(
+      (node) =>
+        node.dataset.assignee === expected.assignment?.assigneePrincipalId,
+    ),
+    `the rendered owner is not the assigned principal: ${owners
+      .map((node) => node.dataset.assignee)
+      .join(", ")}`,
+  );
+});

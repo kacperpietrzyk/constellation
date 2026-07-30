@@ -156,6 +156,11 @@ const client = createScenarioClient({
               value: "MSSP",
             },
           },
+          // WYMAGANE od B2, nie opcjonalne: bez tego cały odczyt
+          // `work.overview` nie przechodzi strict-parse i płaszczyzna pracy
+          // czyta się jako niedostępna — a harness wygląda wtedy dokładnie
+          // tak, jakby ekran był zepsuty.
+          projectIds: [],
           version: 3,
           updatedAt: "2026-07-14T11:30:00.000Z",
         },

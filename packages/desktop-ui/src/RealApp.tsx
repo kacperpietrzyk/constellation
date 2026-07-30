@@ -16,7 +16,6 @@ import type {
   CaptureId,
   CommandId,
   DocumentId,
-  PrincipalId,
   ProjectId,
   RelationId,
   StrategicRecordId,
@@ -87,9 +86,9 @@ import {
   HistorySurface,
   ProjectsSurface,
   SearchOverlay,
-  TasksSurface,
   UndoDialog,
 } from "./Wave2Surfaces.js";
+import { TasksSurface } from "./tasks/TasksSurface.js";
 import {
   addWorkspaceMember,
   addComment,
@@ -113,7 +112,6 @@ import {
   revokeWorkspaceMember,
   relateTask,
   setTaskCompletion,
-  setTaskAssignment,
   setTaskStatus,
   setWorkspaceMemberAccess,
   setCommentResolved,
@@ -1913,18 +1911,17 @@ export const RealApp = ({
       <TasksSurface
         snapshot={state.snapshot}
         selectedTaskId={selectedTaskId}
-        busyTaskId={busyTaskId}
         onOpenTask={(id) => {
           const task = tasks.find((item) => item.id === id);
           openContext(taskContext(id, task?.title ?? "Task"));
         }}
         onSelectTask={selectTaskInInspector}
-        onCapture={openCapture}
+        onOpenCalendar={() => {
+          openContext(destinationContext("calendar", "Calendar"));
+        }}
         onCreateTask={async (title) => {
           if (!client) return false;
-          const result = await createTask(client, state.snapshot, {
-            title,
-          });
+          const result = await createTask(client, state.snapshot, { title });
           if (result.kind === "success") {
             await refreshAfter("Task created.");
             selectTaskInInspector(result.data.taskId);
@@ -1969,25 +1966,36 @@ export const RealApp = ({
             else showFailure(result);
           });
         }}
-        onSetAssignment={(id: TaskId, principalId: PrincipalId | undefined) => {
+        onPlanOnDay={(id, dayKey) => {
           const task = tasks.find((item) => item.id === id);
           if (!client || !task) return;
-          if (principalId === undefined && task.assignment === undefined)
-            return;
           setBusyTaskId(id);
-          void setTaskAssignment(
-            client,
-            state.snapshot,
-            task,
-            principalId,
-          ).then(async (result) => {
+          // The whole point of the gesture: it writes `startAt` and says
+          // nothing about `dueAt`. A plan is this person's decision about when
+          // they will get to the work; a deadline is somebody else's promise,
+          // and dragging a card never moves one.
+          // The day comes from the gesture; the time of day comes from the
+          // workspace's working day, never from a number written here. Nine
+          // o'clock in the code is exactly the hardcoded default B10 removed.
+          const dayStart = instantForZonedDate(
+            dayKey,
+            state.snapshot.bootstrap.workspace.timezone,
+            "start",
+          );
+          if (dayStart === undefined) {
             setBusyTaskId(undefined);
-            if (result.kind === "success")
-              await refreshAfter(
-                principalId === undefined
-                  ? "Assignee removed."
-                  : "Assignee set.",
-              );
+            return;
+          }
+          const startAt = new Date(
+            Date.parse(dayStart) +
+              state.snapshot.bootstrap.workspace.workingDay.startMinute *
+                60_000,
+          ).toISOString();
+          void updateTaskDetails(client, state.snapshot, id, task.version, {
+            startAt,
+          }).then(async (result) => {
+            setBusyTaskId(undefined);
+            if (result.kind === "success") await refreshAfter("Task planned.");
             else showFailure(result);
           });
         }}

@@ -128,25 +128,68 @@ const sweep = async (browser, { width, fontSize }) => {
     );
     const results = [];
     for (const id of ids) {
-      document.querySelector(`.nav-item[data-surface="${id}"]`)?.click();
+      // Settings is a MODE: entering it replaces the left column, so the nav
+      // item for the next destination is not there to click. Without leaving
+      // first, every destination after Settings measured Settings again — the
+      // sweep reported thirteen surfaces while looking at one. Found by a
+      // guard that asked whether the lens sweep had measured anything at all.
+      const back = document.querySelector("[data-settings-back]");
+      if (back instanceof HTMLElement) {
+        back.click();
+        await frame();
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      const target = document.querySelector(`.nav-item[data-surface="${id}"]`);
+      if (!(target instanceof HTMLElement)) {
+        results.push({
+          surface: id,
+          present: false,
+          surfaceWidth: 0,
+          surfaceClientWidth: 0,
+          documentWidth: document.documentElement.scrollWidth,
+          viewportWidth: window.innerWidth,
+        });
+        continue;
+      }
+      target.click();
       await frame();
       await new Promise((resolve) => setTimeout(resolve, 700));
       await frame();
       const work = document.querySelector('#main-content[role="tabpanel"]');
-      const surface = [...(work?.children ?? [])].find(
-        (element) =>
-          element.getClientRects().length > 0 &&
-          !element.classList.contains("shell-tabbar") &&
-          !element.classList.contains("capture-dock"),
-      );
-      results.push({
-        surface: id,
-        present: surface !== undefined,
-        surfaceWidth: surface?.scrollWidth ?? 0,
-        surfaceClientWidth: surface?.clientWidth ?? 0,
-        documentWidth: document.documentElement.scrollWidth,
-        viewportWidth: window.innerWidth,
-      });
+      // Re-found on every measurement, never captured once: switching lens
+      // replaces the drawn element, so a stale reference would report the
+      // geometry of the layout that just left.
+      const measure = (label) => {
+        const drawn = [...(work?.children ?? [])].find(
+          (element) =>
+            element.getClientRects().length > 0 &&
+            !element.classList.contains("shell-tabbar") &&
+            !element.classList.contains("capture-dock"),
+        );
+        results.push({
+          surface: label,
+          present: drawn !== undefined,
+          surfaceWidth: drawn?.scrollWidth ?? 0,
+          surfaceClientWidth: drawn?.clientWidth ?? 0,
+          documentWidth: document.documentElement.scrollWidth,
+          viewportWidth: window.innerWidth,
+        });
+      };
+      measure(id);
+      // A destination can carry several LENSES over the same records, and the
+      // widest of them — a board of columns, a table of eight — is exactly
+      // where a narrow window or scaled text overflows. Sweeping only the
+      // default lens would report a pass for geometry nobody measured.
+      const lenses = [...(work?.querySelectorAll("[data-layout]") ?? [])];
+      for (const lens of lenses) {
+        const label = lens.getAttribute("data-layout");
+        if (label === null) continue;
+        lens.click();
+        await frame();
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        await frame();
+        measure(`${id}:${label}`);
+      }
     }
     return { ids, results };
   }, fontSize);
@@ -155,6 +198,18 @@ const sweep = async (browser, { width, fontSize }) => {
     failures.push({
       surface: "-",
       reason: `only ${measured.ids.length} destinations rendered — an empty sweep is a broken measurement, not a pass`,
+    });
+  }
+  // The lens sweep is the part most likely to measure nothing while looking
+  // green: a destination whose data slice is unavailable renders a refusal with
+  // no layout buttons at all, so the loop finds none and the pass is vacuous.
+  const lensesMeasured = measured.results.filter((entry) =>
+    entry.surface.includes(":"),
+  ).length;
+  if (lensesMeasured < 4) {
+    failures.push({
+      surface: "-",
+      reason: `only ${lensesMeasured} lenses were measured — a destination with several layouts drew none of them, so this pass covers geometry nobody looked at`,
     });
   }
   for (const entry of measured.results) {
