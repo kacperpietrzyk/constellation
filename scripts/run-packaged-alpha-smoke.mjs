@@ -356,7 +356,7 @@ const rendererDiagnostics = async (client) => {
         status: text(".sync-state") ?? text(".status-line"),
         documentCanvas: document.querySelector(".document-canvas") !== null,
         documentShell: document.querySelector(".document-editor-shell") !== null,
-        listItems: document.querySelectorAll("li, .list-row").length,
+        listItems: document.querySelectorAll("li, [data-task-row], [data-inbox-row], .list-row").length,
         bodyStart: document.body?.innerHTML?.slice(0, 600) ?? null,
       });
     })()`);

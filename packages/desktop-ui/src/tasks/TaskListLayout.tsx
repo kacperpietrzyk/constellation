@@ -170,7 +170,20 @@ export const TaskListLayout = ({
                     ? "—"
                     : formatDate(row.task.dueAt, prose.timeZone)}
                 </span>
-                <span className={styles.owner}>
+                {/* The owner is READ-ONLY here: a row says who holds the work,
+                    the record screen is where it changes hands. The principal
+                    is exposed only when the projection allowed this reader to
+                    know it — a redacted assignee has a name and no id, and
+                    this attribute must not invent one. */}
+                <span
+                  className={styles.owner}
+                  {...(row.task.assignment?.assigneePrincipalId === undefined
+                    ? {}
+                    : {
+                        "data-assignee":
+                          row.task.assignment.assigneePrincipalId,
+                      })}
+                >
                   {row.task.assignment?.displayName ?? ""}
                 </span>
               </div>

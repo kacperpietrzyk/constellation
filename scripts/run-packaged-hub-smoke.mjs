@@ -169,7 +169,7 @@ const rendererDiagnostics = async (client) => {
         status: text(".sync-state") ?? text(".status-line"),
         documentCanvas: document.querySelector(".document-canvas") !== null,
         documentShell: document.querySelector(".document-editor-shell") !== null,
-        listItems: document.querySelectorAll("li, .list-row").length,
+        listItems: document.querySelectorAll("li, [data-task-row], [data-inbox-row], .list-row").length,
         bodyStart: document.body?.innerHTML?.slice(0, 600) ?? null,
       });
     })()`);
@@ -1224,7 +1224,13 @@ try {
   );
   await waitFor(
     member.client,
-    `[...document.querySelectorAll(".task-assignee")].some((select) => select.value === ${JSON.stringify(memberPrincipalId)})`,
+    // The row shows who holds the work and no longer offers a select to change
+    // it — that moved to the record screen. The guarantee is unchanged and
+    // asserted just as exactly: the assignment made on the other device is
+    // rendered here and names THAT member. The attribute exists only when the
+    // projection allowed this reader to know the principal, so this also
+    // exercises the redaction the Work overview gained.
+    `[...document.querySelectorAll("[data-assignee]")].some((node) => node.dataset.assignee === ${JSON.stringify(memberPrincipalId)})`,
     "MEMBER_ASSIGNMENT_NOT_RENDERED",
   );
 
@@ -1288,7 +1294,10 @@ try {
   );
   await member.client.evaluate(`(() => {
     const row = [...document.querySelectorAll("[data-task-row]")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
-    row.querySelector(".task-copy").click();
+    // Selecting a row IS clicking it now; the rebuilt row has no separate copy
+    // button, because a row that needs a button to be opened is a row with two
+    // ways to do one thing.
+    row.click();
     return true;
   })()`);
   await waitFor(
@@ -1427,7 +1436,10 @@ try {
   );
   await member.client.evaluate(`(() => {
     const row = [...document.querySelectorAll("[data-task-row]")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
-    row.querySelector(".task-copy").click();
+    // Selecting a row IS clicking it now; the rebuilt row has no separate copy
+    // button, because a row that needs a button to be opened is a row with two
+    // ways to do one thing.
+    row.click();
     return true;
   })()`);
   await waitFor(

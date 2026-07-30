@@ -430,7 +430,7 @@ test("every row anchor the packaged smokes rely on is one the renderer still wri
   // Only ROW anchors, deliberately: they are the ones a screen rewrite moves,
   // and a guard that tried to cover every selector in a 2 000-line smoke would
   // be a second copy of the smoke.
-  const { readFileSync } = await import("node:fs");
+  const { readFileSync, readdirSync } = await import("node:fs");
   const path = await import("node:path");
   // Resolved from the repo root, not relative to this file: the compiled test
   // sits several directories deeper than the source, so a relative path is
@@ -490,6 +490,54 @@ test("every row anchor the packaged smokes rely on is one the renderer still wri
     ),
   );
   const written = sources.join("\n");
+  // Beyond the row anchors: EVERY class and data attribute the smokes query by
+  // must be something the renderer writes. Three CI cycles were spent finding
+  // these one at a time — `.task-row`, then the same class in the second script,
+  // then `.task-assignee` and `.task-copy`. One sweep costs nothing.
+  const rendererSources: string[] = [];
+  const walk = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".tsx") || entry.name.endsWith(".ts"))
+        rendererSources.push(readFileSync(full, "utf8"));
+    }
+  };
+  walk(path.join(root, "packages", "desktop-ui", "src"));
+  const renderer = rendererSources.join("\n");
+  const queried = new Set<string>();
+  for (const relative of scripts) {
+    const source = readFileSync(relative, "utf8");
+    for (const match of source.matchAll(
+      /querySelector(?:All)?\((?:`|")([^`"]{1,160})/gu,
+    )) {
+      const selector = match[1] ?? "";
+      for (const token of [
+        ...selector.matchAll(/\[([a-z][a-z0-9-]*)[\]=]/gu),
+        ...selector.matchAll(/\.([a-z][a-z0-9-]{2,})/gu),
+      ])
+        queried.add(token[1]!);
+    }
+  }
+  assert.ok(
+    queried.size >= 10,
+    `read only ${queried.size} selectors out of the smoke scripts — an empty read is a broken guard, not a pass`,
+  );
+  // One exemption, named with its reason rather than silently filtered:
+  // `.list-row` is a legacy alternative inside a DIAGNOSTIC union that counts
+  // rows for an error message. It asserts nothing, so it cannot silently stop
+  // matching — and the union beside it now names the anchors the screens
+  // actually write, which is why that counter stopped reporting zero.
+  const diagnosticOnly = new Set(["list-row"]);
+  const orphaned = [...queried].filter(
+    (token) => !diagnosticOnly.has(token) && !renderer.includes(token),
+  );
+  assert.deepEqual(
+    orphaned,
+    [],
+    `the packaged smokes query by names no renderer source writes: ${orphaned.join(", ")}`,
+  );
+
   for (const anchor of ["data-task-row", "data-row-title"]) {
     assert.ok(
       anchors.has(anchor),
