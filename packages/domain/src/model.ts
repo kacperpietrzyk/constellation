@@ -414,7 +414,14 @@ export interface TaskAssignment {
 
 export type CommentTarget =
   | { readonly kind: "task"; readonly taskId: TaskId }
-  | { readonly kind: "project"; readonly projectId: ProjectId };
+  | { readonly kind: "project"; readonly projectId: ProjectId }
+  // An Organization is a StrategicRecord, so this id names a record of some
+  // strategic kind and the kind it names is checked when the target is
+  // resolved, not by the type.
+  | {
+      readonly kind: "organization";
+      readonly organizationId: StrategicRecordId;
+    };
 
 export type AttentionDestination =
   | CommentTarget

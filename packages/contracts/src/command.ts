@@ -2063,9 +2063,23 @@ export const TaskUnassignCommandSchema = CommandMetadataSchema.extend({
     .strict(),
 }).strict();
 
-const CommentTargetSchema = z.discriminatedUnion("kind", [
+// Exported so the read side names the same three kinds by importing this,
+// rather than restating them: a target a caller may write to and a target it
+// may then read back have to be the same set, and two copies is how they stop
+// being (ADR-045).
+export const CommentTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("task"), taskId: TaskIdSchema }).strict(),
   z.object({ kind: z.literal("project"), projectId: ProjectIdSchema }).strict(),
+  // An Organization is the third record kind with a screen of its own, and the
+  // `Comments` tab is one tab across all three. It is a StrategicRecord, so the
+  // id alone does not say which kind it names — the kernel refuses a target
+  // that resolves to a Person, an Opportunity or any other strategic kind.
+  z
+    .object({
+      kind: z.literal("organization"),
+      organizationId: StrategicRecordIdSchema,
+    })
+    .strict(),
 ]);
 
 export const CommentAddCommandSchema = CommandMetadataSchema.extend({

@@ -1331,6 +1331,13 @@ export const RealApp = ({
       openContext(
         projectContext(destination.projectId, project?.title ?? item.title),
       );
+    } else if (destination.kind === "organization") {
+      // Wzmianka na organizacji prowadzi na ekran Organizacji z zaznaczonym
+      // rekordem. Bez tej gałęzi wpadałaby w `else` na końcu łańcucha i
+      // otwierała HISTORIĘ WRZUTEK — cel bez związku z tym, w co się kliknęło,
+      // i to bez ani jednego błędu kompilacji.
+      setSelectedStrategicId(destination.organizationId);
+      openContext(destinationContext("organizations", "Organizations"));
     } else if (destination.kind === "document") {
       openContext(destinationContext("library", "Library"));
     } else {

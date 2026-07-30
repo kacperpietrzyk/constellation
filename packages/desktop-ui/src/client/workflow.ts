@@ -79,6 +79,20 @@ export type RelationshipWorkspaceProjection =
   Projection<"relationship.workspace">;
 export type RadarReviewProjection = Projection<"radar.review">;
 export type CommentTarget = CommentListProjection["target"];
+
+/**
+ * The record a comment hangs on, by whichever id its kind carries.
+ *
+ * One definition, because this is the value `expectedVersions` is keyed by: a
+ * second reading that disagreed would send a version under the wrong id and the
+ * kernel would answer `record.version_conflict` for a record nobody touched.
+ */
+export const commentTargetId = (target: CommentTarget): string =>
+  target.kind === "task"
+    ? target.taskId
+    : target.kind === "project"
+      ? target.projectId
+      : target.organizationId;
 export type ManagedAttachment =
   TaskListProjection["items"][number]["attachments"][number];
 
@@ -3171,8 +3185,7 @@ export const addComment = (
     client,
     {
       ...commandBase(snapshot.bootstrap.workspace.id, {
-        [target.kind === "task" ? target.taskId : target.projectId]:
-          targetVersion,
+        [commentTargetId(target)]: targetVersion,
         ...(parent === undefined ? {} : { [parent.id]: parent.version }),
         ...(snapshot.knowledge.kind !== "ready"
           ? {}
