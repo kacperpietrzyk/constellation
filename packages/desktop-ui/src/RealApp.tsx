@@ -4338,9 +4338,19 @@ export const RealApp = ({
                 the selected one — a task selected from Today, Inbox or Calendar
                 has no record on screen to defer to, and would lose its comments
                 entirely. Every other rail section stays: the record reads, the
-                rail edits. */}
+                rail edits.
+
+                `record` is the whole test, and reading `taskId` alone was not
+                it: a signal activated from the operating system navigates to a
+                task context WITHOUT asking for the record, so the rail hid its
+                comments and no record appeared to hold them — the packaged hub
+                smoke opened an exact comment context and found neither. The
+                same flag that decides whether the record is drawn has to decide
+                whether the rail defers to it, or the two disagree. */}
             {!(
-              surface === "tasks" && activeContext.taskId === selectedTask.id
+              surface === "tasks" &&
+              activeContext.record === true &&
+              activeContext.taskId === selectedTask.id
             ) && (
               <section className="inspector-section">
                 <p className="section-label">Comments</p>

@@ -1042,6 +1042,47 @@ test("a comment written here is stored against the task on screen", async () => 
   );
 });
 
+test("a task reached without asking for the record keeps its comments in the rail", async () => {
+  // The rail defers its Comments to the record so there are not two live
+  // composers a hand apart. What it must defer to is the record BEING THERE.
+  //
+  // A signal activated from the operating system, a capture that just became a
+  // task and a row opened from Today all navigate to a task CONTEXT without
+  // asking for the record. Keyed on the context's task id alone, the rail hid
+  // its comments and no record appeared to hold them: the packaged hub smoke
+  // opened an exact comment context and found neither. One flag has to decide
+  // both, or the two disagree and the conversation falls between them.
+  await mountShell();
+  const today = [
+    ...container.querySelectorAll<HTMLElement>(".nav-item[data-surface]"),
+  ].find((item) => item.dataset["surface"] === "today");
+  assert.ok(today, "the shell offers no Today destination to open a task from");
+  await act(async () => {
+    today.click();
+  });
+  await waitForCondition(
+    () => container.querySelector("[data-planned-row]") !== null,
+    "Today drew no planned work, so this measures nothing",
+  );
+  const planned = container.querySelector<HTMLElement>("[data-planned-row]");
+  assert.ok(planned, "Today drew no planned work, so this measures nothing");
+  await act(async () => {
+    planned.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+
+  assertNoNode(
+    container.querySelector('[data-record-kind="task"]'),
+    "opening a task from Today promoted it to a record nobody asked for",
+  );
+  await waitForCondition(
+    () => composers().length > 0,
+    "a task reached without the record lost its comments from both places",
+  );
+});
+
 test("a task past the capped page still takes a comment, or offers no field", async () => {
   // `task.list` pages at fifty or a hundred; `work.overview` does not. So a
   // record can open on a task the capped list never returned — and the version
