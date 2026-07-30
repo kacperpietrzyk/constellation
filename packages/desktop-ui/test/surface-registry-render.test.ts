@@ -420,3 +420,84 @@ test("no two destinations render the same screen", async () => {
       .join("; ")}`,
   );
 });
+
+test("every row anchor the packaged smokes rely on is one the renderer still writes", async () => {
+  // Two twenty-minute CI cycles were spent discovering, twice, that a packaged
+  // smoke was looking for `.task-row` — a class the rebuilt Tasks screen does
+  // not render. The scripts do not lie about what they look for, so this reads
+  // them and asks the renderer whether it still writes it.
+  //
+  // Only ROW anchors, deliberately: they are the ones a screen rewrite moves,
+  // and a guard that tried to cover every selector in a 2 000-line smoke would
+  // be a second copy of the smoke.
+  const { readFileSync } = await import("node:fs");
+  const path = await import("node:path");
+  // Resolved from the repo root, not relative to this file: the compiled test
+  // sits several directories deeper than the source, so a relative path is
+  // right in one of the two places it runs from and wrong in the other.
+  const root = path.resolve(process.cwd());
+  const scripts = [
+    path.join(root, "scripts", "run-packaged-alpha-smoke.mjs"),
+    path.join(root, "scripts", "run-packaged-hub-smoke.mjs"),
+  ];
+  const anchors = new Set<string>();
+  for (const relative of scripts) {
+    const source = readFileSync(relative, "utf8");
+    // Every `[data-…row…]` the script queries by, not a hand-written list of
+    // the ones we happen to remember: a compound selector carries two, and the
+    // next screen may add a third.
+    for (const match of source.matchAll(/\[(data-[a-z-]*row[a-z-]*)\]/gu))
+      anchors.add(match[1]!);
+    // A row anchor written as a CLASS is the defect itself: a class belongs to
+    // styling and moves when styling moves.
+    assert.equal(
+      /querySelectorAll\("\.task-row/u.test(source),
+      false,
+      `${relative} still finds rows by a CSS class — anchor on a data attribute the screen owns instead`,
+    );
+  }
+  assert.ok(
+    anchors.size >= 2,
+    `read no row anchors out of the smoke scripts (${[...anchors].join(", ")}) — an empty read is a broken guard, not a pass`,
+  );
+
+  // Read against the layout SOURCE rather than a render, deliberately. What is
+  // being guarded here IS a literal string shared between two files that never
+  // meet — the smoke names an attribute, the layout writes it — so comparing
+  // the two texts is the honest instrument, not a proxy for one. A render would
+  // also need a populated workspace, and an empty one draws no rows at all.
+  const sources: string[] = [];
+  // Scoped to the Tasks screen, not the whole renderer. A repo-wide scan passes
+  // while the Tasks rows lose their anchor, because another screen happens to
+  // write the same attribute — proved by breaking it: renaming the anchor on the
+  // Tasks row left a repo-wide check green.
+  // Scoped to the DEFAULT lens, which is the only one a packaged smoke ever
+  // sees: it opens Tasks and reads rows without touching the layout switcher.
+  // Wider scopes were tried and both went green while the default lens lost its
+  // anchor — the repo because another screen writes the same attribute, the
+  // tasks directory because another LENS does.
+  sources.push(
+    readFileSync(
+      path.join(
+        root,
+        "packages",
+        "desktop-ui",
+        "src",
+        "tasks",
+        "TaskListLayout.tsx",
+      ),
+      "utf8",
+    ),
+  );
+  const written = sources.join("\n");
+  for (const anchor of ["data-task-row", "data-row-title"]) {
+    assert.ok(
+      anchors.has(anchor),
+      `no packaged smoke looks for ${anchor} any more — if the smoke stopped using it, drop it here too rather than guarding a dead string`,
+    );
+    assert.ok(
+      written.includes(anchor),
+      `a packaged smoke finds task rows by ${anchor}, which the Tasks screen no longer writes`,
+    );
+  }
+});

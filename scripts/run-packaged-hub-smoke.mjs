@@ -426,7 +426,7 @@ const submitCapture = async (client, title) => {
   );
   await waitFor(
     client,
-    `[...document.querySelectorAll(".task-row strong")].some((node) => node.textContent === ${JSON.stringify(title)})`,
+    `[...document.querySelectorAll("[data-task-row] [data-row-title]")].some((node) => node.textContent === ${JSON.stringify(title)})`,
     "CAPTURE_RESULT_MISSING",
   );
 };
@@ -1283,11 +1283,11 @@ try {
   })()`);
   await waitFor(
     member.client,
-    `[...document.querySelectorAll(".task-row")].some((row) => row.textContent.includes(${JSON.stringify(sharedTask.title)}))`,
+    `[...document.querySelectorAll("[data-task-row]")].some((row) => row.textContent.includes(${JSON.stringify(sharedTask.title)}))`,
     "COMMENT_TARGET_NOT_RENDERED",
   );
   await member.client.evaluate(`(() => {
-    const row = [...document.querySelectorAll(".task-row")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
+    const row = [...document.querySelectorAll("[data-task-row]")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
     row.querySelector(".task-copy").click();
     return true;
   })()`);
@@ -1422,11 +1422,11 @@ try {
   );
   await waitFor(
     member.client,
-    `[...document.querySelectorAll(".task-row")].some((row) => row.textContent.includes(${JSON.stringify(sharedTask.title)}))`,
+    `[...document.querySelectorAll("[data-task-row]")].some((row) => row.textContent.includes(${JSON.stringify(sharedTask.title)}))`,
     "VIEWER_COMMENT_TARGET_NOT_RENDERED",
   );
   await member.client.evaluate(`(() => {
-    const row = [...document.querySelectorAll(".task-row")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
+    const row = [...document.querySelectorAll("[data-task-row]")].find((candidate) => candidate.textContent.includes(${JSON.stringify(sharedTask.title)}));
     row.querySelector(".task-copy").click();
     return true;
   })()`);
@@ -1906,7 +1906,7 @@ try {
   );
   await waitFor(
     second.client,
-    `[...document.querySelectorAll(".task-row strong")].some((node) => node.textContent === ${JSON.stringify(offlineTitle)})`,
+    `[...document.querySelectorAll("[data-task-row] [data-row-title]")].some((node) => node.textContent === ${JSON.stringify(offlineTitle)})`,
     "SECOND_DEVICE_DID_NOT_CONVERGE",
   );
   if (firstStatus.descriptor.deviceId === secondStatus.descriptor.deviceId)
