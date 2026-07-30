@@ -1,0 +1,541 @@
+/* The project record's header and Overview panel.
+
+   Every responsive rule here is a CONTAINER query, and none is a viewport
+   query. The canvas this screen lives on is narrowed by the inspector when it
+   opens, and a viewport query cannot see that: the window stays the same width
+   while the record loses a fifth of it, so a viewport rule would hold the
+   two-column body together long after there is no room for it.
+
+   Every colour and every step comes from a token. An undefined `var(--…)`
+   resolves quietly to transparent or inherit and unstyles real UI without
+   erroring, so a name that does not resolve is a silent regression. */
+
+/* ── HEADER — one sentence, not a card ─────────────────────────────────── */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+/* The record names itself once, at level one. Everything else on the screen
+   is a section of it. */
+.title {
+  margin: 0;
+  min-inline-size: 0;
+  color: var(--text-primary);
+  font-size: var(--text-2xl);
+  font-weight: 580;
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+}
+
+/* Health and the deadline sit on ONE line: what is happening, then with whom
+   and by when. Wrapping rather than truncating — the reason is the half of the
+   state that carries information, and clipping it leaves a badge. */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  min-inline-size: 0;
+  font-size: var(--text-sm);
+}
+
+/* The state as it arrives from the reading. Colour only reinforces: the label
+   stands here in words, and the mark differs by SHAPE. */
+.state {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.mark {
+  font-size: var(--text-xs);
+  line-height: 1;
+}
+
+.state_risk {
+  color: var(--status-error);
+  font-weight: 500;
+}
+
+.state_watch {
+  color: var(--status-warning);
+}
+
+/* Waiting gets no warning colour. Nothing is at risk — the work simply is not
+   with you, and colouring it as a warning would say otherwise. */
+.state_waiting {
+  color: var(--text-secondary);
+}
+
+.state_good {
+  color: var(--text-tertiary);
+}
+
+.state_none {
+  color: var(--text-disabled);
+}
+
+.why {
+  min-inline-size: 0;
+  color: var(--text-tertiary);
+}
+
+.gap {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+/* A chip is a control when there is somewhere to go and plain text when there
+   is not. Both look the same until you hover one of them. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-inline-size: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font: inherit;
+  white-space: nowrap;
+}
+
+/* The name shortens, the chip does not clip. `text-overflow` does nothing on a
+   flex container, so a long client name would be cut mid-letter with no sign
+   that anything was removed — the ellipsis has to sit on a block child. */
+.chipLabel {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button.chip {
+  cursor: pointer;
+}
+
+button.chip:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.chip svg {
+  flex: none;
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
+}
+
+/* A dashed outline says "nothing is here" without a sentence saying it. */
+.chipDashed {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-full);
+  color: var(--text-disabled);
+  white-space: nowrap;
+}
+
+.due {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sep {
+  color: var(--text-quaternary);
+}
+
+/* ── OVERVIEW PANEL ────────────────────────────────────────────────────── */
+
+/* The container context for everything below. It is established HERE rather
+   than borrowed from an ancestor so the two-column body collapses against the
+   width it actually has, whatever the shell around it is doing. */
+.overview {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-inline-size: 0;
+
+  /* The reading measure. The project document limits its LINE, never its
+     height — see `.prose`. Declared here because no stylesheet in the package
+     declares it yet; it belongs in the token contract, where the comments
+     panel can read the same value instead of choosing its own. */
+}
+
+/* ── "Does it still fit" — the band ────────────────────────────────────── */
+
+/* Full width, and read ACROSS. It is the only decision number on the screen;
+   in a narrow column beside the text the parts stack one under another and
+   stop adding up to a sentence. */
+.fit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-inline-size: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.fitHeading {
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 590;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.fitLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  min-inline-size: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Both emphasised parts of the line share one weight, and neither takes it
+   from a `b` element rule: an element rule outranks a class, so a tone set by
+   class would lose its colour to it without anything looking wrong. */
+.fitCount,
+.fitStrong {
+  color: var(--text-primary);
+  font-weight: 590;
+}
+
+.fitQuiet {
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+/* A bar of COMPOSITION, not of progress: on real work almost nothing is
+   closed, so a percentage says nothing and where the work stands says
+   everything. */
+.bar {
+  display: flex;
+  min-inline-size: 0;
+  block-size: 0.5rem;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+}
+
+.bar_done {
+  background: var(--status-success);
+}
+
+/* The segment this band exists to show, told by its stripes as well as its
+   colour — it must not be the one thing here that needs colour vision. */
+.bar_held {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--status-warning) 0 0.1875rem,
+    var(--status-warning-bg) 0.1875rem 0.375rem
+  );
+}
+
+.bar_open {
+  background: var(--border-strong);
+}
+
+/* Horizontal, because the band is horizontal. A vertical list under a
+   horizontal bar makes you read the same fact twice in two directions. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Zero does not vanish, it dims. "0 closed" is an answer; a row that is not
+   there is a question the reader has to ask twice. */
+.legendZero {
+  color: var(--text-disabled);
+}
+
+.legendZero .swatch {
+  opacity: 0.35;
+}
+
+.swatch {
+  flex: none;
+  inline-size: 0.625rem;
+  block-size: 0.625rem;
+  border-radius: var(--radius-sm);
+}
+
+/* ── TWO-COLUMN BODY ───────────────────────────────────────────────────── */
+
+/* The document takes the remaining width and the rail is fixed. Pinning the
+   COLUMN to the reading measure instead leaves dead space beside the rail and
+   makes the band above hang in mid-air. */
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17rem;
+  align-items: start;
+  gap: var(--space-8);
+  min-inline-size: 0;
+}
+
+.doc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-inline-size: 0;
+}
+
+.docHeading {
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 590;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+/* The BODY of the project, not a teaser of one. The LINE is limited and the
+   height deliberately is not: there is no clamp, no max-block-size and no
+   expander, because a real intended outcome runs several paragraphs and
+   hiding them behind a control is what this screen was rebuilt to stop.
+   `pre-wrap` keeps the writer's own line breaks — re-flowing them is editing
+   somebody's text. */
+.prose {
+  max-inline-size: var(--surface-read);
+  min-inline-size: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.prose p {
+  margin: 0 0 var(--space-4);
+}
+
+.prose p:last-child {
+  margin-block-end: 0;
+}
+
+/* A missing outcome is its own state — absent, not empty. The dashed border
+   says the space is meant to hold something. */
+.docEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: var(--space-3);
+  max-inline-size: var(--surface-read);
+  padding: var(--space-4);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.docEmpty p {
+  margin: 0;
+}
+
+.docEmpty b {
+  color: var(--text-primary);
+}
+
+.docEmptyAction {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.docEmptyAction:hover {
+  background: var(--surface-hover);
+}
+
+/* ── RAIL — exits only ─────────────────────────────────────────────────── */
+
+/* Nothing here is to be read, everything is to be clicked, which is exactly
+   why narrow costs nothing. */
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-inline-size: 0;
+  padding-inline-start: var(--space-5);
+  border-inline-start: 1px solid var(--border-subtle);
+}
+
+.railSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.railHeading {
+  margin: 0 0 var(--space-1);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 590;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+/* Icon, content, arrow. The same geometry whether the row is a button or a
+   flat row, so a row with nowhere to go does not read as broken — it reads as
+   a fact that happens not to be a door. */
+.railRow {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr) 0.75rem;
+  align-items: center;
+  gap: var(--space-2);
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: start;
+}
+
+button.railRow {
+  cursor: pointer;
+}
+
+button.railRow:hover {
+  background: var(--surface-hover);
+}
+
+.railRow svg {
+  inline-size: 1rem;
+  block-size: 1rem;
+  color: var(--text-quaternary);
+}
+
+.railMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
+  min-inline-size: 0;
+}
+
+.railLabel {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.railMeta {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The arrow appears on hover and on focus and at no other time. Thirteen
+   permanent arrows down a rail read as an invoice, not as a hint. */
+.railArrow {
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+button.railRow:hover .railArrow,
+button.railRow:focus-visible .railArrow {
+  opacity: 1;
+}
+
+/* The single explicit negative on the rail: a project delivered to nobody is
+   itself a fact about the project, unlike the five absences that are simply
+   left out. */
+.railNone {
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--text-disabled);
+  font-size: var(--text-sm);
+}
+
+.prov {
+  margin: 0;
+  color: var(--text-disabled);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* One column once the canvas is narrow — which happens when the inspector
+   opens, not only when the window shrinks. The rail keeps its separation but
+   turns it through ninety degrees, because a left border on a full-width block
+   marks nothing. */
+@container (max-width: 62rem) {
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-6);
+  }
+
+  .rail {
+    padding-block-start: var(--space-5);
+    padding-inline-start: 0;
+    border-block-start: 1px solid var(--border-subtle);
+    border-inline-start: 0;
+  }
+}
+
+/* ── HOW LOUD THE TIME LEFT IS ─────────────────────────────────────────── */
+
+/* Last in the file on purpose. These carry the same weight as the base rules
+   they sit on, so the cascade decides between them by order — and a tone that
+   a base rule can silently outrank is a tone that disappears without anyone
+   seeing it go. Never the only carrier either way: the sentence beside them
+   says the same thing in words. */
+
+.left_over {
+  color: var(--status-error);
+}
+
+.left_soon {
+  color: var(--status-warning);
+}
+
+.left_unset {
+  color: var(--text-disabled);
+  font-weight: 400;
+}
+
+.left_plain {
+  color: var(--text-secondary);
+}

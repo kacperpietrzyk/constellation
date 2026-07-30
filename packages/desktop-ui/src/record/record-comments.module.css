@@ -1,0 +1,252 @@
+/* The Comments tab. Every colour and step comes from a token: an undefined
+   `var(--…)` resolves quietly to transparent/inherit and unstyles real UI,
+   which typecheck and the bundler both let through.
+
+   There is no viewport query on this screen. The canvas is narrowed by the
+   open inspector (21rem), which a viewport query cannot see, so anything that
+   has to react to width reacts to the CONTAINER — and everything here reflows
+   by wrapping instead, which needs no query at all. */
+
+/* An agent's comment is often a whole paragraph, so the panel is capped at the
+   reading measure rather than the width of the canvas. The cap is on the LINE;
+   nothing here limits height. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-inline-size: var(--surface-read);
+  min-inline-size: 0;
+}
+
+.valve {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.toggle {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+}
+
+.toggle:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.threads {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-inline-size: 0;
+}
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+/* Two levels and no deeper. The indent is a hairline rather than a stack of
+   margins, so a long reply keeps the same reading measure as its root. */
+.replies {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 0;
+  margin-inline-start: var(--space-4);
+  border-inline-start: 1px solid var(--border-subtle);
+  padding-inline-start: var(--space-3);
+}
+
+.entry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 0;
+  border-inline-start: 2px solid transparent;
+  padding: var(--space-2) var(--space-3);
+}
+
+/* Blue is this product's collaboration identity, and here it says "an agent
+   wrote this": a left border and a tint, carried by the word `agent` beside
+   the name so colour is never the only thing telling them apart. Humans stay
+   neutral — the difference has to be readable at a glance, not looked up.
+   Padding is NOT touched here: an agent entry taller than a human one breaks
+   the rhythm of a thread that alternates between them. */
+.entryAgent {
+  border-inline-start-color: var(--status-info);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--status-info-bg);
+}
+
+/* Settled, not gone. */
+.entryResolved {
+  opacity: 0.6;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-inline-size: 0;
+}
+
+.mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+  line-height: 1;
+}
+
+.markAgent {
+  background: var(--status-info-bg);
+  color: var(--status-info);
+}
+
+.author {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 590;
+}
+
+/* The role in words, next to the name. */
+.kind {
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+
+.stamp {
+  margin-inline-start: auto;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Record content, wrapped as written: a single newline inside a paragraph is
+   the author's line break, not whitespace to collapse. */
+.text {
+  min-inline-size: 0;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.at {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-inline-size: 0;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-inline-size: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+
+/* The ONE accent-coloured thing in the panel, because it marks the one comment
+   that woke somebody. No fill behind it: on an agent's already-tinted entry a
+   second tint would make the badge disappear into it, and text plus the Inbox
+   glyph carry the statement on their own. */
+.badgeMention {
+  color: var(--status-info);
+}
+
+.glyph {
+  line-height: 1;
+}
+
+/* Two different facts, and the only place on this panel allowed a full
+   sentence: what is absent, and how much is merely hidden. */
+.empty {
+  margin: 0;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.composer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-inline-size: 0;
+  border-block-start: 1px solid var(--border-subtle);
+  padding-block-start: var(--space-4);
+}
+
+.field {
+  flex: 1 1 16rem;
+  min-inline-size: 0;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  background: var(--input-bg);
+  color: var(--input-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  resize: vertical;
+}
+
+.field::placeholder {
+  color: var(--input-placeholder);
+}
+
+.field:hover {
+  border-color: var(--input-border-hover);
+}
+
+.submit {
+  flex: none;
+  align-self: flex-end;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  background: var(--action-primary-bg);
+  color: var(--action-primary-text);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--action-primary-hover);
+}
+
+.submit:disabled {
+  background: var(--action-secondary-bg);
+  color: var(--text-disabled);
+  cursor: default;
+}

@@ -1,0 +1,399 @@
+/* The three list panels of the record screen — Tasks, Documents, Activity —
+   sharing one sheet because they share one rhythm: a full-width panel of rows
+   lying directly on the canvas, no card and no panel background. Three sheets
+   would be three slightly different row heights within one tab strip.
+
+   Every colour and every space comes from a token. An undefined `var(--…)`
+   resolves silently to `transparent` and unstyles the surface without failing a
+   build, so a name invented here would ship looking almost right.
+
+   EVERY RESPONSIVE RULE HERE IS A CONTAINER QUERY. This canvas is narrowed by
+   the inspector when it opens, which changes nothing a viewport query can see —
+   a viewport rule would keep the wide layout inside a column two thirds of its
+   width. The panel declares its own containment so the queries below hold
+   whatever the shell around it does. */
+
+.panel {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-inline-size: 0;
+}
+
+/* ── Tasks ─────────────────────────────────────────────────────────────── */
+
+.group {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+/* The heading sits OUTSIDE the group's listbox: a child of a listbox that is
+   not an option has to be rescued with a presentational role, and not putting
+   it there is one fewer thing to remember. */
+.groupHead {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-raised);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.groupMark {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 1;
+}
+
+.groupLabel {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-weight: 590;
+}
+
+.groupCount {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+/* Title takes the free space; everything after it has a ceiling, because a real
+   task title is long enough to push a deadline off the canvas. */
+.row {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr) minmax(0, auto) minmax(0, auto)
+    6rem minmax(0, 7rem);
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: default;
+}
+
+.row:hover {
+  background: var(--surface-hover);
+}
+
+/* Hover must NOT swallow the selection: `.row:hover` outranks the bare class,
+   so the selected row has to catch up here. Selection is the state the
+   inspector is pinned to. */
+.rowSelected,
+.rowSelected:hover {
+  background: var(--surface-selected);
+}
+
+/* Straight from the token contract. `--focus-ring` is a LIST OF SHADOWS, so
+   `outline: 2px solid var(--focus-ring)` would be an invalid declaration and the
+   browser would drop it whole — the name resolves, so no lint sees it. */
+.row:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+/* Each trailing cell is pinned to its track. Two of the five are conditional —
+   only a held task carries a state, only an unusual priority is named — and
+   without the pins an ordinary row would slide its deadline two columns left
+   and the panel would read as five ragged lists instead of one table. */
+.rowTitle {
+  grid-column: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+}
+
+/* Waiting and blocked are why a task is standing still, so they are said in
+   words on the row and not carried by a colour alone. */
+.rowState {
+  grid-column: 2;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+
+.rowPriority {
+  grid-column: 3;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+
+.rowDue {
+  grid-column: 4;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rowDueOver {
+  color: var(--status-error);
+  font-weight: 500;
+}
+
+.rowDueUnset {
+  color: var(--text-disabled);
+}
+
+.rowOwner {
+  grid-column: 5;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+/* ── Documents ─────────────────────────────────────────────────────────── */
+
+.docs {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A button, not a row: there is nothing to preview here, so one click goes to
+   the document. It carries no `data-row` and joins no roving tab stop — it is
+   already a Tab stop of its own, as every button is. */
+.doc {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr) minmax(0, auto) 6rem 1rem;
+  align-items: center;
+  gap: var(--space-3);
+  inline-size: 100%;
+  padding: var(--space-3);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: start;
+}
+
+.doc:hover {
+  background: var(--surface-hover);
+}
+
+.docMark {
+  color: var(--text-tertiary);
+  line-height: 1;
+}
+
+.docTitle {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+}
+
+/* What this document IS to the project, beside what it is called. A list of
+   titles alone makes an offer and a meeting note look like the same kind of
+   thing. */
+.docRole {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+
+.docWhen {
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The exit shows itself on approach only. A permanent arrow on every row reads
+   as an invoice rather than a hint. */
+.docGo {
+  color: var(--text-quaternary);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.doc:hover .docGo,
+.doc:focus-visible .docGo {
+  opacity: 1;
+}
+
+/* ── Activity ──────────────────────────────────────────────────────────── */
+
+.stream {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.event {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr) minmax(0, auto);
+  align-items: baseline;
+  gap: var(--space-3);
+  min-inline-size: 0;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.eventMark {
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-normal);
+  text-align: center;
+}
+
+.eventText {
+  min-inline-size: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.eventActor {
+  color: var(--text-primary);
+  font-weight: 590;
+}
+
+/* An agent is marked, never merely named: the difference between a change you
+   made and one something made for you is the only question this stream is read
+   with. */
+.eventAgent {
+  margin-inline-start: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  color: var(--status-info);
+  font-size: var(--text-2xs);
+}
+
+.eventWhen {
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ── Empty states ──────────────────────────────────────────────────────── */
+
+/* `empty` in the class name is load-bearing, not decorative: the prose guard
+   exempts these elements by class, because an empty state is the one place a
+   surface is allowed to explain itself in a sentence. */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-3);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+}
+
+.emptyTitle {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  font-weight: 590;
+}
+
+.emptyBody {
+  margin: 0;
+  max-inline-size: 34rem;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.emptyAction {
+  margin-block-start: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--action-secondary-border);
+  border-radius: var(--radius-md);
+  background: var(--action-secondary-bg);
+  color: var(--action-secondary-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.emptyAction:hover {
+  background: var(--action-secondary-hover);
+}
+
+/* ── Narrow canvas ─────────────────────────────────────────────────────── */
+
+/* The inspector takes 21rem off this column without the viewport moving, so the
+   trigger is the panel's own width. Below this the trailing cells stop being
+   columns and stack under the title: a deadline squeezed to three characters is
+   worse than a deadline on its own line. */
+@container (max-width: 34rem) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+    row-gap: var(--space-1);
+  }
+
+  .rowTitle {
+    grid-column: 1 / -1;
+  }
+
+  .rowState,
+  .rowPriority,
+  .rowDue,
+  .rowOwner {
+    grid-column: auto;
+  }
+
+  .rowOwner {
+    text-align: end;
+  }
+
+  .doc {
+    grid-template-columns: 1.25rem minmax(0, 1fr) 1rem;
+  }
+
+  .docRole,
+  .docWhen {
+    grid-column: 2;
+  }
+
+  .event {
+    grid-template-columns: 1.25rem minmax(0, 1fr);
+  }
+
+  .eventWhen {
+    grid-column: 2;
+  }
+}

@@ -74,6 +74,14 @@
   --radius-xl: 1rem;
   --radius-2xl: 1.375rem;
   --radius-full: 999rem;
+  /* Ile znaków ma zmieścić się w LINII prozy — a nie, jak szeroki jest ekran.
+     `--surface-measure` (72rem, styles.css) mówi drugą z tych rzeczy i nie
+     zastępuje tej: dokument projektu ma na realnych danych 1 400–3 000 znaków,
+     a wiersz tekstu na całą szerokość planu roboczego jest nie do czytania.
+     Decyzja #29 ogranicza LINIĘ, nigdy wysokość — przypięcie do tego całej
+     KOLUMNY zostawia martwy pas obok szyny i zawiesza pas „czy się mieści"
+     w powietrzu. */
+  --surface-read: 46rem;
   --duration-instant: 80ms;
   --duration-fast: 150ms;
   --duration-normal: 240ms;
