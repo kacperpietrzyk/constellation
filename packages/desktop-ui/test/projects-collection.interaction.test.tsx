@@ -17,6 +17,7 @@ type Projection<Kind extends QueryProjection["kind"]> = Extract<
   { kind: Kind }
 >;
 
+import { assertNoNode } from "./dom-assert.js";
 import {
   populatedPlanDayKey,
   populatedShellQueries,
@@ -219,12 +220,19 @@ test("Projects opens as a collection, not as one project", async () => {
   await mountShell();
   const main = await openProjects();
   assert.ok(rows().length > 1, "a collection of one row is not a collection");
-  // The full view is what an opened project renders. Landing straight in it
-  // would mean the destination silently restored a record instead of the set.
-  assert.equal(
-    main.querySelector(".project-detail-flow"),
-    null,
-    "Projects opened straight into a single project's full view",
+  // The record screen is what an opened project renders. Landing straight in
+  // it would mean the destination silently restored a record instead of the
+  // set.
+  //
+  // Anchored on `data-record-kind`, not on a class name. This assertion spent
+  // a session querying `.project-detail-flow` after the view that wrote it was
+  // deleted: it passed on every run, its message described a condition it could
+  // no longer detect, and an empty measurement looks exactly like a passing
+  // one. `assertNoNode` rather than `assert.equal(node, null, …)` — a DOM node
+  // inside an AssertionError kills the Vitest worker without a message.
+  assertNoNode(
+    main.querySelector('[data-record-kind="project"]'),
+    "Projects opened straight into a single project's record",
   );
 });
 
