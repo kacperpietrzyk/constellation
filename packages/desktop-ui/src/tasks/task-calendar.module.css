@@ -1,0 +1,428 @@
+/* Tasks · calendar layout (degraded). A month of five weeks over ONE view's
+   work, with no meetings in it — the wider week lives in the Calendar
+   destination and this sheet deliberately does not imitate it.
+
+   Rules this sheet has to keep:
+   · colour is never the only carrier — today has an outline AND the word
+     "Today", a deadline marker has a border AND the word "due", reserved time
+     shows the hour while unreserved work says "No time";
+   · focus stays visible wherever a keyboard can land, including the day cell
+     that receives focus after a keyboard plan;
+   · `prefers-reduced-motion` turns movement off with `animation: none`, not
+     with a shorter duration — a faster animation is still an animation;
+   · every colour, space and radius comes from a token: an undefined var(--…)
+     resolves to transparent and silently unstyles real UI. */
+
+.calendar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 56rem;
+}
+
+.lead {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.lead strong {
+  color: var(--text-primary);
+  font-weight: 590;
+}
+
+/* A real button that reads as a link: the way out of this narrower question
+   has to be reachable by keyboard, so it is not a decorated span. */
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-link);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.125rem;
+  cursor: pointer;
+}
+
+.link:hover {
+  color: var(--text-link-hover);
+}
+
+.counts,
+.range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.separator {
+  color: var(--text-disabled);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+
+.dow {
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-sunken);
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: 5.5rem;
+  padding: var(--space-2);
+  background: var(--surface-content);
+}
+
+/* Days outside the month are context, not content: the cell's own label still
+   carries the full date, so nothing is lost by dimming them. */
+.cellOther {
+  background: var(--surface-sunken);
+}
+
+.cellToday {
+  box-shadow: inset 0 0 0 2px var(--border-strong);
+}
+
+.cellDropping {
+  background: var(--surface-selected);
+  box-shadow: inset 0 0 0 2px var(--border-strong);
+}
+
+/* The global contract leaves `tabindex="-1"` targets unringed, because those
+   are usually landing spots nobody navigated to. This one is different: a
+   keyboard plan deliberately sends focus here, and a reader who cannot see
+   where focus went cannot see the result of their own write. */
+.cell:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  box-shadow: var(--focus-ring);
+}
+
+.cellHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+
+.dayNum {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Only for the single-column form, where a bare number has no column above it
+   to say which weekday it is. */
+.dowInline {
+  display: none;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+}
+
+.todayTag {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  background: var(--surface-selected);
+  color: var(--text-primary);
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+/* A deadline is somebody else's promise, so it never looks like a card you can
+   move: an outlined marker in the cell head, with the word beside the count. */
+.deadlines {
+  margin-inline-start: auto;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--status-warning);
+  border-radius: var(--radius-full);
+  background: var(--status-warning-bg);
+  color: var(--status-warning);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  padding: 0.125rem var(--space-1);
+  border-inline-start: 2px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-snug);
+  cursor: grab;
+  transition: background var(--duration-instant) var(--ease-out);
+}
+
+/* Reserved time is told apart by SHAPE and by the hour it shows, not by hue. */
+.cardHeld {
+  border-inline-start-width: 4px;
+  border-inline-start-color: var(--border-strong);
+}
+
+.card:hover {
+  background: var(--surface-hover);
+}
+
+.card[aria-selected="true"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+
+.card:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  box-shadow: var(--focus-ring);
+}
+
+.cardDragging {
+  opacity: 0.4;
+}
+
+.when {
+  flex: none;
+  color: var(--text-quaternary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A real title runs past a hundred characters: it wraps, it is not cut. */
+.cardTitle {
+  min-width: 0;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 40dvh;
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--elevation-raised);
+  overflow-y: auto;
+}
+
+.pickerSay {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.pickerDays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.railHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.railTitle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 560;
+  letter-spacing: var(--tracking-tight);
+}
+
+.count {
+  color: var(--text-quaternary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.railSay {
+  flex: 1 1 20rem;
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.railSay kbd {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+.railNone,
+.railMore {
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: var(--text-xs);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  cursor: grab;
+  transition: border-color var(--duration-instant) var(--ease-out);
+}
+
+.chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.chip[aria-selected="true"] {
+  background: var(--surface-selected);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.chip:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+}
+
+.chipDue {
+  flex: none;
+  color: var(--text-quaternary);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.chipTitle {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Emptiness is information here, not absence — and it says the filter caught
+   nothing, never that everything has a day. */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-5);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.emptyState p {
+  margin: 0;
+}
+
+.emptyState strong {
+  color: var(--text-primary);
+}
+
+/* Seven columns stop being readable long before the window stops being wide,
+   and the threshold is in rem on purpose: at 200% text the same 1280px window
+   measures 40rem, so text scaling collapses the grid by the same rule that
+   handles a 320px one. Below it a week is a list of days.
+
+   Empty cells COLLAPSE to their date line and are never hidden: a day you
+   cannot see is a day you cannot drop work onto, and that gesture is the whole
+   point of this layout. */
+@media (max-width: 60rem) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dow {
+    display: none;
+  }
+
+  .cell {
+    min-height: 0;
+  }
+
+  .dowInline {
+    display: inline;
+  }
+
+  .pickerDays {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .chip,
+  .cell {
+    animation: none;
+    transition: none;
+  }
+}
