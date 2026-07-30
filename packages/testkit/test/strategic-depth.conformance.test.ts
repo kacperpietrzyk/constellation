@@ -2212,6 +2212,13 @@ it("reserves time for a Task without touching its deadline", () => {
   assert.deepEqual(taskOf().calendarBlock, block);
   // The deadline is untouched by reserving time to do the work.
   assert.equal(taskOf().dueAt, "2026-07-24T17:00:00.000Z");
+  // Reserving an hour on a task nobody had given a day IS planning it — the
+  // block carries the date. Without this the app said "not planned" about work
+  // it was itself holding an hour for, in three places at once, and the third
+  // plan state ("time reserved") was unreachable by this gesture at all.
+  assert.equal(taskOf().startAt, block.startsAt);
+  // Whoever reserved the hour founded the plan, so the plan is signed by them.
+  assert.equal(taskOf().plannedBy?.principalId, ids.principal);
 
   // Moving the deadline does not disturb the reserved block either.
   assert.equal(
@@ -2264,6 +2271,10 @@ it("reserves time for a Task without touching its deadline", () => {
   );
   assert.equal(released.outcome, "success");
   assert.equal(taskOf().calendarBlock, undefined);
+  // Letting the hour go is not un-deciding the day. Clearing `startAt` here
+  // would delete a decision this gesture never made — taking the COMMAND back
+  // is a different thing, and it travels by the undo descriptor.
+  assert.equal(taskOf().startAt, block.startsAt);
 
   const preview = unwrap(
     harness.kernel.execute(context(), {
@@ -2398,6 +2409,185 @@ it("reserves time for a Task without touching its deadline", () => {
     "success",
   );
   assert.equal(freshOf().calendarBlock, undefined);
+});
+
+it("reserving an hour never moves a day somebody already chose", () => {
+  // The other side of the rule above. A block founds a plan where there is
+  // none; where there IS one it stays out of the way, because the day was
+  // somebody's decision and an hour reserved elsewhere is a contradiction to
+  // SHOW a person, not one to resolve behind their back.
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("keep-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Time blocking",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const taskId = uuid();
+  const chosenDay = "2026-07-20T06:00:00.000Z";
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("keep-task"),
+        commandName: "task.create",
+        payload: {
+          taskId,
+          spaceId: ids.space,
+          title: "Draft the migration plan",
+          startAt: chosenDay,
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const taskOf = () =>
+    harness.store.snapshot().tasks.find((t) => t.id === taskId)!;
+  const plannedBefore = taskOf().plannedBy;
+
+  const block = {
+    ownedBlockExternalId: "block-keep",
+    calendarExternalId: "calendar-1",
+    revision: "rev-1",
+    startsAt: "2026-07-22T09:00:00.000Z",
+    endsAt: "2026-07-22T11:00:00.000Z",
+  };
+  const reserved = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("keep-block", { [taskId]: taskOf().version }),
+      commandName: "task.setCalendarBlock",
+      payload: { taskId, block },
+    }),
+  );
+  assert.equal(reserved.outcome, "success");
+  assert.deepEqual(taskOf().calendarBlock, block);
+  assert.equal(
+    taskOf().startAt,
+    chosenDay,
+    "reserving time overwrote a day that was chosen deliberately",
+  );
+  // Authorship follows the plan, and the plan did not change hands.
+  assert.deepEqual(taskOf().plannedBy, plannedBefore);
+
+  // And taking the reservation back leaves that day alone: undo removes what
+  // the command added, and this command added no plan.
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("keep-undo-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: reserved.commandId },
+    }),
+  );
+  if (preview.outcome !== "preview") assert.fail("Expected an undo preview");
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("keep-undo", preview.projection.requiredVersions),
+        commandName: "command.undo",
+        payload: { targetCommandId: reserved.commandId },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(taskOf().calendarBlock, undefined);
+  assert.equal(
+    taskOf().startAt,
+    chosenDay,
+    "undoing a reservation deleted a plan it never made",
+  );
+});
+
+it("taking back the hour that founded a plan takes the plan with it", () => {
+  // The reservation put the task on a day, so undoing it must leave no day
+  // behind — otherwise a command that is taken back keeps half of what it did,
+  // and the task reads as planned by a gesture that no longer exists.
+  const harness = createReferenceHarness();
+  harness.authorization.register(context());
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("drop-bootstrap"),
+        commandName: "workspace.createLocal",
+        payload: {
+          workspaceId: ids.workspace,
+          rootSpaceId: ids.space,
+          ownerPrincipalId: ids.principal,
+          name: "Time blocking",
+          timezone: "Europe/Warsaw",
+        },
+      }),
+    ).outcome,
+    "success",
+  );
+  const taskId = uuid();
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("drop-task"),
+        commandName: "task.create",
+        payload: { taskId, spaceId: ids.space, title: "Unplanned work" },
+      }),
+    ).outcome,
+    "success",
+  );
+  const taskOf = () =>
+    harness.store.snapshot().tasks.find((t) => t.id === taskId)!;
+  assert.equal(taskOf().startAt, undefined);
+
+  const block = {
+    ownedBlockExternalId: "block-drop",
+    calendarExternalId: "calendar-1",
+    revision: "rev-1",
+    startsAt: "2026-07-22T09:00:00.000Z",
+    endsAt: "2026-07-22T11:00:00.000Z",
+  };
+  const reserved = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("drop-block", { [taskId]: taskOf().version }),
+      commandName: "task.setCalendarBlock",
+      payload: { taskId, block },
+    }),
+  );
+  assert.equal(reserved.outcome, "success");
+  assert.equal(taskOf().startAt, block.startsAt);
+  assert.notEqual(taskOf().plannedBy, undefined);
+
+  const preview = unwrap(
+    harness.kernel.execute(context(), {
+      ...metadata("drop-undo-preview"),
+      commandName: "command.previewUndo",
+      payload: { targetCommandId: reserved.commandId },
+    }),
+  );
+  if (preview.outcome !== "preview") assert.fail("Expected an undo preview");
+  assert.equal(
+    unwrap(
+      harness.kernel.execute(context(), {
+        ...metadata("drop-undo", preview.projection.requiredVersions),
+        commandName: "command.undo",
+        payload: { targetCommandId: reserved.commandId },
+      }),
+    ).outcome,
+    "success",
+  );
+  assert.equal(taskOf().calendarBlock, undefined);
+  assert.equal(
+    taskOf().startAt,
+    undefined,
+    "undo kept the day the reservation invented",
+  );
+  // The signature lives exactly as long as the plan does.
+  assert.equal(taskOf().plannedBy, undefined);
 });
 
 it("corrects meeting work items through the kernel, attributed and undoable", () => {
