@@ -4,6 +4,11 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, test } from "vitest";
 
+import type {
+  DesktopSnapshot,
+  SavedWorkView,
+  SavedWorkViewFilterChange,
+} from "../src/client/workflow.js";
 import {
   assigneeBoardViewId,
   fieldGroupedViewId,
@@ -58,6 +63,60 @@ const waitForCondition = async (
     });
   }
   assert.fail(message);
+};
+
+const loadFixtureSnapshot = async (): Promise<DesktopSnapshot> => {
+  const { createScenarioClient } =
+    await import("../src/client/scenario-client.js");
+  const { loadDesktopSnapshot } = await import("../src/client/workflow.js");
+  const snapshot = await loadDesktopSnapshot(
+    createScenarioClient({ queries: savedViewShellQueries }),
+  );
+  assert.equal(
+    snapshot.work.kind,
+    "ready",
+    "the work fixture never reached the snapshot, so this measures nothing",
+  );
+  return snapshot;
+};
+
+/**
+ * Tasks on its own, over a snapshot this file bends.
+ *
+ * Two of the guarantees below are about shapes the shared fixture deliberately
+ * does not carry — a stored view whose field the workspace has since dropped,
+ * and the shell's own save callback. Bending a loaded snapshot here is not
+ * making the fixture look richer: it is the one place a NEGATIVE shape can be
+ * written without every unrelated screen inheriting it.
+ */
+const renderTasks = async (
+  snapshot: DesktopSnapshot,
+  over: {
+    readonly onSaveViewFilters?: (
+      view: SavedWorkView,
+      change: SavedWorkViewFilterChange,
+    ) => Promise<boolean>;
+  } = {},
+): Promise<void> => {
+  const { TasksSurface } = await import("../src/tasks/TasksSurface.js");
+  root = createRoot(container);
+  mounted = true;
+  await act(async () => {
+    root.render(
+      createElement(TasksSurface, {
+        snapshot,
+        selectedTaskId: undefined,
+        onOpenTask: () => undefined,
+        onSelectTask: () => undefined,
+        onCreateTask: async () => true,
+        onSetStatus: () => undefined,
+        onSetCompleted: () => undefined,
+        onPlanOnDay: () => undefined,
+        onOpenCalendar: () => undefined,
+        ...over,
+      }),
+    );
+  });
 };
 
 const openTasks = async (): Promise<void> => {
@@ -231,14 +290,49 @@ test("turning grouping off takes the board down rather than drawing one column c
   );
 
   await choose("tasks-group", "none");
+  // Waited on the BOARD coming down, and not on rows appearing. The rows are
+  // the second half of the guarantee, and waiting on them first reports an
+  // interlock that never fired as a screen that lost its work.
   await waitForCondition(
-    () => container.querySelectorAll("[data-task-row]").length > 0,
-    "turning grouping off left the screen with no rows at all",
+    () => boardColumns().length === 0,
+    'the board stayed up over a single "All work" column, which is the shape the kernel refuses to store',
   );
+  assert.ok(
+    container.querySelectorAll("[data-task-row]").length > 0,
+    "the interlock took the board down and left nothing in its place",
+  );
+});
+
+test("the layout switcher wins after a view has seeded it", async () => {
+  // A view SEEDS the lens; it does not hold it. A regression that derived the
+  // lens from the view on every render instead of seeding it once would leave
+  // every other test in this file green and this reader stuck on a board they
+  // asked to leave.
+  await openTasks();
+  await choose("tasks-view", assigneeBoardViewId);
+  await waitForCondition(
+    () => boardColumns().length > 0,
+    "a view stored as a board opened as something else",
+  );
+
+  await act(async () => {
+    layoutButton("list").click();
+  });
+
   assert.equal(
     boardColumns().length,
     0,
-    'the board stayed up over a single "All work" column, which is the shape the kernel refuses to store',
+    "the open view put the board back over a reader who had asked for the list",
+  );
+  assert.ok(
+    container.querySelectorAll("[data-tasks-surface] [data-task-row]").length >
+      0,
+    "switching back to the list drew no rows, so the lens moved and the work did not",
+  );
+  assert.equal(
+    layoutButton("list").getAttribute("aria-pressed"),
+    "true",
+    "the switcher and the screen disagree about which lens is open",
   );
 });
 
@@ -270,5 +364,158 @@ test("a view grouped by a workspace field draws that field's options, in the ord
     container.querySelectorAll("[data-tasks-surface] [data-task-row]").length,
     statedTaskCount(),
     "grouping by a field lost a task that has no value for it",
+  );
+});
+
+/** The stored view kept its field grouping while the workspace stopped
+ *  declaring the field, and asks to be drawn as a board. Reachable: the kernel
+ *  checks the field resolves to a choice field at WRITE time only
+ *  (`wave2.ts:3567-3578`) and nothing re-validates a stored payload on load. */
+const orphanedFieldBoard = (snapshot: DesktopSnapshot): DesktopSnapshot => {
+  const work = snapshot.work;
+  if (work.kind !== "ready")
+    throw new Error("the work plane never arrived, so this measures nothing");
+  return {
+    ...snapshot,
+    bootstrap: { ...snapshot.bootstrap, fieldDefinitions: [] },
+    work: {
+      ...work,
+      data: {
+        ...work.data,
+        savedViews: work.data.savedViews.map((view) =>
+          view.id === fieldGroupedViewId
+            ? { ...view, layout: "board" as const }
+            : view,
+        ),
+      },
+    },
+  };
+};
+
+test("a board grouped by a field the workspace has dropped is refused, and says so", async () => {
+  await renderTasks(orphanedFieldBoard(await loadFixtureSnapshot()));
+  // No wait: the interlock lands this on the list, which ships with the screen
+  // rather than arriving as a chunk, so `act` has already flushed the render.
+  // Waiting on "some groups" here would pass on the groups that were up BEFORE
+  // the view was opened and measure the wrong screen.
+  await choose("tasks-view", fieldGroupedViewId);
+
+  // One group, and it is the trailing "No value" one — which is exactly the
+  // single column the board would have drawn while calling itself a board.
+  assert.deepEqual(groupLabels(), ["No value"]);
+  assert.equal(
+    boardColumns().length,
+    0,
+    "a grouping with nothing to make columns from still opened as a board",
+  );
+
+  const board = layoutButton("board");
+  assert.equal(
+    board.disabled,
+    true,
+    "Board can still be chosen on a grouping that yields exactly one column",
+  );
+  const describedBy = board.getAttribute("aria-describedby");
+  assert.ok(describedBy, "the refused Board button points at no reason");
+  const reason = document.getElementById(describedBy);
+  assert.ok(reason, "the Board button names a reason that is not on the page");
+  assert.equal(
+    reason.textContent?.trim(),
+    "This view groups by a field the workspace no longer offers.",
+    "the reader is told the grouping is off, which is not what happened",
+  );
+
+  // The work is still reachable. A refused lens must not also cost the rows.
+  assert.equal(
+    container.querySelectorAll("[data-tasks-surface] [data-task-row]").length,
+    statedTaskCount(),
+    "refusing the board took the work down with it",
+  );
+});
+
+const editFilters = (): HTMLButtonElement | undefined => {
+  const buttons = container.querySelectorAll<HTMLButtonElement>(
+    "[data-tasks-surface] button[aria-expanded]",
+  );
+  return [...buttons].find(
+    (button) => button.textContent?.trim() === "Edit filters",
+  );
+};
+
+const filtersForm = (): HTMLFormElement | null =>
+  container.querySelector<HTMLFormElement>(
+    'form[aria-label="Saved view filters"]',
+  );
+
+test("editing a view's conditions from the view bar reaches the shell", async () => {
+  const changes: { view: string; change: SavedWorkViewFilterChange }[] = [];
+  await renderTasks(await loadFixtureSnapshot(), {
+    onSaveViewFilters: async (view, change) => {
+      changes.push({ view: view.id, change });
+      return true;
+    },
+  });
+
+  assert.equal(
+    editFilters(),
+    undefined,
+    'the editor stands open on "All work", which has no conditions to edit',
+  );
+
+  await choose("tasks-view", assigneeBoardViewId);
+  // The form is a lazy chunk, so it arrives a tick after the view does.
+  await waitForCondition(
+    () => editFilters() !== undefined,
+    "opening a saved view offered no way to change its conditions",
+  );
+  await act(async () => {
+    editFilters()?.click();
+  });
+  const form = filtersForm();
+  assert.ok(form, "the disclosure opened onto no form");
+
+  const urgent = form.querySelector<HTMLInputElement>(
+    '[data-condition="priorities"] input[value="urgent"]',
+  );
+  assert.ok(urgent, "the editor offers no priority conditions");
+  await act(async () => {
+    urgent.click();
+  });
+  const save = form.querySelector<HTMLButtonElement>("button[type=submit]");
+  assert.ok(save, "the editor has no way to save");
+  assert.equal(
+    save.disabled,
+    false,
+    "Save stayed dead after a condition moved, so the click below writes nothing",
+  );
+  await act(async () => {
+    save.click();
+  });
+
+  // The view the edit was made ON travels with it. A screen that sent the
+  // change against whichever view it resolved later would rewrite the wrong
+  // one, and the reader would see it a week later on a view they never opened.
+  assert.deepEqual(changes, [
+    { view: assigneeBoardViewId, change: { priorities: ["urgent"] } },
+  ]);
+});
+
+test("the shell hands Tasks the write its filter editor needs", async () => {
+  // The whole capability is dark without this one line. `SavedViewFilterForm`
+  // had ZERO importers when it landed, so Vite tree-shook it out of the build
+  // entirely and every test above it passed over a component nobody ships.
+  await openTasks();
+  await choose("tasks-view", assigneeBoardViewId);
+  await waitForCondition(
+    () => editFilters() !== undefined,
+    "Tasks draws no way to edit the conditions of the view it has open: it mounts the editor only when `onSaveViewFilters` is passed, and RealApp does not pass it at its `<TasksSurface>` yet",
+  );
+
+  await act(async () => {
+    editFilters()?.click();
+  });
+  assert.ok(
+    filtersForm(),
+    "the editor opened onto no form once the shell wired it",
   );
 });

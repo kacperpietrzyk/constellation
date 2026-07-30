@@ -6,7 +6,10 @@ import type {
   TaskStatusId,
 } from "@constellation/contracts";
 
-import type { DesktopSnapshot } from "../client/workflow.js";
+import type {
+  DesktopSnapshot,
+  SavedWorkViewFilterChange,
+} from "../client/workflow.js";
 import { useListNavigation } from "../hooks/useListNavigation.js";
 import { countLabel, dateKeyInZone } from "../i18n.js";
 import {
@@ -23,6 +26,7 @@ import {
   buildRows,
   groupTasks,
   groupingFromSavedView,
+  groupingMakesColumns,
   layoutFromSavedView,
   resolveBoardInterlock,
   sortRows,
@@ -54,6 +58,14 @@ const TaskTimelineLayout = lazy(async () => ({
 }));
 const TaskCalendarLayout = lazy(async () => ({
   default: (await import("./TaskCalendarLayout.js")).TaskCalendarLayout,
+}));
+
+// Lazy for the same reason and one more: the editor is reachable only with a
+// saved view open, and its own stylesheet is 3.6 kB. Statically imported it
+// would join the first paint of a screen most visits never edit a view on, and
+// the hot-path budget this rebuild refuses to raise has no room for it.
+const SavedViewFilterForm = lazy(async () => ({
+  default: (await import("./SavedViewFilterForm.js")).SavedViewFilterForm,
 }));
 
 // One collection of work, five lenses over it. The layout switcher changes how
@@ -109,6 +121,7 @@ export const TasksSurface = ({
   onSetCompleted,
   onPlanOnDay,
   onOpenCalendar,
+  onSaveViewFilters,
 }: {
   readonly snapshot: DesktopSnapshot;
   readonly selectedTaskId: TaskId | undefined;
@@ -122,6 +135,14 @@ export const TasksSurface = ({
    *  Wednesday". The two are different facts and the gesture means the first. */
   readonly onPlanOnDay: (id: TaskId, dayKey: string) => void;
   readonly onOpenCalendar: () => void;
+  /** Writes the edited conditions back and resolves true once the refreshed
+   *  view is in hand. Optional because the write needs a client this screen
+   *  does not hold, so the shell owns it — and the editor is drawn only when it
+   *  is passed, since a Save that reaches nobody is worse than no Save. */
+  readonly onSaveViewFilters?: (
+    view: WorkSavedView,
+    change: SavedWorkViewFilterChange,
+  ) => Promise<boolean>;
 }) => {
   const [layout, setLayout] = useState<TaskLayout>("list");
   const [grouping, setGrouping] = useState<TaskGroupBy>("status");
@@ -165,15 +186,22 @@ export const TasksSurface = ({
     if (view === undefined) return;
     const seeded = groupingFromSavedView(view.groupBy);
     setGrouping(seeded);
-    setLayout(layoutFromSavedView(view.layout, seeded));
+    setLayout(layoutFromSavedView(view.layout, seeded, fieldDefinitions));
   };
 
   // The lens actually drawn, which is the chosen one except for the pair the
   // kernel refuses to store. Held as a DERIVED value rather than written back
   // into `layout`, so restoring a grouping restores the board the reader had
   // chosen instead of leaving them on the list they were pushed onto.
-  const activeLayout = resolveBoardInterlock(layout, grouping);
-  const boardBlocked = grouping === "none";
+  const activeLayout = resolveBoardInterlock(
+    layout,
+    grouping,
+    fieldDefinitions,
+  );
+  // Not `grouping === "none"`. A grouping that names a field this workspace no
+  // longer offers makes exactly one column too, so the Board button has to be
+  // refused on whether there are columns rather than on the word.
+  const boardBlocked = !groupingMakesColumns(grouping, fieldDefinitions);
 
   const rows = useMemo(() => {
     if (projection === undefined) return [];
@@ -344,7 +372,9 @@ export const TasksSurface = ({
         </div>
         {boardBlocked && (
           <small className={styles.requirement} id="tasks-board-requirement">
-            Board needs a grouped view.
+            {typeof grouping === "object"
+              ? "This view groups by a field the workspace no longer offers."
+              : "Board needs a grouped view."}
           </small>
         )}
 
@@ -383,6 +413,24 @@ export const TasksSurface = ({
               ))}
           </select>
         </div>
+
+        {/* Editing lives beside the picker and only with a view open: there is
+            nothing to edit on "All work", and a stored view is the only thing
+            here that HAS conditions. Creating a view is not offered — that is
+            on Work (`WorkSurface.tsx:675-768`) and is not duplicated. The
+            fallback is empty on purpose; a spinner where a small button will be
+            is more movement than the wait it reports. */}
+        {activeView !== undefined && onSaveViewFilters !== undefined && (
+          <LazySurfaceBoundary label="View filters">
+            <Suspense fallback={null}>
+              <SavedViewFilterForm
+                onSave={(change) => onSaveViewFilters(activeView, change)}
+                statuses={statuses}
+                view={activeView}
+              />
+            </Suspense>
+          </LazySurfaceBoundary>
+        )}
 
         <div className={styles.control}>
           <label htmlFor="tasks-group">Group</label>

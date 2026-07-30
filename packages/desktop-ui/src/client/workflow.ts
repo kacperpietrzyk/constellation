@@ -1458,6 +1458,21 @@ export const updateInitiativeOutcome = (
         : undefined,
   );
 
+/**
+ * The filter vocabulary as the CREATE path spells it.
+ *
+ * Third restatement of one shape, and the only one still written by hand. It is
+ * deliberately narrower than `SavedWorkView["filters"]` below — which is the
+ * projection's own type, inferred from the very `SavedViewFiltersSchema` the
+ * command validates against (`query.ts:900`) — because it omits the deprecated
+ * `projectIds`/`areaIds`/`initiativeIds` keys nothing should author any more.
+ *
+ * It cannot simply become the projected type here: `createSavedWorkView`'s one
+ * caller is `WorkSurface.tsx:696`, the readonly arrays this interface declares
+ * are not assignable to the mutable ones the schema infers, and a create that
+ * stops compiling is a worse answer than a named restatement. Naming it is the
+ * point — the update path below derives, and the two must not drift again.
+ */
 export interface SavedWorkViewFilters {
   readonly operationalStates?: readonly (
     "actionable" | "waiting" | "blocked"
@@ -1579,6 +1594,22 @@ export const setSavedWorkViewLayout = (
 export type SavedWorkView = WorkOverviewProjection["savedViews"][number];
 
 /**
+ * The brand that keeps a whole filter set out of a change to one condition.
+ *
+ * Every key of a change is optional and every stored value satisfies it, so
+ * without a REQUIRED member the two types are the same shape to the checker and
+ * `savedWorkViewFilters` would happily merge a set somebody meant as a
+ * replacement — resurrecting, silently, every condition they had just dropped.
+ * TypeScript refuses only on a missing required member; extra properties pass
+ * structurally, so nothing narrower than this can refuse it.
+ *
+ * `declare` emits nothing and no value is ever written, so the brand costs no
+ * bytes and never reaches a payload — which matters, because the command schema
+ * is `.strict()` and an unknown key is a contract rejection.
+ */
+export declare const filterChangeBrand: unique symbol;
+
+/**
  * A change to ONE condition of a stored view. `undefined` leaves the condition
  * alone, a value sets it, and `null` removes it.
  *
@@ -1593,7 +1624,7 @@ export type SavedWorkView = WorkOverviewProjection["savedViews"][number];
 export type SavedWorkViewFilterChange = {
   readonly [Key in keyof SavedWorkView["filters"]]?:
     SavedWorkView["filters"][Key] | null;
-};
+} & { readonly [filterChangeBrand]: never };
 
 /** The full filter object a partial change means. Spread-then-drop rather than
  *  key-by-key: copying key-by-key is exactly what dropped R12.4's filters on

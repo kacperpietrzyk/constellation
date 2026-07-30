@@ -6,6 +6,7 @@ import type {
 
 import type {
   DesktopSnapshot,
+  SavedWorkView,
   WorkOverviewProjection,
 } from "../client/workflow.js";
 import { countLabel, formatDate, formatTime } from "../i18n.js";
@@ -23,7 +24,13 @@ import { daysUntil } from "../today-plan.js";
 
 export type WorkTask = WorkOverviewProjection["tasks"][number];
 export type WorkProject = WorkOverviewProjection["projects"][number];
-export type WorkSavedView = WorkOverviewProjection["savedViews"][number];
+/** The saved view as the work overview projects it — the SAME type
+ *  `client/workflow.ts` exports as `SavedWorkView`, aliased rather than derived
+ *  a second time. Two names one letter-order apart, each reaching into the
+ *  projection separately, is how the create side and the update side came to
+ *  disagree about what a filter set is; `task-filters.ts` already imports this
+ *  name, so the name stays and only the second derivation goes. */
+export type WorkSavedView = SavedWorkView;
 export type TaskStatus = DesktopSnapshot["bootstrap"]["taskStatuses"][number];
 
 /** Every layout the switcher offers, in the order it offers them. */
@@ -86,32 +93,81 @@ export const groupingFromSavedView = (
 ): TaskGroupBy => (groupBy === undefined ? "none" : groupBy);
 
 /**
+ * The options a field grouping draws its columns from.
+ *
+ * Read by `groupTasks` and by the interlock below through this ONE lookup, so
+ * the columns and the rule guarding them can never answer differently. `state`
+ * is deliberately not consulted: a retired choice field still declares its
+ * options and still draws real columns, and refusing a board over it would
+ * refuse an arrangement that works.
+ */
+const fieldOptions = (
+  fieldId: FieldDefinitionId,
+  fieldDefinitions: readonly TaskFieldDefinition[],
+): readonly string[] => {
+  const definition = fieldDefinitions.find(
+    (candidate) => candidate.id === fieldId,
+  );
+  return definition?.type.kind === "choice" ? definition.type.options : [];
+};
+
+/**
+ * Whether a grouping has anything to make columns out of.
+ *
+ * `"none"` says so by name. A field grouping says so by the definition it
+ * names: one this workspace no longer carries, or has since made a type with no
+ * options, leaves `groupTasks` returning the single "No value" group — which is
+ * the one-column board the kernel refuses to store, wearing a different name.
+ * That view is reachable, because the kernel checks the field resolves to a
+ * choice field at WRITE time only (`wave2.ts:3567-3578`) and nothing
+ * re-validates a stored payload on load.
+ */
+export const groupingMakesColumns = (
+  grouping: TaskGroupBy,
+  fieldDefinitions: readonly TaskFieldDefinition[],
+): boolean =>
+  typeof grouping === "object"
+    ? fieldOptions(grouping.fieldId, fieldDefinitions).length > 0
+    : grouping !== "none";
+
+/**
  * The board interlock, written once and used by both readers of it.
  *
  * The kernel refuses board-without-grouping on the RESULTING record
  * (`wave2.ts:3579-3584`), so no stored view SHOULD carry that pair — but stored
  * payloads are never re-validated on load, and a board with nothing to make
- * columns from draws one "All work" column and calls itself a board. Resolved
- * the same way `WorkSurface.tsx:459-462` resolves it.
+ * columns from draws one column and calls itself a board. Resolved the same way
+ * `WorkSurface.tsx:459-462` resolves it.
+ *
+ * `fieldDefinitions` is REQUIRED rather than defaulted: an empty default reads
+ * as "this workspace declares no fields", under which every field grouping is
+ * degenerate and every stored field board would be refused.
  */
 export const resolveBoardInterlock = (
   layout: TaskLayout,
   grouping: TaskGroupBy,
-): TaskLayout => (layout === "board" && grouping === "none" ? "list" : layout);
+  fieldDefinitions: readonly TaskFieldDefinition[],
+): TaskLayout =>
+  layout === "board" && !groupingMakesColumns(grouping, fieldDefinitions)
+    ? "list"
+    : layout;
 
 /**
  * The layout a stored view asks for.
  *
  * Kept apart from the interlock above on purpose: "a view naming no layout
- * opens as a list" and "a board without grouping is not a board" are two
+ * opens as a list" and "a board without columns is not a board" are two
  * different rules that happen to reach for the same word, and folding them
  * together would let a change to one move the other silently.
  */
 export const layoutFromSavedView = (
   layout: WorkSavedView["layout"],
   grouping: TaskGroupBy,
+  fieldDefinitions: readonly TaskFieldDefinition[],
 ): TaskLayout =>
-  layout === undefined ? "list" : resolveBoardInterlock(layout, grouping);
+  layout === undefined
+    ? "list"
+    : resolveBoardInterlock(layout, grouping, fieldDefinitions);
 
 export type TaskSort = "manual" | "due" | "title";
 
@@ -228,15 +284,11 @@ export const groupTasks = (
 
   if (typeof grouping === "object") {
     const fieldId = grouping.fieldId;
-    const definition = fieldDefinitions.find(
-      (candidate) => candidate.id === fieldId,
-    );
     // Declared order, never the order the rows happen to arrive in: the
     // definition says what the options are and in which sequence, and a group
     // list sorted by first appearance would move as work moves.
-    const options: readonly string[] =
-      definition?.type.kind === "choice" ? definition.type.options : [];
-    // A field the workspace no longer offers — retired, or since made a type
+    const options = fieldOptions(fieldId, fieldDefinitions);
+    // A field the workspace no longer offers — dropped, or since made a type
     // that has no options — leaves every row under "No value". That says the
     // grouping is in force and answers nothing; falling back to one "All work"
     // group would say the view asked for something it did not.

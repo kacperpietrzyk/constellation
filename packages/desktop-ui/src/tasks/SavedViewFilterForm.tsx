@@ -4,7 +4,7 @@ import type {
   SavedWorkView,
   SavedWorkViewFilterChange,
 } from "../client/workflow.js";
-import { PRIORITY_LABELS, type TaskStatus } from "./task-view.js";
+import type { TaskStatus } from "./task-view.js";
 import styles from "./saved-view-filters.module.css";
 
 // Editing the conditions of a view that already exists. Until this, a saved
@@ -29,21 +29,24 @@ type Priority = NonNullable<Filters["priorities"]>[number];
 type DueWindow = NonNullable<Filters["dueWindow"]>;
 type StatusId = NonNullable<Filters["statusIds"]>[number];
 
-/** Display order. The label maps beside them are keyed by the contract union
- *  rather than by `string`, so a member added to the vocabulary stops the
- *  build here instead of rendering a condition with no name on it. */
-const OPERATIONAL_STATES: readonly OperationalState[] = [
-  "actionable",
-  "waiting",
-  "blocked",
-];
-const PRIORITIES: readonly Priority[] = ["urgent", "high", "normal", "low"];
-const DUE_WINDOWS: readonly DueWindow[] = ["overdue", "today", "this_week"];
-
+/** Display order, taken from the label maps below rather than listed twice: a
+ *  member added to the contract union leaves its map missing an entry, which
+ *  stops the build here instead of drawing a checkbox with no name on it.
+ *
+ *  `task-view.ts` exports a `PRIORITY_LABELS` keyed by `string`, which is what
+ *  the groupers need and what makes no such promise, so the priority map is
+ *  written out again here — narrowly — rather than imported. */
 const STATE_LABELS: Record<OperationalState, string> = {
   actionable: "Actionable",
   waiting: "Waiting",
   blocked: "Blocked",
+};
+
+const PRIORITY_NAMES: Record<Priority, string> = {
+  urgent: "Urgent",
+  high: "High",
+  normal: "Normal",
+  low: "Low",
 };
 
 const DUE_LABELS: Record<DueWindow, string> = {
@@ -51,6 +54,10 @@ const DUE_LABELS: Record<DueWindow, string> = {
   today: "Due today",
   this_week: "Due this week",
 };
+
+const OPERATIONAL_STATES = Object.keys(STATE_LABELS) as OperationalState[];
+const PRIORITIES = Object.keys(PRIORITY_NAMES) as Priority[];
+const DUE_WINDOWS = Object.keys(DUE_LABELS) as DueWindow[];
 
 /** What the four controls hold. An empty list and an empty deadline both mean
  *  "this view does not constrain that", which is the ABSENT key rather than an
@@ -95,41 +102,50 @@ const sameList = (
 const changeOf = (
   selection: Selection,
   filters: Filters,
-): SavedWorkViewFilterChange => ({
-  ...(sameList(selection.operationalStates, filters.operationalStates)
-    ? {}
-    : {
-        operationalStates:
-          selection.operationalStates.length === 0
-            ? null
-            : selection.operationalStates,
-      }),
-  ...(sameList(selection.priorities, filters.priorities)
-    ? {}
-    : {
-        priorities:
-          selection.priorities.length === 0 ? null : selection.priorities,
-      }),
-  ...(sameList(selection.statusIds, filters.statusIds)
-    ? {}
-    : {
-        statusIds:
-          selection.statusIds.length === 0 ? null : selection.statusIds,
-      }),
-  ...(selection.dueWindow === (filters.dueWindow ?? "")
-    ? {}
-    : {
-        dueWindow: selection.dueWindow === "" ? null : selection.dueWindow,
-      }),
-});
+): SavedWorkViewFilterChange => {
+  const change = {
+    ...(sameList(selection.operationalStates, filters.operationalStates)
+      ? {}
+      : {
+          operationalStates:
+            selection.operationalStates.length === 0
+              ? null
+              : selection.operationalStates,
+        }),
+    ...(sameList(selection.priorities, filters.priorities)
+      ? {}
+      : {
+          priorities:
+            selection.priorities.length === 0 ? null : selection.priorities,
+        }),
+    ...(sameList(selection.statusIds, filters.statusIds)
+      ? {}
+      : {
+          statusIds:
+            selection.statusIds.length === 0 ? null : selection.statusIds,
+        }),
+    ...(selection.dueWindow === (filters.dueWindow ?? "")
+      ? {}
+      : {
+          dueWindow: selection.dueWindow === "" ? null : selection.dueWindow,
+        }),
+  };
+  // The one place the brand is asserted. It carries no value, so this is the
+  // assertion that a change was BUILT as one rather than handed over whole —
+  // which is exactly what the type refuses everywhere else.
+  return change as SavedWorkViewFilterChange;
+};
 
+// There is deliberately no `busy` prop. Every state that can hold Save shut has
+// to put its reason beside the button, and the only write this form can start
+// is its own — `onSave` does not resolve until the refreshed view is in hand,
+// so `saving` already covers it. A second flag fed from the screen would be a
+// disabled control whose reason lives somewhere this form cannot say.
 export const SavedViewFilterForm = ({
-  busy = false,
   onSave,
   statuses,
   view,
 }: {
-  readonly busy?: boolean;
   /** Resolves true only once the write is confirmed, for the reason every
    *  other composer in this app takes the same shape: a refused edit has to
    *  leave the selection where the reader left it. */
@@ -164,7 +180,7 @@ export const SavedViewFilterForm = ({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!changed || saving || busy) return;
+    if (!changed || saving) return;
     setSaving(true);
     try {
       // Nothing is cleared afterwards. Save goes quiet on its own once the
@@ -254,7 +270,7 @@ export const SavedViewFilterForm = ({
                   type="checkbox"
                   value={priority}
                 />
-                <span>{PRIORITY_LABELS[priority]}</span>
+                <span>{PRIORITY_NAMES[priority]}</span>
               </label>
             ))}
           </div>
@@ -314,11 +330,13 @@ export const SavedViewFilterForm = ({
           <div className={styles.actions}>
             <button
               className={styles.save}
-              disabled={!changed || saving || busy}
+              disabled={!changed || saving}
               type="submit"
             >
               Save filters
             </button>
+            {/* Every arm that greys the button out names itself; the empty
+                string belongs to the one arm where the button is live. */}
             <span className={styles.hint}>
               {saving ? "Saving…" : changed ? "" : "Nothing changed yet."}
             </span>

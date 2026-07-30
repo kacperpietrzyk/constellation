@@ -26,9 +26,12 @@ import {
   buildRows,
   dueSentence,
   groupTasks,
+  groupingMakesColumns,
+  layoutFromSavedView,
   planSentence,
   planStateOf,
   plannerName,
+  resolveBoardInterlock,
   sitsOnADate,
   sortRows,
   type TaskProse,
@@ -53,6 +56,9 @@ type WorkProject = WorkOverviewProjection["projects"][number];
 type WorkSavedView = WorkOverviewProjection["savedViews"][number];
 type SavedViewFilters = WorkSavedView["filters"];
 type TaskStatus = DesktopSnapshot["bootstrap"]["taskStatuses"][number];
+type FieldDefinition = NonNullable<
+  DesktopSnapshot["bootstrap"]["fieldDefinitions"]
+>[number];
 type Assignment = NonNullable<WorkTask["assignment"]>;
 type CalendarBlock = NonNullable<WorkTask["calendarBlock"]>;
 type PlanAuthorship = NonNullable<WorkTask["plannedBy"]>;
@@ -631,6 +637,94 @@ test("the board keeps an empty status column and the list drops an empty heading
   assert.deepEqual(byPriority, ["Urgent", "High", "Normal", "Low"]);
   const onAList = labelsOf(groupTasks(built, "priority", STATUSES, PROJECTS));
   assert.deepEqual(onAList, ["Normal"]);
+});
+
+// Declared in an order that is neither alphabetical nor the order the values
+// appear in the rows below, so a grouping built from the data instead of from
+// the definition cannot pass by coincidence.
+const workKind: FieldDefinition = {
+  id: choiceField,
+  targetKind: "task",
+  label: "Rodzaj pracy",
+  type: { kind: "choice", options: ["Warsztat", "Analiza", "Przegląd"] },
+  state: "active",
+  position: 0,
+  version: 1,
+};
+
+const withKind = (title: string, value: string): WorkTask =>
+  task({ title, fields: { [choiceField]: { kind: "choice", value } } });
+
+test("grouping by a field draws its declared options and drops nobody into the gap", () => {
+  const built = rows([
+    withKind("Warsztat startowy", "Warsztat"),
+    withKind("Analiza wariantów", "Analiza"),
+    // A value the definition has since dropped. It is a stored answer to a
+    // question that no longer offers it, so it belongs with the unanswered —
+    // the one place a reader can still see the task at all.
+    withKind("Wdrożenie etapu", "Wdrożenie"),
+    task({ title: "Notatki z warsztatu" }),
+  ]);
+  const groups = groupTasks(
+    built,
+    { fieldId: choiceField },
+    STATUSES,
+    PROJECTS,
+    true,
+    [workKind],
+  );
+
+  assert.deepEqual(labelsOf(groups), [
+    "Warsztat",
+    "Analiza",
+    "Przegląd",
+    "No value",
+  ]);
+  assert.deepEqual(titlesOf(groupFor(groups, "field:Warsztat")), [
+    "Warsztat startowy",
+  ]);
+  assert.deepEqual(titlesOf(groupFor(groups, "field:Przegląd")), []);
+  assert.deepEqual(titlesOf(groupFor(groups, "field:empty")), [
+    "Wdrożenie etapu",
+    "Notatki z warsztatu",
+  ]);
+
+  // Nothing is lost and nothing is drawn twice: the screen counts the rows it
+  // filtered and the groups are what it draws, so a task falling between the
+  // options would leave those two numbers disagreeing on a full-looking board.
+  const drawn = groups.flatMap((group) => group.rows);
+  assert.equal(drawn.length, built.length);
+});
+
+test("a field grouping the workspace no longer answers is not a board", () => {
+  const built = rows([withKind("Warsztat startowy", "Warsztat")]);
+  const grouping = { fieldId: choiceField };
+
+  // The degenerate shape itself: no definition to read options off, so the
+  // trailing group is the ONLY group and the board draws one column — the very
+  // arrangement the kernel refuses to store (`wave2.ts:3579-3584`), renamed.
+  const orphaned = groupTasks(built, grouping, STATUSES, PROJECTS, true, []);
+  assert.deepEqual(labelsOf(orphaned), ["No value"]);
+
+  assert.equal(groupingMakesColumns(grouping, []), false);
+  assert.equal(resolveBoardInterlock("board", grouping, []), "list");
+  assert.equal(layoutFromSavedView("board", grouping, []), "list");
+
+  // A field made a type that has no options at all reaches the same place by a
+  // different road, which is why the rule reads the OPTIONS and not the type.
+  const retyped: FieldDefinition = { ...workKind, type: { kind: "text" } };
+  assert.equal(groupingMakesColumns(grouping, [retyped]), false);
+
+  // Retirement is NOT that road. A retired choice field still declares its
+  // options and still draws real columns, so refusing the board over it would
+  // refuse an arrangement that works.
+  const retired: FieldDefinition = { ...workKind, state: "retired" };
+  assert.equal(groupingMakesColumns(grouping, [retired]), true);
+  assert.equal(resolveBoardInterlock("board", grouping, [retired]), "board");
+  assert.deepEqual(
+    labelsOf(groupTasks(built, grouping, STATUSES, PROJECTS, true, [retired])),
+    ["Warsztat", "Analiza", "Przegląd", "No value"],
+  );
 });
 
 test("grouping by status follows the workspace's own order, not insertion and not the alphabet", () => {

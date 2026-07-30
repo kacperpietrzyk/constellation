@@ -61,6 +61,7 @@ const parked = TaskStatusIdSchema.parse("00000000-0000-4000-8000-0000000000a5");
 const storedFilters: SavedWorkView["filters"] = {
   dueWindow: "this_week",
   fields: [{ fieldId, predicate: { kind: "set" } }],
+  operationalStates: ["actionable", "waiting"],
   priorities: ["urgent", "high", "normal"],
   projectIds: [projectId],
   relationConditions: [
@@ -175,15 +176,24 @@ const openEditor = async (): Promise<HTMLFormElement> => {
   return form;
 };
 
+const boxFor = (
+  form: HTMLFormElement,
+  condition: string,
+  value: string,
+): HTMLInputElement => {
+  const box = form.querySelector<HTMLInputElement>(
+    `[data-condition="${condition}"] input[value="${value}"]`,
+  );
+  assert.ok(box, `the editor offers no control for ${condition} ${value}`);
+  return box;
+};
+
 const uncheck = async (
   form: HTMLFormElement,
   condition: string,
   value: string,
 ): Promise<void> => {
-  const box = form.querySelector<HTMLInputElement>(
-    `[data-condition="${condition}"] input[value="${value}"]`,
-  );
-  assert.ok(box, `the editor offers no control for ${condition} ${value}`);
+  const box = boxFor(form, condition, value);
   assert.equal(
     box.checked,
     true,
@@ -191,6 +201,48 @@ const uncheck = async (
   );
   await act(async () => {
     box.click();
+  });
+};
+
+const check = async (
+  form: HTMLFormElement,
+  condition: string,
+  value: string,
+): Promise<void> => {
+  const box = boxFor(form, condition, value);
+  assert.equal(
+    box.checked,
+    false,
+    `the editor opened with ${value} already on, so ticking it measures nothing`,
+  );
+  await act(async () => {
+    box.click();
+  });
+};
+
+/** The deadline is a `<select>`, which is a different event path from every
+ *  checkbox beside it — React owns the value, so the native setter has to be
+ *  used or the component never hears the change. A suite that only ever clicked
+ *  boxes would leave this control free to be wired to nothing. */
+const chooseDeadline = async (
+  form: HTMLFormElement,
+  value: string,
+): Promise<void> => {
+  const select = form.querySelector<HTMLSelectElement>(
+    '[data-condition="dueWindow"] select',
+  );
+  assert.ok(select, "the editor offers no deadline control");
+  assert.ok(
+    [...select.options].some((option) => option.value === value),
+    `the deadline control offers no option ${value}`,
+  );
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLSelectElement.prototype,
+      "value",
+    )?.set;
+    setter?.call(select, value);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
   });
 };
 
@@ -225,6 +277,7 @@ test("narrowing a saved view to one priority keeps its other conditions", async 
     filters: {
       dueWindow: "this_week",
       fields: [{ fieldId, predicate: { kind: "set" } }],
+      operationalStates: ["actionable", "waiting"],
       priorities: ["urgent"],
       projectIds: [projectId],
       relationConditions: [
@@ -234,6 +287,60 @@ test("narrowing a saved view to one priority keeps its other conditions", async 
       statusIds: [doing],
     },
   });
+});
+
+test("every condition the editor shows travels under its own key", async () => {
+  // The editor advertises four conditions and the suite used to move exactly
+  // one of them, five times over. Three controls could have been wired to the
+  // wrong key, to each other, or to nothing at all — and the deadline is a
+  // `<select>`, a wholly different event path, so it could have thrown on a
+  // reader's first click with every test still green.
+  const form = await openEditor();
+  await uncheck(form, "operationalStates", "waiting");
+  await uncheck(form, "priorities", "normal");
+  await check(form, "statusIds", parked);
+  await chooseDeadline(form, "overdue");
+  await save(form);
+
+  assert.equal(issued.length, 1, `saving issued ${issued.length} commands`);
+  assert.deepEqual(issued[0]!.payload, {
+    savedViewId,
+    filters: {
+      // Every one of the four moved, and each landed on the key the control is
+      // labelled with. Deep-equality over the WHOLE object, because a check
+      // that the four arrived is green on a write that lost the other four.
+      dueWindow: "overdue",
+      fields: [{ fieldId, predicate: { kind: "set" } }],
+      operationalStates: ["actionable"],
+      priorities: ["urgent", "high"],
+      projectIds: [projectId],
+      relationConditions: [
+        { path: "project", predicate: { field: "id", in: [projectId] } },
+      ],
+      scheduled: true,
+      statusIds: [doing, parked],
+    },
+  });
+});
+
+test("clearing the deadline removes it rather than storing an empty one", async () => {
+  // "Any deadline" is the ABSENT key, not an empty string: the payload schema
+  // is `.strict()` and `dueWindow` is an enum, so a `""` reaching the kernel is
+  // a contract rejection on a control that looks like it worked.
+  const form = await openEditor();
+  await chooseDeadline(form, "");
+  await save(form);
+
+  assert.equal(issued.length, 1, `saving issued ${issued.length} commands`);
+  const filters = (
+    issued[0]!.payload as unknown as { filters: Record<string, unknown> }
+  ).filters;
+  assert.equal(
+    "dueWindow" in filters,
+    false,
+    "an emptied deadline was stored as a value the command schema refuses",
+  );
+  assert.deepEqual(filters["priorities"], ["urgent", "high", "normal"]);
 });
 
 test("clearing a condition removes it, not stores one that matches nothing", async () => {
