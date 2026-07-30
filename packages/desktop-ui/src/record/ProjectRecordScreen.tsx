@@ -371,10 +371,21 @@ export const ProjectRecordScreen = ({
           />
         )}
 
-        {selected === "comments" &&
-          (comments.kind === "unavailable" ? (
-            <p className={styles.unavailable}>{comments.message}</p>
-          ) : (
+        {selected === "comments" && (
+          <>
+            {/* A read that failed says so, and says it ABOVE the panel rather
+                than in place of it. Losing the composer with the list was the
+                expensive half: the write is checked against the RECORD's
+                version, which this slice does not carry, so it still lands with
+                no threads on screen — and a reader whose only grant is
+                `comment` was left with a sentence and nothing to type into. The
+                count on the tab still goes missing, because a number with
+                nothing to count is a claim. */}
+            {comments.kind === "unavailable" && (
+              <p className={styles.unavailable} role="status">
+                {comments.message}
+              </p>
+            )}
             <RecordCommentsPanel
               actorOf={actorOf}
               // Permission is NOT folded into `busy` any more. A control dead
@@ -392,9 +403,15 @@ export const ProjectRecordScreen = ({
               onSubmit={onAddComment}
               recordKey={projectId}
               threads={threads ?? []}
+              // The same distinction the tab count already makes: `undefined`
+              // is a list that never arrived, `[]` is a record nobody has
+              // written on. Collapsed into one array for the panel, so the
+              // panel is told which it was.
+              threadsKnown={threads !== undefined}
               timeZone={prose.timeZone}
             />
-          ))}
+          </>
+        )}
 
         {selected === "activity" &&
           (activity.kind === "unavailable" ? (

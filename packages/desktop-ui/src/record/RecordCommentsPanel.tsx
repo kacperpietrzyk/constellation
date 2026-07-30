@@ -322,6 +322,7 @@ export interface MentionCandidate {
 // says so by drawing no control rather than a dead one.
 export const RecordCommentsPanel = ({
   threads,
+  threadsKnown,
   recordKey,
   actorOf,
   mentionNameOf,
@@ -339,6 +340,20 @@ export const RecordCommentsPanel = ({
   timeZone,
 }: {
   readonly threads: readonly CommentThread[];
+  /** Whether that list is the ANSWER or merely what there is so far.
+   *
+   *  A read still in flight and a read that was refused both arrive here as an
+   *  empty array, and an empty array is indistinguishable from a record nobody
+   *  has written on. The panel used to be spared this question because a caller
+   *  that could not read the comments drew a sentence INSTEAD of the panel —
+   *  which also took away the composer, and a failed read has no business
+   *  costing anybody the ability to write.
+   *
+   *  So the caller now says which it is. Required, not defaulted, for the
+   *  reason stated above this component: a mount that forgets would go back to
+   *  claiming "no comments on this record yet" on the evidence of a query that
+   *  never answered. */
+  readonly threadsKnown: boolean;
   /** Identifies the record on screen. Every unsent thing in this panel is
    *  keyed by it, so opening the next record starts from nothing typed. */
   readonly recordKey: string;
@@ -776,13 +791,18 @@ export const RecordCommentsPanel = ({
       {/* "Nothing open" and "never discussed" are different facts about a
           record, and one sentence covering both would tell a reader nobody has
           ever written here when in truth every thread was settled. */}
-      {state.kind === "all_resolved" && (
+      {threadsKnown && state.kind === "all_resolved" && (
         <p className={styles.empty}>
           Nothing open — {countLabel(state.hidden, "resolved thread")}{" "}
           {state.hidden === 1 ? "is" : "are"} hidden.
         </p>
       )}
-      {state.kind === "none" && (
+      {/* Both empty states are claims about the record, and neither can be made
+          from a list that has not arrived. The caller draws the reason in its
+          place — "loading", or why the read was refused — so saying nothing
+          here is what keeps two sentences from contradicting each other one
+          line apart. */}
+      {threadsKnown && state.kind === "none" && (
         <p className={styles.empty}>No comments on this record yet.</p>
       )}
 

@@ -33,9 +33,10 @@ type Projection<Kind extends QueryProjection["kind"]> = Extract<
 //
 // That was reversed rather than worked around. The gap was CLOSED — the record
 // panel grew all four — and one panel now serves all three record kinds, which
-// is what the tab was for. The note is kept rather than deleted because the
-// reasoning is the same either way: consistency is worth having once it costs
-// nobody a capability, and not one line before.
+// is what the tab was for. The PANEL is what all three share and the tab is
+// not: a task's comments are read in the inspector rail. The note is kept
+// rather than deleted because the reasoning is the same either way: consistency
+// is worth having once it costs nobody a capability, and not one line before.
 //
 // Two things this file exists to catch, both of which a component test would
 // pass over:

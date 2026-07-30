@@ -596,8 +596,26 @@ test("the inspector says WHY comments are missing, not merely that they are", as
     () => stated().includes("The app refused an invalid query."),
     "the inspector never stated why the comments are missing",
   );
-  assertNoNode(
+  // And the reader can STILL WRITE. This assertion used to say the opposite,
+  // and it was pinning a regression rather than a decision: the panel that this
+  // one replaced printed the refusal AND drew the composer under it, and the
+  // rewrite quietly turned "message plus composer" into "message INSTEAD of
+  // composer" with no reason recorded anywhere.
+  //
+  // A failed READ and a missing right to WRITE are different facts. The write
+  // does not depend on the read — `addComment` takes its target version from
+  // the selected record, never from the comment list — so refusing the composer
+  // here takes away a capability the refusal never touched. The packaged hub
+  // smoke is where that bites for real: it downgrades a member to `comment`
+  // access and waits for exactly this textarea, so a comment read that fails on
+  // a packaged run fails the smoke with `COMMENT_COMPOSER_NOT_RENDERED` and
+  // says nothing about which of the two things broke.
+  //
+  // The ORGANIZATION record is deliberately not held to this. There a refused
+  // read means a kernel that predates the organization comment target, so the
+  // write it would offer is one the kernel is going to refuse too.
+  assert.ok(
     rail().querySelector('textarea[aria-label="Write a comment"]'),
-    "a composer is offered over comments that could not be read",
+    "comments that could not be READ also took away the ability to WRITE one",
   );
 });

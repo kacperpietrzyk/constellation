@@ -91,7 +91,7 @@ export interface PendingAttachment {
  * resolves it — from agent grants and mention candidates it holds and the panel
  * does not — and the shell is on the hot path. A resolver reaching into the
  * panel's module would drag the panel and its stylesheet along with it, which
- * is exactly what the record screen is lazy to avoid.
+ * is exactly what a record screen is lazy to avoid.
  *
  * The projection carries only `{ principalId?, displayName }` — no agent flag
  * and no role — so the panel cannot work this out and does not guess.

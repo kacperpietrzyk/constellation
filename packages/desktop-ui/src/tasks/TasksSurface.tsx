@@ -329,14 +329,23 @@ export const TasksSurface = ({
   if (!groupingOptions.some((option) => option.value === groupingValue))
     groupingOptions.push({ value: groupingValue, label: "Stored field" });
 
-  // The board names its axis from a table keyed by the five words, which has no
-  // entry for a field — `TASK_GROUPING_LABELS[{ fieldId }]` is `undefined` and
-  // would draw an empty bold. Until the board can be handed the field's own
-  // label, a field grouping is announced with the sentence that is true of any
-  // non-status board: these columns are a lens, not a place. The drop rules do
-  // not read this — they read the columns (`TaskBoardLayout.tsx:217-218`).
-  const boardGrouping: TaskGrouping =
-    typeof grouping === "object" ? "none" : grouping;
+  // The board is handed the WORD, not the axis, because the label table is
+  // keyed by the five words and an object cannot key a `Record`:
+  // `TASK_GROUPING_LABELS[{ fieldId }]` is `undefined` and drew an empty bold
+  // where the axis should be named. Resolved here because this is where the
+  // definitions are. A retired field still names itself — it still draws real
+  // columns, the same stance `fieldOptions` takes — and only a field this
+  // workspace no longer carries at all falls back to "These", the sentence that
+  // is true of any non-status board. The drop rules do not read this: they read
+  // the columns (`TaskBoardLayout.tsx:217-218`).
+  const boardGroupingLabel =
+    typeof grouping === "object"
+      ? (fieldDefinitions.find(
+          (definition) => definition.id === grouping.fieldId,
+        )?.label ?? "These")
+      : grouping === "none"
+        ? "These"
+        : TASK_GROUPING_LABELS[grouping];
 
   return (
     <div className={`surface-scroll ${styles.tasks}`} data-tasks-surface>
@@ -493,7 +502,7 @@ export const TasksSurface = ({
             {activeLayout === "board" ? (
               <TaskBoardLayout
                 firstRowIndexOfGroup={firstRowIndexOfGroup}
-                grouping={boardGrouping}
+                groupingLabel={boardGroupingLabel}
                 groups={groups}
                 itemProps={itemProps}
                 onAddToGroup={addToGroup}
@@ -502,6 +511,10 @@ export const TasksSurface = ({
                 onSelect={onSelectTask}
                 prose={prose}
                 selectedTaskId={selectedTaskId}
+                // A field grouping is an object and never equals "project", so
+                // the test the board used to make on the union reads correctly
+                // on the wider type without narrowing it first.
+                showProjects={grouping !== "project"}
               />
             ) : activeLayout === "table" ? (
               <TaskTableLayout

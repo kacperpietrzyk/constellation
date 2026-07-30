@@ -94,6 +94,7 @@ import { TasksSurface } from "./tasks/TasksSurface.js";
 import {
   buildActorResolver,
   buildMentionResolver,
+  readCommentPermissions,
 } from "./record/record-actors.js";
 // Lazy, and not as a preference. The record screen carries four panels and five
 // stylesheets, and the hot path it would otherwise join has single-digit
@@ -161,8 +162,10 @@ import {
   type AuditReceiptProjection,
   type DesktopSnapshot,
   type MutationFailure,
+  type MutationResult,
   type ProjectOverviewProjection,
   type CommentListProjection,
+  type CommentTarget,
   type DataSlice,
   type UndoPreview,
 } from "./client/workflow.js";
@@ -201,6 +204,22 @@ import type { WorkContextKind } from "./WorkSurface.js";
 // Re-eksport, bo test kompletności mapy leniwych powierzchni importuje
 // `lazySurfaceLoaders` z tego modułu.
 export { lazySurfaceLoaders } from "./shell/lazy-surfaces.js";
+
+// The two things "no comments to show" can mean, and they are NOT the same
+// thing. `DataSlice` carries a list or a message, so the shell says which in
+// the message — and says each of them in exactly ONE place: the sentence below
+// used to be written at the slice's initial value AND again in the loader's
+// guard, and the rail drew "Choose a task or a project." under the Comments
+// heading of a task that WAS chosen, on every first frame, because the effect
+// had not run yet.
+const NO_COMMENT_TARGET: DataSlice<CommentListProjection> = {
+  kind: "unavailable",
+  message: "Choose a task or a project.",
+};
+const COMMENTS_PENDING: DataSlice<CommentListProjection> = {
+  kind: "unavailable",
+  message: "Loading comments…",
+};
 
 export const RealApp = ({
   client,
@@ -318,10 +337,12 @@ export const RealApp = ({
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [attentionBusy, setAttentionBusy] = useState(false);
   const [historyBusyCaptureId, setHistoryBusyCaptureId] = useState<CaptureId>();
-  const [comments, setComments] = useState<DataSlice<CommentListProjection>>({
-    kind: "unavailable",
-    message: "Choose a task or a project.",
-  });
+  const [comments, setComments] =
+    useState<DataSlice<CommentListProjection>>(NO_COMMENT_TARGET);
+  // Which record the slice above holds, because the slice itself cannot say.
+  // Without it, switching from task A to task B leaves A's threads under B's
+  // Comments heading for the whole round trip of the new read.
+  const commentTargetKeyRef = useRef<string | undefined>(undefined);
   const [sessionRelation, setSessionRelation] = useState<{
     id: RelationId;
     version: number;
@@ -926,19 +947,54 @@ export const RealApp = ({
     };
   }, [client, selectedProjectId, snapshot]);
 
+  // WHICH record the SELECTED-RECORD comments are read and written against.
+  // The loader below and the six write callbacks on the two rails used to spell
+  // their own copy of this, and a task record screen would have made it nine
+  // statements of one fact — the shape of this repo's named repeat defect. The
+  // project record screen is the one thing this cannot answer for; it pins its
+  // own, and `recordComment` says why.
+  //
+  // Memoised because it is an effect dependency: a fresh object each render
+  // would re-read the comments on every render.
+  const commentTarget = useMemo<CommentTarget | undefined>(
+    () =>
+      selectedTaskId
+        ? { kind: "task", taskId: selectedTaskId }
+        : selectedProjectId
+          ? { kind: "project", projectId: selectedProjectId }
+          : undefined,
+    [selectedProjectId, selectedTaskId],
+  );
+
   useEffect(() => {
-    if (!client || !snapshot || (!selectedTaskId && !selectedProjectId)) {
-      setComments({
-        kind: "unavailable",
-        message: "Choose a task or a project.",
-      });
+    // The ref is assigned on EVERY path, including this one, so "the record the
+    // slice holds" never becomes a lie the next branch inherits.
+    const targetKey = selectedTaskId ?? selectedProjectId;
+    const switched = commentTargetKeyRef.current !== targetKey;
+    commentTargetKeyRef.current = targetKey;
+    // Nothing is selected, which is the ONLY frame that sentence is true of.
+    if (commentTarget === undefined) {
+      setComments(NO_COMMENT_TARGET);
       return;
     }
+    if (switched)
+      // A DIFFERENT record than the one on screen: whatever is held belongs to
+      // the record just left, so it goes. Keeping it would put the previous
+      // record's threads under this one's heading until the read lands.
+      setComments(COMMENTS_PENDING);
+    // The SAME record, re-read because `reloadSnapshot` ran after a write. The
+    // list on screen is still this record's, so it stays and only an
+    // `unavailable` slot becomes the pending line — an unconditional set here
+    // would blank the threads on every single write.
+    else
+      setComments((current) =>
+        current.kind === "unavailable" ? COMMENTS_PENDING : current,
+      );
+    // A record IS chosen and the shell is still booting: the line above already
+    // says the read is pending, which is the true thing to say.
+    if (!client || !snapshot) return;
     let active = true;
-    const target = selectedTaskId
-      ? { kind: "task" as const, taskId: selectedTaskId }
-      : { kind: "project" as const, projectId: selectedProjectId! };
-    void loadComments(client, snapshot, target)
+    void loadComments(client, snapshot, commentTarget)
       .then((data) => active && setComments({ kind: "ready", data }))
       .catch(
         (error: unknown) =>
@@ -954,7 +1010,7 @@ export const RealApp = ({
     return () => {
       active = false;
     };
-  }, [client, selectedProjectId, selectedTaskId, snapshot]);
+  }, [client, commentTarget, selectedProjectId, selectedTaskId, snapshot]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1155,6 +1211,35 @@ export const RealApp = ({
         : undefined,
     [selectedProjectId, snapshot],
   );
+  // The version a comment write is checked against, carried BESIDE the target
+  // rather than re-read at each write site: a version sent under another
+  // record's id is answered `record.version_conflict` for a record nobody
+  // touched. The overview carries it once it has loaded — and only while it is
+  // still the overview OF this project, because that state keeps the previous
+  // project's reading on screen for the whole round trip of the next one; the
+  // list entry is what the inspector opened with.
+  const commentTargetVersion = selectedTaskId
+    ? selectedTask?.version
+    : projectOverview !== undefined &&
+        projectOverview.project.id === selectedProjectId
+      ? projectOverview.project.version
+      : selectedProject?.version;
+  // The project RECORD screen pins its own, and that is not the duplicate the
+  // reading above exists to remove — it is a fact about the screen. Its Tasks
+  // tab selects a row through the raw setter, so a task chosen INSIDE the
+  // record leaves both ids set, and the shell's reading prefers the task: a
+  // comment written on the record's Comments tab would land on the task. The
+  // record answers for the project it opened, and for nothing else.
+  const recordComment =
+    projectOverview === undefined
+      ? undefined
+      : {
+          target: {
+            kind: "project" as const,
+            projectId: projectOverview.project.id,
+          },
+          version: projectOverview.project.version,
+        };
   const selectedCapture = useMemo(
     () =>
       snapshot?.captures.find((capture) => capture.id === selectedCaptureId),
@@ -1227,20 +1312,51 @@ export const RealApp = ({
   const receipt =
     selectedTask === undefined ? undefined : receipts[selectedTask.id];
   const showFailure = (result: MutationFailure) => setNotice(result);
-  const currentPrincipalId =
-    snapshot?.access.kind === "ready"
-      ? snapshot.access.data.currentPrincipalId
-      : undefined;
-  const currentMember =
-    snapshot?.access.kind === "ready"
-      ? snapshot.access.data.members.find(
-          (member) => member.principalId === currentPrincipalId,
-        )
-      : undefined;
-  const currentGrant = currentMember?.spaces[0];
-  const canResolveComments =
-    currentMember?.role === "owner" || currentGrant?.access === "edit";
-  const canComment = canResolveComments || currentGrant?.access === "comment";
+  // Whose voice this is and what it may do to a comment. One reading, shared
+  // with the organization loader, which spelled out the same five steps until
+  // the two copies were one edit away from disagreeing.
+  const {
+    currentPrincipalId,
+    canComment,
+    canResolve: canResolveComments,
+  } = readCommentPermissions(snapshot?.access);
+  // One shape for all nine comment writes — three on the project record and
+  // three on each rail. Each RE-READS the list on success rather than patching
+  // it: the version the write expected has just moved, and a list assembled
+  // from the old one refuses the NEXT write with a version conflict nobody can
+  // explain.
+  // The target is passed IN rather than taken from the shell, because the
+  // record screen answers for the project it opened and the rails answer for
+  // whatever is selected — see `recordComment`.
+  //
+  // The ONLY path that answers false is a refused write. Once the write has
+  // landed every path answers true, INCLUDING a re-read that throws: this
+  // boolean is what clears the composer and closes the editor, so a false here
+  // would leave the author's text sitting under a comment that DID post, and
+  // the retry would double-post it. Nothing catches the read downstream either
+  // — the panel attaches only `.then` — so the alternative is an uncaught
+  // rejection.
+  const settleCommentWrite = async (
+    target: CommentTarget | undefined,
+    result: MutationResult<unknown>,
+    toast?: string,
+  ): Promise<boolean> => {
+    setCommentBusy(false);
+    if (result.kind !== "success") {
+      showFailure(result);
+      return false;
+    }
+    if (client && snapshot && target !== undefined)
+      try {
+        const data = await loadComments(client, snapshot, target);
+        setComments({ kind: "ready", data });
+      } catch {
+        // The list is one read behind until the next one lands, and that is the
+        // whole cost.
+      }
+    if (toast !== undefined) pushToast({ message: toast });
+    return true;
+  };
   // Po odwracalnej mutacji toast niesie akcję „Cofnij”: świeży wpis na
   // szczycie timeline aktywności wskazuje polecenie, którego podgląd
   // cofnięcia otwiera istniejący UndoDialog.
@@ -2212,8 +2328,8 @@ export const RealApp = ({
                     activity={state.snapshot.activity}
                     body={slots.body}
                     busy={projectBusy}
-                    canComment={Boolean(canComment)}
-                    canResolve={Boolean(canResolveComments)}
+                    canComment={canComment}
+                    canResolve={canResolveComments}
                     clientLinking={{
                       candidates: linkableClientOrganizations(
                         state.snapshot,
@@ -2253,38 +2369,25 @@ export const RealApp = ({
                       parent,
                       attachmentSourceIds,
                     ) => {
-                      if (!client) return Promise.resolve(false);
+                      if (!client || recordComment === undefined)
+                        return Promise.resolve(false);
                       setCommentBusy(true);
                       return addComment(
                         client,
                         state.snapshot,
-                        {
-                          kind: "project",
-                          projectId: projectOverview.project.id,
-                        },
-                        projectOverview.project.version,
+                        recordComment.target,
+                        recordComment.version,
                         body,
                         mentions,
                         parent,
                         attachmentSourceIds,
-                      ).then(async (result) => {
-                        setCommentBusy(false);
-                        if (result.kind !== "success") {
-                          showFailure(result);
-                          return false;
-                        }
-                        const data = await loadComments(
-                          client,
-                          state.snapshot,
-                          {
-                            kind: "project",
-                            projectId: projectOverview.project.id,
-                          },
-                        );
-                        setComments({ kind: "ready", data });
-                        pushToast({ message: "Comment saved." });
-                        return true;
-                      });
+                      ).then((result) =>
+                        settleCommentWrite(
+                          recordComment.target,
+                          result,
+                          "Comment saved.",
+                        ),
+                      );
                     }}
                     actorOf={actorOf}
                     mentionNameOf={mentionNameOf}
@@ -2292,7 +2395,8 @@ export const RealApp = ({
                       openContext(destinationContext("projects", "Projects"))
                     }
                     onEditComment={(comment, body, attachmentSourceIds) => {
-                      if (!client) return Promise.resolve(false);
+                      if (!client || recordComment === undefined)
+                        return Promise.resolve(false);
                       setCommentBusy(true);
                       return editComment(
                         client,
@@ -2302,49 +2406,22 @@ export const RealApp = ({
                         body,
                         comment.mentionPrincipalIds,
                         attachmentSourceIds,
-                      ).then(async (result) => {
-                        setCommentBusy(false);
-                        if (result.kind !== "success") {
-                          showFailure(result);
-                          return false;
-                        }
-                        const data = await loadComments(
-                          client,
-                          state.snapshot,
-                          {
-                            kind: "project",
-                            projectId: projectOverview.project.id,
-                          },
-                        );
-                        setComments({ kind: "ready", data });
-                        return true;
-                      });
+                      ).then((result) =>
+                        settleCommentWrite(recordComment.target, result),
+                      );
                     }}
                     onResolveComment={(comment, resolved) => {
-                      if (!client) return Promise.resolve(false);
+                      if (!client || recordComment === undefined)
+                        return Promise.resolve(false);
                       setCommentBusy(true);
                       return setCommentResolved(
                         client,
                         state.snapshot,
                         comment,
                         resolved,
-                      ).then(async (result) => {
-                        setCommentBusy(false);
-                        if (result.kind !== "success") {
-                          showFailure(result);
-                          return false;
-                        }
-                        const data = await loadComments(
-                          client,
-                          state.snapshot,
-                          {
-                            kind: "project",
-                            projectId: projectOverview.project.id,
-                          },
-                        );
-                        setComments({ kind: "ready", data });
-                        return true;
-                      });
+                      ).then((result) =>
+                        settleCommentWrite(recordComment.target, result),
+                      );
                     }}
                     onNewTask={() =>
                       openContext(destinationContext("tasks", "Tasks"))
@@ -4038,7 +4115,7 @@ export const RealApp = ({
                 client={client}
                 snapshot={state.snapshot}
                 task={selectedTask}
-                canEdit={Boolean(canResolveComments)}
+                canEdit={canResolveComments}
                 busy={attachmentBusy}
                 onBusyChange={setAttachmentBusy}
                 onSnapshot={(next) =>
@@ -4090,107 +4167,89 @@ export const RealApp = ({
                 the shared panel to match, not by giving the task less. */}
             <section className="inspector-section">
               <p className="section-label">Comments</p>
-              {comments.kind === "unavailable" ? (
-                // What went wrong, rather than one sentence for every cause:
-                // "Choose a task or a project." and a query that failed used to
-                // read identically here.
+              {/* The message sits ABOVE the panel and no longer INSTEAD of it.
+                  A read that failed says what went wrong — rather than one
+                  sentence for every cause — but it must not also cost the
+                  reader the ability to write: the composer takes its version
+                  from the selected task, not from this slice, so a write still
+                  lands with no threads on screen. Short-circuiting here is what
+                  left a member with `comment` access looking at a message and
+                  no composer. */}
+              {comments.kind === "unavailable" && (
                 <p role="status">{comments.message}</p>
-              ) : (
-                <Suspense fallback={null}>
-                  <RecordCommentsPanel
-                    actorOf={actorOf}
-                    busy={commentBusy}
-                    canComment={Boolean(canComment)}
-                    canResolve={Boolean(canResolveComments)}
-                    currentPrincipalId={currentPrincipalId}
-                    mentionCandidates={commentMentionCandidates}
-                    mentionNameOf={(principalId) => mentionNameOf(principalId)}
-                    onAttach={stageCommentAttachment}
-                    onEdit={(comment, body, attachmentSourceIds) => {
-                      if (!client) return Promise.resolve(false);
-                      setCommentBusy(true);
-                      return editComment(
-                        client,
-                        state.snapshot,
-                        comment.id,
-                        comment.version,
-                        body,
-                        comment.mentionPrincipalIds,
-                        attachmentSourceIds,
-                      ).then(async (result) => {
-                        setCommentBusy(false);
-                        if (result.kind !== "success") {
-                          showFailure(result);
-                          return false;
-                        }
-                        const data = await loadComments(
-                          client,
-                          state.snapshot,
-                          { kind: "task", taskId: selectedTask.id },
-                        );
-                        setComments({ kind: "ready", data });
-                        return true;
-                      });
-                    }}
-                    onInspectAttachment={inspectManagedAttachment}
-                    onResolve={(comment, resolved) => {
-                      if (!client) return Promise.resolve(false);
-                      setCommentBusy(true);
-                      return setCommentResolved(
-                        client,
-                        state.snapshot,
-                        comment,
-                        resolved,
-                      ).then(async (result) => {
-                        setCommentBusy(false);
-                        if (result.kind !== "success") {
-                          showFailure(result);
-                          return false;
-                        }
-                        const data = await loadComments(
-                          client,
-                          state.snapshot,
-                          { kind: "task", taskId: selectedTask.id },
-                        );
-                        setComments({ kind: "ready", data });
-                        return true;
-                      });
-                    }}
-                    onRestoreAttachment={restoreManagedAttachment}
-                    onSubmit={(body, mentions, parent, attachmentSourceIds) => {
-                      if (!client) return Promise.resolve(false);
-                      setCommentBusy(true);
-                      return addComment(
-                        client,
-                        state.snapshot,
-                        { kind: "task", taskId: selectedTask.id },
-                        selectedTask.version,
-                        body,
-                        mentions,
-                        parent,
-                        attachmentSourceIds,
-                      ).then(async (result) => {
-                        setCommentBusy(false);
-                        if (result.kind !== "success") {
-                          showFailure(result);
-                          return false;
-                        }
-                        const data = await loadComments(
-                          client,
-                          state.snapshot,
-                          { kind: "task", taskId: selectedTask.id },
-                        );
-                        setComments({ kind: "ready", data });
-                        pushToast({ message: "Comment saved." });
-                        return true;
-                      });
-                    }}
-                    recordKey={`task-${selectedTask.id}`}
-                    threads={comments.data.threads}
-                    timeZone={recordProse.timeZone}
-                  />
-                </Suspense>
               )}
+              <Suspense fallback={null}>
+                <RecordCommentsPanel
+                  actorOf={actorOf}
+                  busy={commentBusy}
+                  canComment={canComment}
+                  canResolve={canResolveComments}
+                  currentPrincipalId={currentPrincipalId}
+                  mentionCandidates={commentMentionCandidates}
+                  mentionNameOf={(principalId) => mentionNameOf(principalId)}
+                  onAttach={stageCommentAttachment}
+                  onEdit={(comment, body, attachmentSourceIds) => {
+                    if (!client) return Promise.resolve(false);
+                    setCommentBusy(true);
+                    return editComment(
+                      client,
+                      state.snapshot,
+                      comment.id,
+                      comment.version,
+                      body,
+                      comment.mentionPrincipalIds,
+                      attachmentSourceIds,
+                    ).then((result) =>
+                      settleCommentWrite(commentTarget, result),
+                    );
+                  }}
+                  onInspectAttachment={inspectManagedAttachment}
+                  onResolve={(comment, resolved) => {
+                    if (!client) return Promise.resolve(false);
+                    setCommentBusy(true);
+                    return setCommentResolved(
+                      client,
+                      state.snapshot,
+                      comment,
+                      resolved,
+                    ).then((result) =>
+                      settleCommentWrite(commentTarget, result),
+                    );
+                  }}
+                  onRestoreAttachment={restoreManagedAttachment}
+                  onSubmit={(body, mentions, parent, attachmentSourceIds) => {
+                    if (
+                      !client ||
+                      commentTarget === undefined ||
+                      commentTargetVersion === undefined
+                    )
+                      return Promise.resolve(false);
+                    setCommentBusy(true);
+                    return addComment(
+                      client,
+                      state.snapshot,
+                      commentTarget,
+                      commentTargetVersion,
+                      body,
+                      mentions,
+                      parent,
+                      attachmentSourceIds,
+                    ).then((result) =>
+                      settleCommentWrite(
+                        commentTarget,
+                        result,
+                        "Comment saved.",
+                      ),
+                    );
+                  }}
+                  recordKey={`task-${selectedTask.id}`}
+                  threads={
+                    comments.kind === "ready" ? comments.data.threads : []
+                  }
+                  threadsKnown={comments.kind === "ready"}
+                  timeZone={recordProse.timeZone}
+                />
+              </Suspense>
             </section>
           </div>
         ) : selectedProject ? (
@@ -4243,110 +4302,83 @@ export const RealApp = ({
             </section>
             <section className="inspector-section">
               <p className="section-label">Comments</p>
-              {comments.kind === "unavailable" ? (
+              {/* Above the panel, not instead of it — the same reading as the
+                  task rail above. */}
+              {comments.kind === "unavailable" && (
                 <p role="status">{comments.message}</p>
-              ) : (
-                <Suspense fallback={null}>
-                  <RecordCommentsPanel
-                    actorOf={actorOf}
-                    busy={commentBusy}
-                    canComment={Boolean(canComment)}
-                    canResolve={Boolean(canResolveComments)}
-                    currentPrincipalId={currentPrincipalId}
-                    mentionCandidates={commentMentionCandidates}
-                    mentionNameOf={(principalId) => mentionNameOf(principalId)}
-                    onAttach={stageCommentAttachment}
-                    onEdit={(comment, body, attachmentSourceIds) => {
-                      if (!client) return Promise.resolve(false);
-                      setCommentBusy(true);
-                      return editComment(
-                        client,
-                        state.snapshot,
-                        comment.id,
-                        comment.version,
-                        body,
-                        comment.mentionPrincipalIds,
-                        attachmentSourceIds,
-                      ).then(async (result) => {
-                        setCommentBusy(false);
-                        if (result.kind !== "success") {
-                          showFailure(result);
-                          return false;
-                        }
-                        const data = await loadComments(
-                          client,
-                          state.snapshot,
-                          { kind: "project", projectId: selectedProject.id },
-                        );
-                        setComments({ kind: "ready", data });
-                        return true;
-                      });
-                    }}
-                    onInspectAttachment={inspectManagedAttachment}
-                    onResolve={(comment, resolved) => {
-                      if (!client) return Promise.resolve(false);
-                      setCommentBusy(true);
-                      return setCommentResolved(
-                        client,
-                        state.snapshot,
-                        comment,
-                        resolved,
-                      ).then(async (result) => {
-                        setCommentBusy(false);
-                        if (result.kind !== "success") {
-                          showFailure(result);
-                          return false;
-                        }
-                        const data = await loadComments(
-                          client,
-                          state.snapshot,
-                          { kind: "project", projectId: selectedProject.id },
-                        );
-                        setComments({ kind: "ready", data });
-                        return true;
-                      });
-                    }}
-                    onRestoreAttachment={restoreManagedAttachment}
-                    onSubmit={(body, mentions, parent, attachmentSourceIds) => {
-                      if (!client) return Promise.resolve(false);
-                      setCommentBusy(true);
-                      // The overview carries the version a write is checked
-                      // against once it has loaded; the list entry is what the
-                      // inspector opened with.
-                      const version =
-                        projectOverview?.project.version ??
-                        selectedProject.version;
-                      return addComment(
-                        client,
-                        state.snapshot,
-                        { kind: "project", projectId: selectedProject.id },
-                        version,
-                        body,
-                        mentions,
-                        parent,
-                        attachmentSourceIds,
-                      ).then(async (result) => {
-                        setCommentBusy(false);
-                        if (result.kind !== "success") {
-                          showFailure(result);
-                          return false;
-                        }
-                        const data = await loadComments(
-                          client,
-                          state.snapshot,
-                          { kind: "project", projectId: selectedProject.id },
-                        );
-                        setComments({ kind: "ready", data });
-                        pushToast({ message: "Comment saved." });
-                        return true;
-                      });
-                    }}
-                    recordKey={`project-${selectedProject.id}`}
-                    threads={comments.data.threads}
-                    timeZone={recordProse.timeZone}
-                  />
-                </Suspense>
               )}
+              <Suspense fallback={null}>
+                <RecordCommentsPanel
+                  actorOf={actorOf}
+                  busy={commentBusy}
+                  canComment={canComment}
+                  canResolve={canResolveComments}
+                  currentPrincipalId={currentPrincipalId}
+                  mentionCandidates={commentMentionCandidates}
+                  mentionNameOf={(principalId) => mentionNameOf(principalId)}
+                  onAttach={stageCommentAttachment}
+                  onEdit={(comment, body, attachmentSourceIds) => {
+                    if (!client) return Promise.resolve(false);
+                    setCommentBusy(true);
+                    return editComment(
+                      client,
+                      state.snapshot,
+                      comment.id,
+                      comment.version,
+                      body,
+                      comment.mentionPrincipalIds,
+                      attachmentSourceIds,
+                    ).then((result) =>
+                      settleCommentWrite(commentTarget, result),
+                    );
+                  }}
+                  onInspectAttachment={inspectManagedAttachment}
+                  onResolve={(comment, resolved) => {
+                    if (!client) return Promise.resolve(false);
+                    setCommentBusy(true);
+                    return setCommentResolved(
+                      client,
+                      state.snapshot,
+                      comment,
+                      resolved,
+                    ).then((result) =>
+                      settleCommentWrite(commentTarget, result),
+                    );
+                  }}
+                  onRestoreAttachment={restoreManagedAttachment}
+                  onSubmit={(body, mentions, parent, attachmentSourceIds) => {
+                    if (
+                      !client ||
+                      commentTarget === undefined ||
+                      commentTargetVersion === undefined
+                    )
+                      return Promise.resolve(false);
+                    setCommentBusy(true);
+                    return addComment(
+                      client,
+                      state.snapshot,
+                      commentTarget,
+                      commentTargetVersion,
+                      body,
+                      mentions,
+                      parent,
+                      attachmentSourceIds,
+                    ).then((result) =>
+                      settleCommentWrite(
+                        commentTarget,
+                        result,
+                        "Comment saved.",
+                      ),
+                    );
+                  }}
+                  recordKey={`project-${selectedProject.id}`}
+                  threads={
+                    comments.kind === "ready" ? comments.data.threads : []
+                  }
+                  threadsKnown={comments.kind === "ready"}
+                  timeZone={recordProse.timeZone}
+                />
+              </Suspense>
             </section>
           </div>
         ) : selectedWorkContextRecord ? (

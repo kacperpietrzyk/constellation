@@ -7,12 +7,10 @@ import { formatDate, formatTime } from "../i18n.js";
 import { daysUntil } from "../today-plan.js";
 import {
   PRIORITY_LABELS,
-  TASK_GROUPING_LABELS,
   dueSentence,
   ownerName,
   plannerName,
   type TaskGroup,
-  type TaskGrouping,
   type TaskProse,
   type TaskRow,
 } from "./task-view.js";
@@ -183,7 +181,8 @@ const BoardCard = ({
 export const TaskBoardLayout = ({
   groups,
   itemProps,
-  grouping,
+  groupingLabel,
+  showProjects,
   prose,
   firstRowIndexOfGroup,
   selectedTaskId,
@@ -193,7 +192,16 @@ export const TaskBoardLayout = ({
   onAddToGroup,
 }: {
   readonly groups: readonly TaskGroup[];
-  readonly grouping: TaskGrouping;
+  /** What the axis is CALLED, already resolved by the caller — the switcher's
+   *  word, or the field's own label when the columns are a workspace field.
+   *  A string and not the grouping itself because a field grouping is an
+   *  object, and an object cannot key `TASK_GROUPING_LABELS`: asking that table
+   *  for one drew an empty bold where the axis should have been named. */
+  readonly groupingLabel: string;
+  /** False while the board groups by project: the column already says it.
+   *  Resolved by the caller for the same reason — the grouping it reads may be
+   *  a field object, and this layout has no business narrowing that. */
+  readonly showProjects: boolean;
   readonly prose: TaskProse;
   /** The shell's roving tab stop, so one stop survives a layout switch. */
   readonly itemProps: (index: number) => ListNavigationItemProps;
@@ -211,9 +219,11 @@ export const TaskBoardLayout = ({
   const [dropColumnKey, setDropColumnKey] = useState<string>();
 
   // Read from the COLUMNS, never from the switcher's word: a board asked for
-  // "no grouping" still draws statuses, so a flag taken from `grouping` would
-  // refuse cards on columns that are perfectly legal targets. The column
-  // carries the id a drop would write, which makes it the honest test.
+  // "no grouping" still draws statuses, so a flag taken from the grouping the
+  // caller asked for would refuse cards on columns that are perfectly legal
+  // targets — `groupingLabel` says what the axis is called and nothing more.
+  // The column carries the id a drop would write, which makes it the honest
+  // test.
   const movable =
     groups.length > 0 && groups.every((group) => group.statusId !== undefined);
 
@@ -248,12 +258,9 @@ export const TaskBoardLayout = ({
     <div className={styles.board} data-task-board>
       {movable || groups.length === 0 ? null : (
         <p className={styles.lens} data-board-lens>
-          <b>
-            {grouping === "none" ? "These" : TASK_GROUPING_LABELS[grouping]}
-          </b>{" "}
-          columns are a lens, not a place a task can be put. Press{" "}
-          <kbd>Alt</kbd> with <kbd>←</kbd> or <kbd>→</kbd> on a card to move its
-          status.
+          <b>{groupingLabel}</b> columns are a lens, not a place a task can be
+          put. Press <kbd>Alt</kbd> with <kbd>←</kbd> or <kbd>→</kbd> on a card
+          to move its status.
         </p>
       )}
 
@@ -336,7 +343,7 @@ export const TaskBoardLayout = ({
                   selected={row.task.id === selectedTaskId}
                   nav={itemProps(firstIndex + offset)}
                   dragging={dragged?.id === row.task.id}
-                  showProjects={grouping !== "project"}
+                  showProjects={showProjects}
                   onSelect={() => onSelect(row.task.id)}
                   onOpen={() => onOpen(row.task.id)}
                   onMove={(step) => move(row, step)}

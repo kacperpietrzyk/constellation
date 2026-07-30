@@ -28,6 +28,7 @@ import { useListNavigation } from "./hooks/useListNavigation.js";
 import {
   buildActorResolver,
   buildMentionResolver,
+  readCommentPermissions,
 } from "./record/record-actors.js";
 import { RecordCommentsPanel } from "./record/RecordCommentsPanel.js";
 import { RecordTabStrip } from "./record/RecordTabStrip.js";
@@ -1195,27 +1196,15 @@ export const OrganizationContextLoader = ({
   // exactly as it did before the tab existed.
   const [comments, setComments] =
     useState<Awaited<ReturnType<typeof loadComments>>>();
-  // Whose voice this is. Read from the access slice, the same place the shell
-  // reads it: a mention list that names you in the third person makes you read
-  // every line to find out whether one of them was addressed to you.
-  const currentPrincipalId =
-    snapshot.access.kind === "ready"
-      ? snapshot.access.data.currentPrincipalId
-      : undefined;
-  // What this reader may do to a comment, read the same way the shell reads it:
-  // the role on the workspace, the access on the Space. Stated rather than
-  // folded into `busy`, so a control dead because a write is in flight and one
-  // dead because the grant is read-only stay two different facts.
-  const currentMember =
-    snapshot.access.kind === "ready"
-      ? snapshot.access.data.members.find(
-          (member) => member.principalId === currentPrincipalId,
-        )
-      : undefined;
-  const currentGrant = currentMember?.spaces[0];
-  const canResolveComments =
-    currentMember?.role === "owner" || currentGrant?.access === "edit";
-  const canComment = canResolveComments || currentGrant?.access === "comment";
+  // Whose voice this is and what it may do to a comment — the SAME reading the
+  // shell makes, from the one place that makes it. It was spelled out here as
+  // well until the two copies were one edit away from disagreeing about who may
+  // resolve a thread.
+  const {
+    currentPrincipalId,
+    canComment,
+    canResolve: canResolveComments,
+  } = readCommentPermissions(snapshot.access);
   const [commentBusy, setCommentBusy] = useState(false);
   // One shape for all three comment writes. Each RE-READS the list on success
   // rather than patching it: the version the write expected has just moved, and
@@ -1229,7 +1218,20 @@ export const OrganizationContextLoader = ({
     setCommentBusy(false);
     if (result.kind !== "success") return false;
     const target = organizationCommentTarget(organization);
-    setComments(await loadComments(api, snapshot, target));
+    try {
+      setComments(await loadComments(api, snapshot, target));
+    } catch {
+      // The re-read is the refusable half, and it is the one documented below:
+      // a kernel predating 0.2.0 answers the organization comment target with a
+      // refusal. Nothing catches this downstream — the panel attaches only
+      // `.then` — so an uncaught rejection is what a stale kernel would cost.
+      //
+      // Swallowed, and the answer stays TRUE: the WRITE has already landed.
+      // This boolean is what clears the composer and closes the editor, so
+      // returning false here would leave the author's text sitting under a
+      // comment that DID post, and the retry double-posts it. The list is
+      // simply one read behind until the next one lands.
+    }
     return true;
   };
   useEffect(() => {
@@ -1382,6 +1384,11 @@ export const OrganizationContextLoader = ({
               }}
               recordKey={state.data.organization.id}
               threads={comments.threads}
+              // The organization tab exists only when the read SUCCEEDED — a
+              // kernel that refuses this target leaves `comments` undefined and
+              // the strip does not appear at all — so by the time this mounts
+              // the list is always the answer.
+              threadsKnown
               timeZone={snapshot.bootstrap.workspace.timezone}
             />
           )

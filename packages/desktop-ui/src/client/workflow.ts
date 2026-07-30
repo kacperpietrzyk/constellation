@@ -14,7 +14,6 @@ import {
   type SpaceId,
   type TaskId,
   type TaskStatusId,
-  type RelationCondition,
   type CommentId,
   type AttentionSignalId,
   type DocumentId,
@@ -1459,42 +1458,24 @@ export const updateInitiativeOutcome = (
   );
 
 /**
- * The filter vocabulary as the CREATE path spells it.
+ * The filter vocabulary as the CREATE path spells it: the projection's own
+ * filter type below — `SavedWorkView["filters"]`, inferred from the very
+ * `SavedViewFiltersSchema` the command validates against (`query.ts:901`) —
+ * minus the deprecated `projectIds`/`areaIds`/`initiativeIds`, which the
+ * contract keeps accepting only so already-stored views still project
+ * (`command.ts:1291-1299`) and which nothing should author any more.
  *
- * Third restatement of one shape, and the only one still written by hand. It is
- * deliberately narrower than `SavedWorkView["filters"]` below — which is the
- * projection's own type, inferred from the very `SavedViewFiltersSchema` the
- * command validates against (`query.ts:900`) — because it omits the deprecated
- * `projectIds`/`areaIds`/`initiativeIds` keys nothing should author any more.
- *
- * It cannot simply become the projected type here: `createSavedWorkView`'s one
- * caller is `WorkSurface.tsx:696`, the readonly arrays this interface declares
- * are not assignable to the mutable ones the schema infers, and a create that
- * stops compiling is a worse answer than a named restatement. Naming it is the
- * point — the update path below derives, and the two must not drift again.
+ * Subtracted rather than re-listed: this was a hand-written interface, and
+ * being hand-written is how it came to omit those three keys where the
+ * projection carries them — create and update disagreeing about what a filter
+ * set IS. Derived, it cannot drift, and the object literal at each call site
+ * still refuses the three keys the same way the interface did, by
+ * excess-property checking against a type that lacks them.
  */
-export interface SavedWorkViewFilters {
-  readonly operationalStates?: readonly (
-    "actionable" | "waiting" | "blocked"
-  )[];
-  // ADR-045. Relation conditions are authorable from the desktop now. The
-  // absence of these keys was the whole basis for calling "Filtr po relacji"
-  // met while the kernel still accepted-and-dropped the R12.4 relation filters.
-  readonly relationConditions?: readonly RelationCondition[];
-  readonly unassigned?: boolean;
-  readonly statusIds?: readonly TaskStatusId[];
-  readonly assigneePrincipalIds?: readonly PrincipalId[];
-  readonly priorities?: readonly ("urgent" | "high" | "normal" | "low")[];
-  readonly dueWindow?: "overdue" | "today" | "this_week";
-  readonly scheduled?: boolean;
-  readonly fields?: readonly {
-    readonly fieldId: string;
-    readonly predicate:
-      | { readonly kind: "choice_is"; readonly option: string }
-      | { readonly kind: "set" }
-      | { readonly kind: "empty" };
-  }[];
-}
+export type SavedWorkViewFilters = Omit<
+  SavedWorkView["filters"],
+  "projectIds" | "areaIds" | "initiativeIds"
+>;
 
 // Third restatement of the contract unions (schema, domain record, here). No
 // compiler reaches across the wire, so this one drifts silently: a member
@@ -1587,7 +1568,7 @@ export const setSavedWorkViewLayout = (
 
 /** A saved view as the work overview projects it. Derived, never restated: the
  *  filter vocabulary has already drifted three times across the schema, the
- *  domain record and `SavedWorkViewFilters` above, and a fourth hand-written
+ *  domain record and the create path above, and a fourth hand-written
  *  copy is how the deprecated `projectIds`/`areaIds`/`initiativeIds` keys —
  *  which the projection still carries and `SavedWorkViewFilters` omits — would
  *  become invisible to the editor below. */

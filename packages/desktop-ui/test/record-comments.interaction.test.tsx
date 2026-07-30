@@ -127,6 +127,7 @@ type PanelProps = Parameters<typeof RecordCommentsPanel>[0];
  *  control some other test switched on. */
 const base: PanelProps = {
   threads: [openRoot, settledRoot, reply],
+  threadsKnown: true,
   recordKey: "project-a",
   actorOf: (entry) => ({
     name: entry.author.displayName,
@@ -315,6 +316,38 @@ test("a read-only scope says so, and offers no write it would refuse", async () 
   assert.equal(composer().placeholder, "Write a comment");
   assert.equal(composer().disabled, false);
   control(entryOf(rootId), "Reply", "a granted scope offers no way to answer");
+});
+
+test("an empty list only reads as 'nobody has written here' when it is the answer", async () => {
+  // Three different situations arrive at this panel as the same empty array:
+  // the record really has no comments, the read is still in flight, and the
+  // read was refused. Only the first of them licenses the sentence.
+  //
+  // This is the same distinction the panel already draws between "nothing open"
+  // and "never discussed", one step further back, and it exists because the
+  // caller now prints the reason ABOVE the panel instead of instead of it — so
+  // without this, "Loading comments…" and "No comments on this record yet."
+  // stand one line apart, and one of them is not known to be true.
+  await render({ ...base, canComment: true, threads: [], threadsKnown: true });
+  assert.ok(
+    (container.textContent ?? "").includes("No comments on this record yet."),
+    "a record that genuinely has no comments would not say so",
+  );
+
+  await render({ ...base, canComment: true, threads: [], threadsKnown: false });
+  assert.ok(
+    !(container.textContent ?? "").includes("No comments on this record yet."),
+    "a list that never arrived was reported as a record nobody has written on",
+  );
+
+  // The composer stays either way. Losing the write with the read is the
+  // regression this whole distinction was introduced to undo, and the packaged
+  // hub smoke waits on exactly this field.
+  assert.equal(
+    composer().disabled,
+    false,
+    "a comment list that could not be read also took away the composer",
+  );
 });
 
 // ── 2. REPLIES ────────────────────────────────────────────────────────────
