@@ -8,12 +8,16 @@ import {
   AuditReceiptIdSchema,
   CaptureIdSchema,
   CapturePayloadIdSchema,
+  CommandIdSchema,
   CommentIdSchema,
+  CorrelationIdSchema,
+  GrantIdSchema,
   KnowledgeSourceIdSchema,
   type QueryProjection,
 } from "@constellation/contracts";
 
 import type {
+  CapturePayloadResponse,
   RendererCommandResponse,
   RendererQueryResponse,
 } from "@constellation/desktop-preload/client";
@@ -49,6 +53,12 @@ type Projection<Kind extends QueryProjection["kind"]> = Extract<
 // so re-implementing the behaviour elsewhere could not satisfy them, and
 // deleting the string could not fail them for the right reason.
 //
+// What replaces them has to be worth as much as what they guarded: staging,
+// custody, and what happens to a staged file when the write is refused. An
+// assertion that an "Attach file" button EXISTS is none of those — it is green
+// over a stager that cannot reach storage, which is exactly what the scenario
+// adapter gives you until `selectCapturePayload` is supplied below.
+//
 // Nothing here selects on a CSS-module class: the panel's names are hashed in a
 // production build, so a class-based selector measures nothing once packaged.
 
@@ -64,6 +74,47 @@ const sourceId = KnowledgeSourceIdSchema.parse(
 const receiptId = AuditReceiptIdSchema.parse(
   "00000000-0000-4000-8000-00000000da06",
 );
+const chosenPayloadId = CapturePayloadIdSchema.parse(
+  "00000000-0000-4000-8000-00000000da07",
+);
+const stagedCaptureId = CaptureIdSchema.parse(
+  "00000000-0000-4000-8000-00000000da08",
+);
+const stagedSourceId = KnowledgeSourceIdSchema.parse(
+  "00000000-0000-4000-8000-00000000da09",
+);
+const grantId = GrantIdSchema.parse("00000000-0000-4000-8000-00000000da0a");
+const receiptCommandId = CommandIdSchema.parse(
+  "00000000-0000-4000-8000-00000000da0b",
+);
+const receiptCorrelationId = CorrelationIdSchema.parse(
+  "00000000-0000-4000-8000-00000000da0c",
+);
+
+const stagedFileName = "umowa-northstar.pdf";
+
+/** The file this device offers when the composer asks for one.
+ *
+ *  `createScenarioClient` defines no `selectCapturePayload`, and without it
+ *  `stageManagedAttachment` answers `unavailable` before it reaches storage —
+ *  so an assertion that the Attach control merely EXISTS is green over a
+ *  staging path that cannot stage. `surface-lifecycle.interaction.test.tsx`
+ *  supplies `getMeetingLoop` the same way: spread the adapter, add the member
+ *  the screen under test actually calls. */
+const chosenFile: CapturePayloadResponse = {
+  outcome: "success",
+  original: {
+    kind: "managed_file",
+    payload: {
+      payloadId: chosenPayloadId,
+      displayName: stagedFileName,
+      mediaType: "application/pdf",
+      byteLength: 8192,
+      contentSha256: "b".repeat(64),
+      custodyState: "available",
+    },
+  },
+};
 
 const settledBody = "Czy zakres obejmuje też oddział w Gdańsku?";
 const filedBody = "Notatka ze spotkania wisi przy tym zadaniu.";
@@ -172,9 +223,32 @@ const refused: RendererQueryResponse = {
   issues: [{ path: "target", code: "custom" }],
 };
 
+/** The receipt for the write that stores a file. Not decoration: routing a
+ *  capture ends by READING its receipt back, and a missing answer there fails
+ *  the whole staging path — the composer would then be empty for a reason that
+ *  has nothing to do with the screen this file measures. */
+const receipt: Projection<"audit.receipt"> = {
+  kind: "audit.receipt",
+  receipt: {
+    id: receiptId,
+    principalId,
+    grantId,
+    origin: "desktop",
+    commandId: receiptCommandId,
+    commandName: "capture.process",
+    correlationId: receiptCorrelationId,
+    affectedRecordIds: [stagedSourceId],
+    recordVersions: { [stagedSourceId]: 1 },
+    changedFields: [],
+    occurredAt: "2026-07-19T09:00:00.000Z",
+    outcome: "success",
+  },
+};
+
 const queries = {
   ...populatedShellQueries,
   "workspace.access": projectionResponse(access),
+  "audit.receipt": projectionResponse(receipt),
   "comment.list": projectionResponse(comments("open")),
   "comment.mentionCandidates": projectionResponse(mentionCandidates),
 };
@@ -247,24 +321,29 @@ const openTask = async (): Promise<void> => {
   const { createScenarioClient } =
     await import("../src/client/scenario-client.js");
   const { loadDesktopSnapshot } = await import("../src/client/workflow.js");
-  // Settling a thread is the one write scripted as accepted. Everything else is
-  // refused, so a screen that started sending something nobody asked for fails
-  // here rather than passing quietly.
-  const client = createScenarioClient({
-    queries: live,
-    executeCommand: (command): RendererCommandResponse =>
-      command.commandName === "comment.resolve"
-        ? {
+  // Settling a thread and storing a file are the writes scripted as accepted,
+  // each by NAME. Everything else is refused, so a screen that started sending
+  // something nobody asked for fails here rather than passing quietly — and a
+  // blanket accept would have thrown that guard away to buy one of them.
+  const client = {
+    ...createScenarioClient({
+      queries: live,
+      executeCommand: (command): RendererCommandResponse => {
+        const committed = {
+          contractVersion: 1 as const,
+          commandId: command.commandId,
+          correlationId: command.correlationId,
+          kernelTime: "2026-07-19T10:00:00.000Z",
+          outcome: "success" as const,
+          affected: [],
+          auditReceiptId: receiptId,
+        };
+        if (command.commandName === "comment.resolve")
+          return {
             kind: "command_outcome",
             outcome: {
-              contractVersion: 1,
-              commandId: command.commandId,
-              correlationId: command.correlationId,
-              kernelTime: "2026-07-19T10:00:00.000Z",
-              outcome: "success",
+              ...committed,
               diagnosticCode: "comment.resolved",
-              affected: [],
-              auditReceiptId: receiptId,
               projection: {
                 kind: "comment.resolved",
                 commentId: rootId,
@@ -272,13 +351,49 @@ const openTask = async (): Promise<void> => {
                 version: 2,
               },
             },
-          }
-        : {
-            kind: "contract_rejected",
-            diagnosticCode: "contract.invalid",
-            issues: [{ path: "", code: "custom" }],
-          },
-  });
+          };
+        // Attaching is TWO writes before the composer holds anything: the
+        // original is stored, then routed as a knowledge source, and only the
+        // source id is what a comment can carry.
+        if (command.commandName === "capture.submit")
+          return {
+            kind: "command_outcome",
+            outcome: {
+              ...committed,
+              diagnosticCode: "capture.stored",
+              projection: {
+                kind: "capture.stored",
+                captureId: stagedCaptureId,
+                processingState: "pending_processing",
+                version: 1,
+              },
+            },
+          };
+        if (command.commandName === "capture.process")
+          return {
+            kind: "command_outcome",
+            outcome: {
+              ...committed,
+              diagnosticCode: "capture.routed_as_knowledge_source",
+              projection: {
+                kind: "capture.routed_as_knowledge_source",
+                captureId: stagedCaptureId,
+                captureVersion: 2,
+                sourceId: stagedSourceId,
+                sourceVersion: 1,
+              },
+            },
+          };
+        return {
+          kind: "contract_rejected",
+          diagnosticCode: "contract.invalid",
+          issues: [{ path: "", code: "custom" }],
+        };
+      },
+    }),
+    selectCapturePayload: async (): Promise<CapturePayloadResponse> =>
+      chosenFile,
+  };
   const snapshot = await loadDesktopSnapshot(client);
   assert.ok(
     snapshot.tasks.length > 0,
@@ -386,12 +501,87 @@ test("a file on a comment says whether this device still holds it", async () => 
     () => custody().includes("Not on this device"),
     "the custody chip never settled on an answer",
   );
+});
 
-  // Staging is offered from the rail and not only from the record screens: the
-  // button exists only where the mount hands the panel a way to stage.
+test("a file staged in the inspector survives a write the kernel refused", async () => {
+  await openTaskComments();
+  // Scoped to the COMPOSER, not to the rail. `TaskAttachmentsSection` renders
+  // its own "Attach file" earlier in the same aside, so a rail-wide lookup
+  // returns that one in document order — and then the assertion below stays
+  // green with the comment composer's attaching deleted, which is the exact
+  // shape of check this file exists to stop shipping.
+  const composer = rail().querySelector<HTMLElement>(
+    'form[aria-label="New comment"]',
+  );
+  assert.ok(composer, "the inspector rail draws no comment composer");
+  const attach = buttonSaying(composer, "Attach file");
   assert.ok(
-    buttonSaying(rail(), "Attach file"),
+    attach,
     "the inspector offers no way to attach a file to a comment",
+  );
+  await act(async () => {
+    attach.click();
+  });
+
+  // Staging is a real round trip, not a local list: the chosen original is
+  // stored in managed storage, routed as a knowledge source, its receipt read
+  // back, and the whole snapshot swapped underneath the rail on the way. So the
+  // wait is on the RESULT appearing, and it is named — a reload that closed the
+  // rail would otherwise read as "the button does nothing".
+  const stagedList = (): HTMLElement | null =>
+    rail().querySelector<HTMLElement>('[aria-label="New comment attachments"]');
+  await waitForCondition(
+    () => (stagedList()?.textContent ?? "").includes(stagedFileName),
+    "choosing a file staged nothing in the composer",
+  );
+
+  const field = rail().querySelector<HTMLTextAreaElement>(
+    'textarea[aria-label="Write a comment"]',
+  );
+  assert.ok(field, "the composer left the rail while a file was being staged");
+  const written = "Umowa w załączniku, proszę o przegląd.";
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    setter?.call(field, written);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => {
+    field
+      .closest("form")
+      ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+
+  // `comment.add` is not among the writes this harness accepts, and the shell
+  // says so. Waited for, because the refusal travels back through the shell
+  // before the composer can act on it — asserting straight after the submit
+  // would measure the moment BEFORE the decision, and would pass over a
+  // composer that empties itself on every answer.
+  await waitForCondition(
+    () =>
+      (container.textContent ?? "").includes(
+        "The command was refused at the desktop boundary.",
+      ),
+    "the refused comment was never reported to the reader",
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+
+  // What was staged has to still be staged. The file is already stored — the
+  // write that failed was the comment — so clearing the list would send
+  // somebody back to the file picker, and the second choice would store a
+  // second copy of a file that is already there.
+  assert.ok(
+    (stagedList()?.textContent ?? "").includes(stagedFileName),
+    "a refused comment threw away the file that had been staged for it",
+  );
+  assert.equal(
+    field.value,
+    written,
+    "a refused comment threw away the text somebody typed",
   );
 });
 

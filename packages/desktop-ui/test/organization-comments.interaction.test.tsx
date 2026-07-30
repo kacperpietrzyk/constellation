@@ -231,6 +231,29 @@ const openOrganization = async (): Promise<void> => {
   });
 };
 
+/** The organization record's own tab panel, found THROUGH the tab that names it
+ *  rather than by a class — CSS-module names are hashed in a packaged build, so
+ *  a class selector measures nothing once the app ships.
+ *
+ *  Scoped for the reason the record screen's own file was already fixed for: the
+ *  shell draws a SECOND comments panel in the inspector rail — from the same
+ *  component, with the same control names — whenever a task or a project is
+ *  selected. Selecting an organization does not, so this scope cannot be
+ *  falsified from this file today; it is a guard against the day a rail beside
+ *  an organization does, at which point an unscoped query over `container`
+ *  would go green on somebody else's Resolve while this record's was missing. */
+const record = (): HTMLElement => {
+  const tab = container.querySelector<HTMLElement>(
+    '[role="tab"][data-record-tab="comments"]',
+  );
+  assert.ok(tab, "the organization record offers no Comments tab");
+  const panelId = tab.getAttribute("aria-controls");
+  assert.ok(panelId, "the Comments tab controls no panel");
+  const panel = container.querySelector<HTMLElement>(`#${panelId}`);
+  assert.ok(panel, "the Comments tab points at an id that is not on the page");
+  return panel;
+};
+
 test("an organization record offers a Comments tab, and it is reachable", async () => {
   await openOrganization();
   await waitForCondition(
@@ -283,7 +306,7 @@ test("a comment written on an organization reaches the kernel as an organization
       ?.click();
   });
 
-  const field = container.querySelector<HTMLTextAreaElement>(
+  const field = record().querySelector<HTMLTextAreaElement>(
     'textarea[aria-label="Write a comment"]',
   );
   assert.ok(field, "the Comments tab offers no way to comment");
@@ -331,7 +354,7 @@ test("a thread settled here reaches the kernel, and a refusal is stated", async 
   // so the control existed and reached nothing. This is the organization half
   // of proving it is wired to the kernel rather than to a prop.
   const settle = [
-    ...container.querySelectorAll<HTMLButtonElement>("button"),
+    ...record().querySelectorAll<HTMLButtonElement>("button"),
   ].find((button) => button.textContent === "Resolve");
   assert.ok(settle, "the organization's threads offer no way to settle them");
   await act(async () => {
@@ -350,7 +373,7 @@ test("a thread settled here reaches the kernel, and a refusal is stated", async 
   // reader is told — a thread that did not settle, drawn exactly like one that
   // did, is how a refused write goes missing without anybody noticing.
   assert.ok(
-    container.textContent?.includes("That change was refused."),
+    record().textContent?.includes("That change was refused."),
     "a refused settle is drawn exactly like one the kernel accepted",
   );
 });

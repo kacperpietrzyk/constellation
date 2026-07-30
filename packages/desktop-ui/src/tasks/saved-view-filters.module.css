@@ -28,9 +28,15 @@
   color: var(--text-primary);
 }
 
-/* Full-basis so the form never shares its row with the bar it opened from.
-   Four groups of checkboxes wrapped in beside a search box read as one long
-   strip of unrelated controls. */
+/* Full-basis so the form never shares a row with the DISCLOSURE it opened from:
+   four groups of checkboxes wrapped in beside that button read as one long
+   strip of unrelated controls.
+   It says nothing about the view bar, and used to claim it did. `100%` is
+   measured against `.editor`, and `.editor` is the bar's flex child with no
+   basis of its own — so the bar's search box and selects can still land on the
+   form's row. Clearing those would take the basis on `.editor` instead, which
+   would also lift "Edit filters" out of the bar, and beside the view picker is
+   exactly where TasksSurface puts it. */
 .form {
   display: flex;
   flex-wrap: wrap;

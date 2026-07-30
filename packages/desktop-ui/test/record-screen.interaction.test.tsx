@@ -45,7 +45,17 @@ type Projection<Kind extends QueryProjection["kind"]> = Extract<
 //     two ways a picker can be empty stay two different sentences;
 //   - a project with no written outcome offers a way to write it;
 //   - switching a tab changes what is on screen, exactly one panel exists, and
-//     only the panel on screen holds the keyboard's tab stop.
+//     only the panel on screen holds the keyboard's tab stop;
+//   - an answer written under a thread is STORED as an answer to it, and a
+//     thread can be settled and a comment corrected from this record.
+//
+// Those last two are here rather than beside the comments panel on purpose. The
+// panel obeys the props it is handed — that is proven where it is mounted
+// directly — and both defects this file was extended after were mounts: a
+// two-parameter `onAddComment` assignable to a four-parameter prop, which landed
+// every reply as a fresh thread, and four comment props left optional and filled
+// by nobody, which drew no Edit, no Unlink and no Resolve. Neither is visible
+// from the panel, and neither is visible to the compiler.
 //
 // The proof starts from the navigation, never from a component's own callback.
 // A test that mounted the record screen and watched it call `onSelect` would
@@ -353,6 +363,43 @@ const openTab = async (name: string): Promise<void> => {
   });
 };
 
+/** Opens the record and its Comments tab, and answers with the RECORD node.
+ *  Every query below is scoped to it: a second comments panel renders in this
+ *  shell now — same component, same control names, in the inspector rail — and
+ *  an unscoped query would measure whichever one came first in the document. */
+const openComments = async (): Promise<HTMLElement> => {
+  await openRecord();
+  await openTab("comments");
+  const record = container.querySelector<HTMLElement>(
+    '[data-record-kind="project"]',
+  );
+  assert.ok(record, "the record screen left the page when its tab changed");
+  return record;
+};
+
+const buttonIn = (scope: ParentNode, text: string): HTMLElement | undefined =>
+  [...scope.querySelectorAll<HTMLElement>("button")].find(
+    (button) => (button.textContent ?? "").trim() === text,
+  );
+
+/** Types the way a person does. React listens to the input event, and its own
+ *  value tracker swallows a plain assignment — a test that skipped the native
+ *  setter would leave the panel holding the text it started with, and every
+ *  assertion about what was SENT would then be about the stored body. */
+const typeInto = async (
+  field: HTMLTextAreaElement,
+  text: string,
+): Promise<void> => {
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    setter?.call(field, text);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+};
+
 test("a project opens as a record with one heading the shell can still find", async () => {
   await openRecord();
 
@@ -626,6 +673,136 @@ test("the tab bar shows one panel at a time, and the count is open threads", asy
     ),
     "the record's own Comments panel does not offer the resolved valve",
   );
+});
+
+test("an answer written on the project record is stored as an answer", async () => {
+  const record = await openComments();
+
+  // Started from the thread on screen, never from the panel's callback. The
+  // screen forwards FOUR arguments to `onSubmit`, and a two-parameter function
+  // is assignable to that prop while silently dropping the last two — which is
+  // what shipped: every reply here landed as a fresh root and the staged files
+  // went with it. Nothing on screen changes when that happens, so the payload is
+  // the only place the defect is visible.
+  const thread = record.querySelector<HTMLElement>(
+    `[data-thread-root="${rootComment}"]`,
+  );
+  assert.ok(thread, "the open thread this test answers was never drawn");
+  const reply = buttonIn(thread, "Reply");
+  assert.ok(reply, "the project record offers no way to answer a thread");
+  await act(async () => {
+    reply.click();
+  });
+
+  const field = record.querySelector<HTMLTextAreaElement>(
+    'textarea[aria-label="Write a comment"]',
+  );
+  assert.ok(field, "the composer disappeared when a thread was answered");
+  // The composer PROMISES it is answering that thread. Without this the payload
+  // assertion below would be about a broken promise nobody made.
+  assert.equal(
+    field.closest("form")?.getAttribute("aria-label"),
+    "Reply in the thread by Kacper",
+  );
+  await typeInto(field, "Tak, oddział w Gdańsku też.");
+  await act(async () => {
+    field
+      .closest("form")
+      ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+
+  const added = issued.find((command) => command.name === "comment.add");
+  assert.ok(added, "answering a thread issued no command at all");
+  assert.equal(
+    added.payload["parentCommentId"],
+    rootComment,
+    "the answer reached the kernel as a new thread instead of an answer",
+  );
+  assert.equal(added.payload["body"], "Tak, oddział w Gdańsku też.");
+});
+
+test("a thread is settled from the project record, and a refusal is stated", async () => {
+  const record = await openComments();
+  const thread = record.querySelector<HTMLElement>(
+    `[data-thread-root="${rootComment}"]`,
+  );
+  assert.ok(thread, "the record drew no thread to settle");
+
+  // DRAWN first, because that is the half that shipped broken: four comment
+  // props were optional here and filled by nobody, so this record offered no
+  // Edit, no Unlink and no Resolve while the organization record offered all
+  // three. A capability that silently is not there looks exactly like one
+  // nobody built.
+  const settle = buttonIn(thread, "Resolve");
+  assert.ok(settle, "the project record offers no way to settle a thread");
+  await act(async () => {
+    settle.click();
+  });
+
+  const resolved = issued.find((command) => command.name === "comment.resolve");
+  assert.ok(resolved, "settling a thread here issued no command at all");
+  assert.equal(resolved.payload["commentId"], rootComment);
+  // This harness refuses every command, and the panel READS the answer. A
+  // thread that did not settle, drawn exactly like one that did, is how a
+  // refused write goes missing without anybody noticing. Waited for as a
+  // CONDITION: the refusal travels back through the shell's own promise chain,
+  // and a fixed number of microtasks measures that chain's length instead.
+  await waitForCondition(
+    () => record.textContent?.includes("That change was refused.") === true,
+    "a refused settle is drawn exactly like one the kernel accepted",
+  );
+
+  // `canResolve` is the one comment prop nothing above can see: this reader
+  // wrote the thread they just settled, and an author may always settle their
+  // own. Marta's cannot be settled without the grant — and it lives behind the
+  // valve, which is where a thread somebody else closed goes.
+  const valve = buttonIn(record, "Show 1 resolved");
+  assert.ok(valve, "the record's own panel offers no resolved valve");
+  await act(async () => {
+    valve.click();
+  });
+  const other = record.querySelector<HTMLElement>(
+    `[data-thread-root="${resolvedComment}"]`,
+  );
+  assert.ok(other, "the valve opened onto nothing");
+  assert.ok(
+    buttonIn(other, "Reopen"),
+    "a thread somebody else closed offers no way back in, so the grant never reached the panel",
+  );
+});
+
+test("a comment corrected on the project record sends the corrected text", async () => {
+  const record = await openComments();
+  const thread = record.querySelector<HTMLElement>(
+    `[data-thread-root="${rootComment}"]`,
+  );
+  assert.ok(thread, "the record drew no thread to correct");
+
+  const edit = buttonIn(thread, "Edit");
+  assert.ok(edit, "the project record offers no way to correct a comment");
+  await act(async () => {
+    edit.click();
+  });
+  const editor = record.querySelector<HTMLTextAreaElement>(
+    'textarea[aria-label="Edit comment"]',
+  );
+  assert.ok(editor, "the Edit control opens no editor");
+
+  await typeInto(editor, "Czy zakres obejmuje Gdańsk i Gdynię?");
+  const save = buttonIn(thread, "Save");
+  assert.ok(save, "the open editor offers no way to save");
+  await act(async () => {
+    save.click();
+  });
+
+  const edited = issued.find((command) => command.name === "comment.edit");
+  assert.ok(edited, "saving a correction issued no command at all");
+  assert.equal(edited.payload["commentId"], rootComment);
+  // The TYPED text, not the stored body. The editor falls back to the comment's
+  // own body, so an edit whose input never reached the panel still issues a
+  // command — carrying exactly what was there before, which would pass an
+  // assertion that only checked a command had been sent.
+  assert.equal(edited.payload["body"], "Czy zakres obejmuje Gdańsk i Gdynię?");
 });
 
 test("a finished task on the record says so", async () => {
