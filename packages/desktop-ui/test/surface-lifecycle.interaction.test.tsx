@@ -120,6 +120,25 @@ const settle = async (): Promise<void> => {
 };
 
 /**
+ * Czeka na WARUNEK, nie na czas. Stała pauza mierzyła tu czas trwania zamiast
+ * zdarzenia i przy większym zestawie testów zaczęła kłamać raz na trzy przebiegi
+ * — zawsze na `access`, jedynym celu, którego loader robi DWA importy po kolei
+ * (`await import("../access-surface.css")`, dopiero potem moduł powierzchni,
+ * `shell/lazy-surfaces.tsx:41-44`). Pod obciążeniem drugi z nich nie mieścił się
+ * w oknie, więc pomiar meldował cel jako ładowany zachłannie.
+ */
+const settleUntil = async (
+  ready: () => boolean,
+  message: string,
+): Promise<void> => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (ready()) return;
+    await settle();
+  }
+  assert.fail(message);
+};
+
+/**
  * Klika cel nawigacji. Kliknięcie nie odpala `focus` ani `mouseenter`, więc nie
  * uruchamia `preloadSurface` — leniwy import startuje dopiero z renderu.
  */
@@ -213,8 +232,12 @@ test("a surface that is still arriving leaves the main landmark named", async ()
     openDestination(destination);
     assertLandmarkStaysNamed(destination, "loading");
     // Import wisi, więc stan ładowania musi przetrwać przepuszczenie kolejki.
-    // Tu też rejestrują się odrzucacze, których używa przypadek awarii.
-    await settle();
+    // Tu też rejestrują się odrzucacze, których używa przypadek awarii — i to
+    // ICH POJAWIENIE SIĘ jest warunkiem, nie upływ ustalonej pauzy.
+    await settleUntil(
+      () => lazyImports.rejecters.has(destination),
+      `${destination}: no dynamic import started, so this destination is loaded eagerly or its lazy path has drifted`,
+    );
     assertLandmarkStaysNamed(destination, "loading");
   }
 
