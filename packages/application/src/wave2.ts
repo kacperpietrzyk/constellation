@@ -157,6 +157,7 @@ import type {
   StoreFreshness,
 } from "./ports.js";
 import { evaluateRelationConditions } from "./relation-conditions.js";
+import { projectedTaskAssignment } from "./task-assignment-projection.js";
 import {
   addMeetingWorkItem,
   correctMeetingWorkItemResponsibility,
@@ -10215,13 +10216,19 @@ export const executeWave2Query = (
           id: task.id,
           title: task.title,
           statusId: task.statusId,
-          ...(view.getActiveTaskAssignment(task.id)?.assigneePrincipalId ===
-          undefined
-            ? {}
-            : {
-                assigneePrincipalId: view.getActiveTaskAssignment(task.id)!
-                  .assigneePrincipalId,
-              }),
+          ...(() => {
+            const assignment = view.getActiveTaskAssignment(task.id);
+            return assignment === undefined
+              ? {}
+              : {
+                  assignment: projectedTaskAssignment(
+                    view,
+                    query.workspaceId,
+                    space.id,
+                    assignment,
+                  ),
+                };
+          })(),
           operationalState: task.operationalState,
           ...(task.waitingOn === undefined
             ? {}
@@ -10236,6 +10243,9 @@ export const executeWave2Query = (
           ...(task.parentTaskId === undefined
             ? {}
             : { parentTaskId: task.parentTaskId }),
+          ...(task.calendarBlock === undefined
+            ? {}
+            : { calendarBlock: task.calendarBlock }),
           projectIds: projectIdsByTask.get(task.id) ?? [],
           ...(() => {
             const fields = taskFieldsWithComputedValues(

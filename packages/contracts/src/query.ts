@@ -61,6 +61,35 @@ import {
   UndoUnavailableReasonSchema,
 } from "./recovery.js";
 
+// R12.6 / ADR-042 — the calendar block reserving time to do a task, distinct
+// from its deadline. Named once and reused by every projection that carries a
+// plan: two copies of this shape would drift the day one of them gains a field,
+// and a work surface reading the thinner copy would quietly show less.
+export const TaskCalendarBlockProjectionSchema = z
+  .object({
+    ownedBlockExternalId: z.string(),
+    calendarExternalId: z.string(),
+    revision: z.string(),
+    startsAt: z.iso.datetime({ offset: true }),
+    endsAt: z.iso.datetime({ offset: true }),
+  })
+  .strict();
+
+// Who a task is assigned to, as far as the caller is allowed to know. The
+// principal id is present only when the assignee is an active member the
+// caller shares a Space with; otherwise the name and availability say what
+// happened without naming anybody. Shared by every projection that answers
+// assignment, so one surface cannot end up naming a person another redacts.
+export const TaskAssignmentProjectionSchema = z
+  .object({
+    id: TaskAssignmentIdSchema,
+    assigneePrincipalId: PrincipalIdSchema.optional(),
+    displayName: z.string(),
+    availability: z.enum(["active", "unavailable_member", "former_member"]),
+    version: z.int().positive(),
+  })
+  .strict();
+
 const QueryMetadataSchema = z
   .object({
     contractVersion: ContractVersionSchema,
@@ -749,7 +778,6 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             id: TaskIdSchema,
             title: z.string(),
             statusId: TaskStatusIdSchema,
-            assigneePrincipalId: PrincipalIdSchema.optional(),
             operationalState: z.enum(["actionable", "waiting", "blocked"]),
             waitingOn: z
               .object({
@@ -799,6 +827,20 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
                 ]),
               )
               .optional(),
+            // The time actually held for this work, beside the day it is
+            // planned for. Without it a work surface cannot tell a task that
+            // is planned AND estimated from one that is merely planned — and
+            // the shape of that distinction is the block's duration, so
+            // inventing an effort field would restate what this already says.
+            calendarBlock: TaskCalendarBlockProjectionSchema.optional(),
+            // How this assignee may be named, on the same terms as
+            // `task.list`: `assigneePrincipalId` is present only when the
+            // caller may know who it is, and the name and availability say
+            // what to show when it is not. The raw principal used to be
+            // projected here unredacted, which was harmless only while nothing
+            // rendered it — a screen grouping by assignee would otherwise sort
+            // people it is not allowed to name.
+            assignment: TaskAssignmentProjectionSchema.optional(),
             version: z.int().positive(),
             updatedAt: z.iso.datetime({ offset: true }),
           })
@@ -1181,21 +1223,11 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             dueAt: z.iso.datetime({ offset: true }).optional(),
             priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
             parentTaskId: TaskIdSchema.optional(),
-            // R12.6 / ADR-042 — the calendar block reserving time to do this
-            // work, distinct from dueAt above. It rides task.list rather than
-            // being read from cockpit.week because the cockpit is week-scoped
-            // and capped, so a block reserved outside the current week would
-            // be invisible to a surface trying to show or release it.
-            calendarBlock: z
-              .object({
-                ownedBlockExternalId: z.string(),
-                calendarExternalId: z.string(),
-                revision: z.string(),
-                startsAt: z.iso.datetime({ offset: true }),
-                endsAt: z.iso.datetime({ offset: true }),
-              })
-              .strict()
-              .optional(),
+            // It rides task.list rather than being read from cockpit.week
+            // because the cockpit is week-scoped and capped, so a block
+            // reserved outside the current week would be invisible to a
+            // surface trying to show or release it.
+            calendarBlock: TaskCalendarBlockProjectionSchema.optional(),
             fields: z
               .record(
                 z.string(),
@@ -1238,20 +1270,7 @@ export const QueryProjectionSchema = z.discriminatedUnion("kind", [
             createdAt: z.iso.datetime({ offset: true }),
             updatedAt: z.iso.datetime({ offset: true }),
             version: z.int().positive(),
-            assignment: z
-              .object({
-                id: TaskAssignmentIdSchema,
-                assigneePrincipalId: PrincipalIdSchema.optional(),
-                displayName: z.string(),
-                availability: z.enum([
-                  "active",
-                  "unavailable_member",
-                  "former_member",
-                ]),
-                version: z.int().positive(),
-              })
-              .strict()
-              .optional(),
+            assignment: TaskAssignmentProjectionSchema.optional(),
           })
           .strict(),
       ),

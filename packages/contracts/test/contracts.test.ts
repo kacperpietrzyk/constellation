@@ -919,4 +919,24 @@ describe("task schedule projections", () => {
       `projekcje niosą startAt bez autorstwa planu: ${missing.join(", ")}`,
     );
   });
+
+  it("every projected task schedule carries the time reserved for it", () => {
+    // A plan and the time held for it are two halves of the same answer: the
+    // day the work starts, and whether anybody actually kept room for it. A
+    // screen that reads one shape and not the other cannot tell "planned and
+    // estimated" from "planned, no time reserved" — and would have to invent
+    // an effort field to say something the block already says.
+    //
+    // The rule walks the projection registry rather than listing projections,
+    // for the reason the two assertions above exist: a hand-written list goes
+    // green on the day a new schedule shape is added.
+    const missing = scheduleShapes()
+      .filter((shape) => !shape.keys.includes("calendarBlock"))
+      .map((shape) => shape.path);
+    assert.deepEqual(
+      missing,
+      [],
+      `projekcje niosą plan bez zarezerwowanego czasu: ${missing.join(", ")}`,
+    );
+  });
 });

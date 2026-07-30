@@ -114,6 +114,7 @@ const context = (): ExecutionContext =>
       "task.remove",
       "task.assign",
       "task.unassign",
+      "task.setCalendarBlock",
       "comment.add",
       "comment.edit",
       "comment.resolve",
@@ -5493,5 +5494,91 @@ describe("Wave 2 reference semantics", () => {
       ),
       false,
     );
+  });
+
+  it("answers the Work overview with the same plan and the same assignee the task query does", () => {
+    const harness = setup();
+    const taskId = createTask(harness, "Planned and held");
+    const versionOf = (): number =>
+      harness.store.snapshot().tasks.find((task) => task.id === taskId)!
+        .version;
+
+    const block = {
+      ownedBlockExternalId: "block-overview-1",
+      calendarExternalId: "calendar-overview-1",
+      revision: "rev-1",
+      startsAt: "2026-07-30T09:00:00.000Z",
+      endsAt: "2026-07-30T11:00:00.000Z",
+    };
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("overview-block", { [taskId]: versionOf() }),
+          commandName: "task.setCalendarBlock",
+          payload: { taskId, block },
+        }),
+      ).outcome,
+      "success",
+    );
+    const assignmentId = requestId();
+    assert.equal(
+      unwrap(
+        harness.kernel.execute(context(), {
+          ...metadata("overview-assign", { [taskId]: versionOf() }),
+          commandName: "task.assign",
+          payload: {
+            assignmentId,
+            taskId,
+            assigneePrincipalId: ids.principal,
+          },
+        }),
+      ).diagnosticCode,
+      "task.assigned",
+    );
+
+    const overviewTask = (() => {
+      const result = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "work.overview",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace },
+      });
+      if (result.kind !== "query_result" || result.result.outcome !== "success")
+        assert.fail("Expected a work.overview result");
+      return result.result.projection.kind === "work.overview"
+        ? result.result.projection.tasks.find((task) => task.id === taskId)
+        : assert.fail("Expected work.overview projection");
+    })();
+    const listTask = (() => {
+      const result = harness.kernel.query(context(), {
+        contractVersion: 1,
+        queryName: "task.list",
+        queryId: requestId(),
+        workspaceId: ids.workspace,
+        consistency: "local_authoritative",
+        parameters: { spaceId: ids.rootSpace },
+      });
+      if (result.kind !== "query_result" || result.result.outcome !== "success")
+        assert.fail("Expected a task.list result");
+      return result.result.projection.kind === "task.list"
+        ? result.result.projection.items.find((task) => task.id === taskId)
+        : assert.fail("Expected task.list projection");
+    })();
+
+    // The time held for the work reaches the surface that shows the work.
+    // Without it a row cannot tell "planned and estimated" from "planned, with
+    // nobody's time behind it", and the compiler does not notice: Task has no
+    // UnprojectableKeys guard, so the field would compile and never arrive.
+    assert.deepEqual(overviewTask?.calendarBlock, block);
+    assert.deepEqual(overviewTask?.calendarBlock, listTask?.calendarBlock);
+
+    // And both projections name the assignee the same way. The overview used
+    // to answer a bare principal id with no redaction while task.list withheld
+    // it — harmless only while nothing rendered it.
+    assert.deepEqual(overviewTask?.assignment, listTask?.assignment);
+    assert.equal(overviewTask?.assignment?.assigneePrincipalId, ids.principal);
+    assert.equal(overviewTask?.assignment?.availability, "active");
   });
 });
