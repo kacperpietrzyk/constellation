@@ -169,6 +169,72 @@ export const updateTaskDetails = (
   };
 };
 
+/**
+ * Rezerwacja czasu na zadaniu — i rozstrzygnięcie, przez które ta funkcja
+ * w ogóle istnieje.
+ *
+ * Blok kalendarza NIESIE DATĘ. Zarezerwowanie godziny w środę na zadaniu, które
+ * nie ma jeszcze dnia, znaczy „robię to w środę" — więc `startAt` dostaje
+ * początek bloku. Bez tego aplikacja mówiła „nieplanowane" o pracy, na którą
+ * sama trzymała godzinę, i mówiła to w trzech miejscach naraz: kreską w wierszu,
+ * nazwą dostępną („not planned") i osią czasu, która liczyła takie zadanie jako
+ * stojące na żadnej dacie. Trzeci stan planu — „czas zarezerwowany" — był tą
+ * drogą NIEOSIĄGALNY, bo wymaga `startAt`.
+ *
+ * Trzy granice, każda świadoma:
+ *
+ * 1. **Istniejący `startAt` NIE jest ruszany.** Dzień wybrany świadomie jest
+ *    czyjąś decyzją, a rezerwacja nie ma prawa jej po cichu przesunąć. Jeśli
+ *    plan mówi poniedziałek, a blok stoi w środę, to jest sprzeczność do
+ *    pokazania człowiekowi — nie do rozstrzygnięcia tutaj.
+ * 2. **`dueAt` nie jest dotykany, nigdy.** „Zajmę się tym w środę" i „obiecuję
+ *    to na środę" to dwa różne fakty; ten gest znaczy pierwszy.
+ * 3. **Zdjęcie bloku nie zdejmuje planu.** Plan przeżył rezerwację, więc
+ *    przeżywa też jej cofnięcie; usunięcie `startAt` skasowałoby decyzję,
+ *    której ten gest nie podejmował. Cofnięcie KOMENDY to co innego i idzie
+ *    deskryptorem undo.
+ *
+ * Podpis planu stawia się tylko wtedy, gdy `startAt` naprawdę tu powstał —
+ * rezerwujący staje się autorem planu, bo to on go założył.
+ */
+export const setTaskCalendarBlock = (
+  task: Task,
+  block: Task["calendarBlock"] | null,
+  occurredAt: string,
+  plan: TaskPlanDecision,
+): Task => {
+  const {
+    calendarBlock: _priorBlock,
+    plannedBy: currentPlannedBy,
+    ...base
+  } = task;
+  void _priorBlock;
+  const planned =
+    block !== null && block !== undefined && task.startAt === undefined
+      ? block.startsAt
+      : task.startAt;
+  return {
+    ...base,
+    ...(block === null || block === undefined ? {} : { calendarBlock: block }),
+    ...(planned === undefined ? {} : { startAt: planned }),
+    ...(planned !== undefined && task.startAt === undefined
+      ? stampPlan(planned, plan, occurredAt)
+      : currentPlannedBy === undefined
+        ? {}
+        : { plannedBy: currentPlannedBy }),
+    version: task.version + 1,
+    updatedAt: occurredAt,
+  };
+};
+
+/** Czy ta rezerwacja jest tym, co ZAŁOŻYŁO plan — jedyna rzecz, którą cofnięcie
+ *  musi o niej wiedzieć, żeby nie skasować dnia wybranego wcześniej i osobno. */
+export const calendarBlockCreatesPlan = (
+  task: Task,
+  block: Task["calendarBlock"] | null,
+): boolean =>
+  block !== null && block !== undefined && task.startAt === undefined;
+
 /** The resulting timing of a details update, before it is applied. */
 export const taskTimingAfterUpdate = (
   task: Task,

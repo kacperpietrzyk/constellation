@@ -1199,6 +1199,17 @@ export type UndoDescriptor =
       readonly kind: "task.restore_calendar_block";
       readonly taskId: TaskId;
       readonly priorBlock?: Task["calendarBlock"];
+      /**
+       * Set only when the reservation was ALSO what put the task on a day.
+       * Undo then takes the plan back with the block; otherwise it leaves
+       * `startAt` alone, because a day chosen earlier and separately is a
+       * different decision that this command never made.
+       *
+       * A flag rather than a `priorStartAt`, so descriptors journalled before
+       * reservations planned anything keep meaning exactly what they meant:
+       * absent reads as "this one did not plan", never as "there was no plan".
+       */
+      readonly startAtFromBlock?: true;
       readonly resultingVersion: number;
       readonly consumedByCommandId?: CommandId;
     }

@@ -113,6 +113,8 @@ import {
   strategicRecordReferences,
   strategicRecordState,
   setTaskStatus,
+  calendarBlockCreatesPlan,
+  setTaskCalendarBlock,
   setTaskOperationalState,
   undoCaptureTaskRoute,
   undoCaptureKnowledgeRoute,
@@ -5316,15 +5318,23 @@ export const executeWave2Command = (
           [task.id]: task.version,
         });
       }
-      const { calendarBlock: priorBlock, ...taskBase } = task;
-      const updated: Task = {
-        ...taskBase,
-        ...(command.payload.block === null
-          ? {}
-          : { calendarBlock: command.payload.block }),
-        version: task.version + 1,
-        updatedAt: occurredAt,
-      };
+      const priorBlock = task.calendarBlock;
+      // Reserving time on a task nobody has given a day IS planning it — the
+      // block carries the date. The rule lives in the domain so an agent
+      // calling this command gets it too; doing it in the renderer would have
+      // left every other caller producing a task the calendar holds an hour
+      // for and the screens call "not planned".
+      const plansTheDay = calendarBlockCreatesPlan(task, command.payload.block);
+      const updated = setTaskCalendarBlock(
+        task,
+        command.payload.block,
+        occurredAt,
+        {
+          kind: "acting",
+          principalId: context.principalId,
+          principalKind: context.principalKind === "agent" ? "agent" : "human",
+        },
+      );
       if (!transaction.updateTask(updated, task.version)) {
         return versionConflict(command, occurredAt, {
           [task.id]: task.version,
@@ -5346,7 +5356,9 @@ export const executeWave2Command = (
           occurredAt,
         },
         { [updated.id]: updated.version },
-        ["calendarBlock"],
+        // The plan is named as changed only when the reservation founded it,
+        // so a reader of the journal is not told a day moved that did not.
+        plansTheDay ? ["calendarBlock", "startAt"] : ["calendarBlock"],
         {
           diagnosticCode: "task.details_updated",
           projection: {
@@ -5378,6 +5390,7 @@ export const executeWave2Command = (
           kind: "task.restore_calendar_block",
           taskId: task.id,
           ...(priorBlock === undefined ? {} : { priorBlock }),
+          ...(plansTheDay ? { startAtFromBlock: true as const } : {}),
           resultingVersion: updated.version,
         },
         { [updated.id]: "task" },
@@ -9414,13 +9427,29 @@ const compensateDescriptor = (
     compensatedKinds = { [removed.id]: "task" };
   } else if (descriptor.kind === "task.restore_calendar_block") {
     const task = transaction.getTask(descriptor.taskId) as Task;
-    const { calendarBlock: _current, ...base } = task;
+    const {
+      calendarBlock: _current,
+      startAt: currentStartAt,
+      plannedBy: currentPlannedBy,
+      ...base
+    } = task;
     void _current;
+    // Undo takes back the plan ONLY when this reservation is what founded it.
+    // A day chosen earlier and separately survives, because taking back the
+    // hour was never a decision about the day. Authorship goes with the plan:
+    // there is nothing to sign once there is no date.
+    const keepsPlan = descriptor.startAtFromBlock !== true;
     const restored: Task = {
       ...base,
       ...(descriptor.priorBlock === undefined
         ? {}
         : { calendarBlock: descriptor.priorBlock }),
+      ...(keepsPlan && currentStartAt !== undefined
+        ? { startAt: currentStartAt }
+        : {}),
+      ...(keepsPlan && currentPlannedBy !== undefined
+        ? { plannedBy: currentPlannedBy }
+        : {}),
       version: task.version + 1,
       updatedAt: occurredAt,
     };
